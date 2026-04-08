@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     neptune_endpoint: str = "http://localhost:8182"
     graph_backend: str = "neptune"  # "neptune" or "fuseki"
-    api_keys: str = '{"dev-key-001": "demo-tenant"}'
+    api_keys: str = '{}'  # empty = open access, no auth required
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     cerebras_api_key: str = ""

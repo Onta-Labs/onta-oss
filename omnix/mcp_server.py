@@ -28,8 +28,8 @@ API_URL = os.environ.get(
     "OMNIX_API_URL",
     "http://localhost:8000",
 )
-API_KEY = os.environ.get("OMNIX_API_KEY", "dev-key-001")
-TENANT = os.environ.get("OMNIX_TENANT", "demo-tenant")
+API_KEY = os.environ.get("OMNIX_API_KEY", "")
+TENANT = os.environ.get("OMNIX_TENANT", "default")
 
 mcp = FastMCP(
     "Omnix Knowledge Graph",
@@ -41,7 +41,10 @@ mcp = FastMCP(
 
 
 def _headers() -> dict:
-    return {"X-API-Key": API_KEY, "Content-Type": "application/json"}
+    h = {"Content-Type": "application/json"}
+    if API_KEY:
+        h["X-API-Key"] = API_KEY
+    return h
 
 
 def _base() -> str:
