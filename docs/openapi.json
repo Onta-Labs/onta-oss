@@ -1,0 +1,1849 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Omnix",
+    "description": "Living Knowledge Graph Platform",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/triples": {
+      "post": {
+        "tags": [
+          "triples"
+        ],
+        "summary": "Create Triples",
+        "operationId": "create_triples_graphs__tenant__triples_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripleBatch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "triples"
+        ],
+        "summary": "Get Triples",
+        "operationId": "get_triples_graphs__tenant__triples_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subject"
+            }
+          },
+          {
+            "name": "predicate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Predicate"
+            }
+          },
+          {
+            "name": "object",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Object"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "triples"
+        ],
+        "summary": "Remove Triples",
+        "operationId": "remove_triples_graphs__tenant__triples_delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripleDelete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripleBatch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/query": {
+      "post": {
+        "tags": [
+          "query"
+        ],
+        "summary": "Execute Query",
+        "operationId": "execute_query_graphs__tenant__query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SPARQLQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SPARQLResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/update": {
+      "post": {
+        "tags": [
+          "query"
+        ],
+        "summary": "Execute Update",
+        "operationId": "execute_update_graphs__tenant__update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SPARQLUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/functions": {
+      "post": {
+        "tags": [
+          "functions"
+        ],
+        "summary": "Register Function",
+        "operationId": "register_function_graphs__tenant__functions_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FunctionRegister"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "functions"
+        ],
+        "summary": "List Functions",
+        "operationId": "list_functions_graphs__tenant__functions_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FunctionRef"
+                  },
+                  "title": "Response List Functions Graphs  Tenant  Functions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/ask": {
+      "post": {
+        "tags": [
+          "ask"
+        ],
+        "summary": "Ask Question",
+        "operationId": "ask_question_graphs__tenant__ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NLQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NLResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/ontology/types": {
+      "get": {
+        "tags": [
+          "ontology"
+        ],
+        "summary": "List Types",
+        "operationId": "list_types_graphs__tenant__ontology_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TypeResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Types Graphs  Tenant  Ontology Types Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "ontology"
+        ],
+        "summary": "Create Type",
+        "operationId": "create_type_graphs__tenant__ontology_types_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TypeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/ontology/types/{type_name}": {
+      "get": {
+        "tags": [
+          "ontology"
+        ],
+        "summary": "Get Type",
+        "operationId": "get_type_graphs__tenant__ontology_types__type_name__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "type_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/ontology/types/{type_name}/attributes": {
+      "post": {
+        "tags": [
+          "ontology"
+        ],
+        "summary": "Add Attributes",
+        "operationId": "add_attributes_graphs__tenant__ontology_types__type_name__attributes_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "type_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributeAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/ontology/types/{type_name}/subtypes": {
+      "post": {
+        "tags": [
+          "ontology"
+        ],
+        "summary": "Add Subtype",
+        "operationId": "add_subtype_graphs__tenant__ontology_types__type_name__subtypes_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "type_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Type Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtypeAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/graphs/{tenant}/ontology/schema": {
+      "get": {
+        "tags": [
+          "ontology"
+        ],
+        "summary": "Get Full Schema",
+        "description": "Get the complete ontology schema. Used by the NL pipeline.",
+        "operationId": "get_full_schema_graphs__tenant__ontology_schema_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/ingest": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Ingest",
+        "description": "Ingest raw content into the knowledge graph.\n\nRuns LLM extraction, schema resolution (type matching, attribute\nresolution, validation), and inserts validated triples into Neptune.",
+        "operationId": "ingest_graphs__tenant__ingest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/ingest/csv/schema": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Infer Csv Schema",
+        "description": "Step 1: Infer column mapping from CSV headers + sample rows. Single LLM call.",
+        "operationId": "infer_csv_schema_graphs__tenant__ingest_csv_schema_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CSVSchemaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CSVSchemaMapping-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/ingest/csv/rows": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Ingest Csv Rows",
+        "description": "Step 2: Insert rows using a pre-inferred mapping. No LLM call.",
+        "operationId": "ingest_csv_rows_graphs__tenant__ingest_csv_rows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CSVRowsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/embeddings/build": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Build Embeddings",
+        "description": "Trigger a full embedding build for all ontology types in this tenant.",
+        "operationId": "build_embeddings_graphs__tenant__embeddings_build_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/kgs": {
+      "get": {
+        "tags": [
+          "knowledge_graphs"
+        ],
+        "summary": "List Kgs",
+        "description": "List all knowledge graphs for a tenant.",
+        "operationId": "list_kgs_graphs__tenant__kgs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KGInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Kgs Graphs  Tenant  Kgs Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "knowledge_graphs"
+        ],
+        "summary": "Create Kg",
+        "description": "Create a new knowledge graph for a tenant.",
+        "operationId": "create_kg_graphs__tenant__kgs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KGCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KGInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/graphs/{tenant}/kgs/{kg_name}": {
+      "delete": {
+        "tags": [
+          "knowledge_graphs"
+        ],
+        "summary": "Delete Kg",
+        "description": "Delete a knowledge graph and all its data.",
+        "operationId": "delete_kg_graphs__tenant__kgs__kg_name__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kg_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kg Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AttributeAdd": {
+        "properties": {
+          "attributes": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeDefinition"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Attributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attributes"
+        ],
+        "title": "AttributeAdd"
+      },
+      "AttributeDefinition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "datatype": {
+            "type": "string",
+            "title": "Datatype",
+            "description": "string, integer, float, boolean, datetime, uri, or a type name for relationships",
+            "default": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "AttributeDefinition"
+      },
+      "CSVRowsRequest": {
+        "properties": {
+          "mapping": {
+            "$ref": "#/components/schemas/CSVSchemaMapping-Input"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": ""
+          },
+          "kg_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mapping",
+          "rows"
+        ],
+        "title": "CSVRowsRequest",
+        "description": "Request body for POST /graphs/{tenant}/ingest/csv/rows."
+      },
+      "CSVSchemaMapping-Input": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_type",
+          "columns"
+        ],
+        "title": "CSVSchemaMapping"
+      },
+      "CSVSchemaMapping-Output": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMapping"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_type",
+          "columns"
+        ],
+        "title": "CSVSchemaMapping"
+      },
+      "CSVSchemaRequest": {
+        "properties": {
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers"
+          },
+          "sample_rows": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sample Rows"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "headers",
+          "sample_rows"
+        ],
+        "title": "CSVSchemaRequest",
+        "description": "Request body for POST /graphs/{tenant}/ingest/csv/schema."
+      },
+      "ColumnMapping": {
+        "properties": {
+          "column_name": {
+            "type": "string",
+            "title": "Column Name"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ColumnRole"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "datatype": {
+            "type": "string",
+            "title": "Datatype",
+            "default": "string"
+          },
+          "attribute_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribute Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "column_name",
+          "role"
+        ],
+        "title": "ColumnMapping"
+      },
+      "ColumnRole": {
+        "type": "string",
+        "enum": [
+          "type_id",
+          "attribute",
+          "relationship"
+        ],
+        "title": "ColumnRole"
+      },
+      "FunctionRef": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "endpoint_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Url"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/FunctionTier",
+            "default": "custom"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "entity_type"
+        ],
+        "title": "FunctionRef"
+      },
+      "FunctionRegister": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "entity_type": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Entity Type"
+          },
+          "endpoint_url": {
+            "type": "string",
+            "title": "Endpoint Url",
+            "description": "HTTPS endpoint for the function"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "entity_type",
+          "endpoint_url"
+        ],
+        "title": "FunctionRegister"
+      },
+      "FunctionTier": {
+        "type": "string",
+        "enum": [
+          "platform",
+          "custom"
+        ],
+        "title": "FunctionTier"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IngestRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "Raw text, JSON, or CSV to ingest"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "description": "text, json, or csv",
+            "default": "text"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Source identifier for provenance",
+            "default": ""
+          },
+          "kg_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg Name",
+            "description": "Knowledge graph name. If set, data goes into a KG-specific graph."
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "IngestRequest",
+        "description": "Request body for POST /graphs/{tenant}/ingest."
+      },
+      "IngestResult": {
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "title": "Batch Id",
+            "description": "Batch ID for rollback support",
+            "default": ""
+          },
+          "entities_extracted": {
+            "type": "integer",
+            "title": "Entities Extracted",
+            "default": 0
+          },
+          "entities_resolved": {
+            "type": "integer",
+            "title": "Entities Resolved",
+            "default": 0
+          },
+          "triples_inserted": {
+            "type": "integer",
+            "title": "Triples Inserted",
+            "default": 0
+          },
+          "types_created": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Types Created"
+          },
+          "attributes_added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attributes Added"
+          },
+          "rejections": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedValue"
+            },
+            "type": "array",
+            "title": "Rejections"
+          },
+          "flagged_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flagged Types",
+            "description": "Types needing user review"
+          },
+          "chunks_processed": {
+            "type": "integer",
+            "title": "Chunks Processed",
+            "default": 0
+          },
+          "entities_deduplicated": {
+            "type": "integer",
+            "title": "Entities Deduplicated",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "IngestResult",
+        "description": "Response for the ingest endpoint."
+      },
+      "KGCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "KGCreate"
+      },
+      "KGInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "triple_count": {
+            "type": "integer",
+            "title": "Triple Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "KGInfo"
+      },
+      "NLQuery": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "kg_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kg Name",
+            "description": "Query a specific knowledge graph"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Override the query generation model (OpenRouter model ID)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "NLQuery"
+      },
+      "NLResult": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "sparql": {
+            "type": "string",
+            "title": "Sparql"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "ontology": {
+            "type": "string",
+            "title": "Ontology",
+            "description": "Ontology summary text passed to the LLM for SPARQL generation",
+            "default": ""
+          },
+          "functions_invoked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Functions Invoked"
+          },
+          "timing": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Timing",
+            "description": "Stage latencies in ms and metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "sparql",
+          "explanation"
+        ],
+        "title": "NLResult"
+      },
+      "RejectedValue": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "attribute": {
+            "type": "string",
+            "title": "Attribute"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "expected_datatype": {
+            "type": "string",
+            "title": "Expected Datatype"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "attribute",
+          "value",
+          "expected_datatype",
+          "reason"
+        ],
+        "title": "RejectedValue",
+        "description": "A value that failed validation."
+      },
+      "SPARQLQuery": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "SPARQL 1.1 query string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SPARQLQuery"
+      },
+      "SPARQLResult": {
+        "properties": {
+          "bindings": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Bindings"
+          },
+          "vars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Vars"
+          }
+        },
+        "type": "object",
+        "title": "SPARQLResult"
+      },
+      "SPARQLUpdate": {
+        "properties": {
+          "update": {
+            "type": "string",
+            "title": "Update",
+            "description": "SPARQL 1.1 Update string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "update"
+        ],
+        "title": "SPARQLUpdate"
+      },
+      "SubtypeAdd": {
+        "properties": {
+          "subtype": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Subtype",
+            "description": "Name of the child type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subtype"
+        ],
+        "title": "SubtypeAdd"
+      },
+      "Triple": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "RDF subject URI or blank node"
+          },
+          "predicate": {
+            "type": "string",
+            "title": "Predicate",
+            "description": "RDF predicate URI"
+          },
+          "object": {
+            "type": "string",
+            "title": "Object",
+            "description": "RDF object (URI, literal, or blank node)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "predicate",
+          "object"
+        ],
+        "title": "Triple"
+      },
+      "TripleBatch": {
+        "properties": {
+          "inserted": {
+            "type": "integer",
+            "title": "Inserted",
+            "default": 0
+          },
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "TripleBatch"
+      },
+      "TripleCreate": {
+        "properties": {
+          "triples": {
+            "items": {
+              "$ref": "#/components/schemas/Triple"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Triples"
+          }
+        },
+        "type": "object",
+        "required": [
+          "triples"
+        ],
+        "title": "TripleCreate"
+      },
+      "TripleDelete": {
+        "properties": {
+          "triples": {
+            "items": {
+              "$ref": "#/components/schemas/Triple"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Triples"
+          }
+        },
+        "type": "object",
+        "required": [
+          "triples"
+        ],
+        "title": "TripleDelete"
+      },
+      "TypeCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "parent_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Type",
+            "description": "Parent type name for subtype relationship"
+          },
+          "attributes": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeDefinition"
+            },
+            "type": "array",
+            "title": "Attributes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TypeCreate"
+      },
+      "TypeResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "parent_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Type"
+          },
+          "attributes": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeDefinition"
+            },
+            "type": "array",
+            "title": "Attributes"
+          },
+          "subtypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subtypes"
+          },
+          "functions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Functions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TypeResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  }
+}
