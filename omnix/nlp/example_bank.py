@@ -1,0 +1,561 @@
+"""SPARQL example bank with semantic retrieval for few-shot prompting.
+
+Stores (question, SPARQL) pairs from successful evaluations. At query time,
+retrieves the most relevant examples via embedding similarity with anti-cheat
+filtering, cross-dataset preference, and pattern diversity.
+
+Uses the same OpenRouter text-embedding-3-small embeddings as ontology_embeddings.py.
+"""
+
+import json
+import logging
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import httpx
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
+EMBEDDING_MODEL = "openai/text-embedding-3-small"
+EMBEDDING_DIM = 1536
+EMBEDDING_BATCH_SIZE = 100
+
+# Bank limits
+MAX_BANK_SIZE = 300
+
+# Similarity thresholds
+ANTI_CHEAT_THRESHOLD = 0.90  # Exclude examples too similar to excluded questions
+SAME_DATASET_MAX_SIM = 0.75  # Same-KG examples must be below this to avoid near-cheating
+
+# Pattern tags detected from SPARQL text
+PATTERN_DETECTORS: list[tuple[str, str]] = [
+    ("count", r"COUNT\s*\("),
+    ("avg", r"AVG\s*\("),
+    ("max", r"MAX\s*\("),
+    ("sum", r"SUM\s*\("),
+    ("filter", r"FILTER\s*\("),
+    ("contains", r"CONTAINS\s*\("),
+    ("date_filter", r"xsd:dateTime"),
+    ("group_by", r"GROUP\s+BY"),
+]
+
+# Default file paths
+DEFAULT_BANK_PATH = Path(__file__).resolve().parent.parent.parent / "eval_reports" / "example_bank.jsonl"
+EVAL_REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "eval_reports"
+
+
+@dataclass
+class Example:
+    """A single (question, SPARQL) example with metadata."""
+
+    question: str
+    sparql: str
+    kg_name: str
+    ontology_context: str
+    pattern_tags: list[str] = field(default_factory=list)
+    embedding: list[float] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "question": self.question,
+            "sparql": self.sparql,
+            "kg_name": self.kg_name,
+            "ontology_context": self.ontology_context,
+            "pattern_tags": self.pattern_tags,
+            "embedding": self.embedding,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Example":
+        return cls(
+            question=d["question"],
+            sparql=d["sparql"],
+            kg_name=d.get("kg_name", ""),
+            ontology_context=d.get("ontology_context", ""),
+            pattern_tags=d.get("pattern_tags", []),
+            embedding=d.get("embedding", []),
+        )
+
+
+def detect_pattern_tags(sparql: str) -> list[str]:
+    """Auto-detect query pattern tags from SPARQL text.
+
+    Detects aggregation functions (COUNT, AVG, MAX, SUM), filtering patterns
+    (FILTER, CONTAINS, date), structural patterns (JOIN, GROUP BY, multi-hop).
+    """
+    tags: list[str] = []
+
+    for tag, pattern in PATTERN_DETECTORS:
+        if re.search(pattern, sparql, re.IGNORECASE):
+            tags.append(tag)
+
+    # "join" — 2+ triple patterns with different subjects
+    subjects = set(re.findall(r"\?\w+\s+<", sparql))
+    if len(subjects) >= 2:
+        tags.append("join")
+
+    # "multi_hop" — 3+ triple patterns (lines ending with ' .')
+    triple_count = len(re.findall(r"\.\s*(?:\n|$|\})", sparql))
+    # Also count triples separated by ' . '
+    triple_count += sparql.count(" . ")
+    if triple_count >= 3:
+        tags.append("multi_hop")
+
+    return sorted(set(tags))
+
+
+def _cosine_similarity(query: np.ndarray, matrix: np.ndarray) -> np.ndarray:
+    """Cosine similarity between a query vector and a matrix of vectors."""
+    query_norm = np.linalg.norm(query)
+    if query_norm == 0:
+        return np.zeros(matrix.shape[0])
+    matrix_norms = np.linalg.norm(matrix, axis=1)
+    matrix_norms = np.where(matrix_norms == 0, 1, matrix_norms)
+    return np.dot(matrix, query) / (matrix_norms * query_norm)
+
+
+class ExampleBank:
+    """Persistent bank of (question, SPARQL) examples with semantic retrieval.
+
+    Stores examples as JSONL on disk. Embeddings are generated via OpenRouter
+    text-embedding-3-small (1536 dims). Retrieval uses cosine similarity with
+    anti-cheat exclusion, cross-dataset preference, and pattern diversity.
+
+    Usage:
+        bank = ExampleBank(openrouter_api_key="sk-...")
+        bank.load()
+        await bank.add("How many events?", "SELECT ...", "events-kg", "Type: Event...")
+        examples = await bank.retrieve("Count the events", "Type: Event...", top_k=3)
+    """
+
+    def __init__(self, openrouter_api_key: str, bank_path: str | Path | None = None):
+        self._api_key = openrouter_api_key
+        self._bank_path = Path(bank_path) if bank_path else DEFAULT_BANK_PATH
+        self._examples: list[Example] = []
+
+    @property
+    def size(self) -> int:
+        """Number of examples in the bank."""
+        return len(self._examples)
+
+    # ── Persistence ──────────────────────────────────────────────────────
+
+    def load(self) -> int:
+        """Load examples from JSONL file. Returns number loaded."""
+        self._examples = []
+        if not self._bank_path.exists():
+            logger.info("Example bank file not found, starting empty: %s", self._bank_path)
+            return 0
+
+        with open(self._bank_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    self._examples.append(Example.from_dict(json.loads(line)))
+                except (json.JSONDecodeError, KeyError) as exc:
+                    logger.warning("Skipping malformed example bank line: %s", exc)
+
+        logger.info("Loaded %d examples from %s", len(self._examples), self._bank_path)
+        return len(self._examples)
+
+    def save(self) -> None:
+        """Persist all examples to JSONL file."""
+        self._bank_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self._bank_path, "w") as f:
+            for ex in self._examples:
+                f.write(json.dumps(ex.to_dict()) + "\n")
+        logger.info("Saved %d examples to %s", len(self._examples), self._bank_path)
+
+    # ── Add examples ─────────────────────────────────────────────────────
+
+    async def add(
+        self,
+        question: str,
+        sparql: str,
+        kg_name: str,
+        ontology_context: str,
+    ) -> bool:
+        """Embed and store a new example. Returns True if added, False if duplicate or bank full.
+
+        Deduplicates by checking if an example with the exact same question text
+        already exists. Enforces MAX_BANK_SIZE cap.
+        """
+        # Dedup by exact question match
+        for ex in self._examples:
+            if ex.question.strip().lower() == question.strip().lower():
+                logger.debug("Skipping duplicate question: %s", question[:80])
+                return False
+
+        if len(self._examples) >= MAX_BANK_SIZE:
+            logger.warning("Example bank at capacity (%d), skipping add", MAX_BANK_SIZE)
+            return False
+
+        pattern_tags = detect_pattern_tags(sparql)
+        embedding = await self._embed_single(question)
+
+        self._examples.append(
+            Example(
+                question=question,
+                sparql=sparql,
+                kg_name=kg_name,
+                ontology_context=ontology_context,
+                pattern_tags=pattern_tags,
+                embedding=embedding,
+            )
+        )
+        return True
+
+    async def add_batch(
+        self,
+        items: list[dict],
+    ) -> int:
+        """Bulk-add examples. Each dict must have: question, sparql, kg_name, ontology_context.
+
+        Deduplicates, embeds in batches, and appends. Returns count of newly added examples.
+        """
+        # Filter out duplicates and existing
+        existing_questions = {ex.question.strip().lower() for ex in self._examples}
+        new_items: list[dict] = []
+        for item in items:
+            q = item["question"].strip().lower()
+            if q in existing_questions:
+                continue
+            existing_questions.add(q)
+            new_items.append(item)
+
+        # Enforce cap
+        capacity = MAX_BANK_SIZE - len(self._examples)
+        if capacity <= 0:
+            logger.warning("Example bank at capacity, skipping batch add")
+            return 0
+        new_items = new_items[:capacity]
+
+        if not new_items:
+            return 0
+
+        # Batch embed all questions
+        questions = [item["question"] for item in new_items]
+        embeddings = await self._embed_texts(questions)
+
+        for item, emb in zip(new_items, embeddings):
+            self._examples.append(
+                Example(
+                    question=item["question"],
+                    sparql=item["sparql"],
+                    kg_name=item.get("kg_name", ""),
+                    ontology_context=item.get("ontology_context", ""),
+                    pattern_tags=detect_pattern_tags(item["sparql"]),
+                    embedding=emb,
+                )
+            )
+
+        logger.info("Added %d examples (batch), bank now has %d", len(new_items), len(self._examples))
+        return len(new_items)
+
+    # ── Retrieval ────────────────────────────────────────────────────────
+
+    async def retrieve(
+        self,
+        question: str,
+        ontology_context: str = "",
+        exclude_questions: list[str] | None = None,
+        kg_name: str = "",
+        top_k: int = 3,
+    ) -> list[Example]:
+        """Retrieve the best few-shot examples for a query.
+
+        Algorithm:
+        1. Embed the incoming question.
+        2. Cosine similarity against all examples -> top-10 candidates.
+        3. EXCLUDE any example whose question similarity > 0.95 to any excluded question (anti-cheat).
+        4. EXCLUDE same-dataset examples with similarity > 0.85 (too close).
+        5. PREFER cross-dataset examples (different kg_name scores higher).
+        6. DIVERSIFY: pick top_k examples with different pattern_tags when possible.
+
+        Args:
+            question: The natural language query.
+            ontology_context: Current ontology summary (used for re-ranking).
+            exclude_questions: Questions to exclude from results (anti-cheat).
+            kg_name: The current KG name (for cross-dataset preference).
+            top_k: Number of examples to return.
+
+        Returns:
+            List of up to top_k Example objects, pattern-diverse and relevant.
+        """
+        if not self._examples:
+            return []
+
+        exclude_questions = exclude_questions or []
+
+        # Step 1: Embed the question
+        q_embedding = await self._embed_single(question)
+        q_vec = np.array(q_embedding, dtype=np.float32)
+
+        # Build embedding matrix
+        bank_matrix = np.stack(
+            [np.array(ex.embedding, dtype=np.float32) for ex in self._examples]
+        )
+        similarities = _cosine_similarity(q_vec, bank_matrix)
+
+        # Step 2: Top-10 candidates by raw similarity
+        candidate_indices = np.argsort(similarities)[::-1][:10].tolist()
+
+        # Step 3: Anti-cheat — embed excluded questions and filter
+        exclude_vecs: list[np.ndarray] = []
+        if exclude_questions:
+            exclude_embeddings = await self._embed_texts(exclude_questions)
+            exclude_vecs = [np.array(e, dtype=np.float32) for e in exclude_embeddings]
+
+        filtered: list[tuple[int, float]] = []  # (index, adjusted_score)
+        for idx in candidate_indices:
+            ex = self._examples[idx]
+            sim = float(similarities[idx])
+
+            # Anti-cheat: check against excluded questions
+            if exclude_vecs:
+                ex_vec = np.array(ex.embedding, dtype=np.float32)
+                excluded = False
+                for ev in exclude_vecs:
+                    excl_sim = float(np.dot(ex_vec, ev) / (np.linalg.norm(ex_vec) * np.linalg.norm(ev) + 1e-9))
+                    if excl_sim > ANTI_CHEAT_THRESHOLD:
+                        excluded = True
+                        break
+                if excluded:
+                    continue
+
+            # Step 4: Same-dataset penalty
+            if kg_name and ex.kg_name == kg_name:
+                if sim > SAME_DATASET_MAX_SIM:
+                    continue  # Too similar within same dataset
+                # Penalize same-dataset slightly to prefer cross-dataset
+                sim *= 0.9
+
+            filtered.append((idx, sim))
+
+        if not filtered:
+            return []
+
+        # Sort by adjusted score
+        filtered.sort(key=lambda x: x[1], reverse=True)
+
+        # Step 5 & 6: Diversify by pattern_tags
+        selected: list[Example] = []
+        used_tag_sets: list[set[str]] = []
+
+        for idx, _score in filtered:
+            if len(selected) >= top_k:
+                break
+            ex = self._examples[idx]
+            ex_tags = set(ex.pattern_tags)
+
+            # Check if this example's tags are too similar to already-selected ones
+            if selected and ex_tags:
+                too_similar = False
+                for used in used_tag_sets:
+                    if used and ex_tags == used:
+                        too_similar = True
+                        break
+                if too_similar:
+                    # Still consider it if we haven't filled slots
+                    continue
+
+            selected.append(ex)
+            used_tag_sets.append(ex_tags)
+
+        # If diversity filtering was too aggressive, backfill from remaining
+        if len(selected) < top_k:
+            selected_set = {id(ex) for ex in selected}
+            for idx, _score in filtered:
+                if len(selected) >= top_k:
+                    break
+                ex = self._examples[idx]
+                if id(ex) not in selected_set:
+                    selected.append(ex)
+                    selected_set.add(id(ex))
+
+        return selected[:top_k]
+
+    # ── Populate from eval reports ───────────────────────────────────────
+
+    async def populate_from_eval_reports(self, reports_dir: str | Path | None = None) -> int:
+        """Scan eval_reports/*.json for correct answers and bulk-add them.
+
+        Also reads finetune_pairs.jsonl if present. Returns total examples added.
+
+        Each eval report JSON has structure:
+            {
+                "kg_name": str,
+                "ontology": str,
+                "queries": {
+                    "results": [{"question", "sparql", "verdict", ...}, ...]
+                }
+            }
+        """
+        reports_path = Path(reports_dir) if reports_dir else EVAL_REPORTS_DIR
+        items: list[dict] = []
+        seen_questions: set[str] = set()
+
+        # 1. Scan eval report JSON files
+        for json_file in sorted(reports_path.glob("eval-*.json")):
+            try:
+                with open(json_file) as f:
+                    report = json.load(f)
+
+                kg_name = report.get("kg_name", "")
+                ontology = report.get("ontology", "")
+                results = report.get("queries", {}).get("results", [])
+
+                for result in results:
+                    if result.get("verdict") != "correct":
+                        continue
+                    question = result.get("question", "").strip()
+                    sparql = result.get("sparql", "").strip()
+                    if not question or not sparql:
+                        continue
+                    q_key = question.lower()
+                    if q_key in seen_questions:
+                        continue
+                    seen_questions.add(q_key)
+                    items.append({
+                        "question": question,
+                        "sparql": sparql,
+                        "kg_name": kg_name,
+                        "ontology_context": ontology,
+                    })
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Skipping eval report %s: %s", json_file, exc)
+
+        # 2. Read finetune_pairs.jsonl
+        finetune_path = reports_path / "finetune_pairs.jsonl"
+        if finetune_path.exists():
+            try:
+                with open(finetune_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            pair = json.loads(line)
+                            question = pair.get("question", "").strip()
+                            sparql = pair.get("sparql", "").strip()
+                            if not question or not sparql:
+                                continue
+                            q_key = question.lower()
+                            if q_key in seen_questions:
+                                continue
+                            seen_questions.add(q_key)
+                            # Extract kg_name from graph_uri if available
+                            graph_uri = pair.get("graph_uri", "")
+                            kg_name = graph_uri.split("/kg/")[-1] if "/kg/" in graph_uri else ""
+                            items.append({
+                                "question": question,
+                                "sparql": sparql,
+                                "kg_name": kg_name,
+                                "ontology_context": pair.get("ontology", ""),
+                            })
+                        except json.JSONDecodeError:
+                            continue
+            except OSError as exc:
+                logger.warning("Skipping finetune pairs: %s", exc)
+
+        if not items:
+            logger.info("No correct examples found in eval reports")
+            return 0
+
+        logger.info("Found %d correct examples from eval reports, adding to bank", len(items))
+        added = await self.add_batch(items)
+        self.save()
+        return added
+
+    # ── Embedding API ────────────────────────────────────────────────────
+
+    async def _embed_single(self, text: str) -> list[float]:
+        """Embed a single text string."""
+        results = await self._embed_texts([text])
+        return results[0]
+
+    async def _embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Call OpenRouter embeddings API in batches. Same pattern as ontology_embeddings.py."""
+        all_embeddings: list[list[float]] = []
+
+        for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+            batch = texts[i : i + EMBEDDING_BATCH_SIZE]
+            async with httpx.AsyncClient(timeout=30) as client:
+                res = await client.post(
+                    OPENROUTER_EMBEDDINGS_URL,
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"model": EMBEDDING_MODEL, "input": batch},
+                )
+                if res.status_code != 200:
+                    raise RuntimeError(f"Embedding API returned {res.status_code}: {res.text}")
+                data = res.json()
+                batch_embeddings = [item["embedding"] for item in data["data"]]
+                all_embeddings.extend(batch_embeddings)
+
+        return all_embeddings
+
+
+# ── Prompt formatting ────────────────────────────────────────────────────
+
+
+def format_examples_for_prompt(examples: list[Example]) -> str:
+    """Format retrieved examples into a string for injection into the SPARQL generation prompt.
+
+    Output format:
+        Similar queries that worked:
+
+        Example 1 (count + join):
+          Q: How many events are in the Mission District?
+          SPARQL: SELECT (COUNT(DISTINCT ?event) AS ?count) FROM <graph> WHERE { ... }
+
+        Example 2 (avg + filter):
+          Q: What is the average price of condos?
+          SPARQL: SELECT (AVG(?price) AS ?avg) FROM <graph> WHERE { ... }
+    """
+    if not examples:
+        return ""
+
+    lines = ["Similar queries that worked:"]
+
+    for i, ex in enumerate(examples, 1):
+        tag_str = " + ".join(ex.pattern_tags) if ex.pattern_tags else "basic"
+        # Compact the SPARQL — collapse excessive whitespace but keep it readable
+        sparql_compact = " ".join(ex.sparql.split())
+        lines.append("")
+        lines.append(f"Example {i} ({tag_str}):")
+        lines.append(f"  Q: {ex.question}")
+        lines.append(f"  SPARQL: {sparql_compact}")
+
+    return "\n".join(lines)
+
+
+# ── Singleton accessor ───────────────────────────────────────────────────
+
+_example_bank: ExampleBank | None = None
+
+
+def get_example_bank() -> ExampleBank | None:
+    """Lazy-init singleton for the example bank. Returns None if no API key."""
+    global _example_bank
+    if _example_bank is None:
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not api_key:
+            try:
+                from omnix.config import settings
+                api_key = settings.openrouter_api_key or ""
+            except Exception:
+                pass
+        if not api_key:
+            return None
+        _example_bank = ExampleBank(openrouter_api_key=api_key)
+        _example_bank.load()
+    return _example_bank

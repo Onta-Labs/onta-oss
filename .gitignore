@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+.aws-sam/
+samconfig.toml
+
+# Web landing page
+web/node_modules/
+web/.next/
+web/.env.local
+.env
+eval_reports/*
+!eval_reports/example_bank.jsonl

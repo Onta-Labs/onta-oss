@@ -1,0 +1,13 @@
+services:
+  fuseki:
+    image: stain/jena-fuseki:latest
+    ports:
+      - "3030:3030"
+    environment:
+      - ADMIN_PASSWORD=admin
+      - FUSEKI_DATASET_1=ds
+    volumes:
+      - fuseki-data:/fuseki/databases
+
+volumes:
+  fuseki-data:
