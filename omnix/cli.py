@@ -169,7 +169,7 @@ def _ingest_csv(content: str, kg_name: str | None) -> None:
         f"{_base()}/ingest/csv/schema",
         headers=_headers(),
         json=schema_body,
-        timeout=120,
+        timeout=300,
     )
     mapping = _check(res)
     print(f"  Entity type: {mapping['entity_type']}")
@@ -197,7 +197,7 @@ def _ingest_csv(content: str, kg_name: str | None) -> None:
             f"{_base()}/ingest/csv/rows",
             headers=_headers(),
             json=body,
-            timeout=120,
+            timeout=300,
         )
         result = _check(res)
         total_entities += result.get("entities_resolved", 0)
