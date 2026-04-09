@@ -757,6 +757,7 @@ class SchemaResolver:
                 existing_attrs[ptype] = {}
 
         rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+        rdfs_label = "http://www.w3.org/2000/01/rdf-schema#label"
 
         # Duplicate entities skip rdf:type triple but still merge attributes
         if is_duplicate:
@@ -764,6 +765,7 @@ class SchemaResolver:
         else:
             triples_to_insert: list[tuple[str, str, str]] = [
                 (entity_uri, rdf_type, type_uri(resolved_type)),
+                (entity_uri, rdfs_label, entity.id),
             ]
 
         promoted_entities: dict[str, str] = {}
