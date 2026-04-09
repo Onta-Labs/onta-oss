@@ -125,6 +125,25 @@ class CSVResolver:
             if mapping.columns:
                 mapping.columns[0].role = ColumnRole.TYPE_ID
 
+        # Post-processing: if the chosen type_id is numeric, prefer a string
+        # column with a name-like label (institution, title, name, etc.)
+        # Numeric IDs cause deduplication when values repeat.
+        id_col = next((c for c in mapping.columns if c.role == ColumnRole.TYPE_ID), None)
+        if id_col and id_col.datatype in ("integer", "float"):
+            NAME_HINTS = {"name", "title", "institution", "series_title", "label", "id"}
+            for col in mapping.columns:
+                col_key = (col.attribute_name or col.column_name).lower().replace(" ", "_")
+                if col_key in NAME_HINTS and col.role != ColumnRole.TYPE_ID:
+                    logger.info(
+                        "csv_type_id_override",
+                        old=id_col.column_name,
+                        new=col.column_name,
+                        reason="numeric ID replaced with name-like column",
+                    )
+                    id_col.role = col.role
+                    col.role = ColumnRole.TYPE_ID
+                    break
+
         # Post-processing: enforce entity-first for known geographic/entity columns
         # The LLM sometimes ignores the prompt and treats these as string attributes
         FORCE_RELATIONSHIP = {
