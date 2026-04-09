@@ -113,4 +113,22 @@ async def delete_kg(
         f"}}"
     )
 
+    # Purge stale examples from the example bank for this KG
+    try:
+        from omnix.nlp.example_bank import get_example_bank
+        bank = get_example_bank()
+        if bank and bank._examples:
+            before = len(bank._examples)
+            bank._examples = [e for e in bank._examples if e.kg_name != kg_name]
+            removed = before - len(bank._examples)
+            if removed > 0:
+                bank.save()
+                import structlog
+                structlog.get_logger("omnix.kg").info(
+                    "example_bank_purged", kg=kg_name, removed=removed,
+                    remaining=len(bank._examples),
+                )
+    except Exception:
+        pass  # Bank purge is best-effort, don't fail the delete
+
     return {"deleted": kg_name}

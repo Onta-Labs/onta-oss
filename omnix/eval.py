@@ -1467,6 +1467,35 @@ async def run_full_eval(
         ft_path.write_text("\n".join(existing.values()) + "\n")
         logger.info("finetune_pairs_saved", count=added, total=len(existing), path=str(ft_path))
 
+        # Auto-rebuild example bank from finetune pairs.
+        # This ensures the bank stays in sync when KGs are reingested
+        # with new ontology types or schema changes.
+        try:
+            from omnix.nlp.example_bank import ExampleBank, DEFAULT_BANK_PATH
+            import os
+            bank = ExampleBank(openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", ""))
+            items = []
+            for line in ft_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    p = json.loads(line)
+                    kg = p.get("graph_uri", "").split("/kg/")[-1] if "/kg/" in p.get("graph_uri", "") else ""
+                    items.append({
+                        "question": p["question"],
+                        "sparql": p["sparql"],
+                        "kg_name": kg,
+                        "ontology_context": p.get("ontology", ""),
+                    })
+                except (json.JSONDecodeError, KeyError):
+                    continue
+            if items:
+                rebuilt = await bank.add_batch(items)
+                bank.save()
+                logger.info("example_bank_rebuilt", added=rebuilt, total=bank.size)
+        except Exception:
+            logger.warning("example_bank_rebuild_failed", exc_info=True)
+
     return report
 
 
