@@ -25,6 +25,9 @@ name attribute using FILTER(CONTAINS(LCASE(?name), "value")). Entity names may c
 pipe-delimited multi-values. Never exact-match entity URIs or entity name strings. \
 Use the EXACT phrasing from the user's question as the search value, never rephrase it.
 - COUNT(DISTINCT ?entityVar) not COUNT(DISTINCT ?nameVar) for unique entity counts.
+- To get a human-readable name for an entity: first check if the type has a "name" \
+attribute in the ontology. If not, use <http://www.w3.org/2000/01/rdf-schema#label> \
+for the entity's label. NEVER use an attribute URI from a different type.
 - Aggregates MUST be aliased: SELECT (COUNT(?x) AS ?count), never SELECT COUNT(?x). \
 Bare aggregates cause 400 errors.
 - For dateTime comparisons, use ISO-8601 with time component (e.g., "2008-01-01T00:00:00"^^xsd:dateTime).
