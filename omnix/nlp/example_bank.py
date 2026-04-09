@@ -25,7 +25,7 @@ EMBEDDING_DIM = 1536
 EMBEDDING_BATCH_SIZE = 100
 
 # Bank limits
-MAX_BANK_SIZE = 300
+MAX_BANK_SIZE = 500
 
 # Similarity thresholds
 ANTI_CHEAT_THRESHOLD = 0.90  # Exclude examples too similar to excluded questions
@@ -468,8 +468,26 @@ class ExampleBank:
             logger.info("No correct examples found in eval reports")
             return 0
 
-        logger.info("Found %d correct examples from eval reports, adding to bank", len(items))
-        added = await self.add_batch(items)
+        # Balance across KGs: cap per-KG to ensure representation from all datasets
+        from collections import defaultdict
+        by_kg: dict[str, list[dict]] = defaultdict(list)
+        for item in items:
+            by_kg[item.get("kg_name", "")].append(item)
+
+        num_kgs = max(len(by_kg), 1)
+        per_kg_cap = MAX_BANK_SIZE // num_kgs
+        balanced: list[dict] = []
+        for kg, kg_items in by_kg.items():
+            balanced.extend(kg_items[:per_kg_cap])
+
+        # Fill remaining capacity with extras from any KG
+        remaining = MAX_BANK_SIZE - len(balanced)
+        if remaining > 0:
+            extras = [item for item in items if item not in balanced]
+            balanced.extend(extras[:remaining])
+
+        logger.info("Found %d correct examples, balanced to %d across %d KGs", len(items), len(balanced), num_kgs)
+        added = await self.add_batch(balanced)
         self.save()
         return added
 
