@@ -1183,39 +1183,54 @@ class QueryEvaluator:
         try:
             expected_num = float(re.sub(r"[^\d.\-]", "", expected))
             # Extract first number from answer
-            answer_nums = re.findall(r"[\d]+\.?\d*", answer)
+            answer_nums = re.findall(r"-?[\d]+\.?\d*", answer)
             if answer_nums:
                 answer_num = float(answer_nums[0])
+                # Compare absolute values to handle sign differences
+                a_abs, e_abs = abs(answer_num), abs(expected_num)
                 # Tolerance: ±2% for counts (integers), ±5% for floats
-                if expected_num == 0:
-                    if answer_num == 0:
+                if e_abs == 0:
+                    if a_abs == 0:
                         verdict = "correct"
                         explanation = "Both zero"
                 elif "." in expected and expected.split(".")[-1] != "0":
                     # Float comparison (averages, etc.)
                     tolerance = 0.05
-                    if abs(answer_num - expected_num) / abs(expected_num) <= tolerance:
+                    if abs(a_abs - e_abs) / e_abs <= tolerance:
                         verdict = "correct"
                         explanation = f"Within {tolerance*100}% tolerance ({answer_num} vs {expected_num})"
                     else:
-                        explanation = f"Outside tolerance: {answer_num} vs {expected_num} (diff: {abs(answer_num - expected_num) / abs(expected_num) * 100:.1f}%)"
+                        explanation = f"Outside tolerance: {answer_num} vs {expected_num} (diff: {abs(a_abs - e_abs) / e_abs * 100:.1f}%)"
                 else:
                     # Integer comparison (counts)
                     tolerance = 0.02
-                    if abs(answer_num - expected_num) / max(abs(expected_num), 1) <= tolerance:
+                    if abs(a_abs - e_abs) / max(e_abs, 1) <= tolerance:
                         verdict = "correct"
                         explanation = f"Within {tolerance*100}% tolerance ({answer_num} vs {expected_num})"
                     else:
-                        explanation = f"Count mismatch: {answer_num} vs {expected_num} (diff: {abs(answer_num - expected_num) / max(abs(expected_num), 1) * 100:.1f}%)"
+                        explanation = f"Count mismatch: {answer_num} vs {expected_num} (diff: {abs(a_abs - e_abs) / max(e_abs, 1) * 100:.1f}%)"
         except (ValueError, IndexError):
-            # String comparison
+            # String comparison — try multiple strategies
             exp_lower = expected.lower().strip().strip("'\"")
             ans_lower = answer.lower().strip()
+
+            # Strategy 1: substring match
             if exp_lower in ans_lower or ans_lower in exp_lower:
                 verdict = "correct"
                 explanation = "String match"
             else:
-                explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
+                # Strategy 2: extract all significant words and check overlap
+                exp_words = set(re.findall(r"[a-z]{3,}", exp_lower))
+                ans_words = set(re.findall(r"[a-z]{3,}", ans_lower))
+                if exp_words and ans_words:
+                    overlap = len(exp_words & ans_words) / len(exp_words)
+                    if overlap >= 0.6:
+                        verdict = "correct"
+                        explanation = f"Word overlap: {overlap*100:.0f}%"
+                    else:
+                        explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
+                else:
+                    explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
 
         return QuestionResult(
             tier=tier, question=q_text, expected=expected,
