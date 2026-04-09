@@ -100,7 +100,7 @@ async def infer_csv_schema(
 
 
 @router.post("/ingest/csv/rows", response_model=IngestResult)
-@limiter.limit("30/minute")
+@limiter.limit("200/minute")
 async def ingest_csv_rows(
     request: Request,
     body: CSVRowsRequest,
