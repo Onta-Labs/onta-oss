@@ -1179,11 +1179,19 @@ class QueryEvaluator:
         verdict = "wrong"
         explanation = ""
 
-        # Try numeric comparison
+        # Detect if expected is a descriptive sentence vs a pure number.
+        # Descriptive answers contain many alpha chars and shouldn't be
+        # reduced to a number by stripping all non-digits.
+        alpha_ratio = sum(1 for c in expected if c.isalpha()) / max(len(expected), 1)
+        expected_is_numeric = alpha_ratio < 0.3
+
+        # Try numeric comparison (only when expected looks like a number)
         try:
-            expected_num = float(re.sub(r"[^\d.\-]", "", expected))
-            # Extract first number from answer
-            answer_nums = re.findall(r"-?[\d]+\.?\d*", answer)
+            if not expected_is_numeric:
+                raise ValueError("Expected is descriptive text, skip numeric comparison")
+            expected_num = float(re.sub(r"[^\d.\-eE]", "", expected))
+            # Extract first number from answer (support scientific notation)
+            answer_nums = re.findall(r"-?[\d]+\.?\d*(?:[eE][+-]?\d+)?", answer)
             if answer_nums:
                 answer_num = float(answer_nums[0])
                 # Compare absolute values to handle sign differences
@@ -1219,18 +1227,42 @@ class QueryEvaluator:
                 verdict = "correct"
                 explanation = "String match"
             else:
-                # Strategy 2: extract all significant words and check overlap
-                exp_words = set(re.findall(r"[a-z]{3,}", exp_lower))
-                ans_words = set(re.findall(r"[a-z]{3,}", ans_lower))
-                if exp_words and ans_words:
-                    overlap = len(exp_words & ans_words) / len(exp_words)
-                    if overlap >= 0.6:
+                # Strategy 2: extract ALL numbers from both and compare pairwise
+                exp_nums = re.findall(r"-?[\d]+\.?\d*(?:[eE][+-]?\d+)?", expected)
+                ans_nums = re.findall(r"-?[\d]+\.?\d*(?:[eE][+-]?\d+)?", answer)
+                if exp_nums and ans_nums and len(exp_nums) <= len(ans_nums):
+                    all_match = True
+                    for en in exp_nums:
+                        e_val = float(en)
+                        matched = False
+                        for an in ans_nums:
+                            a_val = float(an)
+                            if e_val == 0 and a_val == 0:
+                                matched = True
+                            elif e_val != 0 and abs(abs(a_val) - abs(e_val)) / abs(e_val) <= 0.05:
+                                matched = True
+                            if matched:
+                                break
+                        if not matched:
+                            all_match = False
+                            break
+                    if all_match:
                         verdict = "correct"
-                        explanation = f"Word overlap: {overlap*100:.0f}%"
+                        explanation = f"All {len(exp_nums)} expected numbers found in answer (±5%)"
+
+                # Strategy 3: word overlap
+                if verdict != "correct":
+                    exp_words = set(re.findall(r"[a-z]{3,}", exp_lower))
+                    ans_words = set(re.findall(r"[a-z]{3,}", ans_lower))
+                    if exp_words and ans_words:
+                        overlap = len(exp_words & ans_words) / len(exp_words)
+                        if overlap >= 0.6:
+                            verdict = "correct"
+                            explanation = f"Word overlap: {overlap*100:.0f}%"
+                        else:
+                            explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
                     else:
                         explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
-                else:
-                    explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
 
         return QuestionResult(
             tier=tier, question=q_text, expected=expected,
