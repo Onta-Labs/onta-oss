@@ -272,7 +272,7 @@ class CSVResolver:
 
                 attr_name = col.attribute_name or _snake_case(col.column_name)
 
-                # Handle JSON arrays (from enrichment) and pipe-delimited strings
+                # Handle JSON arrays, pipe-delimited, and comma-delimited strings
                 # by expanding into multiple values for relationships
                 if col.role == ColumnRole.RELATIONSHIP and col.target_type:
                     values: list[str] = []
@@ -280,6 +280,13 @@ class CSVResolver:
                         values = [v.strip() for v in raw_value if isinstance(v, str) and v.strip()]
                     elif "|" in raw_value:
                         values = [v.strip() for v in raw_value.split("|") if v.strip()]
+                    elif ", " in raw_value:
+                        # Comma-delimited: split if parts are short (not addresses)
+                        parts = [v.strip() for v in raw_value.split(", ") if v.strip()]
+                        if all(len(p) < 30 for p in parts) and len(parts) >= 2:
+                            values = parts
+                        else:
+                            values = [raw_value]
                     else:
                         values = [raw_value]
 
