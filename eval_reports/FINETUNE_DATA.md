@@ -67,8 +67,8 @@ the reason it failed:
 |---|---|---|---|
 | Current | ~114 | 0 | Collecting |
 | After Phase 1 (verified ground truth) | ~300 | ~200 | Next |
-| After Phase 2 (pipeline fixes) | ~500 | ~300 | Target |
-| Fine-tuning ready | 1,000+ | 500+ | Goal |
+| After Phase 2 (pipeline fixes) | ~800 | ~500 | Target |
+| Fine-tuning ready | 2,000+ | 1,000+ | Goal |
 
 ## How to Grow the Dataset
 
