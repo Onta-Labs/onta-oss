@@ -118,6 +118,38 @@ async def ingest_csv_rows(
     resolver._instance_graph = instance_graph
     existing_types, existing_attrs = await resolver._fetch_ontology(graph_uri)
 
+    # Pre-register ontology attributes from the CSV mapping.
+    # This ensures the ontology has all attributes even if the first batch
+    # of rows has empty values for some columns. Without this, types can
+    # end up with 0 ontology attributes when all columns are relationships.
+    from omnix.graph.ontology_queries import insert_attribute, insert_type
+    from omnix.resolver.models import ColumnRole
+    entity_type = body.mapping.get("entity_type", "") if isinstance(body.mapping, dict) else body.mapping.entity_type
+    if entity_type and entity_type not in existing_types:
+        sparql = insert_type(graph_uri, entity_type, "")
+        await client.update(sparql)
+        existing_types[entity_type] = ""
+        existing_attrs[entity_type] = {}
+
+    columns = body.mapping.get("columns", []) if isinstance(body.mapping, dict) else body.mapping.columns
+    for col in columns:
+        col_role = col.get("role", "") if isinstance(col, dict) else col.role
+        col_name = col.get("attribute_name") or col.get("column_name", "") if isinstance(col, dict) else (col.attribute_name or col.column_name)
+        col_name = col_name.lower().replace(" ", "_") if col_name else ""
+        col_datatype = col.get("datatype", "string") if isinstance(col, dict) else col.datatype
+        col_target = col.get("target_type") if isinstance(col, dict) else col.target_type
+
+        if not col_name or col_role == "type_id":
+            continue
+
+        type_attrs = existing_attrs.get(entity_type, {})
+        if col_name not in type_attrs:
+            if col_role == "relationship" and col_target:
+                sparql = insert_attribute(graph_uri, entity_type, col_name, "", col_target)
+            else:
+                sparql = insert_attribute(graph_uri, entity_type, col_name, "", col_datatype)
+            await client.update(sparql)
+
     entities, relationships = CSVResolver.apply_mapping(body.mapping, body.rows)
 
     extraction = ExtractionResult(entities=entities, relationships=relationships)
