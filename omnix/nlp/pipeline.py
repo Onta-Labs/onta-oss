@@ -254,6 +254,9 @@ class NLQueryPipeline:
                         )
 
                         low_card_attrs: list[tuple[str, str, str]] = []
+                        exceptions = sum(1 for r in count_results if isinstance(r, Exception))
+                        if exceptions:
+                            logger.warning("cardinality_check_exceptions", count=exceptions, total=len(count_results))
                         for result in count_results:
                             if isinstance(result, Exception):
                                 continue
@@ -340,6 +343,12 @@ class NLQueryPipeline:
                 if info["functions"]:
                     lines.append(f"  Functions: {', '.join(sorted(info['functions']))}")
             summary = "\n".join(lines)
+            # Log types that made it into the summary
+            types_in_summary = [l.split("—")[0].replace("Type:", "").strip() for l in lines if l.startswith("Type:")]
+            logger.info("ontology_summary_built", types_shown=len(types_in_summary),
+                        types_active=len(active_types) if active_types else "all",
+                        types_with_attrs=len(types),
+                        names=types_in_summary[:10])
 
             # Cache it
             _ontology_cache[cache_key] = (summary, time.time())
