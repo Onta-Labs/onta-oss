@@ -482,24 +482,7 @@ class NLQueryPipeline:
             sparql,
         )
 
-        # Fix 2: Find type URIs used in the query and check for cross-type attrs
-        # Extract which types are queried (from ?var rdf:type <type_uri>)
-        queried_types = set()
-        for m in re.finditer(r'<https://omnix\.dev/types/(\w+)>', sparql):
-            if '/attrs/' not in m.group(0):
-                queried_types.add(m.group(1))
-
-        # Find attribute URIs and check if they belong to a different type
-        for m in re.finditer(r'<https://omnix\.dev/types/(\w+)/attrs/(\w+)>', sparql):
-            attr_type = m.group(1)
-            attr_name = m.group(2)
-            # If the attribute's type isn't one of the queried types, it's cross-type
-            if attr_type not in queried_types and queried_types:
-                # Replace with rdfs:label if it's a name-like attribute
-                if attr_name in ('name', 'label', 'title'):
-                    sparql = sparql.replace(m.group(0), RDFS_LABEL[1:-1])
-
-        # Fix 3: Replace overview used ONLY when it's the sole "name" variable selected
+        # Fix 2: Replace overview used ONLY when it's the sole "name" variable selected
         # and the entity type has no name attribute. This is conservative to avoid
         # breaking legitimate description/narrative queries.
         # Only replace Movie/attrs/overview when used in a "name-like" position
