@@ -32,4 +32,4 @@ async def ask_question(
             pipeline._query_provider = "openrouter"
         else:
             pipeline._query_provider = "cerebras"
-    return await pipeline.ask(body.question, ontology_graph, instance_graph)
+    return await pipeline.ask(body.question, ontology_graph, instance_graph, exclude_questions=body.exclude_questions)

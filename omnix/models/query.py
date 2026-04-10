@@ -18,6 +18,7 @@ class NLQuery(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     kg_name: str | None = Field(default=None, description="Query a specific knowledge graph")
     model: str | None = Field(default=None, description="Override the query generation model (OpenRouter model ID)")
+    exclude_questions: list[str] = Field(default_factory=list, description="Questions to exclude from example bank retrieval (anti-cheat for evals)")
 
 
 class NLResult(BaseModel):

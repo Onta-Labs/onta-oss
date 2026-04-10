@@ -945,17 +945,22 @@ class QueryEvaluator:
                 logger.info("questions_cached", path=str(cache_path))
 
         # Execute and judge concurrently
+        # Collect all eval question texts for anti-cheat exclusion:
+        # the /ask endpoint will exclude these from example bank retrieval
+        # so the model can't copy SPARQL from a near-identical example.
+        all_eval_questions = [q["question"] for q in questions]
         semaphore = asyncio.Semaphore(concurrency)
 
         async def _run_one(q: dict) -> QuestionResult:
             async with semaphore:
                 if fast_judge:
-                    result = await self._execute_and_fast_judge(q, kg_name, model)
+                    result = await self._execute_and_fast_judge(q, kg_name, model, all_eval_questions=all_eval_questions)
                 else:
                     result = await self._execute_and_judge(
                         q, kg_name, source_sample, model,
                         ontology_text=ontology_text,
                         dataset_stats=dataset_stats,
+                        all_eval_questions=all_eval_questions,
                     )
                 status = "✓" if result.verdict == "correct" else "✗"
                 logger.info(
@@ -1020,6 +1025,7 @@ class QueryEvaluator:
         model: str | None,
         ontology_text: str = "",
         dataset_stats: DatasetStats | None = None,
+        all_eval_questions: list[str] | None = None,
     ) -> QuestionResult:
         """Execute one question via /ask and have an LLM judge the result.
 
@@ -1038,6 +1044,8 @@ class QueryEvaluator:
             body["kg_name"] = kg_name
         if model:
             body["model"] = model
+        if all_eval_questions:
+            body["exclude_questions"] = all_eval_questions
 
         t0 = time.time()
         try:
@@ -1115,6 +1123,7 @@ class QueryEvaluator:
         question: dict,
         kg_name: str | None,
         model: str | None,
+        all_eval_questions: list[str] | None = None,
     ) -> QuestionResult:
         """Execute a question and judge programmatically (no LLM judge).
 
@@ -1141,6 +1150,8 @@ class QueryEvaluator:
             body["kg_name"] = kg_name
         if model:
             body["model"] = model
+        if all_eval_questions:
+            body["exclude_questions"] = all_eval_questions
 
         t0 = time.time()
         try:

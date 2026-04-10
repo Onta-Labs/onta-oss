@@ -49,7 +49,7 @@ class NLQueryPipeline:
         self._query_model = DEFAULT_QUERY_MODEL
         self._query_provider = DEFAULT_QUERY_PROVIDER
 
-    async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None) -> NLResult:
+    async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None) -> NLResult:
         timing: dict[str, float] = {}
         timing["model"] = f"{self._query_provider}:{self._query_model}"
         # Ontology is always fetched from the base tenant graph
@@ -84,7 +84,7 @@ class NLQueryPipeline:
                 examples = await bank.retrieve(
                     question=question,
                     ontology_context=ontology,
-                    exclude_questions=[],  # no exclusions at query time
+                    exclude_questions=exclude_questions or [],
                     kg_name=kg_name,
                     top_k=3,
                 )
