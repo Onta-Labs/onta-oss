@@ -4,12 +4,15 @@ import time
 
 import anthropic
 import httpx
+import structlog
 
 from omnix.graph.client import NeptuneClient
 from omnix.graph.parser import parse_sparql_results
 from omnix.models.query import NLResult
 from omnix.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from omnix.nlp.validator import normalize_sparql, validate_sparql
+
+logger = structlog.stdlib.get_logger("omnix.nlp.pipeline")
 
 # In-memory ontology cache: {graph_uri: (summary_str, timestamp)}
 _ontology_cache: dict[str, tuple[str, float]] = {}
