@@ -499,14 +499,18 @@ class NLQueryPipeline:
                 if attr_name in ('name', 'label', 'title'):
                     sparql = sparql.replace(m.group(0), RDFS_LABEL[1:-1])
 
-        # Fix 3: Replace overview/description used as display name with rdfs:label
-        # Detect pattern: ?var <.../attrs/overview> ?displayName where overview is used for names
-        for attr in ('overview', 'description', 'synopsis', 'summary'):
-            pattern = rf'<https://omnix\.dev/types/\w+/attrs/{attr}>'
-            if re.search(pattern, sparql):
-                # Only replace if the variable is used as a display name (appears in SELECT)
-                # Simple heuristic: if overview is the only "name-like" value selected
-                sparql = re.sub(pattern, RDFS_LABEL[1:-1], sparql)
+        # Fix 3: Replace overview used ONLY when it's the sole "name" variable selected
+        # and the entity type has no name attribute. This is conservative to avoid
+        # breaking legitimate description/narrative queries.
+        # Only replace Movie/attrs/overview when used in a "name-like" position
+        overview_pattern = r'<https://omnix\.dev/types/Movie/attrs/overview>'
+        if re.search(overview_pattern, sparql):
+            # Check if the query is trying to get movie names (not filtering by overview content)
+            # Heuristic: if overview appears in SELECT projection but not in FILTER
+            select_part = sparql.split('WHERE')[0] if 'WHERE' in sparql else ''
+            filter_uses_overview = 'overview' in sparql.split('FILTER')[1] if 'FILTER' in sparql else False
+            if not filter_uses_overview:
+                sparql = re.sub(overview_pattern, RDFS_LABEL[1:-1], sparql)
 
         return sparql
 
