@@ -235,21 +235,22 @@ class NLQueryPipeline:
                         onto_uri = f"https://omnix.dev/onto/{r_name}"
                         rel_uris.append((type_name, r_name, onto_uri))
 
+                # Define cardinality check function ONCE (used for both attrs and rels)
+                async def _count_predicate(tn: str, an: str, uri: str) -> tuple[str, str, int]:
+                    q = (
+                        f"SELECT (COUNT(DISTINCT ?val) AS ?cnt) FROM <{instance_graph}> "
+                        f"WHERE {{ ?s <{uri}> ?val }}"
+                    )
+                    raw = await self.neptune.query(q)
+                    _, bindings = parse_sparql_results(raw)
+                    cnt = int(bindings[0].get("cnt", 0)) if bindings else 0
+                    return tn, an, cnt
+
+                # Phase 1: Concurrent cardinality checks for ALL attributes
                 if all_attrs:
                     try:
-                        # Phase 1: Concurrent cardinality checks for ALL attributes
-                        async def _count_attr(tn: str, an: str, uri: str) -> tuple[str, str, int]:
-                            q = (
-                                f"SELECT (COUNT(DISTINCT ?val) AS ?cnt) FROM <{instance_graph}> "
-                                f"WHERE {{ ?s <{uri}> ?val }}"
-                            )
-                            raw = await self.neptune.query(q)
-                            _, bindings = parse_sparql_results(raw)
-                            cnt = int(bindings[0].get("cnt", 0)) if bindings else 0
-                            return tn, an, cnt
-
                         count_results = await asyncio.gather(
-                            *[_count_attr(tn, an, uri) for tn, an, uri in all_attrs],
+                            *[_count_predicate(tn, an, uri) for tn, an, uri in all_attrs],
                             return_exceptions=True,
                         )
 
@@ -287,14 +288,14 @@ class NLQueryPipeline:
                                 if vals:
                                     enum_values.setdefault(tn, {})[an] = sorted(vals)
                     except Exception:
-                        pass
+                        logger.warning("cardinality_attr_check_failed", exc_info=True)
 
                 # Phase 3: Check relationship cardinality to hide empty ones
                 empty_rels: set[tuple[str, str]] = set()  # (type_name, rel_name)
                 if rel_uris:
                     try:
                         rel_counts = await asyncio.gather(
-                            *[_count_attr(tn, rn, uri) for tn, rn, uri in rel_uris],
+                            *[_count_predicate(tn, rn, uri) for tn, rn, uri in rel_uris],
                             return_exceptions=True,
                         )
                         for result in rel_counts:
@@ -304,7 +305,7 @@ class NLQueryPipeline:
                             if cnt == 0:
                                 empty_rels.add((tn, rn))
                     except Exception:
-                        pass
+                        logger.warning("cardinality_rel_check_failed", exc_info=True)
 
             lines = []
             for type_name, info in types.items():
@@ -354,6 +355,7 @@ class NLQueryPipeline:
             _ontology_cache[cache_key] = (summary, time.time())
             return summary
         except Exception:
+            logger.error("ontology_fetch_failed", exc_info=True)
             return "Could not fetch ontology. Graph may be empty."
 
     @staticmethod
