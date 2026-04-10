@@ -287,17 +287,56 @@ current ontology.
 
 - **Storage:** `eval_reports/example_bank.jsonl` with embedded question vectors
 - **Model:** `openai/text-embedding-3-small` (1536 dims, same as ontology embeddings)
-- **Cap:** 300 examples max
-- **Auto-population:** Scans eval reports for correct answers, bulk-embeds
+- **Cap:** 500 examples max (balanced across KGs)
+- **Source:** `eval_reports/finetune_pairs.jsonl` — deduped correct (question, SPARQL) pairs
+
+### Lifecycle: Auto-sync with Ontology
+
+The example bank must stay in sync with the ontology. Stale examples (referencing
+old predicate URIs or wrong datatypes) cause regressions because the LLM copies
+broken SPARQL patterns.
+
+**Auto-purge on KG delete** (`omnix/api/routes/knowledge_graphs.py`):
+When `DELETE /kgs/{name}` is called, all examples for that KG are removed from
+the bank. This prevents stale SPARQL patterns from poisoning few-shot retrieval
+after reingest. The clear → reingest cycle starts with a clean slate.
+
+**Auto-rebuild on eval completion** (`omnix/eval.py:run_full_eval`):
+After each eval run saves correct pairs to `finetune_pairs.jsonl`, the example
+bank is automatically rebuilt from ALL pairs with fresh embeddings. Every eval
+round produces a better bank. The flow:
+
+```
+clear KG → bank purges stale examples for that KG
+reingest KG → fresh ontology types, rdfs:label on entities
+run eval → correct pairs saved → bank auto-rebuilt from all pairs
+```
 
 ### Retrieval Algorithm
 
 1. Embed the incoming question
-2. Cosine similarity against all 300 examples → top-10 candidates
+2. Cosine similarity against all examples → top-10 candidates
 3. **Anti-cheat:** Exclude any example with >0.90 similarity to excluded questions
 4. **Cross-dataset preference:** Examples from different KGs score higher (0.9x penalty for same-KG)
 5. **Same-dataset gate:** Same-KG examples must have similarity <0.75
 6. **Pattern diversity:** Pick 3 examples with different pattern tags (count, join, filter, avg, etc.)
+
+### Anti-cheat for Evals
+
+During eval, the system must not "cheat" by retrieving the exact question being
+tested from the example bank. This would produce high scores without real
+generalization.
+
+**How it works:** The eval passes ALL 20 eval question texts as `exclude_questions`
+to the `/ask` endpoint. The pipeline passes these to `bank.retrieve()`, which
+excludes any bank example with >0.90 cosine similarity to any excluded question.
+
+**Production queries do NOT exclude anything.** In production, using similar
+examples is the correct behavior — it's RAG working as designed. The anti-cheat
+constraint only applies during eval so scores reflect true generalization ability.
+
+**Result:** Eval measures the floor (no example help for test questions). Production
+gets the ceiling (examples boost accuracy for real user queries).
 
 ### Pattern Tags
 
@@ -451,16 +490,20 @@ All routes prefixed with `/graphs/{tenant}`.
 
 ### Knowledge Graphs
 
-| KG | Entities | Triples | Eval Score (20q) | Domain |
-|----|----------|---------|------------------|--------|
-| zillow-austin | ~1,000 | 21K | 20/20 (100%) | Real Estate |
-| video-games | ~1,000 | 18K | 24/27 (89%) | Entertainment |
-| events-sf | 3,163 | 39K | 17/20 (85%) | Events |
-| clinical-trials | 5,000 | 222K | 17/20 (85%) | Medical |
-| cfpb-complaints | ~1,000 | 18K | 16/20 (80%) | Financial/Regulatory |
+| KG | Entities | Triples | Domain |
+|----|----------|---------|--------|
+| clinical-trials | 5,000 | 218K | Medical |
+| olympics-2024 | 6,012 | 59K | Sports |
+| imdb-movies | 6,152 | 55K | Movies |
+| events-sf | 3,199 | 42K | Events |
+| exoplanets | 2,678 | 44K | Space |
+| universities | 2,486 | 68K | Education |
+| cfpb-complaints | 3,285 | 35K | Financial |
+| video-games | 1,852 | 24K | Entertainment |
+| zillow-austin | ~1,000 | 21K | Real Estate |
+| coffee-quality | 1,616 | 21K | Food |
 
-31 ontology types across 5 domains. ~318K total triples. 300 examples in RAG bank.
-597 fine-tuning pairs in `eval_reports/finetune_pairs.jsonl`.
+10 KGs, ~33,000 entities, ~587K total triples across 10 domains.
 
 ### Known Limitations
 
