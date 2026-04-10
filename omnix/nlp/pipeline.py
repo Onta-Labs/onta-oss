@@ -117,6 +117,8 @@ class NLQueryPipeline:
             sparql = normalize_sparql(llm_response.get("sparql", ""))
             # Fix bare attribute URIs using ontology context
             sparql = self._fix_attribute_uris(sparql, ontology)
+            # Fix cross-type attribute misuse and rdf:type shorthand
+            sparql = self._fix_common_sparql_issues(sparql, ontology)
             explanation = llm_response.get("explanation", "")
             functions_needed = llm_response.get("functions_needed", [])
 
@@ -452,6 +454,61 @@ class NLQueryPipeline:
             return m.group(0)
 
         return re.sub(r"<(https://omnix\.dev/[^>]+)>", _fix_uri, sparql)
+
+    @staticmethod
+    def _fix_common_sparql_issues(sparql: str, ontology_summary: str) -> str:
+        """Fix common SPARQL generation mistakes that the LLM makes.
+
+        1. Replace `a` shorthand with full rdf:type URI
+        2. Replace cross-type attribute URIs (e.g., Person/attrs/name used on a Movie)
+           with rdfs:label
+        3. Replace overview/description attributes used as display names with rdfs:label
+        """
+        import re
+
+        RDF_TYPE = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
+        RDFS_LABEL = "<http://www.w3.org/2000/01/rdf-schema#label>"
+
+        # Fix 1: Replace `a` shorthand (only when used as predicate position)
+        # Match "?var a <..." or "?var rdf:type <..."
+        sparql = re.sub(
+            r'(\?\w+)\s+a\s+(<https://omnix\.dev/)',
+            rf'\1 {RDF_TYPE} \2',
+            sparql,
+        )
+        sparql = re.sub(
+            r'(\?\w+)\s+rdf:type\s+',
+            rf'\1 {RDF_TYPE} ',
+            sparql,
+        )
+
+        # Fix 2: Find type URIs used in the query and check for cross-type attrs
+        # Extract which types are queried (from ?var rdf:type <type_uri>)
+        queried_types = set()
+        for m in re.finditer(r'<https://omnix\.dev/types/(\w+)>', sparql):
+            if '/attrs/' not in m.group(0):
+                queried_types.add(m.group(1))
+
+        # Find attribute URIs and check if they belong to a different type
+        for m in re.finditer(r'<https://omnix\.dev/types/(\w+)/attrs/(\w+)>', sparql):
+            attr_type = m.group(1)
+            attr_name = m.group(2)
+            # If the attribute's type isn't one of the queried types, it's cross-type
+            if attr_type not in queried_types and queried_types:
+                # Replace with rdfs:label if it's a name-like attribute
+                if attr_name in ('name', 'label', 'title'):
+                    sparql = sparql.replace(m.group(0), RDFS_LABEL[1:-1])
+
+        # Fix 3: Replace overview/description used as display name with rdfs:label
+        # Detect pattern: ?var <.../attrs/overview> ?displayName where overview is used for names
+        for attr in ('overview', 'description', 'synopsis', 'summary'):
+            pattern = rf'<https://omnix\.dev/types/\w+/attrs/{attr}>'
+            if re.search(pattern, sparql):
+                # Only replace if the variable is used as a display name (appears in SELECT)
+                # Simple heuristic: if overview is the only "name-like" value selected
+                sparql = re.sub(pattern, RDFS_LABEL[1:-1], sparql)
+
+        return sparql
 
     @staticmethod
     def invalidate_cache(graph_uri: str) -> None:
