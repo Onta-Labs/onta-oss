@@ -321,18 +321,54 @@ run eval → correct pairs saved → bank auto-rebuilt from all pairs
 5. **Same-dataset gate:** Same-KG examples must have similarity <0.75
 6. **Pattern diversity:** Pick 3 examples with different pattern tags (count, join, filter, avg, etc.)
 
+### Cross-domain Examples (by design)
+
+The example bank intentionally uses cross-domain examples. When querying an IMDB
+knowledge graph, the bank may return a working SPARQL example from the Coffee or
+Events SF domain. This is not cheating. It is pattern transfer.
+
+**What transfers:** SPARQL structural patterns (COUNT + JOIN, FILTER by relationship,
+GROUP BY + HAVING, subqueries). The LLM sees "here's how to count entities filtered
+by a named relationship" and adapts the pattern to the current ontology's types and
+predicate URIs.
+
+**What does NOT transfer:** Answer values, entity names, specific predicate URIs.
+The LLM must still read the current ontology to generate correct URIs. A Coffee
+example's `<https://omnix.dev/types/CoffeeLot/attrs/altitude>` is useless for
+IMDB queries. Only the SPARQL structure carries over.
+
+**Why this works:** A human developer does the same thing. You look at a working
+query from a different project, understand the pattern, adapt it. Cross-domain
+examples are a structural hint, not an answer key.
+
+**Guard rails in place:**
+- Same-KG examples with >0.75 similarity are blocked (prevents near-duplicate leaking)
+- Same-KG examples get a 10% score penalty (prefers cross-domain)
+- Pattern diversity ensures the LLM sees varied SPARQL structures, not 3 of the same type
+
 ### Anti-cheat for Evals
 
 During eval, the system must not "cheat" by retrieving the exact question being
 tested from the example bank. This would produce high scores without real
 generalization.
 
-**How it works:** The eval passes ALL 20 eval question texts as `exclude_questions`
-to the `/ask` endpoint. The pipeline passes these to `bank.retrieve()`, which
+**How it works:** The eval passes ALL eval question texts as `exclude_questions`
+to the `/ask` endpoint (`omnix/models/query.py:NLQuery.exclude_questions`). The
+pipeline passes these to `bank.retrieve()` (`omnix/nlp/pipeline.py`), which
 excludes any bank example with >0.90 cosine similarity to any excluded question.
 
+**Enforcement chain:**
+```
+eval.py: all_eval_questions = [q["question"] for q in questions]
+  → body["exclude_questions"] = all_eval_questions
+    → /ask endpoint: body.exclude_questions
+      → pipeline.ask(exclude_questions=...)
+        → bank.retrieve(exclude_questions=...)
+          → cosine similarity > 0.90 → excluded
+```
+
 **Production queries do NOT exclude anything.** In production, using similar
-examples is the correct behavior — it's RAG working as designed. The anti-cheat
+examples is the correct behavior. It is RAG working as designed. The anti-cheat
 constraint only applies during eval so scores reflect true generalization ability.
 
 **Result:** Eval measures the floor (no example help for test questions). Production
