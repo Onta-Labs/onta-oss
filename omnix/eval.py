@@ -1483,7 +1483,6 @@ async def run_full_eval(
         # with new ontology types or schema changes.
         try:
             from omnix.nlp.example_bank import ExampleBank, DEFAULT_BANK_PATH
-            import os
             bank = ExampleBank(openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", ""))
             items = []
             for line in ft_path.read_text().splitlines():
