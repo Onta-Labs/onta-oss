@@ -1275,11 +1275,25 @@ class QueryEvaluator:
                     else:
                         explanation = f"String mismatch: '{answer[:50]}' vs '{expected[:50]}'"
 
+        # Classify failure category for negative fine-tuning examples
+        failure_cat = ""
+        if verdict != "correct":
+            ans_lower = answer.lower() if answer else ""
+            if not answer or ans_lower in ("no results found.", "no results found"):
+                failure_cat = "empty_result"
+            elif answer.startswith("Could not answer") or answer.startswith("ERROR"):
+                failure_cat = "error"
+            elif "http" in ans_lower and "omnix.dev" in ans_lower:
+                failure_cat = "uri_instead_of_value"
+            else:
+                failure_cat = "wrong_answer"
+
         return QuestionResult(
             tier=tier, question=q_text, expected=expected,
             answer=answer, sparql=sparql,
             verdict=verdict, explanation=explanation,
             timing_ms=total_ms,
+            failure_category=failure_cat,
         )
 
 
@@ -1432,10 +1446,9 @@ async def run_full_eval(
 
     # Collect fine-tuning pairs: (prompt, correct_sparql) for future LLM training.
     # Only saves pairs where the judge provided a corrected SPARQL (wrong/error verdicts)
-    # or where the original SPARQL was correct. This builds a dataset of
-    # (question + ontology → correct SPARQL) pairs across many eval runs.
-    # Dedup: keyed on (question, graph_uri) — a newer pair for the same question
-    # replaces the old one (the corrected SPARQL may improve across runs).
+    # Fine-tuning data collection — see eval_reports/FINETUNE_DATA.md for format and usage.
+    # Saves correct pairs (finetune_pairs.jsonl) and wrong pairs (finetune_negatives.jsonl).
+    # Dedup: keyed on (question, graph_uri) — newer pair replaces older for same question.
     if report.queries and report.queries.results:
         ft_path = Path("eval_reports/finetune_pairs.jsonl")
         ft_path.parent.mkdir(exist_ok=True)
@@ -1477,6 +1490,42 @@ async def run_full_eval(
         # Rewrite file with deduped pairs
         ft_path.write_text("\n".join(existing.values()) + "\n")
         logger.info("finetune_pairs_saved", count=added, total=len(existing), path=str(ft_path))
+
+        # Save negative examples (wrong SPARQL + failure category) for fine-tuning
+        neg_path = Path("eval_reports/finetune_negatives.jsonl")
+        neg_existing: dict[tuple[str, str], str] = {}
+        if neg_path.exists():
+            for line in neg_path.read_text().splitlines():
+                if line.strip():
+                    try:
+                        entry = json.loads(line)
+                        key = (entry["question"], entry.get("graph_uri", ""))
+                        neg_existing[key] = line
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+
+        neg_added = 0
+        for r in report.queries.results:
+            if r.verdict in ("wrong", "error") and r.sparql:
+                neg = {
+                    "question": r.question,
+                    "ontology": ontology_text,
+                    "graph_uri": graph_uri,
+                    "sparql": r.sparql,
+                    "answer": r.answer[:200] if r.answer else "",
+                    "expected": r.expected[:200] if r.expected else "",
+                    "failure_category": r.failure_category if hasattr(r, "failure_category") else "unknown",
+                    "verdict": r.verdict,
+                    "source": "eval",
+                    "timestamp": report.timestamp,
+                }
+                key = (r.question, graph_uri)
+                neg_existing[key] = json.dumps(neg)
+                neg_added += 1
+
+        if neg_added:
+            neg_path.write_text("\n".join(neg_existing.values()) + "\n")
+            logger.info("finetune_negatives_saved", count=neg_added, total=len(neg_existing), path=str(neg_path))
 
         # Auto-rebuild example bank from finetune pairs.
         # This ensures the bank stays in sync when KGs are reingested
