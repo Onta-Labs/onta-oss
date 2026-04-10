@@ -32,6 +32,16 @@ for the entity's label. NEVER use an attribute URI from a different type.
 Bare aggregates cause 400 errors.
 - For dateTime comparisons, use ISO-8601 with time component (e.g., "2008-01-01T00:00:00"^^xsd:dateTime).
 - For enum values shown in [values: ...], use the EXACT case as listed.
+- For numeric comparisons, use typed literals: "2000"^^<http://www.w3.org/2001/XMLSchema#integer> for \
+integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast with xsd:integer()/xsd:float().
+- NEVER use the `a` shorthand for rdf:type. Always write the full URI: \
+<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>.
+- To get an entity's display name, ALWAYS use <http://www.w3.org/2000/01/rdf-schema#label> first. \
+The rdfs:label is set on every entity during ingestion. Do NOT use attributes from the WRONG type \
+(e.g., do not use Person/attrs/name to get a Movie name). Each type's attributes are ONLY for that type.
+- NEVER use an attribute URI from a different entity type. Movie attributes start with \
+<https://omnix.dev/types/Movie/attrs/...>, Person attributes with <https://omnix.dev/types/Person/attrs/...>. \
+Do not mix them.
 
 If similar working examples are provided below, follow their SPARQL patterns closely. \
 Adapt the URIs from the current ontology schema, not from the examples.
