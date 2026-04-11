@@ -132,7 +132,7 @@ class NLQueryPipeline:
                 raw = await self.neptune.query(sparql)
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
                 _, bindings = parse_sparql_results(raw)
-                answer = self._format_answer(bindings, explanation)
+                answer = await self._format_answer(bindings, explanation)
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
                 return NLResult(
@@ -643,15 +643,83 @@ class NLQueryPipeline:
         )
         return json.loads(message.content[0].text)
 
-    def _format_answer(self, bindings: list[dict], explanation: str) -> str:
+    @staticmethod
+    def _humanize_uri(uri: str) -> str:
+        """Extract a human-readable name from an Omnix URI.
+
+        Examples:
+            https://omnix.dev/entities/Movie/12345 → 12345
+            https://omnix.dev/types/Movie → Movie
+            https://omnix.dev/entities/ConsumerComplaint/1431838 → 1431838
+        """
+        from urllib.parse import unquote
+        path = unquote(uri.replace("https://omnix.dev/", ""))
+        return path.split("/")[-1]
+
+    async def _resolve_uri_labels(self, bindings: list[dict]) -> dict[str, str]:
+        """Batch-resolve rdfs:label for all Omnix entity/type URIs in bindings.
+
+        Returns a mapping from URI → human-readable label.
+        Falls back to extracting the last URI path segment if no label is found.
+        """
+        # Collect all unique URIs that look like Omnix entities or types
+        uris: set[str] = set()
+        for row in bindings:
+            for v in row.values():
+                if isinstance(v, str) and (
+                    v.startswith("https://omnix.dev/entities/")
+                    or v.startswith("https://omnix.dev/types/")
+                ):
+                    uris.add(v)
+
+        if not uris:
+            return {}
+
+        resolved: dict[str, str] = {}
+
+        # Batch SPARQL query to fetch rdfs:label for all URIs at once
+        values_clause = " ".join(f"<{u}>" for u in uris)
+        label_query = (
+            f"SELECT ?uri ?label WHERE {{ "
+            f"VALUES ?uri {{ {values_clause} }} "
+            f"?uri <http://www.w3.org/2000/01/rdf-schema#label> ?label . "
+            f"}}"
+        )
+        try:
+            raw = await self.neptune.query(label_query)
+            _, label_bindings = parse_sparql_results(raw)
+            for row in label_bindings:
+                uri = row.get("uri", "")
+                label = row.get("label", "")
+                if uri and label:
+                    resolved[uri] = label
+        except Exception:
+            logger.debug("uri_label_resolution_failed", uri_count=len(uris), exc_info=True)
+
+        # Fall back to path extraction for any URIs that weren't resolved
+        for uri in uris:
+            if uri not in resolved:
+                resolved[uri] = self._humanize_uri(uri)
+
+        return resolved
+
+    async def _format_answer(self, bindings: list[dict], explanation: str) -> str:
         if not bindings:
             return "No results found."
+
+        # Resolve any entity/type URIs to human-readable labels
+        uri_labels = await self._resolve_uri_labels(bindings)
+
+        def _display(value: str) -> str:
+            """Return the display form of a binding value, resolving URIs."""
+            return uri_labels.get(value, value)
+
         if len(bindings) == 1 and len(bindings[0]) == 1:
             value = list(bindings[0].values())[0]
-            return str(value)
+            return _display(str(value))
         lines = []
         for row in bindings[:20]:
-            parts = [f"{k}: {v}" for k, v in row.items()]
+            parts = [f"{k}: {_display(v)}" for k, v in row.items()]
             lines.append(", ".join(parts))
         result = "\n".join(lines)
         if len(bindings) > 20:
