@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.post("/graphs/{tenant}/query", response_model=SPARQLResult)
-@limiter.limit("60/minute")
+@limiter.limit("500/minute")
 async def execute_query(
     request: Request,
     body: SPARQLQuery,
