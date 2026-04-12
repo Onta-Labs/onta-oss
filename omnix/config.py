@@ -15,6 +15,14 @@ class Settings(BaseSettings):
     embeddings_s3_prefix: str = "omnix/embeddings"
     embeddings_top_k: int = 15
 
+    # Optional auth plugin: a dotted "module.path:callable" that will be
+    # imported at app startup. The callable is invoked with no arguments
+    # and is expected to register an external API key verifier via
+    # omnix.auth.api_keys.register_external_verifier. Keeps omnix-oss
+    # vendor-neutral while allowing downstream deployments to plug in
+    # their own key verification backend (Clerk, WorkOS, custom, ...).
+    auth_plugin: str = ""
+
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 
