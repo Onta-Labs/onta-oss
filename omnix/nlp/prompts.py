@@ -24,6 +24,16 @@ Key rules:
 name attribute using FILTER(CONTAINS(LCASE(?name), "value")). Entity names may contain \
 pipe-delimited multi-values. Never exact-match entity URIs or entity name strings. \
 Use the EXACT phrasing from the user's question as the search value, never rephrase it.
+- When filtering ANY string-valued attribute (including multi-tag attributes like \
+"tags" with pipe-delimited values), prefer FILTER(CONTAINS(LCASE(?attr), LCASE("value"))) \
+over exact equality. Exact match (=) fails when the stored value differs in case, \
+contains extra whitespace, is pipe-delimited, or uses a full form ("National Institutes \
+of Health") when the question uses an abbreviation ("NIH"). This rule applies to BOTH \
+entity name attributes AND direct attribute filters like ConsumerComplaint.tags.
+- For string prefix/suffix matching (STRSTARTS, STRENDS), always wrap the variable \
+in STR() to coerce to plain string: FILTER(STRSTARTS(LCASE(STR(?name)), LCASE("united"))). \
+Neptune is strict about type mismatches between xsd:string and language-tagged strings; \
+STR() guarantees a plain string.
 - COUNT(DISTINCT ?entityVar) not COUNT(DISTINCT ?nameVar) for unique entity counts.
 - To get a human-readable name for an entity: first check if the type has a "name" \
 attribute in the ontology. If not, use <http://www.w3.org/2000/01/rdf-schema#label> \
