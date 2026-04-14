@@ -65,7 +65,7 @@ _HOLDOUT_V2_KGS_FALLBACK: frozenset[str] = frozenset({
     # finance
     "sec-edgar-10k",
     "fdic-call-reports",
-    "msrb-municipal-bonds",
+    "treasury-fiscaldata-securities",
     "cftc-swap-data",
     "ncua-credit-union-call-reports",
     "finra-trace-corporate-bonds",
