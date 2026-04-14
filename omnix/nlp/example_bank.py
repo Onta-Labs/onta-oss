@@ -47,6 +47,102 @@ PATTERN_DETECTORS: list[tuple[str, str]] = [
 DEFAULT_BANK_PATH = Path(__file__).resolve().parent.parent.parent / "eval_reports" / "example_bank.jsonl"
 EVAL_REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "eval_reports"
 
+# Holdout v2 KG exclusion list (spec §6.1): holdout-v2 KGs must never be
+# indexed into the example bank, regardless of whether they appear in
+# eval_reports. The manifest is the source of truth; we fall back to a
+# hardcoded list if the manifest isn't reachable (e.g. prod deploys that
+# don't ship eval_holdout_v2/). Drift between the fallback and manifest
+# is logged at import time so it gets noticed.
+_HOLDOUT_V2_KGS_FALLBACK: frozenset[str] = frozenset({
+    # healthcare
+    "cms-nursing-home-compare",
+    "samhsa-n-ssats",
+    "medicare-part-d-pricing",
+    "hrsa-hpsa",
+    "cdc-fluview",
+    "cdc-wonder-mortality",
+    "npi-registry",
+    # finance
+    "sec-edgar-10k",
+    "fdic-call-reports",
+    "msrb-municipal-bonds",
+    "cftc-swap-data",
+    "ncua-credit-union-call-reports",
+    "finra-trace-corporate-bonds",
+    "ofr-financial-stability",
+    # legal
+    "patentsview",
+    "scdb-supreme-court",
+    "doj-enforcement-actions",
+    "ftc-consent-decrees",
+    "uspto-trademarks",
+    "pacer-federal-dockets",
+    "fec-enforcement",
+    # scientific_public_sector
+    "nsf-awards",
+    "nih-reporter-non-clinical",
+    "fema-disaster-declarations",
+    "epa-water-quality-portal",
+    "noaa-storm-events",
+    "usda-agricultural-statistics",
+    "doe-energy-research-grants",
+})
+
+
+def _load_holdout_v2_kgs() -> frozenset[str]:
+    """Load holdout-v2 KG IDs from eval_holdout_v2/HOLDOUT_V2_MANIFEST.json.
+
+    Searches a few plausible locations (the omnix-oss submodule lives inside
+    the parent cograph repo, so the manifest is typically two or three
+    parents up from this file). On any failure, returns the hardcoded
+    fallback set and logs a warning so drift gets noticed.
+    """
+    # __file__ = .../omnix-oss/omnix/nlp/example_bank.py
+    here = Path(__file__).resolve()
+    candidates = [
+        # cograph parent (submodule layout): .../cograph/omnix-oss/omnix/nlp/
+        here.parent.parent.parent.parent / "eval_holdout_v2" / "HOLDOUT_V2_MANIFEST.json",
+        # alt: one level up (standalone)
+        here.parent.parent.parent / "eval_holdout_v2" / "HOLDOUT_V2_MANIFEST.json",
+        # cwd fallback
+        Path.cwd() / "eval_holdout_v2" / "HOLDOUT_V2_MANIFEST.json",
+    ]
+    for path in candidates:
+        try:
+            if not path.is_file():
+                continue
+            with open(path) as f:
+                manifest = json.load(f)
+            ids = frozenset(
+                kg["id"] for kg in manifest.get("kgs", []) if kg.get("id")
+            )
+            if not ids:
+                continue
+            # Drift check vs fallback
+            missing_from_fallback = ids - _HOLDOUT_V2_KGS_FALLBACK
+            extra_in_fallback = _HOLDOUT_V2_KGS_FALLBACK - ids
+            if missing_from_fallback or extra_in_fallback:
+                logger.warning(
+                    "HOLDOUT_V2_KGS fallback drift vs manifest %s: "
+                    "missing_from_fallback=%s extra_in_fallback=%s",
+                    path, sorted(missing_from_fallback), sorted(extra_in_fallback),
+                )
+            logger.info("Loaded %d holdout-v2 KGs from %s", len(ids), path)
+            return ids
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            logger.warning("Failed to read holdout-v2 manifest at %s: %s", path, exc)
+            continue
+    logger.warning(
+        "HOLDOUT_V2_MANIFEST.json not found in any candidate path; "
+        "using hardcoded HOLDOUT_V2_KGS fallback (%d entries). "
+        "This is OK for prod deploys that don't ship eval_holdout_v2/.",
+        len(_HOLDOUT_V2_KGS_FALLBACK),
+    )
+    return _HOLDOUT_V2_KGS_FALLBACK
+
+
+HOLDOUT_V2_KGS: frozenset[str] = _load_holdout_v2_kgs()
+
 
 @dataclass
 class Example:
@@ -414,6 +510,12 @@ class ExampleBank:
                     report = json.load(f)
 
                 kg_name = report.get("kg_name", "")
+                if kg_name in HOLDOUT_V2_KGS:
+                    logger.debug(
+                        "example_bank: skipping holdout-v2 KG %s from eval report %s",
+                        kg_name, json_file,
+                    )
+                    continue
                 ontology = report.get("ontology", "")
                 results = report.get("queries", {}).get("results", [])
 
@@ -459,6 +561,12 @@ class ExampleBank:
                             # Extract kg_name from graph_uri if available
                             graph_uri = pair.get("graph_uri", "")
                             kg_name = graph_uri.split("/kg/")[-1] if "/kg/" in graph_uri else ""
+                            if kg_name in HOLDOUT_V2_KGS:
+                                logger.debug(
+                                    "example_bank: skipping holdout-v2 KG %s from finetune pair",
+                                    kg_name,
+                                )
+                                continue
                             items.append({
                                 "question": question,
                                 "sparql": sparql,
