@@ -329,8 +329,14 @@ class ExampleBank:
                 if excluded:
                     continue
 
-            # Step 4: Same-dataset penalty
-            if kg_name and ex.kg_name == kg_name:
+            # Step 4: Same-dataset anti-cheat — EVAL ONLY.
+            # Gated on exclude_questions so this only runs during eval/benchmark
+            # harness calls (which always pass exclude_questions). In production
+            # /ask we WANT to reuse a near-identical prior answer on the same KG:
+            # that's the best possible signal, not cheating. Dropping/penalizing
+            # it here would actively hurt real users. Keep this in sync with the
+            # anti-cheat gate above (line ~321).
+            if exclude_vecs and kg_name and ex.kg_name == kg_name:
                 if sim > SAME_DATASET_MAX_SIM:
                     continue  # Too similar within same dataset
                 # Penalize same-dataset slightly to prefer cross-dataset
