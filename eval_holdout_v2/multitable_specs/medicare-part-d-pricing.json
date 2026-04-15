@@ -1,0 +1,171 @@
+{
+  "kg_name": "holdout-v2-medicare-part-d-pricing",
+  "_source": "CMS Medicare Part D Spending by Drug, DY2023. See scripts/prep_medicare_part_d_multitable.py.",
+  "_notes": [
+    "Brand-level drug spending data from Medicare Part D, annual release DY2023.",
+    "Drug entity uses 'Overall' summary rows (one per brand). SpendingRecord uses manufacturer-specific rows.",
+    "GenericDrug groups brands by their generic/chemical name.",
+    "SpendingTrend is a reference table with 6 price-change buckets derived from YoY change.",
+    "OutlierFlag is a 2-row reference table (0=Not outlier, 1=Outlier).",
+    "Drug IDs and GenericDrug IDs are MD5-based slugs for deterministic URIs."
+  ],
+  "entity_types": [
+    {
+      "name": "Drug",
+      "source_csv": "Drug.csv",
+      "primary_key": "drug_id",
+      "label_column": "brand_name",
+      "attributes": [
+        "brand_name",
+        "generic_name",
+        "spending_trend",
+        "total_manufacturers",
+        "total_spending_2023",
+        "total_claims_2023",
+        "total_beneficiaries_2023",
+        "avg_spending_per_dosage_unit_2023",
+        "avg_spending_per_claim_2023",
+        "avg_spending_per_beneficiary_2023",
+        "price_change_pct_22_23",
+        "price_cagr_19_23",
+        "spending_trend"
+      ]
+    },
+    {
+      "name": "GenericDrug",
+      "source_csv": "GenericDrug.csv",
+      "primary_key": "generic_id",
+      "label_column": "generic_name",
+      "attributes": ["generic_name", "brand_count"]
+    },
+    {
+      "name": "Manufacturer",
+      "source_csv": "Manufacturer.csv",
+      "primary_key": "manufacturer_id",
+      "label_column": "manufacturer_name",
+      "attributes": ["manufacturer_name", "drug_count"]
+    },
+    {
+      "name": "SpendingRecord",
+      "source_csv": "SpendingRecord.csv",
+      "primary_key": "spending_id",
+      "label_column": "spending_id",
+      "attributes": [
+        "total_spending_2023",
+        "total_dosage_units_2023",
+        "total_claims_2023",
+        "total_beneficiaries_2023",
+        "avg_spend_per_unit_2023",
+        "avg_spend_per_claim_2023",
+        "avg_spend_per_beneficiary_2023",
+        "outlier_flag_2023"
+      ]
+    },
+    {
+      "name": "SpendingTrend",
+      "source_csv": "SpendingTrend.csv",
+      "primary_key": "trend_id",
+      "label_column": "trend_label",
+      "attributes": ["trend_label"]
+    },
+    {
+      "name": "OutlierFlag",
+      "source_csv": "OutlierFlag.csv",
+      "primary_key": "outlier_id",
+      "label_column": "outlier_label",
+      "attributes": ["outlier_label"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "has_generic",
+      "source_csv": "Drug.csv",
+      "subject_type": "Drug",
+      "subject_key_column": "drug_id",
+      "object_type": "GenericDrug",
+      "object_key_column": "generic_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "brand_of_generic",
+      "source_csv": "Drug.csv",
+      "subject_type": "GenericDrug",
+      "subject_key_column": "generic_id",
+      "object_type": "Drug",
+      "object_key_column": "drug_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "spending_for_drug",
+      "source_csv": "SpendingRecord.csv",
+      "subject_type": "SpendingRecord",
+      "subject_key_column": "spending_id",
+      "object_type": "Drug",
+      "object_key_column": "drug_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "has_spending_record",
+      "source_csv": "SpendingRecord.csv",
+      "subject_type": "Drug",
+      "subject_key_column": "drug_id",
+      "object_type": "SpendingRecord",
+      "object_key_column": "spending_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "spending_by_manufacturer",
+      "source_csv": "SpendingRecord.csv",
+      "subject_type": "SpendingRecord",
+      "subject_key_column": "spending_id",
+      "object_type": "Manufacturer",
+      "object_key_column": "manufacturer_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "manufacturer_has_spending",
+      "source_csv": "SpendingRecord.csv",
+      "subject_type": "Manufacturer",
+      "subject_key_column": "manufacturer_id",
+      "object_type": "SpendingRecord",
+      "object_key_column": "spending_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_spending_trend",
+      "source_csv": "Drug.csv",
+      "subject_type": "Drug",
+      "subject_key_column": "drug_id",
+      "object_type": "SpendingTrend",
+      "object_key_column": "trend_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "trend_applies_to_drug",
+      "source_csv": "Drug.csv",
+      "subject_type": "SpendingTrend",
+      "subject_key_column": "trend_id",
+      "object_type": "Drug",
+      "object_key_column": "drug_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_outlier_status",
+      "source_csv": "SpendingRecord.csv",
+      "subject_type": "SpendingRecord",
+      "subject_key_column": "spending_id",
+      "object_type": "OutlierFlag",
+      "object_key_column": "outlier_flag_2023",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "outlier_status_of_spending",
+      "source_csv": "SpendingRecord.csv",
+      "subject_type": "OutlierFlag",
+      "subject_key_column": "outlier_flag_2023",
+      "object_type": "SpendingRecord",
+      "object_key_column": "spending_id",
+      "cardinality": "1:N"
+    }
+  ]
+}

@@ -1,0 +1,768 @@
+{
+  "kg": "holdout-v2-cdc-wonder-mortality",
+  "results": [
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct mortality records are there?",
+      "expected_answer": "10868",
+      "full_expected_items": [
+        "10868"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?mortalityRecord) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortalityRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"record_id\") FROM \"MortalityRecord\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"record_id\") FROM \"MortalityRecord\";"
+          ],
+          "answer": "10868",
+          "verdict": "correct",
+          "input_tokens": 1436,
+          "output_tokens": 16
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"record_id\") FROM \"MortalityRecord\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"record_id\") FROM \"MortalityRecord\";"
+          ],
+          "answer": "10868",
+          "verdict": "correct",
+          "input_tokens": 1436,
+          "output_tokens": 16
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"record_id\") FROM \"MortalityRecord\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"record_id\") FROM \"MortalityRecord\";"
+          ],
+          "answer": "10868",
+          "verdict": "correct",
+          "input_tokens": 1436,
+          "output_tokens": 16
+        }
+      ],
+      "majority_answer": "10868",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all the available years in the dataset.",
+      "expected_answer": "2016, 2013, 2005, 2004, 2010, 2001, 2015, 2007, 2009, 2006 ... (19 total)",
+      "full_expected_items": [
+        "2016",
+        "2013",
+        "2005",
+        "2004",
+        "2010",
+        "2001",
+        "2015",
+        "2007",
+        "2009",
+        "2006",
+        "2008",
+        "1999",
+        "2002",
+        "2000",
+        "2017",
+        "2003",
+        "2014",
+        "2011",
+        "2012"
+      ],
+      "full_result_count": 19,
+      "gold_sparql": "SELECT DISTINCT ?yearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> ?yearLabel .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"year\" FROM \"Year\"",
+          "all_sql_attempts": [
+            "SELECT \"year\" FROM \"Year\""
+          ],
+          "answer": "year: 2017\nyear: 2007\nyear: 2016\nyear: 2015\nyear: 2014\nyear: 2013\nyear: 2012\nyear: 2011\nyear: 2010\nyear: 2009\nyear: 2008\nyear: 2006\nyear: 2005\nyear: 2004\nyear: 2003\nyear: 2002\nyear: 2001\nyear: 2000\nyear: 1999",
+          "verdict": "correct",
+          "input_tokens": 1450,
+          "output_tokens": 8
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"year\" FROM \"Year\"",
+          "all_sql_attempts": [
+            "SELECT \"year\" FROM \"Year\""
+          ],
+          "answer": "year: 2017\nyear: 2007\nyear: 2016\nyear: 2015\nyear: 2014\nyear: 2013\nyear: 2012\nyear: 2011\nyear: 2010\nyear: 2009\nyear: 2008\nyear: 2006\nyear: 2005\nyear: 2004\nyear: 2003\nyear: 2002\nyear: 2001\nyear: 2000\nyear: 1999",
+          "verdict": "correct",
+          "input_tokens": 1450,
+          "output_tokens": 8
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"year\" FROM \"Year\"",
+          "all_sql_attempts": [
+            "SELECT \"year\" FROM \"Year\""
+          ],
+          "answer": "year: 2017\nyear: 2007\nyear: 2016\nyear: 2015\nyear: 2014\nyear: 2013\nyear: 2012\nyear: 2011\nyear: 2010\nyear: 2009\nyear: 2008\nyear: 2006\nyear: 2005\nyear: 2004\nyear: 2003\nyear: 2002\nyear: 2001\nyear: 2000\nyear: 1999",
+          "verdict": "correct",
+          "input_tokens": 1450,
+          "output_tokens": 8
+        }
+      ],
+      "majority_answer": "year: 2017\nyear: 2007\nyear: 2016\nyear: 2015\nyear: 2014\nyear: 2013\nyear: 2012\nyear: 2011\nyear: 2010\nyear: 2009\nyear: 2008\nyear: 2006\nyear: 2005\nyear: 2004\nyear: 2003\nyear: 2002\nyear: 2001\nyear: 2000\nyear: 1999",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "What are the names of all the causes of death recorded?",
+      "expected_answer": "Alzheimer's disease, Stroke, Suicide, Unintentional injuries, All causes, CLRD, Heart disease, Influenza and pneumonia, Kidney disease, Cancer ... (11 total)",
+      "full_expected_items": [
+        "Alzheimer's disease",
+        "Stroke",
+        "Suicide",
+        "Unintentional injuries",
+        "All causes",
+        "CLRD",
+        "Heart disease",
+        "Influenza and pneumonia",
+        "Kidney disease",
+        "Cancer",
+        "Diabetes"
+      ],
+      "full_result_count": 11,
+      "gold_sparql": "SELECT DISTINCT ?causeName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_name> ?causeName .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"cause_name\" FROM \"Cause\";",
+          "all_sql_attempts": [
+            "SELECT \"cause_name\" FROM \"Cause\";"
+          ],
+          "answer": "cause_name: Unintentional injuries\ncause_name: All causes\ncause_name: Alzheimer's disease\ncause_name: Stroke\ncause_name: CLRD\ncause_name: Diabetes\ncause_name: Heart disease\ncause_name: Influenza and pneumonia\ncause_name: Suicide\ncause_name: Cancer\ncause_name: Kidney disease",
+          "verdict": "correct",
+          "input_tokens": 1448,
+          "output_tokens": 10
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"cause_name\" FROM \"Cause\";",
+          "all_sql_attempts": [
+            "SELECT \"cause_name\" FROM \"Cause\";"
+          ],
+          "answer": "cause_name: Unintentional injuries\ncause_name: All causes\ncause_name: Alzheimer's disease\ncause_name: Stroke\ncause_name: CLRD\ncause_name: Diabetes\ncause_name: Heart disease\ncause_name: Influenza and pneumonia\ncause_name: Suicide\ncause_name: Cancer\ncause_name: Kidney disease",
+          "verdict": "correct",
+          "input_tokens": 1448,
+          "output_tokens": 10
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"cause_name\" FROM \"Cause\";",
+          "all_sql_attempts": [
+            "SELECT \"cause_name\" FROM \"Cause\";"
+          ],
+          "answer": "cause_name: Unintentional injuries\ncause_name: All causes\ncause_name: Alzheimer's disease\ncause_name: Stroke\ncause_name: CLRD\ncause_name: Diabetes\ncause_name: Heart disease\ncause_name: Influenza and pneumonia\ncause_name: Suicide\ncause_name: Cancer\ncause_name: Kidney disease",
+          "verdict": "correct",
+          "input_tokens": 1448,
+          "output_tokens": 10
+        }
+      ],
+      "majority_answer": "cause_name: Unintentional injuries\ncause_name: All causes\ncause_name: Alzheimer's disease\ncause_name: Stroke\ncause_name: CLRD\ncause_name: Diabetes\ncause_name: Heart disease\ncause_name: Influenza and pneumonia\ncause_name: Suicide\ncause_name: Cancer\ncause_name: Kidney disease",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many distinct states are represented in the data?",
+      "expected_answer": "52",
+      "full_expected_items": [
+        "52"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"state_name\") FROM \"State\" WHERE \"state_id\" != 'US';",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"state_name\") FROM \"State\" WHERE \"state_id\" != 'US';"
+          ],
+          "answer": "51",
+          "verdict": "correct",
+          "input_tokens": 1450,
+          "output_tokens": 24
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"state_name\") FROM \"State\" WHERE \"state_id\" != 'US';",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"state_name\") FROM \"State\" WHERE \"state_id\" != 'US';"
+          ],
+          "answer": "51",
+          "verdict": "correct",
+          "input_tokens": 1450,
+          "output_tokens": 24
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"state_name\") FROM \"State\" WHERE \"state_id\" != 'US';",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"state_name\") FROM \"State\" WHERE \"state_id\" != 'US';"
+          ],
+          "answer": "51",
+          "verdict": "correct",
+          "input_tokens": 1450,
+          "output_tokens": 24
+        }
+      ],
+      "majority_answer": "51",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "How many mortality records have an age-adjusted rate greater than 100?",
+      "expected_answer": "2965",
+      "full_expected_items": [
+        "2965"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?record) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/age_adjusted_rate> ?rate .\n  FILTER (xsd:float(?rate) > 100)\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"MortalityRecord\" WHERE \"age_adjusted_rate\" > 100;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"MortalityRecord\" WHERE \"age_adjusted_rate\" > 100;"
+          ],
+          "answer": "2965",
+          "verdict": "correct",
+          "input_tokens": 1457,
+          "output_tokens": 23
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"MortalityRecord\" WHERE \"age_adjusted_rate\" > 100;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"MortalityRecord\" WHERE \"age_adjusted_rate\" > 100;"
+          ],
+          "answer": "2965",
+          "verdict": "correct",
+          "input_tokens": 1457,
+          "output_tokens": 23
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"MortalityRecord\" WHERE \"age_adjusted_rate\" > 100;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"MortalityRecord\" WHERE \"age_adjusted_rate\" > 100;"
+          ],
+          "answer": "2965",
+          "verdict": "correct",
+          "input_tokens": 1457,
+          "output_tokens": 23
+        }
+      ],
+      "majority_answer": "2965",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "What is the average number of deaths recorded in mortality records where the label contains '2010'?",
+      "expected_answer": "15107.64",
+      "full_expected_items": [
+        "15107.63636363636363636364"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (AVG(xsd:integer(?deaths)) AS ?averageDeaths) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/deaths> ?deaths .\n  FILTER (CONTAINS(STR(?label), \"2010\"))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT ROUND(AVG(\"deaths\"), 2) FROM \"MortalityRecord\" JOIN \"Decade\" ON \"MortalityRecord\".\"decade_id\" = \"Decade\".\"decade_id\" WHERE \"Decade\".\"decade_label\" LIKE '%2010%';",
+          "all_sql_attempts": [
+            "SELECT ROUND(AVG(\"deaths\"), 2) FROM \"MortalityRecord\" JOIN \"Decade\" ON \"MortalityRecord\".\"decade_id\" = \"Decade\".\"decade_id\" WHERE \"Decade\".\"decade_label\" LIKE '%2010%';"
+          ],
+          "answer": "15995.02",
+          "verdict": "wrong",
+          "input_tokens": 1475,
+          "output_tokens": 56
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT ROUND(AVG(\"deaths\"), 2) FROM \"MortalityRecord\" JOIN \"Decade\" ON \"MortalityRecord\".\"decade_id\" = \"Decade\".\"decade_id\" WHERE \"Decade\".\"decade_label\" LIKE '%2010%';",
+          "all_sql_attempts": [
+            "SELECT ROUND(AVG(\"deaths\"), 2) FROM \"MortalityRecord\" JOIN \"Decade\" ON \"MortalityRecord\".\"decade_id\" = \"Decade\".\"decade_id\" WHERE \"Decade\".\"decade_label\" LIKE '%2010%';"
+          ],
+          "answer": "15995.02",
+          "verdict": "wrong",
+          "input_tokens": 1475,
+          "output_tokens": 56
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT ROUND(AVG(\"deaths\"), 2) FROM \"MortalityRecord\" JOIN \"Decade\" ON \"MortalityRecord\".\"decade_id\" = \"Decade\".\"decade_id\" WHERE \"Decade\".\"decade_label\" LIKE '%2010%';",
+          "all_sql_attempts": [
+            "SELECT ROUND(AVG(\"deaths\"), 2) FROM \"MortalityRecord\" JOIN \"Decade\" ON \"MortalityRecord\".\"decade_id\" = \"Decade\".\"decade_id\" WHERE \"Decade\".\"decade_label\" LIKE '%2010%';"
+          ],
+          "answer": "15995.02",
+          "verdict": "wrong",
+          "input_tokens": 1475,
+          "output_tokens": 56
+        }
+      ],
+      "majority_answer": "15995.02",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "Find all cause categories that have 'Chronic' in their name.",
+      "expected_answer": "Chronic Disease",
+      "full_expected_items": [
+        "Chronic Disease"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT ?categoryName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_category_name> ?categoryName .\n  FILTER (CONTAINS(STR(?categoryName), \"Chronic\"))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"cause_category_name\" FROM \"CauseCategory\" WHERE \"cause_category_name\" LIKE '%Chronic%'",
+          "all_sql_attempts": [
+            "SELECT \"cause_category_name\" FROM \"CauseCategory\" WHERE \"cause_category_name\" LIKE '%Chronic%'"
+          ],
+          "answer": "Chronic Disease",
+          "verdict": "correct",
+          "input_tokens": 1456,
+          "output_tokens": 25
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"cause_category_name\" FROM \"CauseCategory\" WHERE \"cause_category_name\" LIKE '%Chronic%'",
+          "all_sql_attempts": [
+            "SELECT \"cause_category_name\" FROM \"CauseCategory\" WHERE \"cause_category_name\" LIKE '%Chronic%'"
+          ],
+          "answer": "Chronic Disease",
+          "verdict": "correct",
+          "input_tokens": 1456,
+          "output_tokens": 25
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"cause_category_name\" FROM \"CauseCategory\" WHERE \"cause_category_name\" LIKE '%Chronic%'",
+          "all_sql_attempts": [
+            "SELECT \"cause_category_name\" FROM \"CauseCategory\" WHERE \"cause_category_name\" LIKE '%Chronic%'"
+          ],
+          "answer": "Chronic Disease",
+          "verdict": "correct",
+          "input_tokens": 1456,
+          "output_tokens": 25
+        }
+      ],
+      "majority_answer": "Chronic Disease",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "What is the maximum number of causes associated with any cause category?",
+      "expected_answer": "7",
+      "full_expected_items": [
+        "7"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (MAX(xsd:integer(?causeCount)) AS ?maxCauseCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_count> ?causeCount .\n  FILTER (xsd:integer(?causeCount) > 0)\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT MAX(\"cause_count\") FROM \"CauseCategory\";",
+          "all_sql_attempts": [
+            "SELECT MAX(\"cause_count\") FROM \"CauseCategory\";"
+          ],
+          "answer": "7",
+          "verdict": "correct",
+          "input_tokens": 1445,
+          "output_tokens": 12
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT MAX(\"cause_count\") FROM \"CauseCategory\";",
+          "all_sql_attempts": [
+            "SELECT MAX(\"cause_count\") FROM \"CauseCategory\";"
+          ],
+          "answer": "7",
+          "verdict": "correct",
+          "input_tokens": 1445,
+          "output_tokens": 12
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT MAX(\"cause_count\") FROM \"CauseCategory\";",
+          "all_sql_attempts": [
+            "SELECT MAX(\"cause_count\") FROM \"CauseCategory\";"
+          ],
+          "answer": "7",
+          "verdict": "correct",
+          "input_tokens": 1445,
+          "output_tokens": 12
+        }
+      ],
+      "majority_answer": "7",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many mortality records are associated with each state?",
+      "expected_answer": "Hawaii | 209\nMichigan | 209\nMaryland | 209\nMassachusetts | 209\nMaine | 209\nKentucky | 209\nLouisiana | 209\nNew Mexico | 209\nNew Jersey | 209\nNew Hampshire | 209\n... (52 total rows)",
+      "full_expected_items": [
+        "Hawaii | 209",
+        "Michigan | 209",
+        "Maryland | 209",
+        "Massachusetts | 209",
+        "Maine | 209",
+        "Kentucky | 209",
+        "Louisiana | 209",
+        "New Mexico | 209",
+        "New Jersey | 209",
+        "New Hampshire | 209",
+        "Nevada | 209",
+        "Nebraska | 209",
+        "Montana | 209",
+        "New York | 209",
+        "Missouri | 209",
+        "Minnesota | 209",
+        "Mississippi | 209",
+        "South Dakota | 209",
+        "Tennessee | 209",
+        "Alabama | 209",
+        "Florida | 209",
+        "Rhode Island | 209",
+        "United States | 209",
+        "Oregon | 209",
+        "South Carolina | 209",
+        "Pennsylvania | 209",
+        "Ohio | 209",
+        "Georgia | 209",
+        "North Dakota | 209",
+        "North Carolina | 209",
+        "Virginia | 209",
+        "Washington | 209",
+        "West Virginia | 209",
+        "Vermont | 209",
+        "Utah | 209",
+        "Texas | 209",
+        "Oklahoma | 209",
+        "Illinois | 209",
+        "Indiana | 209",
+        "Idaho | 209",
+        "Iowa | 209",
+        "Kansas | 209",
+        "Alaska | 209",
+        "Arkansas | 209",
+        "California | 209",
+        "Connecticut | 209",
+        "Delaware | 209",
+        "District of Columbia | 209",
+        "Colorado | 209",
+        "Arizona | 209",
+        "Wisconsin | 209",
+        "Wyoming | 209"
+      ],
+      "full_result_count": 52,
+      "gold_sparql": "SELECT ?state_name (COUNT(?record) AS ?record_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> ?state_name .\n} GROUP BY ?state_name ORDER BY DESC(?record_count)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"state_name\", COUNT(*) FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" GROUP BY T2.\"state_name\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"state_name\", COUNT(*) FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" GROUP BY T2.\"state_name\";"
+          ],
+          "answer": "state_name: Alabama, COUNT(*): 209\nstate_name: Alaska, COUNT(*): 209\nstate_name: Arizona, COUNT(*): 209\nstate_name: Arkansas, COUNT(*): 209\nstate_name: California, COUNT(*): 209\nstate_name: Colorado, COUNT(*): 209\nstate_name: Connecticut, COUNT(*): 209\nstate_name: Delaware, COUNT(*): 209\nstate_name: District of Columbia, COUNT(*): 209\nstate_name: Florida, COUNT(*): 209\nstate_name: Georgia, COUNT(*): 209\nstate_name: Hawaii, COUNT(*): 209\nstate_name: Idaho, COUNT(*): 209\nstate_name: Illinois, COUNT(*): 209\nstate_name: Indiana, COUNT(*): 209\nstate_name: Iowa, COUNT(*): 209\nstate_name: Kansas, COUNT(*): 209\nstate_name: Kentucky, COUNT(*): 209\nstate_name: Louisiana, COUNT(*): 209\nstate_name: Maine, COUNT(*): 209\n... and 32 more results",
+          "verdict": "wrong",
+          "input_tokens": 1447,
+          "output_tokens": 51
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"state_name\", COUNT(*) FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" GROUP BY T2.\"state_name\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"state_name\", COUNT(*) FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" GROUP BY T2.\"state_name\";"
+          ],
+          "answer": "state_name: Alabama, COUNT(*): 209\nstate_name: Alaska, COUNT(*): 209\nstate_name: Arizona, COUNT(*): 209\nstate_name: Arkansas, COUNT(*): 209\nstate_name: California, COUNT(*): 209\nstate_name: Colorado, COUNT(*): 209\nstate_name: Connecticut, COUNT(*): 209\nstate_name: Delaware, COUNT(*): 209\nstate_name: District of Columbia, COUNT(*): 209\nstate_name: Florida, COUNT(*): 209\nstate_name: Georgia, COUNT(*): 209\nstate_name: Hawaii, COUNT(*): 209\nstate_name: Idaho, COUNT(*): 209\nstate_name: Illinois, COUNT(*): 209\nstate_name: Indiana, COUNT(*): 209\nstate_name: Iowa, COUNT(*): 209\nstate_name: Kansas, COUNT(*): 209\nstate_name: Kentucky, COUNT(*): 209\nstate_name: Louisiana, COUNT(*): 209\nstate_name: Maine, COUNT(*): 209\n... and 32 more results",
+          "verdict": "wrong",
+          "input_tokens": 1447,
+          "output_tokens": 51
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"state_name\", COUNT(*) FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" GROUP BY T2.\"state_name\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"state_name\", COUNT(*) FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" GROUP BY T2.\"state_name\";"
+          ],
+          "answer": "state_name: Alabama, COUNT(*): 209\nstate_name: Alaska, COUNT(*): 209\nstate_name: Arizona, COUNT(*): 209\nstate_name: Arkansas, COUNT(*): 209\nstate_name: California, COUNT(*): 209\nstate_name: Colorado, COUNT(*): 209\nstate_name: Connecticut, COUNT(*): 209\nstate_name: Delaware, COUNT(*): 209\nstate_name: District of Columbia, COUNT(*): 209\nstate_name: Florida, COUNT(*): 209\nstate_name: Georgia, COUNT(*): 209\nstate_name: Hawaii, COUNT(*): 209\nstate_name: Idaho, COUNT(*): 209\nstate_name: Illinois, COUNT(*): 209\nstate_name: Indiana, COUNT(*): 209\nstate_name: Iowa, COUNT(*): 209\nstate_name: Kansas, COUNT(*): 209\nstate_name: Kentucky, COUNT(*): 209\nstate_name: Louisiana, COUNT(*): 209\nstate_name: Maine, COUNT(*): 209\n... and 32 more results",
+          "verdict": "wrong",
+          "input_tokens": 1447,
+          "output_tokens": 51
+        }
+      ],
+      "majority_answer": "state_name: Alabama, COUNT(*): 209\nstate_name: Alaska, COUNT(*): 209\nstate_name: Arizona, COUNT(*): 209\nstate_name: Arkansas, COUNT(*): 209\nstate_name: California, COUNT(*): 209\nstate_name: Colorado, COUNT(*): 209\nstate_name: Connecticut, COUNT(*): 209\nstate_name: Delaware, COUNT(*): 209\nstate_name: District of Columbia, COUNT(*): 209\nstate_name: Florida, COUNT(*): 209\nstate_name: Georgia, COUNT(*): 209\nstate_name: Hawaii, COUNT(*): 209\nstate_name: Idaho, COUNT(*): 209\nstate_name: Illinois, COUNT(*): 209\nstate_name: Indiana, COUNT(*): 209\nstate_name: Iowa, COUNT(*): 209\nstate_name: Kansas, COUNT(*): 209\nstate_name: Kentucky, COUNT(*): 209\nstate_name: Louisiana, COUNT(*): 209\nstate_name: Maine, COUNT(*): 209\n... and 32 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "Which regions contain states that have 'California' in their name?",
+      "expected_answer": "West",
+      "full_expected_items": [
+        "West"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> ?region_name .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_contains_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> ?state_name .\n  FILTER (CONTAINS(?state_name, \"California\"))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT T2.\"region_name\" FROM \"State\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T1.\"state_name\" LIKE '%California%'",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T2.\"region_name\" FROM \"State\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T1.\"state_name\" LIKE '%California%'"
+          ],
+          "answer": "West",
+          "verdict": "correct",
+          "input_tokens": 1459,
+          "output_tokens": 51
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT T2.\"region_name\" FROM \"State\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T1.\"state_name\" LIKE '%California%'",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T2.\"region_name\" FROM \"State\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T1.\"state_name\" LIKE '%California%'"
+          ],
+          "answer": "West",
+          "verdict": "correct",
+          "input_tokens": 1459,
+          "output_tokens": 51
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT T2.\"region_name\" FROM \"State\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T1.\"state_name\" LIKE '%California%'",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T2.\"region_name\" FROM \"State\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T1.\"state_name\" LIKE '%California%'"
+          ],
+          "answer": "West",
+          "verdict": "correct",
+          "input_tokens": 1459,
+          "output_tokens": 51
+        }
+      ],
+      "majority_answer": "West",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "Which regions have mortality records for 'Alzheimer's disease' in '2016'?",
+      "expected_answer": "National, Midwest, West, South, Northeast",
+      "full_expected_items": [
+        "National",
+        "Midwest",
+        "West",
+        "South",
+        "Northeast"
+      ],
+      "full_result_count": 5,
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_name> \"Alzheimer's disease\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> \"2016\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> ?region_name .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT T3.\"region_name\" FROM \"MortalityRecord\" AS T1 JOIN \"Cause\" AS T2 ON T1.\"cause_id\" = T2.\"cause_id\" JOIN \"Region\" AS T3 ON T1.\"region_id\" = T3.\"region_id\" WHERE LOWER(T2.\"cause_name\") = 'alzheimer''s disease' AND T1.\"year_id\" = 2016;",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T3.\"region_name\" FROM \"MortalityRecord\" AS T1 JOIN \"Cause\" AS T2 ON T1.\"cause_id\" = T2.\"cause_id\" JOIN \"Region\" AS T3 ON T1.\"region_id\" = T3.\"region_id\" WHERE LOWER(T2.\"cause_name\") = 'alzheimer''s disease' AND T1.\"year_id\" = 2016;"
+          ],
+          "answer": "region_name: South\nregion_name: West\nregion_name: Northeast\nregion_name: Midwest\nregion_name: National",
+          "verdict": "correct",
+          "input_tokens": 1479,
+          "output_tokens": 97
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT T3.\"region_name\" FROM \"MortalityRecord\" AS T1 JOIN \"Cause\" AS T2 ON T1.\"cause_id\" = T2.\"cause_id\" JOIN \"Region\" AS T3 ON T1.\"region_id\" = T3.\"region_id\" WHERE LOWER(T2.\"cause_name\") = 'alzheimer''s disease' AND T1.\"year_id\" = 2016;",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T3.\"region_name\" FROM \"MortalityRecord\" AS T1 JOIN \"Cause\" AS T2 ON T1.\"cause_id\" = T2.\"cause_id\" JOIN \"Region\" AS T3 ON T1.\"region_id\" = T3.\"region_id\" WHERE LOWER(T2.\"cause_name\") = 'alzheimer''s disease' AND T1.\"year_id\" = 2016;"
+          ],
+          "answer": "region_name: South\nregion_name: West\nregion_name: Northeast\nregion_name: Midwest\nregion_name: National",
+          "verdict": "correct",
+          "input_tokens": 1479,
+          "output_tokens": 97
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT T3.\"region_name\" FROM \"MortalityRecord\" AS T1 JOIN \"Cause\" AS T2 ON T1.\"cause_id\" = T2.\"cause_id\" JOIN \"Region\" AS T3 ON T1.\"region_id\" = T3.\"region_id\" WHERE LOWER(T2.\"cause_name\") = 'alzheimer''s disease' AND T1.\"year_id\" = 2016;",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T3.\"region_name\" FROM \"MortalityRecord\" AS T1 JOIN \"Cause\" AS T2 ON T1.\"cause_id\" = T2.\"cause_id\" JOIN \"Region\" AS T3 ON T1.\"region_id\" = T3.\"region_id\" WHERE LOWER(T2.\"cause_name\") = 'alzheimer''s disease' AND T1.\"year_id\" = 2016;"
+          ],
+          "answer": "region_name: South\nregion_name: West\nregion_name: Northeast\nregion_name: Midwest\nregion_name: National",
+          "verdict": "correct",
+          "input_tokens": 1479,
+          "output_tokens": 97
+        }
+      ],
+      "majority_answer": "region_name: South\nregion_name: West\nregion_name: Northeast\nregion_name: Midwest\nregion_name: National",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "Count the number of distinct causes associated with mortality records in states that are part of the 'Midwest' region.",
+      "expected_answer": "11",
+      "full_expected_items": [
+        "11"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?cause) AS ?distinct_causes_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> \"Midwest\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT T1.\"cause_id\") FROM \"MortalityRecord\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T2.\"region_name\" = 'Midwest'",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT T1.\"cause_id\") FROM \"MortalityRecord\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T2.\"region_name\" = 'Midwest'"
+          ],
+          "answer": "11",
+          "verdict": "correct",
+          "input_tokens": 1477,
+          "output_tokens": 57
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT T1.\"cause_id\") FROM \"MortalityRecord\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T2.\"region_name\" = 'Midwest'",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT T1.\"cause_id\") FROM \"MortalityRecord\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T2.\"region_name\" = 'Midwest'"
+          ],
+          "answer": "11",
+          "verdict": "correct",
+          "input_tokens": 1477,
+          "output_tokens": 57
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT T1.\"cause_id\") FROM \"MortalityRecord\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T2.\"region_name\" = 'Midwest'",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT T1.\"cause_id\") FROM \"MortalityRecord\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_id\" = T2.\"region_id\" WHERE T2.\"region_name\" = 'Midwest'"
+          ],
+          "answer": "11",
+          "verdict": "correct",
+          "input_tokens": 1477,
+          "output_tokens": 57
+        }
+      ],
+      "majority_answer": "11",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "List the cause categories that include causes with mortality records in 'Washington' state for the year '2010'.",
+      "expected_answer": "Injury / External Cause, Chronic Disease, All Causes (Roll-up), Infectious Disease",
+      "full_expected_items": [
+        "Injury / External Cause",
+        "Chronic Disease",
+        "All Causes (Roll-up)",
+        "Infectious Disease"
+      ],
+      "full_result_count": 4,
+      "gold_sparql": "SELECT DISTINCT ?cause_category_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> \"Washington\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> \"2010\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_in_category> ?cause_category .\n  ?cause_category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?cause_category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_category_name> ?cause_category_name .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT T3.\"cause_category_name\" FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" JOIN \"CauseCategory\" AS T3 ON T1.\"cause_category_id\" = T3.\"cause_category_id\" WHERE T2.\"state_name\" = 'Washington' AND T1.\"year_id\" = 2010;",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T3.\"cause_category_name\" FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" JOIN \"CauseCategory\" AS T3 ON T1.\"cause_category_id\" = T3.\"cause_category_id\" WHERE T2.\"state_name\" = 'Washington' AND T1.\"year_id\" = 2010;"
+          ],
+          "answer": "cause_category_name: Injury / External Cause\ncause_category_name: All Causes (Roll-up)\ncause_category_name: Chronic Disease\ncause_category_name: Infectious Disease",
+          "verdict": "correct",
+          "input_tokens": 1460,
+          "output_tokens": 98
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT T3.\"cause_category_name\" FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" JOIN \"CauseCategory\" AS T3 ON T1.\"cause_category_id\" = T3.\"cause_category_id\" WHERE T2.\"state_name\" = 'Washington' AND T1.\"year_id\" = 2010;",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T3.\"cause_category_name\" FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" JOIN \"CauseCategory\" AS T3 ON T1.\"cause_category_id\" = T3.\"cause_category_id\" WHERE T2.\"state_name\" = 'Washington' AND T1.\"year_id\" = 2010;"
+          ],
+          "answer": "cause_category_name: Injury / External Cause\ncause_category_name: All Causes (Roll-up)\ncause_category_name: Chronic Disease\ncause_category_name: Infectious Disease",
+          "verdict": "correct",
+          "input_tokens": 1460,
+          "output_tokens": 98
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT T3.\"cause_category_name\" FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" JOIN \"CauseCategory\" AS T3 ON T1.\"cause_category_id\" = T3.\"cause_category_id\" WHERE T2.\"state_name\" = 'Washington' AND T1.\"year_id\" = 2010;",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T3.\"cause_category_name\" FROM \"MortalityRecord\" AS T1 JOIN \"State\" AS T2 ON T1.\"state_id\" = T2.\"state_id\" JOIN \"CauseCategory\" AS T3 ON T1.\"cause_category_id\" = T3.\"cause_category_id\" WHERE T2.\"state_name\" = 'Washington' AND T1.\"year_id\" = 2010;"
+          ],
+          "answer": "cause_category_name: Injury / External Cause\ncause_category_name: All Causes (Roll-up)\ncause_category_name: Chronic Disease\ncause_category_name: Infectious Disease",
+          "verdict": "correct",
+          "input_tokens": 1460,
+          "output_tokens": 98
+        }
+      ],
+      "majority_answer": "cause_category_name: Injury / External Cause\ncause_category_name: All Causes (Roll-up)\ncause_category_name: Chronic Disease\ncause_category_name: Infectious Disease",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    }
+  ],
+  "schema": "-- SQLite database schema\n\n-- Table MortalityRecord: 10868 rows (from MortalityRecord.csv)\nCREATE TABLE \"MortalityRecord\" (\n  \"record_id\" TEXT,\n  \"year_id\" INTEGER,\n  \"cause_id\" TEXT,\n  \"state_id\" TEXT,\n  \"region_id\" TEXT,\n  \"decade_id\" TEXT,\n  \"cause_category_id\" TEXT,\n  \"deaths\" INTEGER,\n  \"age_adjusted_rate\" REAL\n);\n-- sample rows from MortalityRecord:\n--   record_id='2017__unintentional_injuries__US', year_id='2017', cause_id='unintentional_injuries', state_id='US', region_id='national', decade_id='2010s', cause_category_id='injury', deaths='169936', age_adjusted_rate='49.4'\n--   record_id='2017__unintentional_injuries__AL', year_id='2017', cause_id='unintentional_injuries', state_id='AL', region_id='south', decade_id='2010s', cause_category_id='injury', deaths='2703', age_adjusted_rate='53.8'\n\n-- Table Cause: 11 rows (from Cause.csv)\nCREATE TABLE \"Cause\" (\n  \"cause_id\" TEXT,\n  \"cause_name\" TEXT,\n  \"icd_description\" TEXT,\n  \"cause_category_id\" TEXT\n);\n-- sample rows from Cause:\n--   cause_id='unintentional_injuries', cause_name='Unintentional injuries', icd_description='Accidents (unintentional injuries) (V01-', cause_category_id='injury'\n--   cause_id='all_causes', cause_name='All causes', icd_description='All Causes', cause_category_id='all_causes'\n\n-- Table CauseCategory: 4 rows (from CauseCategory.csv)\nCREATE TABLE \"CauseCategory\" (\n  \"cause_category_id\" TEXT,\n  \"cause_category_name\" TEXT,\n  \"cause_count\" INTEGER\n);\n-- sample rows from CauseCategory:\n--   cause_category_id='all_causes', cause_category_name='All Causes (Roll-up)', cause_count='1'\n--   cause_category_id='chronic_disease', cause_category_name='Chronic Disease', cause_count='7'\n\n-- Table State: 52 rows (from State.csv)\nCREATE TABLE \"State\" (\n  \"state_id\" TEXT,\n  \"state_name\" TEXT,\n  \"region_id\" TEXT\n);\n-- sample rows from State:\n--   state_id='US', state_name='United States', region_id='national'\n--   state_id='AL', state_name='Alabama', region_id='south'\n\n-- Table Region: 5 rows (from Region.csv)\nCREATE TABLE \"Region\" (\n  \"region_id\" TEXT,\n  \"region_name\" TEXT\n);\n-- sample rows from Region:\n--   region_id='national', region_name='National'\n--   region_id='south', region_name='South'\n\n-- Table Year: 19 rows (from Year.csv)\nCREATE TABLE \"Year\" (\n  \"year_id\" INTEGER,\n  \"year\" INTEGER,\n  \"decade_id\" TEXT\n);\n-- sample rows from Year:\n--   year_id='2017', year='2017', decade_id='2010s'\n--   year_id='2007', year='2007', decade_id='2000s'\n\n-- Table Decade: 3 rows (from Decade.csv)\nCREATE TABLE \"Decade\" (\n  \"decade_id\" TEXT,\n  \"decade_label\" TEXT,\n  \"start_year\" INTEGER\n);\n-- sample rows from Decade:\n--   decade_id='2010s', decade_label='2010s', start_year='2010'\n--   decade_id='2000s', decade_label='2000s', start_year='2000'\n\n-- Foreign key hints (join on these):\n--   Cause.cause_id -> CauseCategory.cause_category_id\n--   Cause.cause_id -> MortalityRecord.record_id\n--   CauseCategory.cause_category_id -> Cause.cause_id\n--   Decade.decade_id -> Year.year_id\n--   MortalityRecord.record_id -> Cause.cause_id\n--   MortalityRecord.record_id -> Region.region_id\n--   MortalityRecord.record_id -> State.state_id\n--   MortalityRecord.record_id -> Year.year_id\n--   Region.region_id -> MortalityRecord.record_id\n--   Region.region_id -> State.state_id\n--   State.state_id -> MortalityRecord.record_id\n--   State.state_id -> Region.region_id\n--   Year.year_id -> Decade.decade_id\n--   Year.year_id -> MortalityRecord.record_id\n"
+}

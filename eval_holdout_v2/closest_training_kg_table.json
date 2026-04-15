@@ -1,0 +1,253 @@
+{
+  "generated_at": "2026-04-15T07:48:37Z",
+  "source": "HOLDOUT_V2_SPEC \u00a78.2 item 13",
+  "training_kgs_v9": {
+    "path": "eval_holdout_v2/training_kgs_v9.json",
+    "sha256_prefix": "01ff1342",
+    "kg_count": 36
+  },
+  "thresholds": {
+    "hard_type_threshold": 3,
+    "hard_rel_threshold": 2,
+    "jaccard_threshold": 0.3
+  },
+  "manifest_sha256_prefix": "67bcf1d1",
+  "missing_training_schemas": [],
+  "rows": [
+    {
+      "kg_id": "holdout-v2-cms-nursing-home-compare",
+      "closest_training_kg": "cms-nursing-home-providers",
+      "type_overlap_count": 2,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0513,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-samhsa-n-ssats",
+      "closest_training_kg": "cms-readmissions",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0435,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-medicare-part-d-pricing",
+      "closest_training_kg": "fda-adverse-events",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0222,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-hrsa-hpsa",
+      "closest_training_kg": "cms-hospital-quality",
+      "type_overlap_count": 6,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.1154,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-cdc-fluview",
+      "closest_training_kg": "coffee-quality",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0435,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "closest_training_kg": "cms-hospital-quality",
+      "type_overlap_count": 2,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0417,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-npi-registry",
+      "closest_training_kg": "cms-nursing-home-providers",
+      "type_overlap_count": 3,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0698,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-sec-edgar-10k",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-fdic-call-reports",
+      "closest_training_kg": "cms-readmissions",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.05,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-cftc-swap-data",
+      "closest_training_kg": "coffee-quality",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0417,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-ncua-credit-union-call-reports",
+      "closest_training_kg": "cms-readmissions",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0476,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-finra-trace-corporate-bonds",
+      "closest_training_kg": null,
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PENDING",
+      "notes": "not yet ingested (triple_count=0)"
+    },
+    {
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-patentsview",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-scdb-supreme-court",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-doj-enforcement-actions",
+      "closest_training_kg": "universities",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0476,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-ftc-consent-decrees",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-uspto-trademarks",
+      "closest_training_kg": "fda-drug-recalls",
+      "type_overlap_count": 2,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0426,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-pacer-federal-dockets",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-fec-enforcement",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "nsf-awards",
+      "closest_training_kg": null,
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PENDING",
+      "notes": "not a holdout-v2- KG id (placeholder row)"
+    },
+    {
+      "kg_id": "holdout-v2-nih-reporter-non-clinical",
+      "closest_training_kg": "cms-readmissions",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0556,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-fema-disaster-declarations",
+      "closest_training_kg": "cms-hospital-quality",
+      "type_overlap_count": 3,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.075,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-fema-disaster-declarations-multitable",
+      "closest_training_kg": "cms-hospital-infections",
+      "type_overlap_count": 2,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0645,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-epa-water-quality-portal",
+      "closest_training_kg": "cms-nursing-home-providers",
+      "type_overlap_count": 2,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0556,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-noaa-storm-events",
+      "closest_training_kg": "cms-hospital-infections",
+      "type_overlap_count": 2,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0714,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "holdout-v2-usda-agricultural-statistics",
+      "closest_training_kg": "cms-readmissions",
+      "type_overlap_count": 1,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0556,
+      "verdict": "PASS"
+    },
+    {
+      "kg_id": "doe-energy-research-grants",
+      "closest_training_kg": null,
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PENDING",
+      "notes": "not a holdout-v2- KG id (placeholder row)"
+    },
+    {
+      "kg_id": "holdout-v2-doe-energy-research-grants",
+      "closest_training_kg": "cfpb-bank-accounts",
+      "type_overlap_count": 0,
+      "relationship_overlap_count": 0,
+      "max_jaccard_vs_training": 0.0,
+      "verdict": "PASS"
+    }
+  ]
+}

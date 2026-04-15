@@ -1,0 +1,377 @@
+{
+  "generated_at": "2026-04-14T20:40:22Z",
+  "primary_model": "google/gemini-2.5-flash",
+  "aggregates": [
+    {
+      "model": "google/gemini-2.5-flash",
+      "is_primary": true,
+      "n_calls": 234,
+      "n_correct": 189,
+      "n_questions": 78,
+      "accuracy": 0.8076923076923077,
+      "ci_display": "80.8% [75.2, 85.3]",
+      "wall_clock_seconds": 516.5324590206146,
+      "by_domain": {
+        "finance": {
+          "correct": 45,
+          "n": 60,
+          "accuracy": 0.75,
+          "ci_display": "75.0% [62.8, 84.2]"
+        },
+        "healthcare": {
+          "correct": 52,
+          "n": 63,
+          "accuracy": 0.8253968253968254,
+          "ci_display": "82.5% [71.4, 90.0]"
+        },
+        "legal": {
+          "correct": 24,
+          "n": 30,
+          "accuracy": 0.8,
+          "ci_display": "80.0% [62.7, 90.5]"
+        },
+        "scientific_public_sector": {
+          "correct": 68,
+          "n": 81,
+          "accuracy": 0.8395061728395061,
+          "ci_display": "84.0% [74.5, 90.4]"
+        }
+      },
+      "by_tier": {
+        "T1": {
+          "correct": 83,
+          "n": 96,
+          "accuracy": 0.8645833333333334,
+          "ci_display": "86.5% [78.2, 91.9]"
+        },
+        "T2": {
+          "correct": 38,
+          "n": 48,
+          "accuracy": 0.7916666666666666,
+          "ci_display": "79.2% [65.7, 88.3]"
+        },
+        "T3": {
+          "correct": 42,
+          "n": 63,
+          "accuracy": 0.6666666666666666,
+          "ci_display": "66.7% [54.4, 77.1]"
+        },
+        "T4": {
+          "correct": 26,
+          "n": 27,
+          "accuracy": 0.9629629629629629,
+          "ci_display": "96.3% [81.7, 99.3]"
+        }
+      },
+      "by_kg": {
+        "holdout-v2-cms-nursing-home-compare": {
+          "correct": 23,
+          "n": 30,
+          "accuracy": 0.7666666666666667,
+          "domain": "healthcare"
+        },
+        "holdout-v2-fdic-call-reports": {
+          "correct": 9,
+          "n": 24,
+          "accuracy": 0.375,
+          "domain": "finance"
+        },
+        "holdout-v2-fema-disaster-declarations": {
+          "correct": 17,
+          "n": 27,
+          "accuracy": 0.6296296296296297,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-fema-disaster-declarations-multitable": {
+          "correct": 27,
+          "n": 30,
+          "accuracy": 0.9,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-hrsa-hpsa": {
+          "correct": 29,
+          "n": 33,
+          "accuracy": 0.8787878787878788,
+          "domain": "healthcare"
+        },
+        "holdout-v2-ncua-credit-union-call-reports": {
+          "correct": 36,
+          "n": 36,
+          "accuracy": 1.0,
+          "domain": "finance"
+        },
+        "holdout-v2-nih-reporter-non-clinical": {
+          "correct": 24,
+          "n": 24,
+          "accuracy": 1.0,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-patentsview": {
+          "correct": 24,
+          "n": 30,
+          "accuracy": 0.8,
+          "domain": "legal"
+        }
+      },
+      "latency_ms": {
+        "p50": 2769.959330558777,
+        "p95": 23239.83007669449,
+        "p99": 74943.35892677306,
+        "mean": 7402.17930638892
+      },
+      "cost_usd_estimated": 0.06844499999999999
+    },
+    {
+      "model": "anthropic/claude-sonnet-4.6",
+      "is_primary": false,
+      "n_calls": 234,
+      "n_correct": 179,
+      "n_questions": 78,
+      "accuracy": 0.7649572649572649,
+      "ci_display": "76.5% [70.7, 81.5]",
+      "wall_clock_seconds": 768.0167608261108,
+      "by_domain": {
+        "finance": {
+          "correct": 47,
+          "n": 60,
+          "accuracy": 0.7833333333333333,
+          "ci_display": "78.3% [66.4, 86.9]"
+        },
+        "healthcare": {
+          "correct": 57,
+          "n": 63,
+          "accuracy": 0.9047619047619048,
+          "ci_display": "90.5% [80.7, 95.6]"
+        },
+        "legal": {
+          "correct": 27,
+          "n": 30,
+          "accuracy": 0.9,
+          "ci_display": "90.0% [74.4, 96.5]"
+        },
+        "scientific_public_sector": {
+          "correct": 48,
+          "n": 81,
+          "accuracy": 0.5925925925925926,
+          "ci_display": "59.3% [48.4, 69.3]"
+        }
+      },
+      "by_tier": {
+        "T1": {
+          "correct": 78,
+          "n": 96,
+          "accuracy": 0.8125,
+          "ci_display": "81.2% [72.3, 87.8]"
+        },
+        "T2": {
+          "correct": 39,
+          "n": 48,
+          "accuracy": 0.8125,
+          "ci_display": "81.2% [68.1, 89.8]"
+        },
+        "T3": {
+          "correct": 41,
+          "n": 63,
+          "accuracy": 0.6507936507936508,
+          "ci_display": "65.1% [52.8, 75.7]"
+        },
+        "T4": {
+          "correct": 21,
+          "n": 27,
+          "accuracy": 0.7777777777777778,
+          "ci_display": "77.8% [59.2, 89.4]"
+        }
+      },
+      "by_kg": {
+        "holdout-v2-cms-nursing-home-compare": {
+          "correct": 27,
+          "n": 30,
+          "accuracy": 0.9,
+          "domain": "healthcare"
+        },
+        "holdout-v2-fdic-call-reports": {
+          "correct": 12,
+          "n": 24,
+          "accuracy": 0.5,
+          "domain": "finance"
+        },
+        "holdout-v2-fema-disaster-declarations": {
+          "correct": 18,
+          "n": 27,
+          "accuracy": 0.6666666666666666,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-fema-disaster-declarations-multitable": {
+          "correct": 6,
+          "n": 30,
+          "accuracy": 0.2,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-hrsa-hpsa": {
+          "correct": 30,
+          "n": 33,
+          "accuracy": 0.9090909090909091,
+          "domain": "healthcare"
+        },
+        "holdout-v2-ncua-credit-union-call-reports": {
+          "correct": 35,
+          "n": 36,
+          "accuracy": 0.9722222222222222,
+          "domain": "finance"
+        },
+        "holdout-v2-nih-reporter-non-clinical": {
+          "correct": 24,
+          "n": 24,
+          "accuracy": 1.0,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-patentsview": {
+          "correct": 27,
+          "n": 30,
+          "accuracy": 0.9,
+          "domain": "legal"
+        }
+      },
+      "latency_ms": {
+        "p50": 6238.656401634216,
+        "p95": 28570.031046867367,
+        "p99": 46311.36051654813,
+        "mean": 9198.883124905773
+      },
+      "cost_usd_estimated": 2.9835
+    },
+    {
+      "model": "openai/gpt-5-mini",
+      "is_primary": false,
+      "n_calls": 234,
+      "n_correct": 96,
+      "n_questions": 78,
+      "accuracy": 0.41025641025641024,
+      "ci_display": "41.0% [34.9, 47.4]",
+      "wall_clock_seconds": 1051.9599151611328,
+      "by_domain": {
+        "finance": {
+          "correct": 29,
+          "n": 60,
+          "accuracy": 0.48333333333333334,
+          "ci_display": "48.3% [36.2, 60.7]"
+        },
+        "healthcare": {
+          "correct": 26,
+          "n": 63,
+          "accuracy": 0.4126984126984127,
+          "ci_display": "41.3% [30.0, 53.6]"
+        },
+        "legal": {
+          "correct": 12,
+          "n": 30,
+          "accuracy": 0.4,
+          "ci_display": "40.0% [24.6, 57.7]"
+        },
+        "scientific_public_sector": {
+          "correct": 29,
+          "n": 81,
+          "accuracy": 0.35802469135802467,
+          "ci_display": "35.8% [26.2, 46.7]"
+        }
+      },
+      "by_tier": {
+        "T1": {
+          "correct": 76,
+          "n": 96,
+          "accuracy": 0.7916666666666666,
+          "ci_display": "79.2% [70.0, 86.1]"
+        },
+        "T2": {
+          "correct": 16,
+          "n": 48,
+          "accuracy": 0.3333333333333333,
+          "ci_display": "33.3% [21.7, 47.5]"
+        },
+        "T3": {
+          "correct": 4,
+          "n": 63,
+          "accuracy": 0.06349206349206349,
+          "ci_display": "6.3% [2.5, 15.2]"
+        },
+        "T4": {
+          "correct": 0,
+          "n": 27,
+          "accuracy": 0.0,
+          "ci_display": "0.0% [0.0, 12.5]"
+        }
+      },
+      "by_kg": {
+        "holdout-v2-cms-nursing-home-compare": {
+          "correct": 9,
+          "n": 30,
+          "accuracy": 0.3,
+          "domain": "healthcare"
+        },
+        "holdout-v2-fdic-call-reports": {
+          "correct": 9,
+          "n": 24,
+          "accuracy": 0.375,
+          "domain": "finance"
+        },
+        "holdout-v2-fema-disaster-declarations": {
+          "correct": 8,
+          "n": 27,
+          "accuracy": 0.2962962962962963,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-fema-disaster-declarations-multitable": {
+          "correct": 6,
+          "n": 30,
+          "accuracy": 0.2,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-hrsa-hpsa": {
+          "correct": 17,
+          "n": 33,
+          "accuracy": 0.5151515151515151,
+          "domain": "healthcare"
+        },
+        "holdout-v2-ncua-credit-union-call-reports": {
+          "correct": 20,
+          "n": 36,
+          "accuracy": 0.5555555555555556,
+          "domain": "finance"
+        },
+        "holdout-v2-nih-reporter-non-clinical": {
+          "correct": 15,
+          "n": 24,
+          "accuracy": 0.625,
+          "domain": "scientific_public_sector"
+        },
+        "holdout-v2-patentsview": {
+          "correct": 12,
+          "n": 30,
+          "accuracy": 0.4,
+          "domain": "legal"
+        }
+      },
+      "latency_ms": {
+        "p50": 14521.518588066101,
+        "p95": 49723.28618764877,
+        "p99": 60184.628758430474,
+        "mean": 18081.512233130954
+      },
+      "cost_usd_estimated": 1.3689
+    }
+  ],
+  "agreement": {
+    "two_of_three": 28,
+    "all_right": 31,
+    "all_wrong": 10,
+    "all_disagree": 9
+  },
+  "best_by_domain": {
+    "finance": "anthropic/claude-sonnet-4.6",
+    "healthcare": "anthropic/claude-sonnet-4.6",
+    "legal": "anthropic/claude-sonnet-4.6",
+    "scientific_public_sector": "google/gemini-2.5-flash"
+  },
+  "total_cost_usd_estimated": 4.420845,
+  "total_wall_clock_seconds": 2336.5091350078583
+}

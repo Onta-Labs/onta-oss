@@ -1,0 +1,614 @@
+{
+  "kg": "holdout-v2-scdb-supreme-court",
+  "results": [
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many unique Supreme Court cases are recorded?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?case) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n}",
+      "expected_answer": "9341",
+      "full_expected_items": [
+        "9341"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all the names of the Chief Justices.",
+      "gold_sparql": "SELECT ?chiefName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?chiefJustice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chiefJustice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chiefName .\n}",
+      "expected_answer": "Vinson, Warren, Burger, Rehnquist, Roberts",
+      "full_expected_items": [
+        "Vinson",
+        "Warren",
+        "Burger",
+        "Rehnquist",
+        "Roberts"
+      ],
+      "full_result_count": 5,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Warren, Roberts, Rehnquist, Burger, Vinson",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Warren, Roberts, Rehnquist, Burger, Vinson",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Warren, Roberts, Rehnquist, Burger, Vinson",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Warren, Roberts, Rehnquist, Burger, Vinson",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "How many distinct issue areas are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?issueArea) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issueArea <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n}",
+      "expected_answer": "14",
+      "full_expected_items": [
+        "14"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "9",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "What are the names of all the Justices?",
+      "gold_sparql": "SELECT ?justiceName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justiceName .\n}",
+      "expected_answer": "BRWhite, ACBarrett, EKagan, SSotomayor, NMGorsuch, BMKavanaugh, SGBreyer, JGRoberts, SAAlito, RBGinsburg ... (40 total)",
+      "full_expected_items": [
+        "BRWhite",
+        "ACBarrett",
+        "EKagan",
+        "SSotomayor",
+        "NMGorsuch",
+        "BMKavanaugh",
+        "SGBreyer",
+        "JGRoberts",
+        "SAAlito",
+        "RBGinsburg",
+        "AMKennedy",
+        "DHSouter",
+        "CThomas",
+        "AScalia",
+        "KBJackson",
+        "HHBurton",
+        "RHJackson",
+        "SFReed",
+        "WODouglas",
+        "HLBlack",
+        "HABlackmun",
+        "AFortas",
+        "TMarshall",
+        "JPStevens",
+        "SDOConnor",
+        "LFPowell",
+        "WHRehnquist",
+        "AJGoldberg",
+        "CEWhittaker",
+        "WEBurger",
+        "PStewart",
+        "SMinton",
+        "EWarren",
+        "WJBrennan",
+        "JHarlan2",
+        "WBRutledge",
+        "FMurphy",
+        "FMVinson",
+        "TCClark",
+        "FFrankfurter"
+      ],
+      "full_result_count": 40,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "ACBarrett, AScalia, WHRehnquist, LFPowell, EKagan, SDOConnor, CEWhittaker, FMurphy, FMVinson, WODouglas",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "ACBarrett, AScalia, WHRehnquist, LFPowell, EKagan, SDOConnor, CEWhittaker, FMurphy, FMVinson, WODouglas",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "ACBarrett, AScalia, WHRehnquist, LFPowell, EKagan, SDOConnor, CEWhittaker, FMurphy, FMVinson, WODouglas",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "ACBarrett, AScalia, WHRehnquist, LFPowell, EKagan, SDOConnor, CEWhittaker, FMurphy, FMVinson, WODouglas",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "List the names of justices whose names contain 'Burton'.",
+      "gold_sparql": "SELECT ?justice_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  FILTER(CONTAINS(?justice_name, \"Burton\"))\n}",
+      "expected_answer": "HHBurton",
+      "full_expected_items": [
+        "HHBurton"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "HHBurton",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "HHBurton",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "HHBurton",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "HHBurton",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "How many terms occurred after the year 1990?",
+      "gold_sparql": "SELECT (COUNT(?term_entity) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?term_entity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term_entity <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_year .\n  FILTER(xsd:integer(?term_year) > 1990)\n}",
+      "expected_answer": "34",
+      "full_expected_items": [
+        "34"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "9",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "Find all issue areas related to 'Civil Rights'.",
+      "gold_sparql": "SELECT ?issue_area_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?issue_area <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/IssueArea> .\n  ?issue_area <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/issue_area_name> ?issue_area_name .\n  FILTER(?issue_area_name = \"Civil Rights\")\n}",
+      "expected_answer": "Civil Rights",
+      "full_expected_items": [
+        "Civil Rights"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Civil Rights",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Civil Rights",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Civil Rights",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Civil Rights",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-008",
+      "tier": "T3",
+      "question": "How many cases were decided under each Chief Justice?",
+      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n} GROUP BY ?chief_name ORDER BY DESC(?case_count)",
+      "expected_answer": "Burger | 2809\nWarren | 2205\nRehnquist | 2044\nRoberts | 1471\nVinson | 812",
+      "full_expected_items": [
+        "Burger | 2809",
+        "Warren | 2205",
+        "Rehnquist | 2044",
+        "Roberts | 1471",
+        "Vinson | 812"
+      ],
+      "full_result_count": 5,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Vinson: 10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Vinson: 10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Vinson: 10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Vinson: 10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many cases were decided in each term, specifically for terms after 1980?",
+      "gold_sparql": "SELECT ?term_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> ?term_name .\n  FILTER (xsd:integer(?term_name) > 1980)\n} GROUP BY ?term_name ORDER BY ?term_name",
+      "expected_answer": "1981 | 177\n1982 | 166\n1983 | 173\n1984 | 165\n1985 | 165\n1986 | 161\n1987 | 153\n1988 | 152\n1989 | 140\n1990 | 129\n... (44 total rows)",
+      "full_expected_items": [
+        "1981 | 177",
+        "1982 | 166",
+        "1983 | 173",
+        "1984 | 165",
+        "1985 | 165",
+        "1986 | 161",
+        "1987 | 153",
+        "1988 | 152",
+        "1989 | 140",
+        "1990 | 129",
+        "1991 | 120",
+        "1992 | 120",
+        "1993 | 96",
+        "1994 | 92",
+        "1995 | 91",
+        "1996 | 96",
+        "1997 | 102",
+        "1998 | 92",
+        "1999 | 85",
+        "2000 | 87",
+        "2001 | 85",
+        "2002 | 84",
+        "2003 | 79",
+        "2004 | 80",
+        "2005 | 87",
+        "2006 | 75",
+        "2007 | 74",
+        "2008 | 83",
+        "2009 | 93",
+        "2010 | 84",
+        "2011 | 77",
+        "2012 | 79",
+        "2013 | 75",
+        "2014 | 74",
+        "2015 | 81",
+        "2016 | 69",
+        "2017 | 76",
+        "2018 | 73",
+        "2019 | 60",
+        "2020 | 65",
+        "2021 | 65",
+        "2022 | 58",
+        "2023 | 59",
+        "2024 | 64"
+      ],
+      "full_result_count": 44,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "For each Chief Justice, how many cases had a 'precedent alteration' of '1'?",
+      "gold_sparql": "SELECT ?chief_name (COUNT(DISTINCT ?case) AS ?case_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_under_chief> ?chief .\n  ?chief <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/ChiefJustice> .\n  ?chief <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/chief_name> ?chief_name .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/precedent_alteration> \"1\" .\n} GROUP BY ?chief_name ORDER BY ?chief_name",
+      "expected_answer": "Burger | 58\nRehnquist | 45\nRoberts | 30\nVinson | 13\nWarren | 49",
+      "full_expected_items": [
+        "Burger | 58",
+        "Rehnquist | 45",
+        "Roberts | 30",
+        "Vinson | 13",
+        "Warren | 49"
+      ],
+      "full_result_count": 5,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Vinson: 1",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Vinson: 1",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Vinson: 1",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Vinson: 1",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-scdb-supreme-court",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "List the names of Justices who voted in cases where the party winning was '1' and the case was decided in the '1996' term.",
+      "gold_sparql": "SELECT DISTINCT ?justice_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-scdb-supreme-court> WHERE {\n  ?vote <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Vote> .\n  ?vote <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_by_justice> ?justice .\n  ?justice <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Justice> .\n  ?justice <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/justice_name> ?justice_name .\n  ?vote <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/vote_in_case> ?case .\n  ?case <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Case> .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/party_winning> \"1\" .\n  ?case <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/case_decided_in_term> ?term .\n  ?term <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/type/Term> .\n  ?term <https://omnix.dev/holdout-v2/holdout-v2-scdb-supreme-court/pred/term> \"1996\" .\n}",
+      "expected_answer": "WHRehnquist, JPStevens, SDOConnor, AScalia, AMKennedy, DHSouter, CThomas, RBGinsburg, SGBreyer",
+      "full_expected_items": [
+        "WHRehnquist",
+        "JPStevens",
+        "SDOConnor",
+        "AScalia",
+        "AMKennedy",
+        "DHSouter",
+        "CThomas",
+        "RBGinsburg",
+        "SGBreyer"
+      ],
+      "full_result_count": 9,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    }
+  ],
+  "n_chunks": 711,
+  "tables": [
+    {
+      "table": "Case",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Case.csv",
+      "n_rows_used": 285,
+      "n_cols": 15
+    },
+    {
+      "table": "ChiefJustice",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/ChiefJustice.csv",
+      "n_rows_used": 5,
+      "n_cols": 1
+    },
+    {
+      "table": "DecisionDirection",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/DecisionDirection.csv",
+      "n_rows_used": 3,
+      "n_cols": 2
+    },
+    {
+      "table": "IssueArea",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/IssueArea.csv",
+      "n_rows_used": 14,
+      "n_cols": 2
+    },
+    {
+      "table": "Justice",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Justice.csv",
+      "n_rows_used": 40,
+      "n_cols": 2
+    },
+    {
+      "table": "Term",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Term.csv",
+      "n_rows_used": 79,
+      "n_cols": 1
+    },
+    {
+      "table": "Vote",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-scdb-supreme-court/Vote.csv",
+      "n_rows_used": 285,
+      "n_cols": 7
+    }
+  ]
+}

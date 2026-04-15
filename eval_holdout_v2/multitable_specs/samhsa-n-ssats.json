@@ -1,0 +1,164 @@
+{
+  "kg_name": "holdout-v2-samhsa-n-ssats",
+  "_source": "SAMHSA N-SSATS 2020 Public Use File. See scripts/prep_samhsa_nssats_multitable.py.",
+  "_notes": [
+    "N-SSATS was discontinued after 2020; replaced by N-SUMHSS starting 2021.",
+    "The raw PUF is a wide single-table with 262 binary-flag columns; we explode into 6 entity types.",
+    "Service, PaymentType, ClientType, TreatmentApproach are reference tables; TreatmentFacility is the anchor.",
+    "Junction tables (FacilityService, FacilityPayment, FacilityClientType, FacilityApproach) encode N:N relationships.",
+    "FacilityService is capped at 80,000 rows to keep ingest reasonable (~16k facilities x ~85 services).",
+    "State is derived from TreatmentFacility.state (one row per distinct state/territory code)."
+  ],
+  "entity_types": [
+    {
+      "name": "TreatmentFacility",
+      "source_csv": "TreatmentFacility.csv",
+      "primary_key": "facility_id",
+      "label_column": "facility_id",
+      "attributes": [
+        "state",
+        "state_fips",
+        "ownership_type",
+        "offers_detox",
+        "offers_treatment",
+        "offers_smi_sed_sud",
+        "is_hospital",
+        "is_otp",
+        "fee_scale",
+        "payment_assistance",
+        "is_accredited",
+        "is_licensed",
+        "num_locations",
+        "hospital_beds",
+        "residential_beds"
+      ]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_code",
+      "label_column": "state_name",
+      "attributes": ["state_name", "facility_count"]
+    },
+    {
+      "name": "Service",
+      "source_csv": "Service.csv",
+      "primary_key": "service_id",
+      "label_column": "service_name",
+      "attributes": ["service_name"]
+    },
+    {
+      "name": "PaymentType",
+      "source_csv": "PaymentType.csv",
+      "primary_key": "payment_id",
+      "label_column": "payment_name",
+      "attributes": ["payment_name"]
+    },
+    {
+      "name": "ClientType",
+      "source_csv": "ClientType.csv",
+      "primary_key": "client_type_id",
+      "label_column": "client_type_name",
+      "attributes": ["client_type_name"]
+    },
+    {
+      "name": "TreatmentApproach",
+      "source_csv": "TreatmentApproach.csv",
+      "primary_key": "approach_id",
+      "label_column": "approach_name",
+      "attributes": ["approach_name"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "located_in_state",
+      "source_csv": "TreatmentFacility.csv",
+      "subject_type": "TreatmentFacility",
+      "subject_key_column": "facility_id",
+      "object_type": "State",
+      "object_key_column": "state",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "offers_service",
+      "source_csv": "FacilityService.csv",
+      "subject_type": "TreatmentFacility",
+      "subject_key_column": "facility_id",
+      "object_type": "Service",
+      "object_key_column": "service_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "accepts_payment",
+      "source_csv": "FacilityPayment.csv",
+      "subject_type": "TreatmentFacility",
+      "subject_key_column": "facility_id",
+      "object_type": "PaymentType",
+      "object_key_column": "payment_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "serves_client_type",
+      "source_csv": "FacilityClientType.csv",
+      "subject_type": "TreatmentFacility",
+      "subject_key_column": "facility_id",
+      "object_type": "ClientType",
+      "object_key_column": "client_type_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "uses_approach",
+      "source_csv": "FacilityApproach.csv",
+      "subject_type": "TreatmentFacility",
+      "subject_key_column": "facility_id",
+      "object_type": "TreatmentApproach",
+      "object_key_column": "approach_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "service_at_facility",
+      "source_csv": "FacilityService.csv",
+      "subject_type": "Service",
+      "subject_key_column": "service_id",
+      "object_type": "TreatmentFacility",
+      "object_key_column": "facility_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "payment_at_facility",
+      "source_csv": "FacilityPayment.csv",
+      "subject_type": "PaymentType",
+      "subject_key_column": "payment_id",
+      "object_type": "TreatmentFacility",
+      "object_key_column": "facility_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "client_type_at_facility",
+      "source_csv": "FacilityClientType.csv",
+      "subject_type": "ClientType",
+      "subject_key_column": "client_type_id",
+      "object_type": "TreatmentFacility",
+      "object_key_column": "facility_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "approach_at_facility",
+      "source_csv": "FacilityApproach.csv",
+      "subject_type": "TreatmentApproach",
+      "subject_key_column": "approach_id",
+      "object_type": "TreatmentFacility",
+      "object_key_column": "facility_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "state_has_facility",
+      "source_csv": "TreatmentFacility.csv",
+      "subject_type": "State",
+      "subject_key_column": "state",
+      "object_type": "TreatmentFacility",
+      "object_key_column": "facility_id",
+      "cardinality": "1:N"
+    }
+  ]
+}

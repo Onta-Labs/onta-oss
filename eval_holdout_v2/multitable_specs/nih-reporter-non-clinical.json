@@ -1,0 +1,99 @@
+{
+  "kg_name": "holdout-v2-nih-reporter-non-clinical",
+  "_source": "NIH RePORTER REST API v2 (https://api.reporter.nih.gov/v2/projects/search), FY2022, non-clinical filter applied after fetch. See scripts/prep_nih_reporter_multitable.py.",
+  "_plan_ref": "Swapped in for NSF Awards (wave 6) — NSF bulk download endpoint dead 2026-04. Non-clinical = FullStudySection.name does not contain 'Clinical' (case-insensitive) AND abstract does not begin with explicit clinical-trial language. Documented in the prep script.",
+  "entity_types": [
+    {
+      "name": "Project",
+      "source_csv": "Project.csv",
+      "primary_key": "project_num",
+      "label_column": "project_title",
+      "attributes": [
+        "project_title", "fiscal_year", "award_amount",
+        "project_start_date", "project_end_date", "agency_code"
+      ]
+    },
+    {
+      "name": "Investigator",
+      "source_csv": "Investigator.csv",
+      "primary_key": "investigator_id",
+      "label_column": "investigator_name",
+      "attributes": ["investigator_name"]
+    },
+    {
+      "name": "Institution",
+      "source_csv": "Institution.csv",
+      "primary_key": "institution_id",
+      "label_column": "org_name",
+      "attributes": ["org_name", "org_city", "org_state", "org_country"]
+    },
+    {
+      "name": "StudySection",
+      "source_csv": "StudySection.csv",
+      "primary_key": "study_section_id",
+      "label_column": "study_section_name",
+      "attributes": ["study_section_name", "srg_code"]
+    },
+    {
+      "name": "Agency",
+      "source_csv": "Agency.csv",
+      "primary_key": "agency_code",
+      "label_column": "agency_name",
+      "attributes": ["agency_name", "agency_abbreviation"]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_code",
+      "label_column": "state_code",
+      "attributes": ["state_code"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "has_investigator",
+      "source_csv": "Project.csv",
+      "subject_type": "Project",
+      "subject_key_column": "project_num",
+      "object_type": "Investigator",
+      "object_key_column": "investigator_id",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "awarded_to_institution",
+      "source_csv": "Project.csv",
+      "subject_type": "Project",
+      "subject_key_column": "project_num",
+      "object_type": "Institution",
+      "object_key_column": "institution_id",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "reviewed_by",
+      "source_csv": "Project.csv",
+      "subject_type": "Project",
+      "subject_key_column": "project_num",
+      "object_type": "StudySection",
+      "object_key_column": "study_section_id",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "funded_by_agency",
+      "source_csv": "Project.csv",
+      "subject_type": "Project",
+      "subject_key_column": "project_num",
+      "object_type": "Agency",
+      "object_key_column": "agency_code",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "institution_located_in",
+      "source_csv": "Institution.csv",
+      "subject_type": "Institution",
+      "subject_key_column": "institution_id",
+      "object_type": "State",
+      "object_key_column": "org_state",
+      "cardinality": "1:1"
+    }
+  ]
+}

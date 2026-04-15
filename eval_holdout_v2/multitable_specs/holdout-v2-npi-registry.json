@@ -1,0 +1,79 @@
+{
+  "kg_name": "holdout-v2-npi-registry",
+  "_source": "NPPES NPI Registry public API (https://npiregistry.cms.hhs.gov/api/). 10,000 provider records sampled by ZIP-prefix diversity with random.seed(42). See scripts/fetch_npi_registry.py and scripts/prep_npi_registry.py.",
+  "_notes": [
+    "Provider is the anchor entity (10,000 rows).",
+    "7 entity types: Provider, ProviderType, Specialty, TaxonomyGroup, PracticeLocation, State, City.",
+    "NPI-1 (individual) and NPI-2 (organization) are both included; ProviderType models the distinction.",
+    "The bulk NPPES dissemination CSV (~8GB) was intentionally skipped in favour of the API path."
+  ],
+  "entity_types": [
+    {
+      "name": "Provider",
+      "source_csv": "Provider.csv",
+      "primary_key": "provider_id",
+      "label_column": "display_name",
+      "attributes": ["display_name", "enumeration_date", "status", "sole_proprietor"]
+    },
+    {
+      "name": "ProviderType",
+      "source_csv": "ProviderType.csv",
+      "primary_key": "provider_type_id",
+      "label_column": "provider_type_name",
+      "attributes": ["provider_type_name", "description", "provider_count"]
+    },
+    {
+      "name": "Specialty",
+      "source_csv": "Specialty.csv",
+      "primary_key": "specialty_id",
+      "label_column": "specialty_name",
+      "attributes": ["taxonomy_code", "specialty_name", "provider_count"]
+    },
+    {
+      "name": "TaxonomyGroup",
+      "source_csv": "TaxonomyGroup.csv",
+      "primary_key": "taxonomy_group_id",
+      "label_column": "taxonomy_group_name",
+      "attributes": ["taxonomy_group_name", "provider_count"]
+    },
+    {
+      "name": "PracticeLocation",
+      "source_csv": "PracticeLocation.csv",
+      "primary_key": "practice_location_id",
+      "label_column": "address_line",
+      "attributes": ["address_line", "postal_code", "phone"]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_id",
+      "label_column": "state_name",
+      "attributes": ["state_name", "country_code"]
+    },
+    {
+      "name": "City",
+      "source_csv": "City.csv",
+      "primary_key": "city_id",
+      "label_column": "city_name",
+      "attributes": ["city_name"]
+    }
+  ],
+  "relationships": [
+    {"name": "provider_of_type", "source_csv": "Provider.csv", "subject_type": "Provider", "subject_key_column": "provider_id", "object_type": "ProviderType", "object_key_column": "provider_type_id", "cardinality": "N:1"},
+    {"name": "type_includes_provider", "source_csv": "Provider.csv", "subject_type": "ProviderType", "subject_key_column": "provider_type_id", "object_type": "Provider", "object_key_column": "provider_id", "cardinality": "1:N"},
+    {"name": "provider_has_specialty", "source_csv": "Provider.csv", "subject_type": "Provider", "subject_key_column": "provider_id", "object_type": "Specialty", "object_key_column": "specialty_id", "cardinality": "N:1"},
+    {"name": "specialty_practiced_by", "source_csv": "Provider.csv", "subject_type": "Specialty", "subject_key_column": "specialty_id", "object_type": "Provider", "object_key_column": "provider_id", "cardinality": "1:N"},
+    {"name": "provider_in_state", "source_csv": "Provider.csv", "subject_type": "Provider", "subject_key_column": "provider_id", "object_type": "State", "object_key_column": "state_id", "cardinality": "N:1"},
+    {"name": "state_has_provider", "source_csv": "Provider.csv", "subject_type": "State", "subject_key_column": "state_id", "object_type": "Provider", "object_key_column": "provider_id", "cardinality": "1:N"},
+    {"name": "provider_in_city", "source_csv": "Provider.csv", "subject_type": "Provider", "subject_key_column": "provider_id", "object_type": "City", "object_key_column": "city_id", "cardinality": "N:1"},
+    {"name": "city_has_provider", "source_csv": "Provider.csv", "subject_type": "City", "subject_key_column": "city_id", "object_type": "Provider", "object_key_column": "provider_id", "cardinality": "1:N"},
+    {"name": "provider_has_practice_location", "source_csv": "PracticeLocation.csv", "subject_type": "Provider", "subject_key_column": "provider_id", "object_type": "PracticeLocation", "object_key_column": "practice_location_id", "cardinality": "1:N"},
+    {"name": "practice_location_of_provider", "source_csv": "PracticeLocation.csv", "subject_type": "PracticeLocation", "subject_key_column": "practice_location_id", "object_type": "Provider", "object_key_column": "provider_id", "cardinality": "N:1"},
+    {"name": "practice_location_in_city", "source_csv": "PracticeLocation.csv", "subject_type": "PracticeLocation", "subject_key_column": "practice_location_id", "object_type": "City", "object_key_column": "city_id", "cardinality": "N:1"},
+    {"name": "city_hosts_practice_location", "source_csv": "PracticeLocation.csv", "subject_type": "City", "subject_key_column": "city_id", "object_type": "PracticeLocation", "object_key_column": "practice_location_id", "cardinality": "1:N"},
+    {"name": "specialty_in_group", "source_csv": "Specialty.csv", "subject_type": "Specialty", "subject_key_column": "specialty_id", "object_type": "TaxonomyGroup", "object_key_column": "taxonomy_group_id", "cardinality": "N:1"},
+    {"name": "group_includes_specialty", "source_csv": "Specialty.csv", "subject_type": "TaxonomyGroup", "subject_key_column": "taxonomy_group_id", "object_type": "Specialty", "object_key_column": "specialty_id", "cardinality": "1:N"},
+    {"name": "city_in_state", "source_csv": "City.csv", "subject_type": "City", "subject_key_column": "city_id", "object_type": "State", "object_key_column": "state_id", "cardinality": "N:1"},
+    {"name": "state_contains_city", "source_csv": "City.csv", "subject_type": "State", "subject_key_column": "state_id", "object_type": "City", "object_key_column": "city_id", "cardinality": "1:N"}
+  ]
+}

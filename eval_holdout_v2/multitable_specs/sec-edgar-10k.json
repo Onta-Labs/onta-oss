@@ -1,0 +1,185 @@
+{
+  "kg_name": "holdout-v2-sec-edgar-10k",
+  "_source": "SEC EDGAR submissions API (data.sec.gov/submissions/) + EFTS search-index. 2023 10-K filings snapshot.",
+  "_notes": [
+    "Filer entity from SEC company tickers + submissions API. 500 companies that filed 10-K in 2023.",
+    "Filing entity from submissions/recent. One row per 10-K filing.",
+    "Exhibit entity from EFTS search-index. Documents attached to 10-K filings (EX-21, EX-23, EX-24, etc.).",
+    "SICCode from submissions.sic + sicDescription. 175 unique industry codes.",
+    "FiscalYear from submissions.fiscalYearEnd (MMDD format). 28 unique fiscal year end codes.",
+    "StateOfIncorporation from submissions.stateOfIncorporation. 46 unique states/jurisdictions.",
+    "FilerCategory from submissions.category. 10 unique SEC filer categories."
+  ],
+  "entity_types": [
+    {
+      "name": "Filer",
+      "source_csv": "Filer.csv",
+      "primary_key": "filer_cik",
+      "label_column": "filer_name",
+      "attributes": [
+        "filer_cik", "filer_name", "filer_ticker", "filer_sic_code",
+        "filer_entity_type", "filer_ein", "filer_category",
+        "filer_state_of_incorporation", "filer_fiscal_year_end",
+        "filer_exchange", "filer_phone"
+      ]
+    },
+    {
+      "name": "Filing",
+      "source_csv": "Filing.csv",
+      "primary_key": "filing_id",
+      "label_column": "filing_accession_number",
+      "attributes": [
+        "filing_id", "filing_filer_cik", "filing_accession_number",
+        "filing_form_type", "filing_date", "filing_report_date",
+        "filing_primary_document", "filing_primary_doc_desc"
+      ]
+    },
+    {
+      "name": "Exhibit",
+      "source_csv": "Exhibit.csv",
+      "primary_key": "exhibit_id",
+      "label_column": "exhibit_description",
+      "attributes": [
+        "exhibit_id", "exhibit_filing_id", "exhibit_filer_cik",
+        "exhibit_type", "exhibit_description", "exhibit_filing_date"
+      ]
+    },
+    {
+      "name": "SICCode",
+      "source_csv": "SICCode.csv",
+      "primary_key": "sic_code",
+      "label_column": "sic_description",
+      "attributes": [
+        "sic_code", "sic_description", "sic_division"
+      ]
+    },
+    {
+      "name": "FiscalYear",
+      "source_csv": "FiscalYear.csv",
+      "primary_key": "fiscal_year_end_code",
+      "label_column": "fiscal_year_end_month",
+      "attributes": [
+        "fiscal_year_end_code", "fiscal_year_end_month"
+      ]
+    },
+    {
+      "name": "StateOfIncorporation",
+      "source_csv": "StateOfIncorporation.csv",
+      "primary_key": "state_code",
+      "label_column": "state_name",
+      "attributes": [
+        "state_code", "state_name"
+      ]
+    },
+    {
+      "name": "FilerCategory",
+      "source_csv": "FilerCategory.csv",
+      "primary_key": "category_name",
+      "label_column": "category_name",
+      "attributes": [
+        "category_name"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "filed_by",
+      "source_csv": "Filing.csv",
+      "subject_type": "Filing",
+      "subject_key_column": "filing_id",
+      "object_type": "Filer",
+      "object_key_column": "filing_filer_cik",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "has_filing",
+      "source_csv": "Filing.csv",
+      "subject_type": "Filer",
+      "subject_key_column": "filing_filer_cik",
+      "object_type": "Filing",
+      "object_key_column": "filing_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "exhibit_of_filing",
+      "source_csv": "Exhibit.csv",
+      "subject_type": "Exhibit",
+      "subject_key_column": "exhibit_id",
+      "object_type": "Filing",
+      "object_key_column": "exhibit_filing_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "filing_has_exhibit",
+      "source_csv": "Exhibit.csv",
+      "subject_type": "Filing",
+      "subject_key_column": "exhibit_filing_id",
+      "object_type": "Exhibit",
+      "object_key_column": "exhibit_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "exhibit_filed_by",
+      "source_csv": "Exhibit.csv",
+      "subject_type": "Exhibit",
+      "subject_key_column": "exhibit_id",
+      "object_type": "Filer",
+      "object_key_column": "exhibit_filer_cik",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "filer_in_sic",
+      "source_csv": "Filer.csv",
+      "subject_type": "Filer",
+      "subject_key_column": "filer_cik",
+      "object_type": "SICCode",
+      "object_key_column": "filer_sic_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "filer_incorporated_in",
+      "source_csv": "Filer.csv",
+      "subject_type": "Filer",
+      "subject_key_column": "filer_cik",
+      "object_type": "StateOfIncorporation",
+      "object_key_column": "filer_state_of_incorporation",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "filer_has_fiscal_year",
+      "source_csv": "Filer.csv",
+      "subject_type": "Filer",
+      "subject_key_column": "filer_cik",
+      "object_type": "FiscalYear",
+      "object_key_column": "filer_fiscal_year_end",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "filer_in_category",
+      "source_csv": "Filer.csv",
+      "subject_type": "Filer",
+      "subject_key_column": "filer_cik",
+      "object_type": "FilerCategory",
+      "object_key_column": "filer_category",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "sic_has_filer",
+      "source_csv": "Filer.csv",
+      "subject_type": "SICCode",
+      "subject_key_column": "filer_sic_code",
+      "object_type": "Filer",
+      "object_key_column": "filer_cik",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "state_has_filer",
+      "source_csv": "Filer.csv",
+      "subject_type": "StateOfIncorporation",
+      "subject_key_column": "filer_state_of_incorporation",
+      "object_type": "Filer",
+      "object_key_column": "filer_cik",
+      "cardinality": "1:N"
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "kg_name": "holdout-v2-cftc-swap-data",
+  "_source": "CFTC Disaggregated Commitments of Traders (DCOT) report, 2024 annual file. Swap dealer positions by contract/week.",
+  "_notes": [
+    "SwapPosition is the fact table: one row per (contract, report_date) with swap dealer, money manager, producer, other reportable, and nonreportable positions.",
+    "Contract is the unique commodity/futures contract identified by CFTC_Contract_Market_Code.",
+    "Exchange is the execution venue (CME, CBOT, NYMEX, ICE, etc.).",
+    "AssetClass is derived from CFTC commodity code ranges (Agriculture, Metals, Energy, Financial, Other).",
+    "ReportDate is the weekly Tuesday report date.",
+    "Region codes: 0/00 = Domestic, other = International."
+  ],
+  "entity_types": [
+    {
+      "name": "SwapPosition",
+      "source_csv": "SwapPosition.csv",
+      "primary_key": "position_id",
+      "label_column": "position_id",
+      "attributes": [
+        "position_id", "position_contract_code", "position_report_date",
+        "position_open_interest", "position_swap_long", "position_swap_short",
+        "position_swap_spread", "position_money_manager_long", "position_money_manager_short",
+        "position_producer_long", "position_producer_short",
+        "position_other_reportable_long", "position_other_reportable_short",
+        "position_nonreportable_long", "position_nonreportable_short",
+        "position_pct_oi_swap_long", "position_pct_oi_swap_short",
+        "position_traders_swap_long", "position_traders_swap_short"
+      ]
+    },
+    {
+      "name": "Contract",
+      "source_csv": "Contract.csv",
+      "primary_key": "contract_code",
+      "label_column": "contract_name",
+      "attributes": [
+        "contract_code", "contract_name", "contract_exchange",
+        "contract_commodity_code", "contract_units"
+      ]
+    },
+    {
+      "name": "Exchange",
+      "source_csv": "Exchange.csv",
+      "primary_key": "exchange_name",
+      "label_column": "exchange_name",
+      "attributes": [
+        "exchange_name", "exchange_code"
+      ]
+    },
+    {
+      "name": "AssetClass",
+      "source_csv": "AssetClass.csv",
+      "primary_key": "commodity_code",
+      "label_column": "asset_class",
+      "attributes": [
+        "commodity_code", "asset_class"
+      ]
+    },
+    {
+      "name": "ReportDate",
+      "source_csv": "ReportDate.csv",
+      "primary_key": "report_date",
+      "label_column": "report_date",
+      "attributes": [
+        "report_date", "report_year", "report_month"
+      ]
+    },
+    {
+      "name": "Region",
+      "source_csv": "Region.csv",
+      "primary_key": "region_code",
+      "label_column": "region_name",
+      "attributes": [
+        "region_code", "region_name"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "position_for_contract",
+      "source_csv": "SwapPosition.csv",
+      "subject_type": "SwapPosition",
+      "subject_key_column": "position_id",
+      "object_type": "Contract",
+      "object_key_column": "position_contract_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "contract_has_position",
+      "source_csv": "SwapPosition.csv",
+      "subject_type": "Contract",
+      "subject_key_column": "position_contract_code",
+      "object_type": "SwapPosition",
+      "object_key_column": "position_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "position_on_date",
+      "source_csv": "SwapPosition.csv",
+      "subject_type": "SwapPosition",
+      "subject_key_column": "position_id",
+      "object_type": "ReportDate",
+      "object_key_column": "position_report_date",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "date_has_position",
+      "source_csv": "SwapPosition.csv",
+      "subject_type": "ReportDate",
+      "subject_key_column": "position_report_date",
+      "object_type": "SwapPosition",
+      "object_key_column": "position_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "contract_on_exchange",
+      "source_csv": "Contract.csv",
+      "subject_type": "Contract",
+      "subject_key_column": "contract_code",
+      "object_type": "Exchange",
+      "object_key_column": "contract_exchange",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "exchange_has_contract",
+      "source_csv": "Contract.csv",
+      "subject_type": "Exchange",
+      "subject_key_column": "contract_exchange",
+      "object_type": "Contract",
+      "object_key_column": "contract_code",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "contract_in_asset_class",
+      "source_csv": "Contract.csv",
+      "subject_type": "Contract",
+      "subject_key_column": "contract_code",
+      "object_type": "AssetClass",
+      "object_key_column": "contract_commodity_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "asset_class_has_contract",
+      "source_csv": "Contract.csv",
+      "subject_type": "AssetClass",
+      "subject_key_column": "contract_commodity_code",
+      "object_type": "Contract",
+      "object_key_column": "contract_code",
+      "cardinality": "1:N"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "kg_name": "holdout-v2-cdc-wonder-mortality",
+  "_source": "NCHS 'Leading Causes of Death: United States' open dataset (data.cdc.gov id bi63-dtpu), 1999-2017, public domain. Substitute for the CDC WONDER D76 (Compressed Mortality File) which requires a click-through TOS and XML POST bodies. See scripts/prep_cdc_wonder_mortality.py.",
+  "_notes": [
+    "MortalityRecord is the anchor entity (10,868 rows; one per year/cause/state).",
+    "7 entity types (MortalityRecord, Cause, CauseCategory, State, Region, Year, Decade).",
+    "Region is U.S. Census regions (Northeast, Midwest, South, West) plus 'National' for the US roll-up rows.",
+    "CauseCategory is a derived coarse grouping (chronic disease / injury / infection / all-causes)."
+  ],
+  "entity_types": [
+    {
+      "name": "MortalityRecord",
+      "source_csv": "MortalityRecord.csv",
+      "primary_key": "record_id",
+      "label_column": "record_id",
+      "attributes": ["deaths", "age_adjusted_rate"]
+    },
+    {
+      "name": "Cause",
+      "source_csv": "Cause.csv",
+      "primary_key": "cause_id",
+      "label_column": "cause_name",
+      "attributes": ["cause_name", "icd_description"]
+    },
+    {
+      "name": "CauseCategory",
+      "source_csv": "CauseCategory.csv",
+      "primary_key": "cause_category_id",
+      "label_column": "cause_category_name",
+      "attributes": ["cause_category_name", "cause_count"]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_id",
+      "label_column": "state_name",
+      "attributes": ["state_name"]
+    },
+    {
+      "name": "Region",
+      "source_csv": "Region.csv",
+      "primary_key": "region_id",
+      "label_column": "region_name",
+      "attributes": ["region_name"]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year_id",
+      "label_column": "year_id",
+      "attributes": ["year"]
+    },
+    {
+      "name": "Decade",
+      "source_csv": "Decade.csv",
+      "primary_key": "decade_id",
+      "label_column": "decade_label",
+      "attributes": ["decade_label", "start_year"]
+    }
+  ],
+  "relationships": [
+    {"name": "record_for_cause", "source_csv": "MortalityRecord.csv", "subject_type": "MortalityRecord", "subject_key_column": "record_id", "object_type": "Cause", "object_key_column": "cause_id", "cardinality": "N:1"},
+    {"name": "cause_has_record", "source_csv": "MortalityRecord.csv", "subject_type": "Cause", "subject_key_column": "cause_id", "object_type": "MortalityRecord", "object_key_column": "record_id", "cardinality": "1:N"},
+    {"name": "record_in_state", "source_csv": "MortalityRecord.csv", "subject_type": "MortalityRecord", "subject_key_column": "record_id", "object_type": "State", "object_key_column": "state_id", "cardinality": "N:1"},
+    {"name": "state_has_record", "source_csv": "MortalityRecord.csv", "subject_type": "State", "subject_key_column": "state_id", "object_type": "MortalityRecord", "object_key_column": "record_id", "cardinality": "1:N"},
+    {"name": "record_in_year", "source_csv": "MortalityRecord.csv", "subject_type": "MortalityRecord", "subject_key_column": "record_id", "object_type": "Year", "object_key_column": "year_id", "cardinality": "N:1"},
+    {"name": "year_has_record", "source_csv": "MortalityRecord.csv", "subject_type": "Year", "subject_key_column": "year_id", "object_type": "MortalityRecord", "object_key_column": "record_id", "cardinality": "1:N"},
+    {"name": "record_in_region", "source_csv": "MortalityRecord.csv", "subject_type": "MortalityRecord", "subject_key_column": "record_id", "object_type": "Region", "object_key_column": "region_id", "cardinality": "N:1"},
+    {"name": "region_has_record", "source_csv": "MortalityRecord.csv", "subject_type": "Region", "subject_key_column": "region_id", "object_type": "MortalityRecord", "object_key_column": "record_id", "cardinality": "1:N"},
+    {"name": "cause_in_category", "source_csv": "Cause.csv", "subject_type": "Cause", "subject_key_column": "cause_id", "object_type": "CauseCategory", "object_key_column": "cause_category_id", "cardinality": "N:1"},
+    {"name": "category_includes_cause", "source_csv": "Cause.csv", "subject_type": "CauseCategory", "subject_key_column": "cause_category_id", "object_type": "Cause", "object_key_column": "cause_id", "cardinality": "1:N"},
+    {"name": "state_in_region", "source_csv": "State.csv", "subject_type": "State", "subject_key_column": "state_id", "object_type": "Region", "object_key_column": "region_id", "cardinality": "N:1"},
+    {"name": "region_contains_state", "source_csv": "State.csv", "subject_type": "Region", "subject_key_column": "region_id", "object_type": "State", "object_key_column": "state_id", "cardinality": "1:N"},
+    {"name": "year_in_decade", "source_csv": "Year.csv", "subject_type": "Year", "subject_key_column": "year_id", "object_type": "Decade", "object_key_column": "decade_id", "cardinality": "N:1"},
+    {"name": "decade_contains_year", "source_csv": "Year.csv", "subject_type": "Decade", "subject_key_column": "decade_id", "object_type": "Year", "object_key_column": "year_id", "cardinality": "1:N"}
+  ]
+}

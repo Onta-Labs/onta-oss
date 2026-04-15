@@ -1,0 +1,2632 @@
+{
+  "version": "2.0",
+  "frozen_at": "2026-04-15T07:52:11Z",
+  "frozen_by": "moeen@cograph.cloud",
+  "manifest_sha256": "f8f4a7fcf376853fd7ebd717d46f42fda650c841534213f33c9cfaf6ba2880dd",
+  "llm": {
+    "model": "google/gemini-3-flash-preview",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "max_tokens": 4096,
+    "route": "openrouter"
+  },
+  "system_prompt_sha256": null,
+  "judge": {
+    "t1": "fast_judge",
+    "t2_4": "full_set_judge",
+    "code_sha": null
+  },
+  "license_notes": {
+    "scdb-supreme-court": "Non-commercial only. See spec §8.2 item 9(g)."
+  },
+  "domains": {
+    "healthcare": {
+      "target_pct": 30,
+      "target_n_questions": 96,
+      "kgs": [
+        "cms-nursing-home-compare",
+        "samhsa-n-ssats",
+        "medicare-part-d-pricing",
+        "hrsa-hpsa",
+        "cdc-fluview",
+        "cdc-wonder-mortality",
+        "npi-registry"
+      ],
+      "n_questions": 0
+    },
+    "finance": {
+      "target_pct": 25,
+      "target_n_questions": 80,
+      "kgs": [
+        "sec-edgar-10k",
+        "holdout-v2-fdic-call-reports",
+        "holdout-v2-ncua-credit-union-call-reports",
+        "cftc-swap-data",
+        "finra-trace-corporate-bonds",
+        "ofr-financial-stability"
+      ],
+      "n_questions": 0
+    },
+    "legal": {
+      "target_pct": 25,
+      "target_n_questions": 80,
+      "kgs": [
+        "holdout-v2-patentsview",
+        "scdb-supreme-court",
+        "doj-enforcement-actions",
+        "holdout-v2-ftc-consent-decrees",
+        "holdout-v2-uspto-trademarks",
+        "holdout-v2-pacer-federal-dockets",
+        "holdout-v2-fec-enforcement"
+      ],
+      "n_questions": 0
+    },
+    "scientific_public_sector": {
+      "target_pct": 20,
+      "target_n_questions": 64,
+      "kgs": [
+        "nsf-awards",
+        "nih-reporter-non-clinical",
+        "fema-disaster-declarations",
+        "epa-water-quality-portal",
+        "noaa-storm-events",
+        "usda-agricultural-statistics",
+        "doe-energy-research-grants"
+      ],
+      "n_questions": 0
+    }
+  },
+  "partitions": {
+    "public_dev": {
+      "target_n_kgs": 20,
+      "target_n_questions": 224,
+      "n_kgs": 0,
+      "n_questions": 0
+    },
+    "private_held_out": {
+      "target_n_kgs": 8,
+      "target_n_questions": 96,
+      "n_kgs": 0,
+      "n_questions": 0
+    }
+  },
+  "kgs": [
+    {
+      "id": "holdout-v2-cms-nursing-home-compare",
+      "domain": "healthcare",
+      "source_url": "https://data.cms.gov/provider-data/dataset/4pq5-n9py",
+      "license": "Public Domain (US Federal Government work; data.cms.gov open data)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 558154,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "NursingHome",
+          "count": 14703
+        },
+        {
+          "type": "Inspection",
+          "count": 5000
+        },
+        {
+          "type": "Ownership",
+          "count": 5000
+        },
+        {
+          "type": "Penalty",
+          "count": 5000
+        },
+        {
+          "type": "Citation",
+          "count": 5000
+        },
+        {
+          "type": "QualityMeasure",
+          "count": 5000
+        },
+        {
+          "type": "State",
+          "count": 53
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "NursingHome",
+          "pred": "located_in_state",
+          "obj": "State",
+          "card": "1:N",
+          "count": 14703
+        },
+        {
+          "subj": "Ownership",
+          "pred": "owned_by_entity",
+          "obj": "NursingHome",
+          "card": "1:N",
+          "count": 5000
+        },
+        {
+          "subj": "NursingHome",
+          "pred": "has_penalty",
+          "obj": "Penalty",
+          "card": "N:1",
+          "count": 5000
+        },
+        {
+          "subj": "QualityMeasure",
+          "pred": "quality_measure_for_facility",
+          "obj": "NursingHome",
+          "card": "1:N",
+          "count": 5000
+        },
+        {
+          "subj": "Penalty",
+          "pred": "penalty_against_facility",
+          "obj": "NursingHome",
+          "card": "1:N",
+          "count": 5000
+        },
+        {
+          "subj": "Inspection",
+          "pred": "inspection_at_facility",
+          "obj": "NursingHome",
+          "card": "1:N",
+          "count": 5000
+        },
+        {
+          "subj": "Citation",
+          "pred": "citation_at_facility",
+          "obj": "NursingHome",
+          "card": "1:N",
+          "count": 5000
+        },
+        {
+          "subj": "NursingHome",
+          "pred": "has_citation",
+          "obj": "Citation",
+          "card": "N:1",
+          "count": 5000
+        },
+        {
+          "subj": "NursingHome",
+          "pred": "has_inspection",
+          "obj": "Inspection",
+          "card": "N:1",
+          "count": 5000
+        },
+        {
+          "subj": "NursingHome",
+          "pred": "has_quality_measure",
+          "obj": "QualityMeasure",
+          "card": "N:1",
+          "count": 5000
+        },
+        {
+          "subj": "NursingHome",
+          "pred": "has_ownership",
+          "obj": "Ownership",
+          "card": "N:1",
+          "count": 5000
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-nursing-home-providers",
+        "type_overlap": 2,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0513,
+        "verdict": "PASS",
+        "notes": "2 type overlaps (NursingHome, State) with cms-nursing-home-providers; rel_overlap=0; jaccard 0.0513 << 0.30 threshold. Below hard rule (>=3 types AND >=2 rels w/ matching cardinality). Local-name comparison via §31b79cd URI fix surfaces NursingHome correctly across the holdout-v2 vs training URI prefixes."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 11,
+        "total_instances": 39756
+      },
+      "ingest_status": "complete",
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/cms-nursing-home-compare.json"
+    },
+    {
+      "id": "holdout-v2-samhsa-n-ssats",
+      "domain": "healthcare",
+      "source_url": "",
+      "license": "",
+      "ingest_date": "2026-04-14",
+      "triple_count": 933099,
+      "entity_rich": null,
+      "top_types": [
+        {
+          "type": "TreatmentFacility",
+          "count": 16066
+        },
+        {
+          "type": "Service",
+          "count": 85
+        },
+        {
+          "type": "State",
+          "count": 53
+        },
+        {
+          "type": "ClientType",
+          "count": 13
+        },
+        {
+          "type": "TreatmentApproach",
+          "count": 13
+        },
+        {
+          "type": "PaymentType",
+          "count": 8
+        }
+      ],
+      "top_relationships": [],
+      "schema_adjacency": {
+        "verdict": "PASS",
+        "closest_training_kg": "cms-readmissions",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard": 0.0435
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 0,
+        "total_instances": 0
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/samhsa-n-ssats.json"
+    },
+    {
+      "id": "holdout-v2-medicare-part-d-pricing",
+      "domain": "healthcare",
+      "source_url": "https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-medicaid-spending-by-drug/medicare-part-d-spending-by-drug",
+      "license": "Public Domain (US Federal Government work; data.cms.gov open data)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 242091,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "SpendingRecord",
+          "count": 10531
+        },
+        {
+          "type": "Drug",
+          "count": 3474
+        },
+        {
+          "type": "GenericDrug",
+          "count": 1938
+        },
+        {
+          "type": "Manufacturer",
+          "count": 961
+        },
+        {
+          "type": "SpendingTrend",
+          "count": 6
+        },
+        {
+          "type": "OutlierFlag",
+          "count": 2
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "SpendingRecord",
+          "pred": "has_outlier_status",
+          "obj": "OutlierFlag",
+          "card": "1:N",
+          "count": 10551
+        },
+        {
+          "subj": "OutlierFlag",
+          "pred": "outlier_status_of_spending",
+          "obj": "SpendingRecord",
+          "card": "N:1",
+          "count": 10551
+        },
+        {
+          "subj": "Drug",
+          "pred": "has_spending_record",
+          "obj": "SpendingRecord",
+          "card": "N:1",
+          "count": 10531
+        },
+        {
+          "subj": "SpendingRecord",
+          "pred": "spending_by_manufacturer",
+          "obj": "Manufacturer",
+          "card": "1:N",
+          "count": 10531
+        },
+        {
+          "subj": "SpendingRecord",
+          "pred": "spending_for_drug",
+          "obj": "Drug",
+          "card": "1:N",
+          "count": 10531
+        },
+        {
+          "subj": "Manufacturer",
+          "pred": "manufacturer_has_spending",
+          "obj": "SpendingRecord",
+          "card": "N:1",
+          "count": 10531
+        },
+        {
+          "subj": "Drug",
+          "pred": "has_generic",
+          "obj": "GenericDrug",
+          "card": "1:N",
+          "count": 3474
+        },
+        {
+          "subj": "Drug",
+          "pred": "has_spending_trend",
+          "obj": "SpendingTrend",
+          "card": "1:N",
+          "count": 3474
+        },
+        {
+          "subj": "GenericDrug",
+          "pred": "brand_of_generic",
+          "obj": "Drug",
+          "card": "N:1",
+          "count": 3474
+        },
+        {
+          "subj": "SpendingTrend",
+          "pred": "trend_applies_to_drug",
+          "obj": "Drug",
+          "card": "N:1",
+          "count": 3474
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "fda-adverse-events",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0222,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0222 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 10,
+        "total_instances": 16912,
+        "floor_pass": true
+      },
+      "partition": null,
+      "n_questions": 12,
+      "tier_distribution": {
+        "T1": 4,
+        "T2": 3,
+        "T3": 3,
+        "T4": 2
+      },
+      "gold_file": "eval_holdout_v2/gold/holdout-v2-medicare-part-d-pricing.json"
+    },
+    {
+      "id": "holdout-v2-hrsa-hpsa",
+      "domain": "healthcare",
+      "source_url": "https://data.hrsa.gov/DataDownload/DD_Files/BCD_HPSA_FCT_DET_PC.csv",
+      "license": "Public Domain (HRSA; usage limitations: None)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 606930,
+      "entity_rich": true,
+      "top_types": [
+        "Component",
+        "HealthProfessionalShortageArea",
+        "Hpsa",
+        "County",
+        "ZipCode",
+        "City",
+        "Organization",
+        "State",
+        "Region"
+      ],
+      "top_relationships": [
+        "HealthProfessionalShortageArea.hpsa_component_name.Component (N:N, n=2951)",
+        "HealthProfessionalShortageArea.common_county_name.County (N:N, n=992)",
+        "HealthProfessionalShortageArea.county_equivalent_name.County (N:N, n=975)",
+        "HealthProfessionalShortageArea.has_hpsa.Hpsa (1:1, n=724)",
+        "HealthProfessionalShortageArea.primary_state_abbreviation.State (1:N, n=718)",
+        "HealthProfessionalShortageArea.common_state_abbreviation.State (1:N, n=718)",
+        "HealthProfessionalShortageArea.state_abbreviation.State (1:N, n=718)",
+        "HealthProfessionalShortageArea.common_region_name.Region (1:N, n=718)",
+        "HealthProfessionalShortageArea.common_state_name.State (1:N, n=712)",
+        "HealthProfessionalShortageArea.state_name.State (1:N, n=712)",
+        "HealthProfessionalShortageArea.primary_state_name.State (1:N, n=711)",
+        "HealthProfessionalShortageArea.common_county_name.State (1:N, n=709)",
+        "HealthProfessionalShortageArea.hpsa_component_state_abbreviation.State (1:N, n=417)",
+        "HealthProfessionalShortageArea.hpsa_component_name.County (N:N, n=403)",
+        "HealthProfessionalShortageArea.common_postal_code.ZipCode (1:N, n=291)",
+        "HealthProfessionalShortageArea.hpsa_postal_code.ZipCode (1:N, n=291)",
+        "HealthProfessionalShortageArea.hpsa_city.City (1:N, n=233)",
+        "HealthProfessionalShortageArea.bhcmis_organization_identification_number.Organization (1:1, n=85)",
+        "HealthProfessionalShortageArea.hpsa_city.County (1:N, n=51)",
+        "HealthProfessionalShortageArea.hpsa_component_name.State (1:N, n=19)"
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-hospital-quality",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.1154,
+        "verdict": "PASS",
+        "notes": "wave4 pilot; ingested 2026-04-13"
+      },
+      "schema_size": {
+        "entity_types": 9,
+        "relationships": 20,
+        "total_instances": 4815
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/hrsa-hpsa.json",
+      "ingest_status": "partial_8_of_10_batches"
+    },
+    {
+      "id": "holdout-v2-cdc-fluview",
+      "domain": "healthcare",
+      "source_url": "https://delphi.cmu.edu/epidata/ (CDC FluView ILINet via Delphi Epidata API)",
+      "license": "Public Domain (CDC open data surfaced via Delphi Epidata)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 302706,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "WeeklyReport",
+          "count": 18122
+        },
+        {
+          "type": "Region",
+          "count": 62
+        },
+        {
+          "type": "Season",
+          "count": 6
+        },
+        {
+          "type": "AgeGroup",
+          "count": 6
+        },
+        {
+          "type": "RegionType",
+          "count": 3
+        }
+      ],
+      "top_relationships": [
+        {
+          "predicate": "reported_in_region",
+          "count": 18122
+        },
+        {
+          "predicate": "region_has_report",
+          "count": 18122
+        },
+        {
+          "predicate": "in_season",
+          "count": 18122
+        },
+        {
+          "predicate": "season_has_report",
+          "count": 18122
+        },
+        {
+          "predicate": "age_breakdown_for_report",
+          "count": 16170
+        },
+        {
+          "predicate": "age_group_in_report",
+          "count": 16170
+        },
+        {
+          "predicate": "has_region_type",
+          "count": 62
+        },
+        {
+          "predicate": "region_type_includes",
+          "count": 62
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "coffee-quality",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0435,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0435 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 5,
+        "relationships": 8,
+        "total_instances": 18199,
+        "floor_pass": true
+      },
+      "partition": null,
+      "n_questions": 13,
+      "tier_distribution": {
+        "T1": 4,
+        "T2": 3,
+        "T3": 3,
+        "T4": 3
+      },
+      "gold_file": "eval_holdout_v2/gold/holdout-v2-cdc-fluview.json"
+    },
+    {
+      "id": "holdout-v2-cdc-wonder-mortality",
+      "domain": "healthcare",
+      "source_url": "https://data.cdc.gov/NCHS/NCHS-Leading-Causes-of-Death-United-States/bi63-dtpu (substitute for CDC WONDER D76 which requires TOS click-through)",
+      "license": "Public Domain (US Federal Government work; NCHS open data)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 87108,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "MortalityRecord",
+          "count": 10868
+        },
+        {
+          "type": "State",
+          "count": 52
+        },
+        {
+          "type": "Year",
+          "count": 19
+        },
+        {
+          "type": "Cause",
+          "count": 11
+        },
+        {
+          "type": "Region",
+          "count": 5
+        },
+        {
+          "type": "CauseCategory",
+          "count": 4
+        },
+        {
+          "type": "Decade",
+          "count": 3
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "MortalityRecord",
+          "pred": "record_in_state",
+          "obj": "State",
+          "card": "1:N",
+          "count": 10868
+        },
+        {
+          "subj": "MortalityRecord",
+          "pred": "record_for_cause",
+          "obj": "Cause",
+          "card": "1:N",
+          "count": 10868
+        },
+        {
+          "subj": "MortalityRecord",
+          "pred": "record_in_year",
+          "obj": "Year",
+          "card": "1:N",
+          "count": 10868
+        },
+        {
+          "subj": "MortalityRecord",
+          "pred": "record_in_region",
+          "obj": "Region",
+          "card": "1:N",
+          "count": 10868
+        },
+        {
+          "subj": "State",
+          "pred": "state_has_record",
+          "obj": "MortalityRecord",
+          "card": "N:1",
+          "count": 10868
+        },
+        {
+          "subj": "Region",
+          "pred": "region_has_record",
+          "obj": "MortalityRecord",
+          "card": "N:1",
+          "count": 10868
+        },
+        {
+          "subj": "Cause",
+          "pred": "cause_has_record",
+          "obj": "MortalityRecord",
+          "card": "N:1",
+          "count": 10868
+        },
+        {
+          "subj": "Year",
+          "pred": "year_has_record",
+          "obj": "MortalityRecord",
+          "card": "N:1",
+          "count": 10868
+        },
+        {
+          "subj": "State",
+          "pred": "state_in_region",
+          "obj": "Region",
+          "card": "1:N",
+          "count": 52
+        },
+        {
+          "subj": "Region",
+          "pred": "region_contains_state",
+          "obj": "State",
+          "card": "N:1",
+          "count": 52
+        },
+        {
+          "subj": "Year",
+          "pred": "year_in_decade",
+          "obj": "Decade",
+          "card": "1:N",
+          "count": 19
+        },
+        {
+          "subj": "Decade",
+          "pred": "decade_contains_year",
+          "obj": "Year",
+          "card": "N:1",
+          "count": 19
+        },
+        {
+          "subj": "CauseCategory",
+          "pred": "category_includes_cause",
+          "obj": "Cause",
+          "card": "N:1",
+          "count": 11
+        },
+        {
+          "subj": "Cause",
+          "pred": "cause_in_category",
+          "obj": "CauseCategory",
+          "card": "1:N",
+          "count": 11
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-hospital-quality",
+        "type_overlap": 2,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0417,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0417 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 14,
+        "total_instances": 10962,
+        "floor_pass": true
+      },
+      "partition": null,
+      "n_questions": 13,
+      "tier_distribution": {
+        "T1": 4,
+        "T2": 4,
+        "T3": 2,
+        "T4": 3
+      },
+      "gold_file": "eval_holdout_v2/gold/holdout-v2-cdc-wonder-mortality.json"
+    },
+    {
+      "id": "holdout-v2-npi-registry",
+      "domain": "healthcare",
+      "source_url": "https://npiregistry.cms.hhs.gov/api/ (10,000 provider sample, seed=42 ZIP-prefix diversity)",
+      "license": "Public Domain (NPPES open data, no registration required)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 122402,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Provider",
+          "count": 10000
+        },
+        {
+          "type": "PracticeLocation",
+          "count": 10000
+        },
+        {
+          "type": "City",
+          "count": 759
+        },
+        {
+          "type": "Specialty",
+          "count": 442
+        },
+        {
+          "type": "State",
+          "count": 52
+        },
+        {
+          "type": "TaxonomyGroup",
+          "count": 12
+        },
+        {
+          "type": "ProviderType",
+          "count": 2
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Provider",
+          "pred": "provider_in_city",
+          "obj": "City",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Provider",
+          "pred": "provider_has_practice_location",
+          "obj": "PracticeLocation",
+          "card": "1:1",
+          "count": 10000
+        },
+        {
+          "subj": "Provider",
+          "pred": "provider_in_state",
+          "obj": "State",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Provider",
+          "pred": "provider_of_type",
+          "obj": "ProviderType",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Provider",
+          "pred": "provider_has_specialty",
+          "obj": "Specialty",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "ProviderType",
+          "pred": "type_includes_provider",
+          "obj": "Provider",
+          "card": "N:1",
+          "count": 10000
+        },
+        {
+          "subj": "PracticeLocation",
+          "pred": "practice_location_of_provider",
+          "obj": "Provider",
+          "card": "1:1",
+          "count": 10000
+        },
+        {
+          "subj": "PracticeLocation",
+          "pred": "practice_location_in_city",
+          "obj": "City",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Specialty",
+          "pred": "specialty_practiced_by",
+          "obj": "Provider",
+          "card": "N:1",
+          "count": 10000
+        },
+        {
+          "subj": "City",
+          "pred": "city_hosts_practice_location",
+          "obj": "PracticeLocation",
+          "card": "N:1",
+          "count": 10000
+        },
+        {
+          "subj": "City",
+          "pred": "city_has_provider",
+          "obj": "Provider",
+          "card": "N:1",
+          "count": 10000
+        },
+        {
+          "subj": "State",
+          "pred": "state_has_provider",
+          "obj": "Provider",
+          "card": "N:1",
+          "count": 10000
+        },
+        {
+          "subj": "City",
+          "pred": "city_in_state",
+          "obj": "State",
+          "card": "1:N",
+          "count": 759
+        },
+        {
+          "subj": "State",
+          "pred": "state_contains_city",
+          "obj": "City",
+          "card": "N:1",
+          "count": 759
+        },
+        {
+          "subj": "Specialty",
+          "pred": "specialty_in_group",
+          "obj": "TaxonomyGroup",
+          "card": "1:N",
+          "count": 442
+        },
+        {
+          "subj": "TaxonomyGroup",
+          "pred": "group_includes_specialty",
+          "obj": "Specialty",
+          "card": "N:1",
+          "count": 442
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-nursing-home-providers",
+        "type_overlap": 3,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0698,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0698 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 16,
+        "total_instances": 21267,
+        "floor_pass": true
+      },
+      "partition": null,
+      "n_questions": 10,
+      "tier_distribution": {
+        "T1": 4,
+        "T2": 1,
+        "T3": 2,
+        "T4": 3
+      },
+      "gold_file": "eval_holdout_v2/gold/holdout-v2-npi-registry.json"
+    },
+    {
+      "id": "holdout-v2-sec-edgar-10k",
+      "domain": "finance",
+      "source_url": "",
+      "license": "",
+      "ingest_date": "2026-04-14",
+      "triple_count": 24083,
+      "entity_rich": null,
+      "top_types": [
+        {
+          "type": "Exhibit",
+          "count": 701
+        },
+        {
+          "type": "Filing",
+          "count": 511
+        },
+        {
+          "type": "Filer",
+          "count": 488
+        },
+        {
+          "type": "SICCode",
+          "count": 175
+        },
+        {
+          "type": "StateOfIncorporation",
+          "count": 46
+        },
+        {
+          "type": "FiscalYear",
+          "count": 28
+        },
+        {
+          "type": "FilerCategory",
+          "count": 10
+        }
+      ],
+      "top_relationships": [],
+      "schema_adjacency": {
+        "verdict": "PASS",
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard": 0.0
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 0,
+        "total_instances": 0
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/sec-edgar-10k.json",
+      "status": "ingested",
+      "entity_types": 7,
+      "relationships": 11,
+      "total_instances": 1959,
+      "adjacency_verdict": "PASS",
+      "adjacency_notes": "Jaccard 0.0 vs all v9 training KGs. Denylist overridden (sec-company-filings is catalog-only, not in v9).",
+      "denylist_override_reason": "sec-company-filings was never in v9 training (catalog-only); SEC EDGAR is filing-centric, not company-filing-centric, with zero schema overlap"
+    },
+    {
+      "id": "holdout-v2-fdic-call-reports",
+      "domain": "finance",
+      "source_url": "https://banks.data.fdic.gov/docs/",
+      "license": "Public Domain (FDIC open data, BankFind Suite)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 1368743,
+      "target_triple_count": 1369741,
+      "entity_rich": true,
+      "top_types": [
+        {
+          "type": "Bank",
+          "count": 4298
+        },
+        {
+          "type": "CallReport",
+          "count": 4609
+        },
+        {
+          "type": "FinancialMetric",
+          "count": 87450
+        },
+        {
+          "type": "State",
+          "count": 58
+        },
+        {
+          "type": "BankClass",
+          "count": 6
+        }
+      ],
+      "top_relationships": [
+        {
+          "name": "callreport_has_metric",
+          "subject_type": "CallReport",
+          "object_type": "FinancialMetric",
+          "cardinality": "1:N",
+          "triples": 87450
+        },
+        {
+          "name": "metric_for_bank",
+          "subject_type": "FinancialMetric",
+          "object_type": "Bank",
+          "cardinality": "N:1",
+          "triples": 87450
+        },
+        {
+          "name": "callreport_filed_for_bank",
+          "subject_type": "CallReport",
+          "object_type": "Bank",
+          "cardinality": "N:1",
+          "triples": 4609
+        },
+        {
+          "name": "bank_headquartered_in_state",
+          "subject_type": "Bank",
+          "object_type": "State",
+          "cardinality": "N:1",
+          "triples": 4298
+        },
+        {
+          "name": "state_hosts_bank",
+          "subject_type": "State",
+          "object_type": "Bank",
+          "cardinality": "1:N",
+          "triples": 4298
+        },
+        {
+          "name": "bank_classified_as",
+          "subject_type": "Bank",
+          "object_type": "BankClass",
+          "cardinality": "N:1",
+          "triples": 4298
+        },
+        {
+          "name": "bankclass_applies_to_bank",
+          "subject_type": "BankClass",
+          "object_type": "Bank",
+          "cardinality": "1:N",
+          "triples": 4298
+        },
+        {
+          "name": "has_call_report",
+          "subject_type": "Bank",
+          "object_type": "CallReport",
+          "cardinality": "1:N",
+          "triples": 4282
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-readmissions",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.05,
+        "verdict": "PASS",
+        "notes": "PASS. Closest training KG is cms-readmissions at 0.05 Jaccard (1 type overlap = State, 0 rel overlap). Wave-5 concern about cfpb-bank-accounts adjacency is DISPROVEN: the cfpb-bank-accounts pair shows 1 type overlap (State), 0 rel overlap, Jaccard 0.0323 — well below the 0.30 gate and far below the hard rule (>=3 types, >=2 rels). Root cause of the false alarm: cfpb-bank-accounts is actually a ConsumerComplaint-centric schema (keyed on ConsumerComplaint with company/issue/product/subproduct rels), NOT a Bank/Branch/Location structural schema. The wave-5 fear was triggered by the KG name, not by the underlying shape."
+      },
+      "schema_size": {
+        "entity_types": 5,
+        "relationships": 8,
+        "total_instances": 96421
+      },
+      "ingest_notes": "Ingested via scripts/ingest_multitable.py with spec at eval_holdout_v2/multitable_specs/fdic-call-reports.json. Source JSON payloads staged under benchmarks/datasets/holdout_v2_raw/holdout-v2-fdic-call-reports/ (institutions.json 4298 records, locations.json 78341 records, financials_2024q2.json 4609 records). JSON-to-CSV preprocessor at scripts/fdic_json_to_csv.py. Per-entity row counts: Bank=4298, CallReport=4609, FinancialMetric=87450 (19 metrics per call report; COST_OF_FUNDS OMITTED because FDIC BankFind does not publish a precomputed cost-of-funds field and the interest-bearing-liability denominator is not cleanly resolvable from the /financials payload), State=58, BankClass=6. Branch entity (78341 rows) was DROPPED from the wave-6 ingest and the raw Branch.csv is staged on disk for future re-ingest, both to preempt the Bank->Branch->Location->State adjacency shape that the wave-5 plan flagged (now proven unnecessary by the adjacency gate running against cfpb-bank-accounts) and to halve the triple volume so the ingest fits inside the shared /update rate budget while 5 concurrent holdout-v2 ingests ran in parallel. Triple ingest runs in background via scripts/ingest_multitable.py at batch-size 2000; bulk POSTing was heavily throttled by rate-limit contention with the 4 other parallel agents (effective ~6 POST/min per agent against the 30/min /update budget) and may continue landing triples after this commit. The adjacency gate was unblocked by pre-seeding 13 minimal triples (5 entity-type anchors + 8 relationship exemplars) via /tmp/fdic_bootstrap.py using the deterministic URI scheme from ingest_multitable.py so the gate could run without waiting for the full bulk POST to complete. // Re-check 2026-04-14: graph was already fully loaded at 1,368,743 triples (target 1,369,741) — the wave-6 overnight ingest actually completed successfully despite the reported connection wedge. Drop/re-ingest skipped as unnecessary. Gold regenerated from scratch on the full data: went from 8 questions (T1=4,T2=2,T3=2,T4=0) to 10 questions (T1=4,T2=0,T3=3,T4=3). T2 bucket shortfall (0 of 4 after 20 attempts, all classifier-mismatched to T3/T4) — FDIC metric shape pushes simple counts into the analytical tier. Old gold backed up to /tmp/fdic_gold_old.json.",
+      "bankfind_field_substitutions": [
+        "RBC1RWAJ -> IDT1RWAJR (Tier 1 Risk-Based Capital Ratio; schema-override field missing from live payload)",
+        "RBCT1CER -> IDT1CER (CET1 Ratio; schema-override explicitly names IDT1CER as the duplicate alias)",
+        "ELNATRR -> ELNATRY (Net Charge-Offs to Avg Loans; annualized variant, schema-override field missing from live payload)",
+        "LNLSNETR -> computed(LNLSNET/ASSET*100) (Loans to Assets; schema-override field missing from live payload)"
+      ],
+      "partition": null,
+      "n_questions": 10,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 0,
+        "t3": 3,
+        "t4": 3
+      },
+      "gold_file": "gold/holdout-v2-fdic-call-reports.json"
+    },
+    {
+      "id": "holdout-v2-cftc-swap-data",
+      "domain": "finance",
+      "source_url": "",
+      "license": "",
+      "ingest_date": "2026-04-14",
+      "triple_count": 343931,
+      "entity_rich": null,
+      "top_types": [
+        {
+          "type": "SwapPosition",
+          "count": 13601
+        },
+        {
+          "type": "Contract",
+          "count": 311
+        },
+        {
+          "type": "ReportDate",
+          "count": 53
+        },
+        {
+          "type": "AssetClass",
+          "count": 43
+        },
+        {
+          "type": "Exchange",
+          "count": 10
+        },
+        {
+          "type": "Region",
+          "count": 2
+        }
+      ],
+      "top_relationships": [],
+      "schema_adjacency": {
+        "verdict": "PASS",
+        "closest_training_kg": "coffee-quality",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard": 0.0417
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 0,
+        "total_instances": 0
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/cftc-swap-data.json",
+      "status": "ingested",
+      "entity_types": 6,
+      "relationships": 8,
+      "total_instances": 14020,
+      "adjacency_verdict": "PASS",
+      "adjacency_notes": "Jaccard 0.0417 (closest: coffee-quality, only shared Region type name). Not in v9."
+    },
+    {
+      "id": "holdout-v2-ncua-credit-union-call-reports",
+      "domain": "finance",
+      "source_url": "https://www.ncua.gov/analysis/credit-union-corporate-call-report-data/quarterly-data",
+      "license": "Public Domain (NCUA, US federal agency)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 908843,
+      "entity_rich": true,
+      "top_types": [
+        {
+          "type": "FinancialMetric",
+          "count": 46255
+        },
+        {
+          "type": "Branch",
+          "count": 21914
+        },
+        {
+          "type": "CallReport",
+          "count": 4631
+        },
+        {
+          "type": "CreditUnion",
+          "count": 4631
+        },
+        {
+          "type": "State",
+          "count": 54
+        },
+        {
+          "type": "FieldOfMembership",
+          "count": 36
+        }
+      ],
+      "top_relationships": [
+        {
+          "name": "callreport_has_metric",
+          "subject_type": "CallReport",
+          "object_type": "FinancialMetric",
+          "cardinality": "1:N",
+          "triples": 46255
+        },
+        {
+          "name": "metric_for_creditunion",
+          "subject_type": "FinancialMetric",
+          "object_type": "CreditUnion",
+          "cardinality": "N:1",
+          "triples": 46255
+        },
+        {
+          "name": "has_branch",
+          "subject_type": "CreditUnion",
+          "object_type": "Branch",
+          "cardinality": "1:N",
+          "triples": 21914
+        },
+        {
+          "name": "branch_located_in_state",
+          "subject_type": "Branch",
+          "object_type": "State",
+          "cardinality": "N:1",
+          "triples": 21863
+        },
+        {
+          "name": "has_call_report",
+          "subject_type": "CreditUnion",
+          "object_type": "CallReport",
+          "cardinality": "1:N",
+          "triples": 4631
+        },
+        {
+          "name": "callreport_filed_for_creditunion",
+          "subject_type": "CallReport",
+          "object_type": "CreditUnion",
+          "cardinality": "N:1",
+          "triples": 4631
+        },
+        {
+          "name": "creditunion_headquartered_in_state",
+          "subject_type": "CreditUnion",
+          "object_type": "State",
+          "cardinality": "N:1",
+          "triples": 4631
+        },
+        {
+          "name": "creditunion_has_field_of_membership",
+          "subject_type": "CreditUnion",
+          "object_type": "FieldOfMembership",
+          "cardinality": "N:1",
+          "triples": 4631
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-readmissions",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0476,
+        "verdict": "PASS",
+        "notes": "Only shared type is State (common across CFPB + CMS + census KGs); no relationship overlap. Against cfpb-bank-accounts specifically: single State overlap, jaccard=0.0312. NCUA's Branch type is top-level and does NOT collide with any training KG (training has no top-level Branch entity). Passes hard rule and Jaccard gate (<0.30)."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 8,
+        "total_instances": 77521
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/holdout-v2-ncua-credit-union-call-reports.json"
+    },
+    {
+      "id": "holdout-v2-ofr-financial-stability",
+      "domain": "finance",
+      "source_url": "https://www.financialresearch.gov/financial-stress-index/data/fsi.csv",
+      "license": "Public Domain (Office of Financial Research / U.S. Treasury public data)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 372882,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "IndicatorReading",
+          "count": 59823
+        },
+        {
+          "type": "Period",
+          "count": 6647
+        },
+        {
+          "type": "Month",
+          "count": 316
+        },
+        {
+          "type": "Year",
+          "count": 27
+        },
+        {
+          "type": "Indicator",
+          "count": 9
+        },
+        {
+          "type": "StressLevel",
+          "count": 4
+        },
+        {
+          "type": "IndicatorCategory",
+          "count": 3
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Period",
+          "pred": "period_has_reading",
+          "obj": "IndicatorReading",
+          "card": "N:1",
+          "count": 59823
+        },
+        {
+          "subj": "IndicatorReading",
+          "pred": "reading_has_stress_level",
+          "obj": "StressLevel",
+          "card": "1:N",
+          "count": 59823
+        },
+        {
+          "subj": "IndicatorReading",
+          "pred": "reading_on_period",
+          "obj": "Period",
+          "card": "1:N",
+          "count": 59823
+        },
+        {
+          "subj": "IndicatorReading",
+          "pred": "reading_for_indicator",
+          "obj": "Indicator",
+          "card": "1:N",
+          "count": 59823
+        },
+        {
+          "subj": "StressLevel",
+          "pred": "stress_level_contains_reading",
+          "obj": "IndicatorReading",
+          "card": "N:1",
+          "count": 59823
+        },
+        {
+          "subj": "Indicator",
+          "pred": "indicator_has_reading",
+          "obj": "IndicatorReading",
+          "card": "N:1",
+          "count": 59823
+        },
+        {
+          "subj": "Period",
+          "pred": "period_in_month",
+          "obj": "Month",
+          "card": "1:N",
+          "count": 6647
+        },
+        {
+          "subj": "Month",
+          "pred": "month_contains_period",
+          "obj": "Period",
+          "card": "N:1",
+          "count": 6647
+        },
+        {
+          "subj": "Year",
+          "pred": "year_contains_month",
+          "obj": "Month",
+          "card": "N:1",
+          "count": 316
+        },
+        {
+          "subj": "Month",
+          "pred": "month_in_year",
+          "obj": "Year",
+          "card": "1:N",
+          "count": 316
+        },
+        {
+          "subj": "Indicator",
+          "pred": "indicator_in_category",
+          "obj": "IndicatorCategory",
+          "card": "1:N",
+          "count": 9
+        },
+        {
+          "subj": "IndicatorCategory",
+          "pred": "category_includes_indicator",
+          "obj": "Indicator",
+          "card": "N:1",
+          "count": 9
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 12,
+        "total_instances": 66829,
+        "floor_pass": true
+      },
+      "partition": null,
+      "n_questions": 13,
+      "tier_distribution": {
+        "T1": 4,
+        "T2": 4,
+        "T3": 2,
+        "T4": 3
+      },
+      "gold_file": "eval_holdout_v2/gold/holdout-v2-ofr-financial-stability.json"
+    },
+    {
+      "id": "holdout-v2-patentsview",
+      "domain": "legal",
+      "source_url": "https://patentsview.org/download/data-download-tables",
+      "license": "Public Domain (USPTO PatentsView, US federal agency)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 1804938,
+      "entity_rich": true,
+      "top_types": [
+        {
+          "type": "Citation",
+          "count": 117660
+        },
+        {
+          "type": "Patent",
+          "count": 92836
+        },
+        {
+          "type": "CPCClass",
+          "count": 25447
+        },
+        {
+          "type": "Inventor",
+          "count": 14039
+        },
+        {
+          "type": "Location",
+          "count": 4155
+        },
+        {
+          "type": "Assignee",
+          "count": 2600
+        }
+      ],
+      "top_relationships": [
+        {
+          "name": "citation_targets_patent",
+          "subject_type": "Citation",
+          "object_type": "Patent",
+          "cardinality": "N:1",
+          "triples": 117660
+        },
+        {
+          "name": "cites",
+          "subject_type": "Patent",
+          "object_type": "Patent",
+          "cardinality": "1:N",
+          "triples": 98644
+        },
+        {
+          "name": "has_outgoing_citation",
+          "subject_type": "Patent",
+          "object_type": "Citation",
+          "cardinality": "1:N",
+          "triples": 98644
+        },
+        {
+          "name": "classified_as",
+          "subject_type": "Patent",
+          "object_type": "CPCClass",
+          "cardinality": "1:N",
+          "triples": 44520
+        },
+        {
+          "name": "has_inventor",
+          "subject_type": "Patent",
+          "object_type": "Inventor",
+          "cardinality": "1:N",
+          "triples": 14582
+        },
+        {
+          "name": "inventor_located_at",
+          "subject_type": "Inventor",
+          "object_type": "Location",
+          "cardinality": "N:1",
+          "triples": 14539
+        },
+        {
+          "name": "has_assignee",
+          "subject_type": "Patent",
+          "object_type": "Assignee",
+          "cardinality": "1:N",
+          "triples": 4890
+        },
+        {
+          "name": "assignee_located_at",
+          "subject_type": "Assignee",
+          "object_type": "Location",
+          "cardinality": "N:1",
+          "triples": 4881
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "PASS. Pristine adjacency: max Jaccard 0.0 across all 36 v9 training KGs, zero entity-type overlap, zero relationship overlap. PatentsView's Patent / Inventor / Assignee / CPCClass / Citation / Location shape has no analog in the training set (clinical trials, CMS, CFPB, census, IMDB, etc.). The 'closest' KG listed is arbitrary since every training KG ties at 0.0 — cfpb-bank-accounts happens to come first in the training iteration order."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 8,
+        "total_instances": 256737
+      },
+      "ingest_notes": "PatentsView 2020-Q1 slice, deterministic seed=42 reservoir sample of 5,000 patents from the 93,569 patents with patent_date between 2020-01-01 and 2020-03-31. Frozen patent ID list at eval_holdout_v2/multitable_specs/patentsview.patent_ids_2020q1_sample.txt. Ingested via scripts/ingest_multitable.py with spec at eval_holdout_v2/multitable_specs/patentsview.json. CSVs staged at /tmp/patentsview_q1_2020/ (Patent=5000, Inventor=14582, Assignee=4890, CPCClass=25447, CPCEdge=44520, Citation=117660, Location=4155). 1,824,841 triples generated; 1,804,938 landed (small delta from empty-attribute trimming). Schema-size floor PASS (6 types, 8 relationships, 256,737 total instances). Citation graph asymmetry: has_outgoing_citation and cites emit 98,644 rather than 117,660 because ~19k edges in the slice are backward citations where the source Patent is outside the 5k sample; Citation entity and citation_targets_patent still emit all 117,660 so the citation edge set is fully preserved. Recursive Patent->Patent cites edge is the distinguishing structural feature not present in any training KG. Gold generation routed through Cerebras qwen-3-235b-a22b-instruct-2507 via a local shim (scripts/q2forge_v2_cerebras.py wrapper, not committed) because the shared OpenRouter and Anthropic billing accounts were both exhausted at gold-gen time; T4 recursive-cites questions were the only tier qwen failed to reliably produce (0/3), all other tiers passed.",
+      "partition": null,
+      "n_questions": 10,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 3,
+        "t3": 3,
+        "t4": 0
+      },
+      "gold_file": "gold/holdout-v2-patentsview.json"
+    },
+    {
+      "id": "holdout-v2-scdb-supreme-court",
+      "domain": "legal",
+      "source_url": "",
+      "license": "CC BY-NC 3.0",
+      "license_note": "Non-commercial only. See spec §8.2 item 9(g).",
+      "ingest_date": "2026-04-14",
+      "triple_count": 806451,
+      "entity_rich": null,
+      "top_types": [
+        {
+          "type": "Vote",
+          "count": 83644
+        },
+        {
+          "type": "Case",
+          "count": 9341
+        },
+        {
+          "type": "Term",
+          "count": 79
+        },
+        {
+          "type": "Justice",
+          "count": 40
+        },
+        {
+          "type": "IssueArea",
+          "count": 14
+        },
+        {
+          "type": "ChiefJustice",
+          "count": 5
+        },
+        {
+          "type": "DecisionDirection",
+          "count": 3
+        }
+      ],
+      "top_relationships": [],
+      "schema_adjacency": {
+        "verdict": "PASS",
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard": 0.0
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 0,
+        "total_instances": 0
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/scdb-supreme-court.json"
+    },
+    {
+      "id": "holdout-v2-doj-enforcement-actions",
+      "domain": "legal",
+      "source_url": "",
+      "license": "",
+      "ingest_date": "2026-04-14",
+      "triple_count": 139859,
+      "entity_rich": null,
+      "top_types": [
+        {
+          "type": "Action",
+          "count": 5070
+        },
+        {
+          "type": "Company",
+          "count": 4935
+        },
+        {
+          "type": "Jurisdiction",
+          "count": 440
+        },
+        {
+          "type": "Country",
+          "count": 172
+        },
+        {
+          "type": "Year",
+          "count": 33
+        },
+        {
+          "type": "CrimeType",
+          "count": 24
+        },
+        {
+          "type": "DispositionType",
+          "count": 7
+        }
+      ],
+      "top_relationships": [],
+      "schema_adjacency": {
+        "verdict": "PASS",
+        "closest_training_kg": "universities",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard": 0.0476
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 0,
+        "total_instances": 0
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/doj-enforcement-actions.json"
+    },
+    {
+      "id": "holdout-v2-ftc-consent-decrees",
+      "domain": "legal",
+      "source_url": "https://www.ftc.gov/system/files/attachments/data-sets/ (merger, nonmerger, civil_penalty enforcement actions)",
+      "license": "Public Domain (US federal government work; ftc.gov open data)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 8524,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Matter",
+          "count": 599
+        },
+        {
+          "type": "Industry",
+          "count": 34
+        },
+        {
+          "type": "EnforcementType",
+          "count": 6
+        },
+        {
+          "type": "FiscalYear",
+          "count": 24
+        },
+        {
+          "type": "MatterCategory",
+          "count": 3
+        },
+        {
+          "type": "MatterSubtype",
+          "count": 3
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Matter",
+          "pred": "matter_in_industry",
+          "obj": "Industry",
+          "card": "N:1",
+          "count": 556
+        },
+        {
+          "subj": "Matter",
+          "pred": "matter_has_enforcement_type",
+          "obj": "EnforcementType",
+          "card": "N:1",
+          "count": 599
+        },
+        {
+          "subj": "Matter",
+          "pred": "matter_in_fy",
+          "obj": "FiscalYear",
+          "card": "N:1",
+          "count": 599
+        },
+        {
+          "subj": "Matter",
+          "pred": "matter_in_category",
+          "obj": "MatterCategory",
+          "card": "N:1",
+          "count": 599
+        },
+        {
+          "subj": "Matter",
+          "pred": "matter_has_subtype",
+          "obj": "MatterSubtype",
+          "card": "N:1",
+          "count": 42
+        },
+        {
+          "subj": "Industry",
+          "pred": "industry_has_matter",
+          "obj": "Matter",
+          "card": "1:N",
+          "count": 556
+        },
+        {
+          "subj": "FiscalYear",
+          "pred": "fy_includes_matter",
+          "obj": "Matter",
+          "card": "1:N",
+          "count": 599
+        },
+        {
+          "subj": "MatterCategory",
+          "pred": "category_includes_matter",
+          "obj": "Matter",
+          "card": "1:N",
+          "count": 599
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "0 type/rel overlap with training set; jaccard 0.0 << 0.30. Unique legal enforcement schema."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 8,
+        "total_instances": 669
+      },
+      "partition": null,
+      "n_questions": 14,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 4,
+        "t3": 3,
+        "t4": 3
+      },
+      "gold_file": "gold/holdout-v2-ftc-consent-decrees.json",
+      "ingest_status": "complete"
+    },
+    {
+      "id": "holdout-v2-uspto-trademarks",
+      "domain": "legal",
+      "source_url": "https://tsdrapi.uspto.gov/ts/cd/casestatus/sn<SN>/info.json",
+      "license": "USPTO public data (no restrictions)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 19787,
+      "entity_rich": true,
+      "top_types": [
+        {
+          "type": "GoodsServices",
+          "count": 591
+        },
+        {
+          "type": "Trademark",
+          "count": 434
+        },
+        {
+          "type": "Owner",
+          "count": 369
+        },
+        {
+          "type": "State",
+          "count": 59
+        },
+        {
+          "type": "NiceClass",
+          "count": 43
+        }
+      ],
+      "top_relationships": [
+        "goods_in_nice_class",
+        "trademark_covers_goods",
+        "trademark_owned_by",
+        "owner_in_state",
+        "owner_in_country",
+        "owner_is_entity_type",
+        "trademark_has_status",
+        "trademark_filed_under_basis"
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "fda-drug-recalls",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0426,
+        "verdict": "PASS",
+        "notes": "Only incidental State overlap with a few training KGs; no Trademark/Owner/NiceClass/FilingBasis entity or relationship overlap."
+      },
+      "schema_size": {
+        "entity_types": 9,
+        "relationships": 16,
+        "total_instances": 1540
+      },
+      "partition": null,
+      "n_questions": 9,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 0,
+        "t3": 3,
+        "t4": 2
+      },
+      "gold_file": "gold/holdout-v2-uspto-trademarks.json"
+    },
+    {
+      "id": "holdout-v2-pacer-federal-dockets",
+      "domain": "legal",
+      "source_url": "https://www.courtlistener.com/api/rest/v4/dockets/?court__jurisdiction=FD",
+      "license": "CourtListener / Free Law Project — Public Domain (US federal court records; data is US government work). See https://www.courtlistener.com/help/api/rest/",
+      "ingest_date": "2026-04-14",
+      "triple_count": 65852,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Docket",
+          "count": 3980
+        },
+        {
+          "type": "Judge",
+          "count": 847
+        },
+        {
+          "type": "Court",
+          "count": 101
+        },
+        {
+          "type": "NatureOfSuit",
+          "count": 70
+        },
+        {
+          "type": "CaseType",
+          "count": 17
+        }
+      ],
+      "top_relationships": [
+        {
+          "relationship": "docket_filed_in_court",
+          "count": 3980
+        },
+        {
+          "relationship": "court_has_docket",
+          "count": 3980
+        },
+        {
+          "relationship": "docket_from_source",
+          "count": 3980
+        },
+        {
+          "relationship": "docket_has_case_type",
+          "count": 3584
+        },
+        {
+          "relationship": "docket_filed_in_year",
+          "count": 3343
+        },
+        {
+          "relationship": "docket_assigned_to_judge",
+          "count": 1728
+        },
+        {
+          "relationship": "docket_referred_to_judge",
+          "count": 852
+        },
+        {
+          "relationship": "judge_sits_in_court",
+          "count": 847
+        },
+        {
+          "relationship": "docket_has_nature_of_suit",
+          "count": 431
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "Zero overlap with any training KG. Federal court dockets are a novel legal domain in holdout v2."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 9,
+        "total_instances": 5024
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "ingest_notes": "Source is CourtListener REST v4 (Free Law Project / RECAP Archive), not PACER direct. CourtListener is the free, open mirror of PACER — dockets listed here were uploaded to RECAP by practitioners or scraped from court sites. Fetch used per-court parallel pagination (scripts/fetch_courtlistener_dockets.py) because the global date-filtered listing was prohibitively slow on the CL cursor path. Dockets come from 101 active federal district/appellate/specialty courts. Party/attorney data is gated behind a paid CL tier and is NOT included in this KG; ontology covers Docket, Court, Judge, CaseType, NatureOfSuit, Year, DocketSource.",
+      "gold_file": "gold/holdout-v2-pacer-federal-dockets.json"
+    },
+    {
+      "id": "holdout-v2-fec-enforcement",
+      "domain": "legal",
+      "source_url": "https://api.open.fec.gov/v1/legal/search/?type=murs",
+      "license": "Public Domain (US federal government work; api.open.fec.gov)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 15705,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Case",
+          "count": 140
+        },
+        {
+          "type": "Respondent",
+          "count": 418
+        },
+        {
+          "type": "Subject",
+          "count": 16
+        },
+        {
+          "type": "Disposition",
+          "count": 504
+        },
+        {
+          "type": "CitationStatute",
+          "count": 235
+        },
+        {
+          "type": "Participant",
+          "count": 738
+        },
+        {
+          "type": "Year",
+          "count": 4
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Case",
+          "pred": "case_has_respondent",
+          "obj": "Respondent",
+          "card": "1:N",
+          "count": 492
+        },
+        {
+          "subj": "Case",
+          "pred": "case_has_subject",
+          "obj": "Subject",
+          "card": "1:N",
+          "count": 265
+        },
+        {
+          "subj": "Case",
+          "pred": "case_has_disposition",
+          "obj": "Disposition",
+          "card": "1:N",
+          "count": 504
+        },
+        {
+          "subj": "Disposition",
+          "pred": "disposition_against_respondent",
+          "obj": "Respondent",
+          "card": "N:1",
+          "count": 504
+        },
+        {
+          "subj": "Disposition",
+          "pred": "disposition_cites_statute",
+          "obj": "CitationStatute",
+          "card": "1:N",
+          "count": 1886
+        },
+        {
+          "subj": "Case",
+          "pred": "case_has_participant",
+          "obj": "Participant",
+          "card": "1:N",
+          "count": 738
+        },
+        {
+          "subj": "Case",
+          "pred": "case_in_year",
+          "obj": "Year",
+          "card": "N:1",
+          "count": 140
+        },
+        {
+          "subj": "Respondent",
+          "pred": "respondent_involved_in_case",
+          "obj": "Case",
+          "card": "1:N",
+          "count": 492
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "0 type/rel overlap with training set; jaccard 0.0 << 0.30. Unique legal enforcement schema."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 8,
+        "total_instances": 2055
+      },
+      "partition": null,
+      "n_questions": 10,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 1,
+        "t3": 3,
+        "t4": 2
+      },
+      "gold_file": "gold/holdout-v2-fec-enforcement.json",
+      "ingest_status": "complete"
+    },
+    {
+      "id": "holdout-v2-nih-reporter-non-clinical",
+      "domain": "scientific_public_sector",
+      "source_url": "https://api.reporter.nih.gov/v2/projects/search",
+      "license": "Public Domain (NIH is US federal agency)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 82350,
+      "entity_rich": true,
+      "top_types": [
+        [
+          "Project",
+          5287
+        ],
+        [
+          "Investigator",
+          2513
+        ],
+        [
+          "StudySection",
+          1873
+        ],
+        [
+          "Institution",
+          643
+        ],
+        [
+          "State",
+          52
+        ],
+        [
+          "Agency",
+          36
+        ]
+      ],
+      "top_relationships": [
+        [
+          "has_investigator",
+          5287
+        ],
+        [
+          "funded_by_agency",
+          5287
+        ],
+        [
+          "awarded_to_institution",
+          5277
+        ],
+        [
+          "reviewed_by",
+          4886
+        ],
+        [
+          "institution_located_in",
+          587
+        ]
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-readmissions",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0556,
+        "verdict": "PASS",
+        "notes": "Novel schema: closest overlap is only on the shared generic 'State' type; no relationship overlap. Jaccard 0.0556 << 0.30 threshold; hard rule not triggered."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 5,
+        "total_instances": 10404
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "swapped_in_for": "nsf-awards",
+      "swap_reason": "NSF bulk download endpoint dead 2026-04",
+      "notes": "FY2022 NIH RePORTER REST API fetch (5500 projects), non-clinical filter drops projects whose FullStudySection.name matches /\\bclinical\\b/i (213 dropped, 5287 kept). Entity types: Project (anchor), Investigator, Institution, StudySection, Agency (NIH IC), State. Six types exceeds the task brief's >=5 requirement. Schema-size floor reports floor_pass=False because system floor requires >=8 relationships; the brief explicitly requires >=5 entity types which is met. Five rels is a deliberate near-miss accepted by the caller per ingest_multitable.py §4 (floor is advisory, not hard-fail).",
+      "gold_file": "gold/nih-reporter-non-clinical.json"
+    },
+    {
+      "id": "holdout-v2-fema-disaster-declarations",
+      "domain": "scientific_public_sector",
+      "source_url": "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries.csv",
+      "license": "Public Domain (FEMA OpenFEMA)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 380108,
+      "entity_rich": true,
+      "top_types": [
+        "County",
+        "FemaDeclaration",
+        "Declaration",
+        "Incident",
+        "State",
+        "Region"
+      ],
+      "top_relationships": [
+        "FemaDeclaration.designated_area.County (N:N, n=4981)",
+        "FemaDeclaration.fips_county_code.County (N:N, n=4444)",
+        "FemaDeclaration.has_declaration.Declaration (1:1, n=724)",
+        "FemaDeclaration.has_incident.Incident (1:1, n=724)",
+        "FemaDeclaration.state.State (1:N, n=724)",
+        "FemaDeclaration.region.Region (1:N, n=724)",
+        "FemaDeclaration.fips_state_code.State (1:N, n=722)",
+        "FemaDeclaration.fips_state_code.Region (1:N, n=2)"
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-hospital-quality",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.075,
+        "verdict": "PASS",
+        "notes": "wave4 pilot; ingested 2026-04-13"
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 8,
+        "total_instances": 4625
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/fema-disaster-declarations.json",
+      "ingest_status": "summary_only"
+    },
+    {
+      "id": "holdout-v2-fema-disaster-declarations-multitable",
+      "domain": "scientific_public_sector",
+      "source_url": "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries, PublicAssistanceFundedProjectsDetails",
+      "license": "Public Domain (FEMA OpenFEMA)",
+      "ingest_date": "2026-04-14",
+      "triple_count": 140106,
+      "entity_rich": true,
+      "top_types": [
+        "PAProject",
+        "Applicant",
+        "County",
+        "Disaster",
+        "IncidentType",
+        "DamageCategory",
+        "State"
+      ],
+      "top_relationships": [
+        "Disaster.has_incident_type.IncidentType (1:1, n=386)",
+        "Disaster.declared_in_state.State (1:1, n=386)",
+        "Disaster.has_pa_project.PAProject (1:N, n=10000)",
+        "County.county_located_in.State (1:1, n=414)",
+        "PAProject.pa_project_in_county.County (1:1, n=9828)",
+        "PAProject.pa_project_in_state.State (1:1, n=10000)",
+        "PAProject.pa_project_has_applicant.Applicant (1:1, n=10000)",
+        "PAProject.pa_project_has_damage_category.DamageCategory (1:1, n=10000)"
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "Ingested 2026-04-14 via scripts/ingest_multitable.py (native multi-table, Path B). State=TX slice. KG-scoped URIs under https://omnix.dev/holdout-v2/<kg>/... ensure zero overlap with training ontology."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 8,
+        "total_instances": 12261
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/fema-disaster-declarations-multitable.json",
+      "ingest_status": "native_multitable"
+    },
+    {
+      "id": "holdout-v2-epa-water-quality-portal",
+      "domain": "scientific_public_sector",
+      "source_url": "https://www.waterqualitydata.us/",
+      "license": "Public Domain (US Federal Government work)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 73428,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Sample",
+          "count": 4692
+        },
+        {
+          "type": "Station",
+          "count": 376
+        },
+        {
+          "type": "HUC8",
+          "count": 44
+        },
+        {
+          "type": "Organization",
+          "count": 34
+        },
+        {
+          "type": "County",
+          "count": 25
+        },
+        {
+          "type": "WaterBodyType",
+          "count": 21
+        },
+        {
+          "type": "Parameter",
+          "count": 1
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Station",
+          "pred": "station_has_sample",
+          "obj": "Sample",
+          "card": "N:1",
+          "count": 4692
+        },
+        {
+          "subj": "Sample",
+          "pred": "sample_by_organization",
+          "obj": "Organization",
+          "card": "1:N",
+          "count": 4692
+        },
+        {
+          "subj": "Sample",
+          "pred": "sample_measures_parameter",
+          "obj": "Parameter",
+          "card": "1:N",
+          "count": 4692
+        },
+        {
+          "subj": "Sample",
+          "pred": "sample_at_station",
+          "obj": "Station",
+          "card": "1:N",
+          "count": 4692
+        },
+        {
+          "subj": "Station",
+          "pred": "station_operated_by",
+          "obj": "Organization",
+          "card": "1:N",
+          "count": 376
+        },
+        {
+          "subj": "Station",
+          "pred": "station_in_county",
+          "obj": "County",
+          "card": "1:N",
+          "count": 376
+        },
+        {
+          "subj": "Station",
+          "pred": "station_waterbody_type",
+          "obj": "WaterBodyType",
+          "card": "1:N",
+          "count": 376
+        },
+        {
+          "subj": "Station",
+          "pred": "station_in_huc8",
+          "obj": "HUC8",
+          "card": "1:N",
+          "count": 372
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-nursing-home-providers",
+        "type_overlap": 2,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0556,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0556 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 7,
+        "relationships": 8,
+        "total_instances": 5193
+      },
+      "partition": "private_held_out",
+      "n_questions": 13,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 3,
+        "t3": 3,
+        "t4": 3
+      },
+      "gold_file": "gold/holdout-v2-epa-water-quality-portal.json",
+      "ingest_notes": "CA dissolved oxygen 2022 from EPA/USGS Water Quality Portal."
+    },
+    {
+      "id": "holdout-v2-noaa-storm-events",
+      "domain": "scientific_public_sector",
+      "source_url": "",
+      "license": "",
+      "ingest_date": "2026-04-14",
+      "triple_count": 196457,
+      "entity_rich": null,
+      "top_types": [
+        {
+          "type": "StormEvent",
+          "count": 10000
+        },
+        {
+          "type": "Episode",
+          "count": 4584
+        },
+        {
+          "type": "County",
+          "count": 2071
+        },
+        {
+          "type": "State",
+          "count": 64
+        },
+        {
+          "type": "EventType",
+          "count": 45
+        },
+        {
+          "type": "Month",
+          "count": 12
+        }
+      ],
+      "top_relationships": [],
+      "schema_adjacency": {
+        "verdict": "PASS",
+        "closest_training_kg": "cms-hospital-infections",
+        "type_overlap": 2,
+        "rel_overlap": 0,
+        "max_jaccard": 0.0714
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 0,
+        "total_instances": 0
+      },
+      "partition": null,
+      "n_questions": 0,
+      "tier_distribution": {
+        "t1": 0,
+        "t2": 0,
+        "t3": 0,
+        "t4": 0
+      },
+      "gold_file": "gold/noaa-storm-events.json"
+    },
+    {
+      "id": "holdout-v2-usda-agricultural-statistics",
+      "domain": "scientific_public_sector",
+      "source_url": "https://quickstats.nass.usda.gov/",
+      "license": "Public Domain (US Federal Government work)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 110431,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Observation",
+          "count": 10000
+        },
+        {
+          "type": "Commodity",
+          "count": 58
+        },
+        {
+          "type": "State",
+          "count": 50
+        },
+        {
+          "type": "Unit",
+          "count": 11
+        },
+        {
+          "type": "Year",
+          "count": 5
+        },
+        {
+          "type": "StatisticCategory",
+          "count": 3
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Observation",
+          "pred": "observation_in_year",
+          "obj": "Year",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Observation",
+          "pred": "observation_unit",
+          "obj": "Unit",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Observation",
+          "pred": "observation_stat_category",
+          "obj": "StatisticCategory",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Observation",
+          "pred": "observation_in_state",
+          "obj": "State",
+          "card": "1:N",
+          "count": 10000
+        },
+        {
+          "subj": "Observation",
+          "pred": "observation_of_commodity",
+          "obj": "Commodity",
+          "card": "1:N",
+          "count": 10000
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cms-readmissions",
+        "type_overlap": 1,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0556,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0556 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 5,
+        "total_instances": 10127
+      },
+      "partition": "private_held_out",
+      "n_questions": 12,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 4,
+        "t3": 1,
+        "t4": 3
+      },
+      "gold_file": "gold/holdout-v2-usda-agricultural-statistics.json",
+      "ingest_notes": "USDA NASS QuickStats environmental dataset; STATE-level 2018-2022, 10k observations sampled."
+    },
+    {
+      "id": "holdout-v2-doe-energy-research-grants",
+      "domain": "scientific_public_sector",
+      "source_url": "https://www.osti.gov/api/v1/records",
+      "license": "Public Domain (US Federal Government work)",
+      "ingest_date": "2026-04-13",
+      "triple_count": 179707,
+      "entity_rich": "yes",
+      "top_types": [
+        {
+          "type": "Author",
+          "count": 16924
+        },
+        {
+          "type": "Subject",
+          "count": 7187
+        },
+        {
+          "type": "Grant",
+          "count": 5000
+        },
+        {
+          "type": "ResearchOrg",
+          "count": 1454
+        },
+        {
+          "type": "SponsorOrg",
+          "count": 464
+        },
+        {
+          "type": "Year",
+          "count": 14
+        }
+      ],
+      "top_relationships": [
+        {
+          "subj": "Grant",
+          "pred": "grant_has_author",
+          "obj": "Author",
+          "card": "N:N",
+          "count": 22454
+        },
+        {
+          "subj": "Grant",
+          "pred": "grant_has_subject",
+          "obj": "Subject",
+          "card": "N:N",
+          "count": 17777
+        },
+        {
+          "subj": "Grant",
+          "pred": "grant_performed_by",
+          "obj": "ResearchOrg",
+          "card": "N:N",
+          "count": 6094
+        },
+        {
+          "subj": "Grant",
+          "pred": "grant_sponsored_by",
+          "obj": "SponsorOrg",
+          "card": "N:N",
+          "count": 5877
+        },
+        {
+          "subj": "Grant",
+          "pred": "grant_in_year",
+          "obj": "Year",
+          "card": "1:N",
+          "count": 5000
+        }
+      ],
+      "schema_adjacency": {
+        "closest_training_kg": "cfpb-bank-accounts",
+        "type_overlap": 0,
+        "rel_overlap": 0,
+        "max_jaccard_vs_training": 0.0,
+        "verdict": "PASS",
+        "notes": "No training KG met the hard rule (>=3 types AND >=2 rels w/ matching card), and max Jaccard 0.0 < 0.3."
+      },
+      "schema_size": {
+        "entity_types": 6,
+        "relationships": 5,
+        "total_instances": 31043
+      },
+      "partition": "private_held_out",
+      "n_questions": 12,
+      "tier_distribution": {
+        "t1": 4,
+        "t2": 3,
+        "t3": 2,
+        "t4": 3
+      },
+      "gold_file": "gold/holdout-v2-doe-energy-research-grants.json",
+      "ingest_notes": "DOE OSTI public API; 5000 Technical Report records across 14 years."
+    }
+  ],
+  "totals": {
+    "target_n_kgs": 28,
+    "target_n_questions": 320,
+    "n_kgs": 26,
+    "n_questions": 0
+  },
+  "deferred_kgs": [
+    {
+      "id": "holdout-v2-finra-trace-corporate-bonds",
+      "reason": "blocked — FINRA TRACE bulk corporate-bond data requires a TRAQS subscription; no free bulk access available at freeze time"
+    },
+    {
+      "id": "nsf-awards",
+      "reason": "swapped to NIH RePORTER Non-Clinical as the scientific/public representative; NSF Awards was a placeholder entry and was not ingested"
+    },
+    {
+      "id": "doe-energy-research-grants",
+      "reason": "duplicate of holdout-v2-doe-energy-research-grants; this non-prefixed draft entry was superseded by the prefixed, fully-ingested KG and was never itself part of an eval run"
+    }
+  ]
+}

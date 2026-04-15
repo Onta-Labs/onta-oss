@@ -1,0 +1,718 @@
+{
+  "kg": "holdout-v2-epa-water-quality-portal",
+  "results": [
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct organizations are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?organization) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n}",
+      "expected_answer": "34",
+      "full_expected_items": [
+        "34"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List the names of all available counties.",
+      "gold_sparql": "SELECT ?county_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n}",
+      "expected_answer": "Plumas, Siskiyou, Santa Barbara, San Mateo, Humboldt, Imperial, Mendocino, Merced, Lake, Marin ... (25 total)",
+      "full_expected_items": [
+        "Plumas",
+        "Siskiyou",
+        "Santa Barbara",
+        "San Mateo",
+        "Humboldt",
+        "Imperial",
+        "Mendocino",
+        "Merced",
+        "Lake",
+        "Marin",
+        "Monterey",
+        "San Benito",
+        "Riverside",
+        "Santa Clara",
+        "Shasta",
+        "San Luis Obispo",
+        "San Diego",
+        "Santa Cruz",
+        "Tulare",
+        "Alameda",
+        "Amador",
+        "Contra Costa",
+        "Del Norte",
+        "Inyo",
+        "Kings"
+      ],
+      "full_result_count": 25,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "San Diego, Kings, Santa Barbara, Santa Clara, Imperial, San Luis Obispo, San Mateo, Santa Cruz, Inyo, Monterey",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "San Diego, Kings, Santa Barbara, Santa Clara, Imperial, San Luis Obispo, San Mateo, Santa Cruz, Inyo, Monterey",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "San Diego, Kings, Santa Barbara, Santa Clara, Imperial, San Luis Obispo, San Mateo, Santa Cruz, Inyo, Monterey",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "San Diego, Kings, Santa Barbara, Santa Clara, Imperial, San Luis Obispo, San Mateo, Santa Cruz, Inyo, Monterey",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "What are the names of the different water body types?",
+      "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n}",
+      "expected_answer": "Lake, Spring, Canal Irrigation, Channelized Stream, Estuary, Land Runoff, Other-Surface Water, Pond, Pond-Stormwater, Reservoir ... (21 total)",
+      "full_expected_items": [
+        "Lake",
+        "Spring",
+        "Canal Irrigation",
+        "Channelized Stream",
+        "Estuary",
+        "Land Runoff",
+        "Other-Surface Water",
+        "Pond",
+        "Pond-Stormwater",
+        "Reservoir",
+        "River/Stream",
+        "River/Stream Intermittent",
+        "River/Stream Perennial",
+        "River/stream Effluent-Dominated",
+        "Riverine Impoundment",
+        "Seep",
+        "Storm Sewer",
+        "Well",
+        "Wetland Palustrine-Forested",
+        "Wetland Palustrine-Shrub-Scrub",
+        "Wetland Riverine-Emergent"
+      ],
+      "full_result_count": 21,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Wetland Palustrine-Shrub-Scrub, Wetland Riverine-Emergent, Wetland Palustrine-Forested, Pond-Stormwater, Riverine Impoundment, Land Runoff, River/Stream Intermittent, Pond, River/Stream, Storm Sewer",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Wetland Palustrine-Shrub-Scrub, Wetland Riverine-Emergent, Wetland Palustrine-Forested, Pond-Stormwater, Riverine Impoundment, Land Runoff, River/Stream Intermittent, Pond, River/Stream, Storm Sewer",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Wetland Palustrine-Shrub-Scrub, Wetland Riverine-Emergent, Wetland Palustrine-Forested, Pond-Stormwater, Riverine Impoundment, Land Runoff, River/Stream Intermittent, Pond, River/Stream, Storm Sewer",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Wetland Palustrine-Shrub-Scrub, Wetland Riverine-Emergent, Wetland Palustrine-Forested, Pond-Stormwater, Riverine Impoundment, Land Runoff, River/Stream Intermittent, Pond, River/Stream, Storm Sewer",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many unique HUC8 codes are recorded?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?huc8_code) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?huc8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/HUC8> .\n  ?huc8 <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/huc8_code> ?huc8_code .\n}",
+      "expected_answer": "44",
+      "full_expected_items": [
+        "44"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "What are the labels of organizations whose name contains 'National Park Service'?",
+      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?name .\n  ?organization <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(CONTAINS(LCASE(STR(?name)), \"national park service\"))\n}",
+      "expected_answer": "National Park Service Water Resources Division",
+      "full_expected_items": [
+        "National Park Service Water Resources Division"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "11NPSWRD_WQX",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "11NPSWRD_WQX",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "11NPSWRD_WQX",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "11NPSWRD_WQX",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "List the names of counties that start with 'M'.",
+      "gold_sparql": "SELECT ?county_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n  FILTER(STRSTARTS(?county_name, \"M\"))\n}",
+      "expected_answer": "Mendocino, Merced, Marin, Monterey",
+      "full_expected_items": [
+        "Mendocino",
+        "Merced",
+        "Marin",
+        "Monterey"
+      ],
+      "full_result_count": 4,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Monterey, Mendocino, Merced, Marin",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Monterey, Mendocino, Merced, Marin",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Monterey, Mendocino, Merced, Marin",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Monterey, Mendocino, Merced, Marin",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "How many stations have an elevation greater than 1000?",
+      "gold_sparql": "SELECT (COUNT(?station) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_elevation> ?elevation_str .\n  BIND(xsd:integer(?elevation_str) AS ?elevation) .\n  FILTER(?elevation > 1000)\n}",
+      "expected_answer": "3",
+      "full_expected_items": [
+        "3"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-008",
+      "tier": "T3",
+      "question": "How many samples were collected by each organization?",
+      "gold_sparql": "SELECT ?organizationName (COUNT(?sample) AS ?sampleCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organizationName .\n} GROUP BY ?organizationName ORDER BY DESC(?sampleCount)",
+      "expected_answer": "Hoopa Valley Tribe (Tribal) | 1218\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870\nBig Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700\nNational Park Service Water Resources Division | 359\nCalifornia State Water Resources Control Board | 246\nCher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228\nCoyote Valley Band of Pomo Indians of California (Tribal) | 225\nYurok Tribe of the Yurok Reservation, California (Tribal) | 137\nBLUELAKERANCHERIA_WQX (Tribal) | 96\nHabematolel Pomo of Upper Lake, California (Tribal) | 82\n... (34 total rows)",
+      "full_expected_items": [
+        "Hoopa Valley Tribe (Tribal) | 1218",
+        "Tolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870",
+        "Big Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700",
+        "National Park Service Water Resources Division | 359",
+        "California State Water Resources Control Board | 246",
+        "Cher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228",
+        "Coyote Valley Band of Pomo Indians of California (Tribal) | 225",
+        "Yurok Tribe of the Yurok Reservation, California (Tribal) | 137",
+        "BLUELAKERANCHERIA_WQX (Tribal) | 96",
+        "Habematolel Pomo of Upper Lake, California (Tribal) | 82",
+        "Resighini Rancheria, California (Tribal) | 70",
+        "Wiyot Tribe, California (Tribal) | 49",
+        "Sherwood Valley Band Of Pomo Indians | 48",
+        "Karuk Tribe (Tribal) | 46",
+        "Owens Valley Indian Water Commission (Tribal) | 43",
+        "Morongo Band of Mission Indians | 41",
+        "Buena Vista Rancheria of Me-Wuk Indians of California (Tribal) | 34",
+        "Bishop Paiute Tribe | 33",
+        "Pauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal) | 21",
+        "La Posta EPA (Tribal) | 17",
+        "Cahto Tribe of the Laytonville Rancheria (Tribal) | 15",
+        "Cocopah Tribe of Arizona (Tribal) | 14",
+        "Santa Rosa Indian Community of the Santa Rosa Rancheria, California (Tribal) | 12",
+        "Quechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12",
+        "Santa Ynez Band of Chumash Indians | 11",
+        "Middletown Rancheria of Pomo Indians of California (Tribal) | 10",
+        "Twenty-Nine Palms Tribal EPA | 10",
+        "Augustine Band of Cahuilla Indians (Tribal) | 9",
+        "Elk Valley Rancheria, California (Tribal) | 9",
+        "Pechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal) | 8",
+        "Cabazon Band of Cahuilla Indians, California (Tribal) | 7",
+        "North American Lake Management Society | 7",
+        "Adventure Scientists (Volunteer)* | 3",
+        "Soboba Band of Luiseno Indians, California (Tribal) | 2"
+      ],
+      "full_result_count": 34,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "SRR_WQX: 4, CA_BVR: 3, ADVENTURESCIENTISTS: 1, 11NPSWRD_WQX: 1, COCOPAH_INDIAN: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "SRR_WQX: 4, CA_BVR: 3, ADVENTURESCIENTISTS: 1, 11NPSWRD_WQX: 1, COCOPAH_INDIAN: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "SRR_WQX: 4, CA_BVR: 3, ADVENTURESCIENTISTS: 1, 11NPSWRD_WQX: 1, COCOPAH_INDIAN: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "SRR_WQX: 4, CA_BVR: 3, ADVENTURESCIENTISTS: 1, 11NPSWRD_WQX: 1, COCOPAH_INDIAN: 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "List the names of parameters that were measured in samples with a 'Water' media type, and count how many such samples measured each parameter.",
+      "gold_sparql": "SELECT ?parameterName (COUNT(?sample) AS ?sampleCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_measures_parameter> ?parameter .\n  ?parameter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Parameter> .\n  ?parameter <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/parameter_name> ?parameterName .\n} GROUP BY ?parameterName ORDER BY DESC(?sampleCount)",
+      "expected_answer": "Dissolved oxygen (DO) | 4692",
+      "full_expected_items": [
+        "Dissolved oxygen (DO) | 4692"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Dissolved_oxygen_(DO) (10)",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Dissolved_oxygen_(DO) (10)",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Dissolved_oxygen_(DO) (10)",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Dissolved_oxygen_(DO) (10)",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "How many samples were collected at each station?",
+      "gold_sparql": "SELECT ?station_name (COUNT(?sample) AS ?sample_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_has_sample> ?sample .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name .\n} GROUP BY ?station_name ORDER BY DESC(?sample_count) LIMIT 10",
+      "expected_answer": "CDR and Nutrients at Saints Rest Bar | 822\nCDR at Red Rock | 396\nSmith River Middle Fork | 106\nRowdy Creek 1 | 106\nLopez Creek 2 | 102\nRowdy Creek 2 | 98\nSmith River 2 | 98\nGilbert Creek 3 | 96\nSmith River 3A | 94\nLopez Creek 1 | 86",
+      "full_expected_items": [
+        "CDR and Nutrients at Saints Rest Bar | 822",
+        "CDR at Red Rock | 396",
+        "Smith River Middle Fork | 106",
+        "Rowdy Creek 1 | 106",
+        "Lopez Creek 2 | 102",
+        "Rowdy Creek 2 | 98",
+        "Smith River 2 | 98",
+        "Gilbert Creek 3 | 96",
+        "Smith River 3A | 94",
+        "Lopez Creek 1 | 86"
+      ],
+      "full_result_count": 10,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "HVTEPA_WQX-KR_STREST_CDR: 1, SRR_WQX-RC-1: 2, CA_BVR-FC3: 1, SRR_WQX-SR-3A: 1, SRR_WQX-RC-2: 1, SRR_WQX-GC-3: 1, SRR_WQX-GC-2: 1, SRR_WQX-SR-2: 2",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "HVTEPA_WQX-KR_STREST_CDR: 1, SRR_WQX-RC-1: 2, CA_BVR-FC3: 1, SRR_WQX-SR-3A: 1, SRR_WQX-RC-2: 1, SRR_WQX-GC-3: 1, SRR_WQX-GC-2: 1, SRR_WQX-SR-2: 2",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "HVTEPA_WQX-KR_STREST_CDR: 1, SRR_WQX-RC-1: 2, CA_BVR-FC3: 1, SRR_WQX-SR-3A: 1, SRR_WQX-RC-2: 1, SRR_WQX-GC-3: 1, SRR_WQX-GC-2: 1, SRR_WQX-SR-2: 2",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "HVTEPA_WQX-KR_STREST_CDR: 1, SRR_WQX-RC-1: 2, CA_BVR-FC3: 1, SRR_WQX-SR-3A: 1, SRR_WQX-RC-2: 1, SRR_WQX-GC-3: 1, SRR_WQX-GC-2: 1, SRR_WQX-SR-2: 2",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "What is the average number of samples collected by organizations that operate stations in the 'Imperial' county?",
+      "gold_sparql": "SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> \"Imperial\" .\n  { \n    SELECT ?organization (COUNT(?sample) AS ?sample_count) WHERE {\n      ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n      ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n      ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n    } GROUP BY ?organization\n  }\n} GROUP BY ?organization_name",
+      "expected_answer": "California State Water Resources Control Board | 246\nCocopah Tribe of Arizona (Tribal) | 14\nQuechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12",
+      "full_expected_items": [
+        "California State Water Resources Control Board | 246",
+        "Cocopah Tribe of Arizona (Tribal) | 14",
+        "Quechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12"
+      ],
+      "full_result_count": 3,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "Find the names of organizations that have collected samples of 'Water' media and operate stations with a 'WGS84' horizontal datum.",
+      "gold_sparql": "SELECT DISTINCT ?organization_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_horizontal_datum> \"WGS84\" .\n}",
+      "expected_answer": "Karuk Tribe (Tribal), National Park Service Water Resources Division, Augustine Band of Cahuilla Indians (Tribal), Bishop Paiute Tribe, Adventure Scientists (Volunteer)*, Pauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal), California State Water Resources Control Board, Pechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal), Tolowa Dee-ni Nation (Smith River Rancheria), California (Tribal), Middletown Rancheria of Pomo Indians of California (Tribal) ... (12 total)",
+      "full_expected_items": [
+        "Karuk Tribe (Tribal)",
+        "National Park Service Water Resources Division",
+        "Augustine Band of Cahuilla Indians (Tribal)",
+        "Bishop Paiute Tribe",
+        "Adventure Scientists (Volunteer)*",
+        "Pauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal)",
+        "California State Water Resources Control Board",
+        "Pechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal)",
+        "Tolowa Dee-ni Nation (Smith River Rancheria), California (Tribal)",
+        "Middletown Rancheria of Pomo Indians of California (Tribal)",
+        "Twenty-Nine Palms Tribal EPA",
+        "Buena Vista Rancheria of Me-Wuk Indians of California (Tribal)"
+      ],
+      "full_result_count": 12,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "11NPSWRD_WQX",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "11NPSWRD_WQX",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "11NPSWRD_WQX",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "11NPSWRD_WQX",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-epa-water-quality-portal",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "List the names of water body types associated with stations that have samples with a 'Field Msr/Obs' activity type.",
+      "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_waterbody_type> ?waterbodytype .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_activity_type> \"Field Msr/Obs\" .\n}",
+      "expected_answer": "River/Stream, Other-Surface Water, Reservoir, River/Stream Intermittent, River/Stream Perennial, River/stream Effluent-Dominated, Estuary, Seep, Well, Pond ... (21 total)",
+      "full_expected_items": [
+        "River/Stream",
+        "Other-Surface Water",
+        "Reservoir",
+        "River/Stream Intermittent",
+        "River/Stream Perennial",
+        "River/stream Effluent-Dominated",
+        "Estuary",
+        "Seep",
+        "Well",
+        "Pond",
+        "Pond-Stormwater",
+        "Lake",
+        "Land Runoff",
+        "Spring",
+        "Canal Irrigation",
+        "Channelized Stream",
+        "Riverine Impoundment",
+        "Storm Sewer",
+        "Wetland Palustrine-Forested",
+        "Wetland Riverine-Emergent",
+        "Wetland Palustrine-Shrub-Scrub"
+      ],
+      "full_result_count": 21,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Insufficient rows to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Insufficient rows to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Insufficient rows to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Insufficient rows to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    }
+  ],
+  "n_chunks": 695,
+  "tables": [
+    {
+      "table": "County",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/County.csv",
+      "n_rows_used": 25,
+      "n_cols": 2
+    },
+    {
+      "table": "HUC8",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/HUC8.csv",
+      "n_rows_used": 44,
+      "n_cols": 2
+    },
+    {
+      "table": "Organization",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/Organization.csv",
+      "n_rows_used": 34,
+      "n_cols": 3
+    },
+    {
+      "table": "Parameter",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/Parameter.csv",
+      "n_rows_used": 1,
+      "n_cols": 3
+    },
+    {
+      "table": "Sample",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/Sample.csv",
+      "n_rows_used": 285,
+      "n_cols": 16
+    },
+    {
+      "table": "Station",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/Station.csv",
+      "n_rows_used": 285,
+      "n_cols": 13
+    },
+    {
+      "table": "WaterBodyType",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-epa-water-quality-portal/WaterBodyType.csv",
+      "n_rows_used": 21,
+      "n_cols": 2
+    }
+  ]
+}

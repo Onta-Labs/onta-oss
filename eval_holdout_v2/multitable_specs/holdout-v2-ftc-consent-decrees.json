@@ -1,0 +1,128 @@
+{
+  "kg_name": "holdout-v2-ftc-consent-decrees",
+  "_source": "FTC Bureau of Competition enforcement-action datasets (merger, nonmerger, civil penalty) published on www.ftc.gov/system/files/attachments/data-sets/. Snapshot in benchmarks/datasets/holdout_v2_raw/holdout-v2-ftc-consent-decrees/. See scripts/prep_ftc_consent_decrees.py.",
+  "entity_types": [
+    {
+      "name": "Matter",
+      "source_csv": "Matter.csv",
+      "primary_key": "matter_id",
+      "label_column": "matter_name",
+      "attributes": [
+        "matter_number",
+        "matter_name",
+        "matter_date",
+        "matter_fy",
+        "matter_url"
+      ]
+    },
+    {
+      "name": "Industry",
+      "source_csv": "Industry.csv",
+      "primary_key": "industry_id",
+      "label_column": "industry_label",
+      "attributes": ["industry_label"]
+    },
+    {
+      "name": "EnforcementType",
+      "source_csv": "EnforcementType.csv",
+      "primary_key": "enforcement_type_id",
+      "label_column": "enforcement_type_label",
+      "attributes": ["enforcement_type_label"]
+    },
+    {
+      "name": "FiscalYear",
+      "source_csv": "FiscalYear.csv",
+      "primary_key": "fy_id",
+      "label_column": "fy_value",
+      "attributes": ["fy_value"]
+    },
+    {
+      "name": "MatterCategory",
+      "source_csv": "MatterCategory.csv",
+      "primary_key": "category_id",
+      "label_column": "category_label",
+      "attributes": ["category_label"]
+    },
+    {
+      "name": "MatterSubtype",
+      "source_csv": "MatterSubtype.csv",
+      "primary_key": "subtype_id",
+      "label_column": "subtype_label",
+      "attributes": ["subtype_label"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "matter_in_industry",
+      "source_csv": "Matter.csv",
+      "subject_type": "Matter",
+      "subject_key_column": "matter_id",
+      "object_type": "Industry",
+      "object_key_column": "matter_industry_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "matter_has_enforcement_type",
+      "source_csv": "Matter.csv",
+      "subject_type": "Matter",
+      "subject_key_column": "matter_id",
+      "object_type": "EnforcementType",
+      "object_key_column": "matter_enforcement_type_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "matter_in_fy",
+      "source_csv": "Matter.csv",
+      "subject_type": "Matter",
+      "subject_key_column": "matter_id",
+      "object_type": "FiscalYear",
+      "object_key_column": "matter_fy",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "matter_in_category",
+      "source_csv": "Matter.csv",
+      "subject_type": "Matter",
+      "subject_key_column": "matter_id",
+      "object_type": "MatterCategory",
+      "object_key_column": "matter_category_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "matter_has_subtype",
+      "source_csv": "Matter.csv",
+      "subject_type": "Matter",
+      "subject_key_column": "matter_id",
+      "object_type": "MatterSubtype",
+      "object_key_column": "matter_subtype_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "industry_has_matter",
+      "source_csv": "Matter.csv",
+      "subject_type": "Industry",
+      "subject_key_column": "matter_industry_id",
+      "object_type": "Matter",
+      "object_key_column": "matter_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "fy_includes_matter",
+      "source_csv": "Matter.csv",
+      "subject_type": "FiscalYear",
+      "subject_key_column": "matter_fy",
+      "object_type": "Matter",
+      "object_key_column": "matter_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "category_includes_matter",
+      "source_csv": "Matter.csv",
+      "subject_type": "MatterCategory",
+      "subject_key_column": "matter_category_id",
+      "object_type": "Matter",
+      "object_key_column": "matter_id",
+      "cardinality": "1:N"
+    }
+  ]
+}
