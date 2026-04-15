@@ -20,12 +20,12 @@ class FunctionExecutor:
             self._lambda_client = boto3.client("lambda")
         return self._lambda_client
 
-    async def invoke(self, ref: FunctionRef, payload: dict) -> FunctionResult:
+    async def invoke(self, ref: FunctionRef, payload: dict, headers: dict | None = None) -> FunctionResult:
         start = time.monotonic()
         if ref.tier == FunctionTier.PLATFORM:
             output = await self._invoke_tier1(ref.name, payload)
         else:
-            output = await self._invoke_tier2(ref.endpoint_url, payload)
+            output = await self._invoke_tier2(ref.endpoint_url, payload, headers=headers)
         duration = (time.monotonic() - start) * 1000
         return FunctionResult(output=output, duration_ms=duration, function_name=ref.name)
 
@@ -41,10 +41,10 @@ class FunctionExecutor:
         response_payload = response["Payload"].read()
         return json.loads(response_payload)
 
-    async def _invoke_tier2(self, endpoint_url: str, payload: dict) -> dict:
+    async def _invoke_tier2(self, endpoint_url: str, payload: dict, headers: dict | None = None) -> dict:
         if not endpoint_url:
             raise ValueError("Tier 2 function requires an endpoint URL")
-        response = await self._http_client.post(endpoint_url, json=payload)
+        response = await self._http_client.post(endpoint_url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
 
