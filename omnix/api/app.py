@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from omnix.api.middleware import RequestLoggingMiddleware
 from omnix.api.rate_limit import limiter
-from omnix.api.routes import ask, functions, health, ingest, knowledge_graphs, ontology, query, triples
+from omnix.api.routes import ask, functions, health, ingest, knowledge_graphs, lambda_functions, ontology, query, triples
 from omnix.config import settings
 from omnix.graph.client import NeptuneClient
 from omnix.logging import setup_logging
@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(triples.router, tags=["triples"])
     app.include_router(query.router, tags=["query"])
     app.include_router(functions.router, tags=["functions"])
+    app.include_router(lambda_functions.router, tags=["lambda_functions"])
     app.include_router(ask.router, tags=["ask"])
     app.include_router(ontology.router, tags=["ontology"])
     app.include_router(ingest.router, tags=["ingest"])
