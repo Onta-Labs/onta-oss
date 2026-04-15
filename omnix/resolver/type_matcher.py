@@ -136,6 +136,21 @@ class TypeMatcher:
                 is_new=True,
             )
 
+        # Layer 0: exact case-insensitive name match. Short-circuits LLM calls
+        # for the common case where the extractor proposes the same type name
+        # that already exists (e.g. "Company" re-seen row after row).
+        proposed_norm = proposed_type.strip().lower()
+        for existing_name in existing_types:
+            if existing_name.strip().lower() == proposed_norm:
+                logger.info("type_match_exact_name", proposed=proposed_type, resolved=existing_name)
+                return TypeMatch(
+                    proposed=proposed_type,
+                    resolved=existing_name,
+                    verdict=MatchVerdict.SAME,
+                    confidence=1.0,
+                    is_new=False,
+                )
+
         # Layer 1: Verdict cache (instant)
         for existing_name in existing_types:
             cached = await self._cache.get(proposed_type, existing_name)
@@ -176,8 +191,24 @@ class TypeMatcher:
         if embedding_result is not None:
             return embedding_result
 
-        # Layer 3: LLM judgment (for the ambiguous band)
-        initial = await self._initial_match(proposed_type, proposed_description, existing_types)
+        # Layer 3: LLM judgment (for the ambiguous band). If the LLM provider
+        # is unavailable (quota, outage), fall back to treating the proposed
+        # type as new rather than failing the whole ingest.
+        try:
+            initial = await self._initial_match(proposed_type, proposed_description, existing_types)
+        except Exception as exc:
+            logger.warning("type_match_llm_unavailable", proposed=proposed_type, error=str(exc))
+            for existing_name in existing_types:
+                await self._cache.put(VerdictEntry(
+                    proposed_type, existing_name, MatchVerdict.DIFFERENT, 0.5,
+                ))
+            return TypeMatch(
+                proposed=proposed_type,
+                resolved=proposed_type,
+                verdict=MatchVerdict.DIFFERENT,
+                confidence=0.5,
+                is_new=True,
+            )
 
         if initial["confidence"] > 0.90 and initial["verdict"] == "SAME":
             match = TypeMatch(
