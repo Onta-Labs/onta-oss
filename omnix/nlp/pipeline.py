@@ -133,7 +133,9 @@ class NLQueryPipeline:
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
                 _, bindings = parse_sparql_results(raw)
                 answer = await self._format_answer(bindings, explanation)
+                t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
+                timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
                 return NLResult(
