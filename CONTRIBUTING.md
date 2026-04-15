@@ -4,7 +4,7 @@
 
 ```bash
 # Clone
-git clone https://github.com/git-moeen/omnix-oss.git
+git clone https://github.com/git-moeen/cograph-oss.git
 cd omnix-oss
 
 # Start graph DB
