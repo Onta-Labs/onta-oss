@@ -112,6 +112,16 @@ class CSVResolver:
             data = await self._infer_via_openrouter(user_content)
         else:
             data = await self._infer_via_anthropic(user_content)
+        # Gemini Flash occasionally emits `datatype: null` for a column it
+        # can't classify. Coerce to "string" so the pydantic model doesn't
+        # reject the whole inference — callers can always retry the
+        # downstream resolver pass if the string guess turns out wrong.
+        for col in data.get("columns", []):
+            if col.get("datatype") is None:
+                col["datatype"] = "string"
+            if col.get("role") is None:
+                col["role"] = "attribute"
+
         mapping = CSVSchemaMapping(
             entity_type=data["entity_type"],
             columns=[ColumnMapping(**col) for col in data["columns"]],
