@@ -1,0 +1,156 @@
+{
+  "kg_name": "holdout-v2-fec-enforcement",
+  "_source": "FEC legal Matters Under Review (MURs) from api.open.fec.gov /v1/legal/search/?type=murs (snapshot: benchmarks/datasets/holdout_v2_raw/holdout-v2-fec-enforcement/murs.json). See scripts/prep_fec_enforcement.py.",
+  "entity_types": [
+    {
+      "name": "Case",
+      "source_csv": "Case.csv",
+      "primary_key": "case_id",
+      "label_column": "case_name",
+      "attributes": [
+        "case_no",
+        "case_name",
+        "case_open_date",
+        "case_close_date",
+        "case_open_year",
+        "case_mur_type",
+        "case_n_documents",
+        "case_n_commission_votes",
+        "case_n_respondents",
+        "case_n_dispositions",
+        "case_election_cycles",
+        "case_url"
+      ]
+    },
+    {
+      "name": "Respondent",
+      "source_csv": "Respondent.csv",
+      "primary_key": "respondent_id",
+      "label_column": "respondent_name",
+      "attributes": ["respondent_name"]
+    },
+    {
+      "name": "Subject",
+      "source_csv": "Subject.csv",
+      "primary_key": "subject_id",
+      "label_column": "subject_label",
+      "attributes": [
+        "subject_label",
+        "subject_primary_id",
+        "subject_secondary_id"
+      ]
+    },
+    {
+      "name": "Disposition",
+      "source_csv": "Disposition.csv",
+      "primary_key": "disposition_id",
+      "label_column": "disposition_outcome",
+      "attributes": [
+        "disposition_outcome",
+        "disposition_category_id",
+        "disposition_penalty_usd",
+        "disposition_respondent_name"
+      ]
+    },
+    {
+      "name": "CitationStatute",
+      "source_csv": "CitationStatute.csv",
+      "primary_key": "citation_id",
+      "label_column": "citation_text",
+      "attributes": [
+        "citation_text",
+        "citation_title",
+        "citation_type",
+        "citation_url"
+      ]
+    },
+    {
+      "name": "Participant",
+      "source_csv": "Participant.csv",
+      "primary_key": "participant_id",
+      "label_column": "participant_name",
+      "attributes": ["participant_name", "participant_role"]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year_id",
+      "label_column": "year_value",
+      "attributes": ["year_value"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "case_has_respondent",
+      "source_csv": "CaseRespondent.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "Respondent",
+      "object_key_column": "respondent_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "case_has_subject",
+      "source_csv": "CaseSubject.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "Subject",
+      "object_key_column": "subject_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "case_has_disposition",
+      "source_csv": "Disposition.csv",
+      "subject_type": "Case",
+      "subject_key_column": "disposition_case_id",
+      "object_type": "Disposition",
+      "object_key_column": "disposition_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "disposition_against_respondent",
+      "source_csv": "Disposition.csv",
+      "subject_type": "Disposition",
+      "subject_key_column": "disposition_id",
+      "object_type": "Respondent",
+      "object_key_column": "disposition_respondent_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "disposition_cites_statute",
+      "source_csv": "DispositionCitation.csv",
+      "subject_type": "Disposition",
+      "subject_key_column": "disposition_id",
+      "object_type": "CitationStatute",
+      "object_key_column": "citation_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "case_has_participant",
+      "source_csv": "Participant.csv",
+      "subject_type": "Case",
+      "subject_key_column": "participant_case_id",
+      "object_type": "Participant",
+      "object_key_column": "participant_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "case_in_year",
+      "source_csv": "Case.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "Year",
+      "object_key_column": "case_open_year",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "respondent_involved_in_case",
+      "source_csv": "CaseRespondent.csv",
+      "subject_type": "Respondent",
+      "subject_key_column": "respondent_id",
+      "object_type": "Case",
+      "object_key_column": "case_id",
+      "cardinality": "1:N"
+    }
+  ]
+}

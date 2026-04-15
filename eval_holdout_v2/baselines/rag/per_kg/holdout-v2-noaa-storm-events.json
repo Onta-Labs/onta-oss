@@ -1,0 +1,648 @@
+{
+  "kg": "holdout-v2-noaa-storm-events",
+  "results": [
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many storm events are recorded?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?stormEvent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n}",
+      "expected_answer": "10000",
+      "full_expected_items": [
+        "10000"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "9",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "9",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available event types.",
+      "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <http://www.w3.org/2000/01/rdf-schema#label> ?eventTypeLabel .\n}",
+      "expected_answer": "Heavy Rain, Winter Storm, Tropical Storm, Flash Flood, Thunderstorm Wind, Heavy Snow, High Wind, Marine Thunderstorm Wind, Frost/Freeze, Rip Current ... (45 total)",
+      "full_expected_items": [
+        "Heavy Rain",
+        "Winter Storm",
+        "Tropical Storm",
+        "Flash Flood",
+        "Thunderstorm Wind",
+        "Heavy Snow",
+        "High Wind",
+        "Marine Thunderstorm Wind",
+        "Frost/Freeze",
+        "Rip Current",
+        "Strong Wind",
+        "Excessive Heat",
+        "Winter Weather",
+        "Blizzard",
+        "Lightning",
+        "Extreme Cold/Wind Chill",
+        "Dense Fog",
+        "Debris Flow",
+        "Waterspout",
+        "Wildfire",
+        "Dense Smoke",
+        "Funnel Cloud",
+        "Coastal Flood",
+        "High Surf",
+        "Cold/Wind Chill",
+        "Lake-Effect Snow",
+        "Ice Storm",
+        "Avalanche",
+        "Freezing Fog",
+        "Dust Storm",
+        "Marine High Wind",
+        "Hurricane (Typhoon)",
+        "Tropical Depression",
+        "Storm Surge/Tide",
+        "Marine Tropical Storm",
+        "Marine Hurricane/Typhoon",
+        "Marine Hail",
+        "Sleet",
+        "Astronomical Low Tide",
+        "Lakeshore Flood",
+        "Tornado",
+        "Flood",
+        "Drought",
+        "Hail",
+        "Heat"
+      ],
+      "full_result_count": 45,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Lightning, Hail, Tornado, Blizzard, Avalanche, Winter Weather, Thunderstorm Wind, Heavy Rain, Flood, Hurricane (Typhoon)",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Lightning, Hail, Tornado, Blizzard, Avalanche, Winter Weather, Thunderstorm Wind, Heavy Rain, Flood, Hurricane (Typhoon)",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Lightning, Hail, Tornado, Blizzard, Avalanche, Winter Weather, Thunderstorm Wind, Heavy Rain, Flood, Hurricane (Typhoon)",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Lightning, Hail, Tornado, Blizzard, Avalanche, Winter Weather, Thunderstorm Wind, Heavy Rain, Flood, Hurricane (Typhoon)",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "How many distinct states are mentioned in the dataset?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n}",
+      "expected_answer": "64",
+      "full_expected_items": [
+        "64"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "What are the names of all the months recorded?",
+      "gold_sparql": "SELECT DISTINCT ?monthName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n}",
+      "expected_answer": "March, August, January, April, September, February, November, July, October, December ... (12 total)",
+      "full_expected_items": [
+        "March",
+        "August",
+        "January",
+        "April",
+        "September",
+        "February",
+        "November",
+        "July",
+        "October",
+        "December",
+        "May",
+        "June"
+      ],
+      "full_result_count": 12,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "January, December, February, May, September, April, October, March, August, July",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "January, December, February, May, September, April, October, March, August, July",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "January, December, February, May, September, April, October, March, August, July",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "January, December, February, May, September, April, October, March, August, July",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "How many storm events had direct deaths greater than 5?",
+      "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
+      "expected_answer": "7",
+      "full_expected_items": [
+        "7"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "0",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "How many storm events had crop damage greater than 100000?",
+      "gold_sparql": "SELECT (COUNT(?event) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?event <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_crops> ?damage_crops .\n  FILTER (xsd:integer(?damage_crops) > 100000)\n}",
+      "expected_answer": "33",
+      "full_expected_items": [
+        "33"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "0",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "How many storm events had more than 5 direct deaths?",
+      "gold_sparql": "SELECT (COUNT(?stormEvent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deaths_direct .\n  FILTER (xsd:integer(?deaths_direct) > 5)\n}",
+      "expected_answer": "7",
+      "full_expected_items": [
+        "7"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "0",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "What is the total property damage from storm events where the source is 'Newspaper'?",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?damage_property)) AS ?total_damage) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/source> ?source .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damage_property .\n  FILTER (?source = \"Newspaper\")\n}",
+      "expected_answer": "3590010",
+      "full_expected_items": [
+        "3590010"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "0",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many storm events occurred in each state?",
+      "gold_sparql": "SELECT ?stateName (COUNT(?stormEvent) AS ?numberOfStormEvents) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/state_name> ?stateName .\n} GROUP BY ?stateName ORDER BY DESC(?numberOfStormEvents)",
+      "expected_answer": "Texas | 1005\nOklahoma | 523\nCalifornia | 425\nKansas | 358\nIllinois | 340\nGeorgia | 335\nNebraska | 323\nLouisiana | 299\nMissouri | 297\nSouth Dakota | 285\n... (64 total rows)",
+      "full_expected_items": [
+        "Texas | 1005",
+        "Oklahoma | 523",
+        "California | 425",
+        "Kansas | 358",
+        "Illinois | 340",
+        "Georgia | 335",
+        "Nebraska | 323",
+        "Louisiana | 299",
+        "Missouri | 297",
+        "South Dakota | 285",
+        "Alabama | 284",
+        "Iowa | 274",
+        "Colorado | 256",
+        "Mississippi | 247",
+        "Tennessee | 238",
+        "Minnesota | 237",
+        "Pennsylvania | 228",
+        "Arkansas | 227",
+        "Virginia | 224",
+        "New York | 222",
+        "Kentucky | 212",
+        "Florida | 192",
+        "Wisconsin | 168",
+        "North Carolina | 162",
+        "New Mexico | 156",
+        "Indiana | 156",
+        "Gulf Of Mexico | 148",
+        "Ohio | 137",
+        "Montana | 136",
+        "Wyoming | 133",
+        "Arizona | 124",
+        "South Carolina | 121",
+        "North Dakota | 110",
+        "West Virginia | 109",
+        "Atlantic North | 109",
+        "Michigan | 103",
+        "Idaho | 97",
+        "Utah | 92",
+        "Maryland | 89",
+        "Atlantic South | 88",
+        "Maine | 81",
+        "New Jersey | 79",
+        "Nevada | 78",
+        "Massachusetts | 59",
+        "Alaska | 57",
+        "Vermont | 50",
+        "New Hampshire | 50",
+        "Puerto Rico | 42",
+        "Oregon | 36",
+        "Connecticut | 35",
+        "Hawaii | 35",
+        "Washington | 32",
+        "Lake Erie | 26",
+        "Delaware | 18",
+        "Lake Michigan | 15",
+        "Rhode Island | 11",
+        "Lake Superior | 9",
+        "Lake St Clair | 5",
+        "American Samoa | 4",
+        "Lake Ontario | 3",
+        "District Of Columbia | 2",
+        "Guam | 2",
+        "Gulf Of Alaska | 1",
+        "Virgin Islands | 1"
+      ],
+      "full_result_count": 64,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "29: 1, 13: 1, 56: 1, 51: 1, 9: 1, 53: 1, 48: 2, 4: 1, 1: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "29: 1, 13: 1, 56: 1, 51: 1, 9: 1, 53: 1, 48: 2, 4: 1, 1: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "29: 1, 13: 1, 56: 1, 51: 1, 9: 1, 53: 1, 48: 2, 4: 1, 1: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "29: 1, 13: 1, 56: 1, 51: 1, 9: 1, 53: 1, 48: 2, 4: 1, 1: 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "What are the names of event types that caused direct deaths greater than 0?",
+      "gold_sparql": "SELECT DISTINCT ?eventTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_of_type> ?eventType .\n  ?eventType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/EventType> .\n  ?eventType <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_type> ?eventTypeLabel .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/deaths_direct> ?deathsDirect .\n  FILTER (xsd:integer(?deathsDirect) > 0)\n}",
+      "expected_answer": "Heat, Thunderstorm Wind, Flash Flood, Excessive Heat, Winter Weather, Wildfire, Cold/Wind Chill, Heavy Rain, Winter Storm, Flood ... (14 total)",
+      "full_expected_items": [
+        "Heat",
+        "Thunderstorm Wind",
+        "Flash Flood",
+        "Excessive Heat",
+        "Winter Weather",
+        "Wildfire",
+        "Cold/Wind Chill",
+        "Heavy Rain",
+        "Winter Storm",
+        "Flood",
+        "Avalanche",
+        "Tornado",
+        "Rip Current",
+        "Strong Wind"
+      ],
+      "full_result_count": 14,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-noaa-storm-events",
+      "id": "q-011",
+      "tier": "T3",
+      "question": "List the months and the total number of storm events that caused property damage greater than 1000.",
+      "gold_sparql": "SELECT ?monthName (COUNT(?stormEvent) AS ?totalStormEvents) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-noaa-storm-events> WHERE {\n  ?stormEvent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/StormEvent> .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/event_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/month_name> ?monthName .\n  ?stormEvent <https://omnix.dev/holdout-v2/holdout-v2-noaa-storm-events/pred/damage_property> ?damageProperty .\n  FILTER (xsd:integer(?damageProperty) > 1000)\n} GROUP BY ?monthName ORDER BY DESC(?totalStormEvents)",
+      "expected_answer": "July | 319\nJune | 203\nAugust | 195\nMarch | 136\nApril | 127\nSeptember | 86\nMay | 76\nJanuary | 43\nDecember | 41\nFebruary | 41\n... (12 total rows)",
+      "full_expected_items": [
+        "July | 319",
+        "June | 203",
+        "August | 195",
+        "March | 136",
+        "April | 127",
+        "September | 86",
+        "May | 76",
+        "January | 43",
+        "December | 41",
+        "February | 41",
+        "October | 24",
+        "November | 12"
+      ],
+      "full_result_count": 12,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "August, 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "August, 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "August, 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "August, 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    }
+  ],
+  "n_chunks": 1120,
+  "tables": [
+    {
+      "table": "County",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-noaa-storm-events/County.csv",
+      "n_rows_used": 333,
+      "n_cols": 4
+    },
+    {
+      "table": "Episode",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-noaa-storm-events/Episode.csv",
+      "n_rows_used": 333,
+      "n_cols": 1
+    },
+    {
+      "table": "EventType",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-noaa-storm-events/EventType.csv",
+      "n_rows_used": 45,
+      "n_cols": 1
+    },
+    {
+      "table": "Month",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-noaa-storm-events/Month.csv",
+      "n_rows_used": 12,
+      "n_cols": 1
+    },
+    {
+      "table": "State",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-noaa-storm-events/State.csv",
+      "n_rows_used": 64,
+      "n_cols": 2
+    },
+    {
+      "table": "StormEvent",
+      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_prepped/holdout-v2-noaa-storm-events/StormEvent.csv",
+      "n_rows_used": 333,
+      "n_cols": 20
+    }
+  ]
+}

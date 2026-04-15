@@ -1,0 +1,682 @@
+{
+  "kg": "holdout-v2-cdc-wonder-mortality",
+  "results": [
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct mortality records are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?mortalityRecord) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortalityRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n}",
+      "expected_answer": "10868",
+      "full_expected_items": [
+        "10868"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all the available years in the dataset.",
+      "gold_sparql": "SELECT DISTINCT ?yearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> ?yearLabel .\n}",
+      "expected_answer": "2016, 2013, 2005, 2004, 2010, 2001, 2015, 2007, 2009, 2006 ... (19 total)",
+      "full_expected_items": [
+        "2016",
+        "2013",
+        "2005",
+        "2004",
+        "2010",
+        "2001",
+        "2015",
+        "2007",
+        "2009",
+        "2006",
+        "2008",
+        "1999",
+        "2002",
+        "2000",
+        "2017",
+        "2003",
+        "2014",
+        "2011",
+        "2012"
+      ],
+      "full_result_count": 19,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "2017, 2012, 2011, 2016, 2010, 2008, 2014, 2007, 2013, 2015",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "2017, 2012, 2011, 2016, 2010, 2008, 2014, 2007, 2013, 2015",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "2017, 2012, 2011, 2016, 2010, 2008, 2014, 2007, 2013, 2015",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "2017, 2012, 2011, 2016, 2010, 2008, 2014, 2007, 2013, 2015",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "What are the names of all the causes of death recorded?",
+      "gold_sparql": "SELECT DISTINCT ?causeName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_name> ?causeName .\n}",
+      "expected_answer": "Alzheimer's disease, Stroke, Suicide, Unintentional injuries, All causes, CLRD, Heart disease, Influenza and pneumonia, Kidney disease, Cancer ... (11 total)",
+      "full_expected_items": [
+        "Alzheimer's disease",
+        "Stroke",
+        "Suicide",
+        "Unintentional injuries",
+        "All causes",
+        "CLRD",
+        "Heart disease",
+        "Influenza and pneumonia",
+        "Kidney disease",
+        "Cancer",
+        "Diabetes"
+      ],
+      "full_result_count": 11,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "all_causes",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "all_causes",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "all_causes",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "all_causes",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many distinct states are represented in the data?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n}",
+      "expected_answer": "52",
+      "full_expected_items": [
+        "52"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "How many mortality records have an age-adjusted rate greater than 100?",
+      "gold_sparql": "SELECT (COUNT(?record) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/age_adjusted_rate> ?rate .\n  FILTER (xsd:float(?rate) > 100)\n}",
+      "expected_answer": "2965",
+      "full_expected_items": [
+        "2965"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "7",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "What is the average number of deaths recorded in mortality records where the label contains '2010'?",
+      "gold_sparql": "SELECT (AVG(xsd:integer(?deaths)) AS ?averageDeaths) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/deaths> ?deaths .\n  FILTER (CONTAINS(STR(?label), \"2010\"))\n}",
+      "expected_answer": "15107.64",
+      "full_expected_items": [
+        "15107.63636363636363636364"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "326117.4",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "326117.4",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "326117.4",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "326117.4",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "Find all cause categories that have 'Chronic' in their name.",
+      "gold_sparql": "SELECT ?categoryName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_category_name> ?categoryName .\n  FILTER (CONTAINS(STR(?categoryName), \"Chronic\"))\n}",
+      "expected_answer": "Chronic Disease",
+      "full_expected_items": [
+        "Chronic Disease"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Chronic Disease",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Chronic Disease",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Chronic Disease",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Chronic Disease",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "What is the maximum number of causes associated with any cause category?",
+      "gold_sparql": "SELECT (MAX(xsd:integer(?causeCount)) AS ?maxCauseCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_count> ?causeCount .\n  FILTER (xsd:integer(?causeCount) > 0)\n}",
+      "expected_answer": "7",
+      "full_expected_items": [
+        "7"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "7",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many mortality records are associated with each state?",
+      "gold_sparql": "SELECT ?state_name (COUNT(?record) AS ?record_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> ?state_name .\n} GROUP BY ?state_name ORDER BY DESC(?record_count)",
+      "expected_answer": "Hawaii | 209\nMichigan | 209\nMaryland | 209\nMassachusetts | 209\nMaine | 209\nKentucky | 209\nLouisiana | 209\nNew Mexico | 209\nNew Jersey | 209\nNew Hampshire | 209\n... (52 total rows)",
+      "full_expected_items": [
+        "Hawaii | 209",
+        "Michigan | 209",
+        "Maryland | 209",
+        "Massachusetts | 209",
+        "Maine | 209",
+        "Kentucky | 209",
+        "Louisiana | 209",
+        "New Mexico | 209",
+        "New Jersey | 209",
+        "New Hampshire | 209",
+        "Nevada | 209",
+        "Nebraska | 209",
+        "Montana | 209",
+        "New York | 209",
+        "Missouri | 209",
+        "Minnesota | 209",
+        "Mississippi | 209",
+        "South Dakota | 209",
+        "Tennessee | 209",
+        "Alabama | 209",
+        "Florida | 209",
+        "Rhode Island | 209",
+        "United States | 209",
+        "Oregon | 209",
+        "South Carolina | 209",
+        "Pennsylvania | 209",
+        "Ohio | 209",
+        "Georgia | 209",
+        "North Dakota | 209",
+        "North Carolina | 209",
+        "Virginia | 209",
+        "Washington | 209",
+        "West Virginia | 209",
+        "Vermont | 209",
+        "Utah | 209",
+        "Texas | 209",
+        "Oklahoma | 209",
+        "Illinois | 209",
+        "Indiana | 209",
+        "Idaho | 209",
+        "Iowa | 209",
+        "Kansas | 209",
+        "Alaska | 209",
+        "Arkansas | 209",
+        "California | 209",
+        "Connecticut | 209",
+        "Delaware | 209",
+        "District of Columbia | 209",
+        "Colorado | 209",
+        "Arizona | 209",
+        "Wisconsin | 209",
+        "Wyoming | 209"
+      ],
+      "full_result_count": 52,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "NE: 1, DE: 1, US: 2, IA: 1, MI: 1, WI: 1, IN: 1, MD: 1, AR: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "NE: 1, DE: 1, US: 2, IA: 1, MI: 1, WI: 1, IN: 1, MD: 1, AR: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "NE: 1, DE: 1, US: 2, IA: 1, MI: 1, WI: 1, IN: 1, MD: 1, AR: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "NE: 1, DE: 1, US: 2, IA: 1, MI: 1, WI: 1, IN: 1, MD: 1, AR: 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "Which regions contain states that have 'California' in their name?",
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> ?region_name .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_contains_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> ?state_name .\n  FILTER (CONTAINS(?state_name, \"California\"))\n}",
+      "expected_answer": "West",
+      "full_expected_items": [
+        "West"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "west",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "west",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "west",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "west",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "Which regions have mortality records for 'Alzheimer's disease' in '2016'?",
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_name> \"Alzheimer's disease\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> \"2016\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> ?region_name .\n}",
+      "expected_answer": "National, Midwest, West, South, Northeast",
+      "full_expected_items": [
+        "National",
+        "Midwest",
+        "West",
+        "South",
+        "Northeast"
+      ],
+      "full_result_count": 5,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "Count the number of distinct causes associated with mortality records in states that are part of the 'Midwest' region.",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?cause) AS ?distinct_causes_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> \"Midwest\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n}",
+      "expected_answer": "11",
+      "full_expected_items": [
+        "11"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-wonder-mortality",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "List the cause categories that include causes with mortality records in 'Washington' state for the year '2010'.",
+      "gold_sparql": "SELECT DISTINCT ?cause_category_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> \"Washington\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> \"2010\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_in_category> ?cause_category .\n  ?cause_category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?cause_category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_category_name> ?cause_category_name .\n}",
+      "expected_answer": "Injury / External Cause, Chronic Disease, All Causes (Roll-up), Infectious Disease",
+      "full_expected_items": [
+        "Injury / External Cause",
+        "Chronic Disease",
+        "All Causes (Roll-up)",
+        "Infectious Disease"
+      ],
+      "full_result_count": 4,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Insufficient rows to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    }
+  ],
+  "n_chunks": 379,
+  "tables": [
+    {
+      "table": "Cause",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/Cause.csv",
+      "n_rows_used": 11,
+      "n_cols": 4
+    },
+    {
+      "table": "CauseCategory",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/CauseCategory.csv",
+      "n_rows_used": 4,
+      "n_cols": 3
+    },
+    {
+      "table": "Decade",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/Decade.csv",
+      "n_rows_used": 3,
+      "n_cols": 3
+    },
+    {
+      "table": "MortalityRecord",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/MortalityRecord.csv",
+      "n_rows_used": 285,
+      "n_cols": 9
+    },
+    {
+      "table": "Region",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/Region.csv",
+      "n_rows_used": 5,
+      "n_cols": 2
+    },
+    {
+      "table": "State",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/State.csv",
+      "n_rows_used": 52,
+      "n_cols": 3
+    },
+    {
+      "table": "Year",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-cdc-wonder-mortality/Year.csv",
+      "n_rows_used": 19,
+      "n_cols": 3
+    }
+  ]
+}

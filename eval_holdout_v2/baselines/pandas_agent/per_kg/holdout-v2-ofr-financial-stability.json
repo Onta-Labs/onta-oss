@@ -1,0 +1,639 @@
+[
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-001",
+    "tier": "T1",
+    "question": "How many distinct indicator categories are there?",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?indicatorCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicatorCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> . }",
+    "expected_answer": "3",
+    "full_expected_items": [
+      "3"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "3",
+        "code": "result = int(dfs['IndicatorCategory']['category_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.1958861351013184,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "3",
+        "code": "result = int(dfs['IndicatorCategory']['category_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.3315770626068115,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "3",
+        "code": "result = int(dfs['IndicatorCategory']['category_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.2615900039672852,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "3",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-002",
+    "tier": "T1",
+    "question": "List all available indicator names.",
+    "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . }",
+    "expected_answer": "United States, OFR Financial Stress Index, Credit, Equity Valuation, Safe Assets, Funding, Volatility, Other Advanced Economies, Emerging Markets",
+    "full_expected_items": [
+      "United States",
+      "OFR Financial Stress Index",
+      "Credit",
+      "Equity Valuation",
+      "Safe Assets",
+      "Funding",
+      "Volatility",
+      "Other Advanced Economies",
+      "Emerging Markets"
+    ],
+    "full_result_count": 9,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "OFR Financial Stress Index\nCredit\nEquity Valuation\nSafe Assets\nFunding\nVolatility\nUnited States\nOther Advanced Economies\nEmerging Markets",
+        "code": "result = dfs['Indicator']['indicator_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1802308559417725,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "OFR Financial Stress Index\nCredit\nEquity Valuation\nSafe Assets\nFunding\nVolatility\nUnited States\nOther Advanced Economies\nEmerging Markets",
+        "code": "result = dfs['Indicator']['indicator_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.258599042892456,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "OFR Financial Stress Index\nCredit\nEquity Valuation\nSafe Assets\nFunding\nVolatility\nUnited States\nOther Advanced Economies\nEmerging Markets",
+        "code": "result = dfs['Indicator']['indicator_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1975200176239014,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "OFR Financial Stress Index\nCredit\nEquity Valuation\nSafe Assets\nFunding\nVolatility\nUnited States\nOther Advanced Economies\nEmerging Markets",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-003",
+    "tier": "T1",
+    "question": "What are the different stress level labels?",
+    "gold_sparql": "SELECT DISTINCT ?stressLevelLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel . }",
+    "expected_answer": "High, Low, Negative (calm), Elevated",
+    "full_expected_items": [
+      "High",
+      "Low",
+      "Negative (calm)",
+      "Elevated"
+    ],
+    "full_result_count": 4,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Negative (calm)\nLow\nElevated\nHigh",
+        "code": "result = dfs['StressLevel']['stress_level_label'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.272040843963623,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Negative (calm)\nLow\nElevated\nHigh",
+        "code": "result = dfs['StressLevel']['stress_level_label'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5309171676635742,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Negative (calm)\nLow\nElevated\nHigh",
+        "code": "result = dfs['StressLevel']['stress_level_label'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.089890956878662,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Negative (calm)\nLow\nElevated\nHigh",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-004",
+    "tier": "T1",
+    "question": "How many unique years are recorded in the dataset?",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?yearValue) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> . ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?yearValue . }",
+    "expected_answer": "27",
+    "full_expected_items": [
+      "27"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "27",
+        "code": "result = int(dfs['Year']['year'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.181703805923462,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "27",
+        "code": "result = int(dfs['Year']['year'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.1865968704223633,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "27",
+        "code": "result = int(dfs['Year']['year'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.2784230709075928,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "27",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-005",
+    "tier": "T2",
+    "question": "What is the total number of readings for stress levels with a lower bound greater than 0?",
+    "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount . FILTER (xsd:integer(?lowerBound) > 0) }",
+    "expected_answer": "4666",
+    "full_expected_items": [
+      "4666"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "4666",
+        "code": "import pandas as pd\n\n# Filter StressLevel for lower_bound > 0\nfiltered_stress_levels = dfs['StressLevel'][dfs['StressLevel']['lower_bound'] > 0]\n\n# Merge with IndicatorReading to count the readings\nmerged_df = pd.merge(dfs['IndicatorReading'], filtered_stress_levels, on='stress_level_id')\n\n# The result is the count of rows in the merged dataframe\nresult = int(len(merged_df))",
+        "verdict": "correct",
+        "elapsed": 1.578082799911499,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "4666",
+        "code": "import pandas as pd\n\n# Filter StressLevel for lower_bound > 0\nfiltered_stress_levels = dfs['StressLevel'][dfs['StressLevel']['lower_bound'] > 0]\n\n# Merge with IndicatorReading to count the readings\nmerged_df = pd.merge(dfs['IndicatorReading'], filtered_stress_levels, on='stress_level_id')\n\n# The result is the count of rows in the merged dataframe\nresult = int(len(merged_df))",
+        "verdict": "correct",
+        "elapsed": 1.9373319149017334,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "4666",
+        "code": "import pandas as pd\n\n# Filter StressLevel for lower_bound > 0\nfiltered_stress_levels = dfs['StressLevel'][dfs['StressLevel']['lower_bound'] > 0]\n\n# Merge with IndicatorReading to count the readings\nmerged_df = pd.merge(dfs['IndicatorReading'], filtered_stress_levels, on='stress_level_id')\n\n# The result is the count of rows in the merged dataframe\nresult = int(len(merged_df))",
+        "verdict": "correct",
+        "elapsed": 1.684372901916504,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "4666",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-006",
+    "tier": "T2",
+    "question": "List the names of all indicators whose source column contains 'United States'.",
+    "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/source_column> ?sourceColumn . FILTER (CONTAINS(LCASE(STR(?sourceColumn)), \"united states\")) }",
+    "expected_answer": "United States",
+    "full_expected_items": [
+      "United States"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "United States",
+        "code": "result = dfs['Indicator'][dfs['Indicator']['source_column'].str.contains('United States', na=False)]['indicator_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.2467010021209717,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "United States",
+        "code": "result = dfs['Indicator'][dfs['Indicator']['source_column'].str.contains('United States', na=False)]['indicator_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.3184380531311035,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "United States",
+        "code": "result = dfs['Indicator'][dfs['Indicator']['source_column'].str.contains('United States', na=False)]['indicator_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.6564478874206543,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "United States",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-007",
+    "tier": "T2",
+    "question": "What is the total number of indicator readings associated with a stress level that has a lower bound greater than 0?",
+    "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount .\n  FILTER (xsd:integer(?lowerBound) > 0)\n}",
+    "expected_answer": "4666",
+    "full_expected_items": [
+      "4666"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "4666",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with StressLevel to filter by lower_bound\nmerged_df = pd.merge(dfs['IndicatorReading'], dfs['StressLevel'], on='stress_level_id')\n\n# Filter for stress levels with a lower bound greater than 0\nfiltered_df = merged_df[merged_df['lower_bound'] > 0]\n\n# Count the number of readings\nresult = int(len(filtered_df))",
+        "verdict": "correct",
+        "elapsed": 1.6954107284545898,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "4666",
+        "code": "import pandas as pd\n\n# Filter StressLevel for lower_bound > 0\nstress_levels = dfs['StressLevel']\nvalid_stress_levels = stress_levels[stress_levels['lower_bound'] > 0]['stress_level_id']\n\n# Filter IndicatorReading for those stress_level_ids\nreadings = dfs['IndicatorReading']\nfiltered_readings = readings[readings['stress_level_id'].isin(valid_stress_levels)]\n\n# Calculate the total number of readings\nresult = int(len(filtered_readings))",
+        "verdict": "correct",
+        "elapsed": 1.8237507343292236,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "4666",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with StressLevel to filter by lower_bound\nmerged_df = pd.merge(dfs['IndicatorReading'], dfs['StressLevel'], on='stress_level_id')\n\n# Filter for stress levels with a lower bound greater than 0\nfiltered_df = merged_df[merged_df['lower_bound'] > 0]\n\n# Count the number of readings\nresult = int(len(filtered_df))",
+        "verdict": "correct",
+        "elapsed": 1.5720388889312744,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "4666",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-008",
+    "tier": "T2",
+    "question": "How many indicator readings have a value greater than 0.5?",
+    "gold_sparql": "SELECT (COUNT(?reading) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?value .\n  FILTER(xsd:float(?value) > 0.5)\n}",
+    "expected_answer": "12343",
+    "full_expected_items": [
+      "12343"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "12343",
+        "code": "result = int((dfs['IndicatorReading']['value'] > 0.5).sum())",
+        "verdict": "correct",
+        "elapsed": 1.1076710224151611,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "12343",
+        "code": "result = int((dfs['IndicatorReading']['value'] > 0.5).sum())",
+        "verdict": "correct",
+        "elapsed": 1.301712989807129,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "12343",
+        "code": "result = int((dfs['IndicatorReading']['value'] > 0.5).sum())",
+        "verdict": "correct",
+        "elapsed": 1.2003319263458252,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "12343",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-009",
+    "tier": "T3",
+    "question": "How many indicator readings are associated with each stress level?",
+    "gold_sparql": "SELECT ?stressLevelLabel (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel .\n} GROUP BY ?stressLevelLabel ORDER BY DESC(?readingCount)",
+    "expected_answer": "Negative (calm) | 36450\nLow | 18707\nElevated | 3553\nHigh | 1113",
+    "full_expected_items": [
+      "Negative (calm) | 36450",
+      "Low | 18707",
+      "Elevated | 3553",
+      "High | 1113"
+    ],
+    "full_result_count": 4,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Elevated | 3553\nHigh | 1113\nLow | 18707\nNegative (calm) | 36450",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['IndicatorReading'], dfs['StressLevel'], on='stress_level_id')\ncounts = merged_df.groupby('stress_level_label').size().reset_index(name='count')\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.4203169345855713,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Elevated | 3553\nHigh | 1113\nLow | 18707\nNegative (calm) | 36450",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['IndicatorReading'], dfs['StressLevel'], on='stress_level_id')\ncounts = merged_df.groupby('stress_level_label').size().reset_index(name='count')\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.4837472438812256,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Elevated | 3553\nHigh | 1113\nLow | 18707\nNegative (calm) | 36450",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['IndicatorReading'], dfs['StressLevel'], on='stress_level_id')\ncounts = merged_df.groupby('stress_level_label').size().reset_index(name='count')\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.693892240524292,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Elevated | 3553\nHigh | 1113\nLow | 18707\nNegative (calm) | 36450",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-010",
+    "tier": "T3",
+    "question": "Count the number of indicators within each indicator category.",
+    "gold_sparql": "SELECT ?categoryName (COUNT(?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n} GROUP BY ?categoryName ORDER BY DESC(?indicatorCount)",
+    "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+    "full_expected_items": [
+      "Subindex | 5",
+      "Regional | 3",
+      "Composite | 1"
+    ],
+    "full_result_count": 3,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Indicator'], dfs['IndicatorCategory'], on='category_id')\ncounts = merged_df.groupby('category_name').size().reset_index()\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 9.062643766403198,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Indicator'], dfs['IndicatorCategory'], on='category_id')\ncounts = merged_df.groupby('category_name').size().reset_index()\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.305840015411377,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Indicator'], dfs['IndicatorCategory'], on='category_id')\ncounts = merged_df.groupby('category_name').size().reset_index()\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.382340908050537,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-011",
+    "tier": "T4",
+    "question": "What are the names of indicators that have readings associated with a 'Low' stress level, and how many such readings does each indicator have?",
+    "gold_sparql": "SELECT ?indicatorName (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> \"Low\" .\n} GROUP BY ?indicatorName\nORDER BY DESC(?readingCount)\nLIMIT 10",
+    "expected_answer": "Safe Assets | 2946\nEquity Valuation | 2469\nEmerging Markets | 2447\nFunding | 2215\nVolatility | 2166\nCredit | 2114\nOther Advanced Economies | 2110\nUnited States | 1272\nOFR Financial Stress Index | 968",
+    "full_expected_items": [
+      "Safe Assets | 2946",
+      "Equity Valuation | 2469",
+      "Emerging Markets | 2447",
+      "Funding | 2215",
+      "Volatility | 2166",
+      "Credit | 2114",
+      "Other Advanced Economies | 2110",
+      "United States | 1272",
+      "OFR Financial Stress Index | 968"
+    ],
+    "full_result_count": 9,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Credit | 2114\nEmerging Markets | 2447\nEquity Valuation | 2469\nFunding | 2215\nOFR Financial Stress Index | 968\nOther Advanced Economies | 2110\nSafe Assets | 2946\nUnited States | 1272\nVolatility | 2166",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with StressLevel to filter for 'Low' stress level\n# Join the result with Indicator to get the indicator names\n\nmerged_df = dfs['IndicatorReading'].merge(dfs['StressLevel'], on='stress_level_id')\nlow_stress_readings = merged_df[merged_df['stress_level_label'] == 'Low']\n\nfinal_df = low_stress_readings.merge(dfs['Indicator'], on='indicator_id')\n\n# Group by indicator_name and count the readings\ncounts = final_df.groupby('indicator_name').size().reset_index(name='count')\n\n# Convert to list of [name, count]\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 2.173602819442749,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Credit | 2114\nEmerging Markets | 2447\nEquity Valuation | 2469\nFunding | 2215\nOFR Financial Stress Index | 968\nOther Advanced Economies | 2110\nSafe Assets | 2946\nUnited States | 1272\nVolatility | 2166",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with StressLevel to filter for 'Low' stress level\n# Join the result with Indicator to get the indicator names\n\nmerged_df = dfs['IndicatorReading'].merge(dfs['StressLevel'], on='stress_level_id')\nlow_stress_readings = merged_df[merged_df['stress_level_label'] == 'Low']\n\nfinal_df = low_stress_readings.merge(dfs['Indicator'], on='indicator_id')\n\n# Group by indicator_name and count the readings\ncounts = final_df.groupby('indicator_name').size().reset_index(name='count')\n\n# Convert to list of [name, count] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 2.1150248050689697,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Credit | 2114\nEmerging Markets | 2447\nEquity Valuation | 2469\nFunding | 2215\nOFR Financial Stress Index | 968\nOther Advanced Economies | 2110\nSafe Assets | 2946\nUnited States | 1272\nVolatility | 2166",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with StressLevel to filter for 'Low' stress level\n# Join the result with Indicator to get the indicator names\n\nmerged_df = dfs['IndicatorReading'].merge(dfs['StressLevel'], on='stress_level_id')\nlow_stress_readings = merged_df[merged_df['stress_level_label'] == 'Low']\n\nfinal_df = low_stress_readings.merge(dfs['Indicator'], on='indicator_id')\n\n# Group by indicator_name and count the readings\ncounts = final_df.groupby('indicator_name').size().reset_index(name='count')\n\n# Convert to list of [name, count] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.9339029788970947,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Credit | 2114\nEmerging Markets | 2447\nEquity Valuation | 2469\nFunding | 2215\nOFR Financial Stress Index | 968\nOther Advanced Economies | 2110\nSafe Assets | 2946\nUnited States | 1272\nVolatility | 2166",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-012",
+    "tier": "T4",
+    "question": "For each year, what is the average value of indicator readings that occurred on a 'Friday'?",
+    "gold_sparql": "SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> \"Friday\" .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .\n} GROUP BY ?year\nORDER BY ?year",
+    "expected_answer": "2000 | 1.0443207\n2001 | 1.2513739\n2002 | 1.2831702\n2003 | 0.4425135\n2004 | -0.68760645\n2005 | -1.2797388\n2006 | -1.2572224\n2007 | -0.5077654\n2008 | 3.9917865\n2009 | 2.1762724\n... (27 total rows)",
+    "full_expected_items": [
+      "2000 | 1.0443207",
+      "2001 | 1.2513739",
+      "2002 | 1.2831702",
+      "2003 | 0.4425135",
+      "2004 | -0.68760645",
+      "2005 | -1.2797388",
+      "2006 | -1.2572224",
+      "2007 | -0.5077654",
+      "2008 | 3.9917865",
+      "2009 | 2.1762724",
+      "2010 | 0.3793468",
+      "2011 | 0.6664118",
+      "2012 | -0.003267969",
+      "2013 | -0.8732289",
+      "2014 | -0.98410666",
+      "2015 | -0.365891",
+      "2016 | -0.064895436",
+      "2017 | -1.0445815",
+      "2018 | -0.8041437",
+      "2019 | -0.80634",
+      "2020 | -0.14758502",
+      "2021 | -1.1410998",
+      "2022 | 0.3114506",
+      "2023 | -0.12584484",
+      "2024 | -0.5692586",
+      "2025 | -0.568032",
+      "2026 | -0.6092963"
+    ],
+    "full_result_count": 27,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "2000.0 | 1.0443202614379086\n2001.0 | 1.2513733333333334\n2002.0 | 1.283169934640523\n2003.0 | 0.4425133333333333\n2004.0 | -0.6876066666666667\n2005.0 | -1.2797385620915032\n2006.0 | -1.257222222222222\n2007.0 | -0.5077647058823529\n2008.0 | 3.991786666666667\n2009.0 | 2.1762721088435373\n2010.0 | 0.37934666666666667\n2011.0 | 0.6664117647058823\n2012.0 | -0.0032679738562091504\n2013.0 | -0.8732287581699346\n2014.0 | -0.9841066666666667\n2015.0 | -0.365891156462585\n2016.0 | -0.06489542483660131\n2017.0 | -1.0445816993464052\n2018.0 | -0.8041437908496731\n2019.0 | -0.8063398692810457\n2020.0 | -0.14758503401360543\n2021.0 | -1.1411\n2022.0 | 0.3114505789404723\n2023.0 | -0.12584486899134778\n2024.0 | -0.5692585470085471\n2025.0 | -0.5680320512820513\n2026.0 | -0.6092962962962962",
+        "code": "merged = dfs['IndicatorReading'].merge(dfs['Period'], on='period_id')\nfridays = merged[merged['day_of_week'] == 'Friday']\navg_by_year = fridays.groupby('year_id_y')['value'].mean().reset_index()\nresult = avg_by_year.values.tolist()",
+        "verdict": "wrong",
+        "elapsed": 1.6038589477539062,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "2000.0 | 1.0443202614379086\n2001.0 | 1.2513733333333334\n2002.0 | 1.283169934640523\n2003.0 | 0.4425133333333333\n2004.0 | -0.6876066666666667\n2005.0 | -1.2797385620915032\n2006.0 | -1.257222222222222\n2007.0 | -0.5077647058823529\n2008.0 | 3.991786666666667\n2009.0 | 2.1762721088435373\n2010.0 | 0.37934666666666667\n2011.0 | 0.6664117647058823\n2012.0 | -0.0032679738562091504\n2013.0 | -0.8732287581699346\n2014.0 | -0.9841066666666667\n2015.0 | -0.365891156462585\n2016.0 | -0.06489542483660131\n2017.0 | -1.0445816993464052\n2018.0 | -0.8041437908496731\n2019.0 | -0.8063398692810457\n2020.0 | -0.14758503401360543\n2021.0 | -1.1411\n2022.0 | 0.3114505789404723\n2023.0 | -0.12584486899134778\n2024.0 | -0.5692585470085471\n2025.0 | -0.5680320512820513\n2026.0 | -0.6092962962962962",
+        "code": "merged = dfs['IndicatorReading'].merge(dfs['Period'], on='period_id')\nfridays = merged[merged['day_of_week'] == 'Friday']\navg_by_year = fridays.groupby('year_id_y')['value'].mean().reset_index()\nresult = avg_by_year.values.tolist()",
+        "verdict": "wrong",
+        "elapsed": 1.522082805633545,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "2000.0 | 1.0443202614379086\n2001.0 | 1.2513733333333334\n2002.0 | 1.283169934640523\n2003.0 | 0.4425133333333333\n2004.0 | -0.6876066666666667\n2005.0 | -1.2797385620915032\n2006.0 | -1.257222222222222\n2007.0 | -0.5077647058823529\n2008.0 | 3.991786666666667\n2009.0 | 2.1762721088435373\n2010.0 | 0.37934666666666667\n2011.0 | 0.6664117647058823\n2012.0 | -0.0032679738562091504\n2013.0 | -0.8732287581699346\n2014.0 | -0.9841066666666667\n2015.0 | -0.365891156462585\n2016.0 | -0.06489542483660131\n2017.0 | -1.0445816993464052\n2018.0 | -0.8041437908496731\n2019.0 | -0.8063398692810457\n2020.0 | -0.14758503401360543\n2021.0 | -1.1411\n2022.0 | 0.3114505789404723\n2023.0 | -0.12584486899134778\n2024.0 | -0.5692585470085471\n2025.0 | -0.5680320512820513\n2026.0 | -0.6092962962962962",
+        "code": "merged = dfs['IndicatorReading'].merge(dfs['Period'], on='period_id')\nfridays = merged[merged['day_of_week'] == 'Friday']\navg_by_year = fridays.groupby('year_id_y')['value'].mean().reset_index()\nresult = avg_by_year.values.tolist()",
+        "verdict": "wrong",
+        "elapsed": 1.5718371868133545,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "2000.0 | 1.0443202614379086\n2001.0 | 1.2513733333333334\n2002.0 | 1.283169934640523\n2003.0 | 0.4425133333333333\n2004.0 | -0.6876066666666667\n2005.0 | -1.2797385620915032\n2006.0 | -1.257222222222222\n2007.0 | -0.5077647058823529\n2008.0 | 3.991786666666667\n2009.0 | 2.1762721088435373\n2010.0 | 0.37934666666666667\n2011.0 | 0.6664117647058823\n2012.0 | -0.0032679738562091504\n2013.0 | -0.8732287581699346\n2014.0 | -0.9841066666666667\n2015.0 | -0.365891156462585\n2016.0 | -0.06489542483660131\n2017.0 | -1.0445816993464052\n2018.0 | -0.8041437908496731\n2019.0 | -0.8063398692810457\n2020.0 | -0.14758503401360543\n2021.0 | -1.1411\n2022.0 | 0.3114505789404723\n2023.0 | -0.12584486899134778\n2024.0 | -0.5692585470085471\n2025.0 | -0.5680320512820513\n2026.0 | -0.6092962962962962",
+    "majority_verdict": "wrong",
+    "correct_runs": 0,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ofr-financial-stability",
+    "id": "q-013",
+    "tier": "T4",
+    "question": "Find the indicator categories that contain indicators with readings in the '2010' decade, and count how many such indicators each category has.",
+    "gold_sparql": "SELECT ?categoryName (COUNT(DISTINCT ?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/decade> \"2010\" .\n} GROUP BY ?categoryName\nORDER BY DESC(?indicatorCount)",
+    "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+    "full_expected_items": [
+      "Subindex | 5",
+      "Regional | 3",
+      "Composite | 1"
+    ],
+    "full_result_count": 3,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with Year to filter for the 2010 decade\nreadings_with_year = pd.merge(dfs['IndicatorReading'], dfs['Year'], on='year_id')\nreadings_2010s = readings_with_year[readings_with_year['decade'] == 2010]\n\n# Get unique indicators that have readings in the 2010s\nindicators_in_2010s = readings_2010s['indicator_id'].unique()\n\n# Join these indicators with the Indicator table to get their category_id\nindicator_info = dfs['Indicator'][dfs['Indicator']['indicator_id'].isin(indicators_in_2010s)]\n\n# Join with IndicatorCategory to get the category names\ncategory_counts = pd.merge(indicator_info, dfs['IndicatorCategory'], on='category_id')\n\n# Group by category_name and count unique indicator_ids\nsummary = category_counts.groupby('category_name')['indicator_id'].nunique().reset_index()\n\n# Format as a list of [key, value] pairs\nresult = summary.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 2.4652888774871826,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with Year to filter for the 2010 decade\nreadings_with_year = pd.merge(dfs['IndicatorReading'], dfs['Year'], on='year_id')\nreadings_2010s = readings_with_year[readings_with_year['decade'] == 2010]\n\n# Get unique indicators that have readings in the 2010s\nindicators_in_2010s = readings_2010s['indicator_id'].unique()\n\n# Filter the Indicator table for these indicators and join with IndicatorCategory\nindicators_filtered = dfs['Indicator'][dfs['Indicator']['indicator_id'].isin(indicators_in_2010s)]\nmerged_data = pd.merge(indicators_filtered, dfs['IndicatorCategory'], on='category_id')\n\n# Group by category_name and count unique indicator_ids\ncategory_counts = merged_data.groupby('category_name')['indicator_id'].nunique().reset_index()\n\n# Convert to list of [key, value] pairs\nresult = category_counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 5.256480932235718,
+        "status": 200,
+        "retries": 1
+      },
+      {
+        "seed": "3",
+        "answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+        "code": "import pandas as pd\n\n# Join IndicatorReading with Year to filter for the 2010 decade\nreadings_with_year = pd.merge(dfs['IndicatorReading'], dfs['Year'], on='year_id')\nreadings_2010s = readings_with_year[readings_with_year['decade'] == 2010]\n\n# Get unique indicators that have readings in the 2010s\nindicators_in_2010s = readings_2010s['indicator_id'].unique()\n\n# Join these indicators with the Indicator table to get their category_id\nindicator_info = dfs['Indicator'][dfs['Indicator']['indicator_id'].isin(indicators_in_2010s)]\n\n# Join with IndicatorCategory to get the category names\ncategory_counts = pd.merge(indicator_info, dfs['IndicatorCategory'], on='category_id')\n\n# Group by category_name and count unique indicator_ids\nsummary = category_counts.groupby('category_name')['indicator_id'].nunique().reset_index()\n\n# Format as a list of [key, value] pairs\nresult = summary.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 2.5880470275878906,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Composite | 1\nRegional | 3\nSubindex | 5",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  }
+]

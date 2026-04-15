@@ -1,0 +1,734 @@
+{
+  "kg": "holdout-v2-ofr-financial-stability",
+  "results": [
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct indicator categories are there?",
+      "expected_answer": "3",
+      "full_expected_items": [
+        "3"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?indicatorCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicatorCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"category_id\") FROM \"IndicatorCategory\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"category_id\") FROM \"IndicatorCategory\";"
+          ],
+          "answer": "3",
+          "verdict": "correct",
+          "input_tokens": 1576,
+          "output_tokens": 15
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"category_id\") FROM \"IndicatorCategory\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"category_id\") FROM \"IndicatorCategory\";"
+          ],
+          "answer": "3",
+          "verdict": "correct",
+          "input_tokens": 1576,
+          "output_tokens": 15
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"category_id\") FROM \"IndicatorCategory\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"category_id\") FROM \"IndicatorCategory\";"
+          ],
+          "answer": "3",
+          "verdict": "correct",
+          "input_tokens": 1576,
+          "output_tokens": 15
+        }
+      ],
+      "majority_answer": "3",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available indicator names.",
+      "expected_answer": "United States, OFR Financial Stress Index, Credit, Equity Valuation, Safe Assets, Funding, Volatility, Other Advanced Economies, Emerging Markets",
+      "full_expected_items": [
+        "United States",
+        "OFR Financial Stress Index",
+        "Credit",
+        "Equity Valuation",
+        "Safe Assets",
+        "Funding",
+        "Volatility",
+        "Other Advanced Economies",
+        "Emerging Markets"
+      ],
+      "full_result_count": 9,
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"indicator_name\" FROM \"Indicator\"",
+          "all_sql_attempts": [
+            "SELECT \"indicator_name\" FROM \"Indicator\""
+          ],
+          "answer": "indicator_name: OFR Financial Stress Index\nindicator_name: Credit\nindicator_name: Equity Valuation\nindicator_name: Safe Assets\nindicator_name: Funding\nindicator_name: Volatility\nindicator_name: United States\nindicator_name: Other Advanced Economies\nindicator_name: Emerging Markets",
+          "verdict": "correct",
+          "input_tokens": 1570,
+          "output_tokens": 10
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"indicator_name\" FROM \"Indicator\"",
+          "all_sql_attempts": [
+            "SELECT \"indicator_name\" FROM \"Indicator\""
+          ],
+          "answer": "indicator_name: OFR Financial Stress Index\nindicator_name: Credit\nindicator_name: Equity Valuation\nindicator_name: Safe Assets\nindicator_name: Funding\nindicator_name: Volatility\nindicator_name: United States\nindicator_name: Other Advanced Economies\nindicator_name: Emerging Markets",
+          "verdict": "correct",
+          "input_tokens": 1570,
+          "output_tokens": 10
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"indicator_name\" FROM \"Indicator\"",
+          "all_sql_attempts": [
+            "SELECT \"indicator_name\" FROM \"Indicator\""
+          ],
+          "answer": "indicator_name: OFR Financial Stress Index\nindicator_name: Credit\nindicator_name: Equity Valuation\nindicator_name: Safe Assets\nindicator_name: Funding\nindicator_name: Volatility\nindicator_name: United States\nindicator_name: Other Advanced Economies\nindicator_name: Emerging Markets",
+          "verdict": "correct",
+          "input_tokens": 1570,
+          "output_tokens": 10
+        }
+      ],
+      "majority_answer": "indicator_name: OFR Financial Stress Index\nindicator_name: Credit\nindicator_name: Equity Valuation\nindicator_name: Safe Assets\nindicator_name: Funding\nindicator_name: Volatility\nindicator_name: United States\nindicator_name: Other Advanced Economies\nindicator_name: Emerging Markets",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "What are the different stress level labels?",
+      "expected_answer": "High, Low, Negative (calm), Elevated",
+      "full_expected_items": [
+        "High",
+        "Low",
+        "Negative (calm)",
+        "Elevated"
+      ],
+      "full_result_count": 4,
+      "gold_sparql": "SELECT DISTINCT ?stressLevelLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT \"stress_level_label\" FROM \"StressLevel\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"stress_level_label\" FROM \"StressLevel\""
+          ],
+          "answer": "stress_level_label: Negative (calm)\nstress_level_label: Low\nstress_level_label: Elevated\nstress_level_label: High",
+          "verdict": "correct",
+          "input_tokens": 1587,
+          "output_tokens": 14
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT \"stress_level_label\" FROM \"StressLevel\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"stress_level_label\" FROM \"StressLevel\""
+          ],
+          "answer": "stress_level_label: Negative (calm)\nstress_level_label: Low\nstress_level_label: Elevated\nstress_level_label: High",
+          "verdict": "correct",
+          "input_tokens": 1587,
+          "output_tokens": 14
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT \"stress_level_label\" FROM \"StressLevel\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"stress_level_label\" FROM \"StressLevel\""
+          ],
+          "answer": "stress_level_label: Negative (calm)\nstress_level_label: Low\nstress_level_label: Elevated\nstress_level_label: High",
+          "verdict": "correct",
+          "input_tokens": 1587,
+          "output_tokens": 14
+        }
+      ],
+      "majority_answer": "stress_level_label: Negative (calm)\nstress_level_label: Low\nstress_level_label: Elevated\nstress_level_label: High",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many unique years are recorded in the dataset?",
+      "expected_answer": "27",
+      "full_expected_items": [
+        "27"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?yearValue) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> . ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?yearValue . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"year\") FROM \"Year\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"year\") FROM \"Year\";"
+          ],
+          "answer": "27",
+          "verdict": "correct",
+          "input_tokens": 1583,
+          "output_tokens": 12
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"year\") FROM \"Year\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"year\") FROM \"Year\";"
+          ],
+          "answer": "27",
+          "verdict": "correct",
+          "input_tokens": 1583,
+          "output_tokens": 12
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"year\") FROM \"Year\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"year\") FROM \"Year\";"
+          ],
+          "answer": "27",
+          "verdict": "correct",
+          "input_tokens": 1583,
+          "output_tokens": 12
+        }
+      ],
+      "majority_answer": "27",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "What is the total number of readings for stress levels with a lower bound greater than 0?",
+      "expected_answer": "4666",
+      "full_expected_items": [
+        "4666"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount . FILTER (xsd:integer(?lowerBound) > 0) }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT SUM(\"reading_count\") FROM \"StressLevel\" WHERE \"lower_bound\" > 0;",
+          "all_sql_attempts": [
+            "SELECT SUM(\"reading_count\") FROM \"StressLevel\" WHERE \"lower_bound\" > 0;"
+          ],
+          "answer": "4666",
+          "verdict": "correct",
+          "input_tokens": 1610,
+          "output_tokens": 22
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT SUM(\"reading_count\") FROM \"StressLevel\" WHERE \"lower_bound\" > 0;",
+          "all_sql_attempts": [
+            "SELECT SUM(\"reading_count\") FROM \"StressLevel\" WHERE \"lower_bound\" > 0;"
+          ],
+          "answer": "4666",
+          "verdict": "correct",
+          "input_tokens": 1610,
+          "output_tokens": 22
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT SUM(\"reading_count\") FROM \"StressLevel\" WHERE \"lower_bound\" > 0;",
+          "all_sql_attempts": [
+            "SELECT SUM(\"reading_count\") FROM \"StressLevel\" WHERE \"lower_bound\" > 0;"
+          ],
+          "answer": "4666",
+          "verdict": "correct",
+          "input_tokens": 1610,
+          "output_tokens": 22
+        }
+      ],
+      "majority_answer": "4666",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "List the names of all indicators whose source column contains 'United States'.",
+      "expected_answer": "United States",
+      "full_expected_items": [
+        "United States"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/source_column> ?sourceColumn . FILTER (CONTAINS(LCASE(STR(?sourceColumn)), \"united states\")) }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"indicator_name\" FROM \"Indicator\" WHERE \"source_column\" LIKE '%United States%'",
+          "all_sql_attempts": [
+            "SELECT \"indicator_name\" FROM \"Indicator\" WHERE \"source_column\" LIKE '%United States%'"
+          ],
+          "answer": "United States",
+          "verdict": "correct",
+          "input_tokens": 1588,
+          "output_tokens": 21
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"indicator_name\" FROM \"Indicator\" WHERE \"source_column\" LIKE '%United States%'",
+          "all_sql_attempts": [
+            "SELECT \"indicator_name\" FROM \"Indicator\" WHERE \"source_column\" LIKE '%United States%'"
+          ],
+          "answer": "United States",
+          "verdict": "correct",
+          "input_tokens": 1588,
+          "output_tokens": 21
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"indicator_name\" FROM \"Indicator\" WHERE \"source_column\" LIKE '%United States%'",
+          "all_sql_attempts": [
+            "SELECT \"indicator_name\" FROM \"Indicator\" WHERE \"source_column\" LIKE '%United States%'"
+          ],
+          "answer": "United States",
+          "verdict": "correct",
+          "input_tokens": 1588,
+          "output_tokens": 21
+        }
+      ],
+      "majority_answer": "United States",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "What is the total number of indicator readings associated with a stress level that has a lower bound greater than 0?",
+      "expected_answer": "4666",
+      "full_expected_items": [
+        "4666"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount .\n  FILTER (xsd:integer(?lowerBound) > 0)\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"IndicatorReading\" JOIN \"StressLevel\" ON \"IndicatorReading\".\"stress_level_id\" = \"StressLevel\".\"stress_level_id\" WHERE \"StressLevel\".\"lower_bound\" > 0;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"IndicatorReading\" JOIN \"StressLevel\" ON \"IndicatorReading\".\"stress_level_id\" = \"StressLevel\".\"stress_level_id\" WHERE \"StressLevel\".\"lower_bound\" > 0;"
+          ],
+          "answer": "4666",
+          "verdict": "correct",
+          "input_tokens": 1600,
+          "output_tokens": 48
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"IndicatorReading\" JOIN \"StressLevel\" ON \"IndicatorReading\".\"stress_level_id\" = \"StressLevel\".\"stress_level_id\" WHERE \"StressLevel\".\"lower_bound\" > 0;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"IndicatorReading\" JOIN \"StressLevel\" ON \"IndicatorReading\".\"stress_level_id\" = \"StressLevel\".\"stress_level_id\" WHERE \"StressLevel\".\"lower_bound\" > 0;"
+          ],
+          "answer": "4666",
+          "verdict": "correct",
+          "input_tokens": 1600,
+          "output_tokens": 48
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"IndicatorReading\" JOIN \"StressLevel\" ON \"IndicatorReading\".\"stress_level_id\" = \"StressLevel\".\"stress_level_id\" WHERE \"StressLevel\".\"lower_bound\" > 0;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"IndicatorReading\" JOIN \"StressLevel\" ON \"IndicatorReading\".\"stress_level_id\" = \"StressLevel\".\"stress_level_id\" WHERE \"StressLevel\".\"lower_bound\" > 0;"
+          ],
+          "answer": "4666",
+          "verdict": "correct",
+          "input_tokens": 1600,
+          "output_tokens": 48
+        }
+      ],
+      "majority_answer": "4666",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "How many indicator readings have a value greater than 0.5?",
+      "expected_answer": "12343",
+      "full_expected_items": [
+        "12343"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?reading) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?value .\n  FILTER(xsd:float(?value) > 0.5)\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"IndicatorReading\" WHERE \"value\" > 0.5;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"IndicatorReading\" WHERE \"value\" > 0.5;"
+          ],
+          "answer": "12343",
+          "verdict": "correct",
+          "input_tokens": 1604,
+          "output_tokens": 18
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"IndicatorReading\" WHERE \"value\" > 0.5;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"IndicatorReading\" WHERE \"value\" > 0.5;"
+          ],
+          "answer": "12343",
+          "verdict": "correct",
+          "input_tokens": 1604,
+          "output_tokens": 18
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"IndicatorReading\" WHERE \"value\" > 0.5;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"IndicatorReading\" WHERE \"value\" > 0.5;"
+          ],
+          "answer": "12343",
+          "verdict": "correct",
+          "input_tokens": 1604,
+          "output_tokens": 18
+        }
+      ],
+      "majority_answer": "12343",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many indicator readings are associated with each stress level?",
+      "expected_answer": "Negative (calm) | 36450\nLow | 18707\nElevated | 3553\nHigh | 1113",
+      "full_expected_items": [
+        "Negative (calm) | 36450",
+        "Low | 18707",
+        "Elevated | 3553",
+        "High | 1113"
+      ],
+      "full_result_count": 4,
+      "gold_sparql": "SELECT ?stressLevelLabel (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel .\n} GROUP BY ?stressLevelLabel ORDER BY DESC(?readingCount)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"stress_level_label\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"StressLevel\" AS T2 ON T1.\"stress_level_id\" = T2.\"stress_level_id\" GROUP BY T1.\"stress_level_id\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"stress_level_label\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"StressLevel\" AS T2 ON T1.\"stress_level_id\" = T2.\"stress_level_id\" GROUP BY T1.\"stress_level_id\";"
+          ],
+          "answer": "stress_level_label: Elevated, COUNT(*): 3553\nstress_level_label: High, COUNT(*): 1113\nstress_level_label: Low, COUNT(*): 18707\nstress_level_label: Negative (calm), COUNT(*): 36450",
+          "verdict": "correct",
+          "input_tokens": 1588,
+          "output_tokens": 59
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"stress_level_label\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"StressLevel\" AS T2 ON T1.\"stress_level_id\" = T2.\"stress_level_id\" GROUP BY T1.\"stress_level_id\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"stress_level_label\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"StressLevel\" AS T2 ON T1.\"stress_level_id\" = T2.\"stress_level_id\" GROUP BY T1.\"stress_level_id\";"
+          ],
+          "answer": "stress_level_label: Elevated, COUNT(*): 3553\nstress_level_label: High, COUNT(*): 1113\nstress_level_label: Low, COUNT(*): 18707\nstress_level_label: Negative (calm), COUNT(*): 36450",
+          "verdict": "correct",
+          "input_tokens": 1588,
+          "output_tokens": 59
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"stress_level_label\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"StressLevel\" AS T2 ON T1.\"stress_level_id\" = T2.\"stress_level_id\" GROUP BY T1.\"stress_level_id\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"stress_level_label\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"StressLevel\" AS T2 ON T1.\"stress_level_id\" = T2.\"stress_level_id\" GROUP BY T1.\"stress_level_id\";"
+          ],
+          "answer": "stress_level_label: Elevated, COUNT(*): 3553\nstress_level_label: High, COUNT(*): 1113\nstress_level_label: Low, COUNT(*): 18707\nstress_level_label: Negative (calm), COUNT(*): 36450",
+          "verdict": "correct",
+          "input_tokens": 1588,
+          "output_tokens": 59
+        }
+      ],
+      "majority_answer": "stress_level_label: Elevated, COUNT(*): 3553\nstress_level_label: High, COUNT(*): 1113\nstress_level_label: Low, COUNT(*): 18707\nstress_level_label: Negative (calm), COUNT(*): 36450",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "Count the number of indicators within each indicator category.",
+      "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+      "full_expected_items": [
+        "Subindex | 5",
+        "Regional | 3",
+        "Composite | 1"
+      ],
+      "full_result_count": 3,
+      "gold_sparql": "SELECT ?categoryName (COUNT(?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n} GROUP BY ?categoryName ORDER BY DESC(?indicatorCount)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"category_name\", \"indicator_count\" FROM \"IndicatorCategory\";",
+          "all_sql_attempts": [
+            "SELECT \"category_name\", \"indicator_count\" FROM \"IndicatorCategory\";"
+          ],
+          "answer": "category_name: Composite, indicator_count: 1\ncategory_name: Subindex, indicator_count: 5\ncategory_name: Regional, indicator_count: 3",
+          "verdict": "correct",
+          "input_tokens": 1591,
+          "output_tokens": 16
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"category_name\", \"indicator_count\" FROM \"IndicatorCategory\";",
+          "all_sql_attempts": [
+            "SELECT \"category_name\", \"indicator_count\" FROM \"IndicatorCategory\";"
+          ],
+          "answer": "category_name: Composite, indicator_count: 1\ncategory_name: Subindex, indicator_count: 5\ncategory_name: Regional, indicator_count: 3",
+          "verdict": "correct",
+          "input_tokens": 1591,
+          "output_tokens": 16
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"category_name\", \"indicator_count\" FROM \"IndicatorCategory\";",
+          "all_sql_attempts": [
+            "SELECT \"category_name\", \"indicator_count\" FROM \"IndicatorCategory\";"
+          ],
+          "answer": "category_name: Composite, indicator_count: 1\ncategory_name: Subindex, indicator_count: 5\ncategory_name: Regional, indicator_count: 3",
+          "verdict": "correct",
+          "input_tokens": 1591,
+          "output_tokens": 16
+        }
+      ],
+      "majority_answer": "category_name: Composite, indicator_count: 1\ncategory_name: Subindex, indicator_count: 5\ncategory_name: Regional, indicator_count: 3",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "What are the names of indicators that have readings associated with a 'Low' stress level, and how many such readings does each indicator have?",
+      "expected_answer": "Safe Assets | 2946\nEquity Valuation | 2469\nEmerging Markets | 2447\nFunding | 2215\nVolatility | 2166\nCredit | 2114\nOther Advanced Economies | 2110\nUnited States | 1272\nOFR Financial Stress Index | 968",
+      "full_expected_items": [
+        "Safe Assets | 2946",
+        "Equity Valuation | 2469",
+        "Emerging Markets | 2447",
+        "Funding | 2215",
+        "Volatility | 2166",
+        "Credit | 2114",
+        "Other Advanced Economies | 2110",
+        "United States | 1272",
+        "OFR Financial Stress Index | 968"
+      ],
+      "full_result_count": 9,
+      "gold_sparql": "SELECT ?indicatorName (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> \"Low\" .\n} GROUP BY ?indicatorName\nORDER BY DESC(?readingCount)\nLIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"indicator_name\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"StressLevel\" AS T3 ON T1.\"stress_level_id\" = T3.\"stress_level_id\" WHERE T3.\"stress_level_label\" = 'Low' GROUP BY T2.\"indicator_name\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"indicator_name\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"StressLevel\" AS T3 ON T1.\"stress_level_id\" = T3.\"stress_level_id\" WHERE T3.\"stress_level_label\" = 'Low' GROUP BY T2.\"indicator_name\";"
+          ],
+          "answer": "indicator_name: Credit, COUNT(*): 2114\nindicator_name: Emerging Markets, COUNT(*): 2447\nindicator_name: Equity Valuation, COUNT(*): 2469\nindicator_name: Funding, COUNT(*): 2215\nindicator_name: OFR Financial Stress Index, COUNT(*): 968\nindicator_name: Other Advanced Economies, COUNT(*): 2110\nindicator_name: Safe Assets, COUNT(*): 2946\nindicator_name: United States, COUNT(*): 1272\nindicator_name: Volatility, COUNT(*): 2166",
+          "verdict": "correct",
+          "input_tokens": 1607,
+          "output_tokens": 92
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"indicator_name\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"StressLevel\" AS T3 ON T1.\"stress_level_id\" = T3.\"stress_level_id\" WHERE T3.\"stress_level_label\" = 'Low' GROUP BY T2.\"indicator_name\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"indicator_name\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"StressLevel\" AS T3 ON T1.\"stress_level_id\" = T3.\"stress_level_id\" WHERE T3.\"stress_level_label\" = 'Low' GROUP BY T2.\"indicator_name\";"
+          ],
+          "answer": "indicator_name: Credit, COUNT(*): 2114\nindicator_name: Emerging Markets, COUNT(*): 2447\nindicator_name: Equity Valuation, COUNT(*): 2469\nindicator_name: Funding, COUNT(*): 2215\nindicator_name: OFR Financial Stress Index, COUNT(*): 968\nindicator_name: Other Advanced Economies, COUNT(*): 2110\nindicator_name: Safe Assets, COUNT(*): 2946\nindicator_name: United States, COUNT(*): 1272\nindicator_name: Volatility, COUNT(*): 2166",
+          "verdict": "correct",
+          "input_tokens": 1607,
+          "output_tokens": 92
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"indicator_name\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"StressLevel\" AS T3 ON T1.\"stress_level_id\" = T3.\"stress_level_id\" WHERE T3.\"stress_level_label\" = 'Low' GROUP BY T2.\"indicator_name\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"indicator_name\", COUNT(*) FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"StressLevel\" AS T3 ON T1.\"stress_level_id\" = T3.\"stress_level_id\" WHERE T3.\"stress_level_label\" = 'Low' GROUP BY T2.\"indicator_name\";"
+          ],
+          "answer": "indicator_name: Credit, COUNT(*): 2114\nindicator_name: Emerging Markets, COUNT(*): 2447\nindicator_name: Equity Valuation, COUNT(*): 2469\nindicator_name: Funding, COUNT(*): 2215\nindicator_name: OFR Financial Stress Index, COUNT(*): 968\nindicator_name: Other Advanced Economies, COUNT(*): 2110\nindicator_name: Safe Assets, COUNT(*): 2946\nindicator_name: United States, COUNT(*): 1272\nindicator_name: Volatility, COUNT(*): 2166",
+          "verdict": "correct",
+          "input_tokens": 1607,
+          "output_tokens": 92
+        }
+      ],
+      "majority_answer": "indicator_name: Credit, COUNT(*): 2114\nindicator_name: Emerging Markets, COUNT(*): 2447\nindicator_name: Equity Valuation, COUNT(*): 2469\nindicator_name: Funding, COUNT(*): 2215\nindicator_name: OFR Financial Stress Index, COUNT(*): 968\nindicator_name: Other Advanced Economies, COUNT(*): 2110\nindicator_name: Safe Assets, COUNT(*): 2946\nindicator_name: United States, COUNT(*): 1272\nindicator_name: Volatility, COUNT(*): 2166",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "For each year, what is the average value of indicator readings that occurred on a 'Friday'?",
+      "expected_answer": "2000 | 1.0443207\n2001 | 1.2513739\n2002 | 1.2831702\n2003 | 0.4425135\n2004 | -0.68760645\n2005 | -1.2797388\n2006 | -1.2572224\n2007 | -0.5077654\n2008 | 3.9917865\n2009 | 2.1762724\n... (27 total rows)",
+      "full_expected_items": [
+        "2000 | 1.0443207",
+        "2001 | 1.2513739",
+        "2002 | 1.2831702",
+        "2003 | 0.4425135",
+        "2004 | -0.68760645",
+        "2005 | -1.2797388",
+        "2006 | -1.2572224",
+        "2007 | -0.5077654",
+        "2008 | 3.9917865",
+        "2009 | 2.1762724",
+        "2010 | 0.3793468",
+        "2011 | 0.6664118",
+        "2012 | -0.003267969",
+        "2013 | -0.8732289",
+        "2014 | -0.98410666",
+        "2015 | -0.365891",
+        "2016 | -0.064895436",
+        "2017 | -1.0445815",
+        "2018 | -0.8041437",
+        "2019 | -0.80634",
+        "2020 | -0.14758502",
+        "2021 | -1.1410998",
+        "2022 | 0.3114506",
+        "2023 | -0.12584484",
+        "2024 | -0.5692586",
+        "2025 | -0.568032",
+        "2026 | -0.6092963"
+      ],
+      "full_result_count": 27,
+      "gold_sparql": "SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> \"Friday\" .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .\n} GROUP BY ?year\nORDER BY ?year",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T3.\"year\", ROUND(AVG(T1.\"value\"), 2) FROM \"IndicatorReading\" AS T1 JOIN \"Period\" AS T2 ON T1.\"period_id\" = T2.\"period_id\" JOIN \"Year\" AS T3 ON T1.\"year_id\" = T3.\"year_id\" WHERE T2.\"day_of_week\" = 'Friday' GROUP BY T3.\"year\"",
+          "all_sql_attempts": [
+            "SELECT T3.\"year\", ROUND(AVG(T1.\"value\"), 2) FROM \"IndicatorReading\" AS T1 JOIN \"Period\" AS T2 ON T1.\"period_id\" = T2.\"period_id\" JOIN \"Year\" AS T3 ON T1.\"year_id\" = T3.\"year_id\" WHERE T2.\"day_of_week\" = 'Friday' GROUP BY T3.\"year\""
+          ],
+          "answer": "year: 2000, ROUND(AVG(T1.\"value\"), 2): 1.04\nyear: 2001, ROUND(AVG(T1.\"value\"), 2): 1.25\nyear: 2002, ROUND(AVG(T1.\"value\"), 2): 1.28\nyear: 2003, ROUND(AVG(T1.\"value\"), 2): 0.44\nyear: 2004, ROUND(AVG(T1.\"value\"), 2): -0.69\nyear: 2005, ROUND(AVG(T1.\"value\"), 2): -1.28\nyear: 2006, ROUND(AVG(T1.\"value\"), 2): -1.26\nyear: 2007, ROUND(AVG(T1.\"value\"), 2): -0.51\nyear: 2008, ROUND(AVG(T1.\"value\"), 2): 3.99\nyear: 2009, ROUND(AVG(T1.\"value\"), 2): 2.18\nyear: 2010, ROUND(AVG(T1.\"value\"), 2): 0.38\nyear: 2011, ROUND(AVG(T1.\"value\"), 2): 0.67\nyear: 2012, ROUND(AVG(T1.\"value\"), 2): -0.0\nyear: 2013, ROUND(AVG(T1.\"value\"), 2): -0.87\nyear: 2014, ROUND(AVG(T1.\"value\"), 2): -0.98\nyear: 2015, ROUND(AVG(T1.\"value\"), 2): -0.37\nyear: 2016, ROUND(AVG(T1.\"value\"), 2): -0.06\nyear: 2017, ROUND(AVG(T1.\"value\"), 2): -1.04\nyear: 2018, ROUND(AVG(T1.\"value\"), 2): -0.8\nyear: 2019, ROUND(AVG(T1.\"value\"), 2): -0.81\n... and 7 more results",
+          "verdict": "wrong",
+          "input_tokens": 1632,
+          "output_tokens": 93
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T3.\"year\", ROUND(AVG(T1.\"value\"), 2) FROM \"IndicatorReading\" AS T1 JOIN \"Period\" AS T2 ON T1.\"period_id\" = T2.\"period_id\" JOIN \"Year\" AS T3 ON T1.\"year_id\" = T3.\"year_id\" WHERE T2.\"day_of_week\" = 'Friday' GROUP BY T3.\"year\"",
+          "all_sql_attempts": [
+            "SELECT T3.\"year\", ROUND(AVG(T1.\"value\"), 2) FROM \"IndicatorReading\" AS T1 JOIN \"Period\" AS T2 ON T1.\"period_id\" = T2.\"period_id\" JOIN \"Year\" AS T3 ON T1.\"year_id\" = T3.\"year_id\" WHERE T2.\"day_of_week\" = 'Friday' GROUP BY T3.\"year\""
+          ],
+          "answer": "year: 2000, ROUND(AVG(T1.\"value\"), 2): 1.04\nyear: 2001, ROUND(AVG(T1.\"value\"), 2): 1.25\nyear: 2002, ROUND(AVG(T1.\"value\"), 2): 1.28\nyear: 2003, ROUND(AVG(T1.\"value\"), 2): 0.44\nyear: 2004, ROUND(AVG(T1.\"value\"), 2): -0.69\nyear: 2005, ROUND(AVG(T1.\"value\"), 2): -1.28\nyear: 2006, ROUND(AVG(T1.\"value\"), 2): -1.26\nyear: 2007, ROUND(AVG(T1.\"value\"), 2): -0.51\nyear: 2008, ROUND(AVG(T1.\"value\"), 2): 3.99\nyear: 2009, ROUND(AVG(T1.\"value\"), 2): 2.18\nyear: 2010, ROUND(AVG(T1.\"value\"), 2): 0.38\nyear: 2011, ROUND(AVG(T1.\"value\"), 2): 0.67\nyear: 2012, ROUND(AVG(T1.\"value\"), 2): -0.0\nyear: 2013, ROUND(AVG(T1.\"value\"), 2): -0.87\nyear: 2014, ROUND(AVG(T1.\"value\"), 2): -0.98\nyear: 2015, ROUND(AVG(T1.\"value\"), 2): -0.37\nyear: 2016, ROUND(AVG(T1.\"value\"), 2): -0.06\nyear: 2017, ROUND(AVG(T1.\"value\"), 2): -1.04\nyear: 2018, ROUND(AVG(T1.\"value\"), 2): -0.8\nyear: 2019, ROUND(AVG(T1.\"value\"), 2): -0.81\n... and 7 more results",
+          "verdict": "wrong",
+          "input_tokens": 1632,
+          "output_tokens": 93
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T3.\"year\", ROUND(AVG(T1.\"value\"), 2) FROM \"IndicatorReading\" AS T1 JOIN \"Period\" AS T2 ON T1.\"period_id\" = T2.\"period_id\" JOIN \"Year\" AS T3 ON T1.\"year_id\" = T3.\"year_id\" WHERE T2.\"day_of_week\" = 'Friday' GROUP BY T3.\"year\"",
+          "all_sql_attempts": [
+            "SELECT T3.\"year\", ROUND(AVG(T1.\"value\"), 2) FROM \"IndicatorReading\" AS T1 JOIN \"Period\" AS T2 ON T1.\"period_id\" = T2.\"period_id\" JOIN \"Year\" AS T3 ON T1.\"year_id\" = T3.\"year_id\" WHERE T2.\"day_of_week\" = 'Friday' GROUP BY T3.\"year\""
+          ],
+          "answer": "year: 2000, ROUND(AVG(T1.\"value\"), 2): 1.04\nyear: 2001, ROUND(AVG(T1.\"value\"), 2): 1.25\nyear: 2002, ROUND(AVG(T1.\"value\"), 2): 1.28\nyear: 2003, ROUND(AVG(T1.\"value\"), 2): 0.44\nyear: 2004, ROUND(AVG(T1.\"value\"), 2): -0.69\nyear: 2005, ROUND(AVG(T1.\"value\"), 2): -1.28\nyear: 2006, ROUND(AVG(T1.\"value\"), 2): -1.26\nyear: 2007, ROUND(AVG(T1.\"value\"), 2): -0.51\nyear: 2008, ROUND(AVG(T1.\"value\"), 2): 3.99\nyear: 2009, ROUND(AVG(T1.\"value\"), 2): 2.18\nyear: 2010, ROUND(AVG(T1.\"value\"), 2): 0.38\nyear: 2011, ROUND(AVG(T1.\"value\"), 2): 0.67\nyear: 2012, ROUND(AVG(T1.\"value\"), 2): -0.0\nyear: 2013, ROUND(AVG(T1.\"value\"), 2): -0.87\nyear: 2014, ROUND(AVG(T1.\"value\"), 2): -0.98\nyear: 2015, ROUND(AVG(T1.\"value\"), 2): -0.37\nyear: 2016, ROUND(AVG(T1.\"value\"), 2): -0.06\nyear: 2017, ROUND(AVG(T1.\"value\"), 2): -1.04\nyear: 2018, ROUND(AVG(T1.\"value\"), 2): -0.8\nyear: 2019, ROUND(AVG(T1.\"value\"), 2): -0.81\n... and 7 more results",
+          "verdict": "wrong",
+          "input_tokens": 1632,
+          "output_tokens": 93
+        }
+      ],
+      "majority_answer": "year: 2000, ROUND(AVG(T1.\"value\"), 2): 1.04\nyear: 2001, ROUND(AVG(T1.\"value\"), 2): 1.25\nyear: 2002, ROUND(AVG(T1.\"value\"), 2): 1.28\nyear: 2003, ROUND(AVG(T1.\"value\"), 2): 0.44\nyear: 2004, ROUND(AVG(T1.\"value\"), 2): -0.69\nyear: 2005, ROUND(AVG(T1.\"value\"), 2): -1.28\nyear: 2006, ROUND(AVG(T1.\"value\"), 2): -1.26\nyear: 2007, ROUND(AVG(T1.\"value\"), 2): -0.51\nyear: 2008, ROUND(AVG(T1.\"value\"), 2): 3.99\nyear: 2009, ROUND(AVG(T1.\"value\"), 2): 2.18\nyear: 2010, ROUND(AVG(T1.\"value\"), 2): 0.38\nyear: 2011, ROUND(AVG(T1.\"value\"), 2): 0.67\nyear: 2012, ROUND(AVG(T1.\"value\"), 2): -0.0\nyear: 2013, ROUND(AVG(T1.\"value\"), 2): -0.87\nyear: 2014, ROUND(AVG(T1.\"value\"), 2): -0.98\nyear: 2015, ROUND(AVG(T1.\"value\"), 2): -0.37\nyear: 2016, ROUND(AVG(T1.\"value\"), 2): -0.06\nyear: 2017, ROUND(AVG(T1.\"value\"), 2): -1.04\nyear: 2018, ROUND(AVG(T1.\"value\"), 2): -0.8\nyear: 2019, ROUND(AVG(T1.\"value\"), 2): -0.81\n... and 7 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "Find the indicator categories that contain indicators with readings in the '2010' decade, and count how many such indicators each category has.",
+      "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+      "full_expected_items": [
+        "Subindex | 5",
+        "Regional | 3",
+        "Composite | 1"
+      ],
+      "full_result_count": 3,
+      "gold_sparql": "SELECT ?categoryName (COUNT(DISTINCT ?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/decade> \"2010\" .\n} GROUP BY ?categoryName\nORDER BY DESC(?indicatorCount)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T3.\"category_name\", COUNT(DISTINCT T2.\"indicator_id\") FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"IndicatorCategory\" AS T3 ON T2.\"category_id\" = T3.\"category_id\" JOIN \"Year\" AS T4 ON T1.\"year_id\" = T4.\"year_id\" WHERE T4.\"decade\" = 2010 GROUP BY T3.\"category_name\";",
+          "all_sql_attempts": [
+            "SELECT T3.\"category_name\", COUNT(DISTINCT T2.\"indicator_id\") FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"IndicatorCategory\" AS T3 ON T2.\"category_id\" = T3.\"category_id\" JOIN \"Year\" AS T4 ON T1.\"year_id\" = T4.\"year_id\" WHERE T4.\"decade\" = 2010 GROUP BY T3.\"category_name\";"
+          ],
+          "answer": "category_name: Composite, COUNT(DISTINCT T2.\"indicator_id\"): 1\ncategory_name: Regional, COUNT(DISTINCT T2.\"indicator_id\"): 3\ncategory_name: Subindex, COUNT(DISTINCT T2.\"indicator_id\"): 5",
+          "verdict": "correct",
+          "input_tokens": 1627,
+          "output_tokens": 118
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T3.\"category_name\", COUNT(DISTINCT T2.\"indicator_id\") FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"IndicatorCategory\" AS T3 ON T2.\"category_id\" = T3.\"category_id\" JOIN \"Year\" AS T4 ON T1.\"year_id\" = T4.\"year_id\" WHERE T4.\"decade\" = 2010 GROUP BY T3.\"category_name\";",
+          "all_sql_attempts": [
+            "SELECT T3.\"category_name\", COUNT(DISTINCT T2.\"indicator_id\") FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"IndicatorCategory\" AS T3 ON T2.\"category_id\" = T3.\"category_id\" JOIN \"Year\" AS T4 ON T1.\"year_id\" = T4.\"year_id\" WHERE T4.\"decade\" = 2010 GROUP BY T3.\"category_name\";"
+          ],
+          "answer": "category_name: Composite, COUNT(DISTINCT T2.\"indicator_id\"): 1\ncategory_name: Regional, COUNT(DISTINCT T2.\"indicator_id\"): 3\ncategory_name: Subindex, COUNT(DISTINCT T2.\"indicator_id\"): 5",
+          "verdict": "correct",
+          "input_tokens": 1627,
+          "output_tokens": 118
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T3.\"category_name\", COUNT(DISTINCT T2.\"indicator_id\") FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"IndicatorCategory\" AS T3 ON T2.\"category_id\" = T3.\"category_id\" JOIN \"Year\" AS T4 ON T1.\"year_id\" = T4.\"year_id\" WHERE T4.\"decade\" = 2010 GROUP BY T3.\"category_name\";",
+          "all_sql_attempts": [
+            "SELECT T3.\"category_name\", COUNT(DISTINCT T2.\"indicator_id\") FROM \"IndicatorReading\" AS T1 JOIN \"Indicator\" AS T2 ON T1.\"indicator_id\" = T2.\"indicator_id\" JOIN \"IndicatorCategory\" AS T3 ON T2.\"category_id\" = T3.\"category_id\" JOIN \"Year\" AS T4 ON T1.\"year_id\" = T4.\"year_id\" WHERE T4.\"decade\" = 2010 GROUP BY T3.\"category_name\";"
+          ],
+          "answer": "category_name: Composite, COUNT(DISTINCT T2.\"indicator_id\"): 1\ncategory_name: Regional, COUNT(DISTINCT T2.\"indicator_id\"): 3\ncategory_name: Subindex, COUNT(DISTINCT T2.\"indicator_id\"): 5",
+          "verdict": "correct",
+          "input_tokens": 1627,
+          "output_tokens": 118
+        }
+      ],
+      "majority_answer": "category_name: Composite, COUNT(DISTINCT T2.\"indicator_id\"): 1\ncategory_name: Regional, COUNT(DISTINCT T2.\"indicator_id\"): 3\ncategory_name: Subindex, COUNT(DISTINCT T2.\"indicator_id\"): 5",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    }
+  ],
+  "schema": "-- SQLite database schema\n\n-- Table IndicatorReading: 59823 rows (from IndicatorReading.csv)\nCREATE TABLE \"IndicatorReading\" (\n  \"reading_id\" TEXT,\n  \"period_id\" TEXT,\n  \"indicator_id\" TEXT,\n  \"stress_level_id\" TEXT,\n  \"value\" REAL,\n  \"year_id\" INTEGER,\n  \"month_id\" TEXT\n);\n-- sample rows from IndicatorReading:\n--   reading_id='2000-01-03__ofr_fsi', period_id='2000-01-03', indicator_id='ofr_fsi', stress_level_id='elevated', value='2.14', year_id='2000', month_id='2000-01'\n--   reading_id='2000-01-03__credit', period_id='2000-01-03', indicator_id='credit', stress_level_id='low', value='0.54', year_id='2000', month_id='2000-01'\n\n-- Table Indicator: 9 rows (from Indicator.csv)\nCREATE TABLE \"Indicator\" (\n  \"indicator_id\" TEXT,\n  \"indicator_name\" TEXT,\n  \"category_id\" TEXT,\n  \"source_column\" TEXT\n);\n-- sample rows from Indicator:\n--   indicator_id='ofr_fsi', indicator_name='OFR Financial Stress Index', category_id='composite', source_column='OFR FSI'\n--   indicator_id='credit', indicator_name='Credit', category_id='subindex', source_column='Credit'\n\n-- Table IndicatorCategory: 3 rows (from IndicatorCategory.csv)\nCREATE TABLE \"IndicatorCategory\" (\n  \"category_id\" TEXT,\n  \"category_name\" TEXT,\n  \"description\" TEXT,\n  \"indicator_count\" INTEGER\n);\n-- sample rows from IndicatorCategory:\n--   category_id='composite', category_name='Composite', description='Composite index combining all subindexes', indicator_count='1'\n--   category_id='subindex', category_name='Subindex', description='Subindex contributing to the composite F', indicator_count='5'\n\n-- Table Period: 6647 rows (from Period.csv)\nCREATE TABLE \"Period\" (\n  \"period_id\" TEXT,\n  \"date\" TEXT,\n  \"year_id\" INTEGER,\n  \"month_id\" TEXT,\n  \"day_of_week\" TEXT,\n  \"iso_weekday\" INTEGER\n);\n-- sample rows from Period:\n--   period_id='2000-01-03', date='2000-01-03', year_id='2000', month_id='2000-01', day_of_week='Monday', iso_weekday='1'\n--   period_id='2000-01-04', date='2000-01-04', year_id='2000', month_id='2000-01', day_of_week='Tuesday', iso_weekday='2'\n\n-- Table Year: 27 rows (from Year.csv)\nCREATE TABLE \"Year\" (\n  \"year_id\" INTEGER,\n  \"year\" INTEGER,\n  \"decade\" INTEGER\n);\n-- sample rows from Year:\n--   year_id='2000', year='2000', decade='2000'\n--   year_id='2001', year='2001', decade='2000'\n\n-- Table Month: 316 rows (from Month.csv)\nCREATE TABLE \"Month\" (\n  \"month_id\" TEXT,\n  \"year_id\" INTEGER,\n  \"month_number\" INTEGER,\n  \"month_name\" TEXT\n);\n-- sample rows from Month:\n--   month_id='2000-01', year_id='2000', month_number='1', month_name='January'\n--   month_id='2000-02', year_id='2000', month_number='2', month_name='February'\n\n-- Table StressLevel: 4 rows (from StressLevel.csv)\nCREATE TABLE \"StressLevel\" (\n  \"stress_level_id\" TEXT,\n  \"stress_level_label\" TEXT,\n  \"lower_bound\" INTEGER,\n  \"upper_bound\" INTEGER,\n  \"reading_count\" INTEGER\n);\n-- sample rows from StressLevel:\n--   stress_level_id='negative', stress_level_label='Negative (calm)', lower_bound='-999', upper_bound='0', reading_count='36450'\n--   stress_level_id='low', stress_level_label='Low', lower_bound='0', upper_bound='2', reading_count='18707'\n\n-- Foreign key hints (join on these):\n--   Indicator.indicator_id -> IndicatorCategory.category_id\n--   Indicator.indicator_id -> IndicatorReading.reading_id\n--   IndicatorCategory.category_id -> Indicator.indicator_id\n--   IndicatorReading.reading_id -> Indicator.indicator_id\n--   IndicatorReading.reading_id -> Period.period_id\n--   IndicatorReading.reading_id -> StressLevel.stress_level_id\n--   Month.month_id -> Period.period_id\n--   Month.month_id -> Year.year_id\n--   Period.period_id -> IndicatorReading.reading_id\n--   Period.period_id -> Month.month_id\n--   StressLevel.stress_level_id -> IndicatorReading.reading_id\n--   Year.year_id -> Month.month_id\n"
+}

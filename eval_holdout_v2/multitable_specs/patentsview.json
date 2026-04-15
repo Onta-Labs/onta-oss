@@ -1,0 +1,176 @@
+{
+  "kg_name": "holdout-v2-patentsview",
+  "_source": "PatentsView bulk TSVs, sliced to a 5000-patent uniform sample from 2020-Q1 (patent_date 2020-01-01..2020-03-31). Seed=42. All citation edges where either endpoint is in the sample are preserved (no per-patent cap). See /tmp/slice_patentsview.py and /tmp/patentsview_q1_2020/slice_stats.json.",
+  "_plan_ref": "eval_holdout_v2/schema_overrides/holdout-v2-patentsview.json (translated from column-prefix format to multi-table spec format)",
+  "_slice": {
+    "seed": 42,
+    "window": "2020-01-01..2020-03-31",
+    "sample_size": 5000,
+    "q1_full_population": 93569,
+    "citations_preserved": 117660,
+    "notes": "Full 2020-Q1 citation graph preserved for the sample (source or target in the 5000 patents). Stub Patent entities are auto-minted for out-of-sample citation endpoints, so the forward/backward edge set is lossless at the edge level while keeping attribute rows bounded."
+  },
+  "entity_types": [
+    {
+      "name": "Patent",
+      "source_csv": "Patent.csv",
+      "primary_key": "patent_id",
+      "label_column": "patent_title",
+      "attributes": [
+        "patent_id",
+        "patent_title",
+        "patent_date",
+        "patent_type",
+        "wipo_kind",
+        "num_claims",
+        "withdrawn",
+        "filename"
+      ]
+    },
+    {
+      "name": "Inventor",
+      "source_csv": "Inventor.csv",
+      "primary_key": "inventor_id",
+      "label_column": "disambig_inventor_name_last",
+      "attributes": [
+        "inventor_id",
+        "disambig_inventor_name_first",
+        "disambig_inventor_name_last",
+        "gender_code",
+        "inventor_sequence"
+      ]
+    },
+    {
+      "name": "Assignee",
+      "source_csv": "Assignee.csv",
+      "primary_key": "assignee_id",
+      "label_column": "disambig_assignee_organization",
+      "attributes": [
+        "assignee_id",
+        "disambig_assignee_organization",
+        "disambig_assignee_individual_name_first",
+        "disambig_assignee_individual_name_last",
+        "assignee_type",
+        "assignee_sequence"
+      ]
+    },
+    {
+      "name": "CPCClass",
+      "source_csv": "CPCClass.csv",
+      "primary_key": "cpc_group_id",
+      "label_column": "cpc_group_id",
+      "attributes": [
+        "cpc_group_id",
+        "cpc_section",
+        "cpc_class",
+        "cpc_subclass",
+        "cpc_group"
+      ]
+    },
+    {
+      "name": "Citation",
+      "source_csv": "Citation.csv",
+      "primary_key": "citation_id",
+      "label_column": "citation_category",
+      "attributes": [
+        "citation_id",
+        "citation_sequence",
+        "citation_date",
+        "record_name",
+        "wipo_kind",
+        "citation_category"
+      ]
+    },
+    {
+      "name": "Location",
+      "source_csv": "Location.csv",
+      "primary_key": "location_id",
+      "label_column": "disambig_city",
+      "attributes": [
+        "location_id",
+        "disambig_city",
+        "disambig_state",
+        "disambig_country",
+        "latitude",
+        "longitude",
+        "county",
+        "state_fips",
+        "county_fips"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "has_inventor",
+      "source_csv": "Inventor.csv",
+      "subject_type": "Patent",
+      "subject_key_column": "patent_id",
+      "object_type": "Inventor",
+      "object_key_column": "inventor_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_assignee",
+      "source_csv": "Assignee.csv",
+      "subject_type": "Patent",
+      "subject_key_column": "patent_id",
+      "object_type": "Assignee",
+      "object_key_column": "assignee_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "classified_as",
+      "source_csv": "CPCEdge.csv",
+      "subject_type": "Patent",
+      "subject_key_column": "patent_id",
+      "object_type": "CPCClass",
+      "object_key_column": "cpc_group_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_outgoing_citation",
+      "source_csv": "Citation.csv",
+      "subject_type": "Patent",
+      "subject_key_column": "patent_id",
+      "object_type": "Citation",
+      "object_key_column": "citation_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "citation_targets_patent",
+      "source_csv": "Citation.csv",
+      "subject_type": "Citation",
+      "subject_key_column": "citation_id",
+      "object_type": "Patent",
+      "object_key_column": "citation_patent_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "cites",
+      "source_csv": "Citation.csv",
+      "subject_type": "Patent",
+      "subject_key_column": "patent_id",
+      "object_type": "Patent",
+      "object_key_column": "citation_patent_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "inventor_located_at",
+      "source_csv": "Inventor.csv",
+      "subject_type": "Inventor",
+      "subject_key_column": "inventor_id",
+      "object_type": "Location",
+      "object_key_column": "location_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "assignee_located_at",
+      "source_csv": "Assignee.csv",
+      "subject_type": "Assignee",
+      "subject_key_column": "assignee_id",
+      "object_type": "Location",
+      "object_key_column": "location_id",
+      "cardinality": "N:1"
+    }
+  ]
+}

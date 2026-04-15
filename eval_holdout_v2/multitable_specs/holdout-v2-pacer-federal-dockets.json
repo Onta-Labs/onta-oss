@@ -1,0 +1,177 @@
+{
+  "kg_name": "holdout-v2-pacer-federal-dockets",
+  "_source": "CourtListener REST v4 /api/rest/v4/dockets/ (jurisdiction=FD, date_filed 2023-2024). CourtListener is the free open mirror of PACER maintained by the Free Law Project (the RECAP Archive). Raw JSONL staged at benchmarks/datasets/holdout_v2_raw/holdout-v2-pacer-federal-dockets/dockets.jsonl. See scripts/fetch_courtlistener_dockets.py and scripts/prep_pacer_federal_dockets.py.",
+  "entity_types": [
+    {
+      "name": "Docket",
+      "source_csv": "Docket.csv",
+      "primary_key": "docket_id",
+      "label_column": "docket_case_name",
+      "attributes": [
+        "docket_number",
+        "docket_case_name",
+        "docket_case_name_short",
+        "docket_date_filed",
+        "docket_date_terminated",
+        "docket_date_last_filing",
+        "docket_cause",
+        "docket_jurisdiction_type",
+        "docket_jury_demand",
+        "docket_nos_raw",
+        "docket_pacer_case_id",
+        "docket_blocked",
+        "docket_absolute_url"
+      ]
+    },
+    {
+      "name": "Court",
+      "source_csv": "Court.csv",
+      "primary_key": "court_id",
+      "label_column": "court_full_name",
+      "attributes": [
+        "court_short_name",
+        "court_full_name",
+        "court_citation_string",
+        "court_jurisdiction",
+        "court_url",
+        "court_in_use",
+        "court_start_date",
+        "court_end_date",
+        "court_pacer_court_id",
+        "court_fjc_court_id"
+      ]
+    },
+    {
+      "name": "Judge",
+      "source_csv": "Judge.csv",
+      "primary_key": "judge_id",
+      "label_column": "judge_name",
+      "attributes": [
+        "judge_name"
+      ]
+    },
+    {
+      "name": "CaseType",
+      "source_csv": "CaseType.csv",
+      "primary_key": "case_type_id",
+      "label_column": "case_type_label",
+      "attributes": [
+        "case_type_code",
+        "case_type_label"
+      ]
+    },
+    {
+      "name": "NatureOfSuit",
+      "source_csv": "NatureOfSuit.csv",
+      "primary_key": "nos_id",
+      "label_column": "nos_label",
+      "attributes": [
+        "nos_raw",
+        "nos_code",
+        "nos_label"
+      ]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year_id",
+      "label_column": "year_value",
+      "attributes": [
+        "year_value"
+      ]
+    },
+    {
+      "name": "DocketSource",
+      "source_csv": "DocketSource.csv",
+      "primary_key": "source_id",
+      "label_column": "source_label",
+      "attributes": [
+        "source_code",
+        "source_label"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "docket_filed_in_court",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "Court",
+      "object_key_column": "docket_court_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "docket_assigned_to_judge",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "Judge",
+      "object_key_column": "docket_judge_assigned_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "docket_referred_to_judge",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "Judge",
+      "object_key_column": "docket_judge_referred_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "docket_has_case_type",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "CaseType",
+      "object_key_column": "docket_case_type_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "docket_has_nature_of_suit",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "NatureOfSuit",
+      "object_key_column": "docket_nos_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "docket_filed_in_year",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "Year",
+      "object_key_column": "docket_year_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "docket_from_source",
+      "source_csv": "Docket.csv",
+      "subject_type": "Docket",
+      "subject_key_column": "docket_id",
+      "object_type": "DocketSource",
+      "object_key_column": "docket_source_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "judge_sits_in_court",
+      "source_csv": "JudgeCourt.csv",
+      "subject_type": "Judge",
+      "subject_key_column": "judge_id",
+      "object_type": "Court",
+      "object_key_column": "judge_court_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "court_has_docket",
+      "source_csv": "Docket.csv",
+      "subject_type": "Court",
+      "subject_key_column": "docket_court_id",
+      "object_type": "Docket",
+      "object_key_column": "docket_id",
+      "cardinality": "1:N"
+    }
+  ]
+}

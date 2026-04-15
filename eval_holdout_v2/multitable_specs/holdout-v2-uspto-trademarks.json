@@ -1,0 +1,102 @@
+{
+  "kg_name": "holdout-v2-uspto-trademarks",
+  "_source": "USPTO TSDR case-status API (https://tsdrapi.uspto.gov/ts/cd/casestatus/sn<SN>/info.json). Serial numbers iterated in the 77xxxxxx range (mature registered marks with populated gsList + parties). See scripts/fetch_uspto_trademarks.py and scripts/prep_uspto_trademarks.py.",
+  "_notes": [
+    "Trademark is the anchor; 9 entity types total.",
+    "Owner rows are per-(owner, trademark) link rows — same owner across multiple marks is deduped on (slug(name), state, country).",
+    "GoodsServices is per (trademark, international Nice class) pair; NiceClass holds the class taxonomy.",
+    "FilingBasis encodes sections 1(a)/1(b)/44(d)/44(e)/66(a); each trademark has one primary basis id (multi-basis marks keep first).",
+    "Novel shape vs v9 training: no training KG has Trademark/Owner/NiceClass/FilingBasis entities."
+  ],
+  "entity_types": [
+    {
+      "name": "Trademark",
+      "source_csv": "Trademark.csv",
+      "primary_key": "trademark_id",
+      "label_column": "mark_element",
+      "attributes": [
+        "serial_number", "registration_number", "mark_element", "pseudo_mark",
+        "mark_drawing_description", "filing_date", "registration_date",
+        "status_date", "publication_date", "is_trademark", "is_service_mark",
+        "is_standard_char"
+      ]
+    },
+    {
+      "name": "Owner",
+      "source_csv": "Owner.csv",
+      "primary_key": "owner_id",
+      "label_column": "owner_name",
+      "attributes": ["owner_name", "party_type", "city", "zip"]
+    },
+    {
+      "name": "GoodsServices",
+      "source_csv": "GoodsServices.csv",
+      "primary_key": "goods_services_id",
+      "label_column": "goods_description",
+      "attributes": [
+        "goods_description", "first_use_date", "first_use_in_commerce_date",
+        "gs_status_code", "gs_status_description"
+      ]
+    },
+    {
+      "name": "NiceClass",
+      "source_csv": "NiceClass.csv",
+      "primary_key": "nice_class_id",
+      "label_column": "class_description",
+      "attributes": ["class_code", "class_description"]
+    },
+    {
+      "name": "StatusType",
+      "source_csv": "StatusType.csv",
+      "primary_key": "status_type_id",
+      "label_column": "status_description",
+      "attributes": ["status_code", "status_description"]
+    },
+    {
+      "name": "FilingBasis",
+      "source_csv": "FilingBasis.csv",
+      "primary_key": "filing_basis_id",
+      "label_column": "basis_description",
+      "attributes": ["basis_code", "basis_description"]
+    },
+    {
+      "name": "EntityType",
+      "source_csv": "EntityType.csv",
+      "primary_key": "entity_type_id",
+      "label_column": "entity_description",
+      "attributes": ["entity_code", "entity_description"]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_id",
+      "label_column": "state_name",
+      "attributes": ["state_code", "state_name"]
+    },
+    {
+      "name": "Country",
+      "source_csv": "Country.csv",
+      "primary_key": "country_id",
+      "label_column": "country_name",
+      "attributes": ["country_code", "country_name"]
+    }
+  ],
+  "relationships": [
+    {"name": "trademark_has_status", "source_csv": "Trademark.csv", "subject_type": "Trademark", "subject_key_column": "trademark_id", "object_type": "StatusType", "object_key_column": "status_type_id", "cardinality": "N:1"},
+    {"name": "status_applies_to_trademark", "source_csv": "Trademark.csv", "subject_type": "StatusType", "subject_key_column": "status_type_id", "object_type": "Trademark", "object_key_column": "trademark_id", "cardinality": "1:N"},
+    {"name": "trademark_filed_under_basis", "source_csv": "Trademark.csv", "subject_type": "Trademark", "subject_key_column": "trademark_id", "object_type": "FilingBasis", "object_key_column": "filing_basis_id", "cardinality": "N:1"},
+    {"name": "basis_used_by_trademark", "source_csv": "Trademark.csv", "subject_type": "FilingBasis", "subject_key_column": "filing_basis_id", "object_type": "Trademark", "object_key_column": "trademark_id", "cardinality": "1:N"},
+    {"name": "trademark_owned_by", "source_csv": "Owner.csv", "subject_type": "Trademark", "subject_key_column": "trademark_id", "object_type": "Owner", "object_key_column": "owner_id", "cardinality": "N:N"},
+    {"name": "owner_owns_trademark", "source_csv": "Owner.csv", "subject_type": "Owner", "subject_key_column": "owner_id", "object_type": "Trademark", "object_key_column": "trademark_id", "cardinality": "N:N"},
+    {"name": "owner_is_entity_type", "source_csv": "Owner.csv", "subject_type": "Owner", "subject_key_column": "owner_id", "object_type": "EntityType", "object_key_column": "entity_type_id", "cardinality": "N:1"},
+    {"name": "entity_type_includes_owner", "source_csv": "Owner.csv", "subject_type": "EntityType", "subject_key_column": "entity_type_id", "object_type": "Owner", "object_key_column": "owner_id", "cardinality": "1:N"},
+    {"name": "owner_in_state", "source_csv": "Owner.csv", "subject_type": "Owner", "subject_key_column": "owner_id", "object_type": "State", "object_key_column": "state_id", "cardinality": "N:1"},
+    {"name": "state_has_owner", "source_csv": "Owner.csv", "subject_type": "State", "subject_key_column": "state_id", "object_type": "Owner", "object_key_column": "owner_id", "cardinality": "1:N"},
+    {"name": "owner_in_country", "source_csv": "Owner.csv", "subject_type": "Owner", "subject_key_column": "owner_id", "object_type": "Country", "object_key_column": "country_id", "cardinality": "N:1"},
+    {"name": "country_has_owner", "source_csv": "Owner.csv", "subject_type": "Country", "subject_key_column": "country_id", "object_type": "Owner", "object_key_column": "owner_id", "cardinality": "1:N"},
+    {"name": "trademark_covers_goods", "source_csv": "GoodsServices.csv", "subject_type": "Trademark", "subject_key_column": "trademark_id", "object_type": "GoodsServices", "object_key_column": "goods_services_id", "cardinality": "1:N"},
+    {"name": "goods_under_trademark", "source_csv": "GoodsServices.csv", "subject_type": "GoodsServices", "subject_key_column": "goods_services_id", "object_type": "Trademark", "object_key_column": "trademark_id", "cardinality": "N:1"},
+    {"name": "goods_in_nice_class", "source_csv": "GoodsServices.csv", "subject_type": "GoodsServices", "subject_key_column": "goods_services_id", "object_type": "NiceClass", "object_key_column": "nice_class_id", "cardinality": "N:1"},
+    {"name": "nice_class_includes_goods", "source_csv": "GoodsServices.csv", "subject_type": "NiceClass", "subject_key_column": "nice_class_id", "object_type": "GoodsServices", "object_key_column": "goods_services_id", "cardinality": "1:N"}
+  ]
+}

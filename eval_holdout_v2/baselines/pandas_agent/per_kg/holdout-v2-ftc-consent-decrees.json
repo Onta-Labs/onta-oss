@@ -1,0 +1,783 @@
+[
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-001",
+    "tier": "T1",
+    "question": "How many matters are there in total?",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . }",
+    "expected_answer": "599",
+    "full_expected_items": [
+      "599"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "599",
+        "code": "result = int(dfs['Matter'].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.4488248825073242,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "599",
+        "code": "result = int(dfs['Matter'].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.1190829277038574,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "599",
+        "code": "result = int(dfs['Matter'].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.4277679920196533,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "599",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-002",
+    "tier": "T1",
+    "question": "List all available fiscal years.",
+    "gold_sparql": "SELECT DISTINCT ?fiscalYearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> . ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel . }",
+    "expected_answer": "1996, 2016, 2013, 2005, 2004, 2010, 2001, 2015, 2018, 2007 ... (24 total)",
+    "full_expected_items": [
+      "1996",
+      "2016",
+      "2013",
+      "2005",
+      "2004",
+      "2010",
+      "2001",
+      "2015",
+      "2018",
+      "2007",
+      "2009",
+      "2006",
+      "2008",
+      "1999",
+      "2002",
+      "1998",
+      "2000",
+      "2017",
+      "2003",
+      "2014",
+      "1997",
+      "2011",
+      "2019",
+      "2012"
+    ],
+    "full_result_count": 24,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011\n2010\n2009\n2008\n2007\n2006\n2005\n2004\n2003\n2002\n2001\n2000\n1999\n1998\n1997\n1996",
+        "code": "result = dfs['FiscalYear']['fy_value'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.2332160472869873,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011\n2010\n2009\n2008\n2007\n2006\n2005\n2004\n2003\n2002\n2001\n2000\n1999\n1998\n1997\n1996",
+        "code": "result = dfs['FiscalYear']['fy_value'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.8783800601959229,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011\n2010\n2009\n2008\n2007\n2006\n2005\n2004\n2003\n2002\n2001\n2000\n1999\n1998\n1997\n1996",
+        "code": "result = dfs['FiscalYear']['fy_value'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.4640178680419922,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011\n2010\n2009\n2008\n2007\n2006\n2005\n2004\n2003\n2002\n2001\n2000\n1999\n1998\n1997\n1996",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-003",
+    "tier": "T1",
+    "question": "What are the different enforcement types?",
+    "gold_sparql": "SELECT DISTINCT ?enforcementTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> . ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel . }",
+    "expected_answer": "Consent Order Accepted for Comment, Preliminary Injunction, Part III Administrative Complaint, Permanent Injunction, Civil Penalty (7a), Civil Penalty (Order Violation)",
+    "full_expected_items": [
+      "Consent Order Accepted for Comment",
+      "Preliminary Injunction",
+      "Part III Administrative Complaint",
+      "Permanent Injunction",
+      "Civil Penalty (7a)",
+      "Civil Penalty (Order Violation)"
+    ],
+    "full_result_count": 6,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Consent Order Accepted for Comment\nPreliminary Injunction\nPart III Administrative Complaint\nPermanent Injunction\nCivil Penalty (7a)\nCivil Penalty (Order Violation)",
+        "code": "result = dfs['EnforcementType']['enforcement_type_label'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1145038604736328,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Consent Order Accepted for Comment\nPreliminary Injunction\nPart III Administrative Complaint\nPermanent Injunction\nCivil Penalty (7a)\nCivil Penalty (Order Violation)",
+        "code": "result = dfs['EnforcementType']['enforcement_type_label'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.2324998378753662,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Consent Order Accepted for Comment\nPreliminary Injunction\nPart III Administrative Complaint\nPermanent Injunction\nCivil Penalty (7a)\nCivil Penalty (Order Violation)",
+        "code": "result = dfs['EnforcementType']['enforcement_type_label'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.3253669738769531,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Consent Order Accepted for Comment\nPreliminary Injunction\nPart III Administrative Complaint\nPermanent Injunction\nCivil Penalty (7a)\nCivil Penalty (Order Violation)",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-004",
+    "tier": "T1",
+    "question": "How many distinct industries are recorded?",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?industry) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> . }",
+    "expected_answer": "34",
+    "full_expected_items": [
+      "34"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "34",
+        "code": "result = int(dfs['Industry']['industry_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.1608200073242188,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "34",
+        "code": "result = int(dfs['Industry']['industry_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.2733917236328125,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "34",
+        "code": "result = int(dfs['Industry']['industry_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.3431808948516846,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "34",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-005",
+    "tier": "T2",
+    "question": "List the labels of all fiscal years after 2010.",
+    "gold_sparql": "SELECT ?fiscalYearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  ?fiscalYear <http://www.w3.org/2000/01/rdf-schema#label> ?fiscalYearLabel .\n  FILTER(xsd:integer(?fyValue) > 2010)\n}",
+    "expected_answer": "2017, 2016, 2015, 2014, 2013, 2012, 2011, 2018, 2019",
+    "full_expected_items": [
+      "2017",
+      "2016",
+      "2015",
+      "2014",
+      "2013",
+      "2012",
+      "2011",
+      "2018",
+      "2019"
+    ],
+    "full_result_count": 9,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011",
+        "code": "result = dfs['FiscalYear'][dfs['FiscalYear']['fy_value'] > 2010]['fy_value'].astype(str).unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.262249231338501,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011",
+        "code": "result = dfs['FiscalYear'][dfs['FiscalYear']['fy_value'] > 2010]['fy_value'].astype(str).unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.4084739685058594,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011",
+        "code": "result = dfs['FiscalYear'][dfs['FiscalYear']['fy_value'] > 2010]['fy_value'].astype(str).unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1945888996124268,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "2019\n2018\n2017\n2016\n2015\n2014\n2013\n2012\n2011",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-006",
+    "tier": "T2",
+    "question": "How many matters were filed in fiscal year 2015?",
+    "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?matterFY .\n  FILTER(?matterFY = \"2015\")\n}",
+    "expected_answer": "26",
+    "full_expected_items": [
+      "26"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "26",
+        "code": "result = int(dfs['Matter'][dfs['Matter']['matter_fy'] == 2015].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.3630120754241943,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "26",
+        "code": "result = int(dfs['Matter'][dfs['Matter']['matter_fy'] == 2015].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.232086181640625,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "26",
+        "code": "result = int(dfs['Matter'][dfs['Matter']['matter_fy'] == 2015].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.2965168952941895,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "26",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-007",
+    "tier": "T2",
+    "question": "Count the number of fiscal years with a value greater than '2010'.",
+    "gold_sparql": "SELECT (COUNT(?fiscalYear) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  FILTER(?fyValue > \"2010\")\n}",
+    "expected_answer": "9",
+    "full_expected_items": [
+      "9"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "9",
+        "code": "result = int(dfs['FiscalYear'][dfs['FiscalYear']['fy_value'] > 2010].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.2394919395446777,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "9",
+        "code": "result = int(dfs['FiscalYear'][dfs['FiscalYear']['fy_value'] > 2010].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.1863031387329102,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "9",
+        "code": "result = int(dfs['FiscalYear'][dfs['FiscalYear']['fy_value'] > 2010].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.264153003692627,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "9",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-008",
+    "tier": "T2",
+    "question": "How many matters have a fiscal year of 2010?",
+    "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?fy .\n  FILTER(?fy = \"2010\")\n}",
+    "expected_answer": "26",
+    "full_expected_items": [
+      "26"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "26",
+        "code": "result = int(dfs['Matter'][dfs['Matter']['matter_fy'] == 2010].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.2168619632720947,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "26",
+        "code": "result = int(dfs['Matter'][dfs['Matter']['matter_fy'] == 2010].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.5858449935913086,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "26",
+        "code": "result = int(dfs['Matter'][dfs['Matter']['matter_fy'] == 2010].shape[0])",
+        "verdict": "correct",
+        "elapsed": 1.1871850490570068,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "26",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-009",
+    "tier": "T3",
+    "question": "How many matters are associated with each fiscal year?",
+    "gold_sparql": "SELECT ?fiscalYearLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n} GROUP BY ?fiscalYearLabel ORDER BY ?fiscalYearLabel",
+    "expected_answer": "1996 | 33\n1997 | 28\n1998 | 41\n1999 | 26\n2000 | 32\n2001 | 23\n2002 | 27\n2003 | 28\n2004 | 22\n2005 | 15\n... (24 total rows)",
+    "full_expected_items": [
+      "1996 | 33",
+      "1997 | 28",
+      "1998 | 41",
+      "1999 | 26",
+      "2000 | 32",
+      "2001 | 23",
+      "2002 | 27",
+      "2003 | 28",
+      "2004 | 22",
+      "2005 | 15",
+      "2006 | 15",
+      "2007 | 29",
+      "2008 | 20",
+      "2009 | 26",
+      "2010 | 26",
+      "2011 | 14",
+      "2012 | 23",
+      "2013 | 27",
+      "2014 | 23",
+      "2015 | 26",
+      "2016 | 29",
+      "2017 | 28",
+      "2018 | 21",
+      "2019 | 17"
+    ],
+    "full_result_count": 24,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "1996 | 33\n1997 | 28\n1998 | 41\n1999 | 26\n2000 | 32\n2001 | 23\n2002 | 27\n2003 | 28\n2004 | 22\n2005 | 15\n2006 | 15\n2007 | 29\n2008 | 20\n2009 | 26\n2010 | 26\n2011 | 14\n2012 | 23\n2013 | 27\n2014 | 23\n2015 | 26\n2016 | 29\n2017 | 28\n2018 | 21\n2019 | 17",
+        "code": "import pandas as pd\n\n# Merge Matter with FiscalYear to ensure we have the fy_value labels\nmerged_df = pd.merge(dfs['Matter'], dfs['FiscalYear'], left_on='matter_fy', right_on='fy_id')\n\n# Group by the fiscal year value and count the number of matters\ncounts = merged_df.groupby('fy_value').size().reset_index(name='count')\n\n# Convert to a list of [key, value] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.9281091690063477,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "1996 | 33\n1997 | 28\n1998 | 41\n1999 | 26\n2000 | 32\n2001 | 23\n2002 | 27\n2003 | 28\n2004 | 22\n2005 | 15\n2006 | 15\n2007 | 29\n2008 | 20\n2009 | 26\n2010 | 26\n2011 | 14\n2012 | 23\n2013 | 27\n2014 | 23\n2015 | 26\n2016 | 29\n2017 | 28\n2018 | 21\n2019 | 17",
+        "code": "import pandas as pd\n\n# Merge Matter with FiscalYear to ensure we have the fy_value labels\nmerged_df = pd.merge(dfs['Matter'], dfs['FiscalYear'], left_on='matter_fy', right_on='fy_id')\n\n# Group by the fiscal year value and count the number of matters\ncounts = merged_df.groupby('fy_value').size().reset_index(name='count')\n\n# Convert to a list of [key, value] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5957331657409668,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "1996 | 33\n1997 | 28\n1998 | 41\n1999 | 26\n2000 | 32\n2001 | 23\n2002 | 27\n2003 | 28\n2004 | 22\n2005 | 15\n2006 | 15\n2007 | 29\n2008 | 20\n2009 | 26\n2010 | 26\n2011 | 14\n2012 | 23\n2013 | 27\n2014 | 23\n2015 | 26\n2016 | 29\n2017 | 28\n2018 | 21\n2019 | 17",
+        "code": "import pandas as pd\n\n# Merge Matter with FiscalYear to ensure we have the fy_value labels\nmerged_df = pd.merge(dfs['Matter'], dfs['FiscalYear'], left_on='matter_fy', right_on='fy_id')\n\n# Group by the fiscal year value and count the number of matters\ncounts = merged_df.groupby('fy_value').size().reset_index(name='count')\n\n# Convert to a list of [key, value] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.613018274307251,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "1996 | 33\n1997 | 28\n1998 | 41\n1999 | 26\n2000 | 32\n2001 | 23\n2002 | 27\n2003 | 28\n2004 | 22\n2005 | 15\n2006 | 15\n2007 | 29\n2008 | 20\n2009 | 26\n2010 | 26\n2011 | 14\n2012 | 23\n2013 | 27\n2014 | 23\n2015 | 26\n2016 | 29\n2017 | 28\n2018 | 21\n2019 | 17",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-010",
+    "tier": "T3",
+    "question": "List the enforcement types and the number of matters associated with each, for fiscal year 2010.",
+    "gold_sparql": "SELECT ?enforcementTypeLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2010\" .\n} GROUP BY ?enforcementTypeLabel ORDER BY DESC(?matterCount)",
+    "expected_answer": "Consent Order Accepted for Comment | 23\nPart III Administrative Complaint | 3",
+    "full_expected_items": [
+      "Consent Order Accepted for Comment | 23",
+      "Part III Administrative Complaint | 3"
+    ],
+    "full_result_count": 2,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Consent Order Accepted for Comment | 23\nPart III Administrative Complaint | 3",
+        "code": "import pandas as pd\n\n# Filter matters for fiscal year 2010\nmatters_2010 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2010]\n\n# Merge with EnforcementType to get labels\nmerged = pd.merge(matters_2010, dfs['EnforcementType'], left_on='matter_enforcement_type_id', right_on='enforcement_type_id')\n\n# Group by label and count\ncounts = merged.groupby('enforcement_type_label').size().reset_index(name='count')\n\n# Convert to list of [label, value]\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.8984911441802979,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Consent Order Accepted for Comment | 23\nPart III Administrative Complaint | 3",
+        "code": "import pandas as pd\n\n# Filter matters for fiscal year 2010\nmatters_2010 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2010]\n\n# Merge with EnforcementType to get labels\nmerged = pd.merge(matters_2010, dfs['EnforcementType'], left_on='matter_enforcement_type_id', right_on='enforcement_type_id')\n\n# Group by label and count matters\ncounts = merged.groupby('enforcement_type_label').size().reset_index(name='count')\n\n# Convert to list of [label, value]\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 2.2517991065979004,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Consent Order Accepted for Comment | 23\nPart III Administrative Complaint | 3",
+        "code": "import pandas as pd\n\n# Filter matters for fiscal year 2010\nmatters_2010 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2010]\n\n# Merge with EnforcementType to get labels\nmerged = pd.merge(matters_2010, dfs['EnforcementType'], left_on='matter_enforcement_type_id', right_on='enforcement_type_id')\n\n# Group by label and count\ncounts = merged.groupby('enforcement_type_label').size().reset_index(name='count')\n\n# Convert to list of [label, value]\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.9617111682891846,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Consent Order Accepted for Comment | 23\nPart III Administrative Complaint | 3",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-011",
+    "tier": "T3",
+    "question": "Which industries have matters in fiscal year 2015, and how many matters are in each of those industries?",
+    "gold_sparql": "SELECT ?industryLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2015\" .\n} GROUP BY ?industryLabel ORDER BY DESC(?matterCount)",
+    "expected_answer": "Health Care - Prescription Drugs | 9\nHealth Care - Medical Equipment/Devices | 3\nProfessional Services (Non Health Care) - Other | 3\nManufacturing - Industrial Goods | 2\nManufacturing - Consumer Goods (non Food & Bev.) | 1\nEnergy - Petroleum | 1\nHealth Care - Hospitals/Clinics | 1\nRetail - Grocery/Supermarkets | 1\nManufacturing - Food & Beverages | 1\nInformation and Technology - Other | 1\n... (11 total rows)",
+    "full_expected_items": [
+      "Health Care - Prescription Drugs | 9",
+      "Health Care - Medical Equipment/Devices | 3",
+      "Professional Services (Non Health Care) - Other | 3",
+      "Manufacturing - Industrial Goods | 2",
+      "Manufacturing - Consumer Goods (non Food & Bev.) | 1",
+      "Energy - Petroleum | 1",
+      "Health Care - Hospitals/Clinics | 1",
+      "Retail - Grocery/Supermarkets | 1",
+      "Manufacturing - Food & Beverages | 1",
+      "Information and Technology - Other | 1",
+      "Retail - Merchandise/Clothing | 1"
+    ],
+    "full_result_count": 11,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Energy - Petroleum | 1\nHealth Care - Hospitals/Clinics | 1\nHealth Care - Medical Equipment/Devices | 3\nHealth Care - Prescription Drugs | 9\nInformation and Technology - Other | 1\nManufacturing - Consumer Goods (non Food & Bev.) | 1\nManufacturing - Food & Beverages | 1\nManufacturing - Industrial Goods | 2\nProfessional Services (Non Health Care) - Other | 3\nRetail - Grocery/Supermarkets | 1\nRetail - Merchandise/Clothing | 1",
+        "code": "import pandas as pd\n\n# Filter matters for fiscal year 2015\nmatters_2015 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2015]\n\n# Merge with Industry to get labels\nmerged_df = pd.merge(matters_2015, dfs['Industry'], left_on='matter_industry_id', right_on='industry_id')\n\n# Group by industry label and count matters\ncounts = merged_df.groupby('industry_label').size().reset_index(name='count')\n\n# Convert to list of [label, value] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 2.0425479412078857,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "SANDBOX___PANDAS_AGENT_ERROR__ SyntaxError unterminated string literal (detected at line 2) (<string>, line 2)",
+        "code": "{\"code\": \"import pandas as pd\\n\\n# Filter matters for fiscal year 2015\\nmatters_2015 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2015]\\n\\n# Merge with Industry to get labels\\nmerged_df = pd.merge(matters_2015, dfs['Industry'], left_on='matter_industry_id', right_on='industry_id')\\n\\n# Group by industry label and count matters\\ncounts = merged_df.groupby('industry_label').size().reset_index(name='count')\\n\\n# Convert to list of [label, value] pairs\\nresult = counts.values.tolist()\"}\n()\"}",
+        "verdict": "error",
+        "elapsed": 5.80405592918396,
+        "status": 0,
+        "retries": 2
+      },
+      {
+        "seed": "3",
+        "answer": "Energy - Petroleum | 1\nHealth Care - Hospitals/Clinics | 1\nHealth Care - Medical Equipment/Devices | 3\nHealth Care - Prescription Drugs | 9\nInformation and Technology - Other | 1\nManufacturing - Consumer Goods (non Food & Bev.) | 1\nManufacturing - Food & Beverages | 1\nManufacturing - Industrial Goods | 2\nProfessional Services (Non Health Care) - Other | 3\nRetail - Grocery/Supermarkets | 1\nRetail - Merchandise/Clothing | 1",
+        "code": "import pandas as pd\n\n# Filter matters for fiscal year 2015\nmatters_2015 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2015]\n\n# Merge with Industry to get labels\nmerged = pd.merge(matters_2015, dfs['Industry'], left_on='matter_industry_id', right_on='industry_id')\n\n# Group by industry label and count matters\ncounts = merged.groupby('industry_label').size().reset_index(name='count')\n\n# Convert to list of [label, value] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 5.790097951889038,
+        "status": 200,
+        "retries": 2
+      }
+    ],
+    "majority_answer": "Energy - Petroleum | 1\nHealth Care - Hospitals/Clinics | 1\nHealth Care - Medical Equipment/Devices | 3\nHealth Care - Prescription Drugs | 9\nInformation and Technology - Other | 1\nManufacturing - Consumer Goods (non Food & Bev.) | 1\nManufacturing - Food & Beverages | 1\nManufacturing - Industrial Goods | 2\nProfessional Services (Non Health Care) - Other | 3\nRetail - Grocery/Supermarkets | 1\nRetail - Merchandise/Clothing | 1",
+    "majority_verdict": "correct",
+    "correct_runs": 2,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-012",
+    "tier": "T4",
+    "question": "For each industry, how many matters are associated with it, and what is the average fiscal year of those matters?",
+    "gold_sparql": "SELECT ?industryLabel (COUNT(DISTINCT ?matter) AS ?matterCount) (AVG(xsd:integer(?fyValue)) AS ?averageFiscalYear) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n} GROUP BY ?industryLabel",
+    "expected_answer": "Manufacturing - Consumer Goods (non Food & Bev.) | 22 | 2006.22727272727272727273\nHealth Care - Medical Equipment/Devices | 27 | 2008.33333333333333333333\nManufacturing - Industrial Goods | 52 | 2005.71153846153846153846\nHealth Care - Prescription Drugs | 90 | 2008.62222222222222222222\nHealth Care - Hospitals/Clinics | 36 | 2011.47222222222222222222\nRetail - Grocery/Supermarkets | 24 | 2004.41666666666666666667\nHealth Care - Retail/Pharmacies | 12 | 2003.41666666666666666667\nEnergy - Natural Gas | 22 | 2003.90909090909090909091\nDefense - Ammunitions | 2 | 2012.5\nDefense - Equipment and Engineering Services | 9 | 2000.66666666666666666667\n... (34 total rows)",
+    "full_expected_items": [
+      "Manufacturing - Consumer Goods (non Food & Bev.) | 22 | 2006.22727272727272727273",
+      "Health Care - Medical Equipment/Devices | 27 | 2008.33333333333333333333",
+      "Manufacturing - Industrial Goods | 52 | 2005.71153846153846153846",
+      "Health Care - Prescription Drugs | 90 | 2008.62222222222222222222",
+      "Health Care - Hospitals/Clinics | 36 | 2011.47222222222222222222",
+      "Retail - Grocery/Supermarkets | 24 | 2004.41666666666666666667",
+      "Health Care - Retail/Pharmacies | 12 | 2003.41666666666666666667",
+      "Energy - Natural Gas | 22 | 2003.90909090909090909091",
+      "Defense - Ammunitions | 2 | 2012.5",
+      "Defense - Equipment and Engineering Services | 9 | 2000.66666666666666666667",
+      "Professional Services (Non Health Care) - Funeral | 11 | 2003.54545454545454545455",
+      "Health Care - OTC Drugs/Devices | 5 | 2006",
+      "Energy - Petroleum | 25 | 2005.6",
+      "Manufacturing - Chemicals/Industrial Gases | 34 | 2005.82352941176470588235",
+      "Information and Technology - Hardware | 9 | 2007.33333333333333333333",
+      "Retail - Merchandise/Clothing | 6 | 2004.83333333333333333333",
+      "Manufacturing - Other | 7 | 2014.14285714285714285714",
+      "Professional Services (Non Health Care) - Real Estate | 15 | 2007.53333333333333333333",
+      "Health Care - Professional Services | 52 | 2004.48076923076923076923",
+      "Publishing - Newspapers/Inserts/Books | 2 | 2012",
+      "Professional Services (Non Health Care) - Other | 24 | 2007.625",
+      "Health Care - Other | 3 | 2015.66666666666666666667",
+      "Manufacturing - Food & Beverages | 17 | 2004.35294117647058823529",
+      "Retail - Entertainment | 4 | 2013.25",
+      "Information and Technology - Other | 8 | 2012.5",
+      "Energy - Other | 7 | 2012.42857142857142857143",
+      "Information and Technology - Software/Databases | 16 | 2003.6875",
+      "Information and Technology - Cable TV | 3 | 1998.33333333333333333333",
+      "Professional Services (Non Health Care) - Legal | 3 | 2005.33333333333333333333",
+      "Professional Services (Non Health Care) - Movers | 1 | 2004",
+      "Transportation - Auto & Trucks | 3 | 2007",
+      "Retail - Other | 3 | 2012.66666666666666666667",
+      "Defense - Satellite | 1 | 1996",
+      "Defense - Other | 1 | 1996"
+    ],
+    "full_result_count": 34,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "[\"Defense - Ammunitions\", 2, 2012.5]\n[\"Defense - Equipment and Engineering Services\", 9, 2000.6666666666667]\n[\"Defense - Other\", 1, 1996.0]\n[\"Defense - Satellite\", 1, 1996.0]\n[\"Energy - Natural Gas\", 22, 2003.909090909091]\n[\"Energy - Other\", 7, 2012.4285714285713]\n[\"Energy - Petroleum\", 25, 2005.6]\n[\"Health Care - Hospitals/Clinics\", 36, 2011.4722222222222]\n[\"Health Care - Medical Equipment/Devices\", 27, 2008.3333333333333]\n[\"Health Care - OTC Drugs/Devices\", 5, 2006.0]\n[\"Health Care - Other\", 3, 2015.6666666666667]\n[\"Health Care - Prescription Drugs\", 90, 2008.6222222222223]\n[\"Health Care - Professional Services\", 52, 2004.4807692307693]\n[\"Health Care - Retail/Pharmacies\", 12, 2003.4166666666667]\n[\"Information and Technology - Cable TV\", 3, 1998.3333333333333]\n[\"Information and Technology - Hardware\", 9, 2007.3333333333333]\n[\"Information and Technology - Other\", 8, 2012.5]\n[\"Information and Technology - Software/Databases\", 16, 2003.6875]\n[\"Manufacturing - Chemicals/Industrial Gases\", 34, 2005.8235294117646]\n[\"Manufacturing - Consumer Goods (non Food & Bev.)\", 22, 2006.2272727272727]\n[\"Manufacturing - Food & Beverages\", 17, 2004.3529411764705]\n[\"Manufacturing - Industrial Goods\", 52, 2005.7115384615386]\n[\"Manufacturing - Other\", 7, 2014.142857142857]\n[\"Professional Services (Non Health Care) - Funeral\", 11, 2003.5454545454545]\n[\"Professional Services (Non Health Care) - Legal\", 3, 2005.3333333333333]\n[\"Professional Services (Non Health Care) - Movers\", 1, 2004.0]\n[\"Professional Services (Non Health Care) - Other\", 24, 2007.625]\n[\"Professional Services (Non Health Care) - Real Estate\", 15, 2007.5333333333333]\n[\"Publishing - Newspapers/Inserts/Books\", 2, 2012.0]\n[\"Retail - Entertainment\", 4, 2013.25]\n[\"Retail - Grocery/Supermarkets\", 24, 2004.4166666666667]\n[\"Retail - Merchandise/Clothing\", 6, 2004.8333333333333]\n[\"Retail - Other\", 3, 2012.6666666666667]\n[\"Transportation - Auto & Trucks\", 3, 2007.0]",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Matter'], dfs['Industry'], left_on='matter_industry_id', right_on='industry_id')\nsummary = merged_df.groupby('industry_label').agg(\n    count=('matter_id', 'count'),\n    avg_fy=('matter_fy', 'mean')\n).reset_index()\n\nresult = summary.values.tolist()",
+        "verdict": "wrong",
+        "elapsed": 2.0886270999908447,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "[\"Defense - Ammunitions\", 2, 2012.5]\n[\"Defense - Equipment and Engineering Services\", 9, 2000.6666666666667]\n[\"Defense - Other\", 1, 1996.0]\n[\"Defense - Satellite\", 1, 1996.0]\n[\"Energy - Natural Gas\", 22, 2003.909090909091]\n[\"Energy - Other\", 7, 2012.4285714285713]\n[\"Energy - Petroleum\", 25, 2005.6]\n[\"Health Care - Hospitals/Clinics\", 36, 2011.4722222222222]\n[\"Health Care - Medical Equipment/Devices\", 27, 2008.3333333333333]\n[\"Health Care - OTC Drugs/Devices\", 5, 2006.0]\n[\"Health Care - Other\", 3, 2015.6666666666667]\n[\"Health Care - Prescription Drugs\", 90, 2008.6222222222223]\n[\"Health Care - Professional Services\", 52, 2004.4807692307693]\n[\"Health Care - Retail/Pharmacies\", 12, 2003.4166666666667]\n[\"Information and Technology - Cable TV\", 3, 1998.3333333333333]\n[\"Information and Technology - Hardware\", 9, 2007.3333333333333]\n[\"Information and Technology - Other\", 8, 2012.5]\n[\"Information and Technology - Software/Databases\", 16, 2003.6875]\n[\"Manufacturing - Chemicals/Industrial Gases\", 34, 2005.8235294117646]\n[\"Manufacturing - Consumer Goods (non Food & Bev.)\", 22, 2006.2272727272727]\n[\"Manufacturing - Food & Beverages\", 17, 2004.3529411764705]\n[\"Manufacturing - Industrial Goods\", 52, 2005.7115384615386]\n[\"Manufacturing - Other\", 7, 2014.142857142857]\n[\"Professional Services (Non Health Care) - Funeral\", 11, 2003.5454545454545]\n[\"Professional Services (Non Health Care) - Legal\", 3, 2005.3333333333333]\n[\"Professional Services (Non Health Care) - Movers\", 1, 2004.0]\n[\"Professional Services (Non Health Care) - Other\", 24, 2007.625]\n[\"Professional Services (Non Health Care) - Real Estate\", 15, 2007.5333333333333]\n[\"Publishing - Newspapers/Inserts/Books\", 2, 2012.0]\n[\"Retail - Entertainment\", 4, 2013.25]\n[\"Retail - Grocery/Supermarkets\", 24, 2004.4166666666667]\n[\"Retail - Merchandise/Clothing\", 6, 2004.8333333333333]\n[\"Retail - Other\", 3, 2012.6666666666667]\n[\"Transportation - Auto & Trucks\", 3, 2007.0]",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Industry'], dfs['Matter'], left_on='industry_id', right_on='matter_industry_id', how='inner')\nsummary = merged_df.groupby('industry_label').agg(\n    count=('matter_id', 'count'),\n    avg_fy=('matter_fy', 'mean')\n).reset_index()\n\nresult = summary.values.tolist()",
+        "verdict": "wrong",
+        "elapsed": 1.5532128810882568,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "[\"Defense - Ammunitions\", 2, 2012.5]\n[\"Defense - Equipment and Engineering Services\", 9, 2000.6666666666667]\n[\"Defense - Other\", 1, 1996.0]\n[\"Defense - Satellite\", 1, 1996.0]\n[\"Energy - Natural Gas\", 22, 2003.909090909091]\n[\"Energy - Other\", 7, 2012.4285714285713]\n[\"Energy - Petroleum\", 25, 2005.6]\n[\"Health Care - Hospitals/Clinics\", 36, 2011.4722222222222]\n[\"Health Care - Medical Equipment/Devices\", 27, 2008.3333333333333]\n[\"Health Care - OTC Drugs/Devices\", 5, 2006.0]\n[\"Health Care - Other\", 3, 2015.6666666666667]\n[\"Health Care - Prescription Drugs\", 90, 2008.6222222222223]\n[\"Health Care - Professional Services\", 52, 2004.4807692307693]\n[\"Health Care - Retail/Pharmacies\", 12, 2003.4166666666667]\n[\"Information and Technology - Cable TV\", 3, 1998.3333333333333]\n[\"Information and Technology - Hardware\", 9, 2007.3333333333333]\n[\"Information and Technology - Other\", 8, 2012.5]\n[\"Information and Technology - Software/Databases\", 16, 2003.6875]\n[\"Manufacturing - Chemicals/Industrial Gases\", 34, 2005.8235294117646]\n[\"Manufacturing - Consumer Goods (non Food & Bev.)\", 22, 2006.2272727272727]\n[\"Manufacturing - Food & Beverages\", 17, 2004.3529411764705]\n[\"Manufacturing - Industrial Goods\", 52, 2005.7115384615386]\n[\"Manufacturing - Other\", 7, 2014.142857142857]\n[\"Professional Services (Non Health Care) - Funeral\", 11, 2003.5454545454545]\n[\"Professional Services (Non Health Care) - Legal\", 3, 2005.3333333333333]\n[\"Professional Services (Non Health Care) - Movers\", 1, 2004.0]\n[\"Professional Services (Non Health Care) - Other\", 24, 2007.625]\n[\"Professional Services (Non Health Care) - Real Estate\", 15, 2007.5333333333333]\n[\"Publishing - Newspapers/Inserts/Books\", 2, 2012.0]\n[\"Retail - Entertainment\", 4, 2013.25]\n[\"Retail - Grocery/Supermarkets\", 24, 2004.4166666666667]\n[\"Retail - Merchandise/Clothing\", 6, 2004.8333333333333]\n[\"Retail - Other\", 3, 2012.6666666666667]\n[\"Transportation - Auto & Trucks\", 3, 2007.0]",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Matter'], dfs['Industry'], left_on='matter_industry_id', right_on='industry_id')\nsummary = merged_df.groupby('industry_label').agg(\n    count=('matter_id', 'count'),\n    avg_fy=('matter_fy', 'mean')\n).reset_index()\n\nresult = summary.values.tolist()",
+        "verdict": "wrong",
+        "elapsed": 1.5462698936462402,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "[\"Defense - Ammunitions\", 2, 2012.5]\n[\"Defense - Equipment and Engineering Services\", 9, 2000.6666666666667]\n[\"Defense - Other\", 1, 1996.0]\n[\"Defense - Satellite\", 1, 1996.0]\n[\"Energy - Natural Gas\", 22, 2003.909090909091]\n[\"Energy - Other\", 7, 2012.4285714285713]\n[\"Energy - Petroleum\", 25, 2005.6]\n[\"Health Care - Hospitals/Clinics\", 36, 2011.4722222222222]\n[\"Health Care - Medical Equipment/Devices\", 27, 2008.3333333333333]\n[\"Health Care - OTC Drugs/Devices\", 5, 2006.0]\n[\"Health Care - Other\", 3, 2015.6666666666667]\n[\"Health Care - Prescription Drugs\", 90, 2008.6222222222223]\n[\"Health Care - Professional Services\", 52, 2004.4807692307693]\n[\"Health Care - Retail/Pharmacies\", 12, 2003.4166666666667]\n[\"Information and Technology - Cable TV\", 3, 1998.3333333333333]\n[\"Information and Technology - Hardware\", 9, 2007.3333333333333]\n[\"Information and Technology - Other\", 8, 2012.5]\n[\"Information and Technology - Software/Databases\", 16, 2003.6875]\n[\"Manufacturing - Chemicals/Industrial Gases\", 34, 2005.8235294117646]\n[\"Manufacturing - Consumer Goods (non Food & Bev.)\", 22, 2006.2272727272727]\n[\"Manufacturing - Food & Beverages\", 17, 2004.3529411764705]\n[\"Manufacturing - Industrial Goods\", 52, 2005.7115384615386]\n[\"Manufacturing - Other\", 7, 2014.142857142857]\n[\"Professional Services (Non Health Care) - Funeral\", 11, 2003.5454545454545]\n[\"Professional Services (Non Health Care) - Legal\", 3, 2005.3333333333333]\n[\"Professional Services (Non Health Care) - Movers\", 1, 2004.0]\n[\"Professional Services (Non Health Care) - Other\", 24, 2007.625]\n[\"Professional Services (Non Health Care) - Real Estate\", 15, 2007.5333333333333]\n[\"Publishing - Newspapers/Inserts/Books\", 2, 2012.0]\n[\"Retail - Entertainment\", 4, 2013.25]\n[\"Retail - Grocery/Supermarkets\", 24, 2004.4166666666667]\n[\"Retail - Merchandise/Clothing\", 6, 2004.8333333333333]\n[\"Retail - Other\", 3, 2012.6666666666667]\n[\"Transportation - Auto & Trucks\", 3, 2007.0]",
+    "majority_verdict": "wrong",
+    "correct_runs": 0,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-013",
+    "tier": "T4",
+    "question": "List the matter names and their enforcement types for matters that occurred in fiscal year 2015.",
+    "gold_sparql": "SELECT ?matterName ?enforcementTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_name> ?matterName .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> \"2015\" .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n}",
+    "expected_answer": "STERIS/Synergy Health | Preliminary Injunction\nSysco/USF Holding | Preliminary Injunction\nVerisk Analytics/EagleView Technology | Preliminary Injunction\nLorillard/Reynolds American | Consent Order Accepted for Comment\nPar Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment\nLafarge S.A./Holcim | Consent Order Accepted for Comment\nZeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment\nCovidien/Medtronic | Consent Order Accepted for Comment\nSurgery Partners/Symbion Holdings | Consent Order Accepted for Comment\nImpax Laboratories/Tower Holdings | Consent Order Accepted for Comment\n... (26 total rows)",
+    "full_expected_items": [
+      "STERIS/Synergy Health | Preliminary Injunction",
+      "Sysco/USF Holding | Preliminary Injunction",
+      "Verisk Analytics/EagleView Technology | Preliminary Injunction",
+      "Lorillard/Reynolds American | Consent Order Accepted for Comment",
+      "Par Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment",
+      "Lafarge S.A./Holcim | Consent Order Accepted for Comment",
+      "Zeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment",
+      "Covidien/Medtronic | Consent Order Accepted for Comment",
+      "Surgery Partners/Symbion Holdings | Consent Order Accepted for Comment",
+      "Impax Laboratories/Tower Holdings | Consent Order Accepted for Comment",
+      "Novartis AG/GlaxoSmithKline | Consent Order Accepted for Comment",
+      "Ranbaxy Laboratories/Sun Pharmaceutical Industries | Consent Order Accepted for Comment",
+      "Cerberus/Safeway | Consent Order Accepted for Comment",
+      "Eli Lilly/Novartis AG | Consent Order Accepted for Comment",
+      "Wright Medical Group/Tornier | Consent Order Accepted for Comment",
+      "Endo International/Par Pharmaceutical | Consent Order Accepted for Comment",
+      "Pfizer/Hospira | Consent Order Accepted for Comment",
+      "Dollar Tree/Family Dollar | Consent Order Accepted for Comment",
+      "Biomet/Zimmer Holdings | Consent Order Accepted for Comment",
+      "Professional Skaters Association | Consent Order Accepted for Comment",
+      "Professional Lighting and Sign Management Company of America (PLASMA) | Consent Order Accepted for Comment",
+      "National Association of Animal Breeders | Consent Order Accepted for Comment",
+      "Concordia/Par Pharmaceutical | Consent Order Accepted for Comment",
+      "Leucadia/KCG | Civil Penalty (7a)",
+      "Third Point/Yahoo | Civil Penalty (7a)",
+      "Cardinal Health, Inc. | Permanent Injunction"
+    ],
+    "full_result_count": 26,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Wright Medical Group/Tornier | Consent Order Accepted for Comment\nEndo International/Par Pharmaceutical | Consent Order Accepted for Comment\nPfizer/Hospira | Consent Order Accepted for Comment\nDollar Tree/Family Dollar | Consent Order Accepted for Comment\nBiomet/Zimmer Holdings | Consent Order Accepted for Comment\nSTERIS/Synergy Health | Preliminary Injunction\nLorillard/Reynolds American | Consent Order Accepted for Comment\nZeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment\nLafarge S.A./Holcim | Consent Order Accepted for Comment\nPar Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment\nImpax Laboratories/Tower Holdings | Consent Order Accepted for Comment\nNovartis AG/GlaxoSmithKline | Consent Order Accepted for Comment\nSysco/USF Holding | Preliminary Injunction\nRanbaxy Laboratories/Sun Pharmaceutical Industries | Consent Order Accepted for Comment\nCerberus/Safeway | Consent Order Accepted for Comment\nEli Lilly/Novartis AG | Consent Order Accepted for Comment\nVerisk Analytics/EagleView Technology | Preliminary Injunction\nCovidien/Medtronic | Consent Order Accepted for Comment\nSurgery Partners/Symbion Holdings | Consent Order Accepted for Comment\nNational Association of Animal Breeders | Consent Order Accepted for Comment\nConcordia/Par Pharmaceutical | Consent Order Accepted for Comment\nCardinal Health, Inc. | Permanent Injunction\nProfessional Skaters Association | Consent Order Accepted for Comment\nProfessional Lighting and Sign Management Company of America (PLASMA) | Consent Order Accepted for Comment\nLeucadia/KCG | Civil Penalty (7a)\nThird Point/Yahoo | Civil Penalty (7a)",
+        "code": "merged = dfs['Matter'].merge(dfs['EnforcementType'], left_on='matter_enforcement_type_id', right_on='enforcement_type_id')\nfiltered = merged[merged['matter_fy'] == 2015]\nresult = filtered[['matter_name', 'enforcement_type_label']].values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5634338855743408,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Wright Medical Group/Tornier | Consent Order Accepted for Comment\nEndo International/Par Pharmaceutical | Consent Order Accepted for Comment\nPfizer/Hospira | Consent Order Accepted for Comment\nDollar Tree/Family Dollar | Consent Order Accepted for Comment\nBiomet/Zimmer Holdings | Consent Order Accepted for Comment\nSTERIS/Synergy Health | Preliminary Injunction\nLorillard/Reynolds American | Consent Order Accepted for Comment\nZeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment\nLafarge S.A./Holcim | Consent Order Accepted for Comment\nPar Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment\nImpax Laboratories/Tower Holdings | Consent Order Accepted for Comment\nNovartis AG/GlaxoSmithKline | Consent Order Accepted for Comment\nSysco/USF Holding | Preliminary Injunction\nRanbaxy Laboratories/Sun Pharmaceutical Industries | Consent Order Accepted for Comment\nCerberus/Safeway | Consent Order Accepted for Comment\nEli Lilly/Novartis AG | Consent Order Accepted for Comment\nVerisk Analytics/EagleView Technology | Preliminary Injunction\nCovidien/Medtronic | Consent Order Accepted for Comment\nSurgery Partners/Symbion Holdings | Consent Order Accepted for Comment\nNational Association of Animal Breeders | Consent Order Accepted for Comment\nConcordia/Par Pharmaceutical | Consent Order Accepted for Comment\nCardinal Health, Inc. | Permanent Injunction\nProfessional Skaters Association | Consent Order Accepted for Comment\nProfessional Lighting and Sign Management Company of America (PLASMA) | Consent Order Accepted for Comment\nLeucadia/KCG | Civil Penalty (7a)\nThird Point/Yahoo | Civil Penalty (7a)",
+        "code": "import pandas as pd\n\n# Filter matters for fiscal year 2015\nmatters_2015 = dfs['Matter'][dfs['Matter']['matter_fy'] == 2015]\n\n# Merge with EnforcementType to get the labels\nmerged_df = pd.merge(matters_2015, dfs['EnforcementType'], left_on='matter_enforcement_type_id', right_on='enforcement_type_id')\n\n# Select matter_name and enforcement_type_label and convert to list of lists\nresult = merged_df[['matter_name', 'enforcement_type_label']].values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.8054099082946777,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Wright Medical Group/Tornier | Consent Order Accepted for Comment\nEndo International/Par Pharmaceutical | Consent Order Accepted for Comment\nPfizer/Hospira | Consent Order Accepted for Comment\nDollar Tree/Family Dollar | Consent Order Accepted for Comment\nBiomet/Zimmer Holdings | Consent Order Accepted for Comment\nSTERIS/Synergy Health | Preliminary Injunction\nLorillard/Reynolds American | Consent Order Accepted for Comment\nZeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment\nLafarge S.A./Holcim | Consent Order Accepted for Comment\nPar Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment\nImpax Laboratories/Tower Holdings | Consent Order Accepted for Comment\nNovartis AG/GlaxoSmithKline | Consent Order Accepted for Comment\nSysco/USF Holding | Preliminary Injunction\nRanbaxy Laboratories/Sun Pharmaceutical Industries | Consent Order Accepted for Comment\nCerberus/Safeway | Consent Order Accepted for Comment\nEli Lilly/Novartis AG | Consent Order Accepted for Comment\nVerisk Analytics/EagleView Technology | Preliminary Injunction\nCovidien/Medtronic | Consent Order Accepted for Comment\nSurgery Partners/Symbion Holdings | Consent Order Accepted for Comment\nNational Association of Animal Breeders | Consent Order Accepted for Comment\nConcordia/Par Pharmaceutical | Consent Order Accepted for Comment\nCardinal Health, Inc. | Permanent Injunction\nProfessional Skaters Association | Consent Order Accepted for Comment\nProfessional Lighting and Sign Management Company of America (PLASMA) | Consent Order Accepted for Comment\nLeucadia/KCG | Civil Penalty (7a)\nThird Point/Yahoo | Civil Penalty (7a)",
+        "code": "merged = dfs['Matter'].merge(dfs['EnforcementType'], left_on='matter_enforcement_type_id', right_on='enforcement_type_id')\nfiltered = merged[merged['matter_fy'] == 2015]\nresult = filtered[['matter_name', 'enforcement_type_label']].values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5030059814453125,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Wright Medical Group/Tornier | Consent Order Accepted for Comment\nEndo International/Par Pharmaceutical | Consent Order Accepted for Comment\nPfizer/Hospira | Consent Order Accepted for Comment\nDollar Tree/Family Dollar | Consent Order Accepted for Comment\nBiomet/Zimmer Holdings | Consent Order Accepted for Comment\nSTERIS/Synergy Health | Preliminary Injunction\nLorillard/Reynolds American | Consent Order Accepted for Comment\nZeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment\nLafarge S.A./Holcim | Consent Order Accepted for Comment\nPar Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment\nImpax Laboratories/Tower Holdings | Consent Order Accepted for Comment\nNovartis AG/GlaxoSmithKline | Consent Order Accepted for Comment\nSysco/USF Holding | Preliminary Injunction\nRanbaxy Laboratories/Sun Pharmaceutical Industries | Consent Order Accepted for Comment\nCerberus/Safeway | Consent Order Accepted for Comment\nEli Lilly/Novartis AG | Consent Order Accepted for Comment\nVerisk Analytics/EagleView Technology | Preliminary Injunction\nCovidien/Medtronic | Consent Order Accepted for Comment\nSurgery Partners/Symbion Holdings | Consent Order Accepted for Comment\nNational Association of Animal Breeders | Consent Order Accepted for Comment\nConcordia/Par Pharmaceutical | Consent Order Accepted for Comment\nCardinal Health, Inc. | Permanent Injunction\nProfessional Skaters Association | Consent Order Accepted for Comment\nProfessional Lighting and Sign Management Company of America (PLASMA) | Consent Order Accepted for Comment\nLeucadia/KCG | Civil Penalty (7a)\nThird Point/Yahoo | Civil Penalty (7a)",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-ftc-consent-decrees",
+    "id": "q-014",
+    "tier": "T4",
+    "question": "What is the average number of distinct enforcement types associated with matters in each fiscal year?",
+    "gold_sparql": "SELECT ?fiscalYearLabel (AVG(?distinctEnforcementTypes) AS ?averageDistinctEnforcementTypes) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n  {\n    SELECT ?fiscalYear (COUNT(DISTINCT ?enforcementType) AS ?distinctEnforcementTypes) WHERE {\n      ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n      ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter .\n      ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n      ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n      ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n    } GROUP BY ?fiscalYear\n  }\n} GROUP BY ?fiscalYearLabel\nORDER BY ?fiscalYearLabel",
+    "expected_answer": "1996 | 4\n1997 | 6\n1998 | 4\n1999 | 3\n2000 | 3\n2001 | 4\n2002 | 4\n2003 | 3\n2004 | 6\n2005 | 3\n... (24 total rows)",
+    "full_expected_items": [
+      "1996 | 4",
+      "1997 | 6",
+      "1998 | 4",
+      "1999 | 3",
+      "2000 | 3",
+      "2001 | 4",
+      "2002 | 4",
+      "2003 | 3",
+      "2004 | 6",
+      "2005 | 3",
+      "2006 | 2",
+      "2007 | 4",
+      "2008 | 5",
+      "2009 | 6",
+      "2010 | 2",
+      "2011 | 3",
+      "2012 | 4",
+      "2013 | 4",
+      "2014 | 5",
+      "2015 | 4",
+      "2016 | 5",
+      "2017 | 5",
+      "2018 | 4",
+      "2019 | 4"
+    ],
+    "full_result_count": 24,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "4.041666666666667",
+        "code": "import pandas as pd\n\n# Group by fiscal year and count distinct enforcement types\ncounts_per_fy = dfs['Matter'].groupby('matter_fy')['matter_enforcement_type_id'].nunique()\n\n# Calculate the average of these counts\nresult = float(counts_per_fy.mean())",
+        "verdict": "wrong",
+        "elapsed": 1.409433126449585,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "4.041666666666667",
+        "code": "import pandas as pd\n\n# Group by fiscal year and count distinct enforcement types\ncounts_per_fy = dfs['Matter'].groupby('matter_fy')['matter_enforcement_type_id'].nunique()\n\n# Calculate the average of these counts\nresult = float(counts_per_fy.mean())",
+        "verdict": "wrong",
+        "elapsed": 1.3888421058654785,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "4.041666666666667",
+        "code": "import pandas as pd\n\n# Group by fiscal year and count distinct enforcement types\ncounts_per_fy = dfs['Matter'].groupby('matter_fy')['matter_enforcement_type_id'].nunique()\n\n# Calculate the average of these counts\nresult = float(counts_per_fy.mean())",
+        "verdict": "wrong",
+        "elapsed": 1.4502012729644775,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "4.041666666666667",
+    "majority_verdict": "wrong",
+    "correct_runs": 0,
+    "total_runs": 3
+  }
+]

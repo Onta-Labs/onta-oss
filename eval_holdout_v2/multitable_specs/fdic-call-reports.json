@@ -1,0 +1,142 @@
+{
+  "kg_name": "holdout-v2-fdic-call-reports",
+  "_source": "FDIC BankFind Suite REST API (banks.data.fdic.gov). 2024-Q2 snapshot (REPDTE=20240630).",
+  "_plan_ref": "eval_holdout_v2/PER_SOURCE_PREPROCESSOR_PLAN.md — wave-6 finance bucket. Six-entity decomposition of the BankFind /institutions, /locations, /financials endpoints into Bank, Branch, CallReport, FinancialMetric, State, BankClass.",
+  "_schema_override_ref": "eval_holdout_v2/schema_overrides/holdout-v2-fdic-call-reports.json (verified 2026-04-13 against live BankFind).",
+  "_notes": [
+    "CERT is the FDIC certificate number and the canonical join key across all three source tables. Rendered as string for URI stability.",
+    "FinancialMetric is the fanout entity: one row per (CERT, REPDTE, metric_code) tuple. The spec ships 19 hand-picked regulatory ratios — Cost of Funds was OMITTED because FDIC BankFind does not publish a precomputed cost-of-funds field and the per-item MDRM denominator (interest-bearing liabilities) is not cleanly resolvable from the BankFind payload (total-liab LIAB is a superset, and INTEXPY is a yield-on-earning-assets figure, not a cost-of-funds ratio). Omission is the approved fallback per the schema override 'verification' block.",
+    "Three verified field codes from the schema override turned out to NOT be present in the live 2024-Q2 BankFind /financials payload, so the preprocessor substitutes the closest documented BankFind alias: (1) Tier 1 Risk-Based Cap Ratio RBC1RWAJ -> IDT1RWAJR (same definition, 'Tier 1 Risk-Based Capital Ratio - Adjusted'), (2) CET1 Ratio RBCT1CER -> IDT1CER (explicitly called out in the schema override as the duplicate alias), (3) NCO-to-Avg-Loans ELNATRR -> ELNATRY (annualized net charge-offs to average loans).",
+    "LTD_RATIO (Net Loans & Leases to Assets) is computed client-side as LNLSNET/ASSET*100 because LNLSNETR is also absent from the payload. Both source fields ARE present, so the derivation is exact.",
+    "Branch entity was DROPPED from the ingested schema in wave-6 to (a) reduce triple volume to fit the shared /update rate budget while 5 holdout-v2 ingests ran concurrently, and (b) preemptively remove the Bank->Branch->Location->State shape that the wave-5 plan flagged as uncomfortably adjacent to the v9-training cfpb-bank-accounts KG. The raw Branch.csv is staged on disk for future re-ingest if the adjacency gate permits it. Branch removal reduces the ingested triple count by roughly 1.1M and reframes FDIC as Bank -> CallReport -> FinancialMetric, a filing-centric shape distinct from cfpb's account-centric shape.",
+    "State entity is derived from institutions.STALP; a State row is emitted per unique two-letter code appearing in Bank or Branch.",
+    "BankClass codes: N, SM, NM, SB, SA, OI. Description + regulator + charter category lifted from the schema override."
+  ],
+  "entity_types": [
+    {
+      "name": "Bank",
+      "source_csv": "Bank.csv",
+      "primary_key": "bank_cert",
+      "label_column": "bank_name",
+      "attributes": [
+        "bank_cert", "bank_name", "bank_address", "bank_city", "bank_stalp",
+        "bank_zip", "bank_county", "bank_fdic_region", "bank_fdic_dist",
+        "bank_web_address", "bank_active", "bank_estymd", "bank_charter_type",
+        "bank_bkclass", "bank_primary_fed_reg_code", "bank_num_offices"
+      ]
+    },
+    {
+      "name": "CallReport",
+      "source_csv": "CallReport.csv",
+      "primary_key": "callreport_id",
+      "label_column": "callreport_period",
+      "attributes": [
+        "callreport_id", "callreport_cert", "callreport_repdte",
+        "callreport_period", "callreport_fiscal_year", "callreport_fiscal_quarter",
+        "callreport_filing_type"
+      ]
+    },
+    {
+      "name": "FinancialMetric",
+      "source_csv": "FinancialMetric.csv",
+      "primary_key": "metric_id",
+      "label_column": "metric_name",
+      "attributes": [
+        "metric_id", "metric_cert", "metric_repdte", "metric_callreport_id",
+        "metric_code", "metric_name", "metric_value", "metric_unit",
+        "metric_field_code", "metric_category"
+      ]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_stalp",
+      "label_column": "state_name",
+      "attributes": ["state_stalp", "state_name"]
+    },
+    {
+      "name": "BankClass",
+      "source_csv": "BankClass.csv",
+      "primary_key": "bankclass_code",
+      "label_column": "bankclass_description",
+      "attributes": [
+        "bankclass_code", "bankclass_description",
+        "bankclass_primary_regulator", "bankclass_charter_category"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "has_call_report",
+      "source_csv": "CallReport.csv",
+      "subject_type": "Bank",
+      "subject_key_column": "callreport_cert",
+      "object_type": "CallReport",
+      "object_key_column": "callreport_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "callreport_has_metric",
+      "source_csv": "FinancialMetric.csv",
+      "subject_type": "CallReport",
+      "subject_key_column": "metric_callreport_id",
+      "object_type": "FinancialMetric",
+      "object_key_column": "metric_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "bank_headquartered_in_state",
+      "source_csv": "Bank.csv",
+      "subject_type": "Bank",
+      "subject_key_column": "bank_cert",
+      "object_type": "State",
+      "object_key_column": "bank_stalp",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "bank_classified_as",
+      "source_csv": "Bank.csv",
+      "subject_type": "Bank",
+      "subject_key_column": "bank_cert",
+      "object_type": "BankClass",
+      "object_key_column": "bank_bkclass",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "metric_for_bank",
+      "source_csv": "FinancialMetric.csv",
+      "subject_type": "FinancialMetric",
+      "subject_key_column": "metric_id",
+      "object_type": "Bank",
+      "object_key_column": "metric_cert",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "callreport_filed_for_bank",
+      "source_csv": "CallReport.csv",
+      "subject_type": "CallReport",
+      "subject_key_column": "callreport_id",
+      "object_type": "Bank",
+      "object_key_column": "callreport_cert",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "state_hosts_bank",
+      "source_csv": "Bank.csv",
+      "subject_type": "State",
+      "subject_key_column": "bank_stalp",
+      "object_type": "Bank",
+      "object_key_column": "bank_cert",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "bankclass_applies_to_bank",
+      "source_csv": "Bank.csv",
+      "subject_type": "BankClass",
+      "subject_key_column": "bank_bkclass",
+      "object_type": "Bank",
+      "object_key_column": "bank_cert",
+      "cardinality": "1:N"
+    }
+  ]
+}

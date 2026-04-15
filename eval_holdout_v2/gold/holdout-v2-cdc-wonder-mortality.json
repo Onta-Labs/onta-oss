@@ -1,0 +1,324 @@
+{
+  "kg_id": "holdout-v2-cdc-wonder-mortality",
+  "generated_at": "2026-04-14T15:34:01-0700",
+  "tier_distribution": {
+    "T1": 4,
+    "T2": 4,
+    "T3": 2,
+    "T4": 3
+  },
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "How many distinct mortality records are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?mortalityRecord) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortalityRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n}",
+      "full_expected_items": [
+        "10868"
+      ],
+      "full_result_count": 1,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, with aggregation (COUNT/SUM/AVG)",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "10868",
+      "reasoning": "This query counts all distinct instances of the 'MortalityRecord' entity type, satisfying the single entity type and aggregation requirement for Tier 1."
+    },
+    {
+      "id": "q-002",
+      "question": "List all the available years in the dataset.",
+      "gold_sparql": "SELECT DISTINCT ?yearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> ?yearLabel .\n}",
+      "full_expected_items": [
+        "2016",
+        "2013",
+        "2005",
+        "2004",
+        "2010",
+        "2001",
+        "2015",
+        "2007",
+        "2009",
+        "2006",
+        "2008",
+        "1999",
+        "2002",
+        "2000",
+        "2017",
+        "2003",
+        "2014",
+        "2011",
+        "2012"
+      ],
+      "full_result_count": 19,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, no filters",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "2016, 2013, 2005, 2004, 2010, 2001, 2015, 2007, 2009, 2006 ... (19 total)",
+      "reasoning": "This query retrieves the 'year' attribute for all instances of the 'Year' entity type. It focuses on a single entity type and returns a list, fitting Tier 1 criteria."
+    },
+    {
+      "id": "q-003",
+      "question": "What are the names of all the causes of death recorded?",
+      "gold_sparql": "SELECT DISTINCT ?causeName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_name> ?causeName .\n}",
+      "full_expected_items": [
+        "Alzheimer's disease",
+        "Stroke",
+        "Suicide",
+        "Unintentional injuries",
+        "All causes",
+        "CLRD",
+        "Heart disease",
+        "Influenza and pneumonia",
+        "Kidney disease",
+        "Cancer",
+        "Diabetes"
+      ],
+      "full_result_count": 11,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, no filters",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "Alzheimer's disease, Stroke, Suicide, Unintentional injuries, All causes, CLRD, Heart disease, Influenza and pneumonia, Kidney disease, Cancer ... (11 total)",
+      "reasoning": "This query fetches the 'cause_name' attribute for all 'Cause' entities. It adheres to the single entity type and simple list return for Tier 1."
+    },
+    {
+      "id": "q-004",
+      "question": "How many distinct states are represented in the data?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?state) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n}",
+      "full_expected_items": [
+        "52"
+      ],
+      "full_result_count": 1,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, with aggregation (COUNT/SUM/AVG)",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "52",
+      "reasoning": "This query counts all distinct instances of the 'State' entity type. It uses a single entity type and an aggregation, making it suitable for Tier 1."
+    },
+    {
+      "id": "q-005",
+      "question": "How many mortality records have an age-adjusted rate greater than 100?",
+      "gold_sparql": "SELECT (COUNT(?record) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/age_adjusted_rate> ?rate .\n  FILTER (xsd:float(?rate) > 100)\n}",
+      "full_expected_items": [
+        "2965"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "2965",
+      "reasoning": "This query counts MortalityRecord entities. It uses a numeric filter on the 'age_adjusted_rate' attribute, checking if it's greater than 100. This fits the T2 criteria of a single entity type and at least one filter expression."
+    },
+    {
+      "id": "q-006",
+      "question": "What is the average number of deaths recorded in mortality records where the label contains '2010'?",
+      "gold_sparql": "SELECT (AVG(xsd:integer(?deaths)) AS ?averageDeaths) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/deaths> ?deaths .\n  FILTER (CONTAINS(STR(?label), \"2010\"))\n}",
+      "full_expected_items": [
+        "15107.63636363636363636364"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "15107.64",
+      "reasoning": "This query calculates the average of the 'deaths' attribute for MortalityRecord entities. It uses a string filter (CONTAINS) on the 'label' attribute. This adheres to the T2 requirements of a single entity type, a filter, and an aggregation."
+    },
+    {
+      "id": "q-007",
+      "question": "Find all cause categories that have 'Chronic' in their name.",
+      "gold_sparql": "SELECT ?categoryName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_category_name> ?categoryName .\n  FILTER (CONTAINS(STR(?categoryName), \"Chronic\"))\n}",
+      "full_expected_items": [
+        "Chronic Disease"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "Chronic Disease",
+      "reasoning": "This query selects the names of CauseCategory entities. It applies a string filter (CONTAINS) on the 'cause_category_name' attribute. This satisfies the T2 criteria of a single entity type and a filter."
+    },
+    {
+      "id": "q-008",
+      "question": "What is the maximum number of causes associated with any cause category?",
+      "gold_sparql": "SELECT (MAX(xsd:integer(?causeCount)) AS ?maxCauseCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_count> ?causeCount .\n  FILTER (xsd:integer(?causeCount) > 0)\n}",
+      "full_expected_items": [
+        "7"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "7",
+      "reasoning": "This query finds the maximum value of the 'cause_count' attribute for CauseCategory entities. It includes a numeric filter to ensure the count is positive, which is a valid filter condition. This meets the T2 requirements of a single entity type, a filter, and an aggregation."
+    },
+    {
+      "id": "q-009",
+      "question": "How many mortality records are associated with each state?",
+      "gold_sparql": "SELECT ?state_name (COUNT(?record) AS ?record_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> ?state_name .\n} GROUP BY ?state_name ORDER BY DESC(?record_count)",
+      "full_expected_items": [
+        "Hawaii | 209",
+        "Michigan | 209",
+        "Maryland | 209",
+        "Massachusetts | 209",
+        "Maine | 209",
+        "Kentucky | 209",
+        "Louisiana | 209",
+        "New Mexico | 209",
+        "New Jersey | 209",
+        "New Hampshire | 209",
+        "Nevada | 209",
+        "Nebraska | 209",
+        "Montana | 209",
+        "New York | 209",
+        "Missouri | 209",
+        "Minnesota | 209",
+        "Mississippi | 209",
+        "South Dakota | 209",
+        "Tennessee | 209",
+        "Alabama | 209",
+        "Florida | 209",
+        "Rhode Island | 209",
+        "United States | 209",
+        "Oregon | 209",
+        "South Carolina | 209",
+        "Pennsylvania | 209",
+        "Ohio | 209",
+        "Georgia | 209",
+        "North Dakota | 209",
+        "North Carolina | 209",
+        "Virginia | 209",
+        "Washington | 209",
+        "West Virginia | 209",
+        "Vermont | 209",
+        "Utah | 209",
+        "Texas | 209",
+        "Oklahoma | 209",
+        "Illinois | 209",
+        "Indiana | 209",
+        "Idaho | 209",
+        "Iowa | 209",
+        "Kansas | 209",
+        "Alaska | 209",
+        "Arkansas | 209",
+        "California | 209",
+        "Connecticut | 209",
+        "Delaware | 209",
+        "District of Columbia | 209",
+        "Colorado | 209",
+        "Arizona | 209",
+        "Wisconsin | 209",
+        "Wyoming | 209"
+      ],
+      "full_result_count": 52,
+      "tier": "T3",
+      "tier_classifier_reasoning": "2 distinct entity types connected by 1 predicate",
+      "tier_llm_label": "T3",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "Hawaii | 209\nMichigan | 209\nMaryland | 209\nMassachusetts | 209\nMaine | 209\nKentucky | 209\nLouisiana | 209\nNew Mexico | 209\nNew Jersey | 209\nNew Hampshire | 209\n... (52 total rows)",
+      "reasoning": "This query joins MortalityRecord and State entities using the 'record_in_state' relationship. It counts the number of mortality records for each state, which is a common and realistic aggregation. Both entity types are explicitly typed, and the aggregation acts as the filter condition."
+    },
+    {
+      "id": "q-010",
+      "question": "Which regions contain states that have 'California' in their name?",
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> ?region_name .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_contains_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> ?state_name .\n  FILTER (CONTAINS(?state_name, \"California\"))\n}",
+      "full_expected_items": [
+        "West"
+      ],
+      "full_result_count": 1,
+      "tier": "T3",
+      "tier_classifier_reasoning": "2 distinct entity types connected by 1 predicate",
+      "tier_llm_label": "T3",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "West",
+      "reasoning": "This query joins Region and State entities using the 'region_contains_state' relationship. Both entity types are explicitly typed. A filter is applied to the 'state_name' attribute using CONTAINS, which is a realistic way to query for partial string matches."
+    },
+    {
+      "id": "q-011",
+      "question": "Which regions have mortality records for 'Alzheimer's disease' in '2016'?",
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_name> \"Alzheimer's disease\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> \"2016\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> ?region_name .\n}",
+      "full_expected_items": [
+        "National",
+        "Midwest",
+        "West",
+        "South",
+        "Northeast"
+      ],
+      "full_result_count": 5,
+      "tier": "T4",
+      "tier_classifier_reasoning": "4 distinct entity types (>=3)",
+      "tier_llm_label": "T4",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "National, Midwest, West, South, Northeast",
+      "reasoning": "This query uses three distinct entity types (MortalityRecord, Cause, Year, Region) connected by relationships (record_for_cause, record_in_year, record_in_region) forming a star-like pattern around MortalityRecord. It filters by specific attribute values for Cause and Year. All entity variables have rdf:type triples."
+    },
+    {
+      "id": "q-012",
+      "question": "Count the number of distinct causes associated with mortality records in states that are part of the 'Midwest' region.",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?cause) AS ?distinct_causes_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/region_name> \"Midwest\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n}",
+      "full_expected_items": [
+        "11"
+      ],
+      "full_result_count": 1,
+      "tier": "T4",
+      "tier_classifier_reasoning": "4 distinct entity types (>=3)",
+      "tier_llm_label": "T4",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "11",
+      "reasoning": "This query uses three distinct entity types (MortalityRecord, State, Region, Cause) connected by relationships (record_in_state, state_in_region, record_for_cause) forming a path and a star. It includes an aggregation (COUNT) and a filter on a region name. All entity variables have rdf:type triples."
+    },
+    {
+      "id": "q-013",
+      "question": "List the cause categories that include causes with mortality records in 'Washington' state for the year '2010'.",
+      "gold_sparql": "SELECT DISTINCT ?cause_category_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-wonder-mortality> WHERE {\n  ?mortality_record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/MortalityRecord> .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/state_name> \"Washington\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/year> \"2010\" .\n  ?mortality_record <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/record_for_cause> ?cause .\n  ?cause <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/Cause> .\n  ?cause <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_in_category> ?cause_category .\n  ?cause_category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/type/CauseCategory> .\n  ?cause_category <https://omnix.dev/holdout-v2/holdout-v2-cdc-wonder-mortality/pred/cause_category_name> ?cause_category_name .\n}",
+      "full_expected_items": [
+        "Injury / External Cause",
+        "Chronic Disease",
+        "All Causes (Roll-up)",
+        "Infectious Disease"
+      ],
+      "full_result_count": 4,
+      "tier": "T4",
+      "tier_classifier_reasoning": "5 distinct entity types (>=3)",
+      "tier_llm_label": "T4",
+      "kg_id": "holdout-v2-cdc-wonder-mortality",
+      "expected_answer": "Injury / External Cause, Chronic Disease, All Causes (Roll-up), Infectious Disease",
+      "reasoning": "This query involves four distinct entity types (MortalityRecord, State, Year, Cause, CauseCategory) connected by relationships (record_in_state, record_in_year, record_for_cause, cause_in_category) forming a path. It filters by specific attribute values for State and Year. All entity variables have rdf:type triples."
+    }
+  ],
+  "generation_report": {
+    "T1": {
+      "target": 4,
+      "generated": 4,
+      "classifier_mismatched": 0,
+      "discarded_invalid": 0,
+      "shortfall": false
+    },
+    "T2": {
+      "target": 4,
+      "generated": 4,
+      "classifier_mismatched": 0,
+      "discarded_invalid": 0,
+      "shortfall": false
+    },
+    "T3": {
+      "target": 3,
+      "generated": 2,
+      "classifier_mismatched": 2,
+      "discarded_invalid": 0,
+      "shortfall": true
+    },
+    "T4": {
+      "target": 3,
+      "generated": 3,
+      "classifier_mismatched": 0,
+      "discarded_invalid": 0,
+      "shortfall": false
+    }
+  },
+  "runtime_seconds": 76.71
+}

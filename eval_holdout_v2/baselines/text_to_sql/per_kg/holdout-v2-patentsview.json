@@ -1,0 +1,619 @@
+{
+  "kg": "holdout-v2-patentsview",
+  "results": [
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many citations are there in the database?",
+      "expected_answer": "117660",
+      "full_expected_items": [
+        "117660"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Citation\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Citation\";"
+          ],
+          "answer": "100000",
+          "verdict": "wrong",
+          "input_tokens": 2184,
+          "output_tokens": 7
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Citation\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Citation\";"
+          ],
+          "answer": "100000",
+          "verdict": "wrong",
+          "input_tokens": 2184,
+          "output_tokens": 7
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Citation\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Citation\";"
+          ],
+          "answer": "100000",
+          "verdict": "wrong",
+          "input_tokens": 2184,
+          "output_tokens": 7
+        }
+      ],
+      "majority_answer": "100000",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "How many patents are in the database?",
+      "expected_answer": "92836",
+      "full_expected_items": [
+        "92836"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Patent\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Patent\""
+          ],
+          "answer": "100000",
+          "verdict": "wrong",
+          "input_tokens": 2183,
+          "output_tokens": 7
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Patent\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Patent\""
+          ],
+          "answer": "100000",
+          "verdict": "wrong",
+          "input_tokens": 2183,
+          "output_tokens": 7
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Patent\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Patent\""
+          ],
+          "answer": "100000",
+          "verdict": "wrong",
+          "input_tokens": 2183,
+          "output_tokens": 7
+        }
+      ],
+      "majority_answer": "100000",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "How many unique CPC classes are defined in the system?",
+      "expected_answer": "25447",
+      "full_expected_items": [
+        "25447"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/CPCClass> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"cpc_class\") FROM \"CPCClass\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"cpc_class\") FROM \"CPCClass\";"
+          ],
+          "answer": "127",
+          "verdict": "wrong",
+          "input_tokens": 2191,
+          "output_tokens": 16
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"cpc_class\") FROM \"CPCClass\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"cpc_class\") FROM \"CPCClass\";"
+          ],
+          "answer": "127",
+          "verdict": "wrong",
+          "input_tokens": 2191,
+          "output_tokens": 16
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"cpc_class\") FROM \"CPCClass\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"cpc_class\") FROM \"CPCClass\";"
+          ],
+          "answer": "127",
+          "verdict": "wrong",
+          "input_tokens": 2191,
+          "output_tokens": 16
+        }
+      ],
+      "majority_answer": "127",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many inventors are listed in the database?",
+      "expected_answer": "14039",
+      "full_expected_items": [
+        "14039"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Inventor> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"inventor_id\") FROM \"Inventor\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"inventor_id\") FROM \"Inventor\";"
+          ],
+          "answer": "92436",
+          "verdict": "wrong",
+          "input_tokens": 2182,
+          "output_tokens": 15
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"inventor_id\") FROM \"Inventor\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"inventor_id\") FROM \"Inventor\";"
+          ],
+          "answer": "92436",
+          "verdict": "wrong",
+          "input_tokens": 2182,
+          "output_tokens": 15
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"inventor_id\") FROM \"Inventor\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"inventor_id\") FROM \"Inventor\";"
+          ],
+          "answer": "92436",
+          "verdict": "wrong",
+          "input_tokens": 2182,
+          "output_tokens": 15
+        }
+      ],
+      "majority_answer": "92436",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "How many utility patents have more than 20 claims?",
+      "expected_answer": "635",
+      "full_expected_items": [
+        "635"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?patent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> \"utility\" . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/num_claims> ?numClaims . FILTER(xsd:integer(?numClaims) > 20) }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Patent\" WHERE \"patent_type\" = 'utility' AND \"num_claims\" > 20;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Patent\" WHERE \"patent_type\" = 'utility' AND \"num_claims\" > 20;"
+          ],
+          "answer": "15901",
+          "verdict": "wrong",
+          "input_tokens": 2209,
+          "output_tokens": 28
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Patent\" WHERE \"patent_type\" = 'utility' AND \"num_claims\" > 20;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Patent\" WHERE \"patent_type\" = 'utility' AND \"num_claims\" > 20;"
+          ],
+          "answer": "15901",
+          "verdict": "wrong",
+          "input_tokens": 2209,
+          "output_tokens": 28
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Patent\" WHERE \"patent_type\" = 'utility' AND \"num_claims\" > 20;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Patent\" WHERE \"patent_type\" = 'utility' AND \"num_claims\" > 20;"
+          ],
+          "answer": "15901",
+          "verdict": "wrong",
+          "input_tokens": 2209,
+          "output_tokens": 28
+        }
+      ],
+      "majority_answer": "15901",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "How many inventors are listed with a sequence number greater than 10?",
+      "expected_answer": "77",
+      "full_expected_items": [
+        "77"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?inventor) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?inventor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Inventor> . ?inventor <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/inventor_sequence> ?seq . FILTER(xsd:integer(?seq) > 10) }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Inventor\" WHERE \"inventor_sequence\" > 10;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Inventor\" WHERE \"inventor_sequence\" > 10;"
+          ],
+          "answer": "553",
+          "verdict": "wrong",
+          "input_tokens": 2184,
+          "output_tokens": 19
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Inventor\" WHERE \"inventor_sequence\" > 10;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Inventor\" WHERE \"inventor_sequence\" > 10;"
+          ],
+          "answer": "553",
+          "verdict": "wrong",
+          "input_tokens": 2184,
+          "output_tokens": 19
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Inventor\" WHERE \"inventor_sequence\" > 10;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Inventor\" WHERE \"inventor_sequence\" > 10;"
+          ],
+          "answer": "553",
+          "verdict": "wrong",
+          "input_tokens": 2186,
+          "output_tokens": 19
+        }
+      ],
+      "majority_answer": "553",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "Find all assignees whose organization name contains the word 'Technology'.",
+      "expected_answer": "ba3ecc52-2929-4d0e-9203-20b91cdb6630 | Beijing E-Town Semiconductor Technology Co., Ltd.\nf7cf7c89-c39f-421c-a1e5-e3d403782dc7 | Industrial Technology Research Institute\n6276fb79-21ef-420c-8037-6e586cc49e56 | Ormazabal Corporate Technology, A.I.E.\n09cc6f08-128f-4298-ba1a-9539b8e192e6 | Praxair Technology, Inc.\n557784be-231b-4aef-a9f4-740b36729a1b | Ojai Retinal Technology, LLC\n0f9a639e-9224-423e-9f5f-0b64121f154b | Sensor Electronic Technology, Inc.\neb2ebb85-8503-414d-9730-aed37c7ab928 | Japan Science and Technology Agency\nb815f470-f656-4e72-b06e-71fd2d04f22c | Fu Da Tong Technology Co., Ltd.\n1149ebbb-6368-440e-ae2f-0f1303eb4bcb | Ningbo Defeng Power Technology Co., Ltd.\n845130de-72da-4cbb-b225-374b1c819d91 | Commonwealth Of Australia represented by Department of Defence, Defence Science and Technology Organisation\n... (67 total rows)",
+      "full_expected_items": [
+        "ba3ecc52-2929-4d0e-9203-20b91cdb6630 | Beijing E-Town Semiconductor Technology Co., Ltd.",
+        "f7cf7c89-c39f-421c-a1e5-e3d403782dc7 | Industrial Technology Research Institute",
+        "6276fb79-21ef-420c-8037-6e586cc49e56 | Ormazabal Corporate Technology, A.I.E.",
+        "09cc6f08-128f-4298-ba1a-9539b8e192e6 | Praxair Technology, Inc.",
+        "557784be-231b-4aef-a9f4-740b36729a1b | Ojai Retinal Technology, LLC",
+        "0f9a639e-9224-423e-9f5f-0b64121f154b | Sensor Electronic Technology, Inc.",
+        "eb2ebb85-8503-414d-9730-aed37c7ab928 | Japan Science and Technology Agency",
+        "b815f470-f656-4e72-b06e-71fd2d04f22c | Fu Da Tong Technology Co., Ltd.",
+        "1149ebbb-6368-440e-ae2f-0f1303eb4bcb | Ningbo Defeng Power Technology Co., Ltd.",
+        "845130de-72da-4cbb-b225-374b1c819d91 | Commonwealth Of Australia represented by Department of Defence, Defence Science and Technology Organisation",
+        "0658196d-49c8-461e-9a09-11feb984ff28 | Linear Technology Holding LLC",
+        "255275ca-3a4b-4ece-806d-848f05df4c16 | Hood Technology Corporation",
+        "c01d2a23-e89e-42df-aa98-ce4b9e753093 | Beijing BOE Optoelectronics Technology Co., Ltd.",
+        "00552a98-7fa5-4e73-8436-1f1527951660 | Huazhong University of Science and Technology",
+        "ec279dd4-1f2c-4731-8e32-e8a4e56be3f5 | Tula eTechnology, Inc.",
+        "072fe2d7-9fbb-415b-b665-9ce92d43bad1 | Providence Medical Technology, Inc.",
+        "6c9476f2-fe65-410e-8d06-4e3c7a46fc77 | DL Technology, LLC.",
+        "4193d051-fb8c-4554-9569-a56cf6610fe1 | Getac Technology Corporation",
+        "2c9b5282-0e93-420b-b310-bcbd3b0a2d45 | Mattson Technology, Inc.",
+        "0686d2b9-4d2d-48d1-87b1-5df841531174 | Beijing Bytedance Network Technology Co., Ltd.",
+        "75af1601-0e4d-4225-b8cd-51b14341779d | Beijing Sensetime Technology Development Co., Ltd",
+        "8fca943f-a928-44d0-9d7c-66680eae24f5 | eMoMo Technology Co., Ltd.",
+        "50f83852-0305-44fb-9d35-e850802f15dd | Hefei University of Technology",
+        "c6aac779-cfa9-493f-8634-0d4bf9f692aa | Shenzhen LVSUN Electronics Technology Co., Ltd",
+        "bab9cbbe-4b83-404d-a3fe-7a038aae7069 | UNIFLEX Technology Inc.",
+        "e4f0d0f5-1468-44e2-8eba-f33f2856178b | StarTime Software Technology Co., Ltd.",
+        "5add8615-963b-47fc-bd21-056c0f15b3fa | Micron Technology, Inc.",
+        "3bf5d82e-4328-4456-bf80-97e55b260e37 | HOPPECKE Advanced Battery Technology GmbH",
+        "eb22b522-7bbd-4260-b12c-837bf8cbc498 | Johnson Controls Technology Company",
+        "c83e9917-99a8-478b-9506-2c91c136cd26 | RichWave Technology Corp.",
+        "f707cf64-dec7-44fe-8c76-cd880fc6f349 | Align Technology, Inc.",
+        "cc2c45d1-79ce-46f8-a673-8d2fbac104a3 | Chengdu Qingfeng Interaction Technology Co., Ltd",
+        "ced8ff69-fd1a-4fc4-ae73-4ea27017e4c5 | Huntleigh Technology Limited",
+        "2f0486e3-af50-4695-b568-f41c8513a979 | Hong Kong Applied Science and Technology Research Institute Company Limited",
+        "1cb11973-d714-48f7-b1d1-97444a7cfde5 | eResearchTechnology, Inc.",
+        "b3423d04-e1f4-444c-ba15-4b136a020019 | Lummus Technology LLC",
+        "543bfa96-c919-41c4-8f57-c0bdf47350cb | University of Electronic Science and Technology of China",
+        "c4f05edf-e606-4530-8ba9-874a25d2686d | NuFlare Technology, Inc.",
+        "95e892ea-155e-41ba-ae39-fa7c8c86e33d | King Abdullah University of Science and Technology",
+        "23f54638-a0c0-4757-b251-3852ce1fb9a9 | Cisco Technology, Inc.",
+        "887b0251-1181-4448-a7bf-3d1c73d3691f | Guangdong OML Technology Co., Ltd.",
+        "2cad2bc7-472f-4a2a-aebc-84a27c51be0d | SMA Solar Technology AG",
+        "3437bf7d-6b5a-4666-a6ae-12441fdf39b2 | Ebersp\u00e4cher Exhaust Technology GmbH",
+        "6c3e6ee1-7dcd-4ecc-aa8a-0a34970c37b6 | Ubistar Technology, Inc.",
+        "3db373fa-8e6e-40f9-9f4d-81f2bfec2458 | Architecture Technology Corporation",
+        "ddcf09dd-8aea-423e-8eb5-57b34a01f301 | Trax Technology Solutions Pte Ltd.",
+        "33b5e384-2525-4de2-bef1-16149147499b | Korea Electronics Technology Institute",
+        "729d1696-ec10-4334-97f4-4a7339ca29c4 | Monsanto Technology LLC",
+        "72426485-6332-4df3-b878-055103157d00 | Massachusetts Institute of Technology",
+        "0842a182-9550-4dfa-ad8c-aa0dba8ea023 | Lambda Nu Technology LLC",
+        "450f4506-4244-498a-a29b-0bc49814d800 | Dyson Technology Limited",
+        "43bc4feb-90d9-41b0-b6e2-663522ae5435 | Shandong Rongan Electronic Science and Technology Co., Ltd.",
+        "f78a38b3-fe29-46d9-bbbb-d28ceb36a0c5 | Powertech Technology Inc.",
+        "0185df09-15c8-4e6d-a33c-b2f675d3deb0 | Beijing Trusfort Technology Co., Ltd.",
+        "c91b9d56-dd72-4660-aa7e-9ec4fdca3c47 | Seagate Technology LLC",
+        "7cfcfe1b-64a3-445a-8bff-844a05e74f83 | Traffic Control Technology Co., Ltd",
+        "4c289787-738a-47ed-a0d2-0c9b53fcc299 | Goertek Technology Co., Ltd.",
+        "9844b584-946d-4f31-8b56-a402f3b5baca | BOE Technology Group Co., Ltd.",
+        "6fbb2e59-03ad-4b37-89fe-953dead879dc | National Taipei University of Technology",
+        "1e51d434-8dbf-4bb1-94d8-2e6cc4a81b13 | National Institute of Advanced Industrial Science and Technology",
+        "74a7873e-2aab-41b0-8981-e15c18f21c0a | Cyclomedia Technology B.V.",
+        "e7fb574d-a2b0-48a4-bf24-41a297b4dc1c | Viega Technology GmbH & Co. KG",
+        "451a9afb-ab49-4994-b9af-eb7da9847071 | Lede Technology Co., Ltd.",
+        "68ddcce8-0b48-400a-b509-45ed715102e6 | South China University of Technology",
+        "cf636ecf-2df3-4b3e-a9d8-6eaa65eef6fe | Microchip Technology Germany GmbH",
+        "28f51f96-d947-472a-aa04-3b51907e8550 | Lutron Technology Company LLC",
+        "4b5d92f6-45b5-4831-8fc4-f2747f174cdd | ArvinMeritor Technology, LLC"
+      ],
+      "full_result_count": 67,
+      "gold_sparql": "SELECT ?assigneeId ?orgName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Assignee> . ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/assignee_id> ?assigneeId . ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?orgName . FILTER(CONTAINS(?orgName, \"Technology\")) }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT \"disambig_assignee_organization\" FROM \"Assignee\" WHERE \"disambig_assignee_organization\" LIKE '%Technology%';",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"disambig_assignee_organization\" FROM \"Assignee\" WHERE \"disambig_assignee_organization\" LIKE '%Technology%';"
+          ],
+          "answer": "disambig_assignee_organization: KOREA INSTITUTE OF SCIENCE AND TECHNOLOGY\ndisambig_assignee_organization: CALIFORNIA INSTITUTE OF TECHNOLOGY\ndisambig_assignee_organization: GOOGLE TECHNOLOGY HOLDINGS LLC\ndisambig_assignee_organization: Cisco Technology, Inc.\ndisambig_assignee_organization: SUTENG INNOVATION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: TIMOTION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: Wyse Technology L.L.C.\ndisambig_assignee_organization: TENCENT TECHNOLOGY (SHENZHEN) COMPANY LIMITED\ndisambig_assignee_organization: Montage Technology, Inc.\ndisambig_assignee_organization: MICROSOFT TECHNOLOGY LICENSING, LLC\ndisambig_assignee_organization: SHENZHEN WINRISE TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: GM GLOBAL TECHNOLOGY OPERATIONS LLC\ndisambig_assignee_organization: UNIST(ULSAN NATIONAL INSTITUTE OF SCIENCE AND TECHNOLOGY)\ndisambig_assignee_organization: ZHUHAI UNILINK TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: AVID TECHNOLOGY, INC.\ndisambig_assignee_organization: Innovative Micro Technology\ndisambig_assignee_organization: Trax Technology Solutions Pte Ltd.\ndisambig_assignee_organization: Navcom Technology, Inc.\ndisambig_assignee_organization: Silergy Semiconductor Technology (Hangzhou) Ltd.\ndisambig_assignee_organization: Massachusetts Institute of Technology\n... and 1340 more results",
+          "verdict": "wrong",
+          "input_tokens": 2198,
+          "output_tokens": 30
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT \"disambig_assignee_organization\" FROM \"Assignee\" WHERE \"disambig_assignee_organization\" LIKE '%Technology%';",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"disambig_assignee_organization\" FROM \"Assignee\" WHERE \"disambig_assignee_organization\" LIKE '%Technology%';"
+          ],
+          "answer": "disambig_assignee_organization: KOREA INSTITUTE OF SCIENCE AND TECHNOLOGY\ndisambig_assignee_organization: CALIFORNIA INSTITUTE OF TECHNOLOGY\ndisambig_assignee_organization: GOOGLE TECHNOLOGY HOLDINGS LLC\ndisambig_assignee_organization: Cisco Technology, Inc.\ndisambig_assignee_organization: SUTENG INNOVATION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: TIMOTION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: Wyse Technology L.L.C.\ndisambig_assignee_organization: TENCENT TECHNOLOGY (SHENZHEN) COMPANY LIMITED\ndisambig_assignee_organization: Montage Technology, Inc.\ndisambig_assignee_organization: MICROSOFT TECHNOLOGY LICENSING, LLC\ndisambig_assignee_organization: SHENZHEN WINRISE TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: GM GLOBAL TECHNOLOGY OPERATIONS LLC\ndisambig_assignee_organization: UNIST(ULSAN NATIONAL INSTITUTE OF SCIENCE AND TECHNOLOGY)\ndisambig_assignee_organization: ZHUHAI UNILINK TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: AVID TECHNOLOGY, INC.\ndisambig_assignee_organization: Innovative Micro Technology\ndisambig_assignee_organization: Trax Technology Solutions Pte Ltd.\ndisambig_assignee_organization: Navcom Technology, Inc.\ndisambig_assignee_organization: Silergy Semiconductor Technology (Hangzhou) Ltd.\ndisambig_assignee_organization: Massachusetts Institute of Technology\n... and 1340 more results",
+          "verdict": "wrong",
+          "input_tokens": 2198,
+          "output_tokens": 30
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT \"disambig_assignee_organization\" FROM \"Assignee\" WHERE \"disambig_assignee_organization\" LIKE '%Technology%';",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"disambig_assignee_organization\" FROM \"Assignee\" WHERE \"disambig_assignee_organization\" LIKE '%Technology%';"
+          ],
+          "answer": "disambig_assignee_organization: KOREA INSTITUTE OF SCIENCE AND TECHNOLOGY\ndisambig_assignee_organization: CALIFORNIA INSTITUTE OF TECHNOLOGY\ndisambig_assignee_organization: GOOGLE TECHNOLOGY HOLDINGS LLC\ndisambig_assignee_organization: Cisco Technology, Inc.\ndisambig_assignee_organization: SUTENG INNOVATION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: TIMOTION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: Wyse Technology L.L.C.\ndisambig_assignee_organization: TENCENT TECHNOLOGY (SHENZHEN) COMPANY LIMITED\ndisambig_assignee_organization: Montage Technology, Inc.\ndisambig_assignee_organization: MICROSOFT TECHNOLOGY LICENSING, LLC\ndisambig_assignee_organization: SHENZHEN WINRISE TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: GM GLOBAL TECHNOLOGY OPERATIONS LLC\ndisambig_assignee_organization: UNIST(ULSAN NATIONAL INSTITUTE OF SCIENCE AND TECHNOLOGY)\ndisambig_assignee_organization: ZHUHAI UNILINK TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: AVID TECHNOLOGY, INC.\ndisambig_assignee_organization: Innovative Micro Technology\ndisambig_assignee_organization: Trax Technology Solutions Pte Ltd.\ndisambig_assignee_organization: Navcom Technology, Inc.\ndisambig_assignee_organization: Silergy Semiconductor Technology (Hangzhou) Ltd.\ndisambig_assignee_organization: Massachusetts Institute of Technology\n... and 1340 more results",
+          "verdict": "wrong",
+          "input_tokens": 2198,
+          "output_tokens": 30
+        }
+      ],
+      "majority_answer": "disambig_assignee_organization: KOREA INSTITUTE OF SCIENCE AND TECHNOLOGY\ndisambig_assignee_organization: CALIFORNIA INSTITUTE OF TECHNOLOGY\ndisambig_assignee_organization: GOOGLE TECHNOLOGY HOLDINGS LLC\ndisambig_assignee_organization: Cisco Technology, Inc.\ndisambig_assignee_organization: SUTENG INNOVATION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: TIMOTION TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: Wyse Technology L.L.C.\ndisambig_assignee_organization: TENCENT TECHNOLOGY (SHENZHEN) COMPANY LIMITED\ndisambig_assignee_organization: Montage Technology, Inc.\ndisambig_assignee_organization: MICROSOFT TECHNOLOGY LICENSING, LLC\ndisambig_assignee_organization: SHENZHEN WINRISE TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: GM GLOBAL TECHNOLOGY OPERATIONS LLC\ndisambig_assignee_organization: UNIST(ULSAN NATIONAL INSTITUTE OF SCIENCE AND TECHNOLOGY)\ndisambig_assignee_organization: ZHUHAI UNILINK TECHNOLOGY CO., LTD.\ndisambig_assignee_organization: AVID TECHNOLOGY, INC.\ndisambig_assignee_organization: Innovative Micro Technology\ndisambig_assignee_organization: Trax Technology Solutions Pte Ltd.\ndisambig_assignee_organization: Navcom Technology, Inc.\ndisambig_assignee_organization: Silergy Semiconductor Technology (Hangzhou) Ltd.\ndisambig_assignee_organization: Massachusetts Institute of Technology\n... and 1340 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-008",
+      "tier": "T3",
+      "question": "For each patent, count how many outgoing citations it has, considering only utility patents filed after 2000.",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585"
+      ],
+      "full_result_count": 10,
+      "gold_sparql": "SELECT ?patent (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .\n  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> \"utility\" .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .\n  FILTER(?date > \"2000-01-01\")\n} GROUP BY ?patent ORDER BY DESC(?citationCount) LIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T1.\"patent_id\", COUNT(T2.\"citation_patent_id\") FROM \"Patent\" AS T1 JOIN \"Citation\" AS T2 ON T1.\"patent_id\" = T2.\"patent_id\" WHERE T1.\"patent_type\" = 'utility' AND T1.\"patent_date\" > '2000-12-31' GROUP BY T1.\"patent_id\";",
+          "all_sql_attempts": [
+            "SELECT T1.\"patent_id\", COUNT(T2.\"citation_patent_id\") FROM \"Patent\" AS T1 JOIN \"Citation\" AS T2 ON T1.\"patent_id\" = T2.\"patent_id\" WHERE T1.\"patent_type\" = 'utility' AND T1.\"patent_date\" > '2000-12-31' GROUP BY T1.\"patent_id\";"
+          ],
+          "answer": "patent_id: 10000000, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000001, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000002, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000003, COUNT(T2.\"citation_patent_id\"): 4\npatent_id: 10000004, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000005, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000007, COUNT(T2.\"citation_patent_id\"): 72\npatent_id: 10000008, COUNT(T2.\"citation_patent_id\"): 17\npatent_id: 10000009, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000010, COUNT(T2.\"citation_patent_id\"): 9\npatent_id: 10000011, COUNT(T2.\"citation_patent_id\"): 29\npatent_id: 10000015, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000016, COUNT(T2.\"citation_patent_id\"): 8\npatent_id: 10000018, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000019, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000020, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000021, COUNT(T2.\"citation_patent_id\"): 7\npatent_id: 10000022, COUNT(T2.\"citation_patent_id\"): 1\npatent_id: 10000023, COUNT(T2.\"citation_patent_id\"): 30\npatent_id: 10000025, COUNT(T2.\"citation_patent_id\"): 5\n... and 4237 more results",
+          "verdict": "wrong",
+          "input_tokens": 2247,
+          "output_tokens": 91
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T1.\"patent_id\", COUNT(T2.\"citation_patent_id\") FROM \"Patent\" AS T1 JOIN \"Citation\" AS T2 ON T1.\"patent_id\" = T2.\"patent_id\" WHERE T1.\"patent_type\" = 'utility' AND T1.\"patent_date\" > '2000-12-31' GROUP BY T1.\"patent_id\";",
+          "all_sql_attempts": [
+            "SELECT T1.\"patent_id\", COUNT(T2.\"citation_patent_id\") FROM \"Patent\" AS T1 JOIN \"Citation\" AS T2 ON T1.\"patent_id\" = T2.\"patent_id\" WHERE T1.\"patent_type\" = 'utility' AND T1.\"patent_date\" > '2000-12-31' GROUP BY T1.\"patent_id\";"
+          ],
+          "answer": "patent_id: 10000000, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000001, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000002, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000003, COUNT(T2.\"citation_patent_id\"): 4\npatent_id: 10000004, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000005, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000007, COUNT(T2.\"citation_patent_id\"): 72\npatent_id: 10000008, COUNT(T2.\"citation_patent_id\"): 17\npatent_id: 10000009, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000010, COUNT(T2.\"citation_patent_id\"): 9\npatent_id: 10000011, COUNT(T2.\"citation_patent_id\"): 29\npatent_id: 10000015, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000016, COUNT(T2.\"citation_patent_id\"): 8\npatent_id: 10000018, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000019, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000020, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000021, COUNT(T2.\"citation_patent_id\"): 7\npatent_id: 10000022, COUNT(T2.\"citation_patent_id\"): 1\npatent_id: 10000023, COUNT(T2.\"citation_patent_id\"): 30\npatent_id: 10000025, COUNT(T2.\"citation_patent_id\"): 5\n... and 4237 more results",
+          "verdict": "wrong",
+          "input_tokens": 2247,
+          "output_tokens": 91
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T1.\"patent_id\", COUNT(T2.\"citation_patent_id\") FROM \"Patent\" AS T1 JOIN \"Citation\" AS T2 ON T1.\"patent_id\" = T2.\"patent_id\" WHERE T1.\"patent_type\" = 'utility' AND T1.\"patent_date\" > '2000-12-31' GROUP BY T1.\"patent_id\";",
+          "all_sql_attempts": [
+            "SELECT T1.\"patent_id\", COUNT(T2.\"citation_patent_id\") FROM \"Patent\" AS T1 JOIN \"Citation\" AS T2 ON T1.\"patent_id\" = T2.\"patent_id\" WHERE T1.\"patent_type\" = 'utility' AND T1.\"patent_date\" > '2000-12-31' GROUP BY T1.\"patent_id\";"
+          ],
+          "answer": "patent_id: 10000000, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000001, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000002, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000003, COUNT(T2.\"citation_patent_id\"): 4\npatent_id: 10000004, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000005, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000007, COUNT(T2.\"citation_patent_id\"): 72\npatent_id: 10000008, COUNT(T2.\"citation_patent_id\"): 17\npatent_id: 10000009, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000010, COUNT(T2.\"citation_patent_id\"): 9\npatent_id: 10000011, COUNT(T2.\"citation_patent_id\"): 29\npatent_id: 10000015, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000016, COUNT(T2.\"citation_patent_id\"): 8\npatent_id: 10000018, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000019, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000020, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000021, COUNT(T2.\"citation_patent_id\"): 7\npatent_id: 10000022, COUNT(T2.\"citation_patent_id\"): 1\npatent_id: 10000023, COUNT(T2.\"citation_patent_id\"): 30\npatent_id: 10000025, COUNT(T2.\"citation_patent_id\"): 5\n... and 4237 more results",
+          "verdict": "wrong",
+          "input_tokens": 2247,
+          "output_tokens": 91
+        }
+      ],
+      "majority_answer": "patent_id: 10000000, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000001, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000002, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000003, COUNT(T2.\"citation_patent_id\"): 4\npatent_id: 10000004, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000005, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000007, COUNT(T2.\"citation_patent_id\"): 72\npatent_id: 10000008, COUNT(T2.\"citation_patent_id\"): 17\npatent_id: 10000009, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000010, COUNT(T2.\"citation_patent_id\"): 9\npatent_id: 10000011, COUNT(T2.\"citation_patent_id\"): 29\npatent_id: 10000015, COUNT(T2.\"citation_patent_id\"): 3\npatent_id: 10000016, COUNT(T2.\"citation_patent_id\"): 8\npatent_id: 10000018, COUNT(T2.\"citation_patent_id\"): 5\npatent_id: 10000019, COUNT(T2.\"citation_patent_id\"): 2\npatent_id: 10000020, COUNT(T2.\"citation_patent_id\"): 6\npatent_id: 10000021, COUNT(T2.\"citation_patent_id\"): 7\npatent_id: 10000022, COUNT(T2.\"citation_patent_id\"): 1\npatent_id: 10000023, COUNT(T2.\"citation_patent_id\"): 30\npatent_id: 10000025, COUNT(T2.\"citation_patent_id\"): 5\n... and 4237 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "List inventors and the number of patents they are associated with, focusing only on inventors whose last name contains 'Smith'.",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ami_ln%3Asmith-108 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aja_ln%3Asmith-72 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Atr_ln%3Asmith-11 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-102 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-256 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ama_ln%3Asmith-175 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Abr_ln%3Asmith-149 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ach_ln%3Asmith-58 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aro_ln%3Asmith-78 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ary_ln%3Asmith-15 | 1",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ami_ln%3Asmith-108 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aja_ln%3Asmith-72 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Atr_ln%3Asmith-11 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-102 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-256 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ama_ln%3Asmith-175 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Abr_ln%3Asmith-149 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ach_ln%3Asmith-58 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aro_ln%3Asmith-78 | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ary_ln%3Asmith-15 | 1"
+      ],
+      "full_result_count": 10,
+      "gold_sparql": "SELECT ?inventor (COUNT(DISTINCT ?patent) AS ?patentCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?inventor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Inventor> .\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_inventor> ?inventor .\n  ?inventor <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_inventor_name_last> ?lastName .\n  FILTER(CONTAINS(?lastName, \"Smith\"))\n} GROUP BY ?inventor ORDER BY DESC(?patentCount) LIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"disambig_inventor_name_first\", \"disambig_inventor_name_last\", COUNT(\"patent_id\") FROM \"Inventor\" WHERE \"disambig_inventor_name_last\" LIKE '%Smith%' GROUP BY \"inventor_id\";",
+          "all_sql_attempts": [
+            "SELECT \"disambig_inventor_name_first\", \"disambig_inventor_name_last\", COUNT(\"patent_id\") FROM \"Inventor\" WHERE \"disambig_inventor_name_last\" LIKE '%Smith%' GROUP BY \"inventor_id\";"
+          ],
+          "answer": "disambig_inventor_name_first: David G., disambig_inventor_name_last: Grahame-Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Fanny, disambig_inventor_name_last: Goldsmith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Adrian Edward, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alan, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alexander B., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amos B., disambig_inventor_name_last: Smith, III, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amanda, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Anthony, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew T, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Andrew L., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Austin Lee, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry S., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry C., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Bruce W., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Brandon, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\n... and 230 more results",
+          "verdict": "correct",
+          "input_tokens": 2223,
+          "output_tokens": 57
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"disambig_inventor_name_first\", \"disambig_inventor_name_last\", COUNT(\"patent_id\") FROM \"Inventor\" WHERE \"disambig_inventor_name_last\" LIKE '%Smith%' GROUP BY \"inventor_id\";",
+          "all_sql_attempts": [
+            "SELECT \"disambig_inventor_name_first\", \"disambig_inventor_name_last\", COUNT(\"patent_id\") FROM \"Inventor\" WHERE \"disambig_inventor_name_last\" LIKE '%Smith%' GROUP BY \"inventor_id\";"
+          ],
+          "answer": "disambig_inventor_name_first: David G., disambig_inventor_name_last: Grahame-Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Fanny, disambig_inventor_name_last: Goldsmith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Adrian Edward, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alan, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alexander B., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amos B., disambig_inventor_name_last: Smith, III, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amanda, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Anthony, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew T, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Andrew L., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Austin Lee, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry S., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry C., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Bruce W., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Brandon, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\n... and 230 more results",
+          "verdict": "correct",
+          "input_tokens": 2223,
+          "output_tokens": 57
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"disambig_inventor_name_first\", \"disambig_inventor_name_last\", COUNT(\"patent_id\") FROM \"Inventor\" WHERE \"disambig_inventor_name_last\" LIKE '%Smith%' GROUP BY \"inventor_id\";",
+          "all_sql_attempts": [
+            "SELECT \"disambig_inventor_name_first\", \"disambig_inventor_name_last\", COUNT(\"patent_id\") FROM \"Inventor\" WHERE \"disambig_inventor_name_last\" LIKE '%Smith%' GROUP BY \"inventor_id\";"
+          ],
+          "answer": "disambig_inventor_name_first: David G., disambig_inventor_name_last: Grahame-Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Fanny, disambig_inventor_name_last: Goldsmith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Adrian Edward, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alan, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alexander B., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amos B., disambig_inventor_name_last: Smith, III, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amanda, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Anthony, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew T, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Andrew L., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Austin Lee, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry S., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry C., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Bruce W., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Brandon, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\n... and 230 more results",
+          "verdict": "correct",
+          "input_tokens": 2223,
+          "output_tokens": 57
+        }
+      ],
+      "majority_answer": "disambig_inventor_name_first: David G., disambig_inventor_name_last: Grahame-Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Fanny, disambig_inventor_name_last: Goldsmith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Adrian Edward, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alan, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Alexander B., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amos B., disambig_inventor_name_last: Smith, III, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Amanda, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Anthony, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew T, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Andrew P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Andrew L., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Austin Lee, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry S., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Barry C., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin A., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin P., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Benjamin, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 2\ndisambig_inventor_name_first: Bruce W., disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\ndisambig_inventor_name_first: Brandon, disambig_inventor_name_last: Smith, COUNT(\"patent_id\"): 1\n... and 230 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-patentsview",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "List the patents that have been cited by the most citations, along with the number of citations each has received, considering only patents that have at least one citation.",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | Surgical stapling system comprising a jaw attachment lockout | 955\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | Surgical instrument including a control system | 611\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | Flexible circuits for electrosurgical instrument | 351\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10531929 | Control of robotic arm motion based on sensed load on cutting tool | 246\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10574705 | Data processing and scanning systems for generating and populating a data inventory | 224\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/D874034 | Vehicle rear taillamp | 182\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10599155 | Autonomous vehicle operation feature monitoring and evaluation of effectiveness | 132\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10579028 | Systems and methods for monitoring building health | 125\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555318 | Guided wave communication system with resource allocation and methods for use therewith | 124\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10552058 | Techniques for delegating data processing to a cooperative memory controller | 113",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | Surgical stapling system comprising a jaw attachment lockout | 955",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | Surgical instrument including a control system | 611",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | Flexible circuits for electrosurgical instrument | 351",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10531929 | Control of robotic arm motion based on sensed load on cutting tool | 246",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10574705 | Data processing and scanning systems for generating and populating a data inventory | 224",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/D874034 | Vehicle rear taillamp | 182",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10599155 | Autonomous vehicle operation feature monitoring and evaluation of effectiveness | 132",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10579028 | Systems and methods for monitoring building health | 125",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555318 | Guided wave communication system with resource allocation and methods for use therewith | 124",
+        "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10552058 | Techniques for delegating data processing to a cooperative memory controller | 113"
+      ],
+      "full_result_count": 10,
+      "gold_sparql": "SELECT ?patent ?title (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> .\n  ?citation <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/citation_targets_patent> ?patent .\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?title .\n}\nGROUP BY ?patent ?title\nHAVING (COUNT(DISTINCT ?citation) >= 1)\nORDER BY DESC(?citationCount)\nLIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"citation_patent_id\", COUNT(*) FROM \"Citation\" GROUP BY \"citation_patent_id\" HAVING COUNT(*) >= 1 ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT \"citation_patent_id\", COUNT(*) FROM \"Citation\" GROUP BY \"citation_patent_id\" HAVING COUNT(*) >= 1 ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "citation_patent_id: 7674650, COUNT(*): 13\ncitation_patent_id: 7297977, COUNT(*): 13\ncitation_patent_id: 7732819, COUNT(*): 12\ncitation_patent_id: 7501293, COUNT(*): 12\ncitation_patent_id: 7468304, COUNT(*): 12\ncitation_patent_id: 7462862, COUNT(*): 12\ncitation_patent_id: 7453087, COUNT(*): 12\ncitation_patent_id: 7453065, COUNT(*): 12\ncitation_patent_id: 7411209, COUNT(*): 12\ncitation_patent_id: 7402506, COUNT(*): 12\ncitation_patent_id: 7385224, COUNT(*): 12\ncitation_patent_id: 7323356, COUNT(*): 12\ncitation_patent_id: 7282782, COUNT(*): 12\ncitation_patent_id: 7211825, COUNT(*): 12\ncitation_patent_id: 7105868, COUNT(*): 12\ncitation_patent_id: 7064346, COUNT(*): 12\ncitation_patent_id: 7061014, COUNT(*): 12\ncitation_patent_id: 7049190, COUNT(*): 12\ncitation_patent_id: 6727522, COUNT(*): 12\ncitation_patent_id: 6563174, COUNT(*): 12\n... and 78632 more results",
+          "verdict": "wrong",
+          "input_tokens": 2240,
+          "output_tokens": 35
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"citation_patent_id\", COUNT(*) FROM \"Citation\" GROUP BY \"citation_patent_id\" HAVING COUNT(*) >= 1 ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT \"citation_patent_id\", COUNT(*) FROM \"Citation\" GROUP BY \"citation_patent_id\" HAVING COUNT(*) >= 1 ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "citation_patent_id: 7674650, COUNT(*): 13\ncitation_patent_id: 7297977, COUNT(*): 13\ncitation_patent_id: 7732819, COUNT(*): 12\ncitation_patent_id: 7501293, COUNT(*): 12\ncitation_patent_id: 7468304, COUNT(*): 12\ncitation_patent_id: 7462862, COUNT(*): 12\ncitation_patent_id: 7453087, COUNT(*): 12\ncitation_patent_id: 7453065, COUNT(*): 12\ncitation_patent_id: 7411209, COUNT(*): 12\ncitation_patent_id: 7402506, COUNT(*): 12\ncitation_patent_id: 7385224, COUNT(*): 12\ncitation_patent_id: 7323356, COUNT(*): 12\ncitation_patent_id: 7282782, COUNT(*): 12\ncitation_patent_id: 7211825, COUNT(*): 12\ncitation_patent_id: 7105868, COUNT(*): 12\ncitation_patent_id: 7064346, COUNT(*): 12\ncitation_patent_id: 7061014, COUNT(*): 12\ncitation_patent_id: 7049190, COUNT(*): 12\ncitation_patent_id: 6727522, COUNT(*): 12\ncitation_patent_id: 6563174, COUNT(*): 12\n... and 78632 more results",
+          "verdict": "wrong",
+          "input_tokens": 2240,
+          "output_tokens": 35
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"citation_patent_id\", COUNT(*) FROM \"Citation\" GROUP BY \"citation_patent_id\" HAVING COUNT(*) >= 1 ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT \"citation_patent_id\", COUNT(*) FROM \"Citation\" GROUP BY \"citation_patent_id\" HAVING COUNT(*) >= 1 ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "citation_patent_id: 7674650, COUNT(*): 13\ncitation_patent_id: 7297977, COUNT(*): 13\ncitation_patent_id: 7732819, COUNT(*): 12\ncitation_patent_id: 7501293, COUNT(*): 12\ncitation_patent_id: 7468304, COUNT(*): 12\ncitation_patent_id: 7462862, COUNT(*): 12\ncitation_patent_id: 7453087, COUNT(*): 12\ncitation_patent_id: 7453065, COUNT(*): 12\ncitation_patent_id: 7411209, COUNT(*): 12\ncitation_patent_id: 7402506, COUNT(*): 12\ncitation_patent_id: 7385224, COUNT(*): 12\ncitation_patent_id: 7323356, COUNT(*): 12\ncitation_patent_id: 7282782, COUNT(*): 12\ncitation_patent_id: 7211825, COUNT(*): 12\ncitation_patent_id: 7105868, COUNT(*): 12\ncitation_patent_id: 7064346, COUNT(*): 12\ncitation_patent_id: 7061014, COUNT(*): 12\ncitation_patent_id: 7049190, COUNT(*): 12\ncitation_patent_id: 6727522, COUNT(*): 12\ncitation_patent_id: 6563174, COUNT(*): 12\n... and 78632 more results",
+          "verdict": "wrong",
+          "input_tokens": 2240,
+          "output_tokens": 35
+        }
+      ],
+      "majority_answer": "citation_patent_id: 7674650, COUNT(*): 13\ncitation_patent_id: 7297977, COUNT(*): 13\ncitation_patent_id: 7732819, COUNT(*): 12\ncitation_patent_id: 7501293, COUNT(*): 12\ncitation_patent_id: 7468304, COUNT(*): 12\ncitation_patent_id: 7462862, COUNT(*): 12\ncitation_patent_id: 7453087, COUNT(*): 12\ncitation_patent_id: 7453065, COUNT(*): 12\ncitation_patent_id: 7411209, COUNT(*): 12\ncitation_patent_id: 7402506, COUNT(*): 12\ncitation_patent_id: 7385224, COUNT(*): 12\ncitation_patent_id: 7323356, COUNT(*): 12\ncitation_patent_id: 7282782, COUNT(*): 12\ncitation_patent_id: 7211825, COUNT(*): 12\ncitation_patent_id: 7105868, COUNT(*): 12\ncitation_patent_id: 7064346, COUNT(*): 12\ncitation_patent_id: 7061014, COUNT(*): 12\ncitation_patent_id: 7049190, COUNT(*): 12\ncitation_patent_id: 6727522, COUNT(*): 12\ncitation_patent_id: 6563174, COUNT(*): 12\n... and 78632 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    }
+  ],
+  "schema": "-- SQLite database schema\n\n-- Table Patent: 100000 rows (from Patent.csv)\nCREATE TABLE \"Patent\" (\n  \"patent_id\" INTEGER,\n  \"patent_type\" TEXT,\n  \"patent_date\" TEXT,\n  \"patent_title\" TEXT,\n  \"wipo_kind\" TEXT,\n  \"num_claims\" INTEGER,\n  \"withdrawn\" INTEGER,\n  \"filename\" TEXT\n);\n-- sample rows from Patent:\n--   patent_id='10000000', patent_type='utility', patent_date='2018-06-19', patent_title='Coherent LADAR using intra-pixel quadrat', wipo_kind='B2', num_claims='20', withdrawn='0', filename='ipg180619.xml'\n--   patent_id='10000001', patent_type='utility', patent_date='2018-06-19', patent_title='Injection molding machine and mold thick', wipo_kind='B2', num_claims='12', withdrawn='0', filename='ipg180619.xml'\n\n-- Table Inventor: 100000 rows (from Inventor.csv)\nCREATE TABLE \"Inventor\" (\n  \"patent_id\" INTEGER,\n  \"inventor_sequence\" INTEGER,\n  \"inventor_id\" TEXT,\n  \"disambig_inventor_name_first\" TEXT,\n  \"disambig_inventor_name_last\" TEXT,\n  \"gender_code\" TEXT,\n  \"location_id\" TEXT\n);\n-- sample rows from Inventor:\n--   patent_id='D1006496', inventor_sequence='0', inventor_id='fl:we_ln:jiang-149', disambig_inventor_name_first='Wenjing', disambig_inventor_name_last='Jiang', gender_code='F', location_id='9d072d42-49af-11ed-9879-1234bde3cd05'\n--   patent_id='12029253', inventor_sequence='4', inventor_id='fl:ei_ln:baumker-1', disambig_inventor_name_first='Eiko', disambig_inventor_name_last='B\u00c4UMKER', gender_code='M', location_id='67149e17-49af-11ed-9879-1234bde3cd05'\n\n-- Table Assignee: 100000 rows (from Assignee.csv)\nCREATE TABLE \"Assignee\" (\n  \"patent_id\" INTEGER,\n  \"assignee_sequence\" INTEGER,\n  \"assignee_id\" TEXT,\n  \"disambig_assignee_individual_name_first\" TEXT,\n  \"disambig_assignee_individual_name_last\" TEXT,\n  \"disambig_assignee_organization\" TEXT,\n  \"assignee_type\" REAL,\n  \"location_id\" TEXT\n);\n-- sample rows from Assignee:\n--   patent_id='4488683', assignee_sequence='0', assignee_id='1ea59611-1100-41e1-8805-48bb4d364f0a', disambig_assignee_individual_name_first='', disambig_assignee_individual_name_last='', disambig_assignee_organization='Metal Works Ramat David', assignee_type='3.0', location_id='50dc5d46-16c8-11ed-9b5f-1234bde3cd05'\n--   patent_id='11872626', assignee_sequence='0', assignee_id='a697843f-fe51-4800-be08-e9ea92ffe21d', disambig_assignee_individual_name_first='', disambig_assignee_individual_name_last='', disambig_assignee_organization='Divergent Technologies, Inc.', assignee_type='2.0', location_id='15c69712-16c8-11ed-9b5f-1234bde3cd05'\n\n-- Table CPCClass: 100000 rows (from CPCClass.csv)\nCREATE TABLE \"CPCClass\" (\n  \"patent_id\" INTEGER,\n  \"cpc_sequence\" INTEGER,\n  \"cpc_section\" TEXT,\n  \"cpc_class\" TEXT,\n  \"cpc_subclass\" TEXT,\n  \"cpc_group\" TEXT,\n  \"cpc_type\" TEXT\n);\n-- sample rows from CPCClass:\n--   patent_id='3950000', cpc_sequence='0', cpc_section='A', cpc_class='A63', cpc_subclass='A63C', cpc_group='A63C9/001', cpc_type='inventional'\n--   patent_id='3950000', cpc_sequence='1', cpc_section='A', cpc_class='A63', cpc_subclass='A63C', cpc_group='A63C9/00', cpc_type='inventional'\n\n-- Table Citation: 100000 rows (from Citation.csv)\nCREATE TABLE \"Citation\" (\n  \"patent_id\" INTEGER,\n  \"citation_sequence\" INTEGER,\n  \"citation_patent_id\" INTEGER,\n  \"citation_date\" TEXT,\n  \"record_name\" TEXT,\n  \"wipo_kind\" TEXT,\n  \"citation_category\" TEXT\n);\n-- sample rows from Citation:\n--   patent_id='10000000', citation_sequence='0', citation_patent_id='5093563', citation_date='1992-03-01', record_name='Small', wipo_kind='A', citation_category='cited by examiner'\n--   patent_id='10000000', citation_sequence='1', citation_patent_id='5751830', citation_date='1998-05-01', record_name='Hutchinson', wipo_kind='A', citation_category='cited by applicant'\n\n-- Table Location: 99613 rows (from Location.csv)\nCREATE TABLE \"Location\" (\n  \"location_id\" TEXT,\n  \"disambig_city\" TEXT,\n  \"disambig_state\" TEXT,\n  \"disambig_country\" TEXT,\n  \"latitude\" REAL,\n  \"longitude\" REAL,\n  \"county\" TEXT,\n  \"state_fips\" REAL,\n  \"county_fips\" REAL\n);\n-- sample rows from Location:\n--   location_id='00235947-16c8-11ed-9b5f-1234bde3cd05', disambig_city='Westfield', disambig_state='PA', disambig_country='US', latitude='41.9192368', longitude='-77.5388744', county='Tioga', state_fips='42.0', county_fips='117.0'\n--   location_id='00236a27-16c8-11ed-9b5f-1234bde3cd05', disambig_city='Helfenstein', disambig_state='PA', disambig_country='US', latitude='40.7504993', longitude='-76.4473336', county='Schuylkill County', state_fips='42.0', county_fips='107.0'\n\n-- Foreign key hints (join on these):\n--   Assignee.col -> Location.col\n--   CPCClass.col -> Patent.col\n--   Citation.col -> Patent.col\n--   Inventor.col -> Location.col\n--   Patent.col -> Assignee.col\n--   Patent.col -> CPCClass.col\n--   Patent.col -> Citation.col\n--   Patent.col -> Inventor.col\n"
+}

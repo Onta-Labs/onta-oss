@@ -1,0 +1,226 @@
+{
+  "kg_name": "holdout-v2-cms-nursing-home-compare",
+  "_source": "CMS Nursing Home Compare (Mar2026 release). See scripts/prep_cms_nursing_home_multitable.py.",
+  "_plan_ref": "eval_holdout_v2/schema_overrides/holdout-v2-cms-nursing-home-compare.json (translated from column-prefix to multi-table spec)",
+  "_notes": [
+    "Raw join key in all tables is 'CMS Certification Number (CCN)', normalised to 'ccn' in staged CSVs.",
+    "NursingHome uses the full provider info file (~14.7k facilities, uncapped).",
+    "Child tables (Citation, Inspection, Ownership, Penalty, QualityMeasure) are capped to 5000 rows for the pilot ingest to stay under Neptune's 30/min rate limit in ~60 min.",
+    "Citation entity unions NH_HealthCitations + NH_FireSafetyCitations with a citation_category discriminator.",
+    "Synthetic PKs for child tables use the pattern '{ccn}-{row_idx}' (or '{category_initial}-{ccn}-{row_idx}' for citations).",
+    "State entity is derived from NursingHome.state (one row per distinct 2-letter code, with facility_count attribute).",
+    "Inspection.inspection_key is a derived join column '{ccn}-{health_survey_date}'; citations carry the matching '{ccn}-{survey_date}' so citation_on_inspection links via that soft key (N:1).",
+    "Ownership -> NursingHome is a back-reference (N:1) so we model it explicitly."
+  ],
+  "entity_types": [
+    {
+      "name": "NursingHome",
+      "source_csv": "NursingHome.csv",
+      "primary_key": "ccn",
+      "label_column": "provider_name",
+      "attributes": [
+        "provider_name",
+        "provider_address",
+        "city",
+        "state",
+        "zip_code",
+        "county",
+        "phone_number",
+        "ownership_type",
+        "number_of_certified_beds",
+        "provider_type",
+        "legal_business_name",
+        "overall_rating",
+        "health_inspection_rating",
+        "staffing_rating",
+        "qm_rating",
+        "date_first_approved",
+        "special_focus_status",
+        "chain_name",
+        "chain_id"
+      ]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_code",
+      "label_column": "state_code_label",
+      "attributes": ["state_code_label", "facility_count"]
+    },
+    {
+      "name": "Citation",
+      "source_csv": "Citation.csv",
+      "primary_key": "citation_id",
+      "label_column": "deficiency_category",
+      "attributes": [
+        "citation_category",
+        "survey_date",
+        "survey_type",
+        "deficiency_tag_number",
+        "deficiency_category",
+        "deficiency_prefix",
+        "deficiency_description",
+        "scope_severity_code",
+        "correction_date",
+        "inspection_cycle",
+        "standard_deficiency",
+        "complaint_deficiency"
+      ]
+    },
+    {
+      "name": "Inspection",
+      "source_csv": "Inspection.csv",
+      "primary_key": "inspection_id",
+      "label_column": "health_survey_date",
+      "attributes": [
+        "inspection_cycle",
+        "health_survey_date",
+        "fire_safety_survey_date",
+        "total_health_deficiencies",
+        "total_fire_safety_deficiencies"
+      ]
+    },
+    {
+      "name": "Ownership",
+      "source_csv": "Ownership.csv",
+      "primary_key": "ownership_id",
+      "label_column": "owner_name",
+      "attributes": [
+        "owner_name",
+        "owner_type",
+        "role_in_facility",
+        "ownership_percentage",
+        "association_date"
+      ]
+    },
+    {
+      "name": "Penalty",
+      "source_csv": "Penalty.csv",
+      "primary_key": "penalty_id",
+      "label_column": "penalty_type",
+      "attributes": [
+        "penalty_date",
+        "penalty_type",
+        "fine_amount",
+        "payment_denial_start_date",
+        "payment_denial_days"
+      ]
+    },
+    {
+      "name": "QualityMeasure",
+      "source_csv": "QualityMeasure.csv",
+      "primary_key": "qualitymeasure_id",
+      "label_column": "measure_description",
+      "attributes": [
+        "measure_code",
+        "measure_description",
+        "resident_type",
+        "adjusted_score",
+        "observed_score",
+        "expected_score",
+        "measure_period"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "located_in_state",
+      "source_csv": "NursingHome.csv",
+      "subject_type": "NursingHome",
+      "subject_key_column": "ccn",
+      "object_type": "State",
+      "object_key_column": "state",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "has_citation",
+      "source_csv": "Citation.csv",
+      "subject_type": "NursingHome",
+      "subject_key_column": "ccn",
+      "object_type": "Citation",
+      "object_key_column": "citation_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_inspection",
+      "source_csv": "Inspection.csv",
+      "subject_type": "NursingHome",
+      "subject_key_column": "ccn",
+      "object_type": "Inspection",
+      "object_key_column": "inspection_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_ownership",
+      "source_csv": "Ownership.csv",
+      "subject_type": "NursingHome",
+      "subject_key_column": "ccn",
+      "object_type": "Ownership",
+      "object_key_column": "ownership_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_penalty",
+      "source_csv": "Penalty.csv",
+      "subject_type": "NursingHome",
+      "subject_key_column": "ccn",
+      "object_type": "Penalty",
+      "object_key_column": "penalty_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_quality_measure",
+      "source_csv": "QualityMeasure.csv",
+      "subject_type": "NursingHome",
+      "subject_key_column": "ccn",
+      "object_type": "QualityMeasure",
+      "object_key_column": "qualitymeasure_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "owned_by_entity",
+      "source_csv": "Ownership.csv",
+      "subject_type": "Ownership",
+      "subject_key_column": "ownership_id",
+      "object_type": "NursingHome",
+      "object_key_column": "ccn",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "inspection_at_facility",
+      "source_csv": "Inspection.csv",
+      "subject_type": "Inspection",
+      "subject_key_column": "inspection_id",
+      "object_type": "NursingHome",
+      "object_key_column": "ccn",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "penalty_against_facility",
+      "source_csv": "Penalty.csv",
+      "subject_type": "Penalty",
+      "subject_key_column": "penalty_id",
+      "object_type": "NursingHome",
+      "object_key_column": "ccn",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "quality_measure_for_facility",
+      "source_csv": "QualityMeasure.csv",
+      "subject_type": "QualityMeasure",
+      "subject_key_column": "qualitymeasure_id",
+      "object_type": "NursingHome",
+      "object_key_column": "ccn",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "citation_at_facility",
+      "source_csv": "Citation.csv",
+      "subject_type": "Citation",
+      "subject_key_column": "citation_id",
+      "object_type": "NursingHome",
+      "object_key_column": "ccn",
+      "cardinality": "N:1"
+    }
+  ]
+}

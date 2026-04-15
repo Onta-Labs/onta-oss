@@ -1,0 +1,712 @@
+{
+  "kg": "holdout-v2-npi-registry",
+  "results": [
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct provider types are there?",
+      "expected_answer": "2",
+      "full_expected_items": [
+        "2"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?providerType) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?providerType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/ProviderType> .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"provider_type_id\") FROM \"ProviderType\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"provider_type_id\") FROM \"ProviderType\";"
+          ],
+          "answer": "2",
+          "verdict": "correct",
+          "input_tokens": 1783,
+          "output_tokens": 17
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"provider_type_id\") FROM \"ProviderType\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"provider_type_id\") FROM \"ProviderType\";"
+          ],
+          "answer": "2",
+          "verdict": "correct",
+          "input_tokens": 1783,
+          "output_tokens": 17
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"provider_type_id\") FROM \"ProviderType\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"provider_type_id\") FROM \"ProviderType\";"
+          ],
+          "answer": "2",
+          "verdict": "correct",
+          "input_tokens": 1783,
+          "output_tokens": 17
+        }
+      ],
+      "majority_answer": "2",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available taxonomy groups.",
+      "expected_answer": "Behavioral Health, Nursing, Pharmacy, Technical / Allied, Dental, Other, Physician / Surgeon, Service / Supplier, Chiropractic, Therapy / Rehabilitation ... (12 total)",
+      "full_expected_items": [
+        "Behavioral Health",
+        "Nursing",
+        "Pharmacy",
+        "Technical / Allied",
+        "Dental",
+        "Other",
+        "Physician / Surgeon",
+        "Service / Supplier",
+        "Chiropractic",
+        "Therapy / Rehabilitation",
+        "Facility / Hospital",
+        "Vision Care"
+      ],
+      "full_result_count": 12,
+      "gold_sparql": "SELECT ?taxonomyGroupName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?taxonomyGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/TaxonomyGroup> .\n  ?taxonomyGroup <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/taxonomy_group_name> ?taxonomyGroupName .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"taxonomy_group_name\" FROM \"TaxonomyGroup\"",
+          "all_sql_attempts": [
+            "SELECT \"taxonomy_group_name\" FROM \"TaxonomyGroup\""
+          ],
+          "answer": "taxonomy_group_name: Technical / Allied\ntaxonomy_group_name: Pharmacy\ntaxonomy_group_name: Dental\ntaxonomy_group_name: Other\ntaxonomy_group_name: Nursing\ntaxonomy_group_name: Physician / Surgeon\ntaxonomy_group_name: Behavioral Health\ntaxonomy_group_name: Therapy / Rehabilitation\ntaxonomy_group_name: Facility / Hospital\ntaxonomy_group_name: Vision Care\ntaxonomy_group_name: Chiropractic\ntaxonomy_group_name: Service / Supplier",
+          "verdict": "correct",
+          "input_tokens": 1776,
+          "output_tokens": 14
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"taxonomy_group_name\" FROM \"TaxonomyGroup\"",
+          "all_sql_attempts": [
+            "SELECT \"taxonomy_group_name\" FROM \"TaxonomyGroup\""
+          ],
+          "answer": "taxonomy_group_name: Technical / Allied\ntaxonomy_group_name: Pharmacy\ntaxonomy_group_name: Dental\ntaxonomy_group_name: Other\ntaxonomy_group_name: Nursing\ntaxonomy_group_name: Physician / Surgeon\ntaxonomy_group_name: Behavioral Health\ntaxonomy_group_name: Therapy / Rehabilitation\ntaxonomy_group_name: Facility / Hospital\ntaxonomy_group_name: Vision Care\ntaxonomy_group_name: Chiropractic\ntaxonomy_group_name: Service / Supplier",
+          "verdict": "correct",
+          "input_tokens": 1776,
+          "output_tokens": 14
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"taxonomy_group_name\" FROM \"TaxonomyGroup\"",
+          "all_sql_attempts": [
+            "SELECT \"taxonomy_group_name\" FROM \"TaxonomyGroup\""
+          ],
+          "answer": "taxonomy_group_name: Technical / Allied\ntaxonomy_group_name: Pharmacy\ntaxonomy_group_name: Dental\ntaxonomy_group_name: Other\ntaxonomy_group_name: Nursing\ntaxonomy_group_name: Physician / Surgeon\ntaxonomy_group_name: Behavioral Health\ntaxonomy_group_name: Therapy / Rehabilitation\ntaxonomy_group_name: Facility / Hospital\ntaxonomy_group_name: Vision Care\ntaxonomy_group_name: Chiropractic\ntaxonomy_group_name: Service / Supplier",
+          "verdict": "correct",
+          "input_tokens": 1776,
+          "output_tokens": 14
+        }
+      ],
+      "majority_answer": "taxonomy_group_name: Technical / Allied\ntaxonomy_group_name: Pharmacy\ntaxonomy_group_name: Dental\ntaxonomy_group_name: Other\ntaxonomy_group_name: Nursing\ntaxonomy_group_name: Physician / Surgeon\ntaxonomy_group_name: Behavioral Health\ntaxonomy_group_name: Therapy / Rehabilitation\ntaxonomy_group_name: Facility / Hospital\ntaxonomy_group_name: Vision Care\ntaxonomy_group_name: Chiropractic\ntaxonomy_group_name: Service / Supplier",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "How many unique practice locations are recorded?",
+      "expected_answer": "10000",
+      "full_expected_items": [
+        "10000"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?practiceLocation) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"practice_location_id\") FROM \"PracticeLocation\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"practice_location_id\") FROM \"PracticeLocation\";"
+          ],
+          "answer": "10000",
+          "verdict": "correct",
+          "input_tokens": 1785,
+          "output_tokens": 17
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"practice_location_id\") FROM \"PracticeLocation\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"practice_location_id\") FROM \"PracticeLocation\";"
+          ],
+          "answer": "10000",
+          "verdict": "correct",
+          "input_tokens": 1785,
+          "output_tokens": 17
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"practice_location_id\") FROM \"PracticeLocation\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"practice_location_id\") FROM \"PracticeLocation\";"
+          ],
+          "answer": "10000",
+          "verdict": "correct",
+          "input_tokens": 1785,
+          "output_tokens": 17
+        }
+      ],
+      "majority_answer": "10000",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "What are the names of all the states listed?",
+      "expected_answer": "NV, GA, MA, PA, MI, WA, MN, FL, IL, NC ... (52 total)",
+      "full_expected_items": [
+        "NV",
+        "GA",
+        "MA",
+        "PA",
+        "MI",
+        "WA",
+        "MN",
+        "FL",
+        "IL",
+        "NC",
+        "NY",
+        "OH",
+        "ILOILO",
+        "SD",
+        "DE",
+        "AK",
+        "WY",
+        "KS",
+        "VA",
+        "OK",
+        "CO",
+        "WI",
+        "TX",
+        "IN",
+        "MO",
+        "WV",
+        "AZ",
+        "MS",
+        "TN",
+        "KY",
+        "MD",
+        "CA",
+        "VT",
+        "AR",
+        "UT",
+        "BAJA CALIFORNIA",
+        "NE",
+        "CT",
+        "CAVITE",
+        "AL",
+        "IA",
+        "GU",
+        "AA",
+        "BAHRAIN",
+        "NM",
+        "AE",
+        "ME",
+        "USA",
+        "AP",
+        "HI",
+        "MANAMA",
+        "ZZ"
+      ],
+      "full_result_count": 52,
+      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/state_name> ?stateName .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"state_name\" FROM \"State\"",
+          "all_sql_attempts": [
+            "SELECT \"state_name\" FROM \"State\""
+          ],
+          "answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 32 more results",
+          "verdict": "correct",
+          "input_tokens": 1788,
+          "output_tokens": 10
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"state_name\" FROM \"State\"",
+          "all_sql_attempts": [
+            "SELECT \"state_name\" FROM \"State\""
+          ],
+          "answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 32 more results",
+          "verdict": "correct",
+          "input_tokens": 1788,
+          "output_tokens": 10
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"state_name\" FROM \"State\"",
+          "all_sql_attempts": [
+            "SELECT \"state_name\" FROM \"State\""
+          ],
+          "answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 32 more results",
+          "verdict": "correct",
+          "input_tokens": 1790,
+          "output_tokens": 10
+        }
+      ],
+      "majority_answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 32 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "How many providers have 'LAKE REGIONAL' in their display name?",
+      "expected_answer": "24",
+      "full_expected_items": [
+        "24"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?provider) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/display_name> ?displayName .\n  FILTER(CONTAINS(LCASE(STR(?displayName)), LCASE('LAKE REGIONAL')))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Provider\" WHERE \"display_name\" LIKE '%LAKE REGIONAL%'",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Provider\" WHERE \"display_name\" LIKE '%LAKE REGIONAL%'"
+          ],
+          "answer": "24",
+          "verdict": "correct",
+          "input_tokens": 1816,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Provider\" WHERE \"display_name\" LIKE '%LAKE REGIONAL%'",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Provider\" WHERE \"display_name\" LIKE '%LAKE REGIONAL%'"
+          ],
+          "answer": "24",
+          "verdict": "correct",
+          "input_tokens": 1816,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Provider\" WHERE \"display_name\" LIKE '%LAKE REGIONAL%'",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Provider\" WHERE \"display_name\" LIKE '%LAKE REGIONAL%'"
+          ],
+          "answer": "24",
+          "verdict": "correct",
+          "input_tokens": 1816,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "24",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "List the labels of all cities whose name starts with 'Spring'.",
+      "expected_answer": "Springfield, Springfield, Springfield, Springfield",
+      "full_expected_items": [
+        "Springfield",
+        "Springfield",
+        "Springfield",
+        "Springfield"
+      ],
+      "full_result_count": 4,
+      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/city_name> ?cityName .\n  ?city <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(STRSTARTS(LCASE(STR(?cityName)), LCASE('Spring')))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"city_name\" FROM \"City\" WHERE \"city_name\" LIKE 'Spring%';",
+          "all_sql_attempts": [
+            "SELECT \"city_name\" FROM \"City\" WHERE \"city_name\" LIKE 'Spring%';"
+          ],
+          "answer": "city_name: Springfield\ncity_name: Springfield\ncity_name: Springfield\ncity_name: Springfield",
+          "verdict": "correct",
+          "input_tokens": 1800,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"city_name\" FROM \"City\" WHERE \"city_name\" LIKE 'Spring%';",
+          "all_sql_attempts": [
+            "SELECT \"city_name\" FROM \"City\" WHERE \"city_name\" LIKE 'Spring%';"
+          ],
+          "answer": "city_name: Springfield\ncity_name: Springfield\ncity_name: Springfield\ncity_name: Springfield",
+          "verdict": "correct",
+          "input_tokens": 1800,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"city_name\" FROM \"City\" WHERE \"city_name\" LIKE 'Spring%';",
+          "all_sql_attempts": [
+            "SELECT \"city_name\" FROM \"City\" WHERE \"city_name\" LIKE 'Spring%';"
+          ],
+          "answer": "city_name: Springfield\ncity_name: Springfield\ncity_name: Springfield\ncity_name: Springfield",
+          "verdict": "correct",
+          "input_tokens": 1800,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "city_name: Springfield\ncity_name: Springfield\ncity_name: Springfield\ncity_name: Springfield",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "How many specialties have 'Technician' in their specialty name?",
+      "expected_answer": "16",
+      "full_expected_items": [
+        "16"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?specialty) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER(CONTAINS(LCASE(STR(?specialtyName)), LCASE('Technician')))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Specialty\" WHERE \"specialty_name\" LIKE '%Technician%';",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Specialty\" WHERE \"specialty_name\" LIKE '%Technician%';"
+          ],
+          "answer": "16",
+          "verdict": "correct",
+          "input_tokens": 1798,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Specialty\" WHERE \"specialty_name\" LIKE '%Technician%';",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Specialty\" WHERE \"specialty_name\" LIKE '%Technician%';"
+          ],
+          "answer": "16",
+          "verdict": "correct",
+          "input_tokens": 1798,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Specialty\" WHERE \"specialty_name\" LIKE '%Technician%';",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Specialty\" WHERE \"specialty_name\" LIKE '%Technician%';"
+          ],
+          "answer": "16",
+          "verdict": "correct",
+          "input_tokens": 1798,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "16",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "Find the labels of all states with a country code of 'US'.",
+      "expected_answer": "AZ, KY, WA, OH, SD, KS, DE, AK, WY, NY ... (46 total)",
+      "full_expected_items": [
+        "AZ",
+        "KY",
+        "WA",
+        "OH",
+        "SD",
+        "KS",
+        "DE",
+        "AK",
+        "WY",
+        "NY",
+        "CO",
+        "OK",
+        "VA",
+        "FL",
+        "NC",
+        "MN",
+        "IL",
+        "IA",
+        "GA",
+        "GU",
+        "CT",
+        "NE",
+        "NV",
+        "AA",
+        "NM",
+        "ME",
+        "ZZ",
+        "AP",
+        "HI",
+        "AE",
+        "AL",
+        "WV",
+        "MO",
+        "TN",
+        "MS",
+        "MD",
+        "VT",
+        "CA",
+        "IN",
+        "WI",
+        "TX",
+        "MI",
+        "PA",
+        "UT",
+        "AR",
+        "MA"
+      ],
+      "full_result_count": 46,
+      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/country_code> ?countryCode .\n  ?state <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(?countryCode = 'US')\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"state_name\" FROM \"State\" WHERE \"country_code\" = 'US'",
+          "all_sql_attempts": [
+            "SELECT \"state_name\" FROM \"State\" WHERE \"country_code\" = 'US'"
+          ],
+          "answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 26 more results",
+          "verdict": "correct",
+          "input_tokens": 1797,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"state_name\" FROM \"State\" WHERE \"country_code\" = 'US'",
+          "all_sql_attempts": [
+            "SELECT \"state_name\" FROM \"State\" WHERE \"country_code\" = 'US'"
+          ],
+          "answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 26 more results",
+          "verdict": "correct",
+          "input_tokens": 1797,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"state_name\" FROM \"State\" WHERE \"country_code\" = 'US'",
+          "all_sql_attempts": [
+            "SELECT \"state_name\" FROM \"State\" WHERE \"country_code\" = 'US'"
+          ],
+          "answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 26 more results",
+          "verdict": "correct",
+          "input_tokens": 1797,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "state_name: OH\nstate_name: NY\nstate_name: CO\nstate_name: NC\nstate_name: VA\nstate_name: OK\nstate_name: MN\nstate_name: WA\nstate_name: FL\nstate_name: IL\nstate_name: WI\nstate_name: TX\nstate_name: MI\nstate_name: PA\nstate_name: AR\nstate_name: UT\nstate_name: IN\nstate_name: MA\nstate_name: KY\nstate_name: MD\n... and 26 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many providers are associated with each practice location?",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1"
+      ],
+      "full_result_count": 10,
+      "gold_sparql": "SELECT ?practiceLocation (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?practiceLocation ORDER BY DESC(?providerCount) LIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"practice_location_id\", COUNT(\"provider_id\") FROM \"PracticeLocation\" GROUP BY \"practice_location_id\";",
+          "all_sql_attempts": [
+            "SELECT \"practice_location_id\", COUNT(\"provider_id\") FROM \"PracticeLocation\" GROUP BY \"practice_location_id\";"
+          ],
+          "answer": "practice_location_id: 1003003872__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003003997__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003011560__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003017054__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003032640__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003034950__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003037870__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003039850__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003047390__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003075391__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003095969__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003105669__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003145558__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003146564__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003163775__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003180019__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003181637__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003187865__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003200031__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003241514__loc, COUNT(\"provider_id\"): 1\n... and 9980 more results",
+          "verdict": "wrong",
+          "input_tokens": 1789,
+          "output_tokens": 28
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"practice_location_id\", COUNT(\"provider_id\") FROM \"PracticeLocation\" GROUP BY \"practice_location_id\";",
+          "all_sql_attempts": [
+            "SELECT \"practice_location_id\", COUNT(\"provider_id\") FROM \"PracticeLocation\" GROUP BY \"practice_location_id\";"
+          ],
+          "answer": "practice_location_id: 1003003872__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003003997__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003011560__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003017054__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003032640__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003034950__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003037870__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003039850__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003047390__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003075391__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003095969__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003105669__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003145558__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003146564__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003163775__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003180019__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003181637__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003187865__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003200031__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003241514__loc, COUNT(\"provider_id\"): 1\n... and 9980 more results",
+          "verdict": "wrong",
+          "input_tokens": 1789,
+          "output_tokens": 28
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"practice_location_id\", COUNT(\"provider_id\") FROM \"PracticeLocation\" GROUP BY \"practice_location_id\";",
+          "all_sql_attempts": [
+            "SELECT \"practice_location_id\", COUNT(\"provider_id\") FROM \"PracticeLocation\" GROUP BY \"practice_location_id\";"
+          ],
+          "answer": "practice_location_id: 1003003872__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003003997__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003011560__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003017054__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003032640__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003034950__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003037870__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003039850__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003047390__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003075391__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003095969__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003105669__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003145558__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003146564__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003163775__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003180019__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003181637__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003187865__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003200031__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003241514__loc, COUNT(\"provider_id\"): 1\n... and 9980 more results",
+          "verdict": "wrong",
+          "input_tokens": 1789,
+          "output_tokens": 28
+        }
+      ],
+      "majority_answer": "practice_location_id: 1003003872__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003003997__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003011560__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003017054__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003032640__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003034950__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003037870__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003039850__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003047390__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003075391__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003095969__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003105669__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003145558__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003146564__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003163775__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003180019__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003181637__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003187865__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003200031__loc, COUNT(\"provider_id\"): 1\npractice_location_id: 1003241514__loc, COUNT(\"provider_id\"): 1\n... and 9980 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "Which cities host the most practice locations, and how many do they host?",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218"
+      ],
+      "full_result_count": 10,
+      "gold_sparql": "SELECT ?city (COUNT(DISTINCT ?practiceLocation) AS ?practiceLocationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/city_hosts_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?city ORDER BY DESC(?practiceLocationCount) LIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"city_name\", COUNT(*) FROM \"PracticeLocation\" AS T1 JOIN \"City\" AS T2 ON T1.\"city_id\" = T2.\"city_id\" GROUP BY T1.\"city_id\" ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT T2.\"city_name\", COUNT(*) FROM \"PracticeLocation\" AS T1 JOIN \"City\" AS T2 ON T1.\"city_id\" = T2.\"city_id\" GROUP BY T1.\"city_id\" ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "city_name: Louisa, COUNT(*): 972\ncity_name: Ankeny, COUNT(*): 455\ncity_name: Ames, COUNT(*): 415\ncity_name: Osage Beach, COUNT(*): 397\ncity_name: Dublin, COUNT(*): 355\ncity_name: Westerville, COUNT(*): 324\ncity_name: Columbus, COUNT(*): 299\ncity_name: Rancho Cucamonga, COUNT(*): 273\ncity_name: Paintsville, COUNT(*): 248\ncity_name: Pomona, COUNT(*): 218\ncity_name: Ontario, COUNT(*): 209\ncity_name: Fpo, COUNT(*): 177\ncity_name: Worthington, COUNT(*): 162\ncity_name: Camdenton, COUNT(*): 152\ncity_name: Upland, COUNT(*): 149\ncity_name: Reynoldsburg, COUNT(*): 142\ncity_name: Covina, COUNT(*): 127\ncity_name: Hilliard, COUNT(*): 124\ncity_name: West Covina, COUNT(*): 122\ncity_name: Altoona, COUNT(*): 112\n... and 739 more results",
+          "verdict": "correct",
+          "input_tokens": 1806,
+          "output_tokens": 56
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"city_name\", COUNT(*) FROM \"PracticeLocation\" AS T1 JOIN \"City\" AS T2 ON T1.\"city_id\" = T2.\"city_id\" GROUP BY T1.\"city_id\" ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT T2.\"city_name\", COUNT(*) FROM \"PracticeLocation\" AS T1 JOIN \"City\" AS T2 ON T1.\"city_id\" = T2.\"city_id\" GROUP BY T1.\"city_id\" ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "city_name: Louisa, COUNT(*): 972\ncity_name: Ankeny, COUNT(*): 455\ncity_name: Ames, COUNT(*): 415\ncity_name: Osage Beach, COUNT(*): 397\ncity_name: Dublin, COUNT(*): 355\ncity_name: Westerville, COUNT(*): 324\ncity_name: Columbus, COUNT(*): 299\ncity_name: Rancho Cucamonga, COUNT(*): 273\ncity_name: Paintsville, COUNT(*): 248\ncity_name: Pomona, COUNT(*): 218\ncity_name: Ontario, COUNT(*): 209\ncity_name: Fpo, COUNT(*): 177\ncity_name: Worthington, COUNT(*): 162\ncity_name: Camdenton, COUNT(*): 152\ncity_name: Upland, COUNT(*): 149\ncity_name: Reynoldsburg, COUNT(*): 142\ncity_name: Covina, COUNT(*): 127\ncity_name: Hilliard, COUNT(*): 124\ncity_name: West Covina, COUNT(*): 122\ncity_name: Altoona, COUNT(*): 112\n... and 739 more results",
+          "verdict": "correct",
+          "input_tokens": 1806,
+          "output_tokens": 56
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"city_name\", COUNT(*) FROM \"PracticeLocation\" AS T1 JOIN \"City\" AS T2 ON T1.\"city_id\" = T2.\"city_id\" GROUP BY T1.\"city_id\" ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT T2.\"city_name\", COUNT(*) FROM \"PracticeLocation\" AS T1 JOIN \"City\" AS T2 ON T1.\"city_id\" = T2.\"city_id\" GROUP BY T1.\"city_id\" ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "city_name: Louisa, COUNT(*): 972\ncity_name: Ankeny, COUNT(*): 455\ncity_name: Ames, COUNT(*): 415\ncity_name: Osage Beach, COUNT(*): 397\ncity_name: Dublin, COUNT(*): 355\ncity_name: Westerville, COUNT(*): 324\ncity_name: Columbus, COUNT(*): 299\ncity_name: Rancho Cucamonga, COUNT(*): 273\ncity_name: Paintsville, COUNT(*): 248\ncity_name: Pomona, COUNT(*): 218\ncity_name: Ontario, COUNT(*): 209\ncity_name: Fpo, COUNT(*): 177\ncity_name: Worthington, COUNT(*): 162\ncity_name: Camdenton, COUNT(*): 152\ncity_name: Upland, COUNT(*): 149\ncity_name: Reynoldsburg, COUNT(*): 142\ncity_name: Covina, COUNT(*): 127\ncity_name: Hilliard, COUNT(*): 124\ncity_name: West Covina, COUNT(*): 122\ncity_name: Altoona, COUNT(*): 112\n... and 739 more results",
+          "verdict": "correct",
+          "input_tokens": 1806,
+          "output_tokens": 56
+        }
+      ],
+      "majority_answer": "city_name: Louisa, COUNT(*): 972\ncity_name: Ankeny, COUNT(*): 455\ncity_name: Ames, COUNT(*): 415\ncity_name: Osage Beach, COUNT(*): 397\ncity_name: Dublin, COUNT(*): 355\ncity_name: Westerville, COUNT(*): 324\ncity_name: Columbus, COUNT(*): 299\ncity_name: Rancho Cucamonga, COUNT(*): 273\ncity_name: Paintsville, COUNT(*): 248\ncity_name: Pomona, COUNT(*): 218\ncity_name: Ontario, COUNT(*): 209\ncity_name: Fpo, COUNT(*): 177\ncity_name: Worthington, COUNT(*): 162\ncity_name: Camdenton, COUNT(*): 152\ncity_name: Upland, COUNT(*): 149\ncity_name: Reynoldsburg, COUNT(*): 142\ncity_name: Covina, COUNT(*): 127\ncity_name: Hilliard, COUNT(*): 124\ncity_name: West Covina, COUNT(*): 122\ncity_name: Altoona, COUNT(*): 112\n... and 739 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-011",
+      "tier": "T3",
+      "question": "How many providers are there for each specialty, specifically for specialties with 'Unknown' in their name?",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1"
+      ],
+      "full_result_count": 7,
+      "gold_sparql": "SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_specialty> ?specialty .\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER (CONTAINS(LCASE(?specialtyName), 'unknown'))\n} GROUP BY ?specialty ORDER BY DESC(?providerCount) LIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"specialty_name\", COUNT(*) FROM \"Provider\" AS T1 JOIN \"Specialty\" AS T2 ON T1.\"specialty_id\" = T2.\"specialty_id\" WHERE T2.\"specialty_name\" LIKE '%Unknown%' GROUP BY T2.\"specialty_name\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"specialty_name\", COUNT(*) FROM \"Provider\" AS T1 JOIN \"Specialty\" AS T2 ON T1.\"specialty_id\" = T2.\"specialty_id\" WHERE T2.\"specialty_name\" LIKE '%Unknown%' GROUP BY T2.\"specialty_name\""
+          ],
+          "answer": "specialty_name: Unknown, COUNT(*): 46",
+          "verdict": "wrong",
+          "input_tokens": 1796,
+          "output_tokens": 67
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"specialty_name\", COUNT(*) FROM \"Provider\" AS T1 JOIN \"Specialty\" AS T2 ON T1.\"specialty_id\" = T2.\"specialty_id\" WHERE T2.\"specialty_name\" LIKE '%Unknown%' GROUP BY T2.\"specialty_name\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"specialty_name\", COUNT(*) FROM \"Provider\" AS T1 JOIN \"Specialty\" AS T2 ON T1.\"specialty_id\" = T2.\"specialty_id\" WHERE T2.\"specialty_name\" LIKE '%Unknown%' GROUP BY T2.\"specialty_name\""
+          ],
+          "answer": "specialty_name: Unknown, COUNT(*): 46",
+          "verdict": "wrong",
+          "input_tokens": 1796,
+          "output_tokens": 67
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"specialty_name\", COUNT(*) FROM \"Provider\" AS T1 JOIN \"Specialty\" AS T2 ON T1.\"specialty_id\" = T2.\"specialty_id\" WHERE T2.\"specialty_name\" LIKE '%Unknown%' GROUP BY T2.\"specialty_name\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"specialty_name\", COUNT(*) FROM \"Provider\" AS T1 JOIN \"Specialty\" AS T2 ON T1.\"specialty_id\" = T2.\"specialty_id\" WHERE T2.\"specialty_name\" LIKE '%Unknown%' GROUP BY T2.\"specialty_name\""
+          ],
+          "answer": "specialty_name: Unknown, COUNT(*): 46",
+          "verdict": "wrong",
+          "input_tokens": 1796,
+          "output_tokens": 67
+        }
+      ],
+      "majority_answer": "specialty_name: Unknown, COUNT(*): 46",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    }
+  ],
+  "schema": "-- SQLite database schema\n\n-- Table Provider: 10000 rows (from Provider.csv)\nCREATE TABLE \"Provider\" (\n  \"provider_id\" INTEGER,\n  \"provider_type_id\" TEXT,\n  \"display_name\" TEXT,\n  \"specialty_id\" TEXT,\n  \"taxonomy_group_id\" TEXT,\n  \"enumeration_date\" TEXT,\n  \"status\" TEXT,\n  \"sole_proprietor\" TEXT,\n  \"state_id\" TEXT,\n  \"city_id\" TEXT\n);\n-- sample rows from Provider:\n--   provider_id='1699441469', provider_type_id='individual', display_name='ZACHARY A CROMES', specialty_id='374700000X', taxonomy_group_id='technical', enumeration_date='2021-08-20', status='A', sole_proprietor='NO', state_id='OH', city_id='OH__marysville'\n--   provider_id='1184227050', provider_type_id='individual', display_name='BRIDGET AALSETH', specialty_id='183500000X', taxonomy_group_id='pharmacy', enumeration_date='2020-11-20', status='A', sole_proprietor='NO', state_id='OH', city_id='OH__worthington'\n\n-- Table ProviderType: 2 rows (from ProviderType.csv)\nCREATE TABLE \"ProviderType\" (\n  \"provider_type_id\" TEXT,\n  \"provider_type_name\" TEXT,\n  \"description\" TEXT,\n  \"provider_count\" INTEGER\n);\n-- sample rows from ProviderType:\n--   provider_type_id='individual', provider_type_name='Individual (NPI-1)', description='A single healthcare provider enumerated ', provider_count='6230'\n--   provider_type_id='organization', provider_type_name='Organization (NPI-2)', description='A healthcare organization enumerated as ', provider_count='3770'\n\n-- Table Specialty: 442 rows (from Specialty.csv)\nCREATE TABLE \"Specialty\" (\n  \"specialty_id\" TEXT,\n  \"taxonomy_code\" TEXT,\n  \"specialty_name\" TEXT,\n  \"taxonomy_group_id\" TEXT,\n  \"provider_count\" INTEGER\n);\n-- sample rows from Specialty:\n--   specialty_id='374700000X', taxonomy_code='374700000X', specialty_name='Technician', taxonomy_group_id='technical', provider_count='3'\n--   specialty_id='183500000X', taxonomy_code='183500000X', specialty_name='Pharmacist', taxonomy_group_id='pharmacy', provider_count='266'\n\n-- Table TaxonomyGroup: 12 rows (from TaxonomyGroup.csv)\nCREATE TABLE \"TaxonomyGroup\" (\n  \"taxonomy_group_id\" TEXT,\n  \"taxonomy_group_name\" TEXT,\n  \"provider_count\" INTEGER\n);\n-- sample rows from TaxonomyGroup:\n--   taxonomy_group_id='technical', taxonomy_group_name='Technical / Allied', provider_count='616'\n--   taxonomy_group_id='pharmacy', taxonomy_group_name='Pharmacy', provider_count='467'\n\n-- Table PracticeLocation: 10000 rows (from PracticeLocation.csv)\nCREATE TABLE \"PracticeLocation\" (\n  \"practice_location_id\" TEXT,\n  \"provider_id\" INTEGER,\n  \"address_line\" TEXT,\n  \"city_id\" TEXT,\n  \"state_id\" TEXT,\n  \"postal_code\" INTEGER,\n  \"phone\" TEXT\n);\n-- sample rows from PracticeLocation:\n--   practice_location_id='1699441469__loc', provider_id='1699441469', address_line='104 N MAIN ST', city_id='OH__marysville', state_id='OH', postal_code='43040', phone='937-537-5100'\n--   practice_location_id='1184227050__loc', provider_id='1184227050', address_line='918 N HIGH ST', city_id='OH__worthington', state_id='OH', postal_code='43085', phone='614-888-6366'\n\n-- Table State: 52 rows (from State.csv)\nCREATE TABLE \"State\" (\n  \"state_id\" TEXT,\n  \"state_name\" TEXT,\n  \"country_code\" TEXT\n);\n-- sample rows from State:\n--   state_id='OH', state_name='OH', country_code='US'\n--   state_id='NY', state_name='NY', country_code='US'\n\n-- Table City: 759 rows (from City.csv)\nCREATE TABLE \"City\" (\n  \"city_id\" TEXT,\n  \"city_name\" TEXT,\n  \"state_id\" TEXT\n);\n-- sample rows from City:\n--   city_id='OH__marysville', city_name='Marysville', state_id='OH'\n--   city_id='OH__worthington', city_name='Worthington', state_id='OH'\n\n-- Foreign key hints (join on these):\n--   City.city_id -> PracticeLocation.practice_location_id\n--   City.city_id -> Provider.provider_id\n--   City.city_id -> State.state_id\n--   PracticeLocation.practice_location_id -> City.city_id\n--   PracticeLocation.practice_location_id -> Provider.provider_id\n--   Provider.provider_id -> City.city_id\n--   Provider.provider_id -> PracticeLocation.practice_location_id\n--   Provider.provider_id -> ProviderType.provider_type_id\n--   Provider.provider_id -> Specialty.specialty_id\n--   Provider.provider_id -> State.state_id\n--   ProviderType.provider_type_id -> Provider.provider_id\n--   Specialty.specialty_id -> Provider.provider_id\n--   Specialty.specialty_id -> TaxonomyGroup.taxonomy_group_id\n--   State.state_id -> City.city_id\n--   State.state_id -> Provider.provider_id\n--   TaxonomyGroup.taxonomy_group_id -> Specialty.specialty_id\n"
+}
