@@ -205,7 +205,7 @@ async def invoke_function(
     if cik_bindings:
         cik_value = cik_bindings[0].get("cik")
 
-    # Fallback: check linked FundingRound entities for the CIK
+    # Fallback 1: check linked FundingRound entities for a filing_cik attribute
     if not cik_value:
         fallback_query = (
             f"SELECT ?cik FROM <{instance_graph}>\n"
@@ -218,6 +218,25 @@ async def invoke_function(
         _, fb_bindings = parse_sparql_results(raw_fallback)
         if fb_bindings:
             cik_value = fb_bindings[0].get("cik")
+
+    # Fallback 2: FundingRound entity label IS the CIK (pear-backyard data pattern)
+    if not cik_value:
+        label_query = (
+            f"SELECT ?label FROM <{instance_graph}>\n"
+            f"WHERE {{\n"
+            f"  ?round <https://omnix.dev/onto/company_name> <{body.entity_uri}> .\n"
+            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FundingRound> .\n"
+            f"  ?round <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n"
+            f"}}\n"
+            f"LIMIT 1"
+        )
+        raw_label = await client.query(label_query)
+        _, label_bindings = parse_sparql_results(raw_label)
+        if label_bindings:
+            candidate = label_bindings[0].get("label", "")
+            # Verify it looks like a CIK (all digits, possibly zero-padded)
+            if candidate.lstrip("0").isdigit():
+                cik_value = candidate
 
     if not cik_value:
         raise HTTPException(
