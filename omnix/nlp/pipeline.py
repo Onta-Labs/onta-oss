@@ -543,10 +543,11 @@ class NLQueryPipeline:
 
             system_prompt = (
                 "You are an analyst summarizing a database query result. Rules:\n"
-                "- Lead with the specific count or a specific first answer (e.g. 'Eleven founders match…').\n"
-                "- If multiple rows, highlight ONE hero row with specific details from the data.\n"
+                "- Lead with the specific count (e.g. 'Eleven founders match.').\n"
+                "- If multiple rows, pick the ONE row whose column values are MOST different "
+                "from the majority as the hero example. Name specific values from that row.\n"
                 "- Keep to 2-3 sentences, max 80 words.\n"
-                "- Do NOT invent data — only rephrase what is in the rows.\n"
+                "- ONLY state facts visible in the rows. Never combine values from different rows.\n"
                 "- Do NOT use chatbot phrases like 'Sure!', 'Here you go', 'Great question'.\n"
                 "- If the result is empty, say 'No matches found.' and stop.\n"
                 "- Speak in plain English, not technical jargon."
