@@ -1,0 +1,709 @@
+[
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-001",
+    "tier": "T1",
+    "question": "How many distinct organizations are there?",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?organization) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n}",
+    "expected_answer": "34",
+    "full_expected_items": [
+      "34"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "34",
+        "code": "result = int(dfs['Organization']['organization_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.218644142150879,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "34",
+        "code": "result = int(dfs['Organization']['organization_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.4369621276855469,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "34",
+        "code": "result = int(dfs['Organization']['organization_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.1470890045166016,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "34",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-002",
+    "tier": "T1",
+    "question": "List the names of all available counties.",
+    "gold_sparql": "SELECT ?county_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n}",
+    "expected_answer": "Plumas, Siskiyou, Santa Barbara, San Mateo, Humboldt, Imperial, Mendocino, Merced, Lake, Marin ... (25 total)",
+    "full_expected_items": [
+      "Plumas",
+      "Siskiyou",
+      "Santa Barbara",
+      "San Mateo",
+      "Humboldt",
+      "Imperial",
+      "Mendocino",
+      "Merced",
+      "Lake",
+      "Marin",
+      "Monterey",
+      "San Benito",
+      "Riverside",
+      "Santa Clara",
+      "Shasta",
+      "San Luis Obispo",
+      "San Diego",
+      "Santa Cruz",
+      "Tulare",
+      "Alameda",
+      "Amador",
+      "Contra Costa",
+      "Del Norte",
+      "Inyo",
+      "Kings"
+    ],
+    "full_result_count": 25,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Alameda\nAmador\nContra Costa\nDel Norte\nHumboldt\nImperial\nInyo\nKings\nLake\nMarin\nMendocino\nMerced\nMonterey\nPlumas\nRiverside\nSan Benito\nSan Diego\nSan Luis Obispo\nSan Mateo\nSanta Barbara\nSanta Clara\nSanta Cruz\nShasta\nSiskiyou\nTulare",
+        "code": "result = dfs['County']['county_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1475768089294434,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Alameda\nAmador\nContra Costa\nDel Norte\nHumboldt\nImperial\nInyo\nKings\nLake\nMarin\nMendocino\nMerced\nMonterey\nPlumas\nRiverside\nSan Benito\nSan Diego\nSan Luis Obispo\nSan Mateo\nSanta Barbara\nSanta Clara\nSanta Cruz\nShasta\nSiskiyou\nTulare",
+        "code": "result = dfs['County']['county_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.095318078994751,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Alameda\nAmador\nContra Costa\nDel Norte\nHumboldt\nImperial\nInyo\nKings\nLake\nMarin\nMendocino\nMerced\nMonterey\nPlumas\nRiverside\nSan Benito\nSan Diego\nSan Luis Obispo\nSan Mateo\nSanta Barbara\nSanta Clara\nSanta Cruz\nShasta\nSiskiyou\nTulare",
+        "code": "result = dfs['County']['county_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1862659454345703,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Alameda\nAmador\nContra Costa\nDel Norte\nHumboldt\nImperial\nInyo\nKings\nLake\nMarin\nMendocino\nMerced\nMonterey\nPlumas\nRiverside\nSan Benito\nSan Diego\nSan Luis Obispo\nSan Mateo\nSanta Barbara\nSanta Clara\nSanta Cruz\nShasta\nSiskiyou\nTulare",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-003",
+    "tier": "T1",
+    "question": "What are the names of the different water body types?",
+    "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n}",
+    "expected_answer": "Lake, Spring, Canal Irrigation, Channelized Stream, Estuary, Land Runoff, Other-Surface Water, Pond, Pond-Stormwater, Reservoir ... (21 total)",
+    "full_expected_items": [
+      "Lake",
+      "Spring",
+      "Canal Irrigation",
+      "Channelized Stream",
+      "Estuary",
+      "Land Runoff",
+      "Other-Surface Water",
+      "Pond",
+      "Pond-Stormwater",
+      "Reservoir",
+      "River/Stream",
+      "River/Stream Intermittent",
+      "River/Stream Perennial",
+      "River/stream Effluent-Dominated",
+      "Riverine Impoundment",
+      "Seep",
+      "Storm Sewer",
+      "Well",
+      "Wetland Palustrine-Forested",
+      "Wetland Palustrine-Shrub-Scrub",
+      "Wetland Riverine-Emergent"
+    ],
+    "full_result_count": 21,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+        "code": "result = dfs['WaterBodyType']['waterbodytype_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5544860363006592,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+        "code": "result = dfs['WaterBodyType']['waterbodytype_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.33182692527771,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+        "code": "result = dfs['WaterBodyType']['waterbodytype_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 6.546325206756592,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-004",
+    "tier": "T1",
+    "question": "How many unique HUC8 codes are recorded?",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?huc8_code) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?huc8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/HUC8> .\n  ?huc8 <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/huc8_code> ?huc8_code .\n}",
+    "expected_answer": "44",
+    "full_expected_items": [
+      "44"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "44",
+        "code": "result = int(dfs['HUC8']['huc8_code'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.1207878589630127,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "44",
+        "code": "result = int(dfs['HUC8']['huc8_code'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.7944691181182861,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "44",
+        "code": "result = int(dfs['HUC8']['huc8_code'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.1485481262207031,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "44",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-005",
+    "tier": "T2",
+    "question": "What are the labels of organizations whose name contains 'National Park Service'?",
+    "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?name .\n  ?organization <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(CONTAINS(LCASE(STR(?name)), \"national park service\"))\n}",
+    "expected_answer": "National Park Service Water Resources Division",
+    "full_expected_items": [
+      "National Park Service Water Resources Division"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "National Park Service Water Resources Division",
+        "code": "result = dfs['Organization'][dfs['Organization']['organization_name'].str.contains('National Park Service', case=False, na=False)]['organization_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.4429492950439453,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "National Park Service Water Resources Division",
+        "code": "result = dfs['Organization'][dfs['Organization']['organization_name'].str.contains('National Park Service', case=False, na=False)]['organization_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.146981954574585,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "National Park Service Water Resources Division",
+        "code": "result = dfs['Organization'][dfs['Organization']['organization_name'].str.contains('National Park Service', case=False, na=False)]['organization_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.400743007659912,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "National Park Service Water Resources Division",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-006",
+    "tier": "T2",
+    "question": "List the names of counties that start with 'M'.",
+    "gold_sparql": "SELECT ?county_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n  FILTER(STRSTARTS(?county_name, \"M\"))\n}",
+    "expected_answer": "Mendocino, Merced, Marin, Monterey",
+    "full_expected_items": [
+      "Mendocino",
+      "Merced",
+      "Marin",
+      "Monterey"
+    ],
+    "full_result_count": 4,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Marin\nMendocino\nMerced\nMonterey",
+        "code": "result = dfs['County'][dfs['County']['county_name'].str.startswith('M')]['county_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.1233608722686768,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Marin\nMendocino\nMerced\nMonterey",
+        "code": "result = dfs['County'][dfs['County']['county_name'].str.startswith('M', na=False)]['county_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.2681128978729248,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Marin\nMendocino\nMerced\nMonterey",
+        "code": "result = dfs['County'][dfs['County']['county_name'].str.startswith('M', na=False)]['county_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.2538821697235107,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Marin\nMendocino\nMerced\nMonterey",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-007",
+    "tier": "T2",
+    "question": "How many stations have an elevation greater than 1000?",
+    "gold_sparql": "SELECT (COUNT(?station) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_elevation> ?elevation_str .\n  BIND(xsd:integer(?elevation_str) AS ?elevation) .\n  FILTER(?elevation > 1000)\n}",
+    "expected_answer": "3",
+    "full_expected_items": [
+      "3"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "3",
+        "code": "result = int(dfs['Station'][dfs['Station']['station_elevation'] > 1000]['station_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.3021152019500732,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "3",
+        "code": "result = int(dfs['Station'][dfs['Station']['station_elevation'] > 1000]['station_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.274914264678955,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "3",
+        "code": "result = int(dfs['Station'][dfs['Station']['station_elevation'] > 1000]['station_id'].nunique())",
+        "verdict": "correct",
+        "elapsed": 1.2556767463684082,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "3",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-008",
+    "tier": "T3",
+    "question": "How many samples were collected by each organization?",
+    "gold_sparql": "SELECT ?organizationName (COUNT(?sample) AS ?sampleCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organizationName .\n} GROUP BY ?organizationName ORDER BY DESC(?sampleCount)",
+    "expected_answer": "Hoopa Valley Tribe (Tribal) | 1218\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870\nBig Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700\nNational Park Service Water Resources Division | 359\nCalifornia State Water Resources Control Board | 246\nCher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228\nCoyote Valley Band of Pomo Indians of California (Tribal) | 225\nYurok Tribe of the Yurok Reservation, California (Tribal) | 137\nBLUELAKERANCHERIA_WQX (Tribal) | 96\nHabematolel Pomo of Upper Lake, California (Tribal) | 82\n... (34 total rows)",
+    "full_expected_items": [
+      "Hoopa Valley Tribe (Tribal) | 1218",
+      "Tolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870",
+      "Big Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700",
+      "National Park Service Water Resources Division | 359",
+      "California State Water Resources Control Board | 246",
+      "Cher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228",
+      "Coyote Valley Band of Pomo Indians of California (Tribal) | 225",
+      "Yurok Tribe of the Yurok Reservation, California (Tribal) | 137",
+      "BLUELAKERANCHERIA_WQX (Tribal) | 96",
+      "Habematolel Pomo of Upper Lake, California (Tribal) | 82",
+      "Resighini Rancheria, California (Tribal) | 70",
+      "Wiyot Tribe, California (Tribal) | 49",
+      "Sherwood Valley Band Of Pomo Indians | 48",
+      "Karuk Tribe (Tribal) | 46",
+      "Owens Valley Indian Water Commission (Tribal) | 43",
+      "Morongo Band of Mission Indians | 41",
+      "Buena Vista Rancheria of Me-Wuk Indians of California (Tribal) | 34",
+      "Bishop Paiute Tribe | 33",
+      "Pauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal) | 21",
+      "La Posta EPA (Tribal) | 17",
+      "Cahto Tribe of the Laytonville Rancheria (Tribal) | 15",
+      "Cocopah Tribe of Arizona (Tribal) | 14",
+      "Santa Rosa Indian Community of the Santa Rosa Rancheria, California (Tribal) | 12",
+      "Quechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12",
+      "Santa Ynez Band of Chumash Indians | 11",
+      "Middletown Rancheria of Pomo Indians of California (Tribal) | 10",
+      "Twenty-Nine Palms Tribal EPA | 10",
+      "Augustine Band of Cahuilla Indians (Tribal) | 9",
+      "Elk Valley Rancheria, California (Tribal) | 9",
+      "Pechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal) | 8",
+      "Cabazon Band of Cahuilla Indians, California (Tribal) | 7",
+      "North American Lake Management Society | 7",
+      "Adventure Scientists (Volunteer)* | 3",
+      "Soboba Band of Luiseno Indians, California (Tribal) | 2"
+    ],
+    "full_result_count": 34,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Adventure Scientists (Volunteer)* | 3\nAugustine Band of Cahuilla Indians (Tribal) | 9\nBLUELAKERANCHERIA_WQX (Tribal) | 96\nBig Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700\nBishop Paiute Tribe | 33\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal) | 34\nCabazon Band of Cahuilla Indians, California (Tribal) | 7\nCahto Tribe of the Laytonville Rancheria (Tribal) | 15\nCalifornia State Water Resources Control Board | 246\nCher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228\nCocopah Tribe of Arizona (Tribal) | 14\nCoyote Valley Band of Pomo Indians of California (Tribal) | 225\nElk Valley Rancheria, California (Tribal) | 9\nHabematolel Pomo of Upper Lake, California (Tribal) | 82\nHoopa Valley Tribe (Tribal) | 1218\nKaruk Tribe (Tribal) | 46\nLa Posta EPA (Tribal) | 17\nMiddletown Rancheria of Pomo Indians of California (Tribal) | 10\nMorongo Band of Mission Indians | 41\nNational Park Service Water Resources Division | 359\nNorth American Lake Management Society | 7\nOwens Valley Indian Water Commission (Tribal) | 43\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal) | 21\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal) | 8\nQuechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12\nResighini Rancheria, California (Tribal) | 70\nSanta Rosa Indian Community of the Santa Rosa Rancheria, California (Tribal) | 12\nSanta Ynez Band of Chumash Indians | 11\nSherwood Valley Band Of Pomo Indians | 48\nSoboba Band of Luiseno Indians, California (Tribal) | 2\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870\nTwenty-Nine Palms Tribal EPA | 10\nWiyot Tribe, California (Tribal) | 49\nYurok Tribe of the Yurok Reservation, California (Tribal) | 137",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Sample'], dfs['Organization'], left_on='sample_organization_id', right_on='organization_id')\ncounts = merged_df.groupby('organization_name').size().reset_index(name='count')\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.345931053161621,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Adventure Scientists (Volunteer)* | 3\nAugustine Band of Cahuilla Indians (Tribal) | 9\nBLUELAKERANCHERIA_WQX (Tribal) | 96\nBig Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700\nBishop Paiute Tribe | 33\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal) | 34\nCabazon Band of Cahuilla Indians, California (Tribal) | 7\nCahto Tribe of the Laytonville Rancheria (Tribal) | 15\nCalifornia State Water Resources Control Board | 246\nCher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228\nCocopah Tribe of Arizona (Tribal) | 14\nCoyote Valley Band of Pomo Indians of California (Tribal) | 225\nElk Valley Rancheria, California (Tribal) | 9\nHabematolel Pomo of Upper Lake, California (Tribal) | 82\nHoopa Valley Tribe (Tribal) | 1218\nKaruk Tribe (Tribal) | 46\nLa Posta EPA (Tribal) | 17\nMiddletown Rancheria of Pomo Indians of California (Tribal) | 10\nMorongo Band of Mission Indians | 41\nNational Park Service Water Resources Division | 359\nNorth American Lake Management Society | 7\nOwens Valley Indian Water Commission (Tribal) | 43\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal) | 21\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal) | 8\nQuechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12\nResighini Rancheria, California (Tribal) | 70\nSanta Rosa Indian Community of the Santa Rosa Rancheria, California (Tribal) | 12\nSanta Ynez Band of Chumash Indians | 11\nSherwood Valley Band Of Pomo Indians | 48\nSoboba Band of Luiseno Indians, California (Tribal) | 2\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870\nTwenty-Nine Palms Tribal EPA | 10\nWiyot Tribe, California (Tribal) | 49\nYurok Tribe of the Yurok Reservation, California (Tribal) | 137",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Sample'], dfs['Organization'], left_on='sample_organization_id', right_on='organization_id')\ncounts = merged_df.groupby('organization_name').size().reset_index(name='count')\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.3779499530792236,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Adventure Scientists (Volunteer)* | 3\nAugustine Band of Cahuilla Indians (Tribal) | 9\nBLUELAKERANCHERIA_WQX (Tribal) | 96\nBig Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700\nBishop Paiute Tribe | 33\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal) | 34\nCabazon Band of Cahuilla Indians, California (Tribal) | 7\nCahto Tribe of the Laytonville Rancheria (Tribal) | 15\nCalifornia State Water Resources Control Board | 246\nCher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228\nCocopah Tribe of Arizona (Tribal) | 14\nCoyote Valley Band of Pomo Indians of California (Tribal) | 225\nElk Valley Rancheria, California (Tribal) | 9\nHabematolel Pomo of Upper Lake, California (Tribal) | 82\nHoopa Valley Tribe (Tribal) | 1218\nKaruk Tribe (Tribal) | 46\nLa Posta EPA (Tribal) | 17\nMiddletown Rancheria of Pomo Indians of California (Tribal) | 10\nMorongo Band of Mission Indians | 41\nNational Park Service Water Resources Division | 359\nNorth American Lake Management Society | 7\nOwens Valley Indian Water Commission (Tribal) | 43\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal) | 21\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal) | 8\nQuechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12\nResighini Rancheria, California (Tribal) | 70\nSanta Rosa Indian Community of the Santa Rosa Rancheria, California (Tribal) | 12\nSanta Ynez Band of Chumash Indians | 11\nSherwood Valley Band Of Pomo Indians | 48\nSoboba Band of Luiseno Indians, California (Tribal) | 2\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870\nTwenty-Nine Palms Tribal EPA | 10\nWiyot Tribe, California (Tribal) | 49\nYurok Tribe of the Yurok Reservation, California (Tribal) | 137",
+        "code": "import pandas as pd\n\nmerged_df = pd.merge(dfs['Sample'], dfs['Organization'], left_on='sample_organization_id', right_on='organization_id')\ncounts = merged_df.groupby('organization_name').size().reset_index(name='count')\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5610387325286865,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Adventure Scientists (Volunteer)* | 3\nAugustine Band of Cahuilla Indians (Tribal) | 9\nBLUELAKERANCHERIA_WQX (Tribal) | 96\nBig Valley Band of Pomo Indians of the Big Valley Rancheria, California (Tribal) | 700\nBishop Paiute Tribe | 33\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal) | 34\nCabazon Band of Cahuilla Indians, California (Tribal) | 7\nCahto Tribe of the Laytonville Rancheria (Tribal) | 15\nCalifornia State Water Resources Control Board | 246\nCher-Ae Heights Indian Community of the Trinidad Rancheria (Tribal) | 228\nCocopah Tribe of Arizona (Tribal) | 14\nCoyote Valley Band of Pomo Indians of California (Tribal) | 225\nElk Valley Rancheria, California (Tribal) | 9\nHabematolel Pomo of Upper Lake, California (Tribal) | 82\nHoopa Valley Tribe (Tribal) | 1218\nKaruk Tribe (Tribal) | 46\nLa Posta EPA (Tribal) | 17\nMiddletown Rancheria of Pomo Indians of California (Tribal) | 10\nMorongo Band of Mission Indians | 41\nNational Park Service Water Resources Division | 359\nNorth American Lake Management Society | 7\nOwens Valley Indian Water Commission (Tribal) | 43\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal) | 21\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal) | 8\nQuechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12\nResighini Rancheria, California (Tribal) | 70\nSanta Rosa Indian Community of the Santa Rosa Rancheria, California (Tribal) | 12\nSanta Ynez Band of Chumash Indians | 11\nSherwood Valley Band Of Pomo Indians | 48\nSoboba Band of Luiseno Indians, California (Tribal) | 2\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal) | 870\nTwenty-Nine Palms Tribal EPA | 10\nWiyot Tribe, California (Tribal) | 49\nYurok Tribe of the Yurok Reservation, California (Tribal) | 137",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-009",
+    "tier": "T3",
+    "question": "List the names of parameters that were measured in samples with a 'Water' media type, and count how many such samples measured each parameter.",
+    "gold_sparql": "SELECT ?parameterName (COUNT(?sample) AS ?sampleCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_measures_parameter> ?parameter .\n  ?parameter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Parameter> .\n  ?parameter <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/parameter_name> ?parameterName .\n} GROUP BY ?parameterName ORDER BY DESC(?sampleCount)",
+    "expected_answer": "Dissolved oxygen (DO) | 4692",
+    "full_expected_items": [
+      "Dissolved oxygen (DO) | 4692"
+    ],
+    "full_result_count": 1,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Dissolved oxygen (DO) | 4692",
+        "code": "import pandas as pd\n\n# Filter samples by media type 'Water'\nwater_samples = dfs['Sample'][dfs['Sample']['sample_media'] == 'Water']\n\n# Merge with Parameter to get parameter names\nmerged = pd.merge(water_samples, dfs['Parameter'], left_on='sample_parameter_id', right_on='parameter_id')\n\n# Group by parameter name and count occurrences\ncounts = merged.groupby('parameter_name').size().reset_index(name='count')\n\n# Convert to list of [name, count] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 5.272222995758057,
+        "status": 200,
+        "retries": 2
+      },
+      {
+        "seed": "2",
+        "answer": "SANDBOX___PANDAS_AGENT_ERROR__ SyntaxError unterminated string literal (detected at line 2) (<string>, line 2)",
+        "code": "{\"code\": \"merged = dfs['Sample'].merge(dfs['Parameter'], left_on='sample_parameter_id', right_on='parameter_id')\\nwater_samples = merged[merged['sample_media'] == 'Water']\\ncounts = water_samples.groupby('parameter_name').size().reset_index()\\nresult = counts.values.tolist()\"}\n\"}",
+        "verdict": "error",
+        "elapsed": 5.161401033401489,
+        "status": 0,
+        "retries": 2
+      },
+      {
+        "seed": "3",
+        "answer": "Dissolved oxygen (DO) | 4692",
+        "code": "import pandas as pd\n\n# Filter samples by media type 'Water'\nwater_samples = dfs['Sample'][dfs['Sample']['sample_media'] == 'Water']\n\n# Merge with Parameter to get parameter names\nmerged = pd.merge(water_samples, dfs['Parameter'], left_on='sample_parameter_id', right_on='parameter_id')\n\n# Group by parameter name and count occurrences\ncounts = merged.groupby('parameter_name').size().reset_index(name='count')\n\n# Convert to list of [name, count] pairs\nresult = counts.values.tolist()",
+        "verdict": "correct",
+        "elapsed": 4.031637907028198,
+        "status": 200,
+        "retries": 1
+      }
+    ],
+    "majority_answer": "Dissolved oxygen (DO) | 4692",
+    "majority_verdict": "correct",
+    "correct_runs": 2,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-010",
+    "tier": "T3",
+    "question": "How many samples were collected at each station?",
+    "gold_sparql": "SELECT ?station_name (COUNT(?sample) AS ?sample_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_has_sample> ?sample .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name .\n} GROUP BY ?station_name ORDER BY DESC(?sample_count) LIMIT 10",
+    "expected_answer": "CDR and Nutrients at Saints Rest Bar | 822\nCDR at Red Rock | 396\nSmith River Middle Fork | 106\nRowdy Creek 1 | 106\nLopez Creek 2 | 102\nRowdy Creek 2 | 98\nSmith River 2 | 98\nGilbert Creek 3 | 96\nSmith River 3A | 94\nLopez Creek 1 | 86",
+    "full_expected_items": [
+      "CDR and Nutrients at Saints Rest Bar | 822",
+      "CDR at Red Rock | 396",
+      "Smith River Middle Fork | 106",
+      "Rowdy Creek 1 | 106",
+      "Lopez Creek 2 | 102",
+      "Rowdy Creek 2 | 98",
+      "Smith River 2 | 98",
+      "Gilbert Creek 3 | 96",
+      "Smith River 3A | 94",
+      "Lopez Creek 1 | 86"
+    ],
+    "full_result_count": 10,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Monitoring Location LAVO_WQ01 | 4\nMonitoring Location LAVO_WQ04 | 1\nMonitoring Location LAVO_WQ05 | 1\nMonitoring Location LAVO_WQ08 | 1\nMonitoring Location LAVO_WQ09 | 1\nMonitoring Location LAVO_WQ10 | 1\nMonitoring Location LAVO_WQ12 | 2\nMonitoring Location LAVO_WQ13 | 1\nMonitoring Location LAVO_WQ15 | 3\nMonitoring Location LAVO_WQ17 | 1\nMonitoring Location LAVO_WQ20 | 2\nMonitoring Location LAVO_WQ21 | 1\nMonitoring Location LAVO_WQ22 | 1\nMonitoring Location LAVO_WQ23 | 1\nMonitoring Location LAVO_WQ24 | 1\nMonitoring Location LAVO_WQ25 | 2\nMonitoring Location LAVO_WQ27 | 1\nMonitoring Location LAVO_WQ29 | 1\nMonitoring Location LAVO_WQ32 | 1\nMonitoring Location LAVO_WQ33 | 1\nMonitoring Location LAVO_WQ36 | 1\nMonitoring Location LAVO_WQ37 | 1\nMonitoring Location LAVO_WQ40 | 1\nMonitoring Location LAVO_WQ43 | 2\nMonitoring Location LAVO_WQ45 | 1\nMonitoring Location LAVO_WQ48 | 2\nMonitoring Location REDW_WQ01 | 1\nMonitoring Location REDW_WQ02 | 1\nMonitoring Location REDW_WQ03 | 1\nMonitoring Location REDW_WQ04 | 1\nMonitoring Location REDW_WQ05 | 1\nMonitoring Location REDW_WQ06 | 1\nMonitoring Location REDW_WQ07 | 1\nMonitoring Location REDW_WQ08 | 1\nMonitoring Location REDW_WQ09 | 1\nMonitoring Location REDW_WQ10 | 1\nMonitoring Location REDW_WQ11 | 1\nMonitoring Location REDW_WQ12 | 1\nMonitoring Location REDW_WQ13 | 1\nMonitoring Location REDW_WQ14 | 1\nMonitoring Location REDW_WQ15 | 1\nMonitoring Location REDW_WQ16 | 1\nMonitoring Location REDW_WQ17 | 2\nMonitoring Location REDW_WQ19 | 1\nMonitoring Location REDW_WQ20 | 1\nMonitoring Location REDW_WQ21 | 1\nMonitoring Location REDW_WQ23 | 1\nMonitoring Location REDW_WQ24 | 1\nMonitoring Location REDW_WQ25 | 1\nMonitoring Location REDW_WQ26 | 1\nMonitoring Location REDW_WQ28 | 1\nBear Gulch behind Resource Management Building | 4\nBootjack Creek above Panoramic Highway | 12\nChalone Creek at Road Bridge | 1\nNorth Fork Chalone Creek Upstream of West Fork | 2\nFern Creek near Muir Woods Boundary | 14\nFern Creek above Panoramic Highway | 14\nFranklin Creek | 1\nGerbode Creek above Confluence with Rodeo Creek | 4\nGreen Gulch North (Northern Branch) | 9\nGreen Gulch Control | 13\nGolden Gate Dairy Tributary Upstream of Culvert | 1\nKent Creek 50 ft above Redwood Creek Confluence | 5\nBear Valley Creek | 9\nCheda Creek | 8\nDevil's Gulch | 9\nMcGarvey Gulch Upstream of West Union Creek | 9\nNyhan Creek just Outside Golden Gate NRA Boundary | 3\nOakwood Valley Creek | 1\nJohn West Fork above Hwy. 1 Culvert | 13\nOlema Creek below Residence #530 (Anne Tisei's house) | 13\nOlema Creek at Bear Valley Road Bridge | 16\nOlema Creek - Mainstem at Northernmost Five Brooks Bridge | 14\nOlema Creek above Randall Gulch | 13\nDavis Boucher Creek | 15\nPine Gulch Creek at Stream Gauge near Bolinas Lagoon | 3\nPine Gulch above Teixeira, above Horse Trail Crossing | 3\nRodeo Creek below Stables | 4\nRedwood Creek below Muir Woods | 13\nRedwood Creek | 14\nRedwood Creek at Muir Beach | 14\nSandy Creek in Campground near Septic System | 2\nSandy Creek in Campground near Pump Station | 4\nTennessee Valley Creek above Miwok Stables | 1\nTennessee Valley Creek below Miwok Stables | 1\nTennessee Valley Creek | 3\nWest Union Creek | 12\nWest Union Creek Tributary #1 | 4\nWest Union Creek Tributary #2 | 3\nWest Union Creek Upstream of Tributary #2 | 13\nwell 4 | 2\nwell 6 | 3\nwell 7 | 3\nwell 8 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.95.118.48 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.97.118.49 | 1\nBig Sur Wild and Scenic River-36.25.121.79 | 1\nBishop Creek - SW-1 | 9\nBishop Creek - SW-2 | 9\nBishop Creek - SW-3 | 6\nBishop Creek - SW-4 | 9\nMad River at HBMWD Pump Station | 25\nMad River at Hatchery Road bridge in Blue Lake | 25\nMad River at Fish hatchery | 24\nPowers Creek at mouth | 5\nPowers Creek at Stewart property | 7\nUnnammed Tributary at Mouth | 3\nUnnamed Tributary at 299 Cattle Crossing | 4\nWetland at pool | 3\nBVR Storm Drain Inlet 01 | 1\nBVR Stormwater Outfall 01 | 1\nBVRP01 | 5\nBVRS01 | 5\nBVRST01 | 6\nBVRST02 | 4\nBVRW01 | 3\nCMP01 | 3\nDRP01 | 6\nAdobe Creek at Soda Bay Rd at Rancho De La Fuente | 22\nAdobe Creek Finley | 22\nAdobe Creek at Merritt Crossing | 23\nAdobe Creek Bell Hill | 22\nAnderson Creek | 2\nAustin Park 01 | 9\nBuckingham Point | 13\nWestern Boundary (Wetland Tule Gathering site) | 8\nMarina Lake Site | 8\nRumsey Slough by the old bridge | 8\nRumsey Slough End (Near Osprey Ct.) | 8\nRumsey Slough Mid Site (Wooldridge's property) | 7\nRumsey Slough Mouth (Catfish Alley) | 9\nDeep Lake Station 2-300 Ft. West of BVCL5 | 12\nAg Drainage behind Mission Way | 6\nWestern Boundary Site 2 (cow's drinking point) | 8\nLand's End Slough | 8\nFishing Point (old pump house) | 7\nMouth of Land's End Slough | 8\nDeep Lake Station 1-100 yds. off point | 11\nTule Boat Launch (The Point) | 47\nCole Creek at Soda Bay Rd. Bridge | 22\nCole Creek in Kelseyville | 2\nClear Lake Oaks | 13\nClover Creek | 2\nClear Lake Vista 7 At boat launch | 9\nCooper Creek | 2\nCoyote Creek | 2\nCounty Park at beach | 9\nDry Creek | 2\nAt end of El-Em St. on Elem Indian Colony | 13\nForbes Creek at Martin St. in Lakeport | 21\nForbes Creek at Main St. in Lakeport | 22\nForbes Creek | 15\nGlenhaven | 8\nHorseshoe Bend | 9\nJago Bay   (Jones Bay) | 9\nKelsey Creek Soda Bay | 23\nKelsey Creek (Main Street) | 1\nA bridge within the Oaks Keys on Blue Heron Drive | 6\nKeeling Park 01 | 12\nLily Cove 01 | 9\nOld Lakeport TNT Restaurant at boat launch | 12\nLucerne Harbor Park 01 | 9\nBoat Ramp of Big Valley Rancheria Marina | 35\nEast Corner  of Big Valley Rancheria Marina | 8\nSolar Bee of Big Valley Rancheria Marina | 8\nWest Corner of Big Valley Rancheria Marina | 8\nManning Creek at Soda Bay Rd. | 22\nManning Creek at Granite bridge on HWY175 | 22\nMcGaugh Slough Soda Bay Rd. | 1\nMiddle Creek | 1\nWolf Creek | 1\nRedbud Park 01 | 12\nRodman Slough | 8\nSulphur Bank Mercury Mine 01 | 9\nSeasonal Creek at Soda Bay Rd. across from Redi-Mix | 22\nMiddletown - Seasonal Creek | 2\nScotts Creek | 2\nShady Acres Campground now called Clearlake Campground | 13\nSt Helena Creek | 2\nSiegler Creek (SPATT) | 3\nThompson Creek at Big Valley Rd | 21\nEagle Falls Lake -13 | 1\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nGuadalupe Creek @ USGS Gaging Station 11169025 | 8\nCarnadero Creek upstream of Pajaro River | 6\nPajaro River at Chittenden Gap | 6\nSalsipuedes Creek downstream of Corralitos Creek | 6\nPajaro River at Frazier Lake Road | 4\nFurlong Creek at Frazier Lake Road | 11\nLlagas Creek @ Southside | 8\nSan Juan Creek @ Anzar Rd | 11\nTequisquita Slough upstream Pajaro River @ Shore Rd | 4\nWatsonville Slough upstream Harkins Slough | 6\nBlanco Drain below Pump | 6\nEspinosa Slough upstream of Alisal Slough | 2\nMerrit Ditch upstream from Hwy 183 | 6\nMoro Cojo Slough @ Hwy 1 | 2\nNatividad Creek upstream from Salinas Reclamation Canal | 8\nOld Salinas River at Monterey Dunes Way | 2\nTembladero Slough @ Haro | 14\nChorro Creek upstream from Chorro Flats | 2\nArroyo Grande Creek @ old USGS gage | 13\nWarden Creek @ Wetlands Restoration Preserve | 5\nBradley Channel @ Jones St | 6\nMain Street Canal at Main Street Crossing | 12\nOso Flaco Creek at Oso Flaco Lake Road | 17\nOrcutt Creek at sand plant above Santa Maria River | 8\nSanta Ynez River at Floradale Rd | 13\nSanta Ynez River at Highway 246 | 6\nSanta Ynez River at 13th Street | 7\nArroyo Paredon Creek at Foothill Bridge | 6\nBell Creek @ Winchester Canyon Park | 4\nFranklin Creek @ Mountain View Ln | 10\nNewman Wasteway near Hills Ferry Road | 13\nAlamo River Outlet | 14\nColorado River Downstream | 5\nColorado River Upstream | 5\nCity of Yuma Effluent Drain | 4\nCabinet Forsythe Creek | 75\nCasino Forsythe Creek | 74\nWest Fork Russian River | 76\nLower Cahto Creek | 2\nMiddle Cahto Creek | 2\nUpper Cahto Creek | 3\nDead Cow Creek | 1\nMonitoring Well 1 | 3\nMonitoring Well 2 | 2\nMonitoring Well 3 | 2\nEVRADMIN | 2\nMartin Ranch Northwest | 2\nMartin Ranch Southwest | 1\nStary Ranch North | 2\nStary Ranch West | 2\nAlley Creek AC 1 | 10\nClover Creek CC 2 | 12\nClover Diversion CD 1 | 10\nLyons Creek LC 1 | 6\nUpper Middle Creek MC 1 | 8\nMiddle Creek MC 3 | 10\nMiddle Creek MC 4 | 10\nRobinson Creek RC 1 | 2\nRodman Slough RS 1 | 6\nScotts Creek SC 1 | 8\nCDR and Nutrients at Saints Rest Bar | 822\nCDR at Red Rock | 396\nHappy Camp | 4\nIron Gate Dam | 6\nOrleans | 6\nSalmon River | 6\nScott River | 6\nShasta River | 6\nSeiad Valley | 6\nWalker Bridge | 6\nGround wate well 15 | 2\nLittle La Posta | 1\nMW-1 | 2\nMW-2 | 2\nSSU2 | 1\nSSU2 (ponded) | 1\nSSU3 | 2\nThe gold water | 1\nLa Posta Lake surface | 2\nUpper Wetland | 1\nWest Wetland | 2\nMonitoring Well 1 | 1\nSouth Ignome Well | 1\nMartin Ranch Well | 2\nUpper Pond | 2\nRancheria Middle | 1\nLower Pond | 2\nUpstream St Helena | 1\nBear Canyon Creek | 4\nBog 1 | 4\nHathaway 000 | 3\nHathaway East | 4\nHathaway West | 5\nLake Morongo | 3\nLake Morongo Out | 4\nMillard 000 | 5\nMillard Canyon North | 2\nSP Springs | 5\nWood Canyon | 2\nJordan Pond, Alameda County, CA, USA | 1\nLake Chabot, Alameda County, CA, USA | 1\nDon Castro Reservoir, Alameda County, CA, USA | 1\nLake Merritt, Alameda County, CA, USA | 2\nLake del Valle, Alameda County, CA, USA | 2\nLP-SS-1 Lone Pine Creek - Sandtrap Diversion | 11\nLP-SS-2 LPPSR Irrigation Intake | 7\nLP-SS-3 LA Aqueduct Diversion | 11\nLP-SS-4 SAR Upstream | 7\nLP-SS-5 SAR Downstream | 7\nCCC Camp Spring | 2\nLion Creek Spring | 2\nMission Reserve Storm Water Pond 3 | 1\nMission Reserve Storm Water Pond 4 | 3\nPauma Creek | 11\nSanta Margarita Spring No. 3 | 2\nSpring (36-FS-1) | 8\nBack Water Pond | 4\nColorado River Downstream | 4\nColorado River Upstream | 4\nPond #1 | 6\nPond #2 | 8\nPond #3 | 8\nKlamath River | 18\nKlamath River | 11\nWaukell Creek | 7\nUnnamed Creek #1 | 3\nJunior Creek | 9\nJacob's Rancho Irrigation Ditch | 4\nJacob's Rancho Irrigation Ditch | 3\nMussel Slough | 4\nMussel Slough | 1\nIndian Creek 2nd Crossing | 1\nIndian Creek Hot Springs | 1\nGilbert Creek 2 | 84\nGilbert Creek 3 | 96\nLopez Creek 1 | 86\nLopez Creek 2 | 102\nRowdy Creek 1 | 106\nRowdy Creek 2 | 98\nSmith River 2 | 98\nSmith River 3A | 94\nSmith River Middle Fork | 106\nDead Cow Creek 1 | 3\nDead Cow Creek 2 Tributary | 2\nDead Cow Creek 3 | 2\nDead Cow Creek 4 | 3\nOld Sherwood Pond | 6\nDead Cow Creek 6 | 3\nDavis Creek Tributary Downstream | 2\nDavis Creek Tributary Upstream | 3\nMitomkai Pond | 5\nBaechtel Tributary Downstream | 2\nBaechtel Tributary Upstream | 2\nKawi Creek Upstream | 2\nWestside Pond 4 | 6\nWestside Pond 5 | 5\nKawi Creek Downstream | 2\nZanja de Cota Creek Downstream | 11\nSurface Water Site # 1D | 3\nSurface Water Site # 1F | 3\nSurface Water Site # 3 | 3\nSurface Water Site # 5 | 1\nMckinleyville Housing -1 | 12\nMckinleyville Housing -2 | 12\nMckinleyville Housing -3 | 12\nMckinleyville Housing -4 | 12\nTrinidad Bay-1 | 12\nTrinidad Bay-5 | 12\nTrinidad Bay-6 | 12\nTrinidad Housing-1 | 12\nTrinidad Housing-10 | 12\nTrinidad Housing-11 | 12\nTrinidad Housing-12 | 12\nTrinidad Housing-13 | 12\nTrinidad Housing-2 | 12\nTrinidad Housing-4 | 12\nTrinidad Housing-6 | 12\nTrinidad Housing-7 | 12\nTrinidad Housing-8 | 12\nWesthaven Housing-1 | 12\nWesthaven Housing-2 | 12\nReservation Wetland Well 1 | 25\nReservation Wetland Well 2 | 24\nKR above WTP | 11\nKR below WTP | 11\nLower Estuary Surface | 36\nSouth Slough | 9\nKlamath River above Tully Creek | 15\nKlamath River at Turwar Gage | 25\nTrinity River above Klamath River | 15\nKlamath River above Trinity River | 15",
+        "code": "import pandas as pd\n\nsample_counts = dfs['Sample'].groupby('sample_station_id').size().reset_index()\nstation_info = dfs['Station'][['station_id', 'station_name']]\nmerged = pd.merge(station_info, sample_counts, left_on='station_id', right_on='sample_station_id', how='inner')\nresult = merged[['station_name', 0]].values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.5631310939788818,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Monitoring Location LAVO_WQ01 | 4\nMonitoring Location LAVO_WQ04 | 1\nMonitoring Location LAVO_WQ05 | 1\nMonitoring Location LAVO_WQ08 | 1\nMonitoring Location LAVO_WQ09 | 1\nMonitoring Location LAVO_WQ10 | 1\nMonitoring Location LAVO_WQ12 | 2\nMonitoring Location LAVO_WQ13 | 1\nMonitoring Location LAVO_WQ15 | 3\nMonitoring Location LAVO_WQ17 | 1\nMonitoring Location LAVO_WQ20 | 2\nMonitoring Location LAVO_WQ21 | 1\nMonitoring Location LAVO_WQ22 | 1\nMonitoring Location LAVO_WQ23 | 1\nMonitoring Location LAVO_WQ24 | 1\nMonitoring Location LAVO_WQ25 | 2\nMonitoring Location LAVO_WQ27 | 1\nMonitoring Location LAVO_WQ29 | 1\nMonitoring Location LAVO_WQ32 | 1\nMonitoring Location LAVO_WQ33 | 1\nMonitoring Location LAVO_WQ36 | 1\nMonitoring Location LAVO_WQ37 | 1\nMonitoring Location LAVO_WQ40 | 1\nMonitoring Location LAVO_WQ43 | 2\nMonitoring Location LAVO_WQ45 | 1\nMonitoring Location LAVO_WQ48 | 2\nMonitoring Location REDW_WQ01 | 1\nMonitoring Location REDW_WQ02 | 1\nMonitoring Location REDW_WQ03 | 1\nMonitoring Location REDW_WQ04 | 1\nMonitoring Location REDW_WQ05 | 1\nMonitoring Location REDW_WQ06 | 1\nMonitoring Location REDW_WQ07 | 1\nMonitoring Location REDW_WQ08 | 1\nMonitoring Location REDW_WQ09 | 1\nMonitoring Location REDW_WQ10 | 1\nMonitoring Location REDW_WQ11 | 1\nMonitoring Location REDW_WQ12 | 1\nMonitoring Location REDW_WQ13 | 1\nMonitoring Location REDW_WQ14 | 1\nMonitoring Location REDW_WQ15 | 1\nMonitoring Location REDW_WQ16 | 1\nMonitoring Location REDW_WQ17 | 2\nMonitoring Location REDW_WQ19 | 1\nMonitoring Location REDW_WQ20 | 1\nMonitoring Location REDW_WQ21 | 1\nMonitoring Location REDW_WQ23 | 1\nMonitoring Location REDW_WQ24 | 1\nMonitoring Location REDW_WQ25 | 1\nMonitoring Location REDW_WQ26 | 1\nMonitoring Location REDW_WQ28 | 1\nBear Gulch behind Resource Management Building | 4\nBootjack Creek above Panoramic Highway | 12\nChalone Creek at Road Bridge | 1\nNorth Fork Chalone Creek Upstream of West Fork | 2\nFern Creek near Muir Woods Boundary | 14\nFern Creek above Panoramic Highway | 14\nFranklin Creek | 1\nGerbode Creek above Confluence with Rodeo Creek | 4\nGreen Gulch North (Northern Branch) | 9\nGreen Gulch Control | 13\nGolden Gate Dairy Tributary Upstream of Culvert | 1\nKent Creek 50 ft above Redwood Creek Confluence | 5\nBear Valley Creek | 9\nCheda Creek | 8\nDevil's Gulch | 9\nMcGarvey Gulch Upstream of West Union Creek | 9\nNyhan Creek just Outside Golden Gate NRA Boundary | 3\nOakwood Valley Creek | 1\nJohn West Fork above Hwy. 1 Culvert | 13\nOlema Creek below Residence #530 (Anne Tisei's house) | 13\nOlema Creek at Bear Valley Road Bridge | 16\nOlema Creek - Mainstem at Northernmost Five Brooks Bridge | 14\nOlema Creek above Randall Gulch | 13\nDavis Boucher Creek | 15\nPine Gulch Creek at Stream Gauge near Bolinas Lagoon | 3\nPine Gulch above Teixeira, above Horse Trail Crossing | 3\nRodeo Creek below Stables | 4\nRedwood Creek below Muir Woods | 13\nRedwood Creek | 14\nRedwood Creek at Muir Beach | 14\nSandy Creek in Campground near Septic System | 2\nSandy Creek in Campground near Pump Station | 4\nTennessee Valley Creek above Miwok Stables | 1\nTennessee Valley Creek below Miwok Stables | 1\nTennessee Valley Creek | 3\nWest Union Creek | 12\nWest Union Creek Tributary #1 | 4\nWest Union Creek Tributary #2 | 3\nWest Union Creek Upstream of Tributary #2 | 13\nwell 4 | 2\nwell 6 | 3\nwell 7 | 3\nwell 8 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.95.118.48 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.97.118.49 | 1\nBig Sur Wild and Scenic River-36.25.121.79 | 1\nBishop Creek - SW-1 | 9\nBishop Creek - SW-2 | 9\nBishop Creek - SW-3 | 6\nBishop Creek - SW-4 | 9\nMad River at HBMWD Pump Station | 25\nMad River at Hatchery Road bridge in Blue Lake | 25\nMad River at Fish hatchery | 24\nPowers Creek at mouth | 5\nPowers Creek at Stewart property | 7\nUnnammed Tributary at Mouth | 3\nUnnamed Tributary at 299 Cattle Crossing | 4\nWetland at pool | 3\nBVR Storm Drain Inlet 01 | 1\nBVR Stormwater Outfall 01 | 1\nBVRP01 | 5\nBVRS01 | 5\nBVRST01 | 6\nBVRST02 | 4\nBVRW01 | 3\nCMP01 | 3\nDRP01 | 6\nAdobe Creek at Soda Bay Rd at Rancho De La Fuente | 22\nAdobe Creek Finley | 22\nAdobe Creek at Merritt Crossing | 23\nAdobe Creek Bell Hill | 22\nAnderson Creek | 2\nAustin Park 01 | 9\nBuckingham Point | 13\nWestern Boundary (Wetland Tule Gathering site) | 8\nMarina Lake Site | 8\nRumsey Slough by the old bridge | 8\nRumsey Slough End (Near Osprey Ct.) | 8\nRumsey Slough Mid Site (Wooldridge's property) | 7\nRumsey Slough Mouth (Catfish Alley) | 9\nDeep Lake Station 2-300 Ft. West of BVCL5 | 12\nAg Drainage behind Mission Way | 6\nWestern Boundary Site 2 (cow's drinking point) | 8\nLand's End Slough | 8\nFishing Point (old pump house) | 7\nMouth of Land's End Slough | 8\nDeep Lake Station 1-100 yds. off point | 11\nTule Boat Launch (The Point) | 47\nCole Creek at Soda Bay Rd. Bridge | 22\nCole Creek in Kelseyville | 2\nClear Lake Oaks | 13\nClover Creek | 2\nClear Lake Vista 7 At boat launch | 9\nCooper Creek | 2\nCoyote Creek | 2\nCounty Park at beach | 9\nDry Creek | 2\nAt end of El-Em St. on Elem Indian Colony | 13\nForbes Creek at Martin St. in Lakeport | 21\nForbes Creek at Main St. in Lakeport | 22\nForbes Creek | 15\nGlenhaven | 8\nHorseshoe Bend | 9\nJago Bay   (Jones Bay) | 9\nKelsey Creek Soda Bay | 23\nKelsey Creek (Main Street) | 1\nA bridge within the Oaks Keys on Blue Heron Drive | 6\nKeeling Park 01 | 12\nLily Cove 01 | 9\nOld Lakeport TNT Restaurant at boat launch | 12\nLucerne Harbor Park 01 | 9\nBoat Ramp of Big Valley Rancheria Marina | 35\nEast Corner  of Big Valley Rancheria Marina | 8\nSolar Bee of Big Valley Rancheria Marina | 8\nWest Corner of Big Valley Rancheria Marina | 8\nManning Creek at Soda Bay Rd. | 22\nManning Creek at Granite bridge on HWY175 | 22\nMcGaugh Slough Soda Bay Rd. | 1\nMiddle Creek | 1\nWolf Creek | 1\nRedbud Park 01 | 12\nRodman Slough | 8\nSulphur Bank Mercury Mine 01 | 9\nSeasonal Creek at Soda Bay Rd. across from Redi-Mix | 22\nMiddletown - Seasonal Creek | 2\nScotts Creek | 2\nShady Acres Campground now called Clearlake Campground | 13\nSt Helena Creek | 2\nSiegler Creek (SPATT) | 3\nThompson Creek at Big Valley Rd | 21\nEagle Falls Lake -13 | 1\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nGuadalupe Creek @ USGS Gaging Station 11169025 | 8\nCarnadero Creek upstream of Pajaro River | 6\nPajaro River at Chittenden Gap | 6\nSalsipuedes Creek downstream of Corralitos Creek | 6\nPajaro River at Frazier Lake Road | 4\nFurlong Creek at Frazier Lake Road | 11\nLlagas Creek @ Southside | 8\nSan Juan Creek @ Anzar Rd | 11\nTequisquita Slough upstream Pajaro River @ Shore Rd | 4\nWatsonville Slough upstream Harkins Slough | 6\nBlanco Drain below Pump | 6\nEspinosa Slough upstream of Alisal Slough | 2\nMerrit Ditch upstream from Hwy 183 | 6\nMoro Cojo Slough @ Hwy 1 | 2\nNatividad Creek upstream from Salinas Reclamation Canal | 8\nOld Salinas River at Monterey Dunes Way | 2\nTembladero Slough @ Haro | 14\nChorro Creek upstream from Chorro Flats | 2\nArroyo Grande Creek @ old USGS gage | 13\nWarden Creek @ Wetlands Restoration Preserve | 5\nBradley Channel @ Jones St | 6\nMain Street Canal at Main Street Crossing | 12\nOso Flaco Creek at Oso Flaco Lake Road | 17\nOrcutt Creek at sand plant above Santa Maria River | 8\nSanta Ynez River at Floradale Rd | 13\nSanta Ynez River at Highway 246 | 6\nSanta Ynez River at 13th Street | 7\nArroyo Paredon Creek at Foothill Bridge | 6\nBell Creek @ Winchester Canyon Park | 4\nFranklin Creek @ Mountain View Ln | 10\nNewman Wasteway near Hills Ferry Road | 13\nAlamo River Outlet | 14\nColorado River Downstream | 5\nColorado River Upstream | 5\nCity of Yuma Effluent Drain | 4\nCabinet Forsythe Creek | 75\nCasino Forsythe Creek | 74\nWest Fork Russian River | 76\nLower Cahto Creek | 2\nMiddle Cahto Creek | 2\nUpper Cahto Creek | 3\nDead Cow Creek | 1\nMonitoring Well 1 | 3\nMonitoring Well 2 | 2\nMonitoring Well 3 | 2\nEVRADMIN | 2\nMartin Ranch Northwest | 2\nMartin Ranch Southwest | 1\nStary Ranch North | 2\nStary Ranch West | 2\nAlley Creek AC 1 | 10\nClover Creek CC 2 | 12\nClover Diversion CD 1 | 10\nLyons Creek LC 1 | 6\nUpper Middle Creek MC 1 | 8\nMiddle Creek MC 3 | 10\nMiddle Creek MC 4 | 10\nRobinson Creek RC 1 | 2\nRodman Slough RS 1 | 6\nScotts Creek SC 1 | 8\nCDR and Nutrients at Saints Rest Bar | 822\nCDR at Red Rock | 396\nHappy Camp | 4\nIron Gate Dam | 6\nOrleans | 6\nSalmon River | 6\nScott River | 6\nShasta River | 6\nSeiad Valley | 6\nWalker Bridge | 6\nGround wate well 15 | 2\nLittle La Posta | 1\nMW-1 | 2\nMW-2 | 2\nSSU2 | 1\nSSU2 (ponded) | 1\nSSU3 | 2\nThe gold water | 1\nLa Posta Lake surface | 2\nUpper Wetland | 1\nWest Wetland | 2\nMonitoring Well 1 | 1\nSouth Ignome Well | 1\nMartin Ranch Well | 2\nUpper Pond | 2\nRancheria Middle | 1\nLower Pond | 2\nUpstream St Helena | 1\nBear Canyon Creek | 4\nBog 1 | 4\nHathaway 000 | 3\nHathaway East | 4\nHathaway West | 5\nLake Morongo | 3\nLake Morongo Out | 4\nMillard 000 | 5\nMillard Canyon North | 2\nSP Springs | 5\nWood Canyon | 2\nJordan Pond, Alameda County, CA, USA | 1\nLake Chabot, Alameda County, CA, USA | 1\nDon Castro Reservoir, Alameda County, CA, USA | 1\nLake Merritt, Alameda County, CA, USA | 2\nLake del Valle, Alameda County, CA, USA | 2\nLP-SS-1 Lone Pine Creek - Sandtrap Diversion | 11\nLP-SS-2 LPPSR Irrigation Intake | 7\nLP-SS-3 LA Aqueduct Diversion | 11\nLP-SS-4 SAR Upstream | 7\nLP-SS-5 SAR Downstream | 7\nCCC Camp Spring | 2\nLion Creek Spring | 2\nMission Reserve Storm Water Pond 3 | 1\nMission Reserve Storm Water Pond 4 | 3\nPauma Creek | 11\nSanta Margarita Spring No. 3 | 2\nSpring (36-FS-1) | 8\nBack Water Pond | 4\nColorado River Downstream | 4\nColorado River Upstream | 4\nPond #1 | 6\nPond #2 | 8\nPond #3 | 8\nKlamath River | 18\nKlamath River | 11\nWaukell Creek | 7\nUnnamed Creek #1 | 3\nJunior Creek | 9\nJacob's Rancho Irrigation Ditch | 4\nJacob's Rancho Irrigation Ditch | 3\nMussel Slough | 4\nMussel Slough | 1\nIndian Creek 2nd Crossing | 1\nIndian Creek Hot Springs | 1\nGilbert Creek 2 | 84\nGilbert Creek 3 | 96\nLopez Creek 1 | 86\nLopez Creek 2 | 102\nRowdy Creek 1 | 106\nRowdy Creek 2 | 98\nSmith River 2 | 98\nSmith River 3A | 94\nSmith River Middle Fork | 106\nDead Cow Creek 1 | 3\nDead Cow Creek 2 Tributary | 2\nDead Cow Creek 3 | 2\nDead Cow Creek 4 | 3\nOld Sherwood Pond | 6\nDead Cow Creek 6 | 3\nDavis Creek Tributary Downstream | 2\nDavis Creek Tributary Upstream | 3\nMitomkai Pond | 5\nBaechtel Tributary Downstream | 2\nBaechtel Tributary Upstream | 2\nKawi Creek Upstream | 2\nWestside Pond 4 | 6\nWestside Pond 5 | 5\nKawi Creek Downstream | 2\nZanja de Cota Creek Downstream | 11\nSurface Water Site # 1D | 3\nSurface Water Site # 1F | 3\nSurface Water Site # 3 | 3\nSurface Water Site # 5 | 1\nMckinleyville Housing -1 | 12\nMckinleyville Housing -2 | 12\nMckinleyville Housing -3 | 12\nMckinleyville Housing -4 | 12\nTrinidad Bay-1 | 12\nTrinidad Bay-5 | 12\nTrinidad Bay-6 | 12\nTrinidad Housing-1 | 12\nTrinidad Housing-10 | 12\nTrinidad Housing-11 | 12\nTrinidad Housing-12 | 12\nTrinidad Housing-13 | 12\nTrinidad Housing-2 | 12\nTrinidad Housing-4 | 12\nTrinidad Housing-6 | 12\nTrinidad Housing-7 | 12\nTrinidad Housing-8 | 12\nWesthaven Housing-1 | 12\nWesthaven Housing-2 | 12\nReservation Wetland Well 1 | 25\nReservation Wetland Well 2 | 24\nKR above WTP | 11\nKR below WTP | 11\nLower Estuary Surface | 36\nSouth Slough | 9\nKlamath River above Tully Creek | 15\nKlamath River at Turwar Gage | 25\nTrinity River above Klamath River | 15\nKlamath River above Trinity River | 15",
+        "code": "import pandas as pd\n\nsample_counts = dfs['Sample'].groupby('sample_station_id').size().reset_index()\nstation_info = dfs['Station'][['station_id', 'station_name']]\nmerged = pd.merge(station_info, sample_counts, left_on='station_id', right_on='sample_station_id', how='inner')\nresult = merged[['station_name', 0]].values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.8035130500793457,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Monitoring Location LAVO_WQ01 | 4\nMonitoring Location LAVO_WQ04 | 1\nMonitoring Location LAVO_WQ05 | 1\nMonitoring Location LAVO_WQ08 | 1\nMonitoring Location LAVO_WQ09 | 1\nMonitoring Location LAVO_WQ10 | 1\nMonitoring Location LAVO_WQ12 | 2\nMonitoring Location LAVO_WQ13 | 1\nMonitoring Location LAVO_WQ15 | 3\nMonitoring Location LAVO_WQ17 | 1\nMonitoring Location LAVO_WQ20 | 2\nMonitoring Location LAVO_WQ21 | 1\nMonitoring Location LAVO_WQ22 | 1\nMonitoring Location LAVO_WQ23 | 1\nMonitoring Location LAVO_WQ24 | 1\nMonitoring Location LAVO_WQ25 | 2\nMonitoring Location LAVO_WQ27 | 1\nMonitoring Location LAVO_WQ29 | 1\nMonitoring Location LAVO_WQ32 | 1\nMonitoring Location LAVO_WQ33 | 1\nMonitoring Location LAVO_WQ36 | 1\nMonitoring Location LAVO_WQ37 | 1\nMonitoring Location LAVO_WQ40 | 1\nMonitoring Location LAVO_WQ43 | 2\nMonitoring Location LAVO_WQ45 | 1\nMonitoring Location LAVO_WQ48 | 2\nMonitoring Location REDW_WQ01 | 1\nMonitoring Location REDW_WQ02 | 1\nMonitoring Location REDW_WQ03 | 1\nMonitoring Location REDW_WQ04 | 1\nMonitoring Location REDW_WQ05 | 1\nMonitoring Location REDW_WQ06 | 1\nMonitoring Location REDW_WQ07 | 1\nMonitoring Location REDW_WQ08 | 1\nMonitoring Location REDW_WQ09 | 1\nMonitoring Location REDW_WQ10 | 1\nMonitoring Location REDW_WQ11 | 1\nMonitoring Location REDW_WQ12 | 1\nMonitoring Location REDW_WQ13 | 1\nMonitoring Location REDW_WQ14 | 1\nMonitoring Location REDW_WQ15 | 1\nMonitoring Location REDW_WQ16 | 1\nMonitoring Location REDW_WQ17 | 2\nMonitoring Location REDW_WQ19 | 1\nMonitoring Location REDW_WQ20 | 1\nMonitoring Location REDW_WQ21 | 1\nMonitoring Location REDW_WQ23 | 1\nMonitoring Location REDW_WQ24 | 1\nMonitoring Location REDW_WQ25 | 1\nMonitoring Location REDW_WQ26 | 1\nMonitoring Location REDW_WQ28 | 1\nBear Gulch behind Resource Management Building | 4\nBootjack Creek above Panoramic Highway | 12\nChalone Creek at Road Bridge | 1\nNorth Fork Chalone Creek Upstream of West Fork | 2\nFern Creek near Muir Woods Boundary | 14\nFern Creek above Panoramic Highway | 14\nFranklin Creek | 1\nGerbode Creek above Confluence with Rodeo Creek | 4\nGreen Gulch North (Northern Branch) | 9\nGreen Gulch Control | 13\nGolden Gate Dairy Tributary Upstream of Culvert | 1\nKent Creek 50 ft above Redwood Creek Confluence | 5\nBear Valley Creek | 9\nCheda Creek | 8\nDevil's Gulch | 9\nMcGarvey Gulch Upstream of West Union Creek | 9\nNyhan Creek just Outside Golden Gate NRA Boundary | 3\nOakwood Valley Creek | 1\nJohn West Fork above Hwy. 1 Culvert | 13\nOlema Creek below Residence #530 (Anne Tisei's house) | 13\nOlema Creek at Bear Valley Road Bridge | 16\nOlema Creek - Mainstem at Northernmost Five Brooks Bridge | 14\nOlema Creek above Randall Gulch | 13\nDavis Boucher Creek | 15\nPine Gulch Creek at Stream Gauge near Bolinas Lagoon | 3\nPine Gulch above Teixeira, above Horse Trail Crossing | 3\nRodeo Creek below Stables | 4\nRedwood Creek below Muir Woods | 13\nRedwood Creek | 14\nRedwood Creek at Muir Beach | 14\nSandy Creek in Campground near Septic System | 2\nSandy Creek in Campground near Pump Station | 4\nTennessee Valley Creek above Miwok Stables | 1\nTennessee Valley Creek below Miwok Stables | 1\nTennessee Valley Creek | 3\nWest Union Creek | 12\nWest Union Creek Tributary #1 | 4\nWest Union Creek Tributary #2 | 3\nWest Union Creek Upstream of Tributary #2 | 13\nwell 4 | 2\nwell 6 | 3\nwell 7 | 3\nwell 8 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.95.118.48 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.97.118.49 | 1\nBig Sur Wild and Scenic River-36.25.121.79 | 1\nBishop Creek - SW-1 | 9\nBishop Creek - SW-2 | 9\nBishop Creek - SW-3 | 6\nBishop Creek - SW-4 | 9\nMad River at HBMWD Pump Station | 25\nMad River at Hatchery Road bridge in Blue Lake | 25\nMad River at Fish hatchery | 24\nPowers Creek at mouth | 5\nPowers Creek at Stewart property | 7\nUnnammed Tributary at Mouth | 3\nUnnamed Tributary at 299 Cattle Crossing | 4\nWetland at pool | 3\nBVR Storm Drain Inlet 01 | 1\nBVR Stormwater Outfall 01 | 1\nBVRP01 | 5\nBVRS01 | 5\nBVRST01 | 6\nBVRST02 | 4\nBVRW01 | 3\nCMP01 | 3\nDRP01 | 6\nAdobe Creek at Soda Bay Rd at Rancho De La Fuente | 22\nAdobe Creek Finley | 22\nAdobe Creek at Merritt Crossing | 23\nAdobe Creek Bell Hill | 22\nAnderson Creek | 2\nAustin Park 01 | 9\nBuckingham Point | 13\nWestern Boundary (Wetland Tule Gathering site) | 8\nMarina Lake Site | 8\nRumsey Slough by the old bridge | 8\nRumsey Slough End (Near Osprey Ct.) | 8\nRumsey Slough Mid Site (Wooldridge's property) | 7\nRumsey Slough Mouth (Catfish Alley) | 9\nDeep Lake Station 2-300 Ft. West of BVCL5 | 12\nAg Drainage behind Mission Way | 6\nWestern Boundary Site 2 (cow's drinking point) | 8\nLand's End Slough | 8\nFishing Point (old pump house) | 7\nMouth of Land's End Slough | 8\nDeep Lake Station 1-100 yds. off point | 11\nTule Boat Launch (The Point) | 47\nCole Creek at Soda Bay Rd. Bridge | 22\nCole Creek in Kelseyville | 2\nClear Lake Oaks | 13\nClover Creek | 2\nClear Lake Vista 7 At boat launch | 9\nCooper Creek | 2\nCoyote Creek | 2\nCounty Park at beach | 9\nDry Creek | 2\nAt end of El-Em St. on Elem Indian Colony | 13\nForbes Creek at Martin St. in Lakeport | 21\nForbes Creek at Main St. in Lakeport | 22\nForbes Creek | 15\nGlenhaven | 8\nHorseshoe Bend | 9\nJago Bay   (Jones Bay) | 9\nKelsey Creek Soda Bay | 23\nKelsey Creek (Main Street) | 1\nA bridge within the Oaks Keys on Blue Heron Drive | 6\nKeeling Park 01 | 12\nLily Cove 01 | 9\nOld Lakeport TNT Restaurant at boat launch | 12\nLucerne Harbor Park 01 | 9\nBoat Ramp of Big Valley Rancheria Marina | 35\nEast Corner  of Big Valley Rancheria Marina | 8\nSolar Bee of Big Valley Rancheria Marina | 8\nWest Corner of Big Valley Rancheria Marina | 8\nManning Creek at Soda Bay Rd. | 22\nManning Creek at Granite bridge on HWY175 | 22\nMcGaugh Slough Soda Bay Rd. | 1\nMiddle Creek | 1\nWolf Creek | 1\nRedbud Park 01 | 12\nRodman Slough | 8\nSulphur Bank Mercury Mine 01 | 9\nSeasonal Creek at Soda Bay Rd. across from Redi-Mix | 22\nMiddletown - Seasonal Creek | 2\nScotts Creek | 2\nShady Acres Campground now called Clearlake Campground | 13\nSt Helena Creek | 2\nSiegler Creek (SPATT) | 3\nThompson Creek at Big Valley Rd | 21\nEagle Falls Lake -13 | 1\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nGuadalupe Creek @ USGS Gaging Station 11169025 | 8\nCarnadero Creek upstream of Pajaro River | 6\nPajaro River at Chittenden Gap | 6\nSalsipuedes Creek downstream of Corralitos Creek | 6\nPajaro River at Frazier Lake Road | 4\nFurlong Creek at Frazier Lake Road | 11\nLlagas Creek @ Southside | 8\nSan Juan Creek @ Anzar Rd | 11\nTequisquita Slough upstream Pajaro River @ Shore Rd | 4\nWatsonville Slough upstream Harkins Slough | 6\nBlanco Drain below Pump | 6\nEspinosa Slough upstream of Alisal Slough | 2\nMerrit Ditch upstream from Hwy 183 | 6\nMoro Cojo Slough @ Hwy 1 | 2\nNatividad Creek upstream from Salinas Reclamation Canal | 8\nOld Salinas River at Monterey Dunes Way | 2\nTembladero Slough @ Haro | 14\nChorro Creek upstream from Chorro Flats | 2\nArroyo Grande Creek @ old USGS gage | 13\nWarden Creek @ Wetlands Restoration Preserve | 5\nBradley Channel @ Jones St | 6\nMain Street Canal at Main Street Crossing | 12\nOso Flaco Creek at Oso Flaco Lake Road | 17\nOrcutt Creek at sand plant above Santa Maria River | 8\nSanta Ynez River at Floradale Rd | 13\nSanta Ynez River at Highway 246 | 6\nSanta Ynez River at 13th Street | 7\nArroyo Paredon Creek at Foothill Bridge | 6\nBell Creek @ Winchester Canyon Park | 4\nFranklin Creek @ Mountain View Ln | 10\nNewman Wasteway near Hills Ferry Road | 13\nAlamo River Outlet | 14\nColorado River Downstream | 5\nColorado River Upstream | 5\nCity of Yuma Effluent Drain | 4\nCabinet Forsythe Creek | 75\nCasino Forsythe Creek | 74\nWest Fork Russian River | 76\nLower Cahto Creek | 2\nMiddle Cahto Creek | 2\nUpper Cahto Creek | 3\nDead Cow Creek | 1\nMonitoring Well 1 | 3\nMonitoring Well 2 | 2\nMonitoring Well 3 | 2\nEVRADMIN | 2\nMartin Ranch Northwest | 2\nMartin Ranch Southwest | 1\nStary Ranch North | 2\nStary Ranch West | 2\nAlley Creek AC 1 | 10\nClover Creek CC 2 | 12\nClover Diversion CD 1 | 10\nLyons Creek LC 1 | 6\nUpper Middle Creek MC 1 | 8\nMiddle Creek MC 3 | 10\nMiddle Creek MC 4 | 10\nRobinson Creek RC 1 | 2\nRodman Slough RS 1 | 6\nScotts Creek SC 1 | 8\nCDR and Nutrients at Saints Rest Bar | 822\nCDR at Red Rock | 396\nHappy Camp | 4\nIron Gate Dam | 6\nOrleans | 6\nSalmon River | 6\nScott River | 6\nShasta River | 6\nSeiad Valley | 6\nWalker Bridge | 6\nGround wate well 15 | 2\nLittle La Posta | 1\nMW-1 | 2\nMW-2 | 2\nSSU2 | 1\nSSU2 (ponded) | 1\nSSU3 | 2\nThe gold water | 1\nLa Posta Lake surface | 2\nUpper Wetland | 1\nWest Wetland | 2\nMonitoring Well 1 | 1\nSouth Ignome Well | 1\nMartin Ranch Well | 2\nUpper Pond | 2\nRancheria Middle | 1\nLower Pond | 2\nUpstream St Helena | 1\nBear Canyon Creek | 4\nBog 1 | 4\nHathaway 000 | 3\nHathaway East | 4\nHathaway West | 5\nLake Morongo | 3\nLake Morongo Out | 4\nMillard 000 | 5\nMillard Canyon North | 2\nSP Springs | 5\nWood Canyon | 2\nJordan Pond, Alameda County, CA, USA | 1\nLake Chabot, Alameda County, CA, USA | 1\nDon Castro Reservoir, Alameda County, CA, USA | 1\nLake Merritt, Alameda County, CA, USA | 2\nLake del Valle, Alameda County, CA, USA | 2\nLP-SS-1 Lone Pine Creek - Sandtrap Diversion | 11\nLP-SS-2 LPPSR Irrigation Intake | 7\nLP-SS-3 LA Aqueduct Diversion | 11\nLP-SS-4 SAR Upstream | 7\nLP-SS-5 SAR Downstream | 7\nCCC Camp Spring | 2\nLion Creek Spring | 2\nMission Reserve Storm Water Pond 3 | 1\nMission Reserve Storm Water Pond 4 | 3\nPauma Creek | 11\nSanta Margarita Spring No. 3 | 2\nSpring (36-FS-1) | 8\nBack Water Pond | 4\nColorado River Downstream | 4\nColorado River Upstream | 4\nPond #1 | 6\nPond #2 | 8\nPond #3 | 8\nKlamath River | 18\nKlamath River | 11\nWaukell Creek | 7\nUnnamed Creek #1 | 3\nJunior Creek | 9\nJacob's Rancho Irrigation Ditch | 4\nJacob's Rancho Irrigation Ditch | 3\nMussel Slough | 4\nMussel Slough | 1\nIndian Creek 2nd Crossing | 1\nIndian Creek Hot Springs | 1\nGilbert Creek 2 | 84\nGilbert Creek 3 | 96\nLopez Creek 1 | 86\nLopez Creek 2 | 102\nRowdy Creek 1 | 106\nRowdy Creek 2 | 98\nSmith River 2 | 98\nSmith River 3A | 94\nSmith River Middle Fork | 106\nDead Cow Creek 1 | 3\nDead Cow Creek 2 Tributary | 2\nDead Cow Creek 3 | 2\nDead Cow Creek 4 | 3\nOld Sherwood Pond | 6\nDead Cow Creek 6 | 3\nDavis Creek Tributary Downstream | 2\nDavis Creek Tributary Upstream | 3\nMitomkai Pond | 5\nBaechtel Tributary Downstream | 2\nBaechtel Tributary Upstream | 2\nKawi Creek Upstream | 2\nWestside Pond 4 | 6\nWestside Pond 5 | 5\nKawi Creek Downstream | 2\nZanja de Cota Creek Downstream | 11\nSurface Water Site # 1D | 3\nSurface Water Site # 1F | 3\nSurface Water Site # 3 | 3\nSurface Water Site # 5 | 1\nMckinleyville Housing -1 | 12\nMckinleyville Housing -2 | 12\nMckinleyville Housing -3 | 12\nMckinleyville Housing -4 | 12\nTrinidad Bay-1 | 12\nTrinidad Bay-5 | 12\nTrinidad Bay-6 | 12\nTrinidad Housing-1 | 12\nTrinidad Housing-10 | 12\nTrinidad Housing-11 | 12\nTrinidad Housing-12 | 12\nTrinidad Housing-13 | 12\nTrinidad Housing-2 | 12\nTrinidad Housing-4 | 12\nTrinidad Housing-6 | 12\nTrinidad Housing-7 | 12\nTrinidad Housing-8 | 12\nWesthaven Housing-1 | 12\nWesthaven Housing-2 | 12\nReservation Wetland Well 1 | 25\nReservation Wetland Well 2 | 24\nKR above WTP | 11\nKR below WTP | 11\nLower Estuary Surface | 36\nSouth Slough | 9\nKlamath River above Tully Creek | 15\nKlamath River at Turwar Gage | 25\nTrinity River above Klamath River | 15\nKlamath River above Trinity River | 15",
+        "code": "import pandas as pd\n\nsample_counts = dfs['Sample'].groupby('sample_station_id').size().reset_index()\nstation_info = dfs['Station'][['station_id', 'station_name']]\nmerged = pd.merge(station_info, sample_counts, left_on='station_id', right_on='sample_station_id', how='inner')\nresult = merged[['station_name', 0]].values.tolist()",
+        "verdict": "correct",
+        "elapsed": 1.6720080375671387,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Monitoring Location LAVO_WQ01 | 4\nMonitoring Location LAVO_WQ04 | 1\nMonitoring Location LAVO_WQ05 | 1\nMonitoring Location LAVO_WQ08 | 1\nMonitoring Location LAVO_WQ09 | 1\nMonitoring Location LAVO_WQ10 | 1\nMonitoring Location LAVO_WQ12 | 2\nMonitoring Location LAVO_WQ13 | 1\nMonitoring Location LAVO_WQ15 | 3\nMonitoring Location LAVO_WQ17 | 1\nMonitoring Location LAVO_WQ20 | 2\nMonitoring Location LAVO_WQ21 | 1\nMonitoring Location LAVO_WQ22 | 1\nMonitoring Location LAVO_WQ23 | 1\nMonitoring Location LAVO_WQ24 | 1\nMonitoring Location LAVO_WQ25 | 2\nMonitoring Location LAVO_WQ27 | 1\nMonitoring Location LAVO_WQ29 | 1\nMonitoring Location LAVO_WQ32 | 1\nMonitoring Location LAVO_WQ33 | 1\nMonitoring Location LAVO_WQ36 | 1\nMonitoring Location LAVO_WQ37 | 1\nMonitoring Location LAVO_WQ40 | 1\nMonitoring Location LAVO_WQ43 | 2\nMonitoring Location LAVO_WQ45 | 1\nMonitoring Location LAVO_WQ48 | 2\nMonitoring Location REDW_WQ01 | 1\nMonitoring Location REDW_WQ02 | 1\nMonitoring Location REDW_WQ03 | 1\nMonitoring Location REDW_WQ04 | 1\nMonitoring Location REDW_WQ05 | 1\nMonitoring Location REDW_WQ06 | 1\nMonitoring Location REDW_WQ07 | 1\nMonitoring Location REDW_WQ08 | 1\nMonitoring Location REDW_WQ09 | 1\nMonitoring Location REDW_WQ10 | 1\nMonitoring Location REDW_WQ11 | 1\nMonitoring Location REDW_WQ12 | 1\nMonitoring Location REDW_WQ13 | 1\nMonitoring Location REDW_WQ14 | 1\nMonitoring Location REDW_WQ15 | 1\nMonitoring Location REDW_WQ16 | 1\nMonitoring Location REDW_WQ17 | 2\nMonitoring Location REDW_WQ19 | 1\nMonitoring Location REDW_WQ20 | 1\nMonitoring Location REDW_WQ21 | 1\nMonitoring Location REDW_WQ23 | 1\nMonitoring Location REDW_WQ24 | 1\nMonitoring Location REDW_WQ25 | 1\nMonitoring Location REDW_WQ26 | 1\nMonitoring Location REDW_WQ28 | 1\nBear Gulch behind Resource Management Building | 4\nBootjack Creek above Panoramic Highway | 12\nChalone Creek at Road Bridge | 1\nNorth Fork Chalone Creek Upstream of West Fork | 2\nFern Creek near Muir Woods Boundary | 14\nFern Creek above Panoramic Highway | 14\nFranklin Creek | 1\nGerbode Creek above Confluence with Rodeo Creek | 4\nGreen Gulch North (Northern Branch) | 9\nGreen Gulch Control | 13\nGolden Gate Dairy Tributary Upstream of Culvert | 1\nKent Creek 50 ft above Redwood Creek Confluence | 5\nBear Valley Creek | 9\nCheda Creek | 8\nDevil's Gulch | 9\nMcGarvey Gulch Upstream of West Union Creek | 9\nNyhan Creek just Outside Golden Gate NRA Boundary | 3\nOakwood Valley Creek | 1\nJohn West Fork above Hwy. 1 Culvert | 13\nOlema Creek below Residence #530 (Anne Tisei's house) | 13\nOlema Creek at Bear Valley Road Bridge | 16\nOlema Creek - Mainstem at Northernmost Five Brooks Bridge | 14\nOlema Creek above Randall Gulch | 13\nDavis Boucher Creek | 15\nPine Gulch Creek at Stream Gauge near Bolinas Lagoon | 3\nPine Gulch above Teixeira, above Horse Trail Crossing | 3\nRodeo Creek below Stables | 4\nRedwood Creek below Muir Woods | 13\nRedwood Creek | 14\nRedwood Creek at Muir Beach | 14\nSandy Creek in Campground near Septic System | 2\nSandy Creek in Campground near Pump Station | 4\nTennessee Valley Creek above Miwok Stables | 1\nTennessee Valley Creek below Miwok Stables | 1\nTennessee Valley Creek | 3\nWest Union Creek | 12\nWest Union Creek Tributary #1 | 4\nWest Union Creek Tributary #2 | 3\nWest Union Creek Upstream of Tributary #2 | 13\nwell 4 | 2\nwell 6 | 3\nwell 7 | 3\nwell 8 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.95.118.48 | 1\nNorth Fork Kern (Kern Wild and Scenic River)-35.97.118.49 | 1\nBig Sur Wild and Scenic River-36.25.121.79 | 1\nBishop Creek - SW-1 | 9\nBishop Creek - SW-2 | 9\nBishop Creek - SW-3 | 6\nBishop Creek - SW-4 | 9\nMad River at HBMWD Pump Station | 25\nMad River at Hatchery Road bridge in Blue Lake | 25\nMad River at Fish hatchery | 24\nPowers Creek at mouth | 5\nPowers Creek at Stewart property | 7\nUnnammed Tributary at Mouth | 3\nUnnamed Tributary at 299 Cattle Crossing | 4\nWetland at pool | 3\nBVR Storm Drain Inlet 01 | 1\nBVR Stormwater Outfall 01 | 1\nBVRP01 | 5\nBVRS01 | 5\nBVRST01 | 6\nBVRST02 | 4\nBVRW01 | 3\nCMP01 | 3\nDRP01 | 6\nAdobe Creek at Soda Bay Rd at Rancho De La Fuente | 22\nAdobe Creek Finley | 22\nAdobe Creek at Merritt Crossing | 23\nAdobe Creek Bell Hill | 22\nAnderson Creek | 2\nAustin Park 01 | 9\nBuckingham Point | 13\nWestern Boundary (Wetland Tule Gathering site) | 8\nMarina Lake Site | 8\nRumsey Slough by the old bridge | 8\nRumsey Slough End (Near Osprey Ct.) | 8\nRumsey Slough Mid Site (Wooldridge's property) | 7\nRumsey Slough Mouth (Catfish Alley) | 9\nDeep Lake Station 2-300 Ft. West of BVCL5 | 12\nAg Drainage behind Mission Way | 6\nWestern Boundary Site 2 (cow's drinking point) | 8\nLand's End Slough | 8\nFishing Point (old pump house) | 7\nMouth of Land's End Slough | 8\nDeep Lake Station 1-100 yds. off point | 11\nTule Boat Launch (The Point) | 47\nCole Creek at Soda Bay Rd. Bridge | 22\nCole Creek in Kelseyville | 2\nClear Lake Oaks | 13\nClover Creek | 2\nClear Lake Vista 7 At boat launch | 9\nCooper Creek | 2\nCoyote Creek | 2\nCounty Park at beach | 9\nDry Creek | 2\nAt end of El-Em St. on Elem Indian Colony | 13\nForbes Creek at Martin St. in Lakeport | 21\nForbes Creek at Main St. in Lakeport | 22\nForbes Creek | 15\nGlenhaven | 8\nHorseshoe Bend | 9\nJago Bay   (Jones Bay) | 9\nKelsey Creek Soda Bay | 23\nKelsey Creek (Main Street) | 1\nA bridge within the Oaks Keys on Blue Heron Drive | 6\nKeeling Park 01 | 12\nLily Cove 01 | 9\nOld Lakeport TNT Restaurant at boat launch | 12\nLucerne Harbor Park 01 | 9\nBoat Ramp of Big Valley Rancheria Marina | 35\nEast Corner  of Big Valley Rancheria Marina | 8\nSolar Bee of Big Valley Rancheria Marina | 8\nWest Corner of Big Valley Rancheria Marina | 8\nManning Creek at Soda Bay Rd. | 22\nManning Creek at Granite bridge on HWY175 | 22\nMcGaugh Slough Soda Bay Rd. | 1\nMiddle Creek | 1\nWolf Creek | 1\nRedbud Park 01 | 12\nRodman Slough | 8\nSulphur Bank Mercury Mine 01 | 9\nSeasonal Creek at Soda Bay Rd. across from Redi-Mix | 22\nMiddletown - Seasonal Creek | 2\nScotts Creek | 2\nShady Acres Campground now called Clearlake Campground | 13\nSt Helena Creek | 2\nSiegler Creek (SPATT) | 3\nThompson Creek at Big Valley Rd | 21\nEagle Falls Lake -13 | 1\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nWhitewater River (Stormwater) Canal | 2\nGuadalupe Creek @ USGS Gaging Station 11169025 | 8\nCarnadero Creek upstream of Pajaro River | 6\nPajaro River at Chittenden Gap | 6\nSalsipuedes Creek downstream of Corralitos Creek | 6\nPajaro River at Frazier Lake Road | 4\nFurlong Creek at Frazier Lake Road | 11\nLlagas Creek @ Southside | 8\nSan Juan Creek @ Anzar Rd | 11\nTequisquita Slough upstream Pajaro River @ Shore Rd | 4\nWatsonville Slough upstream Harkins Slough | 6\nBlanco Drain below Pump | 6\nEspinosa Slough upstream of Alisal Slough | 2\nMerrit Ditch upstream from Hwy 183 | 6\nMoro Cojo Slough @ Hwy 1 | 2\nNatividad Creek upstream from Salinas Reclamation Canal | 8\nOld Salinas River at Monterey Dunes Way | 2\nTembladero Slough @ Haro | 14\nChorro Creek upstream from Chorro Flats | 2\nArroyo Grande Creek @ old USGS gage | 13\nWarden Creek @ Wetlands Restoration Preserve | 5\nBradley Channel @ Jones St | 6\nMain Street Canal at Main Street Crossing | 12\nOso Flaco Creek at Oso Flaco Lake Road | 17\nOrcutt Creek at sand plant above Santa Maria River | 8\nSanta Ynez River at Floradale Rd | 13\nSanta Ynez River at Highway 246 | 6\nSanta Ynez River at 13th Street | 7\nArroyo Paredon Creek at Foothill Bridge | 6\nBell Creek @ Winchester Canyon Park | 4\nFranklin Creek @ Mountain View Ln | 10\nNewman Wasteway near Hills Ferry Road | 13\nAlamo River Outlet | 14\nColorado River Downstream | 5\nColorado River Upstream | 5\nCity of Yuma Effluent Drain | 4\nCabinet Forsythe Creek | 75\nCasino Forsythe Creek | 74\nWest Fork Russian River | 76\nLower Cahto Creek | 2\nMiddle Cahto Creek | 2\nUpper Cahto Creek | 3\nDead Cow Creek | 1\nMonitoring Well 1 | 3\nMonitoring Well 2 | 2\nMonitoring Well 3 | 2\nEVRADMIN | 2\nMartin Ranch Northwest | 2\nMartin Ranch Southwest | 1\nStary Ranch North | 2\nStary Ranch West | 2\nAlley Creek AC 1 | 10\nClover Creek CC 2 | 12\nClover Diversion CD 1 | 10\nLyons Creek LC 1 | 6\nUpper Middle Creek MC 1 | 8\nMiddle Creek MC 3 | 10\nMiddle Creek MC 4 | 10\nRobinson Creek RC 1 | 2\nRodman Slough RS 1 | 6\nScotts Creek SC 1 | 8\nCDR and Nutrients at Saints Rest Bar | 822\nCDR at Red Rock | 396\nHappy Camp | 4\nIron Gate Dam | 6\nOrleans | 6\nSalmon River | 6\nScott River | 6\nShasta River | 6\nSeiad Valley | 6\nWalker Bridge | 6\nGround wate well 15 | 2\nLittle La Posta | 1\nMW-1 | 2\nMW-2 | 2\nSSU2 | 1\nSSU2 (ponded) | 1\nSSU3 | 2\nThe gold water | 1\nLa Posta Lake surface | 2\nUpper Wetland | 1\nWest Wetland | 2\nMonitoring Well 1 | 1\nSouth Ignome Well | 1\nMartin Ranch Well | 2\nUpper Pond | 2\nRancheria Middle | 1\nLower Pond | 2\nUpstream St Helena | 1\nBear Canyon Creek | 4\nBog 1 | 4\nHathaway 000 | 3\nHathaway East | 4\nHathaway West | 5\nLake Morongo | 3\nLake Morongo Out | 4\nMillard 000 | 5\nMillard Canyon North | 2\nSP Springs | 5\nWood Canyon | 2\nJordan Pond, Alameda County, CA, USA | 1\nLake Chabot, Alameda County, CA, USA | 1\nDon Castro Reservoir, Alameda County, CA, USA | 1\nLake Merritt, Alameda County, CA, USA | 2\nLake del Valle, Alameda County, CA, USA | 2\nLP-SS-1 Lone Pine Creek - Sandtrap Diversion | 11\nLP-SS-2 LPPSR Irrigation Intake | 7\nLP-SS-3 LA Aqueduct Diversion | 11\nLP-SS-4 SAR Upstream | 7\nLP-SS-5 SAR Downstream | 7\nCCC Camp Spring | 2\nLion Creek Spring | 2\nMission Reserve Storm Water Pond 3 | 1\nMission Reserve Storm Water Pond 4 | 3\nPauma Creek | 11\nSanta Margarita Spring No. 3 | 2\nSpring (36-FS-1) | 8\nBack Water Pond | 4\nColorado River Downstream | 4\nColorado River Upstream | 4\nPond #1 | 6\nPond #2 | 8\nPond #3 | 8\nKlamath River | 18\nKlamath River | 11\nWaukell Creek | 7\nUnnamed Creek #1 | 3\nJunior Creek | 9\nJacob's Rancho Irrigation Ditch | 4\nJacob's Rancho Irrigation Ditch | 3\nMussel Slough | 4\nMussel Slough | 1\nIndian Creek 2nd Crossing | 1\nIndian Creek Hot Springs | 1\nGilbert Creek 2 | 84\nGilbert Creek 3 | 96\nLopez Creek 1 | 86\nLopez Creek 2 | 102\nRowdy Creek 1 | 106\nRowdy Creek 2 | 98\nSmith River 2 | 98\nSmith River 3A | 94\nSmith River Middle Fork | 106\nDead Cow Creek 1 | 3\nDead Cow Creek 2 Tributary | 2\nDead Cow Creek 3 | 2\nDead Cow Creek 4 | 3\nOld Sherwood Pond | 6\nDead Cow Creek 6 | 3\nDavis Creek Tributary Downstream | 2\nDavis Creek Tributary Upstream | 3\nMitomkai Pond | 5\nBaechtel Tributary Downstream | 2\nBaechtel Tributary Upstream | 2\nKawi Creek Upstream | 2\nWestside Pond 4 | 6\nWestside Pond 5 | 5\nKawi Creek Downstream | 2\nZanja de Cota Creek Downstream | 11\nSurface Water Site # 1D | 3\nSurface Water Site # 1F | 3\nSurface Water Site # 3 | 3\nSurface Water Site # 5 | 1\nMckinleyville Housing -1 | 12\nMckinleyville Housing -2 | 12\nMckinleyville Housing -3 | 12\nMckinleyville Housing -4 | 12\nTrinidad Bay-1 | 12\nTrinidad Bay-5 | 12\nTrinidad Bay-6 | 12\nTrinidad Housing-1 | 12\nTrinidad Housing-10 | 12\nTrinidad Housing-11 | 12\nTrinidad Housing-12 | 12\nTrinidad Housing-13 | 12\nTrinidad Housing-2 | 12\nTrinidad Housing-4 | 12\nTrinidad Housing-6 | 12\nTrinidad Housing-7 | 12\nTrinidad Housing-8 | 12\nWesthaven Housing-1 | 12\nWesthaven Housing-2 | 12\nReservation Wetland Well 1 | 25\nReservation Wetland Well 2 | 24\nKR above WTP | 11\nKR below WTP | 11\nLower Estuary Surface | 36\nSouth Slough | 9\nKlamath River above Tully Creek | 15\nKlamath River at Turwar Gage | 25\nTrinity River above Klamath River | 15\nKlamath River above Trinity River | 15",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-011",
+    "tier": "T4",
+    "question": "What is the average number of samples collected by organizations that operate stations in the 'Imperial' county?",
+    "gold_sparql": "SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> \"Imperial\" .\n  { \n    SELECT ?organization (COUNT(?sample) AS ?sample_count) WHERE {\n      ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n      ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n      ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n    } GROUP BY ?organization\n  }\n} GROUP BY ?organization_name",
+    "expected_answer": "California State Water Resources Control Board | 246\nCocopah Tribe of Arizona (Tribal) | 14\nQuechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12",
+    "full_expected_items": [
+      "California State Water Resources Control Board | 246",
+      "Cocopah Tribe of Arizona (Tribal) | 14",
+      "Quechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12"
+    ],
+    "full_result_count": 3,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "90.66666666666667",
+        "code": "import pandas as pd\n\n# 1. Find the county_id for 'Imperial'\ncounty_id = dfs['County'][dfs['County']['county_name'] == 'Imperial']['county_id'].iloc[0]\n\n# 2. Find all stations in that county\nstations_in_county = dfs['Station'][dfs['Station']['station_county_id'] == county_id]\n\n# 3. Identify the organizations that operate these stations\norg_ids_in_county = stations_in_county['station_organization_id'].unique()\n\n# 4. Count samples for each of these organizations\nsample_counts = dfs['Sample'][dfs['Sample']['sample_organization_id'].isin(org_ids_in_county)].groupby('sample_organization_id').size()\n\n# 5. Calculate the average number of samples for these organizations\n# Note: If an organization operates a station in Imperial but has 0 samples in the Sample table, \n# it should technically be included as 0. However, standard interpretation usually looks at \n# the distribution of sample counts per organization found in the Sample table.\n# We will calculate the mean of counts for the organizations identified.\nresult = float(sample_counts.mean())",
+        "verdict": "wrong",
+        "elapsed": 2.6117279529571533,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "90.66666666666667",
+        "code": "import pandas as pd\n\n# 1. Find the county_id for 'Imperial'\ncounty_id = dfs['County'][dfs['County']['county_name'] == 'Imperial']['county_id'].iloc[0]\n\n# 2. Find organizations that operate stations in 'Imperial' county\norgs_in_imperial = dfs['Station'][dfs['Station']['station_county_id'] == county_id]['station_organization_id'].unique()\n\n# 3. Count samples for each of these organizations\nsample_counts = dfs['Sample'][dfs['Sample']['sample_organization_id'].isin(orgs_in_imperial)].groupby('sample_organization_id').size()\n\n# 4. Calculate the average number of samples for these organizations\n# If an organization operates a station in Imperial but has 0 samples in the Sample table, \n# we should ensure they are included if the logic implies 'all organizations that operate stations there'.\n# However, standard interpretation usually looks at the distribution of counts among the relevant group.\nresult = float(sample_counts.mean())",
+        "verdict": "wrong",
+        "elapsed": 2.4619300365448,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "90.66666666666667",
+        "code": "import pandas as pd\n\n# 1. Find the county_id for 'Imperial'\ncounty_id = dfs['County'][dfs['County']['county_name'] == 'Imperial']['county_id'].iloc[0]\n\n# 2. Find organizations that operate stations in 'Imperial' county\norgs_in_imperial = dfs['Station'][dfs['Station']['station_county_id'] == county_id]['station_organization_id'].unique()\n\n# 3. Count samples for each of these organizations\nsample_counts = dfs['Sample'][dfs['Sample']['sample_organization_id'].isin(orgs_in_imperial)].groupby('sample_organization_id').size()\n\n# 4. Calculate the average number of samples for these organizations\n# If an organization operates a station in Imperial but has 0 samples in the Sample table, \n# we should ensure they are included if the logic implies 'all organizations that operate stations there'.\n# However, standard interpretation usually looks at the distribution of counts among the relevant group.\nresult = float(sample_counts.mean())",
+        "verdict": "wrong",
+        "elapsed": 2.480257034301758,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "90.66666666666667",
+    "majority_verdict": "wrong",
+    "correct_runs": 0,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-012",
+    "tier": "T4",
+    "question": "Find the names of organizations that have collected samples of 'Water' media and operate stations with a 'WGS84' horizontal datum.",
+    "gold_sparql": "SELECT DISTINCT ?organization_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_horizontal_datum> \"WGS84\" .\n}",
+    "expected_answer": "Karuk Tribe (Tribal), National Park Service Water Resources Division, Augustine Band of Cahuilla Indians (Tribal), Bishop Paiute Tribe, Adventure Scientists (Volunteer)*, Pauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal), California State Water Resources Control Board, Pechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal), Tolowa Dee-ni Nation (Smith River Rancheria), California (Tribal), Middletown Rancheria of Pomo Indians of California (Tribal) ... (12 total)",
+    "full_expected_items": [
+      "Karuk Tribe (Tribal)",
+      "National Park Service Water Resources Division",
+      "Augustine Band of Cahuilla Indians (Tribal)",
+      "Bishop Paiute Tribe",
+      "Adventure Scientists (Volunteer)*",
+      "Pauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal)",
+      "California State Water Resources Control Board",
+      "Pechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal)",
+      "Tolowa Dee-ni Nation (Smith River Rancheria), California (Tribal)",
+      "Middletown Rancheria of Pomo Indians of California (Tribal)",
+      "Twenty-Nine Palms Tribal EPA",
+      "Buena Vista Rancheria of Me-Wuk Indians of California (Tribal)"
+    ],
+    "full_result_count": 12,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "National Park Service Water Resources Division\nAugustine Band of Cahuilla Indians (Tribal)\nAdventure Scientists (Volunteer)*\nBishop Paiute Tribe\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal)\nCalifornia State Water Resources Control Board\nKaruk Tribe (Tribal)\nMiddletown Rancheria of Pomo Indians of California (Tribal)\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal)\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal)\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal)\nTwenty-Nine Palms Tribal EPA",
+        "code": "import pandas as pd\n\n# Filter samples for 'Water' media\nwater_samples = dfs['Sample'][dfs['Sample']['sample_media'] == 'Water']\n\n# Filter stations for 'WGS84' horizontal datum\nwgs84_stations = dfs['Station'][dfs['Station']['station_horizontal_datum'] == 'WGS84']\n\n# Find organizations that appear in both filtered sets\n# Organizations in water_samples\norgs_with_water_samples = water_samples['sample_organization_id'].unique()\n\n# Organizations in wgs84_stations\norgs_with_wgs84_stations = wgs84_stations['station_organization_id'].unique()\n\n# Intersection of organization IDs\ntarget_org_ids = set(orgs_with_water_samples).intersection(set(orgs_with_wgs84_stations))\n\n# Get the names of these organizations\nresult = dfs['Organization'][dfs['Organization']['organization_id'].isin(target_org_ids)]['organization_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 2.400745153427124,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "National Park Service Water Resources Division\nAugustine Band of Cahuilla Indians (Tribal)\nAdventure Scientists (Volunteer)*\nBishop Paiute Tribe\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal)\nCalifornia State Water Resources Control Board\nKaruk Tribe (Tribal)\nMiddletown Rancheria of Pomo Indians of California (Tribal)\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal)\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal)\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal)\nTwenty-Nine Palms Tribal EPA",
+        "code": "import pandas as pd\n\n# Filter samples for 'Water' media\nwater_samples = dfs['Sample'][dfs['Sample']['sample_media'] == 'Water']\n\n# Filter stations for 'WGS84' horizontal datum\nwgs84_stations = dfs['Station'][dfs['Station']['station_horizontal_datum'] == 'WGS84']\n\n# Get organization IDs from samples that meet the media criteria\norg_ids_from_samples = water_samples['sample_organization_id'].unique()\n\n# Get organization IDs from stations that meet the datum criteria\norg_ids_from_stations = wgs84_stations['station_organization_id'].unique()\n\n# Find the intersection of organization IDs\ntarget_org_ids = set(org_ids_from_samples).intersection(set(org_ids_from_stations))\n\n# Get the names of these organizations\nresult = dfs['Organization'][dfs['Organization']['organization_id'].isin(target_org_ids)]['organization_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 2.3702521324157715,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "National Park Service Water Resources Division\nAugustine Band of Cahuilla Indians (Tribal)\nAdventure Scientists (Volunteer)*\nBishop Paiute Tribe\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal)\nCalifornia State Water Resources Control Board\nKaruk Tribe (Tribal)\nMiddletown Rancheria of Pomo Indians of California (Tribal)\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal)\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal)\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal)\nTwenty-Nine Palms Tribal EPA",
+        "code": "import pandas as pd\n\n# Filter samples for 'Water' media\nwater_samples = dfs['Sample'][dfs['Sample']['sample_media'] == 'Water']\n\n# Filter stations for 'WGS84' horizontal datum\nwgs84_stations = dfs['Station'][dfs['Station']['station_horizontal_datum'] == 'WGS84']\n\n# Find organizations that appear in both filtered sets\n# Organizations in water_samples\norgs_with_water_samples = water_samples['sample_organization_id'].unique()\n\n# Organizations in wgs84_stations\norgs_with_wgs84_stations = wgs84_stations['station_organization_id'].unique()\n\n# Intersection of organization IDs\ntarget_org_ids = set(orgs_with_water_samples).intersection(set(orgs_with_wgs84_stations))\n\n# Get the names of these organizations\nresult = dfs['Organization'][dfs['Organization']['organization_id'].isin(target_org_ids)]['organization_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 4.003475189208984,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "National Park Service Water Resources Division\nAugustine Band of Cahuilla Indians (Tribal)\nAdventure Scientists (Volunteer)*\nBishop Paiute Tribe\nBuena Vista Rancheria of Me-Wuk Indians of California (Tribal)\nCalifornia State Water Resources Control Board\nKaruk Tribe (Tribal)\nMiddletown Rancheria of Pomo Indians of California (Tribal)\nPauma Band of Luiseno Mission Indians of the Pauma &amp; Yuima Reservation, California (Tribal)\nPechanga Band of Luiseno Mission Indians of the Pechanga Reservation, California (Tribal)\nTolowa Dee-ni Nation (Smith River Rancheria), California (Tribal)\nTwenty-Nine Palms Tribal EPA",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  },
+  {
+    "kg": "holdout-v2-epa-water-quality-portal",
+    "id": "q-013",
+    "tier": "T4",
+    "question": "List the names of water body types associated with stations that have samples with a 'Field Msr/Obs' activity type.",
+    "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_waterbody_type> ?waterbodytype .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_activity_type> \"Field Msr/Obs\" .\n}",
+    "expected_answer": "River/Stream, Other-Surface Water, Reservoir, River/Stream Intermittent, River/Stream Perennial, River/stream Effluent-Dominated, Estuary, Seep, Well, Pond ... (21 total)",
+    "full_expected_items": [
+      "River/Stream",
+      "Other-Surface Water",
+      "Reservoir",
+      "River/Stream Intermittent",
+      "River/Stream Perennial",
+      "River/stream Effluent-Dominated",
+      "Estuary",
+      "Seep",
+      "Well",
+      "Pond",
+      "Pond-Stormwater",
+      "Lake",
+      "Land Runoff",
+      "Spring",
+      "Canal Irrigation",
+      "Channelized Stream",
+      "Riverine Impoundment",
+      "Storm Sewer",
+      "Wetland Palustrine-Forested",
+      "Wetland Riverine-Emergent",
+      "Wetland Palustrine-Shrub-Scrub"
+    ],
+    "full_result_count": 21,
+    "per_seed": [
+      {
+        "seed": "1",
+        "answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+        "code": "samples_filtered = dfs['Sample'][dfs['Sample']['sample_activity_type'] == 'Field Msr/Obs']\nstations_with_samples = samples_filtered['sample_station_id'].unique()\nstations_filtered = dfs['Station'][dfs['Station']['station_id'].isin(stations_with_samples)]\nwaterbody_ids = stations_filtered['station_waterbodytype_id'].unique()\nresult = dfs['WaterBodyType'][dfs['WaterBodyType']['waterbodytype_id'].isin(waterbody_ids)]['waterbodytype_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.6823718547821045,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "2",
+        "answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+        "code": "samples_filtered = dfs['Sample'][dfs['Sample']['sample_activity_type'] == 'Field Msr/Obs']\nstations_with_samples = samples_filtered['sample_station_id'].unique()\nstations_filtered = dfs['Station'][dfs['Station']['station_id'].isin(stations_with_samples)]\nwaterbody_ids = stations_filtered['station_waterbodytype_id'].unique()\nresult = dfs['WaterBodyType'][dfs['WaterBodyType']['waterbodytype_id'].isin(waterbody_ids)]['waterbodytype_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 1.7330350875854492,
+        "status": 200,
+        "retries": 0
+      },
+      {
+        "seed": "3",
+        "answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+        "code": "samples_filtered = dfs['Sample'][dfs['Sample']['sample_activity_type'] == 'Field Msr/Obs']\nstations_with_samples = samples_filtered['sample_station_id'].unique()\nstations_filtered = dfs['Station'][dfs['Station']['station_id'].isin(stations_with_samples)]\nwaterbody_ids = stations_filtered['station_waterbodytype_id'].unique()\nresult = dfs['WaterBodyType'][dfs['WaterBodyType']['waterbodytype_id'].isin(waterbody_ids)]['waterbodytype_name'].unique().tolist()",
+        "verdict": "correct",
+        "elapsed": 2.349315881729126,
+        "status": 200,
+        "retries": 0
+      }
+    ],
+    "majority_answer": "Canal Irrigation\nChannelized Stream\nEstuary\nLake\nLand Runoff\nOther-Surface Water\nPond\nPond-Stormwater\nReservoir\nRiver/Stream\nRiver/Stream Intermittent\nRiver/Stream Perennial\nRiver/stream Effluent-Dominated\nRiverine Impoundment\nSeep\nSpring\nStorm Sewer\nWell\nWetland Palustrine-Forested\nWetland Palustrine-Shrub-Scrub\nWetland Riverine-Emergent",
+    "majority_verdict": "correct",
+    "correct_runs": 3,
+    "total_runs": 3
+  }
+]

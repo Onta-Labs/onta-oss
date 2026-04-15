@@ -1,0 +1,111 @@
+{
+  "kg_name": "holdout-v2-usda-agricultural-statistics",
+  "_source": "USDA NASS QuickStats environmental dataset (qs_environmental.txt). STATE-level aggregation, years 2018-2022, sampled to 10k observations. See scripts/prep_usda_agricultural_statistics.py.",
+  "entity_types": [
+    {
+      "name": "Observation",
+      "source_csv": "Observation.csv",
+      "primary_key": "obs_id",
+      "label_column": "short_desc",
+      "attributes": [
+        "short_desc",
+        "value",
+        "domain_desc",
+        "domaincat_desc"
+      ]
+    },
+    {
+      "name": "Commodity",
+      "source_csv": "Commodity.csv",
+      "primary_key": "commodity",
+      "label_column": "commodity",
+      "attributes": [
+        "commodity"
+      ]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_alpha",
+      "label_column": "state_name",
+      "attributes": [
+        "state_alpha",
+        "state_name"
+      ]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year",
+      "label_column": "year",
+      "attributes": [
+        "year"
+      ]
+    },
+    {
+      "name": "StatisticCategory",
+      "source_csv": "StatisticCategory.csv",
+      "primary_key": "stat_cat",
+      "label_column": "stat_cat",
+      "attributes": [
+        "stat_cat"
+      ]
+    },
+    {
+      "name": "Unit",
+      "source_csv": "Unit.csv",
+      "primary_key": "unit_desc",
+      "label_column": "unit_desc",
+      "attributes": [
+        "unit_desc"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "observation_of_commodity",
+      "source_csv": "Observation.csv",
+      "subject_type": "Observation",
+      "subject_key_column": "obs_id",
+      "object_type": "Commodity",
+      "object_key_column": "commodity",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "observation_in_state",
+      "source_csv": "Observation.csv",
+      "subject_type": "Observation",
+      "subject_key_column": "obs_id",
+      "object_type": "State",
+      "object_key_column": "state_alpha",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "observation_in_year",
+      "source_csv": "Observation.csv",
+      "subject_type": "Observation",
+      "subject_key_column": "obs_id",
+      "object_type": "Year",
+      "object_key_column": "year",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "observation_stat_category",
+      "source_csv": "Observation.csv",
+      "subject_type": "Observation",
+      "subject_key_column": "obs_id",
+      "object_type": "StatisticCategory",
+      "object_key_column": "stat_cat",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "observation_unit",
+      "source_csv": "Observation.csv",
+      "subject_type": "Observation",
+      "subject_key_column": "obs_id",
+      "object_type": "Unit",
+      "object_key_column": "unit_desc",
+      "cardinality": "N:1"
+    }
+  ]
+}

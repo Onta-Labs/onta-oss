@@ -1,0 +1,170 @@
+{
+  "kg_name": "holdout-v2-ncua-credit-union-call-reports",
+  "_source": "NCUA Credit Union Call Report Quarterly Data 2024-Q2. See scripts/prep_ncua_multitable.py.",
+  "_plan_ref": "eval_holdout_v2/schema_overrides/holdout-v2-ncua-credit-union-call-reports.json",
+  "entity_types": [
+    {
+      "name": "CreditUnion",
+      "source_csv": "CreditUnion.csv",
+      "primary_key": "creditunion_cu_number",
+      "label_column": "creditunion_cu_name",
+      "attributes": [
+        "creditunion_cu_name",
+        "creditunion_charter_type",
+        "creditunion_charter_date",
+        "creditunion_address",
+        "creditunion_city",
+        "creditunion_state_code",
+        "creditunion_zip",
+        "creditunion_ceo_name",
+        "creditunion_num_members",
+        "creditunion_num_branches",
+        "creditunion_rssd_id",
+        "creditunion_peer_group",
+        "creditunion_is_low_income_designated",
+        "creditunion_tom_code"
+      ]
+    },
+    {
+      "name": "Branch",
+      "source_csv": "Branch.csv",
+      "primary_key": "branch_id",
+      "label_column": "branch_name",
+      "attributes": [
+        "branch_name",
+        "branch_type",
+        "branch_address",
+        "branch_city",
+        "branch_state_code",
+        "branch_zip"
+      ]
+    },
+    {
+      "name": "CallReport",
+      "source_csv": "CallReport.csv",
+      "primary_key": "callreport_id",
+      "label_column": "callreport_period",
+      "attributes": [
+        "callreport_cycle_date",
+        "callreport_period",
+        "callreport_fiscal_year",
+        "callreport_fiscal_quarter",
+        "callreport_form_5300_version",
+        "callreport_filed_at",
+        "callreport_amended"
+      ]
+    },
+    {
+      "name": "FinancialMetric",
+      "source_csv": "FinancialMetric.csv",
+      "primary_key": "metric_id",
+      "label_column": "metric_name",
+      "attributes": [
+        "metric_cycle_date",
+        "metric_code",
+        "metric_name",
+        "metric_value",
+        "metric_unit",
+        "metric_ncua_field",
+        "metric_note",
+        "metric_category"
+      ]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_code",
+      "label_column": "state_name",
+      "attributes": [
+        "state_name",
+        "state_fips",
+        "state_ncua_region"
+      ]
+    },
+    {
+      "name": "FieldOfMembership",
+      "source_csv": "FieldOfMembership.csv",
+      "primary_key": "fom_code",
+      "label_column": "fom_description",
+      "attributes": [
+        "fom_description",
+        "fom_category",
+        "fom_common_bond_type"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "has_branch",
+      "source_csv": "Branch.csv",
+      "subject_type": "CreditUnion",
+      "subject_key_column": "branch_cu_number",
+      "object_type": "Branch",
+      "object_key_column": "branch_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_call_report",
+      "source_csv": "CallReport.csv",
+      "subject_type": "CreditUnion",
+      "subject_key_column": "callreport_cu_number",
+      "object_type": "CallReport",
+      "object_key_column": "callreport_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "callreport_has_metric",
+      "source_csv": "FinancialMetric.csv",
+      "subject_type": "CallReport",
+      "subject_key_column": "metric_callreport_id",
+      "object_type": "FinancialMetric",
+      "object_key_column": "metric_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "metric_for_creditunion",
+      "source_csv": "FinancialMetric.csv",
+      "subject_type": "FinancialMetric",
+      "subject_key_column": "metric_id",
+      "object_type": "CreditUnion",
+      "object_key_column": "metric_cu_number",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "creditunion_headquartered_in_state",
+      "source_csv": "CreditUnion.csv",
+      "subject_type": "CreditUnion",
+      "subject_key_column": "creditunion_cu_number",
+      "object_type": "State",
+      "object_key_column": "creditunion_state_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "branch_located_in_state",
+      "source_csv": "Branch.csv",
+      "subject_type": "Branch",
+      "subject_key_column": "branch_id",
+      "object_type": "State",
+      "object_key_column": "branch_state_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "creditunion_has_field_of_membership",
+      "source_csv": "CreditUnion.csv",
+      "subject_type": "CreditUnion",
+      "subject_key_column": "creditunion_cu_number",
+      "object_type": "FieldOfMembership",
+      "object_key_column": "creditunion_tom_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "callreport_filed_for_creditunion",
+      "source_csv": "CallReport.csv",
+      "subject_type": "CallReport",
+      "subject_key_column": "callreport_id",
+      "object_type": "CreditUnion",
+      "object_key_column": "callreport_cu_number",
+      "cardinality": "N:1"
+    }
+  ]
+}

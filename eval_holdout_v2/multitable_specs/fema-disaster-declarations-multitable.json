@@ -1,0 +1,136 @@
+{
+  "kg_name": "holdout-v2-fema-disaster-declarations-multitable",
+  "_source": "OpenFEMA REST API, filtered to state=TX. See scripts/fetch_fema_multitable_tx.py.",
+  "_plan_ref": "eval_holdout_v2/PER_SOURCE_PREPROCESSOR_PLAN.md Section 5",
+  "entity_types": [
+    {
+      "name": "Disaster",
+      "source_csv": "Disaster.csv",
+      "primary_key": "disasterNumber",
+      "label_column": "declarationTitle",
+      "attributes": [
+        "declarationTitle", "declarationType", "declarationDate",
+        "fyDeclared", "incidentBeginDate", "incidentEndDate"
+      ]
+    },
+    {
+      "name": "IncidentType",
+      "source_csv": "IncidentType.csv",
+      "primary_key": "incident_type",
+      "label_column": "incident_type",
+      "attributes": ["incident_type"]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_code",
+      "label_column": "state_name",
+      "attributes": ["state_name"]
+    },
+    {
+      "name": "County",
+      "source_csv": "County.csv",
+      "primary_key": "county_key",
+      "label_column": "county_name",
+      "attributes": ["county_name", "state_code"]
+    },
+    {
+      "name": "PAProject",
+      "source_csv": "PAProject.csv",
+      "primary_key": "pa_row_id",
+      "label_column": "applicant_id",
+      "attributes": [
+        "projectAmount", "federalShareObligated", "totalObligated",
+        "projectStatus", "projectSize", "declarationDate"
+      ]
+    },
+    {
+      "name": "Applicant",
+      "source_csv": "Applicant.csv",
+      "primary_key": "applicant_id",
+      "label_column": "application_title",
+      "attributes": ["application_title"]
+    },
+    {
+      "name": "DamageCategory",
+      "source_csv": "DamageCategory.csv",
+      "primary_key": "damage_category_code",
+      "label_column": "damage_category_description",
+      "attributes": ["damage_category_description"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "has_incident_type",
+      "source_csv": "Disaster.csv",
+      "subject_type": "Disaster",
+      "subject_key_column": "disasterNumber",
+      "object_type": "IncidentType",
+      "object_key_column": "incidentType",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "declared_in_state",
+      "source_csv": "Disaster.csv",
+      "subject_type": "Disaster",
+      "subject_key_column": "disasterNumber",
+      "object_type": "State",
+      "object_key_column": "state",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "has_pa_project",
+      "source_csv": "PAProject.csv",
+      "subject_type": "Disaster",
+      "subject_key_column": "disasterNumber",
+      "object_type": "PAProject",
+      "object_key_column": "pa_row_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "county_located_in",
+      "source_csv": "County.csv",
+      "subject_type": "County",
+      "subject_key_column": "county_key",
+      "object_type": "State",
+      "object_key_column": "state_code",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "pa_project_in_county",
+      "source_csv": "PAProject.csv",
+      "subject_type": "PAProject",
+      "subject_key_column": "pa_row_id",
+      "object_type": "County",
+      "object_key_column": "county",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "pa_project_in_state",
+      "source_csv": "PAProject.csv",
+      "subject_type": "PAProject",
+      "subject_key_column": "pa_row_id",
+      "object_type": "State",
+      "object_key_column": "state",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "pa_project_has_applicant",
+      "source_csv": "PAProject.csv",
+      "subject_type": "PAProject",
+      "subject_key_column": "pa_row_id",
+      "object_type": "Applicant",
+      "object_key_column": "applicant_id",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "pa_project_has_damage_category",
+      "source_csv": "PAProject.csv",
+      "subject_type": "PAProject",
+      "subject_key_column": "pa_row_id",
+      "object_type": "DamageCategory",
+      "object_key_column": "damageCategoryCode",
+      "cardinality": "1:1"
+    }
+  ]
+}

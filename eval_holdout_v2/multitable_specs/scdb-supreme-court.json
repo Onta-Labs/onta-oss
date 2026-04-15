@@ -1,0 +1,116 @@
+{
+  "kg_name": "holdout-v2-scdb-supreme-court",
+  "_source": "Supreme Court Database (SCDB) 2025 Release 01, Modern case-centered + justice-centered Citation datasets. CC BY-NC 3.0. See scripts/prep_scdb_supreme_court.py.",
+  "_plan_ref": "eval_holdout_v2/PER_SOURCE_PREPROCESSOR_PLAN.md",
+  "entity_types": [
+    {
+      "name": "Case",
+      "source_csv": "Case.csv",
+      "primary_key": "case_id",
+      "label_column": "case_name",
+      "attributes": [
+        "case_name", "date_decision", "us_cite", "docket",
+        "decision_type", "case_disposition", "party_winning",
+        "maj_votes", "min_votes", "precedent_alteration"
+      ]
+    },
+    {
+      "name": "Justice",
+      "source_csv": "Justice.csv",
+      "primary_key": "justice_id",
+      "label_column": "justice_name",
+      "attributes": ["justice_name"]
+    },
+    {
+      "name": "Vote",
+      "source_csv": "Vote.csv",
+      "primary_key": "vote_id",
+      "label_column": "vote_id",
+      "attributes": ["vote_code", "vote_label", "direction", "majority"]
+    },
+    {
+      "name": "Term",
+      "source_csv": "Term.csv",
+      "primary_key": "term",
+      "label_column": "term",
+      "attributes": ["term"]
+    },
+    {
+      "name": "IssueArea",
+      "source_csv": "IssueArea.csv",
+      "primary_key": "issue_area_code",
+      "label_column": "issue_area_name",
+      "attributes": ["issue_area_name"]
+    },
+    {
+      "name": "DecisionDirection",
+      "source_csv": "DecisionDirection.csv",
+      "primary_key": "direction_code",
+      "label_column": "direction_name",
+      "attributes": ["direction_name"]
+    },
+    {
+      "name": "ChiefJustice",
+      "source_csv": "ChiefJustice.csv",
+      "primary_key": "chief_name",
+      "label_column": "chief_name",
+      "attributes": ["chief_name"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "case_decided_in_term",
+      "source_csv": "Case.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "Term",
+      "object_key_column": "term",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "case_has_issue_area",
+      "source_csv": "Case.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "IssueArea",
+      "object_key_column": "issue_area_code",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "case_decided_direction",
+      "source_csv": "Case.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "DecisionDirection",
+      "object_key_column": "decision_direction_code",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "case_under_chief",
+      "source_csv": "Case.csv",
+      "subject_type": "Case",
+      "subject_key_column": "case_id",
+      "object_type": "ChiefJustice",
+      "object_key_column": "chief",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "vote_in_case",
+      "source_csv": "Vote.csv",
+      "subject_type": "Vote",
+      "subject_key_column": "vote_id",
+      "object_type": "Case",
+      "object_key_column": "case_id",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "vote_by_justice",
+      "source_csv": "Vote.csv",
+      "subject_type": "Vote",
+      "subject_key_column": "vote_id",
+      "object_type": "Justice",
+      "object_key_column": "justice_id",
+      "cardinality": "1:1"
+    }
+  ]
+}

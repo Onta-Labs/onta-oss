@@ -1,0 +1,648 @@
+{
+  "kg": "holdout-v2-ofr-financial-stability",
+  "results": [
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct indicator categories are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?indicatorCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicatorCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> . }",
+      "expected_answer": "3",
+      "full_expected_items": [
+        "3"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "3",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available indicator names.",
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . }",
+      "expected_answer": "United States, OFR Financial Stress Index, Credit, Equity Valuation, Safe Assets, Funding, Volatility, Other Advanced Economies, Emerging Markets",
+      "full_expected_items": [
+        "United States",
+        "OFR Financial Stress Index",
+        "Credit",
+        "Equity Valuation",
+        "Safe Assets",
+        "Funding",
+        "Volatility",
+        "Other Advanced Economies",
+        "Emerging Markets"
+      ],
+      "full_result_count": 9,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Credit, Funding, OFR Financial Stress Index, United States, Volatility, Equity Valuation, Other Advanced Economies, Safe Assets, Emerging Markets",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Credit, Funding, OFR Financial Stress Index, United States, Volatility, Equity Valuation, Other Advanced Economies, Safe Assets, Emerging Markets",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Credit, Funding, OFR Financial Stress Index, United States, Volatility, Equity Valuation, Other Advanced Economies, Safe Assets, Emerging Markets",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Credit, Funding, OFR Financial Stress Index, United States, Volatility, Equity Valuation, Other Advanced Economies, Safe Assets, Emerging Markets",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "What are the different stress level labels?",
+      "gold_sparql": "SELECT DISTINCT ?stressLevelLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel . }",
+      "expected_answer": "High, Low, Negative (calm), Elevated",
+      "full_expected_items": [
+        "High",
+        "Low",
+        "Negative (calm)",
+        "Elevated"
+      ],
+      "full_result_count": 4,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Negative (calm), Elevated, High, Low",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Negative (calm), Elevated, High, Low",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Negative (calm), Elevated, High, Low",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Negative (calm), Elevated, High, Low",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many unique years are recorded in the dataset?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?yearValue) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> . ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?yearValue . }",
+      "expected_answer": "27",
+      "full_expected_items": [
+        "27"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "2",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "2",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "2",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "2",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "What is the total number of readings for stress levels with a lower bound greater than 0?",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount . FILTER (xsd:integer(?lowerBound) > 0) }",
+      "expected_answer": "4666",
+      "full_expected_items": [
+        "4666"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "4666",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "4666",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "4666",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "4666",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "List the names of all indicators whose source column contains 'United States'.",
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/source_column> ?sourceColumn . FILTER (CONTAINS(LCASE(STR(?sourceColumn)), \"united states\")) }",
+      "expected_answer": "United States",
+      "full_expected_items": [
+        "United States"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "United States",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "United States",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "United States",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "United States",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "What is the total number of indicator readings associated with a stress level that has a lower bound greater than 0?",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount .\n  FILTER (xsd:integer(?lowerBound) > 0)\n}",
+      "expected_answer": "4666",
+      "full_expected_items": [
+        "4666"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "4666",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "4666",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "4666",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "4666",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "How many indicator readings have a value greater than 0.5?",
+      "gold_sparql": "SELECT (COUNT(?reading) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?value .\n  FILTER(xsd:float(?value) > 0.5)\n}",
+      "expected_answer": "12343",
+      "full_expected_items": [
+        "12343"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "4",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "4",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "4",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "4",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many indicator readings are associated with each stress level?",
+      "gold_sparql": "SELECT ?stressLevelLabel (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel .\n} GROUP BY ?stressLevelLabel ORDER BY DESC(?readingCount)",
+      "expected_answer": "Negative (calm) | 36450\nLow | 18707\nElevated | 3553\nHigh | 1113",
+      "full_expected_items": [
+        "Negative (calm) | 36450",
+        "Low | 18707",
+        "Elevated | 3553",
+        "High | 1113"
+      ],
+      "full_result_count": 4,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "low: 7, elevated: 3",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "low: 7, elevated: 3",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "low: 7, elevated: 3",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "low: 7, elevated: 3",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "Count the number of indicators within each indicator category.",
+      "gold_sparql": "SELECT ?categoryName (COUNT(?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n} GROUP BY ?categoryName ORDER BY DESC(?indicatorCount)",
+      "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+      "full_expected_items": [
+        "Subindex | 5",
+        "Regional | 3",
+        "Composite | 1"
+      ],
+      "full_result_count": 3,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Composite: 1, Subindex: 5, Regional: 3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Composite: 1, Subindex: 5, Regional: 3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Composite: 1, Subindex: 5, Regional: 3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Composite: 1, Subindex: 5, Regional: 3",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "What are the names of indicators that have readings associated with a 'Low' stress level, and how many such readings does each indicator have?",
+      "gold_sparql": "SELECT ?indicatorName (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> \"Low\" .\n} GROUP BY ?indicatorName\nORDER BY DESC(?readingCount)\nLIMIT 10",
+      "expected_answer": "Safe Assets | 2946\nEquity Valuation | 2469\nEmerging Markets | 2447\nFunding | 2215\nVolatility | 2166\nCredit | 2114\nOther Advanced Economies | 2110\nUnited States | 1272\nOFR Financial Stress Index | 968",
+      "full_expected_items": [
+        "Safe Assets | 2946",
+        "Equity Valuation | 2469",
+        "Emerging Markets | 2447",
+        "Funding | 2215",
+        "Volatility | 2166",
+        "Credit | 2114",
+        "Other Advanced Economies | 2110",
+        "United States | 1272",
+        "OFR Financial Stress Index | 968"
+      ],
+      "full_result_count": 9,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "advanced: 7, ofr_fsi: 2, safe_assets: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "advanced: 7, ofr_fsi: 2, safe_assets: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "advanced: 7, ofr_fsi: 2, safe_assets: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "advanced: 7, ofr_fsi: 2, safe_assets: 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "For each year, what is the average value of indicator readings that occurred on a 'Friday'?",
+      "gold_sparql": "SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> \"Friday\" .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .\n} GROUP BY ?year\nORDER BY ?year",
+      "expected_answer": "2000 | 1.0443207\n2001 | 1.2513739\n2002 | 1.2831702\n2003 | 0.4425135\n2004 | -0.68760645\n2005 | -1.2797388\n2006 | -1.2572224\n2007 | -0.5077654\n2008 | 3.9917865\n2009 | 2.1762724\n... (27 total rows)",
+      "full_expected_items": [
+        "2000 | 1.0443207",
+        "2001 | 1.2513739",
+        "2002 | 1.2831702",
+        "2003 | 0.4425135",
+        "2004 | -0.68760645",
+        "2005 | -1.2797388",
+        "2006 | -1.2572224",
+        "2007 | -0.5077654",
+        "2008 | 3.9917865",
+        "2009 | 2.1762724",
+        "2010 | 0.3793468",
+        "2011 | 0.6664118",
+        "2012 | -0.003267969",
+        "2013 | -0.8732289",
+        "2014 | -0.98410666",
+        "2015 | -0.365891",
+        "2016 | -0.064895436",
+        "2017 | -1.0445815",
+        "2018 | -0.8041437",
+        "2019 | -0.80634",
+        "2020 | -0.14758502",
+        "2021 | -1.1410998",
+        "2022 | 0.3114506",
+        "2023 | -0.12584484",
+        "2024 | -0.5692586",
+        "2025 | -0.568032",
+        "2026 | -0.6092963"
+      ],
+      "full_result_count": 27,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "The rows are insufficient to compute the exact answer.",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "The rows are insufficient to compute the exact answer.",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-ofr-financial-stability",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "Find the indicator categories that contain indicators with readings in the '2010' decade, and count how many such indicators each category has.",
+      "gold_sparql": "SELECT ?categoryName (COUNT(DISTINCT ?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/decade> \"2010\" .\n} GROUP BY ?categoryName\nORDER BY DESC(?indicatorCount)",
+      "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+      "full_expected_items": [
+        "Subindex | 5",
+        "Regional | 3",
+        "Composite | 1"
+      ],
+      "full_result_count": 3,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Subindex: 5, Regional: 3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Subindex: 5, Regional: 3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Subindex: 5, Regional: 3",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Subindex: 5, Regional: 3",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    }
+  ],
+  "n_chunks": 898,
+  "tables": [
+    {
+      "table": "Indicator",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/Indicator.csv",
+      "n_rows_used": 9,
+      "n_cols": 4
+    },
+    {
+      "table": "IndicatorCategory",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/IndicatorCategory.csv",
+      "n_rows_used": 3,
+      "n_cols": 4
+    },
+    {
+      "table": "IndicatorReading",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/IndicatorReading.csv",
+      "n_rows_used": 285,
+      "n_cols": 7
+    },
+    {
+      "table": "Month",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/Month.csv",
+      "n_rows_used": 285,
+      "n_cols": 4
+    },
+    {
+      "table": "Period",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/Period.csv",
+      "n_rows_used": 285,
+      "n_cols": 6
+    },
+    {
+      "table": "StressLevel",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/StressLevel.csv",
+      "n_rows_used": 4,
+      "n_cols": 5
+    },
+    {
+      "table": "Year",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-ofr-financial-stability/Year.csv",
+      "n_rows_used": 27,
+      "n_cols": 3
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "kg_name": "holdout-v2-doe-energy-research-grants",
+  "_source": "DOE OSTI public API https://www.osti.gov/api/v1/records. 5000 Technical Report records. See scripts/prep_doe_energy_research_grants.py.",
+  "entity_types": [
+    {
+      "name": "Grant",
+      "source_csv": "Grant.csv",
+      "primary_key": "osti_id",
+      "label_column": "title",
+      "attributes": [
+        "title",
+        "description",
+        "contract_number",
+        "report_number",
+        "doi",
+        "product_type",
+        "publication_date"
+      ]
+    },
+    {
+      "name": "SponsorOrg",
+      "source_csv": "SponsorOrg.csv",
+      "primary_key": "sponsor_id",
+      "label_column": "sponsor_name",
+      "attributes": [
+        "sponsor_name"
+      ]
+    },
+    {
+      "name": "ResearchOrg",
+      "source_csv": "ResearchOrg.csv",
+      "primary_key": "research_org_id",
+      "label_column": "research_org_name",
+      "attributes": [
+        "research_org_name"
+      ]
+    },
+    {
+      "name": "Subject",
+      "source_csv": "Subject.csv",
+      "primary_key": "subject_id",
+      "label_column": "subject_name",
+      "attributes": [
+        "subject_name"
+      ]
+    },
+    {
+      "name": "Author",
+      "source_csv": "Author.csv",
+      "primary_key": "author_id",
+      "label_column": "author_name",
+      "attributes": [
+        "author_name"
+      ]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year_id",
+      "label_column": "year",
+      "attributes": [
+        "year"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "grant_sponsored_by",
+      "source_csv": "GrantSponsor.csv",
+      "subject_type": "Grant",
+      "subject_key_column": "osti_id",
+      "object_type": "SponsorOrg",
+      "object_key_column": "sponsor_id",
+      "cardinality": "N:M"
+    },
+    {
+      "name": "grant_performed_by",
+      "source_csv": "GrantResearch.csv",
+      "subject_type": "Grant",
+      "subject_key_column": "osti_id",
+      "object_type": "ResearchOrg",
+      "object_key_column": "research_org_id",
+      "cardinality": "N:M"
+    },
+    {
+      "name": "grant_has_subject",
+      "source_csv": "GrantSubject.csv",
+      "subject_type": "Grant",
+      "subject_key_column": "osti_id",
+      "object_type": "Subject",
+      "object_key_column": "subject_id",
+      "cardinality": "N:M"
+    },
+    {
+      "name": "grant_has_author",
+      "source_csv": "GrantAuthor.csv",
+      "subject_type": "Grant",
+      "subject_key_column": "osti_id",
+      "object_type": "Author",
+      "object_key_column": "author_id",
+      "cardinality": "N:M"
+    },
+    {
+      "name": "grant_in_year",
+      "source_csv": "Grant.csv",
+      "subject_type": "Grant",
+      "subject_key_column": "osti_id",
+      "object_type": "Year",
+      "object_key_column": "year_id",
+      "cardinality": "N:1"
+    }
+  ]
+}

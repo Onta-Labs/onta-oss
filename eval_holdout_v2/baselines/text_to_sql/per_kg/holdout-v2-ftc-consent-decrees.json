@@ -1,0 +1,885 @@
+{
+  "kg": "holdout-v2-ftc-consent-decrees",
+  "results": [
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many matters are there in total?",
+      "expected_answer": "599",
+      "full_expected_items": [
+        "599"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Matter\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\""
+          ],
+          "answer": "599",
+          "verdict": "correct",
+          "input_tokens": 1321,
+          "output_tokens": 7
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Matter\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\""
+          ],
+          "answer": "599",
+          "verdict": "correct",
+          "input_tokens": 1321,
+          "output_tokens": 7
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Matter\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\""
+          ],
+          "answer": "599",
+          "verdict": "correct",
+          "input_tokens": 1321,
+          "output_tokens": 7
+        }
+      ],
+      "majority_answer": "599",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available fiscal years.",
+      "expected_answer": "1996, 2016, 2013, 2005, 2004, 2010, 2001, 2015, 2018, 2007 ... (24 total)",
+      "full_expected_items": [
+        "1996",
+        "2016",
+        "2013",
+        "2005",
+        "2004",
+        "2010",
+        "2001",
+        "2015",
+        "2018",
+        "2007",
+        "2009",
+        "2006",
+        "2008",
+        "1999",
+        "2002",
+        "1998",
+        "2000",
+        "2017",
+        "2003",
+        "2014",
+        "1997",
+        "2011",
+        "2019",
+        "2012"
+      ],
+      "full_result_count": 24,
+      "gold_sparql": "SELECT DISTINCT ?fiscalYearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> . ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT \"fy_value\" FROM \"FiscalYear\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"fy_value\" FROM \"FiscalYear\""
+          ],
+          "answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011\nfy_value: 2010\nfy_value: 2009\nfy_value: 2008\nfy_value: 2007\nfy_value: 2006\nfy_value: 2005\nfy_value: 2004\nfy_value: 2003\nfy_value: 2002\nfy_value: 2001\nfy_value: 2000\n... and 4 more results",
+          "verdict": "correct",
+          "input_tokens": 1316,
+          "output_tokens": 12
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT \"fy_value\" FROM \"FiscalYear\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"fy_value\" FROM \"FiscalYear\""
+          ],
+          "answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011\nfy_value: 2010\nfy_value: 2009\nfy_value: 2008\nfy_value: 2007\nfy_value: 2006\nfy_value: 2005\nfy_value: 2004\nfy_value: 2003\nfy_value: 2002\nfy_value: 2001\nfy_value: 2000\n... and 4 more results",
+          "verdict": "correct",
+          "input_tokens": 1316,
+          "output_tokens": 12
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT \"fy_value\" FROM \"FiscalYear\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"fy_value\" FROM \"FiscalYear\""
+          ],
+          "answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011\nfy_value: 2010\nfy_value: 2009\nfy_value: 2008\nfy_value: 2007\nfy_value: 2006\nfy_value: 2005\nfy_value: 2004\nfy_value: 2003\nfy_value: 2002\nfy_value: 2001\nfy_value: 2000\n... and 4 more results",
+          "verdict": "correct",
+          "input_tokens": 1316,
+          "output_tokens": 12
+        }
+      ],
+      "majority_answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011\nfy_value: 2010\nfy_value: 2009\nfy_value: 2008\nfy_value: 2007\nfy_value: 2006\nfy_value: 2005\nfy_value: 2004\nfy_value: 2003\nfy_value: 2002\nfy_value: 2001\nfy_value: 2000\n... and 4 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "What are the different enforcement types?",
+      "expected_answer": "Consent Order Accepted for Comment, Preliminary Injunction, Part III Administrative Complaint, Permanent Injunction, Civil Penalty (7a), Civil Penalty (Order Violation)",
+      "full_expected_items": [
+        "Consent Order Accepted for Comment",
+        "Preliminary Injunction",
+        "Part III Administrative Complaint",
+        "Permanent Injunction",
+        "Civil Penalty (7a)",
+        "Civil Penalty (Order Violation)"
+      ],
+      "full_result_count": 6,
+      "gold_sparql": "SELECT DISTINCT ?enforcementTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> . ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT \"enforcement_type_label\" FROM \"EnforcementType\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"enforcement_type_label\" FROM \"EnforcementType\""
+          ],
+          "answer": "enforcement_type_label: Consent Order Accepted for Comment\nenforcement_type_label: Preliminary Injunction\nenforcement_type_label: Part III Administrative Complaint\nenforcement_type_label: Permanent Injunction\nenforcement_type_label: Civil Penalty (7a)\nenforcement_type_label: Civil Penalty (Order Violation)",
+          "verdict": "correct",
+          "input_tokens": 1331,
+          "output_tokens": 16
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT \"enforcement_type_label\" FROM \"EnforcementType\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"enforcement_type_label\" FROM \"EnforcementType\""
+          ],
+          "answer": "enforcement_type_label: Consent Order Accepted for Comment\nenforcement_type_label: Preliminary Injunction\nenforcement_type_label: Part III Administrative Complaint\nenforcement_type_label: Permanent Injunction\nenforcement_type_label: Civil Penalty (7a)\nenforcement_type_label: Civil Penalty (Order Violation)",
+          "verdict": "correct",
+          "input_tokens": 1331,
+          "output_tokens": 16
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT \"enforcement_type_label\" FROM \"EnforcementType\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"enforcement_type_label\" FROM \"EnforcementType\""
+          ],
+          "answer": "enforcement_type_label: Consent Order Accepted for Comment\nenforcement_type_label: Preliminary Injunction\nenforcement_type_label: Part III Administrative Complaint\nenforcement_type_label: Permanent Injunction\nenforcement_type_label: Civil Penalty (7a)\nenforcement_type_label: Civil Penalty (Order Violation)",
+          "verdict": "correct",
+          "input_tokens": 1331,
+          "output_tokens": 16
+        }
+      ],
+      "majority_answer": "enforcement_type_label: Consent Order Accepted for Comment\nenforcement_type_label: Preliminary Injunction\nenforcement_type_label: Part III Administrative Complaint\nenforcement_type_label: Permanent Injunction\nenforcement_type_label: Civil Penalty (7a)\nenforcement_type_label: Civil Penalty (Order Violation)",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "How many distinct industries are recorded?",
+      "expected_answer": "34",
+      "full_expected_items": [
+        "34"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?industry) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE { ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"industry_label\") FROM \"Industry\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"industry_label\") FROM \"Industry\";"
+          ],
+          "answer": "34",
+          "verdict": "correct",
+          "input_tokens": 1317,
+          "output_tokens": 14
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"industry_label\") FROM \"Industry\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"industry_label\") FROM \"Industry\";"
+          ],
+          "answer": "34",
+          "verdict": "correct",
+          "input_tokens": 1317,
+          "output_tokens": 14
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"industry_label\") FROM \"Industry\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"industry_label\") FROM \"Industry\";"
+          ],
+          "answer": "34",
+          "verdict": "correct",
+          "input_tokens": 1317,
+          "output_tokens": 14
+        }
+      ],
+      "majority_answer": "34",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "List the labels of all fiscal years after 2010.",
+      "expected_answer": "2017, 2016, 2015, 2014, 2013, 2012, 2011, 2018, 2019",
+      "full_expected_items": [
+        "2017",
+        "2016",
+        "2015",
+        "2014",
+        "2013",
+        "2012",
+        "2011",
+        "2018",
+        "2019"
+      ],
+      "full_result_count": 9,
+      "gold_sparql": "SELECT ?fiscalYearLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  ?fiscalYear <http://www.w3.org/2000/01/rdf-schema#label> ?fiscalYearLabel .\n  FILTER(xsd:integer(?fyValue) > 2010)\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"fy_value\" FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;",
+          "all_sql_attempts": [
+            "SELECT \"fy_value\" FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;"
+          ],
+          "answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011",
+          "verdict": "correct",
+          "input_tokens": 1353,
+          "output_tokens": 24
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"fy_value\" FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;",
+          "all_sql_attempts": [
+            "SELECT \"fy_value\" FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;"
+          ],
+          "answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011",
+          "verdict": "correct",
+          "input_tokens": 1353,
+          "output_tokens": 24
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"fy_value\" FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;",
+          "all_sql_attempts": [
+            "SELECT \"fy_value\" FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;"
+          ],
+          "answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011",
+          "verdict": "correct",
+          "input_tokens": 1353,
+          "output_tokens": 24
+        }
+      ],
+      "majority_answer": "fy_value: 2019\nfy_value: 2018\nfy_value: 2017\nfy_value: 2016\nfy_value: 2015\nfy_value: 2014\nfy_value: 2013\nfy_value: 2012\nfy_value: 2011",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "How many matters were filed in fiscal year 2015?",
+      "expected_answer": "26",
+      "full_expected_items": [
+        "26"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?matterFY .\n  FILTER(?matterFY = \"2015\")\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2015;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2015;"
+          ],
+          "answer": "26",
+          "verdict": "correct",
+          "input_tokens": 1352,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2015;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2015;"
+          ],
+          "answer": "26",
+          "verdict": "correct",
+          "input_tokens": 1352,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2015;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2015;"
+          ],
+          "answer": "26",
+          "verdict": "correct",
+          "input_tokens": 1352,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "26",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "Count the number of fiscal years with a value greater than '2010'.",
+      "expected_answer": "9",
+      "full_expected_items": [
+        "9"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?fiscalYear) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n  FILTER(?fyValue > \"2010\")\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;"
+          ],
+          "answer": "9",
+          "verdict": "correct",
+          "input_tokens": 1359,
+          "output_tokens": 21
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;"
+          ],
+          "answer": "9",
+          "verdict": "correct",
+          "input_tokens": 1359,
+          "output_tokens": 21
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"FiscalYear\" WHERE \"fy_value\" > 2010;"
+          ],
+          "answer": "9",
+          "verdict": "correct",
+          "input_tokens": 1359,
+          "output_tokens": 21
+        }
+      ],
+      "majority_answer": "9",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "How many matters have a fiscal year of 2010?",
+      "expected_answer": "26",
+      "full_expected_items": [
+        "26"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?matter) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> ?fy .\n  FILTER(?fy = \"2010\")\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2010;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2010;"
+          ],
+          "answer": "26",
+          "verdict": "correct",
+          "input_tokens": 1323,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2010;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2010;"
+          ],
+          "answer": "26",
+          "verdict": "correct",
+          "input_tokens": 1323,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2010;",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"Matter\" WHERE \"matter_fy\" = 2010;"
+          ],
+          "answer": "26",
+          "verdict": "correct",
+          "input_tokens": 1323,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "26",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many matters are associated with each fiscal year?",
+      "expected_answer": "1996 | 33\n1997 | 28\n1998 | 41\n1999 | 26\n2000 | 32\n2001 | 23\n2002 | 27\n2003 | 28\n2004 | 22\n2005 | 15\n... (24 total rows)",
+      "full_expected_items": [
+        "1996 | 33",
+        "1997 | 28",
+        "1998 | 41",
+        "1999 | 26",
+        "2000 | 32",
+        "2001 | 23",
+        "2002 | 27",
+        "2003 | 28",
+        "2004 | 22",
+        "2005 | 15",
+        "2006 | 15",
+        "2007 | 29",
+        "2008 | 20",
+        "2009 | 26",
+        "2010 | 26",
+        "2011 | 14",
+        "2012 | 23",
+        "2013 | 27",
+        "2014 | 23",
+        "2015 | 26",
+        "2016 | 29",
+        "2017 | 28",
+        "2018 | 21",
+        "2019 | 17"
+      ],
+      "full_result_count": 24,
+      "gold_sparql": "SELECT ?fiscalYearLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n} GROUP BY ?fiscalYearLabel ORDER BY ?fiscalYearLabel",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"matter_fy\", COUNT(*) FROM \"Matter\" GROUP BY \"matter_fy\";",
+          "all_sql_attempts": [
+            "SELECT \"matter_fy\", COUNT(*) FROM \"Matter\" GROUP BY \"matter_fy\";"
+          ],
+          "answer": "matter_fy: 1996, COUNT(*): 33\nmatter_fy: 1997, COUNT(*): 28\nmatter_fy: 1998, COUNT(*): 41\nmatter_fy: 1999, COUNT(*): 26\nmatter_fy: 2000, COUNT(*): 32\nmatter_fy: 2001, COUNT(*): 23\nmatter_fy: 2002, COUNT(*): 27\nmatter_fy: 2003, COUNT(*): 28\nmatter_fy: 2004, COUNT(*): 22\nmatter_fy: 2005, COUNT(*): 15\nmatter_fy: 2006, COUNT(*): 15\nmatter_fy: 2007, COUNT(*): 29\nmatter_fy: 2008, COUNT(*): 20\nmatter_fy: 2009, COUNT(*): 26\nmatter_fy: 2010, COUNT(*): 26\nmatter_fy: 2011, COUNT(*): 14\nmatter_fy: 2012, COUNT(*): 23\nmatter_fy: 2013, COUNT(*): 27\nmatter_fy: 2014, COUNT(*): 23\nmatter_fy: 2015, COUNT(*): 26\n... and 4 more results",
+          "verdict": "wrong",
+          "input_tokens": 1320,
+          "output_tokens": 19
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"matter_fy\", COUNT(*) FROM \"Matter\" GROUP BY \"matter_fy\";",
+          "all_sql_attempts": [
+            "SELECT \"matter_fy\", COUNT(*) FROM \"Matter\" GROUP BY \"matter_fy\";"
+          ],
+          "answer": "matter_fy: 1996, COUNT(*): 33\nmatter_fy: 1997, COUNT(*): 28\nmatter_fy: 1998, COUNT(*): 41\nmatter_fy: 1999, COUNT(*): 26\nmatter_fy: 2000, COUNT(*): 32\nmatter_fy: 2001, COUNT(*): 23\nmatter_fy: 2002, COUNT(*): 27\nmatter_fy: 2003, COUNT(*): 28\nmatter_fy: 2004, COUNT(*): 22\nmatter_fy: 2005, COUNT(*): 15\nmatter_fy: 2006, COUNT(*): 15\nmatter_fy: 2007, COUNT(*): 29\nmatter_fy: 2008, COUNT(*): 20\nmatter_fy: 2009, COUNT(*): 26\nmatter_fy: 2010, COUNT(*): 26\nmatter_fy: 2011, COUNT(*): 14\nmatter_fy: 2012, COUNT(*): 23\nmatter_fy: 2013, COUNT(*): 27\nmatter_fy: 2014, COUNT(*): 23\nmatter_fy: 2015, COUNT(*): 26\n... and 4 more results",
+          "verdict": "wrong",
+          "input_tokens": 1320,
+          "output_tokens": 19
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"matter_fy\", COUNT(*) FROM \"Matter\" GROUP BY \"matter_fy\";",
+          "all_sql_attempts": [
+            "SELECT \"matter_fy\", COUNT(*) FROM \"Matter\" GROUP BY \"matter_fy\";"
+          ],
+          "answer": "matter_fy: 1996, COUNT(*): 33\nmatter_fy: 1997, COUNT(*): 28\nmatter_fy: 1998, COUNT(*): 41\nmatter_fy: 1999, COUNT(*): 26\nmatter_fy: 2000, COUNT(*): 32\nmatter_fy: 2001, COUNT(*): 23\nmatter_fy: 2002, COUNT(*): 27\nmatter_fy: 2003, COUNT(*): 28\nmatter_fy: 2004, COUNT(*): 22\nmatter_fy: 2005, COUNT(*): 15\nmatter_fy: 2006, COUNT(*): 15\nmatter_fy: 2007, COUNT(*): 29\nmatter_fy: 2008, COUNT(*): 20\nmatter_fy: 2009, COUNT(*): 26\nmatter_fy: 2010, COUNT(*): 26\nmatter_fy: 2011, COUNT(*): 14\nmatter_fy: 2012, COUNT(*): 23\nmatter_fy: 2013, COUNT(*): 27\nmatter_fy: 2014, COUNT(*): 23\nmatter_fy: 2015, COUNT(*): 26\n... and 4 more results",
+          "verdict": "wrong",
+          "input_tokens": 1320,
+          "output_tokens": 19
+        }
+      ],
+      "majority_answer": "matter_fy: 1996, COUNT(*): 33\nmatter_fy: 1997, COUNT(*): 28\nmatter_fy: 1998, COUNT(*): 41\nmatter_fy: 1999, COUNT(*): 26\nmatter_fy: 2000, COUNT(*): 32\nmatter_fy: 2001, COUNT(*): 23\nmatter_fy: 2002, COUNT(*): 27\nmatter_fy: 2003, COUNT(*): 28\nmatter_fy: 2004, COUNT(*): 22\nmatter_fy: 2005, COUNT(*): 15\nmatter_fy: 2006, COUNT(*): 15\nmatter_fy: 2007, COUNT(*): 29\nmatter_fy: 2008, COUNT(*): 20\nmatter_fy: 2009, COUNT(*): 26\nmatter_fy: 2010, COUNT(*): 26\nmatter_fy: 2011, COUNT(*): 14\nmatter_fy: 2012, COUNT(*): 23\nmatter_fy: 2013, COUNT(*): 27\nmatter_fy: 2014, COUNT(*): 23\nmatter_fy: 2015, COUNT(*): 26\n... and 4 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "List the enforcement types and the number of matters associated with each, for fiscal year 2010.",
+      "expected_answer": "Consent Order Accepted for Comment | 23\nPart III Administrative Complaint | 3",
+      "full_expected_items": [
+        "Consent Order Accepted for Comment | 23",
+        "Part III Administrative Complaint | 3"
+      ],
+      "full_result_count": 2,
+      "gold_sparql": "SELECT ?enforcementTypeLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2010\" .\n} GROUP BY ?enforcementTypeLabel ORDER BY DESC(?matterCount)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"T2\".\"enforcement_type_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2010 GROUP BY \"T2\".\"enforcement_type_label\"",
+          "all_sql_attempts": [
+            "SELECT \"T2\".\"enforcement_type_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2010 GROUP BY \"T2\".\"enforcement_type_label\""
+          ],
+          "answer": "enforcement_type_label: Consent Order Accepted for Comment, COUNT(*): 23\nenforcement_type_label: Part III Administrative Complaint, COUNT(*): 3",
+          "verdict": "correct",
+          "input_tokens": 1365,
+          "output_tokens": 88
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"T2\".\"enforcement_type_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2010 GROUP BY \"T2\".\"enforcement_type_label\"",
+          "all_sql_attempts": [
+            "SELECT \"T2\".\"enforcement_type_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2010 GROUP BY \"T2\".\"enforcement_type_label\""
+          ],
+          "answer": "enforcement_type_label: Consent Order Accepted for Comment, COUNT(*): 23\nenforcement_type_label: Part III Administrative Complaint, COUNT(*): 3",
+          "verdict": "correct",
+          "input_tokens": 1365,
+          "output_tokens": 88
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"T2\".\"enforcement_type_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2010 GROUP BY \"T2\".\"enforcement_type_label\"",
+          "all_sql_attempts": [
+            "SELECT \"T2\".\"enforcement_type_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2010 GROUP BY \"T2\".\"enforcement_type_label\""
+          ],
+          "answer": "enforcement_type_label: Consent Order Accepted for Comment, COUNT(*): 23\nenforcement_type_label: Part III Administrative Complaint, COUNT(*): 3",
+          "verdict": "correct",
+          "input_tokens": 1365,
+          "output_tokens": 88
+        }
+      ],
+      "majority_answer": "enforcement_type_label: Consent Order Accepted for Comment, COUNT(*): 23\nenforcement_type_label: Part III Administrative Complaint, COUNT(*): 3",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-011",
+      "tier": "T3",
+      "question": "Which industries have matters in fiscal year 2015, and how many matters are in each of those industries?",
+      "expected_answer": "Health Care - Prescription Drugs | 9\nHealth Care - Medical Equipment/Devices | 3\nProfessional Services (Non Health Care) - Other | 3\nManufacturing - Industrial Goods | 2\nManufacturing - Consumer Goods (non Food & Bev.) | 1\nEnergy - Petroleum | 1\nHealth Care - Hospitals/Clinics | 1\nRetail - Grocery/Supermarkets | 1\nManufacturing - Food & Beverages | 1\nInformation and Technology - Other | 1\n... (11 total rows)",
+      "full_expected_items": [
+        "Health Care - Prescription Drugs | 9",
+        "Health Care - Medical Equipment/Devices | 3",
+        "Professional Services (Non Health Care) - Other | 3",
+        "Manufacturing - Industrial Goods | 2",
+        "Manufacturing - Consumer Goods (non Food & Bev.) | 1",
+        "Energy - Petroleum | 1",
+        "Health Care - Hospitals/Clinics | 1",
+        "Retail - Grocery/Supermarkets | 1",
+        "Manufacturing - Food & Beverages | 1",
+        "Information and Technology - Other | 1",
+        "Retail - Merchandise/Clothing | 1"
+      ],
+      "full_result_count": 11,
+      "gold_sparql": "SELECT ?industryLabel (COUNT(?matter) AS ?matterCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_fy> \"2015\" .\n} GROUP BY ?industryLabel ORDER BY DESC(?matterCount)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"T2\".\"industry_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"Industry\" AS \"T2\" ON \"T1\".\"matter_industry_id\" = \"T2\".\"industry_id\" WHERE \"T1\".\"matter_fy\" = 2015 GROUP BY \"T2\".\"industry_label\";",
+          "all_sql_attempts": [
+            "SELECT \"T2\".\"industry_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"Industry\" AS \"T2\" ON \"T1\".\"matter_industry_id\" = \"T2\".\"industry_id\" WHERE \"T1\".\"matter_fy\" = 2015 GROUP BY \"T2\".\"industry_label\";"
+          ],
+          "answer": "industry_label: Energy - Petroleum, COUNT(*): 1\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 1\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 3\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 9\nindustry_label: Information and Technology - Other, COUNT(*): 1\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 1\nindustry_label: Manufacturing - Food & Beverages, COUNT(*): 1\nindustry_label: Manufacturing - Industrial Goods, COUNT(*): 2\nindustry_label: Professional Services (Non Health Care) - Other, COUNT(*): 3\nindustry_label: Retail - Grocery/Supermarkets, COUNT(*): 1\nindustry_label: Retail - Merchandise/Clothing, COUNT(*): 1",
+          "verdict": "correct",
+          "input_tokens": 1364,
+          "output_tokens": 74
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"T2\".\"industry_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"Industry\" AS \"T2\" ON \"T1\".\"matter_industry_id\" = \"T2\".\"industry_id\" WHERE \"T1\".\"matter_fy\" = 2015 GROUP BY \"T2\".\"industry_label\";",
+          "all_sql_attempts": [
+            "SELECT \"T2\".\"industry_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"Industry\" AS \"T2\" ON \"T1\".\"matter_industry_id\" = \"T2\".\"industry_id\" WHERE \"T1\".\"matter_fy\" = 2015 GROUP BY \"T2\".\"industry_label\";"
+          ],
+          "answer": "industry_label: Energy - Petroleum, COUNT(*): 1\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 1\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 3\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 9\nindustry_label: Information and Technology - Other, COUNT(*): 1\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 1\nindustry_label: Manufacturing - Food & Beverages, COUNT(*): 1\nindustry_label: Manufacturing - Industrial Goods, COUNT(*): 2\nindustry_label: Professional Services (Non Health Care) - Other, COUNT(*): 3\nindustry_label: Retail - Grocery/Supermarkets, COUNT(*): 1\nindustry_label: Retail - Merchandise/Clothing, COUNT(*): 1",
+          "verdict": "correct",
+          "input_tokens": 1364,
+          "output_tokens": 74
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"T2\".\"industry_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"Industry\" AS \"T2\" ON \"T1\".\"matter_industry_id\" = \"T2\".\"industry_id\" WHERE \"T1\".\"matter_fy\" = 2015 GROUP BY \"T2\".\"industry_label\";",
+          "all_sql_attempts": [
+            "SELECT \"T2\".\"industry_label\", COUNT(*) FROM \"Matter\" AS \"T1\" JOIN \"Industry\" AS \"T2\" ON \"T1\".\"matter_industry_id\" = \"T2\".\"industry_id\" WHERE \"T1\".\"matter_fy\" = 2015 GROUP BY \"T2\".\"industry_label\";"
+          ],
+          "answer": "industry_label: Energy - Petroleum, COUNT(*): 1\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 1\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 3\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 9\nindustry_label: Information and Technology - Other, COUNT(*): 1\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 1\nindustry_label: Manufacturing - Food & Beverages, COUNT(*): 1\nindustry_label: Manufacturing - Industrial Goods, COUNT(*): 2\nindustry_label: Professional Services (Non Health Care) - Other, COUNT(*): 3\nindustry_label: Retail - Grocery/Supermarkets, COUNT(*): 1\nindustry_label: Retail - Merchandise/Clothing, COUNT(*): 1",
+          "verdict": "correct",
+          "input_tokens": 1364,
+          "output_tokens": 74
+        }
+      ],
+      "majority_answer": "industry_label: Energy - Petroleum, COUNT(*): 1\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 1\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 3\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 9\nindustry_label: Information and Technology - Other, COUNT(*): 1\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 1\nindustry_label: Manufacturing - Food & Beverages, COUNT(*): 1\nindustry_label: Manufacturing - Industrial Goods, COUNT(*): 2\nindustry_label: Professional Services (Non Health Care) - Other, COUNT(*): 3\nindustry_label: Retail - Grocery/Supermarkets, COUNT(*): 1\nindustry_label: Retail - Merchandise/Clothing, COUNT(*): 1",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "For each industry, how many matters are associated with it, and what is the average fiscal year of those matters?",
+      "expected_answer": "Manufacturing - Consumer Goods (non Food & Bev.) | 22 | 2006.22727272727272727273\nHealth Care - Medical Equipment/Devices | 27 | 2008.33333333333333333333\nManufacturing - Industrial Goods | 52 | 2005.71153846153846153846\nHealth Care - Prescription Drugs | 90 | 2008.62222222222222222222\nHealth Care - Hospitals/Clinics | 36 | 2011.47222222222222222222\nRetail - Grocery/Supermarkets | 24 | 2004.41666666666666666667\nHealth Care - Retail/Pharmacies | 12 | 2003.41666666666666666667\nEnergy - Natural Gas | 22 | 2003.90909090909090909091\nDefense - Ammunitions | 2 | 2012.5\nDefense - Equipment and Engineering Services | 9 | 2000.66666666666666666667\n... (34 total rows)",
+      "full_expected_items": [
+        "Manufacturing - Consumer Goods (non Food & Bev.) | 22 | 2006.22727272727272727273",
+        "Health Care - Medical Equipment/Devices | 27 | 2008.33333333333333333333",
+        "Manufacturing - Industrial Goods | 52 | 2005.71153846153846153846",
+        "Health Care - Prescription Drugs | 90 | 2008.62222222222222222222",
+        "Health Care - Hospitals/Clinics | 36 | 2011.47222222222222222222",
+        "Retail - Grocery/Supermarkets | 24 | 2004.41666666666666666667",
+        "Health Care - Retail/Pharmacies | 12 | 2003.41666666666666666667",
+        "Energy - Natural Gas | 22 | 2003.90909090909090909091",
+        "Defense - Ammunitions | 2 | 2012.5",
+        "Defense - Equipment and Engineering Services | 9 | 2000.66666666666666666667",
+        "Professional Services (Non Health Care) - Funeral | 11 | 2003.54545454545454545455",
+        "Health Care - OTC Drugs/Devices | 5 | 2006",
+        "Energy - Petroleum | 25 | 2005.6",
+        "Manufacturing - Chemicals/Industrial Gases | 34 | 2005.82352941176470588235",
+        "Information and Technology - Hardware | 9 | 2007.33333333333333333333",
+        "Retail - Merchandise/Clothing | 6 | 2004.83333333333333333333",
+        "Manufacturing - Other | 7 | 2014.14285714285714285714",
+        "Professional Services (Non Health Care) - Real Estate | 15 | 2007.53333333333333333333",
+        "Health Care - Professional Services | 52 | 2004.48076923076923076923",
+        "Publishing - Newspapers/Inserts/Books | 2 | 2012",
+        "Professional Services (Non Health Care) - Other | 24 | 2007.625",
+        "Health Care - Other | 3 | 2015.66666666666666666667",
+        "Manufacturing - Food & Beverages | 17 | 2004.35294117647058823529",
+        "Retail - Entertainment | 4 | 2013.25",
+        "Information and Technology - Other | 8 | 2012.5",
+        "Energy - Other | 7 | 2012.42857142857142857143",
+        "Information and Technology - Software/Databases | 16 | 2003.6875",
+        "Information and Technology - Cable TV | 3 | 1998.33333333333333333333",
+        "Professional Services (Non Health Care) - Legal | 3 | 2005.33333333333333333333",
+        "Professional Services (Non Health Care) - Movers | 1 | 2004",
+        "Transportation - Auto & Trucks | 3 | 2007",
+        "Retail - Other | 3 | 2012.66666666666666666667",
+        "Defense - Satellite | 1 | 1996",
+        "Defense - Other | 1 | 1996"
+      ],
+      "full_result_count": 34,
+      "gold_sparql": "SELECT ?industryLabel (COUNT(DISTINCT ?matter) AS ?matterCount) (AVG(xsd:integer(?fyValue)) AS ?averageFiscalYear) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?industry <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Industry> .\n  ?industry <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/industry_label> ?industryLabel .\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_industry> ?industry .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fyValue .\n} GROUP BY ?industryLabel",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"industry_label\", COUNT(*), ROUND(AVG(T1.\"matter_fy\"), 2) FROM \"Matter\" AS T1 JOIN \"Industry\" AS T2 ON T1.\"matter_industry_id\" = T2.\"industry_id\" GROUP BY T2.\"industry_label\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"industry_label\", COUNT(*), ROUND(AVG(T1.\"matter_fy\"), 2) FROM \"Matter\" AS T1 JOIN \"Industry\" AS T2 ON T1.\"matter_industry_id\" = T2.\"industry_id\" GROUP BY T2.\"industry_label\""
+          ],
+          "answer": "industry_label: Defense - Ammunitions, COUNT(*): 2, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Defense - Equipment and Engineering Services, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2000.67\nindustry_label: Defense - Other, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Defense - Satellite, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Energy - Natural Gas, COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.91\nindustry_label: Energy - Other, COUNT(*): 7, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.43\nindustry_label: Energy - Petroleum, COUNT(*): 25, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.6\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 36, ROUND(AVG(T1.\"matter_fy\"), 2): 2011.47\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 27, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.33\nindustry_label: Health Care - OTC Drugs/Devices, COUNT(*): 5, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.0\nindustry_label: Health Care - Other, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 2015.67\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 90, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.62\nindustry_label: Health Care - Professional Services, COUNT(*): 52, ROUND(AVG(T1.\"matter_fy\"), 2): 2004.48\nindustry_label: Health Care - Retail/Pharmacies, COUNT(*): 12, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.42\nindustry_label: Information and Technology - Cable TV, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 1998.33\nindustry_label: Information and Technology - Hardware, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2007.33\nindustry_label: Information and Technology - Other, COUNT(*): 8, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Information and Technology - Software/Databases, COUNT(*): 16, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.69\nindustry_label: Manufacturing - Chemicals/Industrial Gases, COUNT(*): 34, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.82\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.23\n... and 14 more results",
+          "verdict": "wrong",
+          "input_tokens": 1337,
+          "output_tokens": 66
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"industry_label\", COUNT(*), ROUND(AVG(T1.\"matter_fy\"), 2) FROM \"Matter\" AS T1 JOIN \"Industry\" AS T2 ON T1.\"matter_industry_id\" = T2.\"industry_id\" GROUP BY T2.\"industry_label\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"industry_label\", COUNT(*), ROUND(AVG(T1.\"matter_fy\"), 2) FROM \"Matter\" AS T1 JOIN \"Industry\" AS T2 ON T1.\"matter_industry_id\" = T2.\"industry_id\" GROUP BY T2.\"industry_label\""
+          ],
+          "answer": "industry_label: Defense - Ammunitions, COUNT(*): 2, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Defense - Equipment and Engineering Services, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2000.67\nindustry_label: Defense - Other, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Defense - Satellite, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Energy - Natural Gas, COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.91\nindustry_label: Energy - Other, COUNT(*): 7, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.43\nindustry_label: Energy - Petroleum, COUNT(*): 25, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.6\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 36, ROUND(AVG(T1.\"matter_fy\"), 2): 2011.47\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 27, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.33\nindustry_label: Health Care - OTC Drugs/Devices, COUNT(*): 5, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.0\nindustry_label: Health Care - Other, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 2015.67\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 90, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.62\nindustry_label: Health Care - Professional Services, COUNT(*): 52, ROUND(AVG(T1.\"matter_fy\"), 2): 2004.48\nindustry_label: Health Care - Retail/Pharmacies, COUNT(*): 12, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.42\nindustry_label: Information and Technology - Cable TV, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 1998.33\nindustry_label: Information and Technology - Hardware, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2007.33\nindustry_label: Information and Technology - Other, COUNT(*): 8, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Information and Technology - Software/Databases, COUNT(*): 16, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.69\nindustry_label: Manufacturing - Chemicals/Industrial Gases, COUNT(*): 34, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.82\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.23\n... and 14 more results",
+          "verdict": "wrong",
+          "input_tokens": 1337,
+          "output_tokens": 66
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"industry_label\", COUNT(*), ROUND(AVG(T1.\"matter_fy\"), 2) FROM \"Matter\" AS T1 JOIN \"Industry\" AS T2 ON T1.\"matter_industry_id\" = T2.\"industry_id\" GROUP BY T2.\"industry_label\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"industry_label\", COUNT(*), ROUND(AVG(T1.\"matter_fy\"), 2) FROM \"Matter\" AS T1 JOIN \"Industry\" AS T2 ON T1.\"matter_industry_id\" = T2.\"industry_id\" GROUP BY T2.\"industry_label\""
+          ],
+          "answer": "industry_label: Defense - Ammunitions, COUNT(*): 2, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Defense - Equipment and Engineering Services, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2000.67\nindustry_label: Defense - Other, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Defense - Satellite, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Energy - Natural Gas, COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.91\nindustry_label: Energy - Other, COUNT(*): 7, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.43\nindustry_label: Energy - Petroleum, COUNT(*): 25, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.6\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 36, ROUND(AVG(T1.\"matter_fy\"), 2): 2011.47\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 27, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.33\nindustry_label: Health Care - OTC Drugs/Devices, COUNT(*): 5, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.0\nindustry_label: Health Care - Other, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 2015.67\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 90, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.62\nindustry_label: Health Care - Professional Services, COUNT(*): 52, ROUND(AVG(T1.\"matter_fy\"), 2): 2004.48\nindustry_label: Health Care - Retail/Pharmacies, COUNT(*): 12, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.42\nindustry_label: Information and Technology - Cable TV, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 1998.33\nindustry_label: Information and Technology - Hardware, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2007.33\nindustry_label: Information and Technology - Other, COUNT(*): 8, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Information and Technology - Software/Databases, COUNT(*): 16, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.69\nindustry_label: Manufacturing - Chemicals/Industrial Gases, COUNT(*): 34, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.82\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.23\n... and 14 more results",
+          "verdict": "wrong",
+          "input_tokens": 1337,
+          "output_tokens": 66
+        }
+      ],
+      "majority_answer": "industry_label: Defense - Ammunitions, COUNT(*): 2, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Defense - Equipment and Engineering Services, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2000.67\nindustry_label: Defense - Other, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Defense - Satellite, COUNT(*): 1, ROUND(AVG(T1.\"matter_fy\"), 2): 1996.0\nindustry_label: Energy - Natural Gas, COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.91\nindustry_label: Energy - Other, COUNT(*): 7, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.43\nindustry_label: Energy - Petroleum, COUNT(*): 25, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.6\nindustry_label: Health Care - Hospitals/Clinics, COUNT(*): 36, ROUND(AVG(T1.\"matter_fy\"), 2): 2011.47\nindustry_label: Health Care - Medical Equipment/Devices, COUNT(*): 27, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.33\nindustry_label: Health Care - OTC Drugs/Devices, COUNT(*): 5, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.0\nindustry_label: Health Care - Other, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 2015.67\nindustry_label: Health Care - Prescription Drugs, COUNT(*): 90, ROUND(AVG(T1.\"matter_fy\"), 2): 2008.62\nindustry_label: Health Care - Professional Services, COUNT(*): 52, ROUND(AVG(T1.\"matter_fy\"), 2): 2004.48\nindustry_label: Health Care - Retail/Pharmacies, COUNT(*): 12, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.42\nindustry_label: Information and Technology - Cable TV, COUNT(*): 3, ROUND(AVG(T1.\"matter_fy\"), 2): 1998.33\nindustry_label: Information and Technology - Hardware, COUNT(*): 9, ROUND(AVG(T1.\"matter_fy\"), 2): 2007.33\nindustry_label: Information and Technology - Other, COUNT(*): 8, ROUND(AVG(T1.\"matter_fy\"), 2): 2012.5\nindustry_label: Information and Technology - Software/Databases, COUNT(*): 16, ROUND(AVG(T1.\"matter_fy\"), 2): 2003.69\nindustry_label: Manufacturing - Chemicals/Industrial Gases, COUNT(*): 34, ROUND(AVG(T1.\"matter_fy\"), 2): 2005.82\nindustry_label: Manufacturing - Consumer Goods (non Food & Bev.), COUNT(*): 22, ROUND(AVG(T1.\"matter_fy\"), 2): 2006.23\n... and 14 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "List the matter names and their enforcement types for matters that occurred in fiscal year 2015.",
+      "expected_answer": "STERIS/Synergy Health | Preliminary Injunction\nSysco/USF Holding | Preliminary Injunction\nVerisk Analytics/EagleView Technology | Preliminary Injunction\nLorillard/Reynolds American | Consent Order Accepted for Comment\nPar Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment\nLafarge S.A./Holcim | Consent Order Accepted for Comment\nZeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment\nCovidien/Medtronic | Consent Order Accepted for Comment\nSurgery Partners/Symbion Holdings | Consent Order Accepted for Comment\nImpax Laboratories/Tower Holdings | Consent Order Accepted for Comment\n... (26 total rows)",
+      "full_expected_items": [
+        "STERIS/Synergy Health | Preliminary Injunction",
+        "Sysco/USF Holding | Preliminary Injunction",
+        "Verisk Analytics/EagleView Technology | Preliminary Injunction",
+        "Lorillard/Reynolds American | Consent Order Accepted for Comment",
+        "Par Petroleum/Mid Pac Petroleum | Consent Order Accepted for Comment",
+        "Lafarge S.A./Holcim | Consent Order Accepted for Comment",
+        "Zeppelin Foundation Friedrichshafen/TRW Automotive Holdings | Consent Order Accepted for Comment",
+        "Covidien/Medtronic | Consent Order Accepted for Comment",
+        "Surgery Partners/Symbion Holdings | Consent Order Accepted for Comment",
+        "Impax Laboratories/Tower Holdings | Consent Order Accepted for Comment",
+        "Novartis AG/GlaxoSmithKline | Consent Order Accepted for Comment",
+        "Ranbaxy Laboratories/Sun Pharmaceutical Industries | Consent Order Accepted for Comment",
+        "Cerberus/Safeway | Consent Order Accepted for Comment",
+        "Eli Lilly/Novartis AG | Consent Order Accepted for Comment",
+        "Wright Medical Group/Tornier | Consent Order Accepted for Comment",
+        "Endo International/Par Pharmaceutical | Consent Order Accepted for Comment",
+        "Pfizer/Hospira | Consent Order Accepted for Comment",
+        "Dollar Tree/Family Dollar | Consent Order Accepted for Comment",
+        "Biomet/Zimmer Holdings | Consent Order Accepted for Comment",
+        "Professional Skaters Association | Consent Order Accepted for Comment",
+        "Professional Lighting and Sign Management Company of America (PLASMA) | Consent Order Accepted for Comment",
+        "National Association of Animal Breeders | Consent Order Accepted for Comment",
+        "Concordia/Par Pharmaceutical | Consent Order Accepted for Comment",
+        "Leucadia/KCG | Civil Penalty (7a)",
+        "Third Point/Yahoo | Civil Penalty (7a)",
+        "Cardinal Health, Inc. | Permanent Injunction"
+      ],
+      "full_result_count": 26,
+      "gold_sparql": "SELECT ?matterName ?enforcementTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_name> ?matterName .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_in_fy> ?fiscalYear .\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> \"2015\" .\n  ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n  ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n  ?enforcementType <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/enforcement_type_label> ?enforcementTypeLabel .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"T1\".\"matter_name\", \"T2\".\"enforcement_type_label\" FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2015",
+          "all_sql_attempts": [
+            "SELECT \"T1\".\"matter_name\", \"T2\".\"enforcement_type_label\" FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2015"
+          ],
+          "answer": "matter_name: Wright Medical Group/Tornier, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Endo International/Par Pharmaceutical, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Pfizer/Hospira, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Dollar Tree/Family Dollar, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Biomet/Zimmer Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: STERIS/Synergy Health, enforcement_type_label: Preliminary Injunction\nmatter_name: Lorillard/Reynolds American, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Zeppelin Foundation Friedrichshafen/TRW Automotive Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Lafarge S.A./Holcim, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Par Petroleum/Mid Pac Petroleum, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Impax Laboratories/Tower Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Novartis AG/GlaxoSmithKline, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Sysco/USF Holding, enforcement_type_label: Preliminary Injunction\nmatter_name: Ranbaxy Laboratories/Sun Pharmaceutical Industries, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Cerberus/Safeway, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Eli Lilly/Novartis AG, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Verisk Analytics/EagleView Technology, enforcement_type_label: Preliminary Injunction\nmatter_name: Covidien/Medtronic, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Surgery Partners/Symbion Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: National Association of Animal Breeders, enforcement_type_label: Consent Order Accepted for Comment\n... and 6 more results",
+          "verdict": "correct",
+          "input_tokens": 1381,
+          "output_tokens": 81
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"T1\".\"matter_name\", \"T2\".\"enforcement_type_label\" FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2015",
+          "all_sql_attempts": [
+            "SELECT \"T1\".\"matter_name\", \"T2\".\"enforcement_type_label\" FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2015"
+          ],
+          "answer": "matter_name: Wright Medical Group/Tornier, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Endo International/Par Pharmaceutical, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Pfizer/Hospira, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Dollar Tree/Family Dollar, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Biomet/Zimmer Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: STERIS/Synergy Health, enforcement_type_label: Preliminary Injunction\nmatter_name: Lorillard/Reynolds American, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Zeppelin Foundation Friedrichshafen/TRW Automotive Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Lafarge S.A./Holcim, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Par Petroleum/Mid Pac Petroleum, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Impax Laboratories/Tower Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Novartis AG/GlaxoSmithKline, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Sysco/USF Holding, enforcement_type_label: Preliminary Injunction\nmatter_name: Ranbaxy Laboratories/Sun Pharmaceutical Industries, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Cerberus/Safeway, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Eli Lilly/Novartis AG, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Verisk Analytics/EagleView Technology, enforcement_type_label: Preliminary Injunction\nmatter_name: Covidien/Medtronic, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Surgery Partners/Symbion Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: National Association of Animal Breeders, enforcement_type_label: Consent Order Accepted for Comment\n... and 6 more results",
+          "verdict": "correct",
+          "input_tokens": 1381,
+          "output_tokens": 81
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"T1\".\"matter_name\", \"T2\".\"enforcement_type_label\" FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2015",
+          "all_sql_attempts": [
+            "SELECT \"T1\".\"matter_name\", \"T2\".\"enforcement_type_label\" FROM \"Matter\" AS \"T1\" JOIN \"EnforcementType\" AS \"T2\" ON \"T1\".\"matter_enforcement_type_id\" = \"T2\".\"enforcement_type_id\" WHERE \"T1\".\"matter_fy\" = 2015"
+          ],
+          "answer": "matter_name: Wright Medical Group/Tornier, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Endo International/Par Pharmaceutical, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Pfizer/Hospira, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Dollar Tree/Family Dollar, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Biomet/Zimmer Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: STERIS/Synergy Health, enforcement_type_label: Preliminary Injunction\nmatter_name: Lorillard/Reynolds American, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Zeppelin Foundation Friedrichshafen/TRW Automotive Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Lafarge S.A./Holcim, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Par Petroleum/Mid Pac Petroleum, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Impax Laboratories/Tower Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Novartis AG/GlaxoSmithKline, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Sysco/USF Holding, enforcement_type_label: Preliminary Injunction\nmatter_name: Ranbaxy Laboratories/Sun Pharmaceutical Industries, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Cerberus/Safeway, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Eli Lilly/Novartis AG, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Verisk Analytics/EagleView Technology, enforcement_type_label: Preliminary Injunction\nmatter_name: Covidien/Medtronic, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Surgery Partners/Symbion Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: National Association of Animal Breeders, enforcement_type_label: Consent Order Accepted for Comment\n... and 6 more results",
+          "verdict": "correct",
+          "input_tokens": 1381,
+          "output_tokens": 81
+        }
+      ],
+      "majority_answer": "matter_name: Wright Medical Group/Tornier, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Endo International/Par Pharmaceutical, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Pfizer/Hospira, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Dollar Tree/Family Dollar, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Biomet/Zimmer Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: STERIS/Synergy Health, enforcement_type_label: Preliminary Injunction\nmatter_name: Lorillard/Reynolds American, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Zeppelin Foundation Friedrichshafen/TRW Automotive Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Lafarge S.A./Holcim, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Par Petroleum/Mid Pac Petroleum, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Impax Laboratories/Tower Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Novartis AG/GlaxoSmithKline, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Sysco/USF Holding, enforcement_type_label: Preliminary Injunction\nmatter_name: Ranbaxy Laboratories/Sun Pharmaceutical Industries, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Cerberus/Safeway, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Eli Lilly/Novartis AG, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Verisk Analytics/EagleView Technology, enforcement_type_label: Preliminary Injunction\nmatter_name: Covidien/Medtronic, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: Surgery Partners/Symbion Holdings, enforcement_type_label: Consent Order Accepted for Comment\nmatter_name: National Association of Animal Breeders, enforcement_type_label: Consent Order Accepted for Comment\n... and 6 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-ftc-consent-decrees",
+      "id": "q-014",
+      "tier": "T4",
+      "question": "What is the average number of distinct enforcement types associated with matters in each fiscal year?",
+      "expected_answer": "1996 | 4\n1997 | 6\n1998 | 4\n1999 | 3\n2000 | 3\n2001 | 4\n2002 | 4\n2003 | 3\n2004 | 6\n2005 | 3\n... (24 total rows)",
+      "full_expected_items": [
+        "1996 | 4",
+        "1997 | 6",
+        "1998 | 4",
+        "1999 | 3",
+        "2000 | 3",
+        "2001 | 4",
+        "2002 | 4",
+        "2003 | 3",
+        "2004 | 6",
+        "2005 | 3",
+        "2006 | 2",
+        "2007 | 4",
+        "2008 | 5",
+        "2009 | 6",
+        "2010 | 2",
+        "2011 | 3",
+        "2012 | 4",
+        "2013 | 4",
+        "2014 | 5",
+        "2015 | 4",
+        "2016 | 5",
+        "2017 | 5",
+        "2018 | 4",
+        "2019 | 4"
+      ],
+      "full_result_count": 24,
+      "gold_sparql": "SELECT ?fiscalYearLabel (AVG(?distinctEnforcementTypes) AS ?averageDistinctEnforcementTypes) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ftc-consent-decrees> WHERE {\n  ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n  ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_value> ?fiscalYearLabel .\n  {\n    SELECT ?fiscalYear (COUNT(DISTINCT ?enforcementType) AS ?distinctEnforcementTypes) WHERE {\n      ?fiscalYear <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/FiscalYear> .\n      ?fiscalYear <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/fy_includes_matter> ?matter .\n      ?matter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/Matter> .\n      ?matter <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/pred/matter_has_enforcement_type> ?enforcementType .\n      ?enforcementType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ftc-consent-decrees/type/EnforcementType> .\n    } GROUP BY ?fiscalYear\n  }\n} GROUP BY ?fiscalYearLabel\nORDER BY ?fiscalYearLabel",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"matter_fy\", ROUND(AVG(\"distinct_types\"), 2) FROM (SELECT \"matter_fy\", COUNT(DISTINCT \"matter_enforcement_type_id\") AS \"distinct_types\" FROM \"Matter\" GROUP BY \"matter_id\", \"matter_fy\") GROUP BY \"matter_fy\";",
+          "all_sql_attempts": [
+            "SELECT \"matter_fy\", ROUND(AVG(\"distinct_types\"), 2) FROM (SELECT \"matter_fy\", COUNT(DISTINCT \"matter_enforcement_type_id\") AS \"distinct_types\" FROM \"Matter\" GROUP BY \"matter_id\", \"matter_fy\") GROUP BY \"matter_fy\";"
+          ],
+          "answer": "matter_fy: 1996, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1997, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1998, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1999, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2000, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2001, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2002, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2003, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2004, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2005, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2006, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2007, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2008, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2009, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2010, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2011, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2012, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2013, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2014, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2015, ROUND(AVG(\"distinct_types\"), 2): 1.0\n... and 4 more results",
+          "verdict": "wrong",
+          "input_tokens": 1340,
+          "output_tokens": 68
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"matter_fy\", ROUND(AVG(\"distinct_types\"), 2) FROM (SELECT \"matter_fy\", COUNT(DISTINCT \"matter_enforcement_type_id\") AS \"distinct_types\" FROM \"Matter\" GROUP BY \"matter_id\", \"matter_fy\") GROUP BY \"matter_fy\";",
+          "all_sql_attempts": [
+            "SELECT \"matter_fy\", ROUND(AVG(\"distinct_types\"), 2) FROM (SELECT \"matter_fy\", COUNT(DISTINCT \"matter_enforcement_type_id\") AS \"distinct_types\" FROM \"Matter\" GROUP BY \"matter_id\", \"matter_fy\") GROUP BY \"matter_fy\";"
+          ],
+          "answer": "matter_fy: 1996, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1997, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1998, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1999, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2000, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2001, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2002, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2003, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2004, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2005, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2006, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2007, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2008, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2009, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2010, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2011, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2012, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2013, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2014, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2015, ROUND(AVG(\"distinct_types\"), 2): 1.0\n... and 4 more results",
+          "verdict": "wrong",
+          "input_tokens": 1340,
+          "output_tokens": 68
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"matter_fy\", ROUND(AVG(\"distinct_types\"), 2) FROM (SELECT \"matter_fy\", COUNT(DISTINCT \"matter_enforcement_type_id\") AS \"distinct_types\" FROM \"Matter\" GROUP BY \"matter_id\", \"matter_fy\") GROUP BY \"matter_fy\";",
+          "all_sql_attempts": [
+            "SELECT \"matter_fy\", ROUND(AVG(\"distinct_types\"), 2) FROM (SELECT \"matter_fy\", COUNT(DISTINCT \"matter_enforcement_type_id\") AS \"distinct_types\" FROM \"Matter\" GROUP BY \"matter_id\", \"matter_fy\") GROUP BY \"matter_fy\";"
+          ],
+          "answer": "matter_fy: 1996, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1997, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1998, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1999, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2000, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2001, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2002, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2003, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2004, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2005, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2006, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2007, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2008, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2009, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2010, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2011, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2012, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2013, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2014, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2015, ROUND(AVG(\"distinct_types\"), 2): 1.0\n... and 4 more results",
+          "verdict": "wrong",
+          "input_tokens": 1340,
+          "output_tokens": 68
+        }
+      ],
+      "majority_answer": "matter_fy: 1996, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1997, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1998, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 1999, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2000, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2001, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2002, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2003, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2004, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2005, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2006, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2007, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2008, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2009, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2010, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2011, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2012, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2013, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2014, ROUND(AVG(\"distinct_types\"), 2): 1.0\nmatter_fy: 2015, ROUND(AVG(\"distinct_types\"), 2): 1.0\n... and 4 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    }
+  ],
+  "schema": "-- SQLite database schema\n\n-- Table Matter: 599 rows (from Matter.csv)\nCREATE TABLE \"Matter\" (\n  \"matter_id\" TEXT,\n  \"matter_number\" INTEGER,\n  \"matter_name\" TEXT,\n  \"matter_date\" TEXT,\n  \"matter_fy\" INTEGER,\n  \"matter_category_id\" TEXT,\n  \"matter_industry_id\" TEXT,\n  \"matter_enforcement_type_id\" TEXT,\n  \"matter_subtype_id\" TEXT,\n  \"matter_url\" TEXT\n);\n-- sample rows from Matter:\n--   matter_id='merger_1910068', matter_number='1910068', matter_name='DTE Energy/Generation Pipeline', matter_date='9/13/2019', matter_fy='2019', matter_category_id='merger', matter_industry_id='ind_40e1e6e9cd55', matter_enforcement_type_id='etype_15d57c3be768', matter_subtype_id='', matter_url='https://www.ftc.gov/news-events/press-re'\n--   matter_id='merger_1810215', matter_number='1810215', matter_name='US Foods/SGA', matter_date='9/11/2019', matter_fy='2019', matter_category_id='merger', matter_industry_id='ind_02a62e6fbca5', matter_enforcement_type_id='etype_15d57c3be768', matter_subtype_id='', matter_url='https://www.ftc.gov/news-events/press-re'\n\n-- Table Industry: 34 rows (from Industry.csv)\nCREATE TABLE \"Industry\" (\n  \"industry_id\" TEXT,\n  \"industry_label\" TEXT\n);\n-- sample rows from Industry:\n--   industry_id='ind_40e1e6e9cd55', industry_label='Energy - Natural Gas'\n--   industry_id='ind_02a62e6fbca5', industry_label='Retail - Grocery/Supermarkets'\n\n-- Table EnforcementType: 6 rows (from EnforcementType.csv)\nCREATE TABLE \"EnforcementType\" (\n  \"enforcement_type_id\" TEXT,\n  \"enforcement_type_label\" TEXT\n);\n-- sample rows from EnforcementType:\n--   enforcement_type_id='etype_15d57c3be768', enforcement_type_label='Consent Order Accepted for Comment'\n--   enforcement_type_id='etype_e84d4d1eebc8', enforcement_type_label='Preliminary Injunction'\n\n-- Table FiscalYear: 24 rows (from FiscalYear.csv)\nCREATE TABLE \"FiscalYear\" (\n  \"fy_id\" INTEGER,\n  \"fy_value\" INTEGER\n);\n-- sample rows from FiscalYear:\n--   fy_id='2019', fy_value='2019'\n--   fy_id='2018', fy_value='2018'\n\n-- Table MatterCategory: 3 rows (from MatterCategory.csv)\nCREATE TABLE \"MatterCategory\" (\n  \"category_id\" TEXT,\n  \"category_label\" TEXT\n);\n-- sample rows from MatterCategory:\n--   category_id='merger', category_label='Merger Enforcement'\n--   category_id='nonmerger', category_label='Nonmerger Enforcement'\n\n-- Table MatterSubtype: 3 rows (from MatterSubtype.csv)\nCREATE TABLE \"MatterSubtype\" (\n  \"subtype_id\" TEXT,\n  \"subtype_label\" TEXT\n);\n-- sample rows from MatterSubtype:\n--   subtype_id='subt_48c4c14a5ae5', subtype_label='Merger'\n--   subtype_id='subt_539e0eff72d7', subtype_label='Nonmerger'\n\n-- Foreign key hints (join on these):\n--   FiscalYear.matter_fy -> Matter.matter_id\n--   Industry.matter_industry_id -> Matter.matter_id\n--   Matter.matter_id -> EnforcementType.matter_enforcement_type_id\n--   Matter.matter_id -> FiscalYear.matter_fy\n--   Matter.matter_id -> Industry.matter_industry_id\n--   Matter.matter_id -> MatterCategory.matter_category_id\n--   Matter.matter_id -> MatterSubtype.matter_subtype_id\n--   MatterCategory.matter_category_id -> Matter.matter_id\n"
+}

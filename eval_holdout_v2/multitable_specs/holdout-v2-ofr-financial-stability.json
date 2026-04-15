@@ -1,0 +1,171 @@
+{
+  "kg_name": "holdout-v2-ofr-financial-stability",
+  "_source": "OFR Financial Stress Index daily time-series (2000-present) from https://www.financialresearch.gov/financial-stress-index/data/fsi.csv. See scripts/prep_ofr_financial_stability.py.",
+  "_notes": [
+    "IndicatorReading is the anchor entity (~60k rows; one per (date, indicator) pair).",
+    "Wide daily matrix (9 metrics across 6647 business days, 2000-01-03 onward) is exploded into an entity-rich model with 7 types.",
+    "StressLevel is a derived bucket: negative/low/elevated/high (thresholds from OFR narrative).",
+    "All data is public-domain U.S. Treasury / OFR."
+  ],
+  "entity_types": [
+    {
+      "name": "IndicatorReading",
+      "source_csv": "IndicatorReading.csv",
+      "primary_key": "reading_id",
+      "label_column": "reading_id",
+      "attributes": ["value"]
+    },
+    {
+      "name": "Indicator",
+      "source_csv": "Indicator.csv",
+      "primary_key": "indicator_id",
+      "label_column": "indicator_name",
+      "attributes": ["indicator_name", "source_column"]
+    },
+    {
+      "name": "IndicatorCategory",
+      "source_csv": "IndicatorCategory.csv",
+      "primary_key": "category_id",
+      "label_column": "category_name",
+      "attributes": ["category_name", "description", "indicator_count"]
+    },
+    {
+      "name": "Period",
+      "source_csv": "Period.csv",
+      "primary_key": "period_id",
+      "label_column": "date",
+      "attributes": ["date", "day_of_week", "iso_weekday"]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year_id",
+      "label_column": "year_id",
+      "attributes": ["year", "decade"]
+    },
+    {
+      "name": "Month",
+      "source_csv": "Month.csv",
+      "primary_key": "month_id",
+      "label_column": "month_id",
+      "attributes": ["month_number", "month_name"]
+    },
+    {
+      "name": "StressLevel",
+      "source_csv": "StressLevel.csv",
+      "primary_key": "stress_level_id",
+      "label_column": "stress_level_label",
+      "attributes": ["stress_level_label", "lower_bound", "upper_bound", "reading_count"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "reading_for_indicator",
+      "source_csv": "IndicatorReading.csv",
+      "subject_type": "IndicatorReading",
+      "subject_key_column": "reading_id",
+      "object_type": "Indicator",
+      "object_key_column": "indicator_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "indicator_has_reading",
+      "source_csv": "IndicatorReading.csv",
+      "subject_type": "Indicator",
+      "subject_key_column": "indicator_id",
+      "object_type": "IndicatorReading",
+      "object_key_column": "reading_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "reading_on_period",
+      "source_csv": "IndicatorReading.csv",
+      "subject_type": "IndicatorReading",
+      "subject_key_column": "reading_id",
+      "object_type": "Period",
+      "object_key_column": "period_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "period_has_reading",
+      "source_csv": "IndicatorReading.csv",
+      "subject_type": "Period",
+      "subject_key_column": "period_id",
+      "object_type": "IndicatorReading",
+      "object_key_column": "reading_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "reading_has_stress_level",
+      "source_csv": "IndicatorReading.csv",
+      "subject_type": "IndicatorReading",
+      "subject_key_column": "reading_id",
+      "object_type": "StressLevel",
+      "object_key_column": "stress_level_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "stress_level_contains_reading",
+      "source_csv": "IndicatorReading.csv",
+      "subject_type": "StressLevel",
+      "subject_key_column": "stress_level_id",
+      "object_type": "IndicatorReading",
+      "object_key_column": "reading_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "indicator_in_category",
+      "source_csv": "Indicator.csv",
+      "subject_type": "Indicator",
+      "subject_key_column": "indicator_id",
+      "object_type": "IndicatorCategory",
+      "object_key_column": "category_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "category_includes_indicator",
+      "source_csv": "Indicator.csv",
+      "subject_type": "IndicatorCategory",
+      "subject_key_column": "category_id",
+      "object_type": "Indicator",
+      "object_key_column": "indicator_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "period_in_month",
+      "source_csv": "Period.csv",
+      "subject_type": "Period",
+      "subject_key_column": "period_id",
+      "object_type": "Month",
+      "object_key_column": "month_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "month_contains_period",
+      "source_csv": "Period.csv",
+      "subject_type": "Month",
+      "subject_key_column": "month_id",
+      "object_type": "Period",
+      "object_key_column": "period_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "month_in_year",
+      "source_csv": "Month.csv",
+      "subject_type": "Month",
+      "subject_key_column": "month_id",
+      "object_type": "Year",
+      "object_key_column": "year_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "year_contains_month",
+      "source_csv": "Month.csv",
+      "subject_type": "Year",
+      "subject_key_column": "year_id",
+      "object_type": "Month",
+      "object_key_column": "month_id",
+      "cardinality": "1:N"
+    }
+  ]
+}

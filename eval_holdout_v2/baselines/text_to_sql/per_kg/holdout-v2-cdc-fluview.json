@@ -1,0 +1,1067 @@
+{
+  "kg": "holdout-v2-cdc-fluview",
+  "results": [
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many weekly reports are there in total?",
+      "expected_answer": "18122",
+      "full_expected_items": [
+        "18122"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?report) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"WeeklyReport\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"WeeklyReport\""
+          ],
+          "answer": "18122",
+          "verdict": "correct",
+          "input_tokens": 1517,
+          "output_tokens": 8
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"WeeklyReport\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"WeeklyReport\""
+          ],
+          "answer": "18122",
+          "verdict": "correct",
+          "input_tokens": 1517,
+          "output_tokens": 8
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"WeeklyReport\"",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"WeeklyReport\""
+          ],
+          "answer": "18122",
+          "verdict": "correct",
+          "input_tokens": 1517,
+          "output_tokens": 8
+        }
+      ],
+      "majority_answer": "18122",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available region names.",
+      "expected_answer": "CT, MI, CO, TN, AR, NH, MD, MN, IN, DC ... (62 total)",
+      "full_expected_items": [
+        "CT",
+        "MI",
+        "CO",
+        "TN",
+        "AR",
+        "NH",
+        "MD",
+        "MN",
+        "IN",
+        "DC",
+        "NM",
+        "AL",
+        "NC",
+        "ID",
+        "SC",
+        "DE",
+        "National",
+        "VT",
+        "KS",
+        "WI",
+        "HHS Region 1 (CT, ME, MA, NH, RI, VT)",
+        "HHS Region 10 (AK, ID, OR, WA)",
+        "HHS Region 2 (NJ, NY)",
+        "HHS Region 3 (DE, DC, MD, PA, VA, WV)",
+        "HHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN)",
+        "HHS Region 5 (IL, IN, MI, MN, OH, WI)",
+        "HHS Region 6 (AR, LA, NM, OK, TX)",
+        "HHS Region 7 (IA, KS, MO, NE)",
+        "HHS Region 8 (CO, MT, ND, SD, UT, WY)",
+        "HHS Region 9 (AZ, CA, HI, NV)",
+        "MO",
+        "FL",
+        "MA",
+        "NJ",
+        "SD",
+        "CA",
+        "HI",
+        "ME",
+        "IA",
+        "PA",
+        "OR",
+        "OH",
+        "NE",
+        "KY",
+        "IL",
+        "NY",
+        "AZ",
+        "GA",
+        "OK",
+        "MT",
+        "NV",
+        "WV",
+        "WA",
+        "UT",
+        "VA",
+        "LA",
+        "MS",
+        "RI",
+        "TX",
+        "WY",
+        "ND",
+        "AK"
+      ],
+      "full_result_count": 62,
+      "gold_sparql": "SELECT DISTINCT ?region_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> . ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT \"region_name\" FROM \"Region\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"region_name\" FROM \"Region\""
+          ],
+          "answer": "region_name: AK\nregion_name: AL\nregion_name: AR\nregion_name: AZ\nregion_name: CA\nregion_name: CO\nregion_name: CT\nregion_name: DC\nregion_name: DE\nregion_name: FL\nregion_name: GA\nregion_name: HHS Region 1 (CT, ME, MA, NH, RI, VT)\nregion_name: HHS Region 10 (AK, ID, OR, WA)\nregion_name: HHS Region 2 (NJ, NY)\nregion_name: HHS Region 3 (DE, DC, MD, PA, VA, WV)\nregion_name: HHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN)\nregion_name: HHS Region 5 (IL, IN, MI, MN, OH, WI)\nregion_name: HHS Region 6 (AR, LA, NM, OK, TX)\nregion_name: HHS Region 7 (IA, KS, MO, NE)\nregion_name: HHS Region 8 (CO, MT, ND, SD, UT, WY)\n... and 42 more results",
+          "verdict": "correct",
+          "input_tokens": 1484,
+          "output_tokens": 11
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT \"region_name\" FROM \"Region\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"region_name\" FROM \"Region\""
+          ],
+          "answer": "region_name: AK\nregion_name: AL\nregion_name: AR\nregion_name: AZ\nregion_name: CA\nregion_name: CO\nregion_name: CT\nregion_name: DC\nregion_name: DE\nregion_name: FL\nregion_name: GA\nregion_name: HHS Region 1 (CT, ME, MA, NH, RI, VT)\nregion_name: HHS Region 10 (AK, ID, OR, WA)\nregion_name: HHS Region 2 (NJ, NY)\nregion_name: HHS Region 3 (DE, DC, MD, PA, VA, WV)\nregion_name: HHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN)\nregion_name: HHS Region 5 (IL, IN, MI, MN, OH, WI)\nregion_name: HHS Region 6 (AR, LA, NM, OK, TX)\nregion_name: HHS Region 7 (IA, KS, MO, NE)\nregion_name: HHS Region 8 (CO, MT, ND, SD, UT, WY)\n... and 42 more results",
+          "verdict": "correct",
+          "input_tokens": 1484,
+          "output_tokens": 11
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT \"region_name\" FROM \"Region\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"region_name\" FROM \"Region\""
+          ],
+          "answer": "region_name: AK\nregion_name: AL\nregion_name: AR\nregion_name: AZ\nregion_name: CA\nregion_name: CO\nregion_name: CT\nregion_name: DC\nregion_name: DE\nregion_name: FL\nregion_name: GA\nregion_name: HHS Region 1 (CT, ME, MA, NH, RI, VT)\nregion_name: HHS Region 10 (AK, ID, OR, WA)\nregion_name: HHS Region 2 (NJ, NY)\nregion_name: HHS Region 3 (DE, DC, MD, PA, VA, WV)\nregion_name: HHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN)\nregion_name: HHS Region 5 (IL, IN, MI, MN, OH, WI)\nregion_name: HHS Region 6 (AR, LA, NM, OK, TX)\nregion_name: HHS Region 7 (IA, KS, MO, NE)\nregion_name: HHS Region 8 (CO, MT, ND, SD, UT, WY)\n... and 42 more results",
+          "verdict": "correct",
+          "input_tokens": 1484,
+          "output_tokens": 11
+        }
+      ],
+      "majority_answer": "region_name: AK\nregion_name: AL\nregion_name: AR\nregion_name: AZ\nregion_name: CA\nregion_name: CO\nregion_name: CT\nregion_name: DC\nregion_name: DE\nregion_name: FL\nregion_name: GA\nregion_name: HHS Region 1 (CT, ME, MA, NH, RI, VT)\nregion_name: HHS Region 10 (AK, ID, OR, WA)\nregion_name: HHS Region 2 (NJ, NY)\nregion_name: HHS Region 3 (DE, DC, MD, PA, VA, WV)\nregion_name: HHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN)\nregion_name: HHS Region 5 (IL, IN, MI, MN, OH, WI)\nregion_name: HHS Region 6 (AR, LA, NM, OK, TX)\nregion_name: HHS Region 7 (IA, KS, MO, NE)\nregion_name: HHS Region 8 (CO, MT, ND, SD, UT, WY)\n... and 42 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "How many distinct age groups are recorded?",
+      "expected_answer": "6",
+      "full_expected_items": [
+        "6"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?age_group) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?age_group <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(DISTINCT \"age_group_id\") FROM \"AgeGroup\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"age_group_id\") FROM \"AgeGroup\";"
+          ],
+          "answer": "6",
+          "verdict": "correct",
+          "input_tokens": 1487,
+          "output_tokens": 17
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(DISTINCT \"age_group_id\") FROM \"AgeGroup\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"age_group_id\") FROM \"AgeGroup\";"
+          ],
+          "answer": "6",
+          "verdict": "correct",
+          "input_tokens": 1487,
+          "output_tokens": 17
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(DISTINCT \"age_group_id\") FROM \"AgeGroup\";",
+          "all_sql_attempts": [
+            "SELECT COUNT(DISTINCT \"age_group_id\") FROM \"AgeGroup\";"
+          ],
+          "answer": "6",
+          "verdict": "correct",
+          "input_tokens": 1487,
+          "output_tokens": 17
+        }
+      ],
+      "majority_answer": "6",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "What are the different types of regions available?",
+      "expected_answer": "National, State, HHS Region",
+      "full_expected_items": [
+        "National",
+        "State",
+        "HHS Region"
+      ],
+      "full_result_count": 3,
+      "gold_sparql": "SELECT DISTINCT ?region_type_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE { ?region_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> . ?region_type <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?region_type_name . }",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT \"region_type_name\" FROM \"RegionType\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"region_type_name\" FROM \"RegionType\""
+          ],
+          "answer": "region_type_name: HHS Region\nregion_type_name: National\nregion_type_name: State",
+          "verdict": "correct",
+          "input_tokens": 1498,
+          "output_tokens": 14
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT \"region_type_name\" FROM \"RegionType\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"region_type_name\" FROM \"RegionType\""
+          ],
+          "answer": "region_type_name: HHS Region\nregion_type_name: National\nregion_type_name: State",
+          "verdict": "correct",
+          "input_tokens": 1498,
+          "output_tokens": 14
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT \"region_type_name\" FROM \"RegionType\"",
+          "all_sql_attempts": [
+            "SELECT DISTINCT \"region_type_name\" FROM \"RegionType\""
+          ],
+          "answer": "region_type_name: HHS Region\nregion_type_name: National\nregion_type_name: State",
+          "verdict": "correct",
+          "input_tokens": 1498,
+          "output_tokens": 14
+        }
+      ],
+      "majority_answer": "region_type_name: HHS Region\nregion_type_name: National\nregion_type_name: State",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "What is the average number of patients reported in weekly reports where the number of providers is greater than 100?",
+      "expected_answer": "242669.83",
+      "full_expected_items": [
+        "242669.82645850451930977814"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (AVG(xsd:integer(?numPatients)) AS ?averageNumPatients) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/num_providers> ?numProviders .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/num_patients> ?numPatients .\n  FILTER (xsd:integer(?numProviders) > 100) .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT ROUND(AVG(\"num_patients\"), 2) FROM \"WeeklyReport\" WHERE \"num_providers\" > 100;",
+          "all_sql_attempts": [
+            "SELECT ROUND(AVG(\"num_patients\"), 2) FROM \"WeeklyReport\" WHERE \"num_providers\" > 100;"
+          ],
+          "answer": "242669.83",
+          "verdict": "correct",
+          "input_tokens": 1535,
+          "output_tokens": 29
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT ROUND(AVG(\"num_patients\"), 2) FROM \"WeeklyReport\" WHERE \"num_providers\" > 100;",
+          "all_sql_attempts": [
+            "SELECT ROUND(AVG(\"num_patients\"), 2) FROM \"WeeklyReport\" WHERE \"num_providers\" > 100;"
+          ],
+          "answer": "242669.83",
+          "verdict": "correct",
+          "input_tokens": 1535,
+          "output_tokens": 29
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT ROUND(AVG(\"num_patients\"), 2) FROM \"WeeklyReport\" WHERE \"num_providers\" > 100;",
+          "all_sql_attempts": [
+            "SELECT ROUND(AVG(\"num_patients\"), 2) FROM \"WeeklyReport\" WHERE \"num_providers\" > 100;"
+          ],
+          "answer": "242669.83",
+          "verdict": "correct",
+          "input_tokens": 1535,
+          "output_tokens": 29
+        }
+      ],
+      "majority_answer": "242669.83",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "List the epiweeks of weekly reports that have a weighted ILI percentage greater than 2.0.",
+      "expected_answer": "202244, 202245, 202246, 202247, 202248, 202249, 202250, 202251, 202252, 202243 ... (293 total)",
+      "full_expected_items": [
+        "202244",
+        "202245",
+        "202246",
+        "202247",
+        "202248",
+        "202249",
+        "202250",
+        "202251",
+        "202252",
+        "202243",
+        "202301",
+        "202322",
+        "202323",
+        "202324",
+        "202325",
+        "202326",
+        "202328",
+        "202330",
+        "202331",
+        "202327",
+        "202329",
+        "202332",
+        "202333",
+        "202334",
+        "202335",
+        "202336",
+        "202337",
+        "202338",
+        "202339",
+        "202340",
+        "202341",
+        "202304",
+        "202305",
+        "202306",
+        "202307",
+        "202308",
+        "202309",
+        "202310",
+        "202311",
+        "202302",
+        "202303",
+        "202401",
+        "202402",
+        "202403",
+        "202404",
+        "202351",
+        "202352",
+        "202405",
+        "202406",
+        "202407",
+        "202408",
+        "202409",
+        "202414",
+        "202415",
+        "202416",
+        "202417",
+        "202418",
+        "202419",
+        "202413",
+        "202410",
+        "202411",
+        "202412",
+        "202501",
+        "202421",
+        "202422",
+        "202441",
+        "202448",
+        "202450",
+        "202451",
+        "202452",
+        "202447",
+        "202505",
+        "202506",
+        "202507",
+        "202508",
+        "202509",
+        "202510",
+        "202511",
+        "202512",
+        "202513",
+        "202514",
+        "202515",
+        "202516",
+        "202517",
+        "202518",
+        "202519",
+        "202001",
+        "202002",
+        "202003",
+        "202004",
+        "202520",
+        "202005",
+        "202006",
+        "202007",
+        "202008",
+        "202009",
+        "201949",
+        "201950",
+        "201951",
+        "201952",
+        "202010",
+        "202011",
+        "202012",
+        "202342",
+        "202343",
+        "202344",
+        "202345",
+        "202346",
+        "202347",
+        "202348",
+        "202349",
+        "202350",
+        "202420",
+        "202423",
+        "202424",
+        "202425",
+        "202426",
+        "202427",
+        "202429",
+        "202428",
+        "202143",
+        "202149",
+        "202201",
+        "202202",
+        "202203",
+        "202204",
+        "202205",
+        "202206",
+        "202135",
+        "202137",
+        "202138",
+        "202141",
+        "202142",
+        "202144",
+        "202146",
+        "202151",
+        "202152",
+        "202240",
+        "202207",
+        "202313",
+        "202314",
+        "202315",
+        "202316",
+        "202318",
+        "202319",
+        "202320",
+        "202321",
+        "202312",
+        "202317",
+        "202047",
+        "202049",
+        "202050",
+        "202439",
+        "202430",
+        "202431",
+        "202432",
+        "202433",
+        "202434",
+        "202435",
+        "202436",
+        "202438",
+        "202437",
+        "202020",
+        "202013",
+        "202014",
+        "202015",
+        "202016",
+        "202017",
+        "202018",
+        "202019",
+        "202021",
+        "202233",
+        "202235",
+        "202236",
+        "202237",
+        "202238",
+        "202239",
+        "202241",
+        "202242",
+        "202234",
+        "202229",
+        "202230",
+        "202231",
+        "202232",
+        "202502",
+        "202503",
+        "202504",
+        "202449",
+        "202446",
+        "201940",
+        "201941",
+        "201942",
+        "202217",
+        "202218",
+        "202219",
+        "202220",
+        "202221",
+        "202222",
+        "202051",
+        "202052",
+        "202053",
+        "202101",
+        "202216",
+        "202224",
+        "202225",
+        "202226",
+        "202227",
+        "202228",
+        "202223",
+        "201943",
+        "201944",
+        "201945",
+        "201946",
+        "201947",
+        "201948",
+        "202122",
+        "202121",
+        "202124",
+        "202125",
+        "202127",
+        "202128",
+        "202129",
+        "202130",
+        "202102",
+        "202104",
+        "202105",
+        "202440",
+        "202442",
+        "202443",
+        "202444",
+        "202445",
+        "202118",
+        "202119",
+        "202120",
+        "202132",
+        "202131",
+        "202133",
+        "202134",
+        "202136",
+        "202139",
+        "202140",
+        "202211",
+        "202212",
+        "202213",
+        "202214",
+        "202215",
+        "202208",
+        "202209",
+        "202210",
+        "202147",
+        "202145",
+        "202148",
+        "202150",
+        "202123",
+        "202126",
+        "202110",
+        "202111",
+        "202112",
+        "202113",
+        "202114",
+        "202115",
+        "202040",
+        "202044",
+        "202045",
+        "202046",
+        "202048",
+        "202103",
+        "202043",
+        "202039",
+        "202041",
+        "202042",
+        "202022",
+        "202023",
+        "202024",
+        "202025",
+        "202031",
+        "202032",
+        "202033",
+        "202034",
+        "202035",
+        "202036",
+        "202037",
+        "202038",
+        "202026",
+        "202027",
+        "202028",
+        "202029",
+        "202030",
+        "202116",
+        "202117",
+        "202107",
+        "202106",
+        "202108"
+      ],
+      "full_result_count": 293,
+      "gold_sparql": "SELECT DISTINCT ?epiweek FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/epiweek> ?epiweek .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/weighted_ili_pct> ?weightedIliPct .\n  FILTER (xsd:float(?weightedIliPct) > 2.0) .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"epiweek\" FROM \"WeeklyReport\" WHERE \"weighted_ili_pct\" > 2.0;",
+          "all_sql_attempts": [
+            "SELECT \"epiweek\" FROM \"WeeklyReport\" WHERE \"weighted_ili_pct\" > 2.0;"
+          ],
+          "answer": "epiweek: 201940\nepiweek: 201940\nepiweek: 201941\nepiweek: 201941\nepiweek: 201942\nepiweek: 201942\nepiweek: 201943\nepiweek: 201943\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201946\n... and 7526 more results",
+          "verdict": "correct",
+          "input_tokens": 1553,
+          "output_tokens": 24
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"epiweek\" FROM \"WeeklyReport\" WHERE \"weighted_ili_pct\" > 2.0;",
+          "all_sql_attempts": [
+            "SELECT \"epiweek\" FROM \"WeeklyReport\" WHERE \"weighted_ili_pct\" > 2.0;"
+          ],
+          "answer": "epiweek: 201940\nepiweek: 201940\nepiweek: 201941\nepiweek: 201941\nepiweek: 201942\nepiweek: 201942\nepiweek: 201943\nepiweek: 201943\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201946\n... and 7526 more results",
+          "verdict": "correct",
+          "input_tokens": 1553,
+          "output_tokens": 24
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"epiweek\" FROM \"WeeklyReport\" WHERE \"weighted_ili_pct\" > 2.0;",
+          "all_sql_attempts": [
+            "SELECT \"epiweek\" FROM \"WeeklyReport\" WHERE \"weighted_ili_pct\" > 2.0;"
+          ],
+          "answer": "epiweek: 201940\nepiweek: 201940\nepiweek: 201941\nepiweek: 201941\nepiweek: 201942\nepiweek: 201942\nepiweek: 201943\nepiweek: 201943\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201946\n... and 7526 more results",
+          "verdict": "correct",
+          "input_tokens": 1553,
+          "output_tokens": 24
+        }
+      ],
+      "majority_answer": "epiweek: 201940\nepiweek: 201940\nepiweek: 201941\nepiweek: 201941\nepiweek: 201942\nepiweek: 201942\nepiweek: 201943\nepiweek: 201943\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201944\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201945\nepiweek: 201946\n... and 7526 more results",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "How many weekly reports have an epiweek that contains '2022'?",
+      "expected_answer": "3284",
+      "full_expected_items": [
+        "3284"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT (COUNT(?report) AS ?reportCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/epiweek> ?epiweek .\n  FILTER (CONTAINS(STR(?epiweek), \"2022\")) .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT COUNT(*) FROM \"WeeklyReport\" WHERE CAST(\"epiweek\" AS TEXT) LIKE '%2022%'",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"WeeklyReport\" WHERE CAST(\"epiweek\" AS TEXT) LIKE '%2022%'"
+          ],
+          "answer": "3284",
+          "verdict": "correct",
+          "input_tokens": 1524,
+          "output_tokens": 24
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT COUNT(*) FROM \"WeeklyReport\" WHERE CAST(\"epiweek\" AS TEXT) LIKE '%2022%'",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"WeeklyReport\" WHERE CAST(\"epiweek\" AS TEXT) LIKE '%2022%'"
+          ],
+          "answer": "3284",
+          "verdict": "correct",
+          "input_tokens": 1524,
+          "output_tokens": 24
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT COUNT(*) FROM \"WeeklyReport\" WHERE CAST(\"epiweek\" AS TEXT) LIKE '%2022%'",
+          "all_sql_attempts": [
+            "SELECT COUNT(*) FROM \"WeeklyReport\" WHERE CAST(\"epiweek\" AS TEXT) LIKE '%2022%'"
+          ],
+          "answer": "3284",
+          "verdict": "correct",
+          "input_tokens": 1524,
+          "output_tokens": 24
+        }
+      ],
+      "majority_answer": "3284",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-008",
+      "tier": "T3",
+      "question": "Which regions have the most weekly reports in the year 2022?",
+      "expected_answer": "FL | 52\nHHS Region 2 (NJ, NY) | 52\nHHS Region 3 (DE, DC, MD, PA, VA, WV) | 52\nCT | 52\nHHS Region 1 (CT, ME, MA, NH, RI, VT) | 52\nHHS Region 10 (AK, ID, OR, WA) | 52\nNV | 52\nNY | 52\nOK | 52\nOH | 52",
+      "full_expected_items": [
+        "FL | 52",
+        "HHS Region 2 (NJ, NY) | 52",
+        "HHS Region 3 (DE, DC, MD, PA, VA, WV) | 52",
+        "CT | 52",
+        "HHS Region 1 (CT, ME, MA, NH, RI, VT) | 52",
+        "HHS Region 10 (AK, ID, OR, WA) | 52",
+        "NV | 52",
+        "NY | 52",
+        "OK | 52",
+        "OH | 52"
+      ],
+      "full_result_count": 10,
+      "gold_sparql": "SELECT ?region_name (COUNT(?report) AS ?report_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/year> \"2022\" .\n}\nGROUP BY ?region_name\nORDER BY DESC(?report_count)\nLIMIT 10",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"region_name\", COUNT(*) FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\" ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_name\", COUNT(*) FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\" ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "region_name: WY, COUNT(*): 52\nregion_name: WV, COUNT(*): 52\nregion_name: WI, COUNT(*): 52\nregion_name: WA, COUNT(*): 52\nregion_name: VT, COUNT(*): 52\nregion_name: VA, COUNT(*): 52\nregion_name: UT, COUNT(*): 52\nregion_name: TX, COUNT(*): 52\nregion_name: TN, COUNT(*): 52\nregion_name: SD, COUNT(*): 52\nregion_name: SC, COUNT(*): 52\nregion_name: RI, COUNT(*): 52\nregion_name: PA, COUNT(*): 52\nregion_name: OR, COUNT(*): 52\nregion_name: OK, COUNT(*): 52\nregion_name: OH, COUNT(*): 52\nregion_name: National, COUNT(*): 52\nregion_name: NY, COUNT(*): 52\nregion_name: NV, COUNT(*): 52\nregion_name: NM, COUNT(*): 52\n... and 42 more results",
+          "verdict": "wrong",
+          "input_tokens": 1530,
+          "output_tokens": 68
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"region_name\", COUNT(*) FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\" ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_name\", COUNT(*) FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\" ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "region_name: WY, COUNT(*): 52\nregion_name: WV, COUNT(*): 52\nregion_name: WI, COUNT(*): 52\nregion_name: WA, COUNT(*): 52\nregion_name: VT, COUNT(*): 52\nregion_name: VA, COUNT(*): 52\nregion_name: UT, COUNT(*): 52\nregion_name: TX, COUNT(*): 52\nregion_name: TN, COUNT(*): 52\nregion_name: SD, COUNT(*): 52\nregion_name: SC, COUNT(*): 52\nregion_name: RI, COUNT(*): 52\nregion_name: PA, COUNT(*): 52\nregion_name: OR, COUNT(*): 52\nregion_name: OK, COUNT(*): 52\nregion_name: OH, COUNT(*): 52\nregion_name: National, COUNT(*): 52\nregion_name: NY, COUNT(*): 52\nregion_name: NV, COUNT(*): 52\nregion_name: NM, COUNT(*): 52\n... and 42 more results",
+          "verdict": "wrong",
+          "input_tokens": 1530,
+          "output_tokens": 68
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"region_name\", COUNT(*) FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\" ORDER BY COUNT(*) DESC;",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_name\", COUNT(*) FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\" ORDER BY COUNT(*) DESC;"
+          ],
+          "answer": "region_name: WY, COUNT(*): 52\nregion_name: WV, COUNT(*): 52\nregion_name: WI, COUNT(*): 52\nregion_name: WA, COUNT(*): 52\nregion_name: VT, COUNT(*): 52\nregion_name: VA, COUNT(*): 52\nregion_name: UT, COUNT(*): 52\nregion_name: TX, COUNT(*): 52\nregion_name: TN, COUNT(*): 52\nregion_name: SD, COUNT(*): 52\nregion_name: SC, COUNT(*): 52\nregion_name: RI, COUNT(*): 52\nregion_name: PA, COUNT(*): 52\nregion_name: OR, COUNT(*): 52\nregion_name: OK, COUNT(*): 52\nregion_name: OH, COUNT(*): 52\nregion_name: National, COUNT(*): 52\nregion_name: NY, COUNT(*): 52\nregion_name: NV, COUNT(*): 52\nregion_name: NM, COUNT(*): 52\n... and 42 more results",
+          "verdict": "wrong",
+          "input_tokens": 1530,
+          "output_tokens": 68
+        }
+      ],
+      "majority_answer": "region_name: WY, COUNT(*): 52\nregion_name: WV, COUNT(*): 52\nregion_name: WI, COUNT(*): 52\nregion_name: WA, COUNT(*): 52\nregion_name: VT, COUNT(*): 52\nregion_name: VA, COUNT(*): 52\nregion_name: UT, COUNT(*): 52\nregion_name: TX, COUNT(*): 52\nregion_name: TN, COUNT(*): 52\nregion_name: SD, COUNT(*): 52\nregion_name: SC, COUNT(*): 52\nregion_name: RI, COUNT(*): 52\nregion_name: PA, COUNT(*): 52\nregion_name: OR, COUNT(*): 52\nregion_name: OK, COUNT(*): 52\nregion_name: OH, COUNT(*): 52\nregion_name: National, COUNT(*): 52\nregion_name: NY, COUNT(*): 52\nregion_name: NV, COUNT(*): 52\nregion_name: NM, COUNT(*): 52\n... and 42 more results",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "What are the names of regions that belong to a region type containing 'National' in its name?",
+      "expected_answer": "National",
+      "full_expected_items": [
+        "National"
+      ],
+      "full_result_count": 1,
+      "gold_sparql": "SELECT DISTINCT ?region_name\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_name> ?region_name .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/has_region_type> ?region_type .\n  ?region_type <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> .\n  ?region_type <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?region_type_name .\n  FILTER (CONTAINS(?region_type_name, \"National\"))\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"T1\".\"region_name\" FROM \"Region\" AS \"T1\" JOIN \"RegionType\" AS \"T2\" ON \"T1\".\"region_type_id\" = \"T2\".\"region_type_id\" WHERE \"T2\".\"region_type_name\" LIKE '%National%'",
+          "all_sql_attempts": [
+            "SELECT \"T1\".\"region_name\" FROM \"Region\" AS \"T1\" JOIN \"RegionType\" AS \"T2\" ON \"T1\".\"region_type_id\" = \"T2\".\"region_type_id\" WHERE \"T2\".\"region_type_name\" LIKE '%National%'"
+          ],
+          "answer": "National",
+          "verdict": "correct",
+          "input_tokens": 1509,
+          "output_tokens": 65
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"T1\".\"region_name\" FROM \"Region\" AS \"T1\" JOIN \"RegionType\" AS \"T2\" ON \"T1\".\"region_type_id\" = \"T2\".\"region_type_id\" WHERE \"T2\".\"region_type_name\" LIKE '%National%'",
+          "all_sql_attempts": [
+            "SELECT \"T1\".\"region_name\" FROM \"Region\" AS \"T1\" JOIN \"RegionType\" AS \"T2\" ON \"T1\".\"region_type_id\" = \"T2\".\"region_type_id\" WHERE \"T2\".\"region_type_name\" LIKE '%National%'"
+          ],
+          "answer": "National",
+          "verdict": "correct",
+          "input_tokens": 1509,
+          "output_tokens": 65
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"T1\".\"region_name\" FROM \"Region\" AS \"T1\" JOIN \"RegionType\" AS \"T2\" ON \"T1\".\"region_type_id\" = \"T2\".\"region_type_id\" WHERE \"T2\".\"region_type_name\" LIKE '%National%'",
+          "all_sql_attempts": [
+            "SELECT \"T1\".\"region_name\" FROM \"Region\" AS \"T1\" JOIN \"RegionType\" AS \"T2\" ON \"T1\".\"region_type_id\" = \"T2\".\"region_type_id\" WHERE \"T2\".\"region_type_name\" LIKE '%National%'"
+          ],
+          "answer": "National",
+          "verdict": "correct",
+          "input_tokens": 1509,
+          "output_tokens": 65
+        }
+      ],
+      "majority_answer": "National",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "How many weekly reports are associated with each season?",
+      "expected_answer": "2020-2021 | 3233\n2022-2023 | 3224\n2023-2024 | 3224\n2021-2022 | 3223\n2019-2020 | 3172\n2024-2025 | 2046",
+      "full_expected_items": [
+        "2020-2021 | 3233",
+        "2022-2023 | 3224",
+        "2023-2024 | 3224",
+        "2021-2022 | 3223",
+        "2019-2020 | 3172",
+        "2024-2025 | 2046"
+      ],
+      "full_result_count": 6,
+      "gold_sparql": "SELECT ?season_label (COUNT(?report) AS ?report_count)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview>\nWHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/in_season> ?season .\n  ?season <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Season> .\n  ?season <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/season_label> ?season_label .\n}\nGROUP BY ?season_label\nORDER BY DESC(?report_count)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT \"season_id\", COUNT(*) FROM \"WeeklyReport\" GROUP BY \"season_id\"",
+          "all_sql_attempts": [
+            "SELECT \"season_id\", COUNT(*) FROM \"WeeklyReport\" GROUP BY \"season_id\""
+          ],
+          "answer": "season_id: 2019-2020, COUNT(*): 3172\nseason_id: 2020-2021, COUNT(*): 3233\nseason_id: 2021-2022, COUNT(*): 3223\nseason_id: 2022-2023, COUNT(*): 3224\nseason_id: 2023-2024, COUNT(*): 3224\nseason_id: 2024-2025, COUNT(*): 2046",
+          "verdict": "correct",
+          "input_tokens": 1518,
+          "output_tokens": 20
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT \"season_id\", COUNT(*) FROM \"WeeklyReport\" GROUP BY \"season_id\"",
+          "all_sql_attempts": [
+            "SELECT \"season_id\", COUNT(*) FROM \"WeeklyReport\" GROUP BY \"season_id\""
+          ],
+          "answer": "season_id: 2019-2020, COUNT(*): 3172\nseason_id: 2020-2021, COUNT(*): 3233\nseason_id: 2021-2022, COUNT(*): 3223\nseason_id: 2022-2023, COUNT(*): 3224\nseason_id: 2023-2024, COUNT(*): 3224\nseason_id: 2024-2025, COUNT(*): 2046",
+          "verdict": "correct",
+          "input_tokens": 1518,
+          "output_tokens": 20
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT \"season_id\", COUNT(*) FROM \"WeeklyReport\" GROUP BY \"season_id\"",
+          "all_sql_attempts": [
+            "SELECT \"season_id\", COUNT(*) FROM \"WeeklyReport\" GROUP BY \"season_id\""
+          ],
+          "answer": "season_id: 2019-2020, COUNT(*): 3172\nseason_id: 2020-2021, COUNT(*): 3233\nseason_id: 2021-2022, COUNT(*): 3223\nseason_id: 2022-2023, COUNT(*): 3224\nseason_id: 2023-2024, COUNT(*): 3224\nseason_id: 2024-2025, COUNT(*): 2046",
+          "verdict": "correct",
+          "input_tokens": 1518,
+          "output_tokens": 20
+        }
+      ],
+      "majority_answer": "season_id: 2019-2020, COUNT(*): 3172\nseason_id: 2020-2021, COUNT(*): 3233\nseason_id: 2021-2022, COUNT(*): 3223\nseason_id: 2022-2023, COUNT(*): 3224\nseason_id: 2023-2024, COUNT(*): 3224\nseason_id: 2024-2025, COUNT(*): 2046",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-011",
+      "tier": "T4",
+      "question": "What are the region types and the number of distinct seasons associated with regions of that type?",
+      "expected_answer": "HHS Region | 6\nState | 6\nNational | 6",
+      "full_expected_items": [
+        "HHS Region | 6",
+        "State | 6",
+        "National | 6"
+      ],
+      "full_result_count": 3,
+      "gold_sparql": "SELECT ?regionTypeName (COUNT(DISTINCT ?season) AS ?numberOfSeasons) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?regionType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/RegionType> .\n  ?regionType <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_name> ?regionTypeName .\n  ?regionType <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_type_includes> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/region_has_report> ?report .\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/in_season> ?season .\n  ?season <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Season> .\n} GROUP BY ?regionTypeName ORDER BY DESC(?numberOfSeasons)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"region_type\", COUNT(DISTINCT T1.\"season_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" GROUP BY T2.\"region_type\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_type\", COUNT(DISTINCT T1.\"season_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" GROUP BY T2.\"region_type\";"
+          ],
+          "answer": "region_type: HHS Region, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: National, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: State, COUNT(DISTINCT T1.\"season_id\"): 6",
+          "verdict": "correct",
+          "input_tokens": 1525,
+          "output_tokens": 59
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"region_type\", COUNT(DISTINCT T1.\"season_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" GROUP BY T2.\"region_type\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_type\", COUNT(DISTINCT T1.\"season_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" GROUP BY T2.\"region_type\";"
+          ],
+          "answer": "region_type: HHS Region, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: National, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: State, COUNT(DISTINCT T1.\"season_id\"): 6",
+          "verdict": "correct",
+          "input_tokens": 1525,
+          "output_tokens": 59
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"region_type\", COUNT(DISTINCT T1.\"season_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" GROUP BY T2.\"region_type\";",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_type\", COUNT(DISTINCT T1.\"season_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" GROUP BY T2.\"region_type\";"
+          ],
+          "answer": "region_type: HHS Region, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: National, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: State, COUNT(DISTINCT T1.\"season_id\"): 6",
+          "verdict": "correct",
+          "input_tokens": 1525,
+          "output_tokens": 59
+        }
+      ],
+      "majority_answer": "region_type: HHS Region, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: National, COUNT(DISTINCT T1.\"season_id\"): 6\nregion_type: State, COUNT(DISTINCT T1.\"season_id\"): 6",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-012",
+      "tier": "T4",
+      "question": "Find the age groups that are associated with weekly reports having more than 1000 ILI cases in any region.",
+      "expected_answer": "0-4 years, 5-24 years, 50-64 years, 65+ years, Unknown age",
+      "full_expected_items": [
+        "0-4 years",
+        "5-24 years",
+        "50-64 years",
+        "65+ years",
+        "Unknown age"
+      ],
+      "full_result_count": 5,
+      "gold_sparql": "SELECT DISTINCT ?ageGroupLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?ageGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> .\n  ?ageGroup <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/age_group_label> ?ageGroupLabel .\n  ?ageGroup <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/age_group_in_report> ?report .\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/num_ili> ?numIli .\n  FILTER (xsd:integer(?numIli) > 1000) .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n}",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT DISTINCT T2.\"age_group_label\" FROM \"WeeklyReport\" AS T1 JOIN \"AgeGroup\" AS T2 ON T1.\"report_id\" = T2.\"age_group_id\" WHERE T1.\"num_ili\" > 1000",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T2.\"age_group_label\" FROM \"WeeklyReport\" AS T1 JOIN \"AgeGroup\" AS T2 ON T1.\"report_id\" = T2.\"age_group_id\" WHERE T1.\"num_ili\" > 1000"
+          ],
+          "answer": "No results found.",
+          "verdict": "error",
+          "input_tokens": 1543,
+          "output_tokens": 59
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT DISTINCT T2.\"age_group_label\" FROM \"WeeklyReport\" AS T1 JOIN \"AgeGroup\" AS T2 ON T1.\"report_id\" = T2.\"age_group_id\" WHERE T1.\"num_ili\" > 1000",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T2.\"age_group_label\" FROM \"WeeklyReport\" AS T1 JOIN \"AgeGroup\" AS T2 ON T1.\"report_id\" = T2.\"age_group_id\" WHERE T1.\"num_ili\" > 1000"
+          ],
+          "answer": "No results found.",
+          "verdict": "error",
+          "input_tokens": 1543,
+          "output_tokens": 59
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT DISTINCT T2.\"age_group_label\" FROM \"WeeklyReport\" AS T1 JOIN \"AgeGroup\" AS T2 ON T1.\"report_id\" = T2.\"age_group_id\" WHERE T1.\"num_ili\" > 1000",
+          "all_sql_attempts": [
+            "SELECT DISTINCT T2.\"age_group_label\" FROM \"WeeklyReport\" AS T1 JOIN \"AgeGroup\" AS T2 ON T1.\"report_id\" = T2.\"age_group_id\" WHERE T1.\"num_ili\" > 1000"
+          ],
+          "answer": "No results found.",
+          "verdict": "error",
+          "input_tokens": 1543,
+          "output_tokens": 59
+        }
+      ],
+      "majority_answer": "No results found.",
+      "majority_verdict": "error",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    },
+    {
+      "kg": "holdout-v2-cdc-fluview",
+      "id": "q-013",
+      "tier": "T4",
+      "question": "What are the labels of regions that reported weekly reports in the year 2022, and what is the count of distinct age groups associated with those reports?",
+      "expected_answer": "HHS Region 3 (DE, DC, MD, PA, VA, WV) | 5\nHHS Region 7 (IA, KS, MO, NE) | 5\nHHS Region 6 (AR, LA, NM, OK, TX) | 5\nHHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN) | 5\nHHS Region 2 (NJ, NY) | 5\nHHS Region 5 (IL, IN, MI, MN, OH, WI) | 5\nHHS Region 8 (CO, MT, ND, SD, UT, WY) | 5\nNational | 5\nHHS Region 9 (AZ, CA, HI, NV) | 5\nHHS Region 1 (CT, ME, MA, NH, RI, VT) | 5\n... (11 total rows)",
+      "full_expected_items": [
+        "HHS Region 3 (DE, DC, MD, PA, VA, WV) | 5",
+        "HHS Region 7 (IA, KS, MO, NE) | 5",
+        "HHS Region 6 (AR, LA, NM, OK, TX) | 5",
+        "HHS Region 4 (AL, FL, GA, KY, MS, NC, SC, TN) | 5",
+        "HHS Region 2 (NJ, NY) | 5",
+        "HHS Region 5 (IL, IN, MI, MN, OH, WI) | 5",
+        "HHS Region 8 (CO, MT, ND, SD, UT, WY) | 5",
+        "National | 5",
+        "HHS Region 9 (AZ, CA, HI, NV) | 5",
+        "HHS Region 1 (CT, ME, MA, NH, RI, VT) | 5",
+        "HHS Region 10 (AK, ID, OR, WA) | 5"
+      ],
+      "full_result_count": 11,
+      "gold_sparql": "SELECT ?regionLabel (COUNT(DISTINCT ?ageGroup) AS ?ageGroupCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cdc-fluview> WHERE {\n  ?report <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/WeeklyReport> .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/year> \"2022\" .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/reported_in_region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/Region> .\n  ?region <http://www.w3.org/2000/01/rdf-schema#label> ?regionLabel .\n  ?report <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/pred/age_breakdown_for_report> ?ageGroup .\n  ?ageGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cdc-fluview/type/AgeGroup> .\n} GROUP BY ?regionLabel\nORDER BY DESC(?ageGroupCount)",
+      "per_seed": [
+        {
+          "seed": 1,
+          "sql": "SELECT T2.\"region_name\", COUNT(DISTINCT T3.\"age_group_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" JOIN \"AgeGroup\" AS T3 ON T1.\"report_id\" = T3.\"age_group_id\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_name\", COUNT(DISTINCT T3.\"age_group_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" JOIN \"AgeGroup\" AS T3 ON T1.\"report_id\" = T3.\"age_group_id\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\""
+          ],
+          "answer": "No results found.",
+          "verdict": "error",
+          "input_tokens": 1545,
+          "output_tokens": 99
+        },
+        {
+          "seed": 2,
+          "sql": "SELECT T2.\"region_name\", COUNT(DISTINCT T3.\"age_group_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" JOIN \"AgeGroup\" AS T3 ON T1.\"report_id\" = T3.\"age_group_id\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_name\", COUNT(DISTINCT T3.\"age_group_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" JOIN \"AgeGroup\" AS T3 ON T1.\"report_id\" = T3.\"age_group_id\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\""
+          ],
+          "answer": "No results found.",
+          "verdict": "error",
+          "input_tokens": 1545,
+          "output_tokens": 99
+        },
+        {
+          "seed": 3,
+          "sql": "SELECT T2.\"region_name\", COUNT(DISTINCT T3.\"age_group_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" JOIN \"AgeGroup\" AS T3 ON T1.\"report_id\" = T3.\"age_group_id\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\"",
+          "all_sql_attempts": [
+            "SELECT T2.\"region_name\", COUNT(DISTINCT T3.\"age_group_id\") FROM \"WeeklyReport\" AS T1 JOIN \"Region\" AS T2 ON T1.\"region_code\" = T2.\"region_code\" JOIN \"AgeGroup\" AS T3 ON T1.\"report_id\" = T3.\"age_group_id\" WHERE T1.\"year\" = 2022 GROUP BY T2.\"region_name\""
+          ],
+          "answer": "No results found.",
+          "verdict": "error",
+          "input_tokens": 1545,
+          "output_tokens": 99
+        }
+      ],
+      "majority_answer": "No results found.",
+      "majority_verdict": "error",
+      "correct_runs": 0,
+      "total_runs": 3,
+      "n_examples_retrieved": 3
+    }
+  ],
+  "schema": "-- SQLite database schema\n\n-- Table WeeklyReport: 18122 rows (from WeeklyReport.csv)\nCREATE TABLE \"WeeklyReport\" (\n  \"report_id\" TEXT,\n  \"region_code\" TEXT,\n  \"season_id\" TEXT,\n  \"epiweek\" INTEGER,\n  \"year\" INTEGER,\n  \"week_number\" INTEGER,\n  \"num_ili\" INTEGER,\n  \"num_patients\" INTEGER,\n  \"num_providers\" INTEGER,\n  \"weighted_ili_pct\" REAL,\n  \"unweighted_ili_pct\" REAL,\n  \"num_age_0_4\" INTEGER,\n  \"num_age_5_24\" INTEGER,\n  \"num_age_25_49\" TEXT,\n  \"num_age_50_64\" INTEGER,\n  \"num_age_65_plus\" INTEGER,\n  \"num_age_unknown\" INTEGER\n);\n-- sample rows from WeeklyReport:\n--   report_id='hhs1-201940', region_code='hhs1', season_id='2019-2020', epiweek='201940', year='2019', week_number='40', num_ili='1261', num_patients='130089', num_providers='255', weighted_ili_pct='0.892224', unweighted_ili_pct='0.969336', num_age_0_4='247', num_age_5_24='404', num_age_25_49='', num_age_50_64='324', num_age_65_plus='174', num_age_unknown='112'\n--   report_id='hhs2-201940', region_code='hhs2', season_id='2019-2020', epiweek='201940', year='2019', week_number='40', num_ili='2994', num_patients='195431', num_providers='263', weighted_ili_pct='2.13358', unweighted_ili_pct='1.532', num_age_0_4='945', num_age_5_24='884', num_age_25_49='', num_age_50_64='642', num_age_65_plus='242', num_age_unknown='281'\n\n-- Table Region: 62 rows (from Region.csv)\nCREATE TABLE \"Region\" (\n  \"region_code\" TEXT,\n  \"region_name\" TEXT,\n  \"region_type\" TEXT,\n  \"region_type_id\" TEXT,\n  \"report_count\" INTEGER\n);\n-- sample rows from Region:\n--   region_code='ak', region_name='AK', region_type='State', region_type_id='state', report_count='294'\n--   region_code='al', region_name='AL', region_type='State', region_type_id='state', report_count='294'\n\n-- Table Season: 6 rows (from Season.csv)\nCREATE TABLE \"Season\" (\n  \"season_id\" TEXT,\n  \"season_label\" TEXT,\n  \"report_count\" INTEGER\n);\n-- sample rows from Season:\n--   season_id='2019-2020', season_label='2019-2020', report_count='3172'\n--   season_id='2020-2021', season_label='2020-2021', report_count='3233'\n\n-- Table AgeGroup: 6 rows (from AgeGroup.csv)\nCREATE TABLE \"AgeGroup\" (\n  \"age_group_id\" TEXT,\n  \"age_group_label\" TEXT\n);\n-- sample rows from AgeGroup:\n--   age_group_id='age_0_4', age_group_label='0-4 years'\n--   age_group_id='age_5_24', age_group_label='5-24 years'\n\n-- Table RegionType: 3 rows (from RegionType.csv)\nCREATE TABLE \"RegionType\" (\n  \"region_type_id\" TEXT,\n  \"region_type_name\" TEXT,\n  \"region_count\" INTEGER\n);\n-- sample rows from RegionType:\n--   region_type_id='hhs_region', region_type_name='HHS Region', region_count='10'\n--   region_type_id='national', region_type_name='National', region_count='1'\n\n-- Foreign key hints (join on these):\n--   AgeGroup.age_group_id -> WeeklyReport.report_id\n--   Region.region_code -> RegionType.region_type_id\n--   Region.region_code -> WeeklyReport.report_id\n--   RegionType.region_type_id -> Region.region_code\n--   Season.season_id -> WeeklyReport.report_id\n--   WeeklyReport.report_id -> AgeGroup.age_group_id\n--   WeeklyReport.report_id -> Region.region_code\n--   WeeklyReport.report_id -> Season.season_id\n"
+}

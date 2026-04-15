@@ -1,0 +1,646 @@
+{
+  "kg": "holdout-v2-npi-registry",
+  "results": [
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-001",
+      "tier": "T1",
+      "question": "How many distinct provider types are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?providerType) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?providerType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/ProviderType> .\n}",
+      "expected_answer": "2",
+      "full_expected_items": [
+        "2"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "2",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "2",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "2",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "2",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-002",
+      "tier": "T1",
+      "question": "List all available taxonomy groups.",
+      "gold_sparql": "SELECT ?taxonomyGroupName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?taxonomyGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/TaxonomyGroup> .\n  ?taxonomyGroup <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/taxonomy_group_name> ?taxonomyGroupName .\n}",
+      "expected_answer": "Behavioral Health, Nursing, Pharmacy, Technical / Allied, Dental, Other, Physician / Surgeon, Service / Supplier, Chiropractic, Therapy / Rehabilitation ... (12 total)",
+      "full_expected_items": [
+        "Behavioral Health",
+        "Nursing",
+        "Pharmacy",
+        "Technical / Allied",
+        "Dental",
+        "Other",
+        "Physician / Surgeon",
+        "Service / Supplier",
+        "Chiropractic",
+        "Therapy / Rehabilitation",
+        "Facility / Hospital",
+        "Vision Care"
+      ],
+      "full_result_count": 12,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Other, Technical / Allied, Service / Supplier, Pharmacy, Dental, Therapy / Rehabilitation, Chiropractic, Nursing, Behavioral Health, Facility / Hospital",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Other, Technical / Allied, Service / Supplier, Pharmacy, Dental, Therapy / Rehabilitation, Chiropractic, Nursing, Behavioral Health, Facility / Hospital",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Other, Technical / Allied, Service / Supplier, Pharmacy, Dental, Therapy / Rehabilitation, Chiropractic, Nursing, Behavioral Health, Facility / Hospital",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Other, Technical / Allied, Service / Supplier, Pharmacy, Dental, Therapy / Rehabilitation, Chiropractic, Nursing, Behavioral Health, Facility / Hospital",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-003",
+      "tier": "T1",
+      "question": "How many unique practice locations are recorded?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?practiceLocation) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n}",
+      "expected_answer": "10000",
+      "full_expected_items": [
+        "10000"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "10",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "10",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-004",
+      "tier": "T1",
+      "question": "What are the names of all the states listed?",
+      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/state_name> ?stateName .\n}",
+      "expected_answer": "NV, GA, MA, PA, MI, WA, MN, FL, IL, NC ... (52 total)",
+      "full_expected_items": [
+        "NV",
+        "GA",
+        "MA",
+        "PA",
+        "MI",
+        "WA",
+        "MN",
+        "FL",
+        "IL",
+        "NC",
+        "NY",
+        "OH",
+        "ILOILO",
+        "SD",
+        "DE",
+        "AK",
+        "WY",
+        "KS",
+        "VA",
+        "OK",
+        "CO",
+        "WI",
+        "TX",
+        "IN",
+        "MO",
+        "WV",
+        "AZ",
+        "MS",
+        "TN",
+        "KY",
+        "MD",
+        "CA",
+        "VT",
+        "AR",
+        "UT",
+        "BAJA CALIFORNIA",
+        "NE",
+        "CT",
+        "CAVITE",
+        "AL",
+        "IA",
+        "GU",
+        "AA",
+        "BAHRAIN",
+        "NM",
+        "AE",
+        "ME",
+        "USA",
+        "AP",
+        "HI",
+        "MANAMA",
+        "ZZ"
+      ],
+      "full_result_count": 52,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "SD, NE, DE, AL, AK, AP, AA, MS, CA, MN",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "SD, NE, DE, AL, AK, AP, AA, MS, CA, MN",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "SD, NE, DE, AL, AK, AP, AA, MS, CA, MN",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "SD, NE, DE, AL, AK, AP, AA, MS, CA, MN",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-005",
+      "tier": "T2",
+      "question": "How many providers have 'LAKE REGIONAL' in their display name?",
+      "gold_sparql": "SELECT (COUNT(?provider) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/display_name> ?displayName .\n  FILTER(CONTAINS(LCASE(STR(?displayName)), LCASE('LAKE REGIONAL')))\n}",
+      "expected_answer": "24",
+      "full_expected_items": [
+        "24"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "0",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "0",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-006",
+      "tier": "T2",
+      "question": "List the labels of all cities whose name starts with 'Spring'.",
+      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/city_name> ?cityName .\n  ?city <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(STRSTARTS(LCASE(STR(?cityName)), LCASE('Spring')))\n}",
+      "expected_answer": "Springfield, Springfield, Springfield, Springfield",
+      "full_expected_items": [
+        "Springfield",
+        "Springfield",
+        "Springfield",
+        "Springfield"
+      ],
+      "full_result_count": 4,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "Springfield, Springfield",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "Springfield, Springfield",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "Springfield, Springfield",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "Springfield, Springfield",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-007",
+      "tier": "T2",
+      "question": "How many specialties have 'Technician' in their specialty name?",
+      "gold_sparql": "SELECT (COUNT(?specialty) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER(CONTAINS(LCASE(STR(?specialtyName)), LCASE('Technician')))\n}",
+      "expected_answer": "16",
+      "full_expected_items": [
+        "16"
+      ],
+      "full_result_count": 1,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "7",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "7",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-008",
+      "tier": "T2",
+      "question": "Find the labels of all states with a country code of 'US'.",
+      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/country_code> ?countryCode .\n  ?state <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(?countryCode = 'US')\n}",
+      "expected_answer": "AZ, KY, WA, OH, SD, KS, DE, AK, WY, NY ... (46 total)",
+      "full_expected_items": [
+        "AZ",
+        "KY",
+        "WA",
+        "OH",
+        "SD",
+        "KS",
+        "DE",
+        "AK",
+        "WY",
+        "NY",
+        "CO",
+        "OK",
+        "VA",
+        "FL",
+        "NC",
+        "MN",
+        "IL",
+        "IA",
+        "GA",
+        "GU",
+        "CT",
+        "NE",
+        "NV",
+        "AA",
+        "NM",
+        "ME",
+        "ZZ",
+        "AP",
+        "HI",
+        "AE",
+        "AL",
+        "WV",
+        "MO",
+        "TN",
+        "MS",
+        "MD",
+        "VT",
+        "CA",
+        "IN",
+        "WI",
+        "TX",
+        "MI",
+        "PA",
+        "UT",
+        "AR",
+        "MA"
+      ],
+      "full_result_count": 46,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "ZZ, AA, GU, DE, IN, AL, NY, CA, UT",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "ZZ, AA, GU, DE, IN, AL, NY, CA, UT",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "ZZ, AA, GU, DE, IN, AL, NY, CA, UT",
+          "sparql": "",
+          "verdict": "correct",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "ZZ, AA, GU, DE, IN, AL, NY, CA, UT",
+      "majority_verdict": "correct",
+      "correct_runs": 3,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-009",
+      "tier": "T3",
+      "question": "How many providers are associated with each practice location?",
+      "gold_sparql": "SELECT ?practiceLocation (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?practiceLocation ORDER BY DESC(?providerCount) LIMIT 10",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1"
+      ],
+      "full_result_count": 10,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "1508471889__loc: 1, 1750383493__loc: 1, 1447098678__loc: 1, 1235886961__loc: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "1508471889__loc: 1, 1750383493__loc: 1, 1447098678__loc: 1, 1235886961__loc: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "1508471889__loc: 1, 1750383493__loc: 1, 1447098678__loc: 1, 1235886961__loc: 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "1508471889__loc: 1, 1750383493__loc: 1, 1447098678__loc: 1, 1235886961__loc: 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-010",
+      "tier": "T3",
+      "question": "Which cities host the most practice locations, and how many do they host?",
+      "gold_sparql": "SELECT ?city (COUNT(DISTINCT ?practiceLocation) AS ?practiceLocationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/city_hosts_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?city ORDER BY DESC(?practiceLocationCount) LIMIT 10",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218"
+      ],
+      "full_result_count": 10,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "OH__dublin (9), NY__new_york (1)",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "OH__dublin (9), NY__new_york (1)",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "OH__dublin (9), NY__new_york (1)",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "OH__dublin (9), NY__new_york (1)",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    },
+    {
+      "kg": "holdout-v2-npi-registry",
+      "id": "q-011",
+      "tier": "T3",
+      "question": "How many providers are there for each specialty, specifically for specialties with 'Unknown' in their name?",
+      "gold_sparql": "SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_specialty> ?specialty .\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER (CONTAINS(LCASE(?specialtyName), 'unknown'))\n} GROUP BY ?specialty ORDER BY DESC(?providerCount) LIMIT 10",
+      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1",
+      "full_expected_items": [
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1",
+        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1"
+      ],
+      "full_result_count": 7,
+      "per_seed": [
+        {
+          "seed": "1",
+          "answer": "6, 6, 29, 2, 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "2",
+          "answer": "6, 6, 29, 2, 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        },
+        {
+          "seed": "3",
+          "answer": "6, 6, 29, 2, 1",
+          "sparql": "",
+          "verdict": "wrong",
+          "elapsed": 0,
+          "status": 200
+        }
+      ],
+      "majority_answer": "6, 6, 29, 2, 1",
+      "majority_verdict": "wrong",
+      "correct_runs": 0,
+      "total_runs": 3
+    }
+  ],
+  "n_chunks": 1206,
+  "tables": [
+    {
+      "table": "City",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/City.csv",
+      "n_rows_used": 285,
+      "n_cols": 3
+    },
+    {
+      "table": "PracticeLocation",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/PracticeLocation.csv",
+      "n_rows_used": 285,
+      "n_cols": 7
+    },
+    {
+      "table": "Provider",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/Provider.csv",
+      "n_rows_used": 285,
+      "n_cols": 10
+    },
+    {
+      "table": "ProviderType",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/ProviderType.csv",
+      "n_rows_used": 2,
+      "n_cols": 4
+    },
+    {
+      "table": "Specialty",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/Specialty.csv",
+      "n_rows_used": 285,
+      "n_cols": 5
+    },
+    {
+      "table": "State",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/State.csv",
+      "n_rows_used": 52,
+      "n_cols": 3
+    },
+    {
+      "table": "TaxonomyGroup",
+      "source": "/Users/moeen/Desktop/omnix-holdout-v2/benchmarks/datasets/holdout_v2_staged/holdout-v2-npi-registry/TaxonomyGroup.csv",
+      "n_rows_used": 12,
+      "n_cols": 3
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "kg_name": "holdout-v2-doj-enforcement-actions",
+  "_source": "Corporate Prosecution Registry (Duke/UVA). DOJ corporate enforcement actions 1992-2025. See scripts/prep_doj_enforcement_actions.py.",
+  "entity_types": [
+    {
+      "name": "Action",
+      "source_csv": "Action.csv",
+      "primary_key": "action_id",
+      "label_column": "action_case_name",
+      "attributes": [
+        "action_case_name",
+        "action_case_id",
+        "action_date",
+        "action_year",
+        "action_judgment_date",
+        "action_plea_date",
+        "action_total_payment",
+        "action_fine",
+        "action_restitution",
+        "action_forfeiture",
+        "action_probation_months",
+        "action_agreement_months",
+        "action_monitor_required",
+        "action_compliance_required"
+      ]
+    },
+    {
+      "name": "Company",
+      "source_csv": "Company.csv",
+      "primary_key": "company_id",
+      "label_column": "company_name",
+      "attributes": [
+        "company_name",
+        "company_country",
+        "company_is_financial_institution",
+        "company_is_us_public_co",
+        "company_ticker",
+        "company_naics"
+      ]
+    },
+    {
+      "name": "CrimeType",
+      "source_csv": "CrimeType.csv",
+      "primary_key": "crimetype_id",
+      "label_column": "crimetype_name",
+      "attributes": [
+        "crimetype_name"
+      ]
+    },
+    {
+      "name": "DispositionType",
+      "source_csv": "DispositionType.csv",
+      "primary_key": "dispositiontype_id",
+      "label_column": "dispositiontype_name",
+      "attributes": [
+        "dispositiontype_name",
+        "dispositiontype_description"
+      ]
+    },
+    {
+      "name": "Jurisdiction",
+      "source_csv": "Jurisdiction.csv",
+      "primary_key": "jurisdiction_id",
+      "label_column": "jurisdiction_name",
+      "attributes": [
+        "jurisdiction_name"
+      ]
+    },
+    {
+      "name": "Year",
+      "source_csv": "Year.csv",
+      "primary_key": "year_id",
+      "label_column": "year_value",
+      "attributes": [
+        "year_value"
+      ]
+    },
+    {
+      "name": "Country",
+      "source_csv": "Country.csv",
+      "primary_key": "country_id",
+      "label_column": "country_name",
+      "attributes": [
+        "country_name"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "action_by_company",
+      "source_csv": "Action.csv",
+      "subject_type": "Action",
+      "subject_key_column": "action_id",
+      "object_type": "Company",
+      "object_key_column": "action_company_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "action_for_crime",
+      "source_csv": "Action.csv",
+      "subject_type": "Action",
+      "subject_key_column": "action_id",
+      "object_type": "CrimeType",
+      "object_key_column": "action_crime_type_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "action_disposition",
+      "source_csv": "Action.csv",
+      "subject_type": "Action",
+      "subject_key_column": "action_id",
+      "object_type": "DispositionType",
+      "object_key_column": "action_disposition_type_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "action_in_jurisdiction",
+      "source_csv": "Action.csv",
+      "subject_type": "Action",
+      "subject_key_column": "action_id",
+      "object_type": "Jurisdiction",
+      "object_key_column": "action_jurisdiction_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "action_in_year",
+      "source_csv": "Action.csv",
+      "subject_type": "Action",
+      "subject_key_column": "action_id",
+      "object_type": "Year",
+      "object_key_column": "action_year",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "action_in_country",
+      "source_csv": "Action.csv",
+      "subject_type": "Action",
+      "subject_key_column": "action_id",
+      "object_type": "Country",
+      "object_key_column": "action_country_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "company_in_country",
+      "source_csv": "Company.csv",
+      "subject_type": "Company",
+      "subject_key_column": "company_id",
+      "object_type": "Country",
+      "object_key_column": "company_country",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "company_has_action",
+      "source_csv": "Action.csv",
+      "subject_type": "Company",
+      "subject_key_column": "action_company_id",
+      "object_type": "Action",
+      "object_key_column": "action_id",
+      "cardinality": "1:N"
+    }
+  ]
+}

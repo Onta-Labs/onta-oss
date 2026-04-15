@@ -1,0 +1,137 @@
+{
+  "kg_name": "holdout-v2-cdc-fluview",
+  "_source": "CDC FluView ILINet via Delphi Epidata API (national + HHS regions + states, 2019-2025). See scripts/prep_cdc_fluview_multitable.py.",
+  "_notes": [
+    "Flat-by-design dataset: WeeklyReport is the anchor entity (18,122 reports).",
+    "Data covers 6 flu seasons (2019-2020 through 2024-2025), 62 regions, 6 age groups.",
+    "Region types: National (1), HHS Region (10), State (51).",
+    "Age group counts are exploded into ReportAgeBreakdown junction rows for relationship richness.",
+    "ILI percentages are weighted (population-based) and unweighted (provider-based)."
+  ],
+  "entity_types": [
+    {
+      "name": "WeeklyReport",
+      "source_csv": "WeeklyReport.csv",
+      "primary_key": "report_id",
+      "label_column": "epiweek",
+      "attributes": [
+        "epiweek",
+        "year",
+        "week_number",
+        "num_ili",
+        "num_patients",
+        "num_providers",
+        "weighted_ili_pct",
+        "unweighted_ili_pct",
+        "num_age_0_4",
+        "num_age_5_24",
+        "num_age_25_49",
+        "num_age_50_64",
+        "num_age_65_plus",
+        "num_age_unknown"
+      ]
+    },
+    {
+      "name": "Region",
+      "source_csv": "Region.csv",
+      "primary_key": "region_code",
+      "label_column": "region_name",
+      "attributes": ["region_name", "region_type", "report_count"]
+    },
+    {
+      "name": "Season",
+      "source_csv": "Season.csv",
+      "primary_key": "season_id",
+      "label_column": "season_label",
+      "attributes": ["season_label", "report_count"]
+    },
+    {
+      "name": "AgeGroup",
+      "source_csv": "AgeGroup.csv",
+      "primary_key": "age_group_id",
+      "label_column": "age_group_label",
+      "attributes": ["age_group_label"]
+    },
+    {
+      "name": "RegionType",
+      "source_csv": "RegionType.csv",
+      "primary_key": "region_type_id",
+      "label_column": "region_type_name",
+      "attributes": ["region_type_name", "region_count"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "reported_in_region",
+      "source_csv": "WeeklyReport.csv",
+      "subject_type": "WeeklyReport",
+      "subject_key_column": "report_id",
+      "object_type": "Region",
+      "object_key_column": "region_code",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "region_has_report",
+      "source_csv": "WeeklyReport.csv",
+      "subject_type": "Region",
+      "subject_key_column": "region_code",
+      "object_type": "WeeklyReport",
+      "object_key_column": "report_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "in_season",
+      "source_csv": "WeeklyReport.csv",
+      "subject_type": "WeeklyReport",
+      "subject_key_column": "report_id",
+      "object_type": "Season",
+      "object_key_column": "season_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "season_has_report",
+      "source_csv": "WeeklyReport.csv",
+      "subject_type": "Season",
+      "subject_key_column": "season_id",
+      "object_type": "WeeklyReport",
+      "object_key_column": "report_id",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "has_region_type",
+      "source_csv": "Region.csv",
+      "subject_type": "Region",
+      "subject_key_column": "region_code",
+      "object_type": "RegionType",
+      "object_key_column": "region_type_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "region_type_includes",
+      "source_csv": "Region.csv",
+      "subject_type": "RegionType",
+      "subject_key_column": "region_type_id",
+      "object_type": "Region",
+      "object_key_column": "region_code",
+      "cardinality": "1:N"
+    },
+    {
+      "name": "age_breakdown_for_report",
+      "source_csv": "ReportAgeBreakdown.csv",
+      "subject_type": "WeeklyReport",
+      "subject_key_column": "report_id",
+      "object_type": "AgeGroup",
+      "object_key_column": "age_group_id",
+      "cardinality": "N:N"
+    },
+    {
+      "name": "age_group_in_report",
+      "source_csv": "ReportAgeBreakdown.csv",
+      "subject_type": "AgeGroup",
+      "subject_key_column": "age_group_id",
+      "object_type": "WeeklyReport",
+      "object_key_column": "report_id",
+      "cardinality": "N:N"
+    }
+  ]
+}

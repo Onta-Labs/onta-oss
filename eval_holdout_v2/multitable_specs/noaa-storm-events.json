@@ -1,0 +1,113 @@
+{
+  "kg_name": "holdout-v2-noaa-storm-events",
+  "_source": "NOAA NCEI Storm Events Database, 2023 details CSV (10k sample, seed=42). See scripts/prep_noaa_storm_events.py.",
+  "_plan_ref": "eval_holdout_v2/PER_SOURCE_PREPROCESSOR_PLAN.md",
+  "entity_types": [
+    {
+      "name": "StormEvent",
+      "source_csv": "StormEvent.csv",
+      "primary_key": "event_id",
+      "label_column": "event_id",
+      "attributes": [
+        "begin_date_time", "end_date_time",
+        "injuries_direct", "injuries_indirect",
+        "deaths_direct", "deaths_indirect",
+        "damage_property", "damage_crops",
+        "magnitude", "magnitude_type",
+        "tor_f_scale", "source",
+        "begin_lat", "begin_lon"
+      ]
+    },
+    {
+      "name": "County",
+      "source_csv": "County.csv",
+      "primary_key": "county_key",
+      "label_column": "county_name",
+      "attributes": ["county_name", "cz_fips"]
+    },
+    {
+      "name": "State",
+      "source_csv": "State.csv",
+      "primary_key": "state_fips",
+      "label_column": "state_name",
+      "attributes": ["state_name"]
+    },
+    {
+      "name": "EventType",
+      "source_csv": "EventType.csv",
+      "primary_key": "event_type",
+      "label_column": "event_type",
+      "attributes": ["event_type"]
+    },
+    {
+      "name": "Month",
+      "source_csv": "Month.csv",
+      "primary_key": "month_name",
+      "label_column": "month_name",
+      "attributes": ["month_name"]
+    },
+    {
+      "name": "Episode",
+      "source_csv": "Episode.csv",
+      "primary_key": "episode_id",
+      "label_column": "episode_id",
+      "attributes": ["episode_id"]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "event_of_type",
+      "source_csv": "StormEvent.csv",
+      "subject_type": "StormEvent",
+      "subject_key_column": "event_id",
+      "object_type": "EventType",
+      "object_key_column": "event_type",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "event_in_state",
+      "source_csv": "StormEvent.csv",
+      "subject_type": "StormEvent",
+      "subject_key_column": "event_id",
+      "object_type": "State",
+      "object_key_column": "state_fips",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "event_in_county",
+      "source_csv": "StormEvent.csv",
+      "subject_type": "StormEvent",
+      "subject_key_column": "event_id",
+      "object_type": "County",
+      "object_key_column": "county_key",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "event_in_month",
+      "source_csv": "StormEvent.csv",
+      "subject_type": "StormEvent",
+      "subject_key_column": "event_id",
+      "object_type": "Month",
+      "object_key_column": "month_name",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "event_in_episode",
+      "source_csv": "StormEvent.csv",
+      "subject_type": "StormEvent",
+      "subject_key_column": "event_id",
+      "object_type": "Episode",
+      "object_key_column": "episode_id",
+      "cardinality": "1:1"
+    },
+    {
+      "name": "county_in_state",
+      "source_csv": "County.csv",
+      "subject_type": "County",
+      "subject_key_column": "county_key",
+      "object_type": "State",
+      "object_key_column": "state_fips",
+      "cardinality": "1:1"
+    }
+  ]
+}

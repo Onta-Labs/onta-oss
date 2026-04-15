@@ -1,0 +1,290 @@
+{
+  "kg_id": "holdout-v2-ofr-financial-stability",
+  "generated_at": "2026-04-14T15:32:33-0700",
+  "tier_distribution": {
+    "T1": 4,
+    "T2": 4,
+    "T3": 2,
+    "T4": 3
+  },
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "How many distinct indicator categories are there?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?indicatorCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicatorCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> . }",
+      "full_expected_items": [
+        "3"
+      ],
+      "full_result_count": 1,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, with aggregation (COUNT/SUM/AVG)",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "3",
+      "reasoning": "This query counts the total number of distinct IndicatorCategory entities. It references exactly one entity type (IndicatorCategory), has no joins, and uses a COUNT aggregate, fitting Tier 1 requirements."
+    },
+    {
+      "id": "q-002",
+      "question": "List all available indicator names.",
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . }",
+      "full_expected_items": [
+        "United States",
+        "OFR Financial Stress Index",
+        "Credit",
+        "Equity Valuation",
+        "Safe Assets",
+        "Funding",
+        "Volatility",
+        "Other Advanced Economies",
+        "Emerging Markets"
+      ],
+      "full_result_count": 9,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, no filters",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "United States, OFR Financial Stress Index, Credit, Equity Valuation, Safe Assets, Funding, Volatility, Other Advanced Economies, Emerging Markets",
+      "reasoning": "This query retrieves all distinct indicator names. It references exactly one entity type (Indicator), has no joins, and provides a simple list, fitting Tier 1 requirements."
+    },
+    {
+      "id": "q-003",
+      "question": "What are the different stress level labels?",
+      "gold_sparql": "SELECT DISTINCT ?stressLevelLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel . }",
+      "full_expected_items": [
+        "High",
+        "Low",
+        "Negative (calm)",
+        "Elevated"
+      ],
+      "full_result_count": 4,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, no filters",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "High, Low, Negative (calm), Elevated",
+      "reasoning": "This query fetches all distinct stress level labels. It references exactly one entity type (StressLevel), has no joins, and returns a simple list, satisfying Tier 1 criteria."
+    },
+    {
+      "id": "q-004",
+      "question": "How many unique years are recorded in the dataset?",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?yearValue) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> . ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?yearValue . }",
+      "full_expected_items": [
+        "27"
+      ],
+      "full_result_count": 1,
+      "tier": "T1",
+      "tier_classifier_reasoning": "single entity, no joins, with aggregation (COUNT/SUM/AVG)",
+      "tier_llm_label": "T1",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "27",
+      "reasoning": "This query counts the number of distinct year values. It references exactly one entity type (Year), has no joins, and uses a COUNT aggregate, aligning with Tier 1 requirements."
+    },
+    {
+      "id": "q-005",
+      "question": "What is the total number of readings for stress levels with a lower bound greater than 0?",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound . ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount . FILTER (xsd:integer(?lowerBound) > 0) }",
+      "full_expected_items": [
+        "4666"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "4666",
+      "reasoning": "The question asks for an aggregation (SUM) of 'reading_count' for 'StressLevel' entities. It includes a numeric filter on the 'lower_bound' attribute. This aligns with T2 requirements: single entity type, filter, and aggregation."
+    },
+    {
+      "id": "q-006",
+      "question": "List the names of all indicators whose source column contains 'United States'.",
+      "gold_sparql": "SELECT DISTINCT ?indicatorName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE { ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName . ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/source_column> ?sourceColumn . FILTER (CONTAINS(LCASE(STR(?sourceColumn)), \"united states\")) }",
+      "full_expected_items": [
+        "United States"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "United States",
+      "reasoning": "The question asks for 'indicator_name' of 'Indicator' entities. It applies a CONTAINS filter on the 'source_column' attribute. This fits the T2 criteria of a single entity type and a filter expression."
+    },
+    {
+      "id": "q-007",
+      "question": "What is the total number of indicator readings associated with a stress level that has a lower bound greater than 0?",
+      "gold_sparql": "SELECT (SUM(xsd:integer(?stressLevelReadingCount)) AS ?totalReadingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/lower_bound> ?lowerBound .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_count> ?stressLevelReadingCount .\n  FILTER (xsd:integer(?lowerBound) > 0)\n}",
+      "full_expected_items": [
+        "4666"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "4666",
+      "reasoning": "The question asks for the sum of 'reading_count' for 'StressLevel' entities where the 'lower_bound' is greater than 0. This involves selecting the 'StressLevel' entity, filtering by its 'lower_bound' attribute using a numeric comparison, and then summing the 'reading_count' attribute. The `xsd:integer` cast is necessary for numeric comparison and summation."
+    },
+    {
+      "id": "q-008",
+      "question": "How many indicator readings have a value greater than 0.5?",
+      "gold_sparql": "SELECT (COUNT(?reading) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?value .\n  FILTER(xsd:float(?value) > 0.5)\n}",
+      "full_expected_items": [
+        "12343"
+      ],
+      "full_result_count": 1,
+      "tier": "T2",
+      "tier_classifier_reasoning": "1 entity type with 1 FILTER expression(s)",
+      "tier_llm_label": "T2",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "12343",
+      "reasoning": "The question asks for a count of 'indicator readings' based on a numeric filter on their 'value' attribute. This directly maps to the IndicatorReading entity type and its 'value' predicate. The filter condition `> 0.5` is applied to the `value` attribute after casting it to a float. The query counts the distinct IndicatorReading entities that satisfy this condition, making it a Tier 2 query (single entity with filter and aggregation)."
+    },
+    {
+      "id": "q-009",
+      "question": "How many indicator readings are associated with each stress level?",
+      "gold_sparql": "SELECT ?stressLevelLabel (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> ?stressLevelLabel .\n} GROUP BY ?stressLevelLabel ORDER BY DESC(?readingCount)",
+      "full_expected_items": [
+        "Negative (calm) | 36450",
+        "Low | 18707",
+        "Elevated | 3553",
+        "High | 1113"
+      ],
+      "full_result_count": 4,
+      "tier": "T3",
+      "tier_classifier_reasoning": "2 distinct entity types connected by 1 predicate",
+      "tier_llm_label": "T3",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "Negative (calm) | 36450\nLow | 18707\nElevated | 3553\nHigh | 1113",
+      "reasoning": "This query joins `IndicatorReading` and `StressLevel` via the `reading_has_stress_level` predicate. It counts the number of readings for each stress level, satisfying the two-entity join and aggregation requirement. Both entities are explicitly typed. The filter is implicit in the GROUP BY."
+    },
+    {
+      "id": "q-010",
+      "question": "Count the number of indicators within each indicator category.",
+      "gold_sparql": "SELECT ?categoryName (COUNT(?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n} GROUP BY ?categoryName ORDER BY DESC(?indicatorCount)",
+      "full_expected_items": [
+        "Subindex | 5",
+        "Regional | 3",
+        "Composite | 1"
+      ],
+      "full_result_count": 3,
+      "tier": "T3",
+      "tier_classifier_reasoning": "2 distinct entity types connected by 1 predicate",
+      "tier_llm_label": "T3",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+      "reasoning": "This query joins `IndicatorCategory` and `Indicator` via the `category_includes_indicator` predicate. It counts the number of indicators for each category, satisfying the two-entity join and aggregation requirement. Both entities are explicitly typed. The filter is implicit in the GROUP BY."
+    },
+    {
+      "id": "q-011",
+      "question": "What are the names of indicators that have readings associated with a 'Low' stress level, and how many such readings does each indicator have?",
+      "gold_sparql": "SELECT ?indicatorName (COUNT(?reading) AS ?readingCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_name> ?indicatorName .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_has_stress_level> ?stressLevel .\n  ?stressLevel <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/StressLevel> .\n  ?stressLevel <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/stress_level_label> \"Low\" .\n} GROUP BY ?indicatorName\nORDER BY DESC(?readingCount)\nLIMIT 10",
+      "full_expected_items": [
+        "Safe Assets | 2946",
+        "Equity Valuation | 2469",
+        "Emerging Markets | 2447",
+        "Funding | 2215",
+        "Volatility | 2166",
+        "Credit | 2114",
+        "Other Advanced Economies | 2110",
+        "United States | 1272",
+        "OFR Financial Stress Index | 968"
+      ],
+      "full_result_count": 9,
+      "tier": "T4",
+      "tier_classifier_reasoning": "3 distinct entity types (>=3)",
+      "tier_llm_label": "T4",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "Safe Assets | 2946\nEquity Valuation | 2469\nEmerging Markets | 2447\nFunding | 2215\nVolatility | 2166\nCredit | 2114\nOther Advanced Economies | 2110\nUnited States | 1272\nOFR Financial Stress Index | 968",
+      "reasoning": "This query uses Option A (3+ entity types connected by a path). It involves three entity types: Indicator, IndicatorReading, and StressLevel. The path is Indicator -> IndicatorReading -> StressLevel. It counts the number of IndicatorReadings for each Indicator that are associated with a 'Low' StressLevel. All three entity variables (?indicator, ?reading, ?stressLevel) have explicit rdf:type triples."
+    },
+    {
+      "id": "q-012",
+      "question": "For each year, what is the average value of indicator readings that occurred on a 'Friday'?",
+      "gold_sparql": "SELECT ?year (AVG(xsd:float(?readingValue)) AS ?averageReadingValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?yearEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year> ?year .\n  ?yearEntity <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/year_contains_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_contains_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/day_of_week> \"Friday\" .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/value> ?readingValue .\n} GROUP BY ?year\nORDER BY ?year",
+      "full_expected_items": [
+        "2000 | 1.0443207",
+        "2001 | 1.2513739",
+        "2002 | 1.2831702",
+        "2003 | 0.4425135",
+        "2004 | -0.68760645",
+        "2005 | -1.2797388",
+        "2006 | -1.2572224",
+        "2007 | -0.5077654",
+        "2008 | 3.9917865",
+        "2009 | 2.1762724",
+        "2010 | 0.3793468",
+        "2011 | 0.6664118",
+        "2012 | -0.003267969",
+        "2013 | -0.8732289",
+        "2014 | -0.98410666",
+        "2015 | -0.365891",
+        "2016 | -0.064895436",
+        "2017 | -1.0445815",
+        "2018 | -0.8041437",
+        "2019 | -0.80634",
+        "2020 | -0.14758502",
+        "2021 | -1.1410998",
+        "2022 | 0.3114506",
+        "2023 | -0.12584484",
+        "2024 | -0.5692586",
+        "2025 | -0.568032",
+        "2026 | -0.6092963"
+      ],
+      "full_result_count": 27,
+      "tier": "T4",
+      "tier_classifier_reasoning": "4 distinct entity types (>=3)",
+      "tier_llm_label": "T4",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "2000 | 1.0443207\n2001 | 1.2513739\n2002 | 1.2831702\n2003 | 0.4425135\n2004 | -0.68760645\n2005 | -1.2797388\n2006 | -1.2572224\n2007 | -0.5077654\n2008 | 3.9917865\n2009 | 2.1762724\n... (27 total rows)",
+      "reasoning": "This query uses Option A (3+ entity types connected by a path). It involves four entity types: Year, Month, Period, and IndicatorReading. The path is Year -> Month -> Period -> IndicatorReading. It calculates the average value of IndicatorReadings that occurred on a 'Friday' for each Year. All four entity variables (?yearEntity, ?month, ?period, ?reading) have explicit rdf:type triples."
+    },
+    {
+      "id": "q-013",
+      "question": "Find the indicator categories that contain indicators with readings in the '2010' decade, and count how many such indicators each category has.",
+      "gold_sparql": "SELECT ?categoryName (COUNT(DISTINCT ?indicator) AS ?indicatorCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ofr-financial-stability> WHERE {\n  ?category <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorCategory> .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_name> ?categoryName .\n  ?category <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/category_includes_indicator> ?indicator .\n  ?indicator <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Indicator> .\n  ?indicator <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/indicator_has_reading> ?reading .\n  ?reading <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/IndicatorReading> .\n  ?reading <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/reading_on_period> ?period .\n  ?period <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Period> .\n  ?period <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/period_in_month> ?month .\n  ?month <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Month> .\n  ?month <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/month_in_year> ?year .\n  ?year <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/type/Year> .\n  ?year <https://omnix.dev/holdout-v2/holdout-v2-ofr-financial-stability/pred/decade> \"2010\" .\n} GROUP BY ?categoryName\nORDER BY DESC(?indicatorCount)",
+      "full_expected_items": [
+        "Subindex | 5",
+        "Regional | 3",
+        "Composite | 1"
+      ],
+      "full_result_count": 3,
+      "tier": "T4",
+      "tier_classifier_reasoning": "6 distinct entity types (>=3)",
+      "tier_llm_label": "T4",
+      "kg_id": "holdout-v2-ofr-financial-stability",
+      "expected_answer": "Subindex | 5\nRegional | 3\nComposite | 1",
+      "reasoning": "This query uses Option A (3+ entity types connected by a path). It involves five entity types: IndicatorCategory, Indicator, IndicatorReading, Period, Month, and Year. The path is IndicatorCategory -> Indicator -> IndicatorReading -> Period -> Month -> Year. It counts distinct indicators within each category that have readings in the '2010' decade. All five entity variables (?category, ?indicator, ?reading, ?period, ?month, ?year) have explicit rdf:type triples."
+    }
+  ],
+  "generation_report": {
+    "T1": {
+      "target": 4,
+      "generated": 4,
+      "classifier_mismatched": 0,
+      "discarded_invalid": 0,
+      "shortfall": false
+    },
+    "T2": {
+      "target": 4,
+      "generated": 4,
+      "classifier_mismatched": 2,
+      "discarded_invalid": 0,
+      "shortfall": false
+    },
+    "T3": {
+      "target": 3,
+      "generated": 2,
+      "classifier_mismatched": 1,
+      "discarded_invalid": 0,
+      "shortfall": true
+    },
+    "T4": {
+      "target": 3,
+      "generated": 3,
+      "classifier_mismatched": 0,
+      "discarded_invalid": 0,
+      "shortfall": false
+    }
+  },
+  "runtime_seconds": 111.93
+}

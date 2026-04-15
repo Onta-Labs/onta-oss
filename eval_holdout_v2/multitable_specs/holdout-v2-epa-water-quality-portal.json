@@ -1,0 +1,163 @@
+{
+  "kg_name": "holdout-v2-epa-water-quality-portal",
+  "_source": "EPA/USGS Water Quality Portal. CA dissolved oxygen 2022. See scripts/prep_epa_water_quality.py.",
+  "entity_types": [
+    {
+      "name": "Station",
+      "source_csv": "Station.csv",
+      "primary_key": "station_id",
+      "label_column": "station_name",
+      "attributes": [
+        "station_name",
+        "station_raw_id",
+        "station_latitude",
+        "station_longitude",
+        "station_elevation",
+        "station_drainage_area",
+        "station_drainage_unit",
+        "station_horizontal_datum"
+      ]
+    },
+    {
+      "name": "Sample",
+      "source_csv": "Sample.csv",
+      "primary_key": "sample_id",
+      "label_column": "sample_activity_id",
+      "attributes": [
+        "sample_activity_id",
+        "sample_date",
+        "sample_time",
+        "sample_value",
+        "sample_unit",
+        "sample_media",
+        "sample_depth",
+        "sample_depth_unit",
+        "sample_activity_type",
+        "sample_fraction",
+        "sample_detection",
+        "sample_status"
+      ]
+    },
+    {
+      "name": "Organization",
+      "source_csv": "Organization.csv",
+      "primary_key": "organization_id",
+      "label_column": "organization_name",
+      "attributes": [
+        "organization_name",
+        "organization_raw_id"
+      ]
+    },
+    {
+      "name": "Parameter",
+      "source_csv": "Parameter.csv",
+      "primary_key": "parameter_id",
+      "label_column": "parameter_name",
+      "attributes": [
+        "parameter_name",
+        "parameter_unit"
+      ]
+    },
+    {
+      "name": "County",
+      "source_csv": "County.csv",
+      "primary_key": "county_id",
+      "label_column": "county_name",
+      "attributes": [
+        "county_name"
+      ]
+    },
+    {
+      "name": "WaterBodyType",
+      "source_csv": "WaterBodyType.csv",
+      "primary_key": "waterbodytype_id",
+      "label_column": "waterbodytype_name",
+      "attributes": [
+        "waterbodytype_name"
+      ]
+    },
+    {
+      "name": "HUC8",
+      "source_csv": "HUC8.csv",
+      "primary_key": "huc8_id",
+      "label_column": "huc8_code",
+      "attributes": [
+        "huc8_code"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "name": "sample_at_station",
+      "source_csv": "Sample.csv",
+      "subject_type": "Sample",
+      "subject_key_column": "sample_id",
+      "object_type": "Station",
+      "object_key_column": "sample_station_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "sample_measures_parameter",
+      "source_csv": "Sample.csv",
+      "subject_type": "Sample",
+      "subject_key_column": "sample_id",
+      "object_type": "Parameter",
+      "object_key_column": "sample_parameter_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "sample_by_organization",
+      "source_csv": "Sample.csv",
+      "subject_type": "Sample",
+      "subject_key_column": "sample_id",
+      "object_type": "Organization",
+      "object_key_column": "sample_organization_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "station_operated_by",
+      "source_csv": "Station.csv",
+      "subject_type": "Station",
+      "subject_key_column": "station_id",
+      "object_type": "Organization",
+      "object_key_column": "station_organization_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "station_in_county",
+      "source_csv": "Station.csv",
+      "subject_type": "Station",
+      "subject_key_column": "station_id",
+      "object_type": "County",
+      "object_key_column": "station_county_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "station_waterbody_type",
+      "source_csv": "Station.csv",
+      "subject_type": "Station",
+      "subject_key_column": "station_id",
+      "object_type": "WaterBodyType",
+      "object_key_column": "station_waterbodytype_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "station_in_huc8",
+      "source_csv": "Station.csv",
+      "subject_type": "Station",
+      "subject_key_column": "station_id",
+      "object_type": "HUC8",
+      "object_key_column": "station_huc8_id",
+      "cardinality": "N:1"
+    },
+    {
+      "name": "station_has_sample",
+      "source_csv": "Sample.csv",
+      "subject_type": "Station",
+      "subject_key_column": "sample_station_id",
+      "object_type": "Sample",
+      "object_key_column": "sample_id",
+      "cardinality": "1:N"
+    }
+  ]
+}
