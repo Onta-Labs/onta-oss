@@ -133,6 +133,7 @@ class NLQueryPipeline:
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
                 _, bindings = parse_sparql_results(raw)
                 answer = await self._format_answer(bindings, explanation)
+                narrative_answer = await self._rephrase_via_openrouter(question, bindings)
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
                 return NLResult(
@@ -140,6 +141,7 @@ class NLQueryPipeline:
                     sparql=sparql,
                     explanation=explanation,
                     ontology=ontology,
+                    narrative_answer=narrative_answer,
                     functions_invoked=functions_needed,
                     timing=timing,
                 )
@@ -509,6 +511,85 @@ class NLQueryPipeline:
         svc = get_embedding_service()
         if svc:
             svc.invalidate(graph_uri)
+
+    async def _rephrase_via_openrouter(self, question: str, bindings: list[dict], max_rows: int = 30) -> str:
+        """Generate a 2-3 sentence narrative summary of SPARQL result bindings.
+
+        Uses Llama 3.1 8B on Cerebras (via OpenRouter) for fast, cheap rephrase.
+        Fails open: returns "" on any error so the main response is never broken.
+        """
+        if not self._openrouter_key:
+            return ""
+
+        try:
+            # Build a compact tabular string from bindings
+            if not bindings:
+                table_str = "(no results)"
+                truncation_note = ""
+            else:
+                rows = bindings[:max_rows]
+                if rows:
+                    cols = list(rows[0].keys())
+                    lines = ["\t".join(cols)]
+                    for row in rows:
+                        lines.append("\t".join(str(row.get(c, "")) for c in cols))
+                    table_str = "\n".join(lines)
+                else:
+                    table_str = "(no results)"
+                truncation_note = (
+                    f"\n(Showing {len(rows)} of {len(bindings)} total rows.)"
+                    if len(bindings) > max_rows else ""
+                )
+
+            system_prompt = (
+                "You are an analyst summarizing a database query result. Rules:\n"
+                "- Lead with the specific count or a specific first answer (e.g. 'Eleven founders match…').\n"
+                "- If multiple rows, highlight ONE hero row with specific details from the data.\n"
+                "- Keep to 2-3 sentences, max 80 words.\n"
+                "- Do NOT invent data — only rephrase what is in the rows.\n"
+                "- Do NOT use chatbot phrases like 'Sure!', 'Here you go', 'Great question'.\n"
+                "- If the result is empty, say 'No matches found.' and stop.\n"
+                "- Speak in plain English, not technical jargon."
+            )
+
+            user_prompt = (
+                f"Question: {question}\n\n"
+                f"Result ({len(bindings)} row{'s' if len(bindings) != 1 else ''}):\n"
+                f"{table_str}{truncation_note}\n\n"
+                "Summarize this result in 2-3 sentences."
+            )
+
+            t_rephrase = time.time()
+            async with httpx.AsyncClient(timeout=10) as client:
+                res = await client.post(
+                    f"{OPENROUTER_BASE}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._openrouter_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "meta-llama/llama-3.1-8b-instruct",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "max_tokens": 300,
+                        "temperature": 0.2,
+                        "provider": {
+                            "order": ["Cerebras", "Groq", "Nebius"],
+                            "allow_fallbacks": True,
+                        },
+                    },
+                )
+                res.raise_for_status()
+                data = res.json()
+                narrative = data["choices"][0]["message"]["content"].strip()
+            rephrase_ms = round((time.time() - t_rephrase) * 1000, 1)
+            logger.info("narrative_rephrase_ok", rephrase_ms=rephrase_ms, rows=len(bindings))
+            return narrative
+        except Exception:
+            logger.warning("narrative_rephrase_failed", exc_info=True)
+            return ""
 
     async def _generate_sparql(self, question: str, ontology: str, graph_uri: str = "", error_feedback: str = "", examples_text: str = "") -> dict:
         prompt = build_generation_prompt(question, ontology, graph_uri, examples_text=examples_text)
