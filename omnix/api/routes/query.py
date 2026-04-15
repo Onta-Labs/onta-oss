@@ -24,7 +24,7 @@ async def execute_query(
 
 
 @router.post("/graphs/{tenant}/update")
-@limiter.limit("30/minute")
+@limiter.limit("500/minute")
 async def execute_update(
     request: Request,
     body: SPARQLUpdate,
