@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from omnix.resolver.models import MatchVerdict
-from omnix.resolver.type_matcher import TypeMatcher
-from omnix.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
+from cograph.resolver.models import MatchVerdict
+from cograph.resolver.type_matcher import TypeMatcher
+from cograph.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
 
 @pytest.fixture

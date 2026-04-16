@@ -2,8 +2,8 @@
 
 import pytest
 
-from omnix.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
-from omnix.resolver.validator import coerce_value, validate_triple, validate_value
+from cograph.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
+from cograph.resolver.validator import coerce_value, validate_triple, validate_value
 
 
 class TestCoerceValue:

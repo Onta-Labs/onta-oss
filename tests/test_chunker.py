@@ -2,7 +2,7 @@
 
 import json
 
-from omnix.resolver.chunker import chunk_text, chunk_json_array
+from cograph.resolver.chunker import chunk_text, chunk_json_array
 
 
 class TestChunkText:

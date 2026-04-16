@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from omnix.api.app import create_app
-from omnix.graph.client import NeptuneClient
+from cograph.api.app import create_app
+from cograph.graph.client import NeptuneClient
 
 
 @pytest.fixture
