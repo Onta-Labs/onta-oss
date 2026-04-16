@@ -180,6 +180,11 @@ async def invoke_function(
     3. Invoke the function via FunctionExecutor
     4. Write result attributes back as triples on the entity
     """
+    # Dispatch to specific invoke endpoints for functions that have their
+    # own resolution logic (e.g., investor-portfolio resolves by name, not CIK)
+    if function_name == "investor-portfolio":
+        return await invoke_investor_portfolio(body, tenant, client)
+
     start = time.monotonic()
     ontology_graph = tenant_graph_uri(tenant.tenant_id)
     instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
