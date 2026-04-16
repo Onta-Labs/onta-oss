@@ -504,19 +504,42 @@ async def invoke_investor_portfolio(
     # Prefer the attrs/name value (with spaces) if both are present
     investor_name = name_bindings[0].get("name", "")
 
-    # Call the portfolio function directly (it's a local SPARQL query, not an HTTP call)
-    portfolio_result = await investor_portfolio(
-        body=PortfolioRequest(investor_name=investor_name),
-        _tenant=tenant,
-        client=client,
+    # Query portfolio data inline — same SPARQL as the /functions/investor-portfolio
+    # endpoint but executed directly rather than calling the endpoint function
+    # (avoids FastAPI Depends() / connection-state issues when called internally)
+    companies: list[str] = []
+    total_invested: int = 0
+    ig = instance_graph
+    portfolio_query = (
+        f"SELECT ?companyName ?amount FROM <{ig}>\n"
+        f"WHERE {{\n"
+        f"  ?investor <https://omnix.dev/types/Investor/attrs/name> \"{investor_name}\" .\n"
+        f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Investor> .\n"
+        f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
+        f"  ?round <https://omnix.dev/onto/company_name> ?company .\n"
+        f"  ?company <https://omnix.dev/types/Company/attrs/name> ?companyName .\n"
+        f"  OPTIONAL {{ ?round <https://omnix.dev/types/FundingRound/attrs/amount_usd> ?amount }}\n"
+        f"}}"
     )
+    raw_portfolio = await client.query(portfolio_query)
+    _, portfolio_bindings = parse_sparql_results(raw_portfolio)
+    for row in portfolio_bindings:
+        cname = row.get("companyName", "")
+        if cname and cname not in companies:
+            companies.append(cname)
+        amt_str = row.get("amount", "")
+        if amt_str:
+            try:
+                total_invested += int(float(amt_str))
+            except (ValueError, TypeError):
+                pass
 
     output = {
-        "portfolio_count": portfolio_result.portfolio_count,
-        "companies": ", ".join(portfolio_result.companies),
+        "portfolio_count": len(companies),
+        "companies": ", ".join(companies),
     }
-    if portfolio_result.total_invested_usd:
-        output["total_invested_usd"] = str(portfolio_result.total_invested_usd)
+    if total_invested > 0:
+        output["total_invested_usd"] = str(total_invested)
 
     # Materialize results as triples on the Investor entity
     entity_type = "Investor"
