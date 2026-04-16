@@ -1,4 +1,4 @@
-from omnix.graph.queries import (
+from cograph.graph.queries import (
     tenant_graph_uri,
     insert_triples,
     delete_triples,

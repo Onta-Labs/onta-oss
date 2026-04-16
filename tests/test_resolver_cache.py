@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from omnix.resolver.models import MatchVerdict
-from omnix.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
+from cograph.resolver.models import MatchVerdict
+from cograph.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
 
 @pytest.fixture

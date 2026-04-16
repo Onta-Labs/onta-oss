@@ -12,20 +12,20 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from omnix.resolver.schema_resolver import (
+from cograph.resolver.schema_resolver import (
     SchemaResolver,
     EXTRACTION_SYSTEM,
     EXTRACTION_USER_TEMPLATE,
 )
-from omnix.resolver.models import (
+from cograph.resolver.models import (
     ExtractedEntity,
     ExtractedAttribute,
     ExtractedRelationship,
     ExtractionResult,
     IngestResult,
 )
-from omnix.resolver.verdict_cache import JsonVerdictCache
-from omnix.graph.ontology_queries import type_uri
+from cograph.resolver.verdict_cache import JsonVerdictCache
+from cograph.graph.ontology_queries import type_uri
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ class TestRelationshipRegistration:
         """If the relationship attribute already exists, don't re-register it."""
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
 
-        from omnix.resolver.attribute_resolver import AttributeSchema
+        from cograph.resolver.attribute_resolver import AttributeSchema
 
         extraction = ExtractionResult(
             entities=[

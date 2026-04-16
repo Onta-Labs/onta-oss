@@ -1,7 +1,7 @@
 """Tests for CSV schema inference and deterministic mapping."""
 
-from omnix.resolver.csv_resolver import CSVResolver, _safe_id, _snake_case
-from omnix.resolver.models import ColumnMapping, ColumnRole, CSVSchemaMapping
+from cograph.resolver.csv_resolver import CSVResolver, _safe_id, _snake_case
+from cograph.resolver.models import ColumnMapping, ColumnRole, CSVSchemaMapping
 
 
 class TestSafeId:
@@ -100,7 +100,7 @@ class TestApplyMapping:
 
 class TestBatchedInsertTriples:
     def test_batching(self):
-        from omnix.graph.queries import batched_insert_triples
+        from cograph.graph.queries import batched_insert_triples
 
         triples = [(f"s{i}", "p", "o") for i in range(1200)]
         batches = batched_insert_triples("https://g", triples, batch_size=500)
@@ -108,11 +108,11 @@ class TestBatchedInsertTriples:
         assert "INSERT DATA" in batches[0]
 
     def test_empty(self):
-        from omnix.graph.queries import batched_insert_triples
+        from cograph.graph.queries import batched_insert_triples
         assert batched_insert_triples("https://g", []) == []
 
     def test_small(self):
-        from omnix.graph.queries import batched_insert_triples
+        from cograph.graph.queries import batched_insert_triples
         triples = [("s", "p", "o")]
         batches = batched_insert_triples("https://g", triples)
         assert len(batches) == 1

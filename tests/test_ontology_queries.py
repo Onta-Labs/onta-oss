@@ -1,4 +1,4 @@
-from omnix.graph.ontology_queries import (
+from cograph.graph.ontology_queries import (
     insert_type,
     insert_attribute,
     insert_subtype,

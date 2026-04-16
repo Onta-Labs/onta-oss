@@ -2,12 +2,12 @@
 
 import pytest
 
-from omnix.resolver.attribute_resolver import (
+from cograph.resolver.attribute_resolver import (
     AttributeSchema,
     check_promotion,
     resolve_attribute,
 )
-from omnix.resolver.models import AttrAction, ExtractedAttribute, ExtractedEntity
+from cograph.resolver.models import AttrAction, ExtractedAttribute, ExtractedEntity
 
 
 class TestResolveAttribute:
