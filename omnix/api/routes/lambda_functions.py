@@ -130,11 +130,28 @@ class InvokeRequest(BaseModel):
     kg_name: str
 
 
+class DiscoveredEntity(BaseModel):
+    uri: str
+    type: str
+    name: str
+    skills: list[str]
+
+
 class InvokeResponse(BaseModel):
     entity_uri: str
     function: str
     output: dict
+    discovered_entities: list[DiscoveredEntity] = []
     duration_ms: float
+
+
+# Hardcoded skill mapping per entity type (mirrors frontend TypeNode METHOD_MAP)
+SKILLS_BY_TYPE: dict[str, list[str]] = {
+    "Company": ["filings()", "patents()", "headcount()", "news()"],
+    "Investor": ["portfolio()", "coInvestors()"],
+    "Person": ["publications()", "bio()", "trajectory()"],
+    "FundingRound": ["coInvestors()", "capTable()"],
+}
 
 
 # Shared executor instance
@@ -315,11 +332,38 @@ async def invoke_function(
         sparql_insert = insert_triples(instance_graph, new_triples)
         await client.update(sparql_insert)
 
-    duration_ms = (time.monotonic() - start) * 1000
+    # --- Step 5: Discover linked entities for cascade ---
+    discovered: list[DiscoveredEntity] = []
 
-    # TODO(lambda-scheduler): re-invoke stale entries every N seconds
-    # A scheduler would scan for entities with lambda_refreshed_at older
-    # than a configurable threshold and re-invoke the attached functions.
+    if function_name == "sec-latest-filing":
+        # Find Investor entities linked via FundingRound → lead_investor
+        discover_query = (
+            f"SELECT DISTINCT ?investor ?investorName FROM <{instance_graph}>\n"
+            f"WHERE {{\n"
+            f"  ?round <https://omnix.dev/onto/company_name> <{body.entity_uri}> .\n"
+            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FundingRound> .\n"
+            f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
+            f"  ?investor <http://www.w3.org/2000/01/rdf-schema#label> ?investorName .\n"
+            f"}}"
+        )
+        try:
+            raw_discover = await client.query(discover_query)
+            _, discover_bindings = parse_sparql_results(raw_discover)
+            for row in discover_bindings:
+                inv_uri = row.get("investor", "")
+                inv_name = row.get("investorName", "")
+                if inv_uri and inv_name:
+                    inv_type = "Investor"
+                    discovered.append(DiscoveredEntity(
+                        uri=inv_uri,
+                        type=inv_type,
+                        name=inv_name,
+                        skills=SKILLS_BY_TYPE.get(inv_type, []),
+                    ))
+        except Exception as exc:
+            logger.warning("discover_entities_failed", error=str(exc))
+
+    duration_ms = (time.monotonic() - start) * 1000
 
     logger.info(
         "lambda_invoked",
@@ -327,11 +371,210 @@ async def invoke_function(
         entity=body.entity_uri,
         duration_ms=round(duration_ms, 1),
         output_keys=list(output.keys()),
+        discovered_count=len(discovered),
     )
 
     return InvokeResponse(
         entity_uri=body.entity_uri,
         function=function_name,
         output=output,
+        discovered_entities=discovered,
+        duration_ms=round(duration_ms, 1),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tier-2 Lambda: Investor Portfolio (SPARQL-based, no external API)
+# ---------------------------------------------------------------------------
+
+class PortfolioRequest(BaseModel):
+    investor_name: str
+
+
+class PortfolioResponse(BaseModel):
+    portfolio_count: int
+    companies: list[str]
+    total_invested_usd: int | None
+
+
+@router.post("/functions/investor-portfolio", response_model=PortfolioResponse)
+async def investor_portfolio(
+    body: PortfolioRequest,
+    _tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Query the KG for all companies in an investor's portfolio.
+
+    Looks up FundingRound entities where lead_investor matches this investor,
+    then follows company_name relationships to get Company names and sums amounts.
+    """
+    tenant_id = _tenant.tenant_id
+
+    # Search across all KGs in the tenant for this investor's portfolio
+    # We query the instance graphs for FundingRound → company_name relationships
+    # where lead_investor points to an entity with this investor's name.
+    #
+    # For demo purposes, we try the pear-backyard KG first.
+    kg_names = ["pear-backyard"]
+    companies: list[str] = []
+    total_invested: int = 0
+
+    for kg_name in kg_names:
+        ig = kg_graph_uri(tenant_id, kg_name)
+        portfolio_query = (
+            f"SELECT ?companyName ?amount FROM <{ig}>\n"
+            f"WHERE {{\n"
+            f"  ?investor <http://www.w3.org/2000/01/rdf-schema#label> \"{body.investor_name}\" .\n"
+            f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Investor> .\n"
+            f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
+            f"  ?round <https://omnix.dev/onto/company_name> ?company .\n"
+            f"  ?company <http://www.w3.org/2000/01/rdf-schema#label> ?companyName .\n"
+            f"  OPTIONAL {{ ?round <https://omnix.dev/types/FundingRound/attrs/amount_usd> ?amount }}\n"
+            f"}}"
+        )
+        try:
+            raw_portfolio = await client.query(portfolio_query)
+            _, portfolio_bindings = parse_sparql_results(raw_portfolio)
+            for row in portfolio_bindings:
+                cname = row.get("companyName", "")
+                if cname and cname not in companies:
+                    companies.append(cname)
+                amt_str = row.get("amount", "")
+                if amt_str:
+                    try:
+                        total_invested += int(float(amt_str))
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:
+            pass
+
+    return PortfolioResponse(
+        portfolio_count=len(companies),
+        companies=companies,
+        total_invested_usd=total_invested if total_invested > 0 else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Generic invoke for investor-portfolio (reuses invoke pattern)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/graphs/{tenant}/functions/investor-portfolio/invoke",
+    response_model=InvokeResponse,
+)
+async def invoke_investor_portfolio(
+    body: InvokeRequest,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Invoke investor-portfolio for an Investor entity.
+
+    Resolves the investor name from the entity URI, queries the KG for
+    portfolio data, and materializes the results as triples.
+    """
+    start = time.monotonic()
+    instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
+    ontology_graph = tenant_graph_uri(tenant.tenant_id)
+
+    # Resolve investor name from entity
+    name_query = (
+        f"SELECT ?name FROM <{instance_graph}>\n"
+        f"WHERE {{\n"
+        f"  <{body.entity_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?name .\n"
+        f"}}"
+    )
+    raw_name = await client.query(name_query)
+    _, name_bindings = parse_sparql_results(raw_name)
+
+    if not name_bindings:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not resolve name for entity {body.entity_uri}",
+        )
+
+    investor_name = name_bindings[0].get("name", "")
+
+    # Call the portfolio function directly (it's a local SPARQL query, not an HTTP call)
+    portfolio_result = await investor_portfolio(
+        body=PortfolioRequest(investor_name=investor_name),
+        _tenant=tenant,
+        client=client,
+    )
+
+    output = {
+        "portfolio_count": portfolio_result.portfolio_count,
+        "companies": ", ".join(portfolio_result.companies),
+    }
+    if portfolio_result.total_invested_usd:
+        output["total_invested_usd"] = str(portfolio_result.total_invested_usd)
+
+    # Materialize results as triples on the Investor entity
+    entity_type = "Investor"
+    new_triples: list[tuple[str, str, str]] = []
+    for key, value in output.items():
+        if value is None:
+            continue
+        attr_pred = f"https://omnix.dev/types/{entity_type}/attrs/{key}"
+
+        # Delete old value first
+        delete_sparql = (
+            f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <{attr_pred}> ?old }} }}\n"
+            f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <{attr_pred}> ?old }} }}"
+        )
+        try:
+            await client.update(delete_sparql)
+        except Exception:
+            pass
+
+        new_triples.append((body.entity_uri, attr_pred, str(value)))
+
+        # Ensure attribute in ontology
+        datatype = "integer" if key == "portfolio_count" else "string"
+        attr_sparql = insert_attribute(
+            ontology_graph, entity_type, key,
+            description=f"Lambda-computed by investor-portfolio",
+            datatype=datatype,
+        )
+        try:
+            await client.update(attr_sparql)
+        except Exception:
+            pass
+
+    # Provenance
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    delete_prov = (
+        f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://omnix.dev/onto/lambda_refreshed_at> ?old }} }}\n"
+        f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://omnix.dev/onto/lambda_refreshed_at> ?old }} }}"
+    )
+    try:
+        await client.update(delete_prov)
+    except Exception:
+        pass
+    new_triples.append((
+        body.entity_uri,
+        "https://omnix.dev/onto/lambda_refreshed_at",
+        now_iso,
+    ))
+
+    if new_triples:
+        sparql_insert = insert_triples(instance_graph, new_triples)
+        await client.update(sparql_insert)
+
+    duration_ms = (time.monotonic() - start) * 1000
+
+    logger.info(
+        "lambda_invoked",
+        function="investor-portfolio",
+        entity=body.entity_uri,
+        duration_ms=round(duration_ms, 1),
+        portfolio_count=portfolio_result.portfolio_count,
+    )
+
+    return InvokeResponse(
+        entity_uri=body.entity_uri,
+        function="investor-portfolio",
+        output=output,
+        discovered_entities=[],
         duration_ms=round(duration_ms, 1),
     )
