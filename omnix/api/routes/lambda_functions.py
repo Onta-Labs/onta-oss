@@ -600,7 +600,7 @@ async def invoke_investor_portfolio(
         function="investor-portfolio",
         entity=body.entity_uri,
         duration_ms=round(duration_ms, 1),
-        portfolio_count=portfolio_result.portfolio_count,
+        portfolio_count=len(companies),
     )
 
     return InvokeResponse(
