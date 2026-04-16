@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "omnix"
+name = "cograph"
 version = "0.1.0"
 description = "Living Knowledge Graph Platform"
 requires-python = ">=3.12"
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-omnix = "omnix.cli:main"
+cograph = "cograph.cli:main"
 
 [project.optional-dependencies]
 dev = [

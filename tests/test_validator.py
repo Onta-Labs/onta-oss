@@ -1,4 +1,4 @@
-from omnix.nlp.validator import validate_sparql
+from cograph.nlp.validator import validate_sparql
 
 
 def test_valid_select():

@@ -1,0 +1,77 @@
+import importlib
+from contextlib import asynccontextmanager
+
+import structlog
+from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from cograph.api.middleware import RequestLoggingMiddleware
+from cograph.api.rate_limit import limiter
+from cograph.api.routes import ask, functions, health, ingest, knowledge_graphs, lambda_functions, ontology, query, triples
+from cograph.config import settings
+from cograph.graph.client import NeptuneClient
+from cograph.logging import setup_logging
+
+logger = structlog.stdlib.get_logger("cograph.app")
+
+
+def _load_auth_plugin() -> None:
+    """Import and invoke the configured auth plugin, if any.
+
+    Format: "module.path:callable". The callable is invoked with no
+    arguments and is expected to register an external verifier via
+    omnix.auth.api_keys.register_external_verifier. Failures are logged
+    but do not prevent the app from starting — the app will simply fall
+    back to static API key auth.
+    """
+    spec = settings.auth_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("auth_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("auth_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("auth_plugin_load_failed", plugin=spec, error=str(exc))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging(settings.log_level)
+    logger.info("starting", neptune_endpoint=settings.neptune_endpoint)
+    app.state.neptune_client = NeptuneClient(settings.neptune_endpoint, backend=settings.graph_backend)
+    yield
+    await app.state.neptune_client.close()
+    logger.info("shutdown")
+
+
+def create_app() -> FastAPI:
+    _load_auth_plugin()
+    app = FastAPI(
+        title="Omnix",
+        description="Living Knowledge Graph Platform",
+        version="0.1.0",
+        lifespan=lifespan,
+    )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(RequestLoggingMiddleware)
+    app.include_router(health.router, tags=["health"])
+    app.include_router(triples.router, tags=["triples"])
+    app.include_router(query.router, tags=["query"])
+    app.include_router(functions.router, tags=["functions"])
+    app.include_router(lambda_functions.router, tags=["lambda_functions"])
+    app.include_router(ask.router, tags=["ask"])
+    app.include_router(ontology.router, tags=["ontology"])
+    app.include_router(ingest.router, tags=["ingest"])
+    app.include_router(knowledge_graphs.router, tags=["knowledge_graphs"])
+    return app
+
+
+app = create_app()

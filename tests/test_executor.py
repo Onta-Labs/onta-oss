@@ -3,13 +3,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from omnix.functions.executor import FunctionExecutor
-from omnix.models.function import FunctionRef, FunctionTier
+from cograph.functions.executor import FunctionExecutor
+from cograph.models.function import FunctionRef, FunctionTier
 
 
 @pytest.fixture
 def executor():
-    with patch("omnix.functions.executor.settings") as mock_settings:
+    with patch("cograph.functions.executor.settings") as mock_settings:
         mock_settings.get_function_arns_map.return_value = {
             "calculate_distance": "arn:aws:lambda:us-east-1:123:function:calc-dist"
         }

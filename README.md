@@ -1,4 +1,4 @@
-# Omnix
+# Cograph
 
 Turn any CSV into a knowledge graph you can query in natural language.
 
@@ -32,20 +32,20 @@ cp .env.example .env
 ### 4. Start the server
 
 ```bash
-source .env && uvicorn omnix.api.app:create_app --factory --port 8000
+source .env && uvicorn cograph.api.app:create_app --factory --port 8000
 ```
 
 ### 5. Ingest and query
 
 ```bash
 # Ingest the sample dataset
-omnix ingest examples/bookstore.csv --kg bookstore
+cograph ingest examples/bookstore.csv --kg bookstore
 
 # Ask questions
-omnix ask "How many books are there?" --kg bookstore
-omnix ask "Which genre has the most books?" --kg bookstore
-omnix ask "What is the average price of Dystopian books?" --kg bookstore
-omnix ask "List all books by J.R.R. Tolkien" --kg bookstore
+cograph ask "How many books are there?" --kg bookstore
+cograph ask "Which genre has the most books?" --kg bookstore
+cograph ask "What is the average price of Dystopian books?" --kg bookstore
+cograph ask "List all books by J.R.R. Tolkien" --kg bookstore
 ```
 
 No API key needed for local usage. No AWS account needed.
@@ -76,36 +76,36 @@ Natural Language Query -> SPARQL -> Answer
 
 ```bash
 # Ingest
-omnix ingest data.csv --kg my-dataset
+cograph ingest data.csv --kg my-dataset
 
 # Query
-omnix ask "How many records are there?" --kg my-dataset
+cograph ask "How many records are there?" --kg my-dataset
 
 # Manage KGs
-omnix kg list
-omnix kg create my-dataset -d "Description"
-omnix kg delete my-dataset
+cograph kg list
+cograph kg create my-dataset -d "Description"
+cograph kg delete my-dataset
 
 # View ontology
-omnix ontology types
+cograph ontology types
 
 # Clear data
-omnix clear --kg my-dataset -y
+cograph clear --kg my-dataset -y
 
 # Evaluate accuracy
-omnix eval data.csv --kg my-dataset --query-only -n 20 --fast-judge
+cograph eval data.csv --kg my-dataset --query-only -n 20 --fast-judge
 ```
 
 ## MCP Server (AI Agent Integration)
 
-Connect Omnix to Claude, Cursor, Windsurf, or any MCP-compatible agent:
+Connect Cograph to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 
 ```json
 {
   "mcpServers": {
-    "omnix": {
+    "cograph": {
       "command": "python",
-      "args": ["-m", "omnix.mcp_server"]
+      "args": ["-m", "cograph.mcp_server"]
     }
   }
 }

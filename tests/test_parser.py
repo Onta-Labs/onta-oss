@@ -1,4 +1,4 @@
-from omnix.graph.parser import parse_sparql_results
+from cograph.graph.parser import parse_sparql_results
 
 
 def test_parse_empty_results():
