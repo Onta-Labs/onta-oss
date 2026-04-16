@@ -424,11 +424,11 @@ async def investor_portfolio(
         portfolio_query = (
             f"SELECT ?companyName ?amount FROM <{ig}>\n"
             f"WHERE {{\n"
-            f"  ?investor <http://www.w3.org/2000/01/rdf-schema#label> \"{body.investor_name}\" .\n"
+            f"  ?investor <https://omnix.dev/types/Investor/attrs/name> \"{body.investor_name}\" .\n"
             f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Investor> .\n"
             f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
             f"  ?round <https://omnix.dev/onto/company_name> ?company .\n"
-            f"  ?company <http://www.w3.org/2000/01/rdf-schema#label> ?companyName .\n"
+            f"  ?company <https://omnix.dev/types/Company/attrs/name> ?companyName .\n"
             f"  OPTIONAL {{ ?round <https://omnix.dev/types/FundingRound/attrs/amount_usd> ?amount }}\n"
             f"}}"
         )
@@ -477,11 +477,14 @@ async def invoke_investor_portfolio(
     instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
     ontology_graph = tenant_graph_uri(tenant.tenant_id)
 
-    # Resolve investor name from entity
+    # Resolve investor name from entity — prefer the Investor/attrs/name
+    # attribute (which uses spaces) over rdfs:label (which uses underscores)
     name_query = (
         f"SELECT ?name FROM <{instance_graph}>\n"
         f"WHERE {{\n"
-        f"  <{body.entity_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?name .\n"
+        f"  {{ <{body.entity_uri}> <https://omnix.dev/types/Investor/attrs/name> ?name }}\n"
+        f"  UNION\n"
+        f"  {{ <{body.entity_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?name }}\n"
         f"}}"
     )
     raw_name = await client.query(name_query)
@@ -493,6 +496,7 @@ async def invoke_investor_portfolio(
             detail=f"Could not resolve name for entity {body.entity_uri}",
         )
 
+    # Prefer the attrs/name value (with spaces) if both are present
     investor_name = name_bindings[0].get("name", "")
 
     # Call the portfolio function directly (it's a local SPARQL query, not an HTTP call)
