@@ -4,7 +4,7 @@ Turn any CSV into a knowledge graph you can query in natural language.
 
 One LLM call infers the schema. All rows are mapped deterministically. Ask questions, get answers backed by SPARQL.
 
-88% accuracy across 5 domains (real estate, medical, financial, entertainment, events).
+91.4% accuracy across 26 knowledge graphs (302 questions, 4 domains, execution-verified ground truth).
 
 ## Quickstart (5 minutes)
 
