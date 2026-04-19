@@ -33,7 +33,7 @@ def _run_cli(*args) -> subprocess.CompletedProcess:
     if API_KEY:
         env["OMNIX_API_KEY"] = API_KEY
     return subprocess.run(
-        [sys.executable, "-m", "cograph.cli", *args],
+        [sys.executable, "-m", "cograph_client.cli", *args],
         capture_output=True,
         text=True,
         env=env,

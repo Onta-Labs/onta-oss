@@ -32,7 +32,7 @@ cp .env.example .env
 ### 4. Start the server
 
 ```bash
-source .env && uvicorn cograph.api.app:create_app --factory --port 8000
+source .env && uvicorn cograph_client.api.app:create_app --factory --port 8000
 ```
 
 ### 5. Ingest and query
@@ -105,7 +105,7 @@ Connect Cograph to Claude, Cursor, Windsurf, or any MCP-compatible agent:
   "mcpServers": {
     "cograph": {
       "command": "python",
-      "args": ["-m", "cograph.mcp_server"]
+      "args": ["-m", "cograph_client.mcp_server"]
     }
   }
 }
@@ -138,12 +138,12 @@ Works with any OpenAI-compatible API. Default: Gemini 2.5 Flash via OpenRouter.
 export OPENROUTER_API_KEY=sk-or-...
 
 # Or use Ollama (free, local)
-export OMNIX_QUERY_PROVIDER=ollama
-export OMNIX_QUERY_MODEL=llama3.1
+export COGRAPH_QUERY_PROVIDER=ollama
+export COGRAPH_QUERY_MODEL=llama3.1
 
 # Or Groq, Cerebras, Anthropic, etc.
-export OMNIX_QUERY_PROVIDER=cerebras
-export OMNIX_CEREBRAS_API_KEY=csk-...
+export COGRAPH_QUERY_PROVIDER=cerebras
+export COGRAPH_CEREBRAS_API_KEY=csk-...
 ```
 
 ## Eval Results
