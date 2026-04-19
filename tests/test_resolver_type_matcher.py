@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cograph.resolver.models import MatchVerdict
-from cograph.resolver.type_matcher import TypeMatcher
-from cograph.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
+from cograph_client.resolver.models import MatchVerdict
+from cograph_client.resolver.type_matcher import TypeMatcher
+from cograph_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
 
 @pytest.fixture

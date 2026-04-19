@@ -2,12 +2,12 @@
 
 import pytest
 
-from cograph.resolver.attribute_resolver import (
+from cograph_client.resolver.attribute_resolver import (
     AttributeSchema,
     check_promotion,
     resolve_attribute,
 )
-from cograph.resolver.models import AttrAction, ExtractedAttribute, ExtractedEntity
+from cograph_client.resolver.models import AttrAction, ExtractedAttribute, ExtractedEntity
 
 
 class TestResolveAttribute:

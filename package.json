@@ -1,0 +1,21 @@
+{
+  "name": "cograph-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cograph Node SDK + CLI + MCP server monorepo",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "clean": "rm -rf packages/*/dist"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3"
+  }
+}

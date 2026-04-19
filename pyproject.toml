@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cograph"
+name = "cograph-client"
 version = "0.1.0"
 description = "Living Knowledge Graph Platform"
 requires-python = ">=3.12"
@@ -19,9 +19,6 @@ dependencies = [
     "slowapi>=0.1.9",
     "numpy>=1.26.0",
 ]
-
-[project.scripts]
-cograph = "cograph.cli:main"
 
 [project.optional-dependencies]
 dev = [

@@ -1,0 +1,53 @@
+{
+  "name": "cograph",
+  "version": "0.1.0",
+  "description": "Cograph SDK and CLI — knowledge graph platform for structured data",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "cograph": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepack": "node ../../scripts/chmod-bin.js packages/cograph/dist/cli.js"
+  },
+  "keywords": [
+    "knowledge-graph",
+    "cograph",
+    "sdk",
+    "cli",
+    "rdf",
+    "sparql",
+    "ontology",
+    "ai",
+    "llm"
+  ],
+  "author": "Cograph",
+  "license": "MIT",
+  "homepage": "https://cograph.cloud",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git-moeen/cograph-node.git",
+    "directory": "packages/cograph"
+  },
+  "bugs": {
+    "url": "https://github.com/git-moeen/cograph-node/issues"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

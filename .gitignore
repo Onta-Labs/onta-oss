@@ -16,3 +16,10 @@ web/.env.local
 .env
 eval_reports/*
 !eval_reports/example_bank.jsonl
+
+# Node packages (cograph npm SDK + MCP)
+node_modules/
+*.log
+.env.local
+*.tsbuildinfo
+.DS_Store
