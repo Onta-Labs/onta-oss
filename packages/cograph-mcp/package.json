@@ -1,0 +1,46 @@
+{
+  "name": "cograph-mcp",
+  "version": "0.1.0",
+  "description": "Cograph MCP server — expose knowledge graph tools to AI agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "cograph-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepack": "node ../../scripts/chmod-bin.js packages/cograph-mcp/dist/index.js"
+  },
+  "keywords": [
+    "knowledge-graph",
+    "cograph",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "llm",
+    "agent"
+  ],
+  "author": "Cograph",
+  "license": "MIT",
+  "homepage": "https://cograph.cloud",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git-moeen/cograph-node.git",
+    "directory": "packages/cograph-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/git-moeen/cograph-node/issues"
+  },
+  "dependencies": {
+    "cograph": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

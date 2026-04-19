@@ -2,8 +2,8 @@
 
 import pytest
 
-from cograph.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
-from cograph.resolver.validator import coerce_value, validate_triple, validate_value
+from cograph_client.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
+from cograph_client.resolver.validator import coerce_value, validate_triple, validate_value
 
 
 class TestCoerceValue:

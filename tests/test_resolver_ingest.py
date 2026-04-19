@@ -42,10 +42,10 @@ def test_ingest_requires_content(client, auth_headers):
     assert response.status_code == 422
 
 
-@patch("cograph.api.routes.ingest.SchemaResolver")
+@patch("cograph_client.api.routes.ingest.SchemaResolver")
 def test_ingest_returns_result(mock_resolver_cls, client, auth_headers):
     """Test that ingest endpoint calls resolver and returns result."""
-    from cograph.resolver.models import IngestResult
+    from cograph_client.resolver.models import IngestResult
     mock_instance = AsyncMock()
     mock_instance.ingest.return_value = IngestResult(
         entities_extracted=2,

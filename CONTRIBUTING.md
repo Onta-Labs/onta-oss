@@ -26,13 +26,13 @@ pytest tests/ -v --tb=short
 
 ```bash
 source .env
-uvicorn cograph.api.app:create_app --factory --port 8000
+uvicorn cograph_client.api.app:create_app --factory --port 8000
 ```
 
 ## Project Structure
 
 ```
-cograph/
+cograph_client/
   api/          FastAPI routes and middleware
   auth/         API key authentication
   graph/        SPARQL client and query builders
@@ -84,7 +84,7 @@ pytest tests/ -v
 pytest tests/test_validator.py -v
 
 # Run with coverage
-pytest tests/ --cov=cograph --cov-report=term-missing
+pytest tests/ --cov=cograph_client --cov-report=term-missing
 ```
 
 Tests mock the Neptune/Fuseki client. No running graph DB needed for unit tests.

@@ -1,4 +1,4 @@
-from cograph.graph.queries import (
+from cograph_client.graph.queries import (
     tenant_graph_uri,
     insert_triples,
     delete_triples,

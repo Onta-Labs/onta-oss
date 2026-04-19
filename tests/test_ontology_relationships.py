@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph.graph.ontology_queries import (
+from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     _datatype_to_xsd,
     insert_attribute,
     type_uri,
 )
-from cograph.api.routes.ontology import _xsd_to_datatype, TYPE_URI_PREFIX
+from cograph_client.api.routes.ontology import _xsd_to_datatype, TYPE_URI_PREFIX
 
 
 # ---------------------------------------------------------------------------
