@@ -40,7 +40,15 @@ const program = new Command();
 program
   .name("cograph")
   .description("Cograph Knowledge Graph CLI")
-  .version("0.1.0");
+  .version("0.1.7")
+  // Default action when no subcommand is given: drop into the interactive
+  // shell. So `cograph` (or `npx cograph`) Just Works for the common case;
+  // subcommands like `cograph ingest <file>` still route to their own
+  // actions because commander dispatches subcommands first.
+  .action(async () => {
+    const { runShell } = await import("./shell.js");
+    await runShell({});
+  });
 
 // ---------------------------------------------------------------------------
 // kg
