@@ -305,6 +305,26 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
   // `let` rather than `const` so /login can swap in a fresh Client after
   // ~/.cograph/config.json is rewritten with the new key.
   let client = new Client();
+
+  // First-run ergonomics: if no API key is configured (no env var, no
+  // ~/.cograph/config.json), trigger the login flow before opening the
+  // shell. Saves the friend from having to know to run `cograph login`
+  // first — they just run `npx cograph` and the browser pops.
+  if (!client.apiKey) {
+    stdout.write(
+      `\n  ${DIM}Not signed in — opening your browser to log in...${RESET}\n`,
+    );
+    const { runLogin } = await import("./login.js");
+    await runLogin();
+    client = new Client();
+    if (!client.apiKey) {
+      // runLogin already exits the process on hard failures, so reaching
+      // here means it returned without writing a key (rare). Bail rather
+      // than continue into a broken shell.
+      printError("Login did not produce an API key. Aborting.");
+      return;
+    }
+  }
   const rl = readline.createInterface({
     input: stdin,
     output: stdout,
