@@ -14,7 +14,7 @@ from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 
 router = APIRouter(prefix="/graphs/{tenant}/kgs")
 
-OMNIX_ONTO = "https://omnix.dev/onto"
+OMNIX_ONTO = "https://cograph.tech/onto"
 
 
 class KGCreate(BaseModel):
@@ -75,7 +75,7 @@ async def create_kg(
 ):
     """Create a new knowledge graph for a tenant."""
     base = tenant_graph_uri(tenant.tenant_id)
-    kg_uri = f"https://omnix.dev/kgs/{tenant.tenant_id}/{body.name}"
+    kg_uri = f"https://cograph.tech/kgs/{tenant.tenant_id}/{body.name}"
 
     sparql = (
         f"INSERT DATA {{\n"
@@ -99,7 +99,7 @@ async def delete_kg(
     """Delete a knowledge graph and all its data."""
     base = tenant_graph_uri(tenant.tenant_id)
     graph = kg_graph_uri(tenant.tenant_id, kg_name)
-    kg_uri = f"https://omnix.dev/kgs/{tenant.tenant_id}/{kg_name}"
+    kg_uri = f"https://cograph.tech/kgs/{tenant.tenant_id}/{kg_name}"
 
     # Drop all triples in the KG graph
     await client.update(f"DROP SILENT GRAPH <{graph}>")

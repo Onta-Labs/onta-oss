@@ -268,7 +268,7 @@ class SchemaResolver:
             )
             if resolved_type:
                 resolved_types[entity.id] = resolved_type
-                entity_uri = f"https://omnix.dev/entities/{resolved_type}/{_safe_id(entity.id)}"
+                entity_uri = f"https://cograph.tech/entities/{resolved_type}/{_safe_id(entity.id)}"
                 entity_uri_map[entity.id] = entity_uri
                 entity_type_map[entity.id] = resolved_type
                 pending_uris.append(entity_uri)
@@ -336,7 +336,7 @@ class SchemaResolver:
                             existing_preds.add(attr_name)
                 canonical_pred = normalize_predicate(rel.predicate, existing_preds)
 
-                predicate = f"https://omnix.dev/onto/{canonical_pred}"
+                predicate = f"https://cograph.tech/onto/{canonical_pred}"
                 rel_triples.append((source_uri, predicate, target_uri))
 
                 # Register relationship as object property in ontology
@@ -416,7 +416,7 @@ class SchemaResolver:
                 )
                 if resolved_type:
                     resolved_types[entity.id] = resolved_type
-                    entity_uri = f"https://omnix.dev/entities/{resolved_type}/{_safe_id(entity.id)}"
+                    entity_uri = f"https://cograph.tech/entities/{resolved_type}/{_safe_id(entity.id)}"
                     entity_uri_map[entity.id] = entity_uri
                     entity_type_map[entity.id] = resolved_type
                     pending_uris.append(entity_uri)
@@ -462,7 +462,7 @@ class SchemaResolver:
                                 existing_preds.add(attr_name)
                     canonical_pred = normalize_predicate(rel.predicate, existing_preds)
 
-                    predicate = f"https://omnix.dev/onto/{canonical_pred}"
+                    predicate = f"https://cograph.tech/onto/{canonical_pred}"
                     rel_triples.append((source_uri, predicate, target_uri))
 
                     # Register relationship as object property in ontology
@@ -599,7 +599,7 @@ class SchemaResolver:
                 attrs[type_label] = {}
             if row.get("attrLabel"):
                 range_str = row.get("range", "")
-                type_uri_prefix = "https://omnix.dev/types/"
+                type_uri_prefix = "https://cograph.tech/types/"
                 if range_str.startswith(type_uri_prefix):
                     # Range is a reference to another ontology type
                     datatype = range_str[len(type_uri_prefix):]
@@ -779,10 +779,10 @@ class SchemaResolver:
             if promo_match and promo_match.promoted_type:
                 ptype = promo_match.promoted_type
                 if ptype not in promoted_entities:
-                    p_uri = f"https://omnix.dev/entities/{ptype}/{_safe_id(entity.id)}-{ptype.lower()}"
+                    p_uri = f"https://cograph.tech/entities/{ptype}/{_safe_id(entity.id)}-{ptype.lower()}"
                     promoted_entities[ptype] = p_uri
                     triples_to_insert.append((p_uri, rdf_type, type_uri(ptype)))
-                    rel_pred = f"https://omnix.dev/onto/has_{ptype.lower()}"
+                    rel_pred = f"https://cograph.tech/onto/has_{ptype.lower()}"
                     triples_to_insert.append((entity_uri, rel_pred, p_uri))
 
                 p_uri = promoted_entities[ptype]
@@ -835,7 +835,7 @@ class SchemaResolver:
                 type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
             if resolved.datatype not in PRIMITIVE_TYPES and resolved.datatype in existing_types:
-                target_uri = f"https://omnix.dev/entities/{resolved.datatype}/{_safe_id(resolved.value)}"
+                target_uri = f"https://cograph.tech/entities/{resolved.datatype}/{_safe_id(resolved.value)}"
                 pred_uri = attr_uri(resolved_type, resolved.name)
                 triples_to_insert.append((entity_uri, pred_uri, target_uri))
                 result.triples_inserted += 1
@@ -853,9 +853,9 @@ class SchemaResolver:
 
         # Provenance triples
         now = datetime.now(timezone.utc).isoformat()
-        triples_to_insert.append((entity_uri, "https://omnix.dev/onto/ingested_at", now))
+        triples_to_insert.append((entity_uri, "https://cograph.tech/onto/ingested_at", now))
         if source:
-            triples_to_insert.append((entity_uri, "https://omnix.dev/onto/source", source))
+            triples_to_insert.append((entity_uri, "https://cograph.tech/onto/source", source))
         if batch_id:
             triples_to_insert.append((entity_uri, BATCH_PREDICATE, batch_id))
 

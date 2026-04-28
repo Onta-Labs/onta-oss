@@ -1,17 +1,17 @@
 """SPARQL query builders for ontology management."""
 
-OMNIX_ONTO = "https://omnix.dev/onto"
+OMNIX_ONTO = "https://cograph.tech/onto"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 XSD = "http://www.w3.org/2001/XMLSchema"
 
 
 def type_uri(type_name: str) -> str:
-    return f"https://omnix.dev/types/{type_name}"
+    return f"https://cograph.tech/types/{type_name}"
 
 
 def attr_uri(type_name: str, attr_name: str) -> str:
-    return f"https://omnix.dev/types/{type_name}/attrs/{attr_name}"
+    return f"https://cograph.tech/types/{type_name}/attrs/{attr_name}"
 
 
 def insert_type(graph_uri: str, name: str, description: str = "", parent_type: str | None = None) -> str:

@@ -27,14 +27,14 @@ def _make_ontology_bindings(types_with_attrs: dict[str, list[tuple[str, str]]]) 
             # Type with no attributes
             bindings.append({
                 "typeLabel": type_name,
-                "type": f"https://omnix.dev/types/{type_name}",
+                "type": f"https://cograph.tech/types/{type_name}",
             })
         for attr_name, range_uri in attrs:
             bindings.append({
                 "typeLabel": type_name,
-                "type": f"https://omnix.dev/types/{type_name}",
+                "type": f"https://cograph.tech/types/{type_name}",
                 "attrLabel": attr_name,
-                "attr": f"https://omnix.dev/types/{type_name}/attrs/{attr_name}",
+                "attr": f"https://cograph.tech/types/{type_name}/attrs/{attr_name}",
                 "range": range_uri,
             })
     return bindings
@@ -96,9 +96,9 @@ class TestCardinalityFiltering:
 
         # Simulate the filtering logic from pipeline.py lines 310-331
         attributes = [
-            "name (string) — URI: <https://omnix.dev/types/Singer/attrs/name>",
-            "bio (string) — URI: <https://omnix.dev/types/Singer/attrs/bio>",
-            "age (integer) — URI: <https://omnix.dev/types/Singer/attrs/age>",
+            "name (string) — URI: <https://cograph.tech/types/Singer/attrs/name>",
+            "bio (string) — URI: <https://cograph.tech/types/Singer/attrs/bio>",
+            "age (integer) — URI: <https://cograph.tech/types/Singer/attrs/age>",
         ]
 
         annotated = []
@@ -169,8 +169,8 @@ class TestRelationshipFiltering:
         """Relationships with 0 instances should be filtered out."""
         empty_rels = {("Singer", "country")}
         relationships = [
-            "country → Country — predicate URI: <https://omnix.dev/onto/country>",
-            "genre → Genre — predicate URI: <https://omnix.dev/onto/genre>",
+            "country → Country — predicate URI: <https://cograph.tech/onto/country>",
+            "genre → Genre — predicate URI: <https://cograph.tech/onto/genre>",
         ]
 
         filtered = [
@@ -185,7 +185,7 @@ class TestRelationshipFiltering:
         """Relationships with data should survive filtering."""
         empty_rels = set()  # Nothing is empty
         relationships = [
-            "country → Country — predicate URI: <https://omnix.dev/onto/country>",
+            "country → Country — predicate URI: <https://cograph.tech/onto/country>",
         ]
 
         filtered = [
@@ -208,7 +208,7 @@ class TestExceptionHandling:
 
         # Simulate: type has relationships but no attributes
         all_attrs = []  # No attributes
-        rel_uris = [("Singer", "country", "https://omnix.dev/onto/country")]
+        rel_uris = [("Singer", "country", "https://cograph.tech/onto/country")]
 
         # _count_predicate should be defined regardless of all_attrs
         # (it's now defined before the if block)

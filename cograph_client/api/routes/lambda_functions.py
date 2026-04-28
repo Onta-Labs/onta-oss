@@ -211,7 +211,7 @@ async def invoke_function(
 
     # --- Step 2: Resolve the entity's filing_cik from the KG ---
     entity_type = func_ref.entity_type  # e.g. "Company"
-    cik_attr_uri = f"https://omnix.dev/types/{entity_type}/attrs/filing_cik"
+    cik_attr_uri = f"https://cograph.tech/types/{entity_type}/attrs/filing_cik"
 
     # Try direct attribute on the entity
     cik_query = (
@@ -233,7 +233,7 @@ async def invoke_function(
             f"SELECT ?cik FROM <{instance_graph}>\n"
             f"WHERE {{\n"
             f"  ?round ?rel <{body.entity_uri}> .\n"
-            f"  ?round <https://omnix.dev/types/FundingRound/attrs/filing_cik> ?cik .\n"
+            f"  ?round <https://cograph.tech/types/FundingRound/attrs/filing_cik> ?cik .\n"
             f"}}"
         )
         raw_fallback = await client.query(fallback_query)
@@ -246,8 +246,8 @@ async def invoke_function(
         label_query = (
             f"SELECT ?label FROM <{instance_graph}>\n"
             f"WHERE {{\n"
-            f"  ?round <https://omnix.dev/onto/company_name> <{body.entity_uri}> .\n"
-            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FundingRound> .\n"
+            f"  ?round <https://cograph.tech/onto/company_name> <{body.entity_uri}> .\n"
+            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/FundingRound> .\n"
             f"  ?round <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n"
             f"}}\n"
             f"LIMIT 1"
@@ -279,7 +279,7 @@ async def invoke_function(
     for key, value in output.items():
         if value is None:
             continue
-        attr_pred = f"https://omnix.dev/types/{entity_type}/attrs/{key}"
+        attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
         new_triples.append((body.entity_uri, attr_pred, str(value)))
 
         # Ensure the attribute exists in the ontology
@@ -303,7 +303,7 @@ async def invoke_function(
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     new_triples.append((
         body.entity_uri,
-        "https://omnix.dev/onto/lambda_refreshed_at",
+        "https://cograph.tech/onto/lambda_refreshed_at",
         now_iso,
     ))
 
@@ -312,7 +312,7 @@ async def invoke_function(
     for key, value in output.items():
         if value is None:
             continue
-        attr_pred = f"https://omnix.dev/types/{entity_type}/attrs/{key}"
+        attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
         delete_sparql = (
             f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <{attr_pred}> ?old }} }}\n"
             f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <{attr_pred}> ?old }} }}"
@@ -324,8 +324,8 @@ async def invoke_function(
 
     # Also delete old provenance
     delete_prov = (
-        f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://omnix.dev/onto/lambda_refreshed_at> ?old }} }}\n"
-        f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://omnix.dev/onto/lambda_refreshed_at> ?old }} }}"
+        f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://cograph.tech/onto/lambda_refreshed_at> ?old }} }}\n"
+        f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://cograph.tech/onto/lambda_refreshed_at> ?old }} }}"
     )
     try:
         await client.update(delete_prov)
@@ -345,9 +345,9 @@ async def invoke_function(
         discover_query = (
             f"SELECT DISTINCT ?investor ?investorName FROM <{instance_graph}>\n"
             f"WHERE {{\n"
-            f"  ?round <https://omnix.dev/onto/company_name> <{body.entity_uri}> .\n"
-            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FundingRound> .\n"
-            f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
+            f"  ?round <https://cograph.tech/onto/company_name> <{body.entity_uri}> .\n"
+            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/FundingRound> .\n"
+            f"  ?round <https://cograph.tech/onto/lead_investor> ?investor .\n"
             f"  ?investor <http://www.w3.org/2000/01/rdf-schema#label> ?investorName .\n"
             f"}}"
         )
@@ -429,12 +429,12 @@ async def investor_portfolio(
         portfolio_query = (
             f"SELECT ?companyName ?amount FROM <{ig}>\n"
             f"WHERE {{\n"
-            f"  ?investor <https://omnix.dev/types/Investor/attrs/name> \"{body.investor_name}\" .\n"
-            f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Investor> .\n"
-            f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
-            f"  ?round <https://omnix.dev/onto/company_name> ?company .\n"
-            f"  ?company <https://omnix.dev/types/Company/attrs/name> ?companyName .\n"
-            f"  OPTIONAL {{ ?round <https://omnix.dev/types/FundingRound/attrs/amount_usd> ?amount }}\n"
+            f"  ?investor <https://cograph.tech/types/Investor/attrs/name> \"{body.investor_name}\" .\n"
+            f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/Investor> .\n"
+            f"  ?round <https://cograph.tech/onto/lead_investor> ?investor .\n"
+            f"  ?round <https://cograph.tech/onto/company_name> ?company .\n"
+            f"  ?company <https://cograph.tech/types/Company/attrs/name> ?companyName .\n"
+            f"  OPTIONAL {{ ?round <https://cograph.tech/types/FundingRound/attrs/amount_usd> ?amount }}\n"
             f"}}"
         )
         try:
@@ -487,7 +487,7 @@ async def invoke_investor_portfolio(
     name_query = (
         f"SELECT ?name FROM <{instance_graph}>\n"
         f"WHERE {{\n"
-        f"  {{ <{body.entity_uri}> <https://omnix.dev/types/Investor/attrs/name> ?name }}\n"
+        f"  {{ <{body.entity_uri}> <https://cograph.tech/types/Investor/attrs/name> ?name }}\n"
         f"  UNION\n"
         f"  {{ <{body.entity_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?name }}\n"
         f"}}"
@@ -513,12 +513,12 @@ async def invoke_investor_portfolio(
     portfolio_query = (
         f"SELECT ?companyName ?amount FROM <{ig}>\n"
         f"WHERE {{\n"
-        f"  ?investor <https://omnix.dev/types/Investor/attrs/name> \"{investor_name}\" .\n"
-        f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Investor> .\n"
-        f"  ?round <https://omnix.dev/onto/lead_investor> ?investor .\n"
-        f"  ?round <https://omnix.dev/onto/company_name> ?company .\n"
-        f"  ?company <https://omnix.dev/types/Company/attrs/name> ?companyName .\n"
-        f"  OPTIONAL {{ ?round <https://omnix.dev/types/FundingRound/attrs/amount_usd> ?amount }}\n"
+        f"  ?investor <https://cograph.tech/types/Investor/attrs/name> \"{investor_name}\" .\n"
+        f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/Investor> .\n"
+        f"  ?round <https://cograph.tech/onto/lead_investor> ?investor .\n"
+        f"  ?round <https://cograph.tech/onto/company_name> ?company .\n"
+        f"  ?company <https://cograph.tech/types/Company/attrs/name> ?companyName .\n"
+        f"  OPTIONAL {{ ?round <https://cograph.tech/types/FundingRound/attrs/amount_usd> ?amount }}\n"
         f"}}"
     )
     raw_portfolio = await client.query(portfolio_query)
@@ -547,7 +547,7 @@ async def invoke_investor_portfolio(
     for key, value in output.items():
         if value is None:
             continue
-        attr_pred = f"https://omnix.dev/types/{entity_type}/attrs/{key}"
+        attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
 
         # Delete old value first
         delete_sparql = (
@@ -576,8 +576,8 @@ async def invoke_investor_portfolio(
     # Provenance
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     delete_prov = (
-        f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://omnix.dev/onto/lambda_refreshed_at> ?old }} }}\n"
-        f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://omnix.dev/onto/lambda_refreshed_at> ?old }} }}"
+        f"DELETE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://cograph.tech/onto/lambda_refreshed_at> ?old }} }}\n"
+        f"WHERE {{ GRAPH <{instance_graph}> {{ <{body.entity_uri}> <https://cograph.tech/onto/lambda_refreshed_at> ?old }} }}"
     )
     try:
         await client.update(delete_prov)
@@ -585,7 +585,7 @@ async def invoke_investor_portfolio(
         pass
     new_triples.append((
         body.entity_uri,
-        "https://omnix.dev/onto/lambda_refreshed_at",
+        "https://cograph.tech/onto/lambda_refreshed_at",
         now_iso,
     ))
 

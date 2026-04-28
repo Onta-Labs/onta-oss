@@ -211,7 +211,7 @@ class TestRelationshipRegistration:
         update_calls = [str(c) for c in mock_neptune.update.call_args_list]
         insert_calls = " ".join(update_calls)
         assert "Person/attrs/lives_in" in insert_calls
-        assert "omnix.dev/types/City" in insert_calls
+        assert "cograph.tech/types/City" in insert_calls
 
     @pytest.mark.asyncio
     async def test_relationship_not_duplicated(self, mock_neptune, mock_cache):

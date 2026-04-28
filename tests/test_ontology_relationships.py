@@ -48,17 +48,17 @@ class TestDatatypeToXsd:
         """Non-primitive datatype should map to a type URI."""
         result = _datatype_to_xsd("Person")
         assert result == type_uri("Person")
-        assert result == "https://omnix.dev/types/Person"
+        assert result == "https://cograph.tech/types/Person"
 
     def test_type_reference_place(self):
         result = _datatype_to_xsd("Place")
-        assert result == "https://omnix.dev/types/Place"
+        assert result == "https://cograph.tech/types/Place"
 
     def test_type_reference_not_xsd(self):
         """Type references should NOT produce XSD URIs."""
         result = _datatype_to_xsd("Vehicle")
         assert "XMLSchema" not in result
-        assert "omnix.dev/types/Vehicle" in result
+        assert "cograph.tech/types/Vehicle" in result
 
 
 # ---------------------------------------------------------------------------
@@ -80,20 +80,20 @@ class TestXsdToDatatype:
 
     def test_type_uri_person(self):
         """Type URI ranges should return the type name, not 'string'."""
-        result = _xsd_to_datatype("https://omnix.dev/types/Person")
+        result = _xsd_to_datatype("https://cograph.tech/types/Person")
         assert result == "Person"
 
     def test_type_uri_place(self):
-        result = _xsd_to_datatype("https://omnix.dev/types/Place")
+        result = _xsd_to_datatype("https://cograph.tech/types/Place")
         assert result == "Place"
 
     def test_type_uri_vehicle(self):
-        result = _xsd_to_datatype("https://omnix.dev/types/Vehicle")
+        result = _xsd_to_datatype("https://cograph.tech/types/Vehicle")
         assert result == "Vehicle"
 
     def test_type_uri_not_primitive(self):
         """Type references should not be returned as primitives."""
-        result = _xsd_to_datatype("https://omnix.dev/types/Residence")
+        result = _xsd_to_datatype("https://cograph.tech/types/Residence")
         assert result not in PRIMITIVE_TYPES
         assert result == "Residence"
 
@@ -104,18 +104,18 @@ class TestXsdToDatatype:
 
 class TestInsertAttributeTypeRef:
     def test_attribute_with_primitive_range(self):
-        sparql = insert_attribute("https://omnix.dev/graphs/test", "Property", "price", "", "integer")
+        sparql = insert_attribute("https://cograph.tech/graphs/test", "Property", "price", "", "integer")
         assert "XMLSchema#integer" in sparql
 
     def test_attribute_with_type_reference_range(self):
         """When datatype is a type name, range should be the type URI."""
-        sparql = insert_attribute("https://omnix.dev/graphs/test", "Property", "location", "", "Place")
-        assert "omnix.dev/types/Place" in sparql
+        sparql = insert_attribute("https://cograph.tech/graphs/test", "Property", "location", "", "Place")
+        assert "cograph.tech/types/Place" in sparql
         assert "XMLSchema" not in sparql
 
     def test_attribute_with_type_reference_person(self):
-        sparql = insert_attribute("https://omnix.dev/graphs/test", "Transaction", "buyer", "", "Person")
-        assert "omnix.dev/types/Person" in sparql
+        sparql = insert_attribute("https://cograph.tech/graphs/test", "Transaction", "buyer", "", "Person")
+        assert "cograph.tech/types/Person" in sparql
 
 
 # ---------------------------------------------------------------------------
