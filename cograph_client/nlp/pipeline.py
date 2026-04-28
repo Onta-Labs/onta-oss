@@ -169,7 +169,7 @@ class NLQueryPipeline:
             return cached[0]
 
         from cograph_client.graph.ontology_queries import get_full_ontology_query, type_uri, attr_uri
-        TYPE_URI_PREFIX = "https://omnix.dev/types/"
+        TYPE_URI_PREFIX = "https://cograph.tech/types/"
         try:
             # If querying a specific KG, find which types actually have instances
             active_types: set[str] | None = None
@@ -205,7 +205,7 @@ class NLQueryPipeline:
                     if range_str.startswith(TYPE_URI_PREFIX):
                         target_type = range_str[len(TYPE_URI_PREFIX):]
                         # Relationship predicates use onto/ namespace in instance data
-                        onto_uri = f"https://omnix.dev/onto/{attr_name}"
+                        onto_uri = f"https://cograph.tech/onto/{attr_name}"
                         entry = f"{attr_name} → {target_type} — predicate URI: <{onto_uri}>"
                         if entry not in types[tl]["relationships"]:
                             types[tl]["relationships"].append(entry)
@@ -241,7 +241,7 @@ class NLQueryPipeline:
                             string_attrs.append((type_name, a_name, attr_uri(type_name, a_name)))
                     for rel_entry in info["relationships"]:
                         r_name = rel_entry.split(" →")[0].strip()
-                        onto_uri = f"https://omnix.dev/onto/{r_name}"
+                        onto_uri = f"https://cograph.tech/onto/{r_name}"
                         rel_uris.append((type_name, r_name, onto_uri))
 
                 # Define cardinality check function ONCE (used for both attrs and rels)
@@ -376,15 +376,15 @@ class NLQueryPipeline:
 
         Strategy:
         1. Extract ALL valid URIs from the ontology summary (attributes + relationships)
-        2. Find ALL omnix.dev URIs in the SPARQL
+        2. Find ALL cograph.tech URIs in the SPARQL
         3. For each URI not in the valid set, fuzzy-match against valid URIs
         4. Replace with the best match if similarity is high enough
 
         Common mistakes this catches:
-        - <https://omnix.dev/bedrooms> → <https://omnix.dev/types/Property/attrs/bedrooms>
-        - <https://omnix.dev/onto/bedrooms> → <https://omnix.dev/types/Property/attrs/bedrooms>
-        - <https://omnix.dev/types/Property/attrs/property_type> → .../attrs/home_type
-        - <https://omnix.dev/Property> → <https://omnix.dev/types/Property>
+        - <https://cograph.tech/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
+        - <https://cograph.tech/onto/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
+        - <https://cograph.tech/types/Property/attrs/property_type> → .../attrs/home_type
+        - <https://cograph.tech/Property> → <https://cograph.tech/types/Property>
         """
         import re
         from difflib import SequenceMatcher
@@ -392,22 +392,22 @@ class NLQueryPipeline:
         # Step 1: Build the set of ALL valid URIs from the ontology
         valid_uris: dict[str, str] = {}  # name → full URI
 
-        # Attribute URIs: "attr_name (type) — URI: <https://omnix.dev/types/Type/attrs/attr_name>"
-        for match in re.finditer(r"URI: <(https://omnix\.dev/types/(\w+)/attrs/(\w+))>", ontology_summary):
+        # Attribute URIs: "attr_name (type) — URI: <https://cograph.tech/types/Type/attrs/attr_name>"
+        for match in re.finditer(r"URI: <(https://cograph\.tech/types/(\w+)/attrs/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             attr_name = match.group(3)
             valid_uris[attr_name] = full_uri
             # Also index by type/attr for disambiguation
             valid_uris[f"{match.group(2)}/{attr_name}"] = full_uri
 
-        # Relationship URIs: "predicate URI: <https://omnix.dev/onto/pred_name>"
-        for match in re.finditer(r"predicate URI: <(https://omnix\.dev/onto/(\w+))>", ontology_summary):
+        # Relationship URIs: "predicate URI: <https://cograph.tech/onto/pred_name>"
+        for match in re.finditer(r"predicate URI: <(https://cograph\.tech/onto/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             pred_name = match.group(2)
             valid_uris[pred_name] = full_uri
 
-        # Type URIs: "Type: TypeName — URI: <https://omnix.dev/types/TypeName>"
-        for match in re.finditer(r"URI: <(https://omnix\.dev/types/(\w+))>", ontology_summary):
+        # Type URIs: "Type: TypeName — URI: <https://cograph.tech/types/TypeName>"
+        for match in re.finditer(r"URI: <(https://cograph\.tech/types/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             type_name = match.group(2)
             if "/attrs/" not in full_uri:  # don't overwrite attr URIs
@@ -415,7 +415,7 @@ class NLQueryPipeline:
 
         valid_uri_set = set(valid_uris.values())
 
-        # Step 2: Find and fix all omnix.dev URIs in the SPARQL
+        # Step 2: Find and fix all cograph.tech URIs in the SPARQL
         def _fix_uri(m: re.Match) -> str:
             uri = m.group(1)
 
@@ -424,14 +424,14 @@ class NLQueryPipeline:
                 return m.group(0)
 
             # Skip known system URIs
-            if any(uri.startswith(f"https://omnix.dev/{p}") for p in ("graphs/", "entities/", "functions/", "kgs/")):
+            if any(uri.startswith(f"https://cograph.tech/{p}") for p in ("graphs/", "entities/", "functions/", "kgs/")):
                 return m.group(0)
 
             # Extract the "name" part from the URI for matching
-            # e.g., "https://omnix.dev/bedrooms" → "bedrooms"
-            # e.g., "https://omnix.dev/onto/listed_by" → "listed_by"
-            # e.g., "https://omnix.dev/types/Property/attrs/property_type" → "property_type"
-            parts = uri.replace("https://omnix.dev/", "").rstrip("/").split("/")
+            # e.g., "https://cograph.tech/bedrooms" → "bedrooms"
+            # e.g., "https://cograph.tech/onto/listed_by" → "listed_by"
+            # e.g., "https://cograph.tech/types/Property/attrs/property_type" → "property_type"
+            parts = uri.replace("https://cograph.tech/", "").rstrip("/").split("/")
             name = parts[-1] if parts else ""
 
             if not name:
@@ -457,7 +457,7 @@ class NLQueryPipeline:
 
             return m.group(0)
 
-        return re.sub(r"<(https://omnix\.dev/[^>]+)>", _fix_uri, sparql)
+        return re.sub(r"<(https://cograph\.tech/[^>]+)>", _fix_uri, sparql)
 
     @staticmethod
     def _fix_common_sparql_issues(sparql: str, ontology_summary: str) -> str:
@@ -476,7 +476,7 @@ class NLQueryPipeline:
         # Fix 1: Replace `a` shorthand (only when used as predicate position)
         # Match "?var a <..." or "?var rdf:type <..."
         sparql = re.sub(
-            r'(\?\w+)\s+a\s+(<https://omnix\.dev/)',
+            r'(\?\w+)\s+a\s+(<https://cograph\.tech/)',
             rf'\1 {RDF_TYPE} \2',
             sparql,
         )
@@ -490,7 +490,7 @@ class NLQueryPipeline:
         # and the entity type has no name attribute. This is conservative to avoid
         # breaking legitimate description/narrative queries.
         # Only replace Movie/attrs/overview when used in a "name-like" position
-        overview_pattern = r'<https://omnix\.dev/types/Movie/attrs/overview>'
+        overview_pattern = r'<https://cograph\.tech/types/Movie/attrs/overview>'
         if re.search(overview_pattern, sparql):
             # Check if the query is trying to get movie names (not filtering by overview content)
             # Heuristic: if overview appears in SELECT projection but not in FILTER
@@ -740,12 +740,12 @@ class NLQueryPipeline:
         """Extract a human-readable name from an Omnix URI.
 
         Examples:
-            https://omnix.dev/entities/Movie/12345 → 12345
-            https://omnix.dev/types/Movie → Movie
-            https://omnix.dev/entities/ConsumerComplaint/1431838 → 1431838
+            https://cograph.tech/entities/Movie/12345 → 12345
+            https://cograph.tech/types/Movie → Movie
+            https://cograph.tech/entities/ConsumerComplaint/1431838 → 1431838
         """
         from urllib.parse import unquote
-        path = unquote(uri.replace("https://omnix.dev/", ""))
+        path = unquote(uri.replace("https://cograph.tech/", ""))
         return path.split("/")[-1]
 
     async def _resolve_uri_labels(self, bindings: list[dict]) -> dict[str, str]:
@@ -759,8 +759,8 @@ class NLQueryPipeline:
         for row in bindings:
             for v in row.values():
                 if isinstance(v, str) and (
-                    v.startswith("https://omnix.dev/entities/")
-                    or v.startswith("https://omnix.dev/types/")
+                    v.startswith("https://cograph.tech/entities/")
+                    or v.startswith("https://cograph.tech/types/")
                 ):
                     uris.add(v)
 

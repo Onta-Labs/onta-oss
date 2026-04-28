@@ -309,7 +309,7 @@ program
         const filters = opts.includeOntology
           ? ""
           : `FILTER(CONTAINS(STR(?s), '/entities/') || CONTAINS(STR(?s), '/onto/') || CONTAINS(STR(?s), '/kgs/'))`;
-        const query = `SELECT ?s ?p ?o FROM <https://omnix.dev/graphs/${tenant}> WHERE { ?s ?p ?o . ${filters} } LIMIT 1000`;
+        const query = `SELECT ?s ?p ?o FROM <https://cograph.tech/graphs/${tenant}> WHERE { ?s ?p ?o . ${filters} } LIMIT 1000`;
 
         process.stdout.write("Clearing...\n");
         let deleted = 0;

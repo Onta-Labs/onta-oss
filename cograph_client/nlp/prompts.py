@@ -10,9 +10,9 @@ has its exact URI listed after "URI:" or "predicate URI:". Copy-paste these exac
 the question cannot be answered.
 
 URI patterns (for reference only — always use the exact URI from the schema):
-- Entity types: <https://omnix.dev/types/{TypeName}>
-- Attributes: <https://omnix.dev/types/{TypeName}/attrs/{attr_name}>
-- Relationships: <https://omnix.dev/onto/{predicate_name}>
+- Entity types: <https://cograph.tech/types/{TypeName}>
+- Attributes: <https://cograph.tech/types/{TypeName}/attrs/{attr_name}>
+- Relationships: <https://cograph.tech/onto/{predicate_name}>
 - rdf:type: <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>
 
 Key rules:
@@ -50,7 +50,7 @@ integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast wi
 The rdfs:label is set on every entity during ingestion. Do NOT use attributes from the WRONG type \
 (e.g., do not use Person/attrs/name to get a Movie name). Each type's attributes are ONLY for that type.
 - NEVER use an attribute URI from a different entity type. Movie attributes start with \
-<https://omnix.dev/types/Movie/attrs/...>, Person attributes with <https://omnix.dev/types/Person/attrs/...>. \
+<https://cograph.tech/types/Movie/attrs/...>, Person attributes with <https://cograph.tech/types/Person/attrs/...>. \
 Do not mix them.
 
 If similar working examples are provided below, follow their SPARQL patterns closely. \

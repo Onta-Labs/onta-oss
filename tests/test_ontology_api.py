@@ -34,7 +34,7 @@ def test_list_types(client, auth_headers, mock_neptune):
         "results": {
             "bindings": [
                 {
-                    "type": {"type": "uri", "value": "https://omnix.dev/types/Place"},
+                    "type": {"type": "uri", "value": "https://cograph.tech/types/Place"},
                     "label": {"type": "literal", "value": "Place"},
                     "comment": {"type": "literal", "value": "A location"},
                 },
@@ -109,7 +109,7 @@ def test_get_full_schema(client, auth_headers, mock_neptune):
         "head": {"vars": ["type", "typeLabel", "attr", "attrLabel", "range", "funcName"]},
         "results": {"bindings": [
             {
-                "type": {"type": "uri", "value": "https://omnix.dev/types/Place"},
+                "type": {"type": "uri", "value": "https://cograph.tech/types/Place"},
                 "typeLabel": {"type": "literal", "value": "Place"},
                 "attrLabel": {"type": "literal", "value": "name"},
                 "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
