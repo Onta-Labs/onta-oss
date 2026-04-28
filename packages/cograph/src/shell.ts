@@ -90,10 +90,27 @@ async function selectKg(
 
   if (kgs.length === 0) {
     stdout.write(
-      `  ${DIM}No knowledge graphs found. Enter a name to create one on first ingest.${RESET}\n`,
+      `  ${DIM}No knowledge graphs found. Enter a name to create your first KG.${RESET}\n`,
     );
     const name = (await ask(rl, "  KG name: ")).trim();
-    return name || null;
+    if (!name) return null;
+    // Persist immediately. Without this, the name only existed as a local
+    // string until the user ran /ingest, so quitting before ingesting lost
+    // the KG entirely — and the next shell session showed "No KGs found"
+    // again.
+    try {
+      await client.createKg(name);
+      stdout.write(`  ${GREEN}✓${RESET} Created ${BOLD}${name}${RESET}\n`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 409 / "already exists" is fine — someone created it between listKgs
+      // and now, or the user retried. Anything else is a real failure.
+      if (!/already exists|409/i.test(msg)) {
+        printError(`Could not create knowledge graph: ${msg}`);
+        return null;
+      }
+    }
+    return name;
   }
 
   if (kgs.length === 1) {
