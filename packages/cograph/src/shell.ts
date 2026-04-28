@@ -33,6 +33,7 @@ function showCommands(): void {
   const rows: Array<[string, string]> = [
     ["/ingest <file> ...", "Ingest a CSV/JSON/text file"],
     ["/ask <question>", "Ask in natural language"],
+    ["/login", "Re-authenticate (browser)"],
     ["/status", "Show graph stats"],
     ["/reset", "Clear the current KG"],
     ["/help", "Show this command list"],
@@ -264,7 +265,9 @@ function splitArgs(s: string): string[] {
 }
 
 export async function runShell(opts: { kg?: string }): Promise<void> {
-  const client = new Client();
+  // `let` rather than `const` so /login can swap in a fresh Client after
+  // ~/.cograph/config.json is rewritten with the new key.
+  let client = new Client();
   const rl = readline.createInterface({
     input: stdin,
     output: stdout,
@@ -341,9 +344,15 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
       } else if (line === "/reset") {
         const did = await cmdReset(client, kg, rl);
         if (did) await refresh();
+      } else if (line === "/login") {
+        const { runLogin } = await import("./login.js");
+        await runLogin();
+        // Pick up the new key from ~/.cograph/config.json for subsequent calls.
+        client = new Client();
+        await refresh();
       } else if (line.startsWith("/")) {
         stdout.write(
-          `  ${YELLOW}Unknown command.${RESET} Try /ingest, /ask, /status, /reset, /help, /quit\n`,
+          `  ${YELLOW}Unknown command.${RESET} Try /ingest, /ask, /login, /status, /reset, /help, /quit\n`,
         );
       } else {
         // Bare line — auto-route to /ask
