@@ -53,6 +53,10 @@ function showCommands(): void {
   const rows: Array<[string, string]> = [
     ["/ingest <file> ...", "Ingest a CSV/JSON/text file"],
     ["/ask <question>", "Ask in natural language"],
+    ["/kg list", "List your knowledge graphs"],
+    ["/kg switch <name>", "Switch to a different KG"],
+    ["/kg create <name>", "Create a new KG and switch to it"],
+    ["/kg delete <name>", "Delete a KG (irreversible)"],
     ["/login", "Re-authenticate (browser)"],
     ["/status", "Show graph stats"],
     ["/reset", "Clear the current KG"],
@@ -268,11 +272,12 @@ async function cmdReset(
   }
 }
 
-function makePrompt(triples: number): string {
+function makePrompt(kg: string, triples: number): string {
+  const kgPart = `${DIM}(${kg})${RESET}`;
   if (triples > 0) {
-    return `  ${CYAN_BOLD}cograph${RESET} ${DIM}[${fmtNum(triples)}]${RESET} ${CYAN_BOLD}▸${RESET} `;
+    return `  ${CYAN_BOLD}cograph${RESET} ${kgPart} ${DIM}[${fmtNum(triples)}]${RESET} ${CYAN_BOLD}▸${RESET} `;
   }
-  return `  ${CYAN_BOLD}cograph ▸${RESET} `;
+  return `  ${CYAN_BOLD}cograph${RESET} ${kgPart} ${CYAN_BOLD}▸${RESET} `;
 }
 
 /**
@@ -369,7 +374,7 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
   while (running) {
     let line: string;
     try {
-      line = (await ask(rl, makePrompt(triples))).trim();
+      line = (await ask(rl, makePrompt(kg, triples))).trim();
     } catch {
       break;
     }
@@ -407,9 +412,116 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
         // Pick up the new key from ~/.cograph/config.json for subsequent calls.
         client = new Client();
         await refresh();
+      } else if (line === "/kg" || line.startsWith("/kg ")) {
+        const args = splitArgs(line.slice("/kg".length).trim());
+        const sub = args[0] ?? "list";
+        const target = args.slice(1).join(" ");
+
+        if (sub === "list") {
+          const list = await client.listKgs();
+          if (!list.length) {
+            stdout.write(
+              `  ${DIM}No knowledge graphs yet. /kg create <name>${RESET}\n`,
+            );
+          } else {
+            for (const k of list) {
+              const n = String((k as { name?: string }).name ?? "?");
+              const tc = Number((k as { triple_count?: number }).triple_count ?? 0);
+              const marker = n === kg ? `${CYAN_BOLD}*${RESET}` : " ";
+              stdout.write(
+                `  ${marker} ${BOLD}${n}${RESET} ${DIM}(${fmtNum(tc)} triples)${RESET}\n`,
+              );
+            }
+          }
+        } else if (sub === "switch") {
+          if (!target) {
+            stdout.write(`  ${YELLOW}Usage:${RESET} /kg switch <name>\n`);
+          } else {
+            const list = await client.listKgs();
+            const found = list.find(
+              (k) => (k as { name?: string }).name === target,
+            );
+            if (!found) {
+              printError(`KG not found: ${target}. Try /kg list.`);
+            } else {
+              kg = target;
+              triples = Number(
+                (found as { triple_count?: number }).triple_count ?? 0,
+              );
+              stdout.write(
+                `  ${GREEN}✓${RESET} Switched to ${BOLD}${kg}${RESET}\n`,
+              );
+            }
+          }
+        } else if (sub === "create") {
+          if (!target) {
+            stdout.write(`  ${YELLOW}Usage:${RESET} /kg create <name>\n`);
+          } else {
+            try {
+              await client.createKg(target);
+              kg = target;
+              triples = 0;
+              stdout.write(
+                `  ${GREEN}✓${RESET} Created and switched to ${BOLD}${kg}${RESET}\n`,
+              );
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (/already exists|409/i.test(msg)) {
+                kg = target;
+                await refresh();
+                stdout.write(
+                  `  ${DIM}${target} already exists — switched to it.${RESET}\n`,
+                );
+              } else {
+                printError(`Could not create: ${msg}`);
+              }
+            }
+          }
+        } else if (sub === "delete") {
+          if (!target) {
+            stdout.write(`  ${YELLOW}Usage:${RESET} /kg delete <name>\n`);
+          } else {
+            const isActive = target === kg;
+            const tag = isActive ? " (the active KG)" : "";
+            const confirm = (
+              await ask(
+                rl,
+                `  ${YELLOW}Delete KG "${target}"${tag}?${RESET} [y/N]: `,
+              )
+            )
+              .trim()
+              .toLowerCase();
+            if (confirm === "y" || confirm === "yes") {
+              try {
+                await client.deleteKg(target);
+                stdout.write(`  ${GREEN}✓${RESET} Deleted ${BOLD}${target}${RESET}\n`);
+                if (isActive) {
+                  // Active KG is gone; let the user pick (or create) a new one
+                  // before any further commands try to use it.
+                  const picked = await selectKg(client, rl);
+                  if (!picked) {
+                    running = false;
+                    break;
+                  }
+                  kg = picked;
+                  await refresh();
+                }
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                printError(`Could not delete: ${msg}`);
+              }
+            } else {
+              stdout.write(`  ${DIM}Cancelled.${RESET}\n`);
+            }
+          }
+        } else {
+          stdout.write(
+            `  ${YELLOW}Unknown /kg subcommand: ${sub}.${RESET} Try /kg list, /kg switch <name>, /kg create <name>, /kg delete <name>.\n`,
+          );
+        }
       } else if (line.startsWith("/")) {
         stdout.write(
-          `  ${YELLOW}Unknown command.${RESET} Try /ingest, /ask, /login, /status, /reset, /help, /quit\n`,
+          `  ${YELLOW}Unknown command.${RESET} Try /ingest, /ask, /kg, /login, /status, /reset, /help, /quit\n`,
         );
       } else {
         // Bare line — auto-route to /ask
