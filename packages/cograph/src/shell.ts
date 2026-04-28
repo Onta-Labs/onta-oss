@@ -15,28 +15,17 @@ function fmtNum(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-// Pure ASCII banner. Block-shade chars (█▀░) work in some terminals but
-// render as double-width on others (East Asian Width "Ambiguous" handling),
-// which causes each row to wrap. Plain ASCII (_, |, /, \, parens) is
-// guaranteed 1-cell wide everywhere. String.raw avoids `\\` escaping.
-const BANNER_LINES = String.raw`
-   ____  ___   ____ ____     _    ____  _   _
-  / ___|/ _ \ / ___|  _ \   / \  |  _ \| | | |
- | |   | | | | |  _| |_) | / _ \ | |_) | |_| |
- | |___| |_| | |_| |  _ < / ___ \|  __/|  _  |
-  \____|\___/ \____|_| \_\/_/   \_\_|   |_| |_|
-`
-  .split("\n")
-  .filter((line) => line.length > 0);
-
 function showBanner(): void {
-  stdout.write("\n");
-  for (const line of BANNER_LINES) {
-    stdout.write(`${CYAN}${line}${RESET}\n`);
-  }
-  stdout.write("\n");
-  stdout.write(`${DIM}  The object graph for AI agents${RESET}\n`);
-  stdout.write("\n");
+  const lines = [
+    "",
+    `${CYAN}    ░█▀▀░█▀█░█▀▀░█▀▄░█▀█░█▀█░█░█${RESET}`,
+    `${CYAN}    ░█░░░█░█░█░█░█▀▄░█▀█░█▀▀░█▀█${RESET}`,
+    `${CYAN}    ░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀░░░▀░▀${RESET}`,
+    "",
+    `${DIM}    The object graph for AI agents${RESET}`,
+    "",
+  ];
+  for (const l of lines) stdout.write(l + "\n");
   showCommands();
 }
 
