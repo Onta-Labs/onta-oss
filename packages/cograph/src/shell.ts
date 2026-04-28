@@ -15,17 +15,37 @@ function fmtNum(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+function canRenderBlockArt(): boolean {
+  // Apple_Terminal (macOS Terminal.app) treats the block-shade chars (▀█░)
+  // we use in the banner as East Asian Ambiguous Width = 2 cells, so each
+  // 28-char banner row renders as ~56 cells and wraps mid-letter. iTerm,
+  // WezTerm, Kitty, VS Code, Cursor, etc. all treat them as 1 cell and
+  // render the art correctly. Skip the banner on Apple_Terminal and show
+  // a plain header instead. Force on/off via COGRAPH_BANNER=on|off.
+  const force = process.env.COGRAPH_BANNER;
+  if (force === "on") return true;
+  if (force === "off") return false;
+  if (!process.stdout.isTTY) return false;
+  if (process.env.TERM_PROGRAM === "Apple_Terminal") return false;
+  return true;
+}
+
 function showBanner(): void {
-  const lines = [
-    "",
-    `${CYAN}    ░█▀▀░█▀█░█▀▀░█▀▄░█▀█░█▀█░█░█${RESET}`,
-    `${CYAN}    ░█░░░█░█░█░█░█▀▄░█▀█░█▀▀░█▀█${RESET}`,
-    `${CYAN}    ░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀░░░▀░▀${RESET}`,
-    "",
-    `${DIM}    The object graph for AI agents${RESET}`,
-    "",
-  ];
-  for (const l of lines) stdout.write(l + "\n");
+  if (canRenderBlockArt()) {
+    const lines = [
+      "",
+      `${CYAN}    ░█▀▀░█▀█░█▀▀░█▀▄░█▀█░█▀█░█░█${RESET}`,
+      `${CYAN}    ░█░░░█░█░█░█░█▀▄░█▀█░█▀▀░█▀█${RESET}`,
+      `${CYAN}    ░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀░░░▀░▀${RESET}`,
+      "",
+      `${DIM}    The object graph for AI agents${RESET}`,
+      "",
+    ];
+    for (const l of lines) stdout.write(l + "\n");
+  } else {
+    stdout.write(`\n  ${CYAN_BOLD}cograph${RESET}\n`);
+    stdout.write(`  ${DIM}The object graph for AI agents${RESET}\n\n`);
+  }
   showCommands();
 }
 
