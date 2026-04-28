@@ -163,6 +163,40 @@ async function selectKg(
   return null;
 }
 
+/**
+ * Tiny live-line spinner. Returns handles to update the trailing text and
+ * stop. We use \r + clear-line escape so the line redraws in place.
+ */
+function startSpinner(initial: string): {
+  setText: (text: string) => void;
+  stop: () => void;
+} {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let frame = 0;
+  let text = initial;
+  let stopped = false;
+
+  const draw = (): void => {
+    if (stopped) return;
+    // \x1b[2K = clear entire line; \r = carriage return
+    stdout.write(`\r\x1b[2K  ${CYAN}${frames[frame]}${RESET} ${text}`);
+    frame = (frame + 1) % frames.length;
+  };
+  draw();
+  const tick = setInterval(draw, 80);
+
+  return {
+    setText(t: string) {
+      text = t;
+    },
+    stop() {
+      stopped = true;
+      clearInterval(tick);
+      stdout.write("\r\x1b[2K");
+    },
+  };
+}
+
 async function cmdIngest(
   client: Client,
   kg: string,
@@ -173,17 +207,34 @@ async function cmdIngest(
     return;
   }
   for (const file of args) {
-    stdout.write(`  ${DIM}${file}${RESET}\n`);
+    const sp = startSpinner(`Inferring schema from ${file}...`);
     try {
-      const result = await client.ingest(file, { kg });
+      const result = await client.ingest(file, {
+        kg,
+        onProgress: ({
+          rowsProcessed,
+          totalRows,
+          entitiesResolved,
+          triplesInserted,
+        }) => {
+          const pct = Math.round((rowsProcessed / totalRows) * 100);
+          sp.setText(
+            `Ingesting ${file} ${DIM}·${RESET} ${BOLD}${pct}%${RESET} ` +
+              `${DIM}(${fmtNum(rowsProcessed)}/${fmtNum(totalRows)} rows · ` +
+              `${fmtNum(entitiesResolved)} entities · ${fmtNum(triplesInserted)} triples)${RESET}`,
+          );
+        },
+      });
+      sp.stop();
       const ents =
         (result as { entities_resolved?: number }).entities_resolved ?? 0;
       const trip =
         (result as { triples_inserted?: number }).triples_inserted ?? 0;
       stdout.write(
-        `  ${GREEN}✓${RESET} ${fmtNum(ents)} entities · ${fmtNum(trip)} triples\n`,
+        `  ${GREEN}✓${RESET} ${file} ${DIM}·${RESET} ${fmtNum(ents)} entities · ${fmtNum(trip)} triples\n`,
       );
     } catch (err) {
+      sp.stop();
       if (err instanceof CographError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
     }
