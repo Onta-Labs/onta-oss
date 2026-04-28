@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
+import { readConfig } from "./config.js";
 
 export class CographError extends Error {
   status?: number;
@@ -123,10 +124,15 @@ export class Client {
   tenant: string;
 
   constructor(opts: ClientOptions = {}) {
-    this.apiKey = opts.apiKey ?? envVar("API_KEY");
-    const url = opts.baseUrl ?? envVar("API_URL") ?? "https://api.cograph.cloud";
+    // Resolution order for each field: explicit opts → env var → ~/.cograph/config.json
+    // (written by `cograph login`) → built-in default. Reading the config eagerly
+    // is cheap (small JSON file) and lets users skip env vars entirely after login.
+    const cfg = readConfig();
+    this.apiKey = opts.apiKey ?? envVar("API_KEY") ?? cfg.apiKey;
+    const url =
+      opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.cograph.cloud";
     this.baseUrl = url.replace(/\/+$/, "");
-    this.tenant = opts.tenant ?? envVar("TENANT") ?? "demo-tenant";
+    this.tenant = opts.tenant ?? envVar("TENANT") ?? cfg.tenant ?? "demo-tenant";
   }
 
   private headers(): Record<string, string> {

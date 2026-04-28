@@ -339,6 +339,31 @@ program
   );
 
 // ---------------------------------------------------------------------------
+// login
+// ---------------------------------------------------------------------------
+
+program
+  .command("login")
+  .description("Sign in via your browser and save an API key")
+  .action(async () => {
+    const { runLogin } = await import("./login.js");
+    await runLogin();
+  });
+
+// ---------------------------------------------------------------------------
+// shell
+// ---------------------------------------------------------------------------
+
+program
+  .command("shell")
+  .description("Start an interactive REPL")
+  .option("--kg <name>", "Knowledge graph to use")
+  .action(async (opts: { kg?: string }) => {
+    const { runShell } = await import("./shell.js");
+    await runShell({ kg: opts.kg });
+  });
+
+// ---------------------------------------------------------------------------
 
 program.parseAsync(process.argv).catch((err) => {
   fail(`Error: ${err instanceof Error ? err.message : String(err)}`);
