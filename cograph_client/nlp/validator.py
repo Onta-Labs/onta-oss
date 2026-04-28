@@ -32,8 +32,8 @@ def normalize_sparql(sparql: str) -> str:
         result = re.sub(pattern, lambda m: f"<{uri}{m.group(1)}>", result)
 
     # Fix common URI mistakes from LLMs that use wrong prefix expansion:
-    # <https://omnix.dev/Property> → <https://omnix.dev/types/Property>
-    # <https://omnix.dev/bedrooms> → <https://omnix.dev/types/Property/attrs/bedrooms>
+    # <https://cograph.tech/Property> → <https://cograph.tech/types/Property>
+    # <https://cograph.tech/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
     # But don't touch already correct: /types/, /onto/, /entities/, /graphs/
     def _fix_omnix_uri(m: re.Match) -> str:
         path = m.group(1)
@@ -41,7 +41,7 @@ def normalize_sparql(sparql: str) -> str:
             return m.group(0)  # already correct
         # PascalCase = bare type name → add /types/
         if path[0].isupper():
-            return f"<https://omnix.dev/types/{path}>"
+            return f"<https://cograph.tech/types/{path}>"
         # lowercase = likely a bare attribute name (bedrooms, price, etc.)
         # Can't fix without knowing the type, so try onto/ namespace
         # (relationships use onto/, attributes use types/Type/attrs/)

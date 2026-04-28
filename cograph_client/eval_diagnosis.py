@@ -147,7 +147,7 @@ async def _stage_a_graph_probe(
     kg_name: str,
 ) -> FailureDiagnosis | None:
     """Query Neptune to check if the data supports the expected answer."""
-    graph_uri = f"https://omnix.dev/graphs/{tenant}/kg/{kg_name}"
+    graph_uri = f"https://cograph.tech/graphs/{tenant}/kg/{kg_name}"
     base = f"{api_url}/graphs/{tenant}"
     headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
 
@@ -188,7 +188,7 @@ async def _stage_a_graph_probe(
         # Probe 2: If SPARQL has a specific predicate, check it exists in ontology
         if sparql:
             predicate_uris = re.findall(r"<(https://omnix\.dev/(?:onto|types)/[^>]+)>", sparql)
-            ontology_graph = f"https://omnix.dev/graphs/{tenant}"
+            ontology_graph = f"https://cograph.tech/graphs/{tenant}"
             for pred_uri in predicate_uris:
                 if "/onto/" in pred_uri or "/attrs/" in pred_uri:
                     check_query = (

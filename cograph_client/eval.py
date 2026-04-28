@@ -527,7 +527,7 @@ Evaluate the answer and respond with valid JSON:
 }}
 
 Failure categories:
-- "bad_predicate_uri": SPARQL uses wrong predicate URIs (e.g., <price> instead of <https://omnix.dev/types/Property/attrs/price>)
+- "bad_predicate_uri": SPARQL uses wrong predicate URIs (e.g., <price> instead of <https://cograph.tech/types/Property/attrs/price>)
 - "missing_join": Query doesn't traverse a relationship that's needed
 - "wrong_filter": Filter condition is malformed or uses wrong comparison
 - "wrong_aggregation": COUNT/AVG/SUM is wrong or applied to wrong variable
@@ -1283,7 +1283,7 @@ class QueryEvaluator:
                 failure_cat = "empty_result"
             elif answer.startswith("Could not answer") or answer.startswith("ERROR"):
                 failure_cat = "error"
-            elif "http" in ans_lower and "omnix.dev" in ans_lower:
+            elif "http" in ans_lower and "cograph.tech" in ans_lower:
                 failure_cat = "uri_instead_of_value"
             else:
                 failure_cat = "wrong_answer"
@@ -1465,7 +1465,7 @@ async def run_full_eval(
                     except (json.JSONDecodeError, KeyError):
                         pass
 
-        graph_uri = f"https://omnix.dev/graphs/{tenant}" + (f"/kg/{kg_name}" if kg_name else "")
+        graph_uri = f"https://cograph.tech/graphs/{tenant}" + (f"/kg/{kg_name}" if kg_name else "")
         added = 0
         for r in report.queries.results:
             if r.verdict == "correct" and r.sparql:

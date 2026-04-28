@@ -171,7 +171,7 @@ def _extract_name(uri: str | None) -> str | None:
     return uri.rstrip("/").split("/")[-1]
 
 
-TYPE_URI_PREFIX = "https://omnix.dev/types/"
+TYPE_URI_PREFIX = "https://cograph.tech/types/"
 
 
 def _xsd_to_datatype(xsd_uri: str) -> str:

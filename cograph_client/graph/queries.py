@@ -1,11 +1,11 @@
 def tenant_graph_uri(tenant_id: str) -> str:
     """Base graph URI for a tenant. Used as the ontology graph."""
-    return f"https://omnix.dev/graphs/{tenant_id}"
+    return f"https://cograph.tech/graphs/{tenant_id}"
 
 
 def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
     """Named graph URI for a specific knowledge graph within a tenant."""
-    return f"https://omnix.dev/graphs/{tenant_id}/kg/{kg_name}"
+    return f"https://cograph.tech/graphs/{tenant_id}/kg/{kg_name}"
 
 
 def _escape_value(value: str) -> str:
@@ -92,19 +92,19 @@ def register_function_triple(
     endpoint_url: str,
     description: str = "",
 ) -> str:
-    func_uri = f"https://omnix.dev/functions/{function_name}"
-    type_uri = f"https://omnix.dev/types/{entity_type}"
+    func_uri = f"https://cograph.tech/functions/{function_name}"
+    type_uri = f"https://cograph.tech/types/{entity_type}"
     triples = [
-        (func_uri, "https://omnix.dev/onto/attachedTo", type_uri),
-        (func_uri, "https://omnix.dev/onto/endpointUrl", endpoint_url),
-        (func_uri, "https://omnix.dev/onto/name", function_name),
+        (func_uri, "https://cograph.tech/onto/attachedTo", type_uri),
+        (func_uri, "https://cograph.tech/onto/endpointUrl", endpoint_url),
+        (func_uri, "https://cograph.tech/onto/name", function_name),
     ]
     if description:
-        triples.append((func_uri, "https://omnix.dev/onto/description", description))
+        triples.append((func_uri, "https://cograph.tech/onto/description", description))
     return insert_triples(graph_uri, triples)
 
 
-BATCH_PREDICATE = "https://omnix.dev/onto/batch_id"
+BATCH_PREDICATE = "https://cograph.tech/onto/batch_id"
 
 
 def delete_batch_query(graph_uri: str, batch_id: str) -> str:
@@ -128,14 +128,14 @@ def delete_batch_query(graph_uri: str, batch_id: str) -> str:
 def list_functions_query(graph_uri: str, entity_type: str | None = None) -> str:
     type_filter = ""
     if entity_type:
-        type_uri = f"https://omnix.dev/types/{entity_type}"
+        type_uri = f"https://cograph.tech/types/{entity_type}"
         type_filter = f'  FILTER(?type = <{type_uri}>)\n'
     return (
         f"SELECT ?name ?type ?endpoint ?desc FROM <{graph_uri}>\n"
         f"WHERE {{\n"
-        f"  ?func <https://omnix.dev/onto/name> ?name .\n"
-        f"  ?func <https://omnix.dev/onto/attachedTo> ?type .\n"
-        f"  ?func <https://omnix.dev/onto/endpointUrl> ?endpoint .\n"
-        f"  OPTIONAL {{ ?func <https://omnix.dev/onto/description> ?desc }}\n"
+        f"  ?func <https://cograph.tech/onto/name> ?name .\n"
+        f"  ?func <https://cograph.tech/onto/attachedTo> ?type .\n"
+        f"  ?func <https://cograph.tech/onto/endpointUrl> ?endpoint .\n"
+        f"  OPTIONAL {{ ?func <https://cograph.tech/onto/description> ?desc }}\n"
         f"{type_filter}}}"
     )
