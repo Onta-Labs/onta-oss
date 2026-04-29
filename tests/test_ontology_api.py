@@ -276,3 +276,90 @@ def test_type_usage_combines_ontology_and_kg_counts(client, auth_headers, mock_n
     assert data["relationships"][0]["count"] == 740
     assert len(data["samples"]) == 1
     assert data["samples"][0]["label"] == "Karthikeyan Rajasekaran"
+
+
+def test_type_usage_hides_system_predicates_by_default(client, auth_headers, mock_neptune):
+    """Auto-attached system predicates (rdfs:label, ingested_at, source) are
+    100% on every entity and crowd out the columns the user actually cares
+    about. /type usage filters them out by default; ?include_system=true
+    opts back in."""
+    name_attr = "https://cograph.tech/types/Mentor/attrs/name"
+    sys_label = "http://www.w3.org/2000/01/rdf-schema#label"
+    sys_ingested = "https://cograph.tech/onto/ingested_at"
+    sys_source = "https://cograph.tech/onto/source"
+
+    def _build_responses():
+        return [
+            # ontology
+            _results(
+                ["label", "comment", "parent"],
+                _binding(label="Mentor"),
+            ),
+            # attribute defs
+            _results(
+                ["attr", "attrLabel", "attrComment", "range"],
+                {
+                    "attr": {"type": "uri", "value": name_attr},
+                    "attrLabel": {"type": "literal", "value": "name"},
+                    "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
+                },
+            ),
+            # entity count
+            _results(["n"], _binding(n="1000")),
+            # predicate usage — three system + one user
+            _results(
+                ["p", "cnt", "sample"],
+                {
+                    "p": {"type": "uri", "value": sys_label},
+                    "cnt": {"type": "literal", "value": "1000"},
+                    "sample": {"type": "literal", "value": "Some Mentor"},
+                },
+                {
+                    "p": {"type": "uri", "value": sys_ingested},
+                    "cnt": {"type": "literal", "value": "1000"},
+                    "sample": {"type": "literal", "value": "2026-04-28T00:00:00Z"},
+                },
+                {
+                    "p": {"type": "uri", "value": sys_source},
+                    "cnt": {"type": "literal", "value": "1000"},
+                    "sample": {"type": "literal", "value": "client"},
+                },
+                {
+                    "p": {"type": "uri", "value": name_attr},
+                    "cnt": {"type": "literal", "value": "988"},
+                    "sample": {"type": "literal", "value": "Karthikeyan"},
+                },
+            ),
+            # samples
+            _results(["e", "name", "title", "label", "headline"]),
+        ]
+
+    # Default: system predicates filtered out.
+    mock_neptune.query.side_effect = _build_responses()
+    response = client.get(
+        "/graphs/test-tenant/kgs/mentors/types/Mentor/usage",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    names = [a["name"] for a in data["attributes"]]
+    assert names == ["name"]
+    assert "rdf-schema#label" not in names
+    assert "ingested_at" not in names
+    assert "source" not in names
+
+    # Opt-in: all four predicates present.
+    mock_neptune.reset_mock()
+    mock_neptune.query.side_effect = _build_responses()
+    response = client.get(
+        "/graphs/test-tenant/kgs/mentors/types/Mentor/usage?include_system=true",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    names = [a["name"] for a in data["attributes"]]
+    assert len(names) == 4
+    assert "rdf-schema#label" in names
+    assert "ingested_at" in names
+    assert "source" in names
+    assert "name" in names
