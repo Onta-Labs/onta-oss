@@ -59,6 +59,7 @@ function showCommands(): void {
     ["/kg delete <name>", "Delete a KG (irreversible)"],
     ["/types [query]", "List types in the current KG (with entity counts)"],
     ["/type <name>", "Drill into one type — attributes, relationships, samples"],
+    ["/type <name> --system", "…also include auto-attached system attributes"],
     ["/login", "Re-authenticate (browser)"],
     ["/status", "Show graph stats"],
     ["/reset", "Clear the current KG"],
@@ -443,17 +444,23 @@ async function cmdType(
   rl: readline.Interface,
   input: string,
 ): Promise<void> {
-  if (!input.trim()) {
-    stdout.write(`  ${YELLOW}Usage:${RESET} /type <name>\n`);
+  // Pull off any --system flag so the rest can be treated as the type name.
+  // Conservative parse: only the literal flag, anywhere in the input.
+  const tokens = splitArgs(input.trim());
+  const includeSystem = tokens.includes("--system");
+  const nameTokens = tokens.filter((t) => t !== "--system");
+  const nameInput = nameTokens.join(" ").trim();
+  if (!nameInput) {
+    stdout.write(`  ${YELLOW}Usage:${RESET} /type <name> [--system]\n`);
     return;
   }
-  const name = await resolveTypeName(client, kg, rl, input);
+  const name = await resolveTypeName(client, kg, rl, nameInput);
   if (!name) return;
 
   const sp = startSpinner(`Loading ${name}...`);
   let usage;
   try {
-    usage = await client.typeUsage(kg, name);
+    usage = await client.typeUsage(kg, name, { includeSystem });
   } catch (err) {
     sp.stop();
     if (err instanceof CographError) printError(err.message);
@@ -466,6 +473,17 @@ async function cmdType(
   const pct = (n: number): string =>
     total > 0 ? `${Math.round((n / total) * 100).toString().padStart(3)}%` : "  —";
 
+  // Dedup: when the resolver produces both a literal attribute and a typed
+  // relationship for the same column (e.g. .title literal + .title→JobTitle),
+  // we collapse to a single relationship row and surface the literal count
+  // as a "(+775 string)" annotation. The relationship row "wins" because
+  // its count is the union upper bound (every entity with a typed link)
+  // and it's the richer fact. Pure literals and pure relationships are
+  // unaffected.
+  const relNames = new Set(usage.relationships.map((r) => r.name));
+  const attrLitByName = new Map(usage.attributes.map((a) => [a.name, a]));
+  const litOnlyAttrs = usage.attributes.filter((a) => !relNames.has(a.name));
+
   stdout.write("\n");
   stdout.write(
     `  ${BOLD}${usage.name}${RESET}  ${DIM}${fmtNum(total)} entities${RESET}\n`,
@@ -477,23 +495,23 @@ async function cmdType(
     stdout.write(`  ${DIM}subClassOf  ${usage.parent_type}${RESET}\n`);
   }
 
-  if (usage.attributes.length > 0) {
+  if (litOnlyAttrs.length > 0) {
     stdout.write(
-      `\n  ${BOLD}Attributes (${usage.attributes.length})${RESET}\n`,
+      `\n  ${BOLD}Attributes (${litOnlyAttrs.length})${RESET}\n`,
     );
     const nameW = Math.max(
-      ...usage.attributes.map((a) => a.name.length + 1),
+      ...litOnlyAttrs.map((a) => a.name.length + 1),
       8,
     );
     const typeW = Math.max(
-      ...usage.attributes.map((a) => a.datatype.length),
+      ...litOnlyAttrs.map((a) => a.datatype.length),
       8,
     );
     const cntW = Math.max(
-      ...usage.attributes.map((a) => fmtNum(a.count).length),
+      ...litOnlyAttrs.map((a) => fmtNum(a.count).length),
       4,
     );
-    for (const a of usage.attributes) {
+    for (const a of litOnlyAttrs) {
       const dotName = `.${a.name}`;
       stdout.write(
         `    ${CYAN}${dotName.padEnd(nameW)}${RESET}  ${DIM}${a.datatype.padEnd(typeW)}${RESET}  ${fmtNum(a.count).padStart(cntW)}  ${DIM}(${pct(a.count)})${RESET}\n`,
@@ -516,8 +534,12 @@ async function cmdType(
     for (const r of usage.relationships) {
       const dotName = `.${r.name}`;
       const tgt = r.target_type ?? "?";
+      const lit = attrLitByName.get(r.name);
+      const litNote = lit
+        ? ` ${DIM}(+${fmtNum(lit.count)} ${lit.datatype})${RESET}`
+        : "";
       stdout.write(
-        `    ${CYAN}${dotName.padEnd(nameW)}${RESET}  ${DIM}→${RESET} ${BOLD}${tgt.padEnd(tgtW)}${RESET}  ${fmtNum(r.count).padStart(6)}  ${DIM}(${pct(r.count)})${RESET}\n`,
+        `    ${CYAN}${dotName.padEnd(nameW)}${RESET}  ${DIM}→${RESET} ${BOLD}${tgt.padEnd(tgtW)}${RESET}  ${fmtNum(r.count).padStart(6)}  ${DIM}(${pct(r.count)})${RESET}${litNote}\n`,
       );
     }
   }

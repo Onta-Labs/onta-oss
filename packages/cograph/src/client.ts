@@ -436,11 +436,20 @@ export class Client {
     return Array.isArray(data) ? (data as TypeCount[]) : [];
   }
 
-  /** Per-type breakdown for one type in one KG: definition + counts + samples. */
-  async typeUsage(kg: string, typeName: string): Promise<TypeUsage> {
+  /** Per-type breakdown for one type in one KG: definition + counts + samples.
+   *
+   * System predicates (rdfs:label, ingested_at, source) are hidden by default
+   * — they're attached to every entity at 100% and drown out the columns the
+   * user cares about. Pass `includeSystem: true` to see them. */
+  async typeUsage(
+    kg: string,
+    typeName: string,
+    opts: { includeSystem?: boolean } = {},
+  ): Promise<TypeUsage> {
+    const qs = opts.includeSystem ? "?include_system=true" : "";
     return this.request<TypeUsage>(
       "GET",
-      `${this.base()}/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/usage`,
+      `${this.base()}/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/usage${qs}`,
       undefined,
       30_000,
     );
