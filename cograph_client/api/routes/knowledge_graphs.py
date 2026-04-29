@@ -3,18 +3,25 @@
 All KGs share the tenant's ontology but have separate instance data.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.ontology_queries import (
+    get_type_attributes_query,
+    type_uri,
+)
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 
 router = APIRouter(prefix="/graphs/{tenant}/kgs")
 
 OMNIX_ONTO = "https://cograph.tech/onto"
+TYPE_URI_PREFIX = "https://cograph.tech/types/"
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+NAME_ATTRS = ("name", "title", "label", "headline")
 
 
 class KGCreate(BaseModel):
@@ -132,3 +139,245 @@ async def delete_kg(
         pass  # Bank purge is best-effort, don't fail the delete
 
     return {"deleted": kg_name}
+
+
+# ---------------------------------------------------------------------------
+# Browsing: type counts and per-type attribute usage within a KG.
+# Read-only convenience endpoints that power the shell's /types and /type
+# commands. The ontology itself is tenant-global; what's per-KG is which
+# types actually have instances and how often each attribute is populated.
+# ---------------------------------------------------------------------------
+
+
+class TypeCount(BaseModel):
+    name: str
+    entity_count: int
+
+
+class AttributeUsage(BaseModel):
+    name: str
+    datatype: str = "string"
+    count: int
+
+
+class RelationshipUsage(BaseModel):
+    name: str
+    target_type: str | None = None
+    count: int
+
+
+class EntitySample(BaseModel):
+    uri: str
+    label: str = ""
+
+
+class TypeUsage(BaseModel):
+    name: str
+    description: str = ""
+    parent_type: str | None = None
+    entity_count: int
+    attributes: list[AttributeUsage] = []
+    relationships: list[RelationshipUsage] = []
+    samples: list[EntitySample] = []
+
+
+@router.get("/{kg_name}/type-counts", response_model=list[TypeCount])
+async def list_type_counts(
+    kg_name: str,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """List every type that has instances in this KG, sorted by entity count.
+
+    Tenant-global ontology types with zero instances in this KG are not
+    returned here — fetch them via /ontology/types if the caller needs the
+    full schema.
+    """
+    graph = kg_graph_uri(tenant.tenant_id, kg_name)
+    sparql = (
+        f"SELECT ?type (COUNT(DISTINCT ?e) AS ?cnt) FROM <{graph}> WHERE {{\n"
+        f"  ?e <{RDF_TYPE}> ?type .\n"
+        f'  FILTER(STRSTARTS(STR(?type), "{TYPE_URI_PREFIX}"))\n'
+        f"}} GROUP BY ?type ORDER BY DESC(?cnt)"
+    )
+    raw = await client.query(sparql)
+    _, bindings = parse_sparql_results(raw)
+    out: list[TypeCount] = []
+    for row in bindings:
+        t = row.get("type", "")
+        if not t.startswith(TYPE_URI_PREFIX):
+            continue
+        # Skip nested URIs like .../types/{Type}/attrs/{name} which aren't types
+        leaf = t[len(TYPE_URI_PREFIX):]
+        if "/" in leaf:
+            continue
+        try:
+            count = int(row.get("cnt", "0"))
+        except ValueError:
+            count = 0
+        out.append(TypeCount(name=leaf, entity_count=count))
+    return out
+
+
+@router.get("/{kg_name}/types/{type_name}/usage", response_model=TypeUsage)
+async def get_type_usage(
+    kg_name: str,
+    type_name: str,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Per-type breakdown for one type in one KG.
+
+    Combines the tenant-global ontology definition (attribute names,
+    datatypes, parent type) with per-KG instance numbers (entity count,
+    attribute usage, sample entities) so the caller doesn't have to make
+    three round-trips and re-join the results client-side.
+    """
+    tenant_graph = tenant_graph_uri(tenant.tenant_id)
+    kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
+    t_uri = type_uri(type_name)
+
+    # 1) Ontology definition for this type (tenant-global graph).
+    onto_sparql = (
+        f"SELECT ?label ?comment ?parent FROM <{tenant_graph}> WHERE {{\n"
+        f"  <{t_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n"
+        f"  OPTIONAL {{ <{t_uri}> <http://www.w3.org/2000/01/rdf-schema#comment> ?comment }}\n"
+        f"  OPTIONAL {{ <{t_uri}> <http://www.w3.org/2000/01/rdf-schema#subClassOf> ?parent }}\n"
+        f"}}"
+    )
+    _, onto_rows = parse_sparql_results(await client.query(onto_sparql))
+
+    # Tenant-global attribute definitions for this type — gives us the
+    # canonical name + datatype, which we'll join with per-KG usage counts.
+    _, attr_def_rows = parse_sparql_results(
+        await client.query(get_type_attributes_query(tenant_graph, type_name))
+    )
+    attr_def: dict[str, dict[str, str]] = {}
+    for r in attr_def_rows:
+        a_uri = r.get("attr", "")
+        if not a_uri:
+            continue
+        attr_def[a_uri] = {
+            "name": r.get("attrLabel", ""),
+            "range": r.get("range", ""),
+        }
+
+    # 2) Entity count for this type within this KG.
+    count_sparql = (
+        f"SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <{kg_graph}> WHERE {{\n"
+        f"  ?e <{RDF_TYPE}> <{t_uri}>\n"
+        f"}}"
+    )
+    _, count_rows = parse_sparql_results(await client.query(count_sparql))
+    try:
+        entity_count = int(count_rows[0].get("n", "0")) if count_rows else 0
+    except ValueError:
+        entity_count = 0
+
+    if entity_count == 0 and not onto_rows:
+        # Nothing in the ontology and nothing in the KG → 404 so the CLI can
+        # tell the user "no such type" instead of silently returning zeros.
+        raise HTTPException(
+            status_code=404,
+            detail=f"Type '{type_name}' not found in tenant ontology or KG '{kg_name}'",
+        )
+
+    # 3) Per-predicate usage in this KG. SAMPLE(?o) lets us classify
+    # attribute (literal) vs. relationship (typed entity) without a second
+    # round-trip per predicate.
+    pred_sparql = (
+        f"SELECT ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
+        f"FROM <{kg_graph}> WHERE {{\n"
+        f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
+        f"  ?e ?p ?o .\n"
+        f"  FILTER(?p != <{RDF_TYPE}>)\n"
+        f"}} GROUP BY ?p ORDER BY DESC(?cnt)"
+    )
+    _, pred_rows = parse_sparql_results(await client.query(pred_sparql))
+
+    attributes: list[AttributeUsage] = []
+    relationships: list[RelationshipUsage] = []
+    for r in pred_rows:
+        p_uri = r.get("p", "")
+        try:
+            cnt = int(r.get("cnt", "0"))
+        except ValueError:
+            cnt = 0
+        sample = r.get("sample", "")
+        defn = attr_def.get(p_uri, {})
+        # Predicate name: prefer ontology label, fall back to URI tail.
+        name = defn.get("name") or p_uri.rstrip("/").split("/")[-1]
+        rng = defn.get("range", "")
+        # Classify: object pointing into the entities/types namespace OR
+        # ontology-declared range that's another type → relationship.
+        is_rel = (
+            sample.startswith("https://cograph.tech/entities/")
+            or sample.startswith(TYPE_URI_PREFIX)
+            or rng.startswith(TYPE_URI_PREFIX)
+        )
+        if is_rel:
+            target = rng[len(TYPE_URI_PREFIX):] if rng.startswith(TYPE_URI_PREFIX) else None
+            relationships.append(
+                RelationshipUsage(name=name, target_type=target, count=cnt)
+            )
+        else:
+            attributes.append(
+                AttributeUsage(
+                    name=name,
+                    datatype=_xsd_to_datatype(rng),
+                    count=cnt,
+                )
+            )
+
+    # 4) Up to 3 sample entities with a name-like label, picked by trying
+    # the conventional label attributes in order. Cheap one-shot query.
+    label_optionals = "\n".join(
+        f'    OPTIONAL {{ ?e <{TYPE_URI_PREFIX}{type_name}/attrs/{a}> ?{a} }}'
+        for a in NAME_ATTRS
+    )
+    label_vars = " ".join(f"?{a}" for a in NAME_ATTRS)
+    sample_sparql = (
+        f"SELECT ?e {label_vars} FROM <{kg_graph}> WHERE {{\n"
+        f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
+        f"{label_optionals}\n"
+        f"}} LIMIT 3"
+    )
+    samples: list[EntitySample] = []
+    try:
+        _, sample_rows = parse_sparql_results(await client.query(sample_sparql))
+        for r in sample_rows:
+            uri = r.get("e", "")
+            label = next((r[a] for a in NAME_ATTRS if r.get(a)), "")
+            samples.append(EntitySample(uri=uri, label=label))
+    except Exception:
+        # Sample fetch is decorative; don't blow up the whole response if
+        # the SPARQL chokes on something we didn't anticipate.
+        samples = []
+
+    onto_row = onto_rows[0] if onto_rows else {}
+    parent = onto_row.get("parent", "")
+    return TypeUsage(
+        name=type_name,
+        description=onto_row.get("comment", ""),
+        parent_type=parent.rstrip("/").split("/")[-1] if parent else None,
+        entity_count=entity_count,
+        attributes=attributes,
+        relationships=relationships,
+        samples=samples,
+    )
+
+
+def _xsd_to_datatype(uri: str) -> str:
+    if not uri:
+        return "string"
+    if uri.startswith(TYPE_URI_PREFIX):
+        return uri[len(TYPE_URI_PREFIX):]
+    last = uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
+    return {
+        "string": "string",
+        "integer": "integer",
+        "float": "float",
+        "boolean": "boolean",
+        "dateTime": "datetime",
+        "Resource": "uri",
+    }.get(last, "string")
