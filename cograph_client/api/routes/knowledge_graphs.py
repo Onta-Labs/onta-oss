@@ -23,6 +23,16 @@ TYPE_URI_PREFIX = "https://cograph.tech/types/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 NAME_ATTRS = ("name", "title", "label", "headline")
 
+# Predicates the resolver attaches to every entity at ingest time.
+# Always present, always 100%, drown out the actual columns the user
+# cares about — hidden from /type usage by default, opt-in via
+# ?include_system=true. Sourced from schema_resolver.py.
+SYSTEM_PREDICATES: frozenset[str] = frozenset({
+    "http://www.w3.org/2000/01/rdf-schema#label",
+    "https://cograph.tech/onto/ingested_at",
+    "https://cograph.tech/onto/source",
+})
+
 
 class KGCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -223,6 +233,7 @@ async def list_type_counts(
 async def get_type_usage(
     kg_name: str,
     type_name: str,
+    include_system: bool = False,
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
@@ -299,6 +310,8 @@ async def get_type_usage(
     relationships: list[RelationshipUsage] = []
     for r in pred_rows:
         p_uri = r.get("p", "")
+        if not include_system and p_uri in SYSTEM_PREDICATES:
+            continue
         try:
             cnt = int(r.get("cnt", "0"))
         except ValueError:
