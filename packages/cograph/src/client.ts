@@ -424,4 +424,57 @@ export class Client {
     );
     return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
   }
+
+  /** Per-KG type counts: every type with ≥1 instance, sorted desc. */
+  async typeCounts(kg: string): Promise<TypeCount[]> {
+    const data = await this.request<unknown>(
+      "GET",
+      `${this.base()}/kgs/${encodeURIComponent(kg)}/type-counts`,
+      undefined,
+      30_000,
+    );
+    return Array.isArray(data) ? (data as TypeCount[]) : [];
+  }
+
+  /** Per-type breakdown for one type in one KG: definition + counts + samples. */
+  async typeUsage(kg: string, typeName: string): Promise<TypeUsage> {
+    return this.request<TypeUsage>(
+      "GET",
+      `${this.base()}/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/usage`,
+      undefined,
+      30_000,
+    );
+  }
+}
+
+export interface TypeCount {
+  name: string;
+  entity_count: number;
+}
+
+export interface AttributeUsage {
+  name: string;
+  datatype: string;
+  count: number;
+}
+
+export interface RelationshipUsage {
+  name: string;
+  target_type: string | null;
+  count: number;
+}
+
+export interface EntitySample {
+  uri: string;
+  label: string;
+}
+
+export interface TypeUsage {
+  name: string;
+  description: string;
+  parent_type: string | null;
+  entity_count: number;
+  attributes: AttributeUsage[];
+  relationships: RelationshipUsage[];
+  samples: EntitySample[];
 }

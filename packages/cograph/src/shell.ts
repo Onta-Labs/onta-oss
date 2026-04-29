@@ -1,6 +1,6 @@
 import * as readline from "node:readline";
 import { stdin, stdout } from "node:process";
-import { Client, CographError } from "./client.js";
+import { Client, CographError, type TypeCount } from "./client.js";
 
 const CYAN = "\x1b[36m";
 const CYAN_BOLD = "\x1b[1;36m";
@@ -57,6 +57,8 @@ function showCommands(): void {
     ["/kg switch <name>", "Switch to a different KG"],
     ["/kg create <name>", "Create a new KG and switch to it"],
     ["/kg delete <name>", "Delete a KG (irreversible)"],
+    ["/types [query]", "List types in the current KG (with entity counts)"],
+    ["/type <name>", "Drill into one type — attributes, relationships, samples"],
     ["/login", "Re-authenticate (browser)"],
     ["/status", "Show graph stats"],
     ["/reset", "Clear the current KG"],
@@ -323,6 +325,223 @@ async function cmdReset(
   }
 }
 
+async function cmdTypes(
+  client: Client,
+  kg: string,
+  query: string,
+): Promise<void> {
+  const sp = startSpinner(
+    query ? `Searching types matching "${query}"...` : "Loading types...",
+  );
+  let types: TypeCount[];
+  try {
+    types = await client.typeCounts(kg);
+  } catch (err) {
+    sp.stop();
+    if (err instanceof CographError) printError(err.message);
+    else printError(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  sp.stop();
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? types.filter((t) => t.name.toLowerCase().includes(q))
+    : types;
+
+  if (filtered.length === 0) {
+    if (types.length === 0) {
+      stdout.write(
+        `  ${DIM}No types yet in ${BOLD}${kg}${RESET}${DIM}. Try ${RESET}/ingest <file>${DIM} first.${RESET}\n`,
+      );
+    } else {
+      stdout.write(
+        `  ${DIM}No types match "${query}". Try ${RESET}/types${DIM} for the full list.${RESET}\n`,
+      );
+    }
+    return;
+  }
+
+  // Right-align counts; leave room for the longest name we'll print.
+  const nameWidth = Math.max(
+    "Type".length,
+    ...filtered.map((t) => t.name.length),
+  );
+  const countWidth = Math.max(
+    "Entities".length,
+    ...filtered.map((t) => fmtNum(t.entity_count).length),
+  );
+  stdout.write("\n");
+  stdout.write(
+    `  ${BOLD}${"Type".padEnd(nameWidth)}   ${"Entities".padStart(countWidth)}${RESET}\n`,
+  );
+  let total = 0;
+  for (const t of filtered) {
+    total += t.entity_count;
+    stdout.write(
+      `  ${CYAN}${t.name.padEnd(nameWidth)}${RESET}   ${fmtNum(t.entity_count).padStart(countWidth)}\n`,
+    );
+  }
+  stdout.write("\n");
+  const summary = q
+    ? `${filtered.length} match${filtered.length === 1 ? "" : "es"}.`
+    : `${filtered.length} type${filtered.length === 1 ? "" : "s"}, ${fmtNum(total)} entities total.`;
+  stdout.write(`  ${DIM}${summary}${RESET}\n`);
+  stdout.write(
+    `  ${DIM}Drill in:  ${RESET}/type <name>${DIM}   Filter:  ${RESET}/types <query>${DIM}${RESET}\n\n`,
+  );
+}
+
+/**
+ * Resolve a user-supplied type name to a canonical type. Case-insensitive
+ * exact match wins; otherwise we fall back to prefix match. If multiple
+ * types share a prefix, prompt the user to pick from a numbered list.
+ */
+async function resolveTypeName(
+  client: Client,
+  kg: string,
+  rl: readline.Interface,
+  input: string,
+): Promise<string | null> {
+  const types = await client.typeCounts(kg);
+  if (types.length === 0) {
+    printError(`No types in ${kg} yet. Try /ingest <file> first.`);
+    return null;
+  }
+  const q = input.trim().toLowerCase();
+  const exact = types.find((t) => t.name.toLowerCase() === q);
+  if (exact) return exact.name;
+  const prefix = types.filter((t) => t.name.toLowerCase().startsWith(q));
+  const matches = prefix.length > 0
+    ? prefix
+    : types.filter((t) => t.name.toLowerCase().includes(q));
+  if (matches.length === 0) {
+    printError(
+      `No type matches "${input}". Try /types to see what's available.`,
+    );
+    return null;
+  }
+  if (matches.length === 1) return matches[0]!.name;
+  stdout.write(`  ${DIM}Multiple types match "${input}":${RESET}\n`);
+  matches.forEach((t, i) => {
+    stdout.write(
+      `    ${CYAN}${i + 1}${RESET}. ${BOLD}${t.name}${RESET} ${DIM}(${fmtNum(t.entity_count)} entities)${RESET}\n`,
+    );
+  });
+  const pick = (await ask(rl, `  Pick [1]: `)).trim() || "1";
+  const idx = Number.parseInt(pick, 10);
+  if (Number.isFinite(idx) && idx >= 1 && idx <= matches.length) {
+    return matches[idx - 1]!.name;
+  }
+  printError("Invalid selection.");
+  return null;
+}
+
+async function cmdType(
+  client: Client,
+  kg: string,
+  rl: readline.Interface,
+  input: string,
+): Promise<void> {
+  if (!input.trim()) {
+    stdout.write(`  ${YELLOW}Usage:${RESET} /type <name>\n`);
+    return;
+  }
+  const name = await resolveTypeName(client, kg, rl, input);
+  if (!name) return;
+
+  const sp = startSpinner(`Loading ${name}...`);
+  let usage;
+  try {
+    usage = await client.typeUsage(kg, name);
+  } catch (err) {
+    sp.stop();
+    if (err instanceof CographError) printError(err.message);
+    else printError(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  sp.stop();
+
+  const total = usage.entity_count;
+  const pct = (n: number): string =>
+    total > 0 ? `${Math.round((n / total) * 100).toString().padStart(3)}%` : "  —";
+
+  stdout.write("\n");
+  stdout.write(
+    `  ${BOLD}${usage.name}${RESET}  ${DIM}${fmtNum(total)} entities${RESET}\n`,
+  );
+  if (usage.description) {
+    stdout.write(`  ${DIM}${usage.description}${RESET}\n`);
+  }
+  if (usage.parent_type) {
+    stdout.write(`  ${DIM}subClassOf  ${usage.parent_type}${RESET}\n`);
+  }
+
+  if (usage.attributes.length > 0) {
+    stdout.write(
+      `\n  ${BOLD}Attributes (${usage.attributes.length})${RESET}\n`,
+    );
+    const nameW = Math.max(
+      ...usage.attributes.map((a) => a.name.length + 1),
+      8,
+    );
+    const typeW = Math.max(
+      ...usage.attributes.map((a) => a.datatype.length),
+      8,
+    );
+    const cntW = Math.max(
+      ...usage.attributes.map((a) => fmtNum(a.count).length),
+      4,
+    );
+    for (const a of usage.attributes) {
+      const dotName = `.${a.name}`;
+      stdout.write(
+        `    ${CYAN}${dotName.padEnd(nameW)}${RESET}  ${DIM}${a.datatype.padEnd(typeW)}${RESET}  ${fmtNum(a.count).padStart(cntW)}  ${DIM}(${pct(a.count)})${RESET}\n`,
+      );
+    }
+  }
+
+  if (usage.relationships.length > 0) {
+    stdout.write(
+      `\n  ${BOLD}Relationships (${usage.relationships.length})${RESET}\n`,
+    );
+    const nameW = Math.max(
+      ...usage.relationships.map((r) => r.name.length + 1),
+      8,
+    );
+    const tgtW = Math.max(
+      ...usage.relationships.map((r) => (r.target_type ?? "?").length),
+      6,
+    );
+    for (const r of usage.relationships) {
+      const dotName = `.${r.name}`;
+      const tgt = r.target_type ?? "?";
+      stdout.write(
+        `    ${CYAN}${dotName.padEnd(nameW)}${RESET}  ${DIM}→${RESET} ${BOLD}${tgt.padEnd(tgtW)}${RESET}  ${fmtNum(r.count).padStart(6)}  ${DIM}(${pct(r.count)})${RESET}\n`,
+      );
+    }
+  }
+
+  if (usage.samples.length > 0) {
+    stdout.write(`\n  ${BOLD}Sample entities${RESET}\n`);
+    usage.samples.forEach((s, i) => {
+      const label = s.label || s.uri.split("/").pop() || s.uri;
+      stdout.write(`    ${DIM}${i + 1}.${RESET} ${label}\n`);
+    });
+  }
+
+  if (
+    usage.attributes.length === 0 &&
+    usage.relationships.length === 0 &&
+    total === 0
+  ) {
+    stdout.write(
+      `\n  ${DIM}Type defined in the ontology but no instances yet in ${kg}.${RESET}\n`,
+    );
+  }
+  stdout.write("\n");
+}
+
 function makePrompt(kg: string, triples: number): string {
   const kgPart = `${DIM}(${kg})${RESET}`;
   if (triples > 0) {
@@ -451,6 +670,12 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
         await cmdAsk(client, kg, line.slice("/ask ".length));
       } else if (line === "/ask") {
         await cmdAsk(client, kg, "");
+      } else if (line === "/types" || line.startsWith("/types ")) {
+        const query = line === "/types" ? "" : line.slice("/types ".length);
+        await cmdTypes(client, kg, query);
+      } else if (line.startsWith("/type ") || line === "/type") {
+        const arg = line === "/type" ? "" : line.slice("/type ".length);
+        await cmdType(client, kg, rl, arg);
       } else if (line === "/status") {
         await cmdStatus(client, kg);
         await refresh();
@@ -572,7 +797,7 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
         }
       } else if (line.startsWith("/")) {
         stdout.write(
-          `  ${YELLOW}Unknown command.${RESET} Try /ingest, /ask, /kg, /login, /status, /reset, /help, /quit\n`,
+          `  ${YELLOW}Unknown command.${RESET} Try /ingest, /ask, /kg, /types, /type, /login, /status, /reset, /help, /quit\n`,
         );
       } else {
         // Bare line — auto-route to /ask

@@ -316,7 +316,17 @@ async def get_type_usage(
             or rng.startswith(TYPE_URI_PREFIX)
         )
         if is_rel:
-            target = rng[len(TYPE_URI_PREFIX):] if rng.startswith(TYPE_URI_PREFIX) else None
+            target: str | None = None
+            if rng.startswith(TYPE_URI_PREFIX):
+                target = rng[len(TYPE_URI_PREFIX):]
+            elif sample.startswith("https://cograph.tech/entities/"):
+                # Entity URIs are .../entities/{TypeName}/{slug}; pull the
+                # type out so the CLI can render "industries → Industry"
+                # even when the ontology hasn't declared a typed range.
+                tail = sample[len("https://cograph.tech/entities/"):]
+                head = tail.split("/", 1)[0]
+                if head:
+                    target = head
             relationships.append(
                 RelationshipUsage(name=name, target_type=target, count=cnt)
             )
