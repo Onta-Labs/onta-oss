@@ -74,6 +74,23 @@ Natural Language Query -> SPARQL -> Answer
 
 ## CLI
 
+The Node CLI (`npm install -g cograph`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `cograph` to drop into the shell:
+
+```text
+  /ingest <file>      Ingest a CSV/JSON/text file
+  /ask <question>     Ask in natural language
+  /kg list|switch|create|delete <name>
+  /types [query]      Types in the active KG, with entity counts
+  /type <name>        Drill into one type — attributes & relationships
+  /status             Graph stats
+  /login              Re-authenticate
+  /quit
+```
+
+`/types` and `/type` are the fastest way to look around after an ingest — see the [npm README](packages/cograph/README.md) for screenshots. Bare lines auto-route to `/ask`.
+
+Or one-shot, useful in scripts and CI:
+
 ```bash
 # Ingest
 cograph ingest data.csv --kg my-dataset
@@ -86,13 +103,13 @@ cograph kg list
 cograph kg create my-dataset -d "Description"
 cograph kg delete my-dataset
 
-# View ontology
+# View ontology (legacy — prefer /types and /type in the shell)
 cograph ontology types
 
 # Clear data
 cograph clear --kg my-dataset -y
 
-# Evaluate accuracy
+# Evaluate accuracy (Python CLI)
 cograph eval data.csv --kg my-dataset --query-only -n 20 --fast-judge
 ```
 

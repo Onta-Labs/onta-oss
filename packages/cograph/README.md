@@ -2,11 +2,61 @@
 
 Node.js SDK and CLI for [Cograph](https://cograph.cloud) — turn raw data into a queryable knowledge graph.
 
+## Quickstart
+
+```bash
+npx cograph
+```
+
+That's it. The first run opens your browser to sign in, saves a key to `~/.cograph/config.json`, and drops you into the interactive shell:
+
+```text
+  /ingest <file>      Ingest a CSV/JSON/text file
+  /ask <question>     Ask in natural language
+  /kg list|switch|create|delete <name>
+  /types [query]      Types in the active KG, with entity counts
+  /type <name>        Drill into one type — attributes & relationships
+  /status             Graph stats
+  /login              Re-authenticate
+  /quit
+```
+
+Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [cograph.cloud/docs/quickstart](https://cograph.cloud/docs/quickstart).
+
 ## Install
 
 ```bash
-npm install cograph
+npm install cograph        # or: npm install -g cograph
 ```
+
+Requires Node 20+.
+
+## Browsing what got ingested
+
+After ingest, look around before asking questions:
+
+```text
+cograph (mentors) [37,715] ▸ /types
+  Type           Entities
+  Mentor              988
+  Skill               412
+  Industry             38
+
+cograph (mentors) [37,715] ▸ /type Mentor
+  Mentor  1,000 entities
+
+  Attributes (6)
+    .name           string      988  ( 99%)
+    .level          string      714  ( 71%)
+    ...
+
+  Relationships (6)
+    .title         → JobTitle    988  ( 99%) (+775 string)
+    .skills        → Skill       987  ( 99%)
+    ...
+```
+
+`/types <query>` filters by substring; `/type <name>` accepts case-insensitive prefix. Auto-attached system metadata (`rdfs:label`, `ingested_at`, `source`) is hidden by default — pass `--system` to see it. The `(+775 string)` annotation appears when the resolver produced both a literal value and a typed-entity link for the same column.
 
 ## SDK
 
@@ -32,14 +82,18 @@ new Client({
 
 ### Methods
 
-- `ingest(pathOrText, { kg?, contentType? })` — auto-detects CSV by extension and uses two-step schema/rows flow; otherwise sends raw content.
+- `ingest(pathOrText, { kg?, contentType? })` — auto-detects CSV by extension and uses the two-step schema/rows flow; otherwise sends raw content.
 - `ask(question, { kg? })` — returns `{ answer, sparql?, ... }`.
-- `listKgs()` — list knowledge graphs.
-- `deleteKg(name)` — delete a knowledge graph.
+- `listKgs()`, `createKg(name, description?)`, `deleteKg(name)` — knowledge-graph CRUD.
+- `ontologyTypes()` — list every type in the tenant ontology with attributes and parents.
+- `typeCounts(kg)` — `[{ name, entity_count }]` for the given KG, sorted desc. Powers `/types`.
+- `typeUsage(kg, name, { includeSystem? })` — full breakdown for one type: attributes (with usage counts), relationships, and 3 sample entities. Powers `/type`. System predicates filtered by default.
 
 All errors throw `CographError`.
 
-## CLI
+## One-shot CLI
+
+For scripts and CI — every command is a single HTTP round-trip:
 
 ```bash
 # List / create / delete knowledge graphs
@@ -62,9 +116,9 @@ npx cograph clear --kg my-data --yes
 
 ### Environment
 
-- `COGRAPH_API_KEY` — required
-- `COGRAPH_API_URL` — default `https://api.cograph.cloud`
-- `COGRAPH_TENANT` — default `demo-tenant`
+- `COGRAPH_API_KEY` — required for headless / CI use; interactive `cograph login` writes one to `~/.cograph/config.json` automatically.
+- `COGRAPH_API_URL` — default `https://api.cograph.cloud`.
+- `COGRAPH_TENANT` — default `demo-tenant`. The login flow sets this to your user ID.
 
 Legacy `OMNIX_*` vars are also accepted.
 
