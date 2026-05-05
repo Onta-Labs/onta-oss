@@ -161,6 +161,43 @@ export class Client {
     return `${this.baseUrl}/graphs/${this.tenant}`;
   }
 
+  /**
+   * Probe the backend to determine reachability and whether endpoints
+   * require an X-API-Key header. Used at shell startup to distinguish
+   * cloud (auth required) from self-hosted open-access deployments.
+   */
+  async healthCheck(): Promise<{
+    ok: boolean;
+    requiresAuth: boolean;
+    url: string;
+  }> {
+    const healthUrl = `${this.baseUrl}/health`;
+    try {
+      const res = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return { ok: false, requiresAuth: false, url: this.baseUrl };
+    } catch {
+      return { ok: false, requiresAuth: false, url: this.baseUrl };
+    }
+    // Probe whether endpoints require auth by hitting /kgs without X-API-Key.
+    // 401 = requires auth; 200/empty = open access; anything else = treat as
+    // auth-required to be safe.
+    try {
+      const res = await fetch(`${this.base()}/kgs`, {
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(5000),
+      });
+      return {
+        ok: true,
+        requiresAuth: res.status === 401,
+        url: this.baseUrl,
+      };
+    } catch {
+      return { ok: true, requiresAuth: true, url: this.baseUrl };
+    }
+  }
+
   private async request<T = unknown>(
     method: string,
     url: string,

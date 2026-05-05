@@ -45,9 +45,15 @@ program
   // shell. So `cograph` (or `npx cograph`) Just Works for the common case;
   // subcommands like `cograph ingest <file>` still route to their own
   // actions because commander dispatches subcommands first.
-  .action(async () => {
+  .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
+  .option("--no-login", "Skip browser login (assume open-access backend)")
+  .action(async (opts: { local?: boolean; login?: boolean }) => {
     const { runShell } = await import("./shell.js");
-    await runShell({});
+    await runShell({
+      local: opts.local,
+      // commander's --no-login inverts: opts.login === false when flag passed.
+      noLogin: opts.login === false,
+    });
   });
 
 // ---------------------------------------------------------------------------
@@ -366,10 +372,26 @@ program
   .command("shell")
   .description("Start an interactive REPL")
   .option("--kg <name>", "Knowledge graph to use")
-  .action(async (opts: { kg?: string }) => {
-    const { runShell } = await import("./shell.js");
-    await runShell({ kg: opts.kg });
-  });
+  .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
+  .option("--no-login", "Skip browser login (assume open-access backend)")
+  .action(
+    async (opts: { kg?: string; local?: boolean; login?: boolean }) => {
+      // Parent program also accepts --local/--no-login (so `cograph --local`
+      // works without a subcommand). When commander parses
+      // `cograph shell --local`, the parent sees --local first and the
+      // subcommand never gets it — so merge from program.opts() too.
+      const parentOpts = program.opts() as {
+        local?: boolean;
+        login?: boolean;
+      };
+      const { runShell } = await import("./shell.js");
+      await runShell({
+        kg: opts.kg,
+        local: opts.local || parentOpts.local,
+        noLogin: opts.login === false || parentOpts.login === false,
+      });
+    },
+  );
 
 // ---------------------------------------------------------------------------
 

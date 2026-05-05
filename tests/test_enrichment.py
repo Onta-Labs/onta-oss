@@ -585,3 +585,251 @@ def test_cancel_job(client, auth_headers, mock_neptune):
     )
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Tier registry
+# ---------------------------------------------------------------------------
+
+
+def test_register_tier_and_get_chain():
+    from cograph_client.enrichment.tiers import (
+        get_chain,
+        register_tier,
+        reset_tiers,
+    )
+
+    reset_tiers()
+    try:
+        assert get_chain(EnrichmentTier.lite) == ["wikidata"]
+        register_tier(EnrichmentTier.base, ["wikidata", "web"])
+        assert get_chain(EnrichmentTier.base) == ["wikidata", "web"]
+        # Idempotent: last write wins.
+        register_tier(EnrichmentTier.base, ["wikidata"])
+        assert get_chain(EnrichmentTier.base) == ["wikidata"]
+        # Returned list is a copy: mutating it does not affect the registry.
+        chain = get_chain(EnrichmentTier.lite)
+        chain.append("mutated")
+        assert get_chain(EnrichmentTier.lite) == ["wikidata"]
+    finally:
+        reset_tiers()
+
+
+def test_executor_skips_unregistered_adapter(caplog):
+    """Chain with a missing adapter name should log a warning and not fail."""
+    import logging
+
+    from cograph_client.enrichment.tiers import (
+        get_chain,
+        register_tier,
+        reset_tiers,
+    )
+
+    async def run():
+        rows = [
+            {
+                "uri": "https://cograph.tech/entities/Product/p1",
+                "label": "Bosch",
+                "vals": "",
+            },
+        ]
+        neptune = AsyncMock()
+        neptune.query.return_value = _entities_query_response(rows)
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata(
+            {
+                ("Bosch", "manufacturer"): [
+                    Verdict(
+                        value="Robert Bosch GmbH",
+                        confidence=0.95,
+                        source="wikidata",
+                    )
+                ],
+            }
+        )
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        register_tier(EnrichmentTier.lite, ["wikidata", "nonexistent"])
+        assert get_chain(EnrichmentTier.lite) == ["wikidata", "nonexistent"]
+
+        job = _make_job(policy=ConflictPolicy.stage)
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        # Job did not fail.
+        assert final is not None
+        assert final.status != JobStatus.failed
+        # Wikidata produced a verdict, so the job filled the empty slot.
+        assert final.progress.filled == 1
+
+    reset_tiers()
+    caplog.set_level(logging.WARNING)
+    try:
+        asyncio.run(run())
+    finally:
+        reset_tiers()
+
+
+# ---------------------------------------------------------------------------
+# Strategy loader
+# ---------------------------------------------------------------------------
+
+
+def _strategy_query_response(rows: list[dict]) -> dict:
+    """Build a SPARQL response for the strategy SELECT.
+
+    rows: list of {"subj": uri, "p": uri, "o": value}
+    """
+    bindings = []
+    for r in rows:
+        b = {
+            "subj": {"type": "uri", "value": r["subj"]},
+            "p": {"type": "uri", "value": r["p"]},
+            "o": {"type": "literal", "value": r["o"]},
+        }
+        bindings.append(b)
+    return {
+        "head": {"vars": ["subj", "p", "o"]},
+        "results": {"bindings": bindings},
+    }
+
+
+def test_load_strategy_returns_empty_when_no_triples():
+    from cograph_client.enrichment.strategy import load_strategy
+
+    async def run():
+        neptune = AsyncMock()
+        neptune.query.return_value = _strategy_query_response([])
+        s = await load_strategy(neptune, "test-tenant", "LineItem")
+        assert s.type_name == "LineItem"
+        assert s.match_key is None
+        assert s.lookup_priority is None
+        assert s.attributes == {}
+
+    asyncio.run(run())
+
+
+def test_load_strategy_parses_attribute_triples():
+    from cograph_client.enrichment.strategy import load_strategy
+
+    type_uri = "https://cograph.tech/types/LineItem"
+    mpn_uri = "https://cograph.tech/types/LineItem/attrs/mpn"
+    brand_uri = "https://cograph.tech/types/LineItem/attrs/brand"
+    onto = "https://cograph.tech/onto"
+
+    async def run():
+        neptune = AsyncMock()
+        neptune.query.return_value = _strategy_query_response(
+            [
+                {"subj": type_uri, "p": f"{onto}/matchKey", "o": "description"},
+                {"subj": type_uri, "p": f"{onto}/lookupPriority", "o": "1"},
+                {"subj": mpn_uri, "p": f"{onto}/enrichmentSource", "o": "wikidata"},
+                {"subj": mpn_uri, "p": f"{onto}/enrichmentSource", "o": "web"},
+                {"subj": mpn_uri, "p": f"{onto}/confidenceMin", "o": "0.9"},
+                {"subj": mpn_uri, "p": f"{onto}/idPattern", "o": "^[A-Z0-9-]{6,20}$"},
+                {"subj": mpn_uri, "p": f"{onto}/conflictPolicy", "o": "stage"},
+                {"subj": brand_uri, "p": f"{onto}/canonicalizer", "o": "title-case"},
+                {"subj": brand_uri, "p": f"{onto}/alias", "o": "KN→K&N"},
+                {"subj": brand_uri, "p": f"{onto}/alias", "o": "Mfg→Manufacturing"},
+                # Malformed alias should be silently skipped.
+                {"subj": brand_uri, "p": f"{onto}/alias", "o": "bogus-no-arrow"},
+            ]
+        )
+        s = await load_strategy(neptune, "test-tenant", "LineItem")
+        assert s.match_key == "description"
+        assert s.lookup_priority == 1
+        assert "mpn" in s.attributes
+        mpn = s.attributes["mpn"]
+        assert mpn.sources == ["wikidata", "web"]
+        assert mpn.confidence_min == 0.9
+        assert mpn.id_pattern == "^[A-Z0-9-]{6,20}$"
+        assert mpn.conflict_policy == "stage"
+        brand = s.attributes["brand"]
+        assert brand.canonicalizer == "title-case"
+        assert brand.aliases == {"KN": "K&N", "Mfg": "Manufacturing"}
+
+    asyncio.run(run())
+
+
+def test_aliases_resolve_conflicts_to_verified():
+    """Existing brand=KN, alias KN->K&N, verdict K&N -> verified, not conflict."""
+    from cograph_client.enrichment.tiers import reset_tiers
+
+    type_uri = "https://cograph.tech/types/Product"
+    brand_uri = "https://cograph.tech/types/Product/attrs/brand"
+    onto = "https://cograph.tech/onto"
+    brand_pred = brand_uri  # the predicate stored on the entity row
+
+    async def run():
+        rows = [
+            {
+                "uri": "https://cograph.tech/entities/Product/p1",
+                "label": "Filter",
+                "vals": f"{brand_pred}::KN",
+            },
+        ]
+        neptune = AsyncMock()
+
+        async def query(sparql, *args, **kwargs):
+            # First call inside run() is the strategy load (tenant graph URI),
+            # subsequent calls are the entity SELECT.
+            if "FROM <https://cograph.tech/graphs/test-tenant>" in sparql and "alias" in sparql:
+                return _strategy_query_response(
+                    [
+                        {"subj": brand_uri, "p": f"{onto}/alias", "o": "KN→K&N"},
+                    ]
+                )
+            return _entities_query_response(rows)
+
+        neptune.query.side_effect = query
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata(
+            {
+                ("Filter", "brand"): [
+                    Verdict(value="K&N", confidence=0.95, source="wikidata")
+                ],
+            }
+        )
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        reset_tiers()
+        job = _make_job(
+            type_name="Product",
+            attributes=["brand"],
+            policy=ConflictPolicy.stage,
+        )
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final is not None
+        assert final.status == JobStatus.review
+        assert final.progress.verified == 1, (
+            f"expected verified, got progress={final.progress}"
+        )
+        assert final.progress.conflicts == 0
+
+    reset_tiers()
+    try:
+        asyncio.run(run())
+    finally:
+        reset_tiers()
+
+
+def test_canonicalize_title_case_handles_ampersand():
+    from cograph_client.enrichment.canonicalize import apply_canonicalizer
+
+    assert apply_canonicalizer("title-case", "k&n filters") == "K&N Filters"
+    assert apply_canonicalizer("title-case", "AT&T") == "AT&T"
+    assert apply_canonicalizer("title-case", "  bosch  gmbh  ").strip() == "Bosch Gmbh"
+    # Unknown canonicalizer returns value unchanged.
+    assert apply_canonicalizer("nope", "anything") == "anything"
+    assert apply_canonicalizer(None, "x") == "x"
+    assert apply_canonicalizer("trim", "  hi  ") == "hi"

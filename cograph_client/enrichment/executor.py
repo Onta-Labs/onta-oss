@@ -14,6 +14,7 @@ from typing import Optional
 import structlog
 
 from cograph_client.enrichment.cache import EnrichmentCache
+from cograph_client.enrichment.canonicalize import apply_canonicalizer
 from cograph_client.enrichment.job_store import JobStore
 from cograph_client.enrichment.models import (
     ConflictPolicy,
@@ -23,7 +24,17 @@ from cograph_client.enrichment.models import (
     RowResult,
     Verdict,
 )
-from cograph_client.enrichment.sources.base import SourceAdapter
+from cograph_client.enrichment.sources.base import (
+    SourceAdapter,
+    get_adapter,
+    register_adapter,
+)
+from cograph_client.enrichment.strategy import (
+    AttributeStrategy,
+    TypeStrategy,
+    load_strategy,
+)
+from cograph_client.enrichment.tiers import get_chain
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import insert_triples, kg_graph_uri
@@ -105,6 +116,24 @@ def _values_match(existing: str, candidate: str) -> bool:
     return a in b or b in a
 
 
+def _values_match_with_strategy(
+    existing: str, candidate: str, attr_strategy: AttributeStrategy | None
+) -> bool:
+    """Apply canonicalizer + aliases to the existing value before matching."""
+    if attr_strategy is None:
+        return _values_match(existing, candidate)
+    transformed = existing
+    if attr_strategy.canonicalizer:
+        transformed = apply_canonicalizer(attr_strategy.canonicalizer, transformed)
+    # Alias dictionary: literal lookup AND match against the transformed form.
+    if attr_strategy.aliases:
+        if existing in attr_strategy.aliases:
+            transformed = attr_strategy.aliases[existing]
+        elif transformed in attr_strategy.aliases:
+            transformed = attr_strategy.aliases[transformed]
+    return _values_match(transformed, candidate)
+
+
 class EnrichmentExecutor:
     def __init__(
         self,
@@ -117,6 +146,12 @@ class EnrichmentExecutor:
         self._jobs = job_store
         self._cache = cache
         self._wikidata = wikidata_adapter
+        # Register the wikidata adapter into the global adapter registry so
+        # chain-based lookups can resolve it by name. Idempotent.
+        try:
+            register_adapter(wikidata_adapter)
+        except Exception:  # noqa: BLE001
+            pass
 
     async def count_entities(self, tenant_id: str, kg_name: str, type_name: str) -> int:
         graph_uri = kg_graph_uri(tenant_id, kg_name)
@@ -139,6 +174,11 @@ class EnrichmentExecutor:
             job.status = JobStatus.running
             job.started_at = _now()
             await self._jobs.update(job)
+
+            # Load ontology-driven strategy. Always returns a TypeStrategy.
+            strategy = await load_strategy(self._neptune, tenant_id, job.type_name)
+            # Track which adapter names were missing so we warn once per job.
+            missing_adapter_names: set[str] = set()
 
             graph_uri = kg_graph_uri(tenant_id, job.kg_name)
             sel = _build_select_query(
@@ -173,17 +213,43 @@ class EnrichmentExecutor:
                             return results
 
                         existing = ent["vals"].get(_attr_uri(job.type_name, attribute))
-                        verdicts = await self._lookup(
-                            ent["label"], attribute, job, cache_hit_inc=True
+                        attr_strategy = strategy.attributes.get(attribute)
+
+                        # Strategy merge: request value wins; ontology fills gaps.
+                        # confidence_min: if ontology specifies one and the
+                        # request is at the default (0.85), take the ontology
+                        # value. Pragmatic heuristic since EnrichRequest has no
+                        # "unset" sentinel.
+                        effective_confidence = job.confidence_min
+                        if attr_strategy and attr_strategy.confidence_min is not None:
+                            if abs(job.confidence_min - 0.85) < 1e-9:
+                                effective_confidence = attr_strategy.confidence_min
+
+                        # Adapter chain: per-attribute sources (if any) override
+                        # the tier chain.
+                        if attr_strategy and attr_strategy.sources:
+                            chain = list(attr_strategy.sources)
+                        else:
+                            chain = get_chain(job.tier)
+
+                        verdicts = await self._lookup_chain(
+                            ent["label"],
+                            attribute,
+                            chain,
+                            job,
+                            missing_adapter_names,
+                            effective_confidence,
                         )
-                        best = self._pick_best(verdicts, job.confidence_min)
+                        best = self._pick_best(verdicts, effective_confidence)
 
                         action: str
                         if best is None:
                             action = "no_match"
                         elif existing is None or existing == "":
                             action = "filled"
-                        elif _values_match(existing, best.value):
+                        elif _values_match_with_strategy(
+                            existing, best.value, attr_strategy
+                        ):
                             action = "verified"
                         else:
                             action = "conflict"
@@ -267,6 +333,64 @@ class EnrichmentExecutor:
         verdicts = await self._wikidata.lookup(entity_label, attribute, {})
         await self._cache.put(entity_label, attribute, source, verdicts)
         return verdicts
+
+    async def _lookup_chain(
+        self,
+        entity_label: str,
+        attribute: str,
+        chain: list[str],
+        job: EnrichJob,
+        missing: set[str],
+        confidence_min: float,
+    ) -> list[Verdict]:
+        """Walk an adapter chain, returning verdicts from the first adapter
+        that yields one with confidence >= confidence_min.
+
+        - "cache" entries in the chain are skipped (cache is a layer wrapped
+          around each adapter call, not an adapter itself).
+        - Unregistered adapter names are skipped with a one-shot warning per
+          job, never fail the job.
+        """
+        cache_hit_counted = False
+        for name in chain:
+            if name == "cache":
+                # Cache is a layer, not an adapter.
+                continue
+            adapter = get_adapter(name)
+            if adapter is None:
+                if name not in missing:
+                    missing.add(name)
+                    logger.warning(
+                        "enrichment_adapter_missing",
+                        adapter=name,
+                        job_id=job.id,
+                        tier=job.tier.value if hasattr(job.tier, "value") else str(job.tier),
+                    )
+                continue
+            cached = await self._cache.get(entity_label, attribute, adapter.name)
+            if cached is not None:
+                if not cache_hit_counted:
+                    job.progress.cache_hits += 1
+                    cache_hit_counted = True
+                verdicts = cached
+            else:
+                try:
+                    verdicts = await adapter.lookup(entity_label, attribute, {})
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "enrichment_adapter_error",
+                        adapter=name,
+                        job_id=job.id,
+                        error=str(exc),
+                    )
+                    verdicts = []
+                await self._cache.put(entity_label, attribute, adapter.name, verdicts)
+            # Stop at first sufficient-confidence verdict.
+            if any(v.confidence >= confidence_min for v in verdicts):
+                return verdicts
+        # No adapter yielded a sufficiently-confident verdict; return last (may
+        # be empty). For simplicity return [] so caller treats as no_match.
+        return []
 
     def _pick_best(
         self, verdicts: list[Verdict], confidence_min: float

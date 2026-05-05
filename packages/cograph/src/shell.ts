@@ -908,12 +908,27 @@ async function cmdEnrichReview(
   }
 }
 
-function makePrompt(kg: string, triples: number): string {
-  const kgPart = `${DIM}(${kg})${RESET}`;
-  if (triples > 0) {
-    return `  ${CYAN_BOLD}cograph${RESET} ${kgPart} ${DIM}[${fmtNum(triples)}]${RESET} ${CYAN_BOLD}▸${RESET} `;
+function urlHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/+$/, "");
   }
-  return `  ${CYAN_BOLD}cograph${RESET} ${kgPart} ${CYAN_BOLD}▸${RESET} `;
+}
+
+function makePrompt(
+  kg: string,
+  triples: number,
+  mode: "cloud" | "self-hosted" = "cloud",
+  baseUrl?: string,
+): string {
+  const kgPart = `${DIM}(${kg})${RESET}`;
+  const triplePart = triples > 0 ? `${DIM}[${fmtNum(triples)}]${RESET} ` : "";
+  if (mode === "self-hosted" && baseUrl) {
+    const host = urlHost(baseUrl);
+    return `  ${CYAN_BOLD}cograph${RESET}${DIM}@${host}${RESET} ${kgPart} ${triplePart}${CYAN_BOLD}▸${RESET} `;
+  }
+  return `  ${CYAN_BOLD}cograph${RESET} ${kgPart} ${triplePart}${CYAN_BOLD}▸${RESET} `;
 }
 
 /**
@@ -942,16 +957,44 @@ function splitArgs(s: string): string[] {
   return out;
 }
 
-export async function runShell(opts: { kg?: string }): Promise<void> {
+export async function runShell(opts: {
+  kg?: string;
+  local?: boolean;
+  noLogin?: boolean;
+}): Promise<void> {
+  const CLOUD_DEFAULT = "https://api.cograph.cloud";
+  // Detection precedence: --local > --no-login > COGRAPH_API_URL pointing
+  // anywhere besides the cloud default. When self-hosted we never trigger
+  // login and tenant defaults to "default" (open-access backend behavior).
+  const envUrl = process.env.COGRAPH_API_URL || process.env.OMNIX_API_URL;
+  const envIsSelfHosted = !!envUrl && envUrl !== CLOUD_DEFAULT;
+  const selfHostedHint = !!opts.local || !!opts.noLogin || envIsSelfHosted;
+
   // `let` rather than `const` so /login can swap in a fresh Client after
   // ~/.cograph/config.json is rewritten with the new key.
-  let client = new Client();
+  let client = opts.local
+    ? new Client({ baseUrl: "http://localhost:8000", tenant: "default" })
+    : selfHostedHint
+      ? new Client({ tenant: "default" })
+      : new Client();
 
-  // First-run ergonomics: if no API key is configured (no env var, no
-  // ~/.cograph/config.json), trigger the login flow before opening the
-  // shell. Saves the friend from having to know to run `cograph login`
-  // first — they just run `npx cograph` and the browser pops.
-  if (!client.apiKey) {
+  // Probe the backend before deciding whether to trigger login. This lets
+  // us distinguish "cloud, needs auth" from "self-hosted, open access" and
+  // also surfaces an unreachable server with a clear error rather than a
+  // confusing browser-login attempt.
+  const health = await client.healthCheck();
+  if (!health.ok) {
+    printError(
+      `Could not reach ${health.url}. Is the server running?`,
+    );
+    return;
+  }
+
+  const selfHosted = selfHostedHint || !health.requiresAuth;
+  const mode: "cloud" | "self-hosted" = selfHosted ? "self-hosted" : "cloud";
+
+  // Cloud / auth-required path: behave as before — if no key, log in.
+  if (!selfHosted && health.requiresAuth && !client.apiKey) {
     stdout.write(
       `\n  ${DIM}Not signed in — opening your browser to log in...${RESET}\n`,
     );
@@ -973,6 +1016,12 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
   });
 
   showBanner();
+
+  if (selfHosted) {
+    stdout.write(
+      `${DIM}  Self-hosted mode · ${client.baseUrl} · tenant=${client.tenant}${RESET}\n\n`,
+    );
+  }
 
   let kg = opts.kg;
   if (!kg) {
@@ -1010,7 +1059,9 @@ export async function runShell(opts: { kg?: string }): Promise<void> {
   while (running) {
     let line: string;
     try {
-      line = (await ask(rl, makePrompt(kg, triples))).trim();
+      line = (
+        await ask(rl, makePrompt(kg, triples, mode, client.baseUrl))
+      ).trim();
     } catch {
       break;
     }
