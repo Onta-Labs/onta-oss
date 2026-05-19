@@ -1,18 +1,24 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - "packages/cograph/**"
+      - "packages/cograph-mcp/**"
   workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write
+      contents: write   # needed to push version-bump commit
+      id-token: write   # needed for npm provenance
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -25,14 +31,44 @@ jobs:
       - name: Build all packages
         run: npm run build --workspaces
 
-      - name: Publish cograph
+      - name: Configure git for version bump commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump and publish cograph
         working-directory: packages/cograph
-        run: npm publish --access public --provenance
+        run: |
+          # Skip if this commit was itself a version bump (avoids infinite loop)
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump cograph"; then
+            echo "Version bump commit detected — skipping cograph publish."
+            exit 0
+          fi
+          npm version patch --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          cd ../..
+          git add packages/cograph/package.json package-lock.json
+          git commit -m "chore(release): bump cograph to v${NEW_VERSION} [skip ci]"
+          git push
+          cd packages/cograph
+          npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish cograph-mcp
+      - name: Bump and publish cograph-mcp
         working-directory: packages/cograph-mcp
-        run: npm publish --access public --provenance
+        run: |
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump cograph-mcp"; then
+            echo "Version bump commit detected — skipping cograph-mcp publish."
+            exit 0
+          fi
+          npm version patch --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          cd ../..
+          git add packages/cograph-mcp/package.json package-lock.json
+          git commit -m "chore(release): bump cograph-mcp to v${NEW_VERSION} [skip ci]"
+          git push
+          cd packages/cograph-mcp
+          npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
