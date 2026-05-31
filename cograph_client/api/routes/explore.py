@@ -286,6 +286,26 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     return {"types": len(entity_counts), "predicate_rows": len(triples) - len(entity_counts)}
 
 
+# Background recompute: the whole-KG scan takes ~15s, longer than the ALB
+# response timeout, so we never want a request to block on it. The Neptune
+# client is an app-state singleton, so a fire-and-forget task is safe.
+_bg_tasks: set = set()
+
+
+async def _safe_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> None:
+    try:
+        await recompute_kg_stats(client, tenant_id, kg_name)
+    except Exception:
+        pass  # best-effort; reads fall back to a live scan until it succeeds
+
+
+def schedule_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> None:
+    """Fire-and-forget a stats recompute (used by the endpoint + ingest hook)."""
+    task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
 @router.get("/kgs/{kg_name}/types/{type_name}/summary")
 async def get_type_summary(
     kg_name: str,
@@ -360,8 +380,13 @@ async def recompute_stats(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    """Recompute the precomputed type-stats for a KG (called at ingest / backfill)."""
-    return await recompute_kg_stats(client, tenant.tenant_id, kg_name)
+    """Schedule a recompute of the precomputed type-stats for a KG.
+
+    Returns immediately; the ~15s whole-KG scan runs in the background so it
+    never hits the ALB response timeout.
+    """
+    schedule_recompute(client, tenant.tenant_id, kg_name)
+    return {"status": "scheduled", "kg": kg_name}
 
 
 @router.get("/search")
