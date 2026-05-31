@@ -50,7 +50,16 @@ _STAT_FOR_TYPE = _STATS_NS + "forType"
 _STAT_FOR_PRED = _STATS_NS + "forPred"
 _STAT_CNT = _STATS_NS + "cnt"
 _STAT_REL = _STATS_NS + "rel"
+_STAT_TARGET = _STATS_NS + "targetType"
 _STAT_ENTITY_COUNT = _STATS_NS + "entityCount"
+
+
+def _target_from_entity_uri(obj: str) -> str | None:
+    """Entity URIs are .../entities/{TargetType}/{id} → the target type leaf."""
+    if not obj.startswith(ENTITY_URI_PREFIX):
+        return None
+    head = obj[len(ENTITY_URI_PREFIX):].split("/", 1)[0]
+    return head or None
 
 
 def _stats_graph_uri(tenant_id: str, kg_name: str) -> str:
@@ -105,7 +114,11 @@ def _assemble_summary(
         rng = defn.get("range", "")
         cov = _coverage(cnt, entity_count)
         if rel > 0 or rng.startswith(TYPE_URI_PREFIX):
+            # Prefer the ontology-declared range; fall back to the target type
+            # captured from a sample object's entity URI.
             target = rng[len(TYPE_URI_PREFIX):] if rng.startswith(TYPE_URI_PREFIX) else None
+            if not target:
+                target = r.get("target") or None
             avg_degree = round(rel / entity_count, 2) if entity_count else 0.0
             relationships.append({
                 "name": name,
@@ -140,7 +153,7 @@ async def _live_scan(client: NeptuneClient, kg_graph: str, t_uri: str) -> tuple[
     yields the entity count; ``rel`` is the entity-valued object total.
     """
     pred_sparql = (
-        f"SELECT ?p (COUNT(DISTINCT ?e) AS ?cnt)\n"
+        f"SELECT ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
         f'  (SUM(IF(STRSTARTS(STR(?o), "{ENTITY_URI_PREFIX}"), 1, 0)) AS ?rel)\n'
         f"FROM <{kg_graph}> WHERE {{\n"
         f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
@@ -163,7 +176,8 @@ async def _live_scan(client: NeptuneClient, kg_graph: str, t_uri: str) -> tuple[
         if p_uri == RDF_TYPE:
             entity_count = cnt
             continue
-        records.append({"p": p_uri, "cnt": cnt, "rel": rel})
+        records.append({"p": p_uri, "cnt": cnt, "rel": rel,
+                        "target": _target_from_entity_uri(r.get("sample", ""))})
     return entity_count, records
 
 
@@ -174,9 +188,10 @@ async def _read_type_stats(
     stats = _stats_graph_uri(tenant_id, kg_name)
     ec_q = f"SELECT ?ec FROM <{stats}> WHERE {{ <{t_uri}> <{_STAT_ENTITY_COUNT}> ?ec }}"
     pred_q = (
-        f"SELECT ?pred ?cnt ?rel FROM <{stats}> WHERE {{\n"
+        f"SELECT ?pred ?cnt ?rel ?target FROM <{stats}> WHERE {{\n"
         f"  ?s <{_STAT_FOR_TYPE}> <{t_uri}> ; <{_STAT_FOR_PRED}> ?pred ; <{_STAT_CNT}> ?cnt .\n"
         f"  OPTIONAL {{ ?s <{_STAT_REL}> ?rel }}\n"
+        f"  OPTIONAL {{ ?s <{_STAT_TARGET}> ?target }}\n"
         f"}}"
     )
     ec_raw, pred_raw = await asyncio.gather(client.query(ec_q), client.query(pred_q))
@@ -198,7 +213,9 @@ async def _read_type_stats(
             rel = int(r.get("rel", "0"))
         except ValueError:
             rel = 0
-        records.append({"p": r.get("pred", ""), "cnt": cnt, "rel": rel})
+        target_uri = r.get("target", "")
+        target = target_uri[len(TYPE_URI_PREFIX):] if target_uri.startswith(TYPE_URI_PREFIX) else None
+        records.append({"p": r.get("pred", ""), "cnt": cnt, "rel": rel, "target": target})
     return entity_count, records
 
 
@@ -211,7 +228,7 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     kg = kg_graph_uri(tenant_id, kg_name)
     stats = _stats_graph_uri(tenant_id, kg_name)
     scan = (
-        f"SELECT ?type ?p (COUNT(DISTINCT ?e) AS ?cnt)\n"
+        f"SELECT ?type ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
         f'  (SUM(IF(STRSTARTS(STR(?o), "{ENTITY_URI_PREFIX}"), 1, 0)) AS ?rel)\n'
         f"FROM <{kg}> WHERE {{\n"
         f"  ?e <{RDF_TYPE}> ?type .\n"
@@ -241,11 +258,15 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
             entity_counts[type_uri_str] = cnt
             continue
         node = _stat_node(type_uri_str, p_uri)
-        triples.append(
+        stat = (
             f"<{node}> <{_STAT_FOR_TYPE}> <{type_uri_str}> ; "
             f"<{_STAT_FOR_PRED}> <{p_uri}> ; "
-            f"<{_STAT_CNT}> {cnt} ; <{_STAT_REL}> {rel} ."
+            f"<{_STAT_CNT}> {cnt} ; <{_STAT_REL}> {rel}"
         )
+        target = _target_from_entity_uri(r.get("sample", ""))
+        if target:
+            stat += f" ; <{_STAT_TARGET}> <{TYPE_URI_PREFIX}{target}>"
+        triples.append(stat + " .")
     for type_uri_str, n in entity_counts.items():
         triples.append(f"<{type_uri_str}> <{_STAT_ENTITY_COUNT}> {n} .")
 
