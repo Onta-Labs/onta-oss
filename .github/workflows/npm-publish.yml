@@ -31,6 +31,11 @@ jobs:
       - name: Build all packages
         run: npm run build --workspaces
 
+      # MOE-21 Layer 4 — inspect the actual tarballs for forbidden paths before
+      # any publish. Public publication is a one-way door; this is the last gate.
+      - name: Inspect bundles for OSS boundary violations
+        run: bash scripts/check_npm_bundle.sh
+
       - name: Configure git for version bump commit
         run: |
           git config user.name "github-actions[bot]"
