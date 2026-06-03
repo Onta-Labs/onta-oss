@@ -389,6 +389,29 @@ async def recompute_stats(
     return {"status": "scheduled", "kg": kg_name}
 
 
+@router.post("/kgs/{kg_name}/er-rebuild")
+async def er_rebuild(
+    kg_name: str,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Second-pass entity resolution (MOE-22): collapse intra-batch fragments.
+
+    Re-runs ER over the already-ingested KG so same-entity rows that couldn't
+    see each other's index triples mid-batch now merge. Runs synchronously and
+    returns per-type before/after counts (the merge volume is modest). Stale
+    type-stats are recomputed in the background afterward so the Explorer
+    reflects the new counts without blocking this response.
+    """
+    from cograph_client.resolver.er.rebuild import rebuild_kg
+
+    instance_graph = kg_graph_uri(tenant.tenant_id, kg_name)
+    report = await rebuild_kg(client, instance_graph)
+    # Counts changed → refresh precomputed stats (best-effort, background).
+    schedule_recompute(client, tenant.tenant_id, kg_name)
+    return {"status": "complete", "kg": kg_name, **report}
+
+
 @router.get("/search")
 async def search_explorer(
     kg_name: str = Query(..., alias="kg"),
