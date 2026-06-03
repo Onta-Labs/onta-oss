@@ -15,6 +15,13 @@ See docs/specs/entity_resolution_spec.md for the full design.
 """
 
 from cograph_client.resolver.er.engine import ERPipeline, extract_signals
+from cograph_client.resolver.er.rebuild import (
+    choose_canonical,
+    compute_clusters,
+    merge_operations,
+    rebuild_kg,
+    rebuild_type,
+)
 from cograph_client.resolver.er.types import (
     DEFAULTS_BY_TYPE,
     BlockKey,
@@ -39,6 +46,11 @@ __all__ = [
     "MergeDecision",
     "NormalizedSignals",
     "SignalContribution",
+    "choose_canonical",
+    "compute_clusters",
     "config_for",
     "extract_signals",
+    "merge_operations",
+    "rebuild_kg",
+    "rebuild_type",
 ]

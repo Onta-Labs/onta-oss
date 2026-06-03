@@ -479,6 +479,20 @@ export class Client {
     return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
   }
 
+  /**
+   * Second-pass entity resolution: re-run ER over an already-ingested KG to
+   * collapse intra-batch fragments. Synchronous on the server; returns a
+   * per-type before/after report. Generous timeout — it rewrites triples.
+   */
+  async erRebuild(kg: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "POST",
+      `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/er-rebuild`,
+      {},
+      300_000,
+    );
+  }
+
   /** Per-KG type counts: every type with ≥1 instance, sorted desc. */
   async typeCounts(kg: string): Promise<TypeCount[]> {
     const data = await this.request<unknown>(
