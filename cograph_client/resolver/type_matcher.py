@@ -208,6 +208,7 @@ class TypeMatcher:
                 verdict=MatchVerdict.DIFFERENT,
                 confidence=0.5,
                 is_new=True,
+                inconclusive=True,
             )
 
         if initial["confidence"] > 0.90 and initial["verdict"] == "SAME":

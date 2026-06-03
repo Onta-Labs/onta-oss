@@ -745,6 +745,13 @@ class SchemaResolver:
                 existing_types[entity.type_name] = ""
                 existing_attrs[entity.type_name] = {}
                 return entity.type_name
+            elif match.inconclusive:
+                # Verifier couldn't reach a real decision (e.g. LLM unavailable).
+                # Trust the extractor's explicit same_as rather than fabricating a
+                # duplicate type — creating "Home" alongside "Property" is exactly
+                # the ontology pollution this verification step exists to prevent.
+                logger.info("type_same_as_trusted", proposed=entity.type_name, resolved=entity.same_as)
+                return entity.same_as
             else:
                 sparql = insert_type(graph_uri, entity.type_name, "")
                 await self._neptune.update(sparql)
