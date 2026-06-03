@@ -203,6 +203,45 @@ WHERE {{
         rows = data.get("results", {}).get("bindings", [])
         return _bindings_to_signals(rows)
 
+    @staticmethod
+    def index_triples(
+        entity_uri: str,
+        normalized: NormalizedSignals,
+        keys: list[BlockKey],
+    ) -> list[tuple[str, str, str]]:
+        """Return (subject, predicate, literal) triples that should be inserted
+        into the instance graph to make this entity findable by future ER runs.
+
+        The caller batches these into the existing batched_insert_triples flow
+        in schema_resolver — no new SPARQL write path needed.
+        """
+        # IMPORTANT: do NOT pre-quote literal values here. The downstream
+        # SPARQL serializer (graph.queries._escape_value) wraps any non-URI
+        # string in "..." and escapes inner quotes. Passing a pre-quoted
+        # value here produces a doubly-quoted stored literal like
+        # `"\"lastname3_phone4:smi5506\""` (the inner quotes become part of
+        # the value), which causes every ER candidate-lookup FILTER to miss.
+        # Pass raw strings; the serializer handles quoting.
+        triples: list[tuple[str, str, str]] = []
+        s = f"<{entity_uri}>"
+        # Block keys
+        for k in keys:
+            triples.append((s, BLOCK_KEY_PRED, f"{k.kind}:{k.value}"))
+        # Denormalized signals (for fast scoring on future lookups)
+        signal_fields = [
+            ("name", normalized.name),
+            ("email", normalized.email),
+            ("email_local", normalized.email_local),
+            ("phone_e164", normalized.phone_e164),
+            ("address", normalized.address),
+            ("dob_iso", normalized.dob_iso),
+        ]
+        for name, value in signal_fields:
+            if value:
+                pred = f"<{ER_NS}erSignal_{name}>"
+                triples.append((s, pred, value))
+        return triples
+
 
 def _bindings_to_signals(rows: list[dict]) -> dict[str, NormalizedSignals]:
     """Reassemble flat (entity_uri, signal_name, signal_value) SPARQL rows into
@@ -256,42 +295,3 @@ def _bindings_to_signals(rows: list[dict]) -> dict[str, NormalizedSignals]:
             dob_iso=dobs[0] if dobs else None,
         )
     return out
-
-    @staticmethod
-    def index_triples(
-        entity_uri: str,
-        normalized: NormalizedSignals,
-        keys: list[BlockKey],
-    ) -> list[tuple[str, str, str]]:
-        """Return (subject, predicate, literal) triples that should be inserted
-        into the instance graph to make this entity findable by future ER runs.
-
-        The caller batches these into the existing batched_insert_triples flow
-        in schema_resolver — no new SPARQL write path needed.
-        """
-        # IMPORTANT: do NOT pre-quote literal values here. The downstream
-        # SPARQL serializer (graph.queries._escape_value) wraps any non-URI
-        # string in "..." and escapes inner quotes. Passing a pre-quoted
-        # value here produces a doubly-quoted stored literal like
-        # `"\"lastname3_phone4:smi5506\""` (the inner quotes become part of
-        # the value), which causes every ER candidate-lookup FILTER to miss.
-        # Pass raw strings; the serializer handles quoting.
-        triples: list[tuple[str, str, str]] = []
-        s = f"<{entity_uri}>"
-        # Block keys
-        for k in keys:
-            triples.append((s, BLOCK_KEY_PRED, f"{k.kind}:{k.value}"))
-        # Denormalized signals (for fast scoring on future lookups)
-        signal_fields = [
-            ("name", normalized.name),
-            ("email", normalized.email),
-            ("email_local", normalized.email_local),
-            ("phone_e164", normalized.phone_e164),
-            ("address", normalized.address),
-            ("dob_iso", normalized.dob_iso),
-        ]
-        for name, value in signal_fields:
-            if value:
-                pred = f"<{ER_NS}erSignal_{name}>"
-                triples.append((s, pred, value))
-        return triples
