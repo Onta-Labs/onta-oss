@@ -1,11 +1,48 @@
 # Contributing to Cograph
 
+## What can ship here (OSS boundary — read first)
+
+`cograph-oss` is published publicly to npm (and PyPI). **Public publication is a
+one-way door** — once code ships, it's in mirrors, archives, and forks within
+hours. Everything in this repo must be OSS-safe.
+
+**Ships here (OSS):**
+- `cograph_client/` — ingest, resolver, **core ER engine** (normalize, block,
+  score, merge), REST API surface, embedding service
+- `packages/cograph` (TS SDK + CLI) and `packages/cograph-mcp` (MCP server)
+- Plugin **protocols**: `register_external_verifier` (auth),
+  `register_adapter` (enrichment)
+- Default OSS adapters: Wikidata enrichment, static-keys auth
+- Tests for all of the above
+
+**Does NOT ship here (proprietary — lives in the parent `cograph/` repo):**
+- Paid enrichment adapters (Exa, Perplexity, GS1, Anthropic web_search)
+- Production Clerk auth integration (`cograph-auth-clerk`)
+- Cograph Explorer web app, AWS/SAM infra, deploy workflows
+- Entitlement / billing / rate-limit logic
+- Advanced ER tooling (review-queue UI, embedding matchers, active learning)
+
+The canonical, fuller table with reasoning lives in the parent repo at
+[`docs/oss_proprietary_boundary.md`](https://github.com/git-moeen/cograph/blob/main/docs/oss_proprietary_boundary.md).
+When in doubt, surface the question before writing code.
+
+**This is mechanically enforced** (MOE-21). Run the same checks CI runs:
+
+```bash
+bash scripts/check_boundary.sh      # static: no proprietary imports/hosts/paths/secrets
+bash scripts/check_npm_bundle.sh    # inspect published tarballs for forbidden paths
+```
+
+CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`), and
+the publish workflow runs `check_npm_bundle.sh` before any `npm publish`. A PR
+that adds `from cograph.<anything>` under `cograph_client/` or `packages/` fails.
+
 ## Dev Setup
 
 ```bash
 # Clone
 git clone https://github.com/git-moeen/cograph-oss.git
-cd omnix-oss
+cd cograph-oss
 
 # Start graph DB
 docker compose up -d
