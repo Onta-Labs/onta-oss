@@ -1,10 +1,17 @@
 """Integration test: ingest bookstore.csv and ask 5 questions.
 
-Requires a running SPARQL endpoint (Fuseki or Neptune) and an LLM API key.
-Skip with: pytest tests/test_integration.py -k "not integration"
+OBSOLETE in this form — skipped by default. These tests drove ingest/ask/clear
+through the Python CLI (``python -m cograph_client.cli``), which no longer exists:
+the CLI was migrated to the TypeScript ``packages/cograph`` npm package. They also
+require a live SPARQL endpoint (Fuseki/Neptune) and an LLM API key, so they were
+never part of the unit-test CI job.
 
-Run with:
-    OPENROUTER_API_KEY=sk-or-... pytest tests/test_integration.py -v -s --run-integration
+To re-enable, port the helpers below to drive the REST API directly
+(POST ``/graphs/{tenant}/ingest/csv/schema`` → ``/ingest/csv/rows`` for ingest,
+``/graphs/{tenant}/ask`` for queries, ``/graphs/{tenant}/update`` with
+``DROP GRAPH`` for clear) or invoke the TypeScript CLI, then drop the module-level
+skip. Run against a live deployment with:
+    OPENROUTER_API_KEY=sk-or-... OMNIX_API_URL=... OMNIX_API_KEY=... pytest tests/test_integration.py -v -s
 """
 
 import os
@@ -13,6 +20,17 @@ import sys
 import time
 
 import pytest
+
+# The Python CLI these tests drive was removed (moved to the TypeScript
+# packages/cograph). Skip the whole module until they're ported to the REST API
+# or the TS CLI. This replaces the old --run-integration opt-in, whose
+# pytest_addoption/pytest_collection_modifyitems hooks never fired: pytest only
+# honors those hooks from conftest.py or plugins, not from a test module, so the
+# tests errored at setup ("No module named cograph_client.cli") instead of skipping.
+pytestmark = pytest.mark.skip(
+    reason="obsolete: drove the removed Python CLI (cograph_client.cli); "
+    "needs porting to the REST API / TS CLI + a live server. See module docstring."
+)
 
 API_URL = os.environ.get("OMNIX_API_URL", "http://localhost:8000")
 API_KEY = os.environ.get("OMNIX_API_KEY", "")
@@ -39,18 +57,6 @@ def _run_cli(*args) -> subprocess.CompletedProcess:
         env=env,
         timeout=300,
     )
-
-
-def pytest_addoption(parser):
-    parser.addoption("--run-integration", action="store_true", default=False)
-
-
-def pytest_collection_modifyitems(config, items):
-    if not config.getoption("--run-integration"):
-        skip = pytest.mark.skip(reason="needs --run-integration flag")
-        for item in items:
-            if "integration" in item.keywords:
-                item.add_marker(skip)
 
 
 @pytest.fixture(scope="module")

@@ -67,7 +67,7 @@ async def test_invoke_tier2(executor):
 
     assert result.output["score"] == 85
     executor._http_client.post.assert_called_once_with(
-        "https://api.example.com/score", json={"lat": 40.7, "lng": -73.9}
+        "https://api.example.com/score", json={"lat": 40.7, "lng": -73.9}, headers=None
     )
 
 

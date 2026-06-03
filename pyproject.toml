@@ -32,3 +32,6 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: end-to-end tests requiring a live server + LLM API key (not run in CI)",
+]

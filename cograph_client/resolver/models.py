@@ -67,6 +67,7 @@ class TypeMatch(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     is_new: bool = False
     parent_type: str | None = None  # set when verdict is SUBTYPE
+    inconclusive: bool = False  # True when the verifier couldn't reach a real decision (e.g. LLM unavailable)
 
 
 # ---------------------------------------------------------------------------
