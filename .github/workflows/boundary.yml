@@ -1,0 +1,20 @@
+name: OSS boundary
+
+# MOE-21 — mechanical enforcement of the OSS/proprietary boundary.
+# cograph-oss is published publicly; public publication is a one-way door.
+# This gate runs on every PR and push to main and blocks proprietary leaks.
+# (Layer 4 — pre-publish tarball inspection — lives in npm-publish.yml, where
+# the build artifacts that actually get shipped exist.)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static boundary checks (imports, host refs, proprietary paths, secrets)
+        run: bash scripts/check_boundary.sh
