@@ -171,59 +171,91 @@ LIMIT {MAX_CANDIDATES * 8}
 """
         data = await self._neptune.query(sparql)
         rows = data.get("results", {}).get("bindings", [])
-
-        # Reassemble (entity_uri, signal_name, signal_value) into
-        # NormalizedSignals. Accumulate values per signal: after a canonical
-        # has been merge-expanded one or more times, it has multiple
-        # erSignal_email / erSignal_email_local triples that represent its
-        # accumulated aliases. Naive overwrite loses every alias except the
-        # last-written one, which silently breaks transitive matching
-        # (e.g., PMS+CRM merge contributes alt-email; later Loyalty ingest
-        # can't find the canonical because the alt-email isn't visible).
-        per_entity: dict[str, dict[str, list[str]]] = {}
-        for row in rows:
-            uri = row["entity"]["value"]
-            pred = row["p"]["value"]
-            val = row["o"]["value"]
-            signal = pred.replace(f"{ER_NS}erSignal_", "")
-            sig_lists = per_entity.setdefault(uri, {})
-            sig_lists.setdefault(signal, [])
-            if val not in sig_lists[signal]:
-                sig_lists[signal].append(val)
-
-        out: dict[str, NormalizedSignals] = {}
-        for uri, sig_map in per_entity.items():
-            emails = sig_map.get("email") or []
-            email_locals = sig_map.get("email_local") or []
-            # First-encountered values become the "primary"; the rest become aliases.
-            primary_email = emails[0] if emails else None
-            primary_local = email_locals[0] if email_locals else None
-            aliases = tuple(emails[1:])
-            local_aliases = tuple(email_locals[1:])
-            names = sig_map.get("name") or []
-            name = names[0] if names else None
-            tokens = tuple(name.split()) if name else ()
-            addresses = sig_map.get("address") or []
-            address = addresses[0] if addresses else None
-            addr_tokens = tuple(address.split()) if address else ()
-            phones = sig_map.get("phone_e164") or []
-            dobs = sig_map.get("dob_iso") or []
-            out[uri] = NormalizedSignals(
-                name=name,
-                name_tokens=tokens,
-                email=primary_email,
-                email_local=primary_local,
-                email_aliases=aliases,
-                email_locals=(primary_local,) + local_aliases if primary_local else local_aliases,
-                phone_e164=phones[0] if phones else None,
-                address=address,
-                address_tokens=addr_tokens,
-                dob_iso=dobs[0] if dobs else None,
-            )
+        out = _bindings_to_signals(rows)
         # Cap to MAX_CANDIDATES (defensive — degenerate block keys)
         if len(out) > MAX_CANDIDATES:
             return dict(list(out.items())[:MAX_CANDIDATES])
         return out
+
+    async def all_entities_with_signals(
+        self,
+        instance_graph: str,
+        type_uri: str,
+    ) -> dict[str, NormalizedSignals]:
+        """Return EVERY entity of `type_uri` in the graph with its stored
+        NormalizedSignals — no block-key filter, no candidate cap.
+
+        Used by the second-pass `er rebuild` (MOE-22): unlike per-row ingest
+        lookups, the rebuild needs the whole population at once so it can
+        re-block and collapse intra-batch fragments that ingest couldn't see.
+        """
+        sparql = f"""
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+SELECT ?entity ?p ?o
+FROM <{instance_graph}>
+WHERE {{
+  ?entity rdf:type <{type_uri}> ;
+          ?p ?o .
+  FILTER(STRSTARTS(STR(?p), "{ER_NS}erSignal_"))
+}}
+"""
+        data = await self._neptune.query(sparql)
+        rows = data.get("results", {}).get("bindings", [])
+        return _bindings_to_signals(rows)
+
+
+def _bindings_to_signals(rows: list[dict]) -> dict[str, NormalizedSignals]:
+    """Reassemble flat (entity_uri, signal_name, signal_value) SPARQL rows into
+    one NormalizedSignals per entity.
+
+    Accumulate values per signal: after a canonical has been merge-expanded one
+    or more times, it has multiple erSignal_email / erSignal_email_local triples
+    representing its accumulated aliases. Naive overwrite loses every alias
+    except the last-written one, which silently breaks transitive matching
+    (e.g., PMS+CRM merge contributes alt-email; later Loyalty ingest can't find
+    the canonical because the alt-email isn't visible).
+    """
+    per_entity: dict[str, dict[str, list[str]]] = {}
+    for row in rows:
+        uri = row["entity"]["value"]
+        pred = row["p"]["value"]
+        val = row["o"]["value"]
+        signal = pred.replace(f"{ER_NS}erSignal_", "")
+        sig_lists = per_entity.setdefault(uri, {})
+        sig_lists.setdefault(signal, [])
+        if val not in sig_lists[signal]:
+            sig_lists[signal].append(val)
+
+    out: dict[str, NormalizedSignals] = {}
+    for uri, sig_map in per_entity.items():
+        emails = sig_map.get("email") or []
+        email_locals = sig_map.get("email_local") or []
+        # First-encountered values become the "primary"; the rest become aliases.
+        primary_email = emails[0] if emails else None
+        primary_local = email_locals[0] if email_locals else None
+        aliases = tuple(emails[1:])
+        local_aliases = tuple(email_locals[1:])
+        names = sig_map.get("name") or []
+        name = names[0] if names else None
+        tokens = tuple(name.split()) if name else ()
+        addresses = sig_map.get("address") or []
+        address = addresses[0] if addresses else None
+        addr_tokens = tuple(address.split()) if address else ()
+        phones = sig_map.get("phone_e164") or []
+        dobs = sig_map.get("dob_iso") or []
+        out[uri] = NormalizedSignals(
+            name=name,
+            name_tokens=tokens,
+            email=primary_email,
+            email_local=primary_local,
+            email_aliases=aliases,
+            email_locals=(primary_local,) + local_aliases if primary_local else local_aliases,
+            phone_e164=phones[0] if phones else None,
+            address=address,
+            address_tokens=addr_tokens,
+            dob_iso=dobs[0] if dobs else None,
+        )
+    return out
 
     @staticmethod
     def index_triples(
