@@ -293,8 +293,10 @@ class EnrichmentExecutor:
                 await self._jobs.update(job)
                 return
 
-            # Keep only conflicts in long-term results (per spec).
-            job.results = [r for r in all_rows if r.action == "conflict"]
+            # Keep conflicts AND fills/verifications in results so the cited
+            # verdict (value + source_url + provenance) is retrievable via the
+            # job API, not just conflicts. Skips/no-matches carry no verdict.
+            job.results = [r for r in all_rows if r.action in ("conflict", "filled", "verified")]
 
             # Apply phase
             policy = job.conflict_policy
@@ -400,6 +402,24 @@ class EnrichmentExecutor:
             return None
         return max(eligible, key=lambda v: v.confidence)
 
+    @staticmethod
+    def _provenance_triples(
+        entity_uri: str, type_name: str, attribute: str, verdict
+    ) -> list[tuple[str, str, str]]:
+        """Persist where + when an enriched value came from, as queryable
+        attributes (`<attr>_source_url`, `<attr>_provenance`) on the entity — so
+        the citation is visible through /ask and the Explorer, not just in the
+        adapter. Audit-friendly: every enriched fact carries its source."""
+        out: list[tuple[str, str, str]] = []
+        if getattr(verdict, "source_url", None):
+            out.append((entity_uri, _attr_uri(type_name, f"{attribute}_source_url"), verdict.source_url))
+        prov = (verdict.source or "")
+        if getattr(verdict, "reasoning", None):
+            prov = f"{prov} ({verdict.reasoning})" if prov else verdict.reasoning
+        if prov:
+            out.append((entity_uri, _attr_uri(type_name, f"{attribute}_provenance"), prov))
+        return out
+
     def _select_triples_for_policy(
         self, rows: list[RowResult], type_name: str, policy: ConflictPolicy
     ) -> list[tuple[str, str, str]]:
@@ -408,15 +428,14 @@ class EnrichmentExecutor:
             if r.verdict is None:
                 continue
             p = _attr_uri(type_name, r.attribute)
+            applied = False
             if policy == ConflictPolicy.overwrite:
-                if r.action in ("filled", "conflict", "verified"):
-                    triples.append((r.entity_uri, p, r.verdict.value))
-            elif policy == ConflictPolicy.verify:
-                if r.action == "filled":
-                    triples.append((r.entity_uri, p, r.verdict.value))
-            elif policy == ConflictPolicy.skip:
-                if r.action == "filled":
-                    triples.append((r.entity_uri, p, r.verdict.value))
+                applied = r.action in ("filled", "conflict", "verified")
+            elif policy in (ConflictPolicy.verify, ConflictPolicy.skip):
+                applied = r.action == "filled"
+            if applied:
+                triples.append((r.entity_uri, p, r.verdict.value))
+                triples.extend(self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict))
         return triples
 
     async def apply_decisions(
@@ -427,17 +446,20 @@ class EnrichmentExecutor:
             raise KeyError(job_id)
         graph_uri = kg_graph_uri(job.tenant_id, job.kg_name)
         triples: list[tuple[str, str, str]] = []
+        applied = 0  # number of accepted facts (provenance triples don't count)
         for d in decisions:
             if d.decision != "accept":
                 continue
             p = _attr_uri(job.type_name, d.attribute)
             triples.append((d.entity_uri, p, d.proposed.value))
+            triples.extend(self._provenance_triples(d.entity_uri, job.type_name, d.attribute, d.proposed))
+            applied += 1
         if triples:
             await self._neptune.update(insert_triples(graph_uri, triples))
         job.status = JobStatus.applied
         job.completed_at = _now()
         await self._jobs.update(job)
-        return len(triples)
+        return applied
 
 
 def _slug_from_uri(uri: str) -> str:
