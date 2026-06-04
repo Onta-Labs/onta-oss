@@ -26,55 +26,49 @@ from cograph_client.resolver.models import (
 logger = structlog.stdlib.get_logger("cograph.resolver.csv")
 
 CSV_SCHEMA_SYSTEM = """\
-You are a knowledge graph schema inference engine.
-Given CSV column names and sample rows, determine:
-1. What entity type this CSV represents (PascalCase singular noun)
-2. Which column is the entity identifier (type_id) — pick the most natural unique key
-3. Which columns are literal attributes (and their datatypes)
-4. Which columns reference other entities (relationships)
+You are a knowledge graph schema inference engine. Given CSV column names and
+sample rows, decide how to turn the table into entities, attributes, and
+relationships.
 
-Entity-first principle — PREFER RELATIONSHIPS OVER ATTRIBUTES:
-When in doubt whether a column should be an attribute or a relationship, \
-ALWAYS make it a relationship. Entities can have properties added later; \
-string literals are dead ends in a knowledge graph.
+STEP 1 — How many real-world entities does ONE ROW describe?
+Wide/denormalized exports usually bundle SEVERAL distinct entities per row — a
+person, a transaction, a place, an organization, a product. Read the column-name
+clusters AND the sample values: each distinct real-world "noun" that has its own
+identity is a separate entity. This is the COMMON case for exports across every
+domain (orders, claims, encounters, bookings, rosters, listings…). Default to
+multi-entity unless the row genuinely describes ONE thing.
 
-These should ALWAYS be relationships, never string attributes:
-- Geographic columns: city, state, country, region, zipcode, zip_code, \
-  postal_code, neighborhood, county, district, area
-- People columns: owner, agent, broker, manager, seller, buyer, author, creator
-- Organization columns: company, brokerage, firm, agency, school, university
-- Any column whose values are names of real-world things that could have \
-  their own properties
+MULTI-ENTITY output (the usual case) — return:
+- `entities`: one object per entity, each with `name` (a local handle),
+  `type_name` (PascalCase singular), and an id — either `id_column` (a natural
+  key column like order_id / patient_id / sku) OR `id_from` (the columns that
+  together identify it, e.g. ["customer_email"] or ["first_name","last_name",
+  "phone"]) when there is no single id column.
+- every column tagged with `entity` = the entity `name` it belongs to.
+- `relationships`: {{subject, predicate, object}} edges between entity `name`s;
+  predicate is a snake_case verb (order `placed_by` customer, order `contains`
+  product, encounter `treated_by` provider, claim `filed_against` policy).
+- SAME TYPE TWICE: if two column-clusters are the same base type in different
+  roles (buyer & seller, sender & receiver, patient & provider, applicant &
+  co_applicant) make them TWO separate entities with distinct names and
+  role-distinct relationships — NEVER merge them into one.
 
-Only use attribute for truly atomic values that will never need their own \
-properties: prices, counts, measurements, dates, booleans, IDs, URLs.
+SINGLE-ENTITY output — ONLY when the row describes one thing (a product catalog,
+a transactions ledger, a lab result, a sensor reading): OMIT `entities` and
+`relationships`, return entity_type + columns with exactly one column = type_id.
+Do not invent entities for a genuinely flat row.
 
-Multi-entity detection — a WIDE row often packs SEVERAL real-world entities:
-A denormalized export (e.g. a hotel reservation row) can bundle a person, a
-transaction, and a place in one row. Detect this from column-name clusters /
-prefixes (e.g. `guest_*` → a Person, `reservation_*`/booking+stay fields → a
-Reservation, `property_*` → a Property). When you see this:
-- Return an `entities` array: one object per detected entity, each with a
-  `name` (local handle), a `type_name`, and EITHER an `id_column` (its natural
-  key, e.g. reservation_id, property_id) OR an `id_from` list of columns
-  forming a composite key (use this for a person who has no single id column).
-- Tag every column with an `entity` naming which entity it belongs to.
-- Return a `relationships` array of edges between entities, each
-  {{subject, predicate, object}} where subject/object are entity `name`s and
-  predicate is a snake_case verb (e.g. the reservation is `made_by` the person
-  and is `at_property` the place).
-FALLBACK: if the CSV describes a SINGLE real-world entity (all columns are
-properties of one thing), OMIT `entities` and `relationships` entirely and use
-the simple single-entity shape (entity_type + columns). Do not invent entities.
-
-Rules:
-- Single-entity mode: exactly one column must be type_id (the natural key).
-- Multi-entity mode: each entity needs exactly one id (id_column or id_from);
-  do NOT mark a type_id column — ids come from the `entities` specs.
-- Columns with numeric values → integer or float (as attributes)
-- Columns with dates → datetime (as attributes)
-- Columns with true/false → boolean (as attributes)
-- URL columns → uri (as attributes)
+Column roles & datatypes (both modes):
+- role = type_id (single-entity only) | attribute | relationship.
+- IN-ROW entities are expressed via the `entities` array — NOT via relationship
+  columns. Use a `relationship` column (with `target_type`) only for a shared
+  out-of-row dimension that is NOT one of your in-row entities (e.g. a bare
+  country or category name with no other columns describing it).
+- Datatype from the VALUE, not its JSON type (values may arrive as numbers or
+  strings): numbers → integer/float, dates → datetime, true/false → boolean,
+  URLs → uri, else string.
+- NEVER use a date, timestamp, or a non-unique label as an id. If no unique key
+  column exists, use `id_from` (a composite of the columns that identify it).
 
 Respond with valid JSON only. No markdown."""
 
@@ -87,29 +81,50 @@ Sample rows (first {n} of {total}):
 Existing ontology types:
 {existing_types}
 
-Return JSON (omit "entities"/"relationships" for single-entity CSVs):
+Follow these two worked examples (different domains — generalize the pattern,
+do not copy the type names).
+
+EXAMPLE A — a WIDE multi-entity row. Columns: order_id, order_date,
+customer_id, customer_email, sku, product_name, qty, ship_country
 {{
-  "entity_type": "TypeName",
+  "entity_type": "Order",
   "columns": [
-    {{
-      "column_name": "exact_column_name",
-      "role": "type_id" | "attribute" | "relationship",
-      "target_type": "TargetTypeName or null",
-      "datatype": "string|integer|float|boolean|datetime|uri",
-      "attribute_name": "snake_case_name",
-      "entity": "entity_name or null (multi-entity only)"
-    }}
+    {{"column_name": "order_id", "role": "attribute", "datatype": "string", "attribute_name": "order_id", "entity": "order"}},
+    {{"column_name": "order_date", "role": "attribute", "datatype": "datetime", "attribute_name": "order_date", "entity": "order"}},
+    {{"column_name": "qty", "role": "attribute", "datatype": "integer", "attribute_name": "qty", "entity": "order"}},
+    {{"column_name": "customer_id", "role": "attribute", "datatype": "string", "attribute_name": "customer_id", "entity": "customer"}},
+    {{"column_name": "customer_email", "role": "attribute", "datatype": "string", "attribute_name": "email", "entity": "customer"}},
+    {{"column_name": "sku", "role": "attribute", "datatype": "string", "attribute_name": "sku", "entity": "product"}},
+    {{"column_name": "product_name", "role": "attribute", "datatype": "string", "attribute_name": "name", "entity": "product"}},
+    {{"column_name": "ship_country", "role": "relationship", "target_type": "Country", "datatype": "string", "attribute_name": "ship_country", "entity": "order"}}
   ],
   "entities": [
-    {{"name": "guest", "type_name": "Person", "id_from": ["guest_email"]}},
-    {{"name": "reservation", "type_name": "Reservation", "id_column": "reservation_id"}},
-    {{"name": "property", "type_name": "Property", "id_column": "property_id"}}
+    {{"name": "order", "type_name": "Order", "id_column": "order_id"}},
+    {{"name": "customer", "type_name": "Customer", "id_column": "customer_id"}},
+    {{"name": "product", "type_name": "Product", "id_column": "sku"}}
   ],
   "relationships": [
-    {{"subject": "reservation", "predicate": "made_by", "object": "guest"}},
-    {{"subject": "reservation", "predicate": "at_property", "object": "property"}}
+    {{"subject": "order", "predicate": "placed_by", "object": "customer"}},
+    {{"subject": "order", "predicate": "contains", "object": "product"}}
   ]
-}}"""
+}}
+
+EXAMPLE B — a FLAT single-entity row (omit entities/relationships). Columns:
+isbn, title, author_name, price, published_date
+{{
+  "entity_type": "Book",
+  "columns": [
+    {{"column_name": "isbn", "role": "type_id", "datatype": "string", "attribute_name": "isbn"}},
+    {{"column_name": "title", "role": "attribute", "datatype": "string", "attribute_name": "title"}},
+    {{"column_name": "author_name", "role": "relationship", "target_type": "Author", "datatype": "string", "attribute_name": "author_name"}},
+    {{"column_name": "price", "role": "attribute", "datatype": "float", "attribute_name": "price"}},
+    {{"column_name": "published_date", "role": "attribute", "datatype": "datetime", "attribute_name": "published_date"}}
+  ]
+}}
+
+Now return the JSON for the columns above — tag EVERY column. Use the
+multi-entity shape (with `entities`) whenever the row bundles more than one
+real-world entity."""
 
 
 class CSVResolver:

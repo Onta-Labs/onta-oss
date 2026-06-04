@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -197,7 +198,11 @@ class CSVSchemaRequest(BaseModel):
     """Request body for POST /graphs/{tenant}/ingest/csv/schema."""
 
     headers: list[str]
-    sample_rows: list[dict[str, str]]
+    # Cell values may arrive as JSON numbers/booleans/null, not just strings —
+    # accept Any so a client sending typed JSON isn't rejected with a 422. The
+    # inferencer reads them via json.dumps(..., default=str), so non-strings are
+    # fine; the LLM judges datatype from the value.
+    sample_rows: list[dict[str, Any]]
     total_rows: int = 0
 
 
