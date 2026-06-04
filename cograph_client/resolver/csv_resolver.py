@@ -58,6 +58,13 @@ a transactions ledger, a lab result, a sensor reading): OMIT `entities` and
 `relationships`, return entity_type + columns with exactly one column = type_id.
 Do not invent entities for a genuinely flat row.
 
+Type naming & reuse: the user message lists the tenant's EXISTING ontology
+types. Reuse one ONLY when your entity is genuinely the SAME real-world concept
+(another order → Order; another guest → Person). If none genuinely matches,
+propose a NEW accurate PascalCase type name — NEVER force-fit a different concept
+onto an available type just because it exists (a hospital is a Facility, not a
+Property; a drug is a Drug, not a Product; an airport is an Airport, not a City).
+
 Column roles & datatypes (both modes):
 - role = type_id (single-entity only) | attribute | relationship.
 - IN-ROW entities are expressed via the `entities` array — NOT via relationship
