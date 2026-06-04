@@ -449,10 +449,13 @@ def test_executor_end_to_end_filled_verified_conflict():
         assert final.progress.filled == 1
         assert final.progress.verified == 1
         assert final.progress.conflicts == 1
-        # Only conflicts retained in results.
-        assert len(final.results) == 1
-        assert final.results[0].action == "conflict"
-        assert final.results[0].existing_value == "Acme Tools"
+        # Fills, verifications, AND conflicts are retained in results so the
+        # cited verdict (value + source_url + provenance) is retrievable, not
+        # just conflicts. Skips/no-matches carry no verdict and are dropped.
+        assert len(final.results) == 3
+        assert {r.action for r in final.results} == {"filled", "verified", "conflict"}
+        conflict = next(r for r in final.results if r.action == "conflict")
+        assert conflict.existing_value == "Acme Tools"
         # No SPARQL update should happen for stage policy.
         neptune.update.assert_not_called()
 

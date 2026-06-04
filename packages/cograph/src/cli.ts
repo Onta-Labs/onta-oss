@@ -310,6 +310,69 @@ er.command("rebuild")
   });
 
 // ---------------------------------------------------------------------------
+// enrich
+// ---------------------------------------------------------------------------
+
+program
+  .command("enrich")
+  .description("Agentic enrichment — fill an attribute from web sources, with citations")
+  .requiredOption("--kg <name>", "Knowledge graph")
+  .requiredOption("--type <Type>", "Entity type to enrich")
+  .requiredOption("--attribute <attr>", "Attribute to fill (e.g. reviews, description)")
+  .option("--tier <tier>", "lite | base | core | pro (paid adapters live in core/pro)", "core")
+  .option("--limit <n>", "Max entities to enrich", "3")
+  .option("--apply", "Write results to the graph (with provenance), not just stage")
+  .action(
+    async (opts: {
+      kg: string;
+      type: string;
+      attribute: string;
+      tier: string;
+      limit: string;
+      apply?: boolean;
+    }) => {
+      await withErrors(async () => {
+        const c = client();
+        process.stdout.write(
+          `Enriching ${opts.type}.${opts.attribute} in ${opts.kg} (tier ${opts.tier})…\n`,
+        );
+        const created = await c.enrichRun({
+          kg_name: opts.kg,
+          type_name: opts.type,
+          attributes: [opts.attribute],
+          tier: opts.tier as "lite" | "base" | "core" | "pro",
+          limit: Number(opts.limit),
+          conflict_policy: opts.apply ? "overwrite" : "stage",
+          confidence_min: 0.1,
+        });
+        const terminal = ["applied", "review", "failed", "cancelled"];
+        let job = await c.enrichJob(created.job_id);
+        for (let i = 0; i < 40 && !terminal.includes(job.status); i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          job = await c.enrichJob(created.job_id);
+        }
+        const filled = (job.results ?? []).filter((r) => r.verdict);
+        if (!filled.length) {
+          process.stdout.write("No enrichment results (no source returned a value).\n");
+          return;
+        }
+        for (const r of filled) {
+          const v = r.verdict!;
+          process.stdout.write(`\n  ${r.entity_uri.split("/").pop()}\n`);
+          process.stdout.write(`    ${r.attribute}: ${v.value}\n`);
+          process.stdout.write(
+            `    source: ${v.source}${v.source_url ? "  " + v.source_url : ""}\n`,
+          );
+          if (v.reasoning) process.stdout.write(`    ${v.reasoning}\n`);
+        }
+        process.stdout.write(
+          `\n${opts.apply ? "Applied to the graph (value + provenance triples)." : "Staged for review — re-run with --apply to write."}\n`,
+        );
+      });
+    },
+  );
+
+// ---------------------------------------------------------------------------
 // vis
 // ---------------------------------------------------------------------------
 
