@@ -46,6 +46,10 @@ Bare aggregates cause 400 errors.
 integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast with xsd:integer()/xsd:float().
 - NEVER use the `a` shorthand for rdf:type. Always write the full URI: \
 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>.
+- To select instances of a type, assert the type as a DIRECT triple: \
+`?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/TypeName>`. \
+Do NOT select the type via FILTER(?t = <...type...>), FILTER(?t IN (...)), or a VALUES block \
+on the type — the direct triple form returns subtype instances too.
 - To get an entity's display name, ALWAYS use <http://www.w3.org/2000/01/rdf-schema#label> first. \
 The rdfs:label is set on every entity during ingestion. Do NOT use attributes from the WRONG type \
 (e.g., do not use Person/attrs/name to get a Movie name). Each type's attributes are ONLY for that type.
