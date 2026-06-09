@@ -165,6 +165,16 @@ class SchemaResolver:
         # companion provenance graph. Default OFF so default triple output and
         # Neptune call pattern stay byte-identical.
         self._provenance_enabled = os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+        # Governance seam (ADR 0002 §2): when ON, a brand-new type is ALSO
+        # proposed to an LLM judge panel; on majority approval it is written
+        # to the Global-Public layer with governance provenance. The tenant
+        # write stays today's behavior either way — governance never blocks
+        # or gates ingest. Default OFF (matching COGRAPH_PROVENANCE_ENABLED).
+        self._governance_enabled = os.environ.get("COGRAPH_GOVERNANCE_ENABLED", "0") == "1"
+        if self._governance_enabled:
+            from cograph_client.resolver.governance import GovernanceEngine, LLMJudgePanel
+            self._governance = GovernanceEngine(neptune)
+            self._judge_panel = LLMJudgePanel(self._anthropic)
         # child->parent (type-name) map for subclass-chain walks. Built once per
         # ingest from parent_map_query and mutated in-place as new subtypes are
         # created so later entities in the same batch can climb the chain.
@@ -1055,7 +1065,46 @@ class SchemaResolver:
                 existing_types[entity.type_name] = ""
                 existing_attrs[entity.type_name] = {}
                 await self._link_parent(entity, graph_uri, existing_types, existing_attrs, result)
+                # Governance seam: the genuinely-new type MAY also be proposed
+                # for the Global-Public layer. No-op unless the flag is on.
+                await self._maybe_govern_new_type(entity, graph_uri)
                 return entity.type_name
+
+    async def _maybe_govern_new_type(self, entity: ExtractedEntity, graph_uri: str) -> None:
+        """Governance seam (ADR 0002 §2, COG-43): propose a brand-new type for
+        the shared Global-Public layer and, on majority judge approval, write
+        a governed copy there with provenance + changelog.
+
+        The tenant-layer write has ALREADY happened (today's behavior — the
+        tenant uses the type immediately whatever the verdict); approval only
+        ADDS a Public-layer copy. Best-effort: any failure is logged and never
+        blocks ingest. No-op when COGRAPH_GOVERNANCE_ENABLED is off (default).
+        """
+        if not self._governance_enabled:
+            return
+        from cograph_client.resolver.governance import TypeProposal
+        try:
+            graphs_prefix = "https://cograph.tech/graphs/"
+            tenant_id = (
+                graph_uri[len(graphs_prefix):] if graph_uri.startswith(graphs_prefix) else graph_uri
+            )
+            proposal = TypeProposal(
+                type_name=entity.type_name,
+                parent_chain=list(entity.parent_chain),
+                tenant_id=tenant_id,
+                reasoning=(
+                    f"Extractor proposed brand-new type '{entity.type_name}' "
+                    f"matching no existing ontology type"
+                ),
+                proposer_model=self.EXTRACT_MODEL,
+            )
+            decision = await self._governance.propose_and_judge(proposal, self._judge_panel)
+            if decision.approved:
+                await self._governance.write_governed_type(proposal, decision)
+            else:
+                logger.info("governance_type_tenant_only", type_name=entity.type_name)
+        except Exception:
+            logger.warning("governance_failed", type_name=entity.type_name, exc_info=True)
 
     async def _resolve_and_insert_entity(
         self,
