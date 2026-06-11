@@ -44,6 +44,25 @@ def insert_attribute(graph_uri: str, type_name: str, attr_name: str, description
     return f"INSERT DATA {{\n  GRAPH <{graph_uri}> {{\n{body}\n  }}\n}}"
 
 
+def mark_core_slot(graph_uri: str, type_name: str, slot_name: str) -> str:
+    """Mark one of ``type_name``'s declared attributes/relationship slots as
+    CONSTITUTIVE (a core slot, ADR 0003 §3 / Pass D).
+
+    Emits ``<attr_uri> <onto/coreSlot> "true"^^xsd:boolean``. Core slots may
+    have zero data in the ingested file — the marker is what lets enrichment
+    later query "instances with empty core slots" as its work queue, and what
+    the governance pipeline (COG-56) keys its review on.
+    """
+    a_uri = attr_uri(type_name, slot_name)
+    return (
+        f"INSERT DATA {{\n"
+        f"  GRAPH <{graph_uri}> {{\n"
+        f'    <{a_uri}> <{OMNIX_ONTO}/coreSlot> "true"^^<{XSD}#boolean> .\n'
+        f"  }}\n"
+        f"}}"
+    )
+
+
 def insert_subtype(graph_uri: str, parent_name: str, child_name: str) -> str:
     return (
         f"INSERT DATA {{\n"

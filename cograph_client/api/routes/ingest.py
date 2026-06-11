@@ -97,20 +97,29 @@ async def infer_csv_schema(
 
     Default (``OMNIX_CSV_INFERENCE_V2`` unset/truthy) is the ADR 0003
     evidence-grounded pipeline: a deterministic column profile (Pass A) feeds
-    a REASON LLM call (Pass B) and an adversarial REFUTE LLM call (Pass C).
-    The response is the same ``CSVSchemaMapping`` contract as before, extended
-    with optional, backward-compatible fields: per-decision ``why``/
-    ``confidence`` (on entities/columns), ``key_strategy`` per entity, the
-    refute pass's ``violations``, and an ``inference_audit`` block.
-    ``OMNIX_CSV_INFERENCE_V2=0`` falls back to the legacy single-LLM-call path.
+    a REASON LLM call (Pass B), an adversarial REFUTE LLM call (Pass C), and
+    a conceptual COMPLETE LLM call (Pass D). The response is the same
+    ``CSVSchemaMapping`` contract as before, extended with optional,
+    backward-compatible fields: per-decision ``why``/``confidence`` (on
+    entities/columns), ``key_strategy`` per entity, the refute pass's
+    ``violations``, an ``inference_audit`` block, and the completion pass's
+    ``ontology_extensions`` (dependent-entity promotions, core slots, dataset
+    constants, rejected candidates). ``OMNIX_CSV_INFERENCE_V2=0`` falls back
+    to the legacy single-LLM-call path.
+
+    Confirm gate (COG-52, until COG-56's judge panel lands): promotions and
+    low-confidence completions come back flagged ``held_for_review`` — the
+    gate is CLIENT-SIDE. The Explorer asks the user to confirm/edit held
+    items; whatever mapping the client then posts to ``/ingest/csv/rows`` is
+    applied as-is.
 
     Latency budget: schema inference is up to 3 sequential LLM calls, once per
-    CSV file — REASON + REFUTE here (each with at most one validation retry at
-    temperature 0.3), plus the completion pass when COG-52 lands; the Pass A
-    profile is milliseconds. Row ingestion (``/ingest/csv/rows``) stays
-    LLM-free, so the cost does not scale with row count. Clients should send
-    the full file (capped at a few thousand rows) as ``sample_rows`` — profile
-    fidelity, and therefore mapping quality, depends on it.
+    CSV file — REASON + REFUTE + COMPLETE (each with at most one validation
+    retry at temperature 0.3); the Pass A profile is milliseconds. Row
+    ingestion (``/ingest/csv/rows``) stays LLM-free, so the cost does not
+    scale with row count. Clients should send the full file (capped at a few
+    thousand rows) as ``sample_rows`` — profile fidelity, and therefore
+    mapping quality, depends on it.
     """
     import anthropic
     from cograph_client.resolver.csv_resolver import CSVResolver
@@ -147,7 +156,16 @@ async def ingest_csv_rows(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    """Step 2: Insert rows using a pre-inferred mapping. No LLM call."""
+    """Step 2: Insert rows using a pre-inferred mapping. No LLM call.
+
+    The mapping is applied AS POSTED — including ``ontology_extensions``
+    items flagged ``held_for_review`` by ``/ingest/csv/schema``: the confirm
+    gate is client-side (the Explorer asks the user, then posts the possibly
+    edited mapping here). Promoted types and their core slots are
+    pre-registered in the tenant ontology — including slots with zero data,
+    marked with a ``coreSlot`` triple as declared enrichment targets
+    (ADR 0003 §3).
+    """
     from cograph_client.resolver.csv_resolver import CSVResolver
     from cograph_client.resolver.models import ExtractionResult
 
@@ -205,6 +223,54 @@ async def ingest_csv_rows(
                     await client.update(insert_attribute(graph_uri, type_name, col_name, "", col_target))
                 else:
                     await client.update(insert_attribute(graph_uri, type_name, col_name, "", col_datatype))
+
+    # Pre-register ontology extensions (ADR 0003 Pass D, COG-52): promoted
+    # types and EVERY core slot — including slots with zero data in this file.
+    # An empty core slot is a declared enrichment target (§3): the coreSlot
+    # marker triple is what lets enrichment later query "instances with empty
+    # core slots" as its work queue. No server-side gating happens here — the
+    # held_for_review confirm gate is client-side, so whatever (possibly
+    # user-edited) extensions arrive in the posted mapping are written
+    # (judge-panel gating lands with COG-56).
+    from cograph_client.graph.ontology_queries import mark_core_slot
+
+    extensions = _mget(body.mapping, "ontology_extensions")
+    for ext in (_mget(extensions, "types", []) or []) if extensions else []:
+        ext_type = _mget(ext, "type_name") or _mget(ext, "type", "")
+        if not ext_type:
+            continue
+        promoted_from = _mget(ext, "promoted_from_attribute")
+        if ext_type not in existing_types:
+            desc = (
+                f"Dependent entity promoted from attribute '{promoted_from}' (ADR 0003 Pass D)"
+                if promoted_from else ""
+            )
+            await client.update(insert_type(graph_uri, ext_type, desc))
+            existing_types[ext_type] = ""
+            existing_attrs[ext_type] = {}
+        ext_attrs = existing_attrs.setdefault(ext_type, {})
+        for slot in _mget(ext, "core_slots", []) or []:
+            raw_slot = _mget(slot, "name", "")
+            slot_name = raw_slot.lower().replace(" ", "_") if raw_slot else ""
+            if not slot_name:
+                continue
+            slot_kind = _mget(slot, "kind", "attribute")
+            slot_target = _mget(slot, "target_type")
+            slot_why = _mget(slot, "why") or ""
+            # A relationship slot's target type exists in the ontology even
+            # when this dataset has ZERO instances of it (e.g. the issuer of
+            # a promoted identifier with no issuer column).
+            if slot_kind == "relationship" and slot_target and slot_target not in existing_types:
+                await client.update(insert_type(graph_uri, slot_target, ""))
+                existing_types[slot_target] = ""
+                existing_attrs[slot_target] = {}
+            if slot_name not in ext_attrs:
+                if slot_kind == "relationship" and slot_target:
+                    await client.update(insert_attribute(graph_uri, ext_type, slot_name, slot_why, slot_target))
+                else:
+                    await client.update(insert_attribute(graph_uri, ext_type, slot_name, slot_why, "string"))
+                ext_attrs[slot_name] = "core"
+            await client.update(mark_core_slot(graph_uri, ext_type, slot_name))
 
     applied = CSVResolver.apply_mapping(body.mapping, body.rows)
     entities, relationships = applied.entities, applied.relationships
