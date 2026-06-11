@@ -358,3 +358,23 @@ class IngestResult(BaseModel):
     flagged_types: list[str] = Field(default_factory=list, description="Types needing user review")
     chunks_processed: int = 0
     entities_deduplicated: int = 0
+    # Row-conservation accounting (ADR 0003 §2): input rows are never silently
+    # dropped. Defaults keep older callers and serialized payloads compatible.
+    rows_in: int = Field(default=0, description="Input rows received by this ingest call (CSV paths)")
+    rows_dropped: int = Field(
+        default=0,
+        description=(
+            "Rows that produced no entity at all — only possible when every "
+            "owned value in the row is empty (nothing to assert). Never silent: "
+            "a structured warning is logged whenever this is > 0."
+        ),
+    )
+    drops_by_entity: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Skipped entity-instances per mapping entity. Keys are the "
+            "entity_type in single-entity mode, or the EntitySpec.name in "
+            "multi-entity mode (where one row can mint some entities while "
+            "skipping an all-empty one without the row itself being dropped)."
+        ),
+    )
