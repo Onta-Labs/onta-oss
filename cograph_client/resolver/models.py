@@ -238,6 +238,143 @@ class SchemaViolation(BaseModel):
     severity: str = Field(default="warning", description="Reviewer-assigned severity")
 
 
+class CoreSlotTests(BaseModel):
+    """The three constitutive-slot tests (ADR 0003 §1, Pass D). A slot is
+    CORE only when it passes all three; the completion pass records the
+    model's verdict per test so reviewers can audit the reasoning."""
+
+    existence: bool = Field(
+        default=False,
+        description="an instance cannot exist in reality without this slot",
+    )
+    identity: bool = Field(
+        default=False,
+        description=(
+            "needed to individuate instances, OR the type is a dependent "
+            "entity existing only relative to the slot's target"
+        ),
+    )
+    universality: bool = Field(
+        default=False,
+        description="holds for every instance of the concept in any dataset",
+    )
+
+
+class DatasetConstant(BaseModel):
+    """A single value the dataset context implies for a missing core slot
+    (ADR 0003 §3) — e.g. the whole file is one party's catalog, so that party
+    fills the issuer slot. ``apply_mapping`` materializes ONE instance of the
+    slot's target type plus per-instance edges instead of leaving the slot
+    empty."""
+
+    value: str
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="model confidence that the constant is implied; <0.7 (or absent) holds the slot for review",
+    )
+
+
+class CoreSlot(BaseModel):
+    """One CONSTITUTIVE slot of a type, proposed by the completion pass
+    (ADR 0003 Pass D). May exist in the ontology with zero data in this
+    dataset — an empty core slot is a declared enrichment target (§3).
+
+    ``held_for_review`` is a client-side confirm gate: ``/ingest/csv/schema``
+    returns held items flagged so the Explorer can ask the user to confirm;
+    whatever (possibly user-edited) mapping the client posts back to
+    ``/ingest/csv/rows`` is applied as-is. Server-side judge-panel gating is
+    COG-56."""
+
+    name: str
+    kind: Literal["relationship", "attribute"] = "attribute"
+    target_type: str | None = Field(
+        default=None,
+        description="PascalCase type a relationship-kind slot points at",
+    )
+    why: str | None = None
+    tests: CoreSlotTests | None = Field(
+        default=None, description="per-test verdicts (existence/identity/universality)",
+    )
+    dataset_constant: DatasetConstant | None = None
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="optional model confidence in this slot (when emitted)",
+    )
+    held_for_review: bool = Field(
+        default=False,
+        description=(
+            "True when this slot needs user confirmation before ingest: its "
+            "confidence (or its dataset constant's) is below 0.7, or the "
+            "constant carries no confidence at all"
+        ),
+    )
+
+
+class RejectedSlot(BaseModel):
+    """A candidate slot the completion pass considered and rejected, with the
+    constitutive test it failed — the audit trail that keeps Pass D bounded
+    (ADR 0003: every considered-but-rejected candidate is recorded)."""
+
+    name: str
+    failed_test: str = Field(
+        default="", description="which test failed: existence, identity, or universality",
+    )
+    why: str | None = None
+
+
+class TypeExtension(BaseModel):
+    """Pass D output for ONE type: its constitutive core slots (max 3 — the
+    boundedness cap is enforced here, not just in the prompt) plus the
+    rejected-candidate audit list. When ``promoted_from_attribute`` is set,
+    the type is a DEPENDENT ENTITY the completion pass promoted out of an
+    attribute (e.g. a party-specific identifier), and ``apply_mapping`` turns
+    that attribute's values into instances of this type.
+
+    ``held_for_review`` is a client-side confirm gate (ALL promotions are
+    judge-panel material): ``/ingest/csv/schema`` returns held items flagged;
+    whatever (possibly user-edited) mapping the client posts back to
+    ``/ingest/csv/rows`` is applied as-is. Server-side gating lands in COG-56."""
+
+    type_name: str
+    promoted_from_attribute: str | None = Field(
+        default=None,
+        description="the schema attribute this dependent-entity type was promoted from (None = pre-existing type)",
+    )
+    core_slots: list[CoreSlot] = Field(
+        default_factory=list,
+        max_length=3,
+        description="constitutive slots — more than 3 fails validation (ADR 0003 boundedness cap)",
+    )
+    rejected: list[RejectedSlot] = Field(
+        default_factory=list,
+        description="considered-but-rejected slot candidates, each with the failed test",
+    )
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="optional model confidence in this extension (when emitted)",
+    )
+    held_for_review: bool = Field(
+        default=False,
+        description=(
+            "True when this extension needs user confirmation before ingest: "
+            "every promotion is held, as is any extension with confidence < 0.7"
+        ),
+    )
+
+
+class OntologyExtensions(BaseModel):
+    """ADR 0003 Pass D (COMPLETE) output: how the ontology may exceed the
+    data — by exactly the constitutive core slots. Carried on
+    ``CSVSchemaMapping.ontology_extensions`` (v2 inference only).
+
+    The confirm gate for ``held_for_review`` items is CLIENT-SIDE:
+    ``/ingest/csv/schema`` returns this object with held items flagged so the
+    Explorer can ask the user; ``/ingest/csv/rows`` applies whatever the
+    client posts back, unfiltered. Judge-panel gating (COG-56) lands later."""
+
+    types: list[TypeExtension] = Field(default_factory=list)
+
+
 class InferenceAudit(BaseModel):
     """Provenance of how a CSVSchemaMapping was inferred (ADR 0003 Passes A–C).
 
@@ -247,7 +384,11 @@ class InferenceAudit(BaseModel):
 
     pipeline: str = Field(
         default="reason_refute_v2",
-        description="'reason_refute_v2' (profile → reason → refute) — the legacy single-call path emits no audit",
+        description=(
+            "'reason_refute_v2' (profile → reason → refute → complete; the "
+            "completion pass's output lives in ontology_extensions) — the "
+            "legacy single-call path emits no audit"
+        ),
     )
     rows_profiled: int = Field(default=0, ge=0, description="sample rows Pass A profiled")
     total_rows: int = Field(default=0, ge=0, description="declared full-file size")
@@ -266,8 +407,7 @@ class CSVSchemaMapping(BaseModel):
     entities: list[EntitySpec] | None = None
     relationships: list[EntityRelationSpec] | None = None
     # ADR 0003 v2 inference output (optional, backward-compatible — old
-    # payloads without these fields parse unchanged). The Pass D ticket
-    # (COG-52) will add `ontology_extensions` alongside these.
+    # payloads without these fields parse unchanged).
     violations: list[SchemaViolation] = Field(
         default_factory=list,
         description="Structural violations the refute pass found in the proposed schema (already corrected in this mapping)",
@@ -275,6 +415,17 @@ class CSVSchemaMapping(BaseModel):
     inference_audit: InferenceAudit | None = Field(
         default=None,
         description="How this mapping was inferred (v2 pipeline only)",
+    )
+    ontology_extensions: OntologyExtensions | None = Field(
+        default=None,
+        description=(
+            "Pass D (COMPLETE) output: dependent-entity promotions, "
+            "constitutive core slots (max 3/type), dataset constants, and the "
+            "rejected-candidate audit list. None on the legacy path and on "
+            "payloads serialized before COG-52. held_for_review items are a "
+            "client-side confirm gate — /ingest/csv/rows applies whatever "
+            "the client posts back (judge-panel gating is COG-56)."
+        ),
     )
 
 

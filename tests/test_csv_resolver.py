@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from cograph_client.resolver.csv_resolver import (
+    COMPLETE_SYSTEM,
     REASON_SYSTEM,
     REFUTE_SYSTEM,
     CSVResolver,
+    _check_complete_shape,
     _rank_sample_rows,
     _safe_id,
     _snake_case,
@@ -18,9 +20,13 @@ from cograph_client.resolver.csv_resolver import (
 from cograph_client.resolver.models import (
     ColumnMapping,
     ColumnRole,
+    CoreSlot,
     CSVSchemaMapping,
+    DatasetConstant,
     EntityRelationSpec,
     EntitySpec,
+    OntologyExtensions,
+    TypeExtension,
 )
 from cograph_client.resolver.profiler import profile_table
 
@@ -543,18 +549,29 @@ class TestBatchedInsertTriples:
 
 # --- COG-53 / ADR 0003 Passes B+C: profile → reason → refute → convert ------
 #
-# The LLM seam (_call_llm_v2) is scripted per pass: reason/refute outputs are
-# consumed in order, so retries pull the next entry. No network anywhere.
+# The LLM seam (_call_llm_v2) is scripted per pass: reason/refute/complete
+# outputs are consumed in order, so retries pull the next entry. No network
+# anywhere. Tests that predate the COG-52 completion pass omit the complete
+# queue and get the benign default ({"types": []} — nothing to extend).
 
 
-def _mock_v2(monkeypatch, resolver, reason_outputs, refute_outputs):
+def _mock_v2(monkeypatch, resolver, reason_outputs, refute_outputs,
+             complete_outputs=None):
     """Script the v2 LLM seam. Returns the call log as (pass, temperature)."""
     calls: list[tuple[str, float]] = []
-    queues = {"reason": list(reason_outputs), "refute": list(refute_outputs)}
+    queues = {
+        "reason": list(reason_outputs),
+        "refute": list(refute_outputs),
+        # Default: a valid no-op completion, so pre-COG-52 tests keep running
+        # the full pipeline without scripting Pass D themselves.
+        "complete": list(complete_outputs if complete_outputs is not None
+                         else [{"types": []}]),
+    }
 
     async def fake(system, user_content, temperature=0.0):
-        assert system in (REASON_SYSTEM, REFUTE_SYSTEM)
-        which = "reason" if system == REASON_SYSTEM else "refute"
+        assert system in (REASON_SYSTEM, REFUTE_SYSTEM, COMPLETE_SYSTEM)
+        which = {REASON_SYSTEM: "reason", REFUTE_SYSTEM: "refute",
+                 COMPLETE_SYSTEM: "complete"}[system]
         calls.append((which, temperature))
         return queues[which].pop(0)
 
@@ -562,9 +579,12 @@ def _mock_v2(monkeypatch, resolver, reason_outputs, refute_outputs):
     return calls
 
 
-async def _run_v2(monkeypatch, headers, rows, reason, refute):
+async def _run_v2(monkeypatch, headers, rows, reason, refute, complete=None):
     resolver = CSVResolver(client=None, openrouter_key="")
-    calls = _mock_v2(monkeypatch, resolver, [reason], [refute])
+    calls = _mock_v2(
+        monkeypatch, resolver, [reason], [refute],
+        [complete] if complete is not None else None,
+    )
     mapping = await resolver.infer_schema(headers, rows, {}, total_rows=len(rows))
     return mapping, calls
 
@@ -646,8 +666,8 @@ class TestInferSchemaV2:
             monkeypatch, ["item_key", "item_name", "dimension_code"],
             rows, _GRAINGER_REASON, _grainger_refute(),
         )
-        # Reason then refute, each once, both at temperature 0.
-        assert calls == [("reason", 0.0), ("refute", 0.0)]
+        # Reason, refute, then complete (COG-52), each once, all at temp 0.
+        assert calls == [("reason", 0.0), ("refute", 0.0), ("complete", 0.0)]
         item = next(e for e in mapping.entities if e.type_name == "Item")
         assert item.key_strategy == "synthetic"
         assert item.id_column is None and item.id_from is None
@@ -774,6 +794,7 @@ class TestInferSchemaV2:
         # …and no v2 provenance is emitted.
         assert mapping.violations == []
         assert mapping.inference_audit is None
+        assert mapping.ontology_extensions is None
 
     @pytest.mark.asyncio
     async def test_relationship_role_column_becomes_dimension_edge(self, monkeypatch):
@@ -879,7 +900,7 @@ class TestInferSchemaV2Retry:
         )
         mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
         assert mapping.entities[0].type_name == "Record"
-        assert calls == [("reason", 0.0), ("reason", 0.3), ("refute", 0.0)]
+        assert calls == [("reason", 0.0), ("reason", 0.3), ("refute", 0.0), ("complete", 0.0)]
 
     @pytest.mark.asyncio
     async def test_refute_retries_at_higher_temp(self, monkeypatch):
@@ -893,7 +914,7 @@ class TestInferSchemaV2Retry:
         )
         mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
         assert mapping.entities[0].type_name == "Record"
-        assert calls == [("reason", 0.0), ("refute", 0.0), ("refute", 0.3)]
+        assert calls == [("reason", 0.0), ("refute", 0.0), ("refute", 0.3), ("complete", 0.0)]
 
     @pytest.mark.asyncio
     async def test_propagates_when_reason_retry_also_fails(self, monkeypatch):
@@ -914,7 +935,7 @@ class TestInferSchemaV2Retry:
         mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
         assert mapping.entities[0].type_name == "Record"
         assert mapping.violations == []
-        assert calls == [("reason", 0.0), ("refute", 0.0)]
+        assert calls == [("reason", 0.0), ("refute", 0.0), ("complete", 0.0)]
 
 
 class TestV2RefuteTemplates:
@@ -1125,6 +1146,489 @@ class TestV2RefuteTemplates:
         assert any(a.name == "code" and a.value == "C0" for a in item0.attributes)
 
 
+# --- COG-52 / ADR 0003 Pass D: completion (promotions + core slots) ---------
+#
+# Deterministic Grainger-shaped fixture mirroring the production catalog the
+# ADR documents: 1000 rows, sku 75% complete (production: 74.7%), mpn fully
+# complete, manufacturer_name a 290-distinct dimension, specs all-empty. The
+# scripted reason output carries the production failures; refute repairs them
+# (synthetic key, dead column dropped); complete promotes the dependent
+# identifiers and attaches the issuer dataset constant.
+
+_GRAINGER_HEADERS = [
+    "sku", "mpn", "manufacturer_name", "item_description",
+    "specs", "category", "uom", "list_price",
+]
+
+
+def _grainger_rows(n: int = 1000) -> list[dict[str, str]]:
+    return [
+        {
+            "sku": f"GGR-{i:07d}" if i % 4 != 3 else "",
+            "mpn": f"MPN-{i:05d}",
+            "manufacturer_name": f"Maker {i % 290:03d}",
+            "item_description": f"Industrial item {i:04d}",
+            "specs": "",
+            "category": f"Cat-{i % 12:02d}",
+            "uom": "EA",
+            "list_price": f"{(i % 900) + 100}.50",
+        }
+        for i in range(n)
+    ]
+
+
+_GRAINGER_V2_REASON = {
+    "entities": [
+        {"name": "product", "type_name": "Product", "key_strategy": "column",
+         "key_columns": ["sku"], "why": "id-shaped column", "confidence": 0.6},
+        {"name": "manufacturer", "type_name": "Manufacturer", "key_strategy": "column",
+         "key_columns": ["manufacturer_name"], "why": "low_cardinality_repeated dimension",
+         "confidence": 0.9},
+    ],
+    "columns": [
+        {"column": "sku", "role": "key", "entity": "product",
+         "predicate_or_attr": "sku", "why": "key kept queryable", "confidence": 0.6},
+        {"column": "mpn", "role": "attribute", "entity": "product",
+         "predicate_or_attr": "mpn", "confidence": 0.8},
+        {"column": "manufacturer_name", "role": "key", "entity": "manufacturer",
+         "predicate_or_attr": "name", "confidence": 0.9},
+        {"column": "item_description", "role": "attribute", "entity": "product",
+         "predicate_or_attr": "item_description"},
+        {"column": "specs", "role": "attribute", "entity": "product",
+         "predicate_or_attr": "specs"},
+        {"column": "category", "role": "attribute", "entity": "product",
+         "predicate_or_attr": "category"},
+        {"column": "uom", "role": "attribute", "entity": "product",
+         "predicate_or_attr": "uom"},
+        {"column": "list_price", "role": "attribute", "entity": "product",
+         "predicate_or_attr": "list_price"},
+    ],
+    "relationships": [
+        {"subject": "product", "predicate": "manufactured_by", "object": "manufacturer",
+         "why": "edge names the relation, not the source column"},
+    ],
+}
+
+
+def _grainger_v2_refute() -> dict:
+    corrected = copy.deepcopy(_GRAINGER_V2_REASON)
+    corrected["entities"][0]["key_strategy"] = "synthetic"
+    corrected["entities"][0]["key_columns"] = []
+    corrected["columns"] = [c for c in corrected["columns"] if c["column"] != "specs"]
+    return {
+        "violations": [
+            {"template": "KEY DROPS ROWS", "location": "entities.product",
+             "evidence": "sku completeness 0.75 < 0.99", "severity": "error"},
+            {"template": "DUPLICATE/DEAD ATTR", "location": "columns.specs",
+             "evidence": "completeness 0.0 — all-empty column", "severity": "warning"},
+        ],
+        "corrected": corrected,
+    }
+
+
+_ALL_TESTS_PASS = {"existence": True, "identity": True, "universality": True}
+
+_GRAINGER_COMPLETE = {
+    "types": [
+        {"type": "SKU", "promoted_from_attribute": "sku",
+         "core_slots": [
+             {"name": "issued_by", "kind": "relationship", "target_type": "Supplier",
+              "why": "a distributor-specific identifier exists only relative to its issuer",
+              "tests": _ALL_TESTS_PASS,
+              "dataset_constant": {"value": "Grainger", "confidence": 0.9}},
+             {"name": "identifies", "kind": "relationship", "target_type": "Product",
+              "why": "an identifier identifies exactly one thing",
+              "tests": _ALL_TESTS_PASS, "dataset_constant": None},
+             {"name": "sku", "kind": "attribute", "target_type": None,
+              "why": "the identifier string itself",
+              "tests": _ALL_TESTS_PASS, "dataset_constant": None},
+         ],
+         "rejected": []},
+        {"type": "MPN", "promoted_from_attribute": "mpn",
+         "core_slots": [
+             {"name": "issued_by", "kind": "relationship", "target_type": "Manufacturer",
+              "why": "a maker-specific part number exists only relative to its issuer",
+              "tests": _ALL_TESTS_PASS, "dataset_constant": None},
+             {"name": "identifies", "kind": "relationship", "target_type": "Product",
+              "why": "an identifier identifies exactly one thing",
+              "tests": _ALL_TESTS_PASS, "dataset_constant": None},
+             {"name": "mpn", "kind": "attribute", "target_type": None,
+              "why": "the identifier string itself",
+              "tests": _ALL_TESTS_PASS, "dataset_constant": None},
+         ],
+         "rejected": []},
+        {"type": "Product", "promoted_from_attribute": None,
+         "core_slots": [],
+         "rejected": [
+             {"name": "category", "failed_test": "universality",
+              "why": "classification, not constitutive"},
+             {"name": "list_price", "failed_test": "existence",
+              "why": "a product can exist unpriced"},
+             {"name": "specs", "failed_test": "existence",
+              "why": "all-empty ad-hoc column"},
+         ]},
+    ],
+}
+
+
+async def _run_grainger(monkeypatch):
+    return await _run_v2(
+        monkeypatch, _GRAINGER_HEADERS, _grainger_rows(1000),
+        _GRAINGER_V2_REASON, _grainger_v2_refute(), _GRAINGER_COMPLETE,
+    )
+
+
+class TestCompletionPassGraingerShape:
+    """The COG-52 acceptance scenario, end-to-end with scripted LLM outputs."""
+
+    @pytest.mark.asyncio
+    async def test_extensions_carry_promotions_core_slots_and_rejections(self, monkeypatch):
+        mapping, calls = await _run_grainger(monkeypatch)
+        assert calls == [("reason", 0.0), ("refute", 0.0), ("complete", 0.0)]
+
+        ext = mapping.ontology_extensions
+        assert ext is not None
+        by_type = {t.type_name: t for t in ext.types}
+        # Dependent-identifier promotions, each recording its source attribute.
+        assert by_type["SKU"].promoted_from_attribute == "sku"
+        assert by_type["MPN"].promoted_from_attribute == "mpn"
+        # Canonical dependent-identifier shape: issuer + identifies + id-string.
+        for name in ("SKU", "MPN"):
+            slots = {s.name: s for s in by_type[name].core_slots}
+            assert slots["issued_by"].kind == "relationship" and slots["issued_by"].target_type
+            assert slots["identifies"].kind == "relationship"
+            assert slots["identifies"].target_type == "Product"
+            assert any(s.kind == "attribute" for s in by_type[name].core_slots)
+            assert len(by_type[name].core_slots) <= 3
+        # The all-empty ad-hoc column minted NO attribute…
+        assert all(c.column_name != "specs" for c in mapping.columns)
+        # …and the rejected audit list is non-empty and names it.
+        assert by_type["Product"].rejected
+        assert any(r.name == "specs" for r in by_type["Product"].rejected)
+        assert all(r.failed_test for r in by_type["Product"].rejected)
+
+    @pytest.mark.asyncio
+    async def test_applied_instances_and_edges(self, monkeypatch):
+        rows = _grainger_rows(1000)
+        mapping, _ = await _run_grainger(monkeypatch)
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        # Row conservation still holds under the extension machinery.
+        assert applied.rows_in == 1000 and applied.rows_dropped == 0
+
+        by_type: dict[str, list] = {}
+        for e in applied.entities:
+            by_type.setdefault(e.type_name, []).append(e)
+        # 750 non-empty sku cells → 750 SKU instances; mpn is fully complete.
+        assert len(by_type["SKU"]) == 750
+        assert len(by_type["MPN"]) == 1000
+        assert len(by_type["Product"]) == 1000
+        assert len(by_type["Manufacturer"]) == 290
+
+        # Promoted instances identify their owner products (real ids, not stubs).
+        product_ids = {e.id for e in by_type["Product"]}
+        identifies = [r for r in applied.relationships if r.predicate == "identifies"]
+        assert len(identifies) == 750 + 1000
+        assert all(r.target_id in product_ids for r in identifies)
+
+        # Dataset constant: exactly ONE issuer instance + per-instance edges.
+        assert len(by_type["Supplier"]) == 1
+        supplier = by_type["Supplier"][0]
+        assert any(a.name == "name" and a.value == "Grainger" for a in supplier.attributes)
+        issued = [r for r in applied.relationships if r.predicate == "issued_by"]
+        sku_ids = {e.id for e in by_type["SKU"]}
+        assert len(issued) == 750
+        assert all(r.target_id == supplier.id for r in issued)
+        assert all(r.source_id in sku_ids for r in issued)
+
+        # MPN's issuer slot carries no constant → declarative only (the
+        # Manufacturer instances present are the in-row dimension entities).
+        assert not any(r.source_id not in sku_ids for r in issued)
+
+        # Promoted instances carry the id string as a queryable attribute.
+        sku0 = next(e for e in by_type["SKU"] if e.id == "GGR-0000000")
+        assert any(a.name == "sku" and a.value == "GGR-0000000" for a in sku0.attributes)
+        # The dead column never reaches instance data.
+        assert not any(a.name == "specs" for e in applied.entities for a in e.attributes)
+
+    @pytest.mark.asyncio
+    async def test_promotions_held_for_review(self, monkeypatch):
+        mapping, _ = await _run_grainger(monkeypatch)
+        by_type = {t.type_name: t for t in mapping.ontology_extensions.types}
+        # ALL promotions are judge-panel material → held for client confirm.
+        assert by_type["SKU"].held_for_review
+        assert by_type["MPN"].held_for_review
+        # An unpromoted type with no low-confidence signal is not held…
+        assert not by_type["Product"].held_for_review
+        # …and the 0.9-confidence dataset constant is not held either.
+        slots = {s.name: s for s in by_type["SKU"].core_slots}
+        assert not slots["issued_by"].held_for_review
+
+
+# Hand-built single-entity mapping + extensions: exercises apply_mapping's
+# extension consumption directly, no LLM mocking. Canonical dependent-
+# identifier shape with abstract names.
+
+
+def _promotion_extensions(constant_confidence: float | None = 0.9) -> OntologyExtensions:
+    return OntologyExtensions(types=[TypeExtension(
+        type_name="Code",
+        promoted_from_attribute="code",
+        core_slots=[
+            CoreSlot(name="issued_by", kind="relationship", target_type="Issuer",
+                     dataset_constant=DatasetConstant(
+                         value="Acme Registry", confidence=constant_confidence)),
+            CoreSlot(name="identifies", kind="relationship", target_type="Item"),
+            CoreSlot(name="code", kind="attribute"),
+        ],
+        held_for_review=True,  # promotions are always held (client confirm gate)
+    )])
+
+
+def _code_mapping(extensions: OntologyExtensions | None) -> CSVSchemaMapping:
+    return CSVSchemaMapping(
+        entity_type="Item",
+        columns=[
+            ColumnMapping(column_name="name", role=ColumnRole.TYPE_ID,
+                          datatype="string", attribute_name="name"),
+            ColumnMapping(column_name="code", role=ColumnRole.ATTRIBUTE,
+                          datatype="string", attribute_name="code"),
+        ],
+        ontology_extensions=extensions,
+    )
+
+
+class TestApplyMappingExtensions:
+    """apply_mapping consumption of ontology_extensions (single-entity path;
+    the multi-entity path is covered by the Grainger-shape e2e above)."""
+
+    def test_promoted_values_become_instances_with_identifies_edges(self):
+        rows = [
+            {"name": "One", "code": "C-1"},
+            {"name": "Two", "code": "C-2"},
+            {"name": "Three", "code": ""},  # empty source cell mints nothing
+        ]
+        applied = CSVResolver.apply_mapping(_code_mapping(_promotion_extensions()), rows)
+        codes = [e for e in applied.entities if e.type_name == "Code"]
+        assert {e.id for e in codes} == {"C-1", "C-2"}
+        for code in codes:
+            assert any(a.name == "code" and a.value == code.id for a in code.attributes)
+        identifies = [r for r in applied.relationships if r.predicate == "identifies"]
+        assert {(r.source_id, r.target_id) for r in identifies} == {
+            ("C-1", "One"), ("C-2", "Two"),
+        }
+        # The promoted attribute still lands on the owner too (additive — the
+        # column mapping is untouched by completion).
+        one = next(e for e in applied.entities if e.id == "One")
+        assert any(a.name == "code" and a.value == "C-1" for a in one.attributes)
+
+    def test_dataset_constant_materializes_exactly_one_instance(self):
+        rows = [{"name": f"N{i}", "code": f"C-{i}"} for i in range(50)]
+        applied = CSVResolver.apply_mapping(_code_mapping(_promotion_extensions()), rows)
+        issuers = [e for e in applied.entities if e.type_name == "Issuer"]
+        assert len(issuers) == 1
+        assert issuers[0].id == _safe_id("Acme Registry")
+        assert any(a.name == "name" and a.value == "Acme Registry"
+                   for a in issuers[0].attributes)
+        edges = [r for r in applied.relationships if r.predicate == "issued_by"]
+        assert len(edges) == 50  # one per promoted instance
+        assert all(r.target_id == issuers[0].id for r in edges)
+
+    def test_repeated_values_dedupe_instances_and_edges(self):
+        rows = [{"name": "A", "code": "C-1"}, {"name": "B", "code": "C-1"}]
+        applied = CSVResolver.apply_mapping(_code_mapping(_promotion_extensions()), rows)
+        codes = [e for e in applied.entities if e.type_name == "Code"]
+        assert len(codes) == 1  # same identifier string at the same issuer
+        identifies = [r for r in applied.relationships if r.predicate == "identifies"]
+        assert len(identifies) == 2  # …but it identifies two distinct owners
+        issued = [r for r in applied.relationships if r.predicate == "issued_by"]
+        assert len(issued) == 1  # edge dedup: one instance, one issuer
+
+    def test_held_extensions_still_applied(self):
+        # The confirm gate is CLIENT-SIDE: a held promotion present in the
+        # posted mapping is applied — the client removes what the user rejects.
+        ext = _promotion_extensions(constant_confidence=0.5)  # held constant too
+        assert ext.types[0].held_for_review
+        applied = CSVResolver.apply_mapping(
+            _code_mapping(ext), [{"name": "One", "code": "C-1"}],
+        )
+        assert any(e.type_name == "Code" for e in applied.entities)
+        assert any(e.type_name == "Issuer" for e in applied.entities)
+
+    def test_constant_on_unpromoted_type_edges_from_its_instances(self):
+        ext = OntologyExtensions(types=[TypeExtension(
+            type_name="Item",
+            core_slots=[CoreSlot(
+                name="recorded_in", kind="relationship", target_type="Ledger",
+                dataset_constant=DatasetConstant(value="Main", confidence=0.95),
+            )],
+        )])
+        rows = [{"name": "One", "code": "C-1"}, {"name": "Two", "code": "C-2"}]
+        applied = CSVResolver.apply_mapping(_code_mapping(ext), rows)
+        ledgers = [e for e in applied.entities if e.type_name == "Ledger"]
+        assert len(ledgers) == 1
+        edges = [r for r in applied.relationships if r.predicate == "recorded_in"]
+        assert {r.source_id for r in edges} == {"One", "Two"}
+        assert all(r.target_id == ledgers[0].id for r in edges)
+
+    def test_promotion_with_unknown_source_attribute_skipped(self):
+        ext = OntologyExtensions(types=[TypeExtension(
+            type_name="Ghost", promoted_from_attribute="no_such_column",
+        )])
+        applied = CSVResolver.apply_mapping(
+            _code_mapping(ext), [{"name": "One", "code": "C-1"}],
+        )
+        # Ungroundable promotion is skipped (it still pre-registers in the
+        # ontology at ingest) — never an error, never bogus instances.
+        assert not any(e.type_name == "Ghost" for e in applied.entities)
+        assert len(applied.entities) == 1
+
+    def test_mapping_without_extensions_unchanged(self):
+        rows = [{"name": "One", "code": "C-1"}]
+        applied = CSVResolver.apply_mapping(_code_mapping(None), rows)
+        assert {e.type_name for e in applied.entities} == {"Item"}
+        assert applied.relationships == []
+
+
+class TestCompletionShapeValidation:
+    """_check_complete_shape: held_for_review marking, boundedness, and the
+    degenerate-output → KeyError retry contract."""
+
+    def test_promotion_always_held(self):
+        ext = _check_complete_shape({"types": [{
+            "type": "T", "promoted_from_attribute": "t", "confidence": 0.95,
+            "core_slots": [], "rejected": [],
+        }]})
+        assert ext.types[0].held_for_review
+
+    def test_low_type_confidence_held(self):
+        ext = _check_complete_shape({"types": [{"type": "T", "confidence": 0.5}]})
+        assert ext.types[0].held_for_review
+
+    def test_confident_unpromoted_type_not_held(self):
+        ext = _check_complete_shape({"types": [{"type": "T", "confidence": 0.9}]})
+        assert not ext.types[0].held_for_review
+
+    def test_low_confidence_constant_holds_slot(self):
+        ext = _check_complete_shape({"types": [{"type": "T", "core_slots": [
+            {"name": "s", "kind": "relationship", "target_type": "U",
+             "dataset_constant": {"value": "x", "confidence": 0.6}},
+        ]}]})
+        assert ext.types[0].core_slots[0].held_for_review
+
+    def test_constant_without_confidence_holds_slot(self):
+        # The prompt mandates a confidence on dataset constants — one without
+        # is suspect, so it is held for the user to confirm.
+        ext = _check_complete_shape({"types": [{"type": "T", "core_slots": [
+            {"name": "s", "kind": "relationship", "target_type": "U",
+             "dataset_constant": {"value": "x"}},
+        ]}]})
+        assert ext.types[0].core_slots[0].held_for_review
+
+    def test_confident_constant_not_held(self):
+        ext = _check_complete_shape({"types": [{"type": "T", "core_slots": [
+            {"name": "s", "kind": "relationship", "target_type": "U",
+             "dataset_constant": {"value": "x", "confidence": 0.9}},
+        ]}]})
+        assert not ext.types[0].core_slots[0].held_for_review
+
+    def test_tests_verdicts_preserved(self):
+        ext = _check_complete_shape({"types": [{"type": "T", "core_slots": [
+            {"name": "s", "kind": "attribute",
+             "tests": {"existence": True, "identity": False, "universality": True}},
+        ]}]})
+        tests = ext.types[0].core_slots[0].tests
+        assert tests.existence and not tests.identity and tests.universality
+
+    def test_empty_types_list_is_valid_noop(self):
+        assert _check_complete_shape({"types": []}) == OntologyExtensions(types=[])
+
+    def test_missing_types_key_raises(self):
+        with pytest.raises(KeyError):
+            _check_complete_shape({"extensions": []})
+
+    def test_unnamed_type_raises(self):
+        with pytest.raises(KeyError):
+            _check_complete_shape({"types": [{"core_slots": []}]})
+
+    def test_unnamed_core_slot_raises(self):
+        with pytest.raises(KeyError):
+            _check_complete_shape({"types": [{"type": "T", "core_slots": [{"kind": "attribute"}]}]})
+
+    def test_more_than_three_core_slots_fails_validation(self):
+        # ADR 0003 boundedness cap: >3 "constitutive" slots means the model
+        # listed commonly-associated, not constitutive — structural reject.
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            _check_complete_shape({"types": [{"type": "T", "core_slots": [
+                {"name": f"s{i}", "kind": "attribute"} for i in range(4)
+            ]}]})
+
+    def test_typeextension_model_enforces_cap_directly(self):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            TypeExtension(
+                type_name="T",
+                core_slots=[CoreSlot(name=f"s{i}") for i in range(4)],
+            )
+
+    def test_mapping_json_without_ontology_extensions_parses(self):
+        # Backward compat: payloads serialized before COG-52 parse unchanged.
+        mapping = CSVSchemaMapping.model_validate({
+            "entity_type": "Item",
+            "columns": [{"column_name": "a", "role": "attribute", "datatype": "string"}],
+        })
+        assert mapping.ontology_extensions is None
+        # And a round-trip with extensions survives serialization.
+        ext_mapping = _code_mapping(_promotion_extensions())
+        again = CSVSchemaMapping.model_validate(ext_mapping.model_dump())
+        assert again.ontology_extensions == ext_mapping.ontology_extensions
+
+
+class TestCompletionRetry:
+    """Pass D keeps the per-call retry-at-0.3 contract of Passes B/C."""
+
+    @pytest.mark.asyncio
+    async def test_complete_retries_at_higher_temp(self, monkeypatch):
+        resolver = CSVResolver(client=None, openrouter_key="")
+        calls = _mock_v2(
+            monkeypatch, resolver, [_SIMPLE_REASON], [_echo_refute(_SIMPLE_REASON)],
+            [{"missing": "types"}, {"types": []}],  # 1st degenerate
+        )
+        mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+        assert mapping.ontology_extensions == OntologyExtensions(types=[])
+        assert calls == [
+            ("reason", 0.0), ("refute", 0.0), ("complete", 0.0), ("complete", 0.3),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_propagates_when_complete_retry_also_fails(self, monkeypatch):
+        resolver = CSVResolver(client=None, openrouter_key="")
+        bad = {"missing": "types"}
+        _mock_v2(
+            monkeypatch, resolver, [_SIMPLE_REASON], [_echo_refute(_SIMPLE_REASON)],
+            [bad, copy.deepcopy(bad)],
+        )
+        with pytest.raises(KeyError):
+            await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+
+    @pytest.mark.asyncio
+    async def test_overlong_core_slots_retry_then_propagate(self, monkeypatch):
+        # The boundedness cap feeds the same retry contract: a >3-slot
+        # completion is invalid output, retried once, then propagated.
+        from pydantic import ValidationError
+        resolver = CSVResolver(client=None, openrouter_key="")
+        fat = {"types": [{"type": "T", "core_slots": [
+            {"name": f"s{i}", "kind": "attribute"} for i in range(4)
+        ]}]}
+        calls = _mock_v2(
+            monkeypatch, resolver, [_SIMPLE_REASON], [_echo_refute(_SIMPLE_REASON)],
+            [fat, copy.deepcopy(fat)],
+        )
+        with pytest.raises(ValidationError):
+            await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+        assert calls[-2:] == [("complete", 0.0), ("complete", 0.3)]
+
+
 @pytest.mark.integration
 @pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
@@ -1182,3 +1686,56 @@ class TestLiveHotelPMSInference:
         # 4. The audit trail is present for the Explorer.
         assert mapping.inference_audit is not None
         assert mapping.inference_audit.pipeline == "reason_refute_v2"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="live completion inference needs OPENROUTER_API_KEY (network)",
+)
+class TestLiveGraingerCompletion:
+    """End-to-end Pass A→B→C→D against the real model (deepseek/deepseek-v3.2
+    via OpenRouter) on the Grainger-shaped catalog — the COG-52 acceptance
+    scenario with zero domain hints in any prompt. Run on a dev machine with:
+
+        COGRAPH_DATASETS_ROOT=<parent repo> OPENROUTER_API_KEY=sk-or-... \
+            pytest tests/test_csv_resolver.py -m integration -v
+    """
+
+    @pytest.mark.asyncio
+    async def test_grainger_catalog_reason_refute_complete(self):
+        headers, rows = _load_dataset("benchmarks/datasets/grainger-shaped-catalog.csv")
+        resolver = CSVResolver(client=None, openrouter_key=os.environ["OPENROUTER_API_KEY"])
+        # Pin the validated model/provider for live runs regardless of env.
+        resolver.EXTRACT_MODEL = "deepseek/deepseek-v3.2"
+        resolver.EXTRACT_PROVIDER = "openrouter"
+
+        mapping = await resolver.infer_schema(headers, rows, {}, total_rows=len(rows))
+
+        ext = mapping.ontology_extensions
+        assert ext is not None and ext.types, "Pass D must emit extensions"
+
+        # 1. A dependent-identifier promotion exists, with an issuer-like and
+        #    an identifies-like relationship slot (two distinct targets — the
+        #    canonical (issued_by → Issuer, identifies → Target) shape).
+        promoted = [t for t in ext.types if t.promoted_from_attribute]
+        assert promoted, "expected at least one dependent-identifier promotion"
+        assert any(
+            len({s.target_type for s in t.core_slots
+                 if s.kind == "relationship" and s.target_type}) >= 2
+            for t in promoted
+        ), [(t.type_name, [(s.name, s.kind, s.target_type) for s in t.core_slots])
+            for t in promoted]
+        # Every promotion is held for the client-side confirm gate.
+        assert all(t.held_for_review for t in promoted)
+
+        # 2. The all-empty column minted NO attribute.
+        assert all(c.column_name != "specs" for c in mapping.columns), [
+            c.column_name for c in mapping.columns
+        ]
+
+        # 3. Boundedness + audit: ≤3 core slots per type (the pydantic cap
+        #    enforces this — assert it held), and the rejected list is
+        #    non-empty somewhere (aggressive rejection is mandated).
+        assert all(len(t.core_slots) <= 3 for t in ext.types)
+        assert any(t.rejected for t in ext.types), "expected rejected candidates"

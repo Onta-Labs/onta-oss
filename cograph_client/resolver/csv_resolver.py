@@ -3,10 +3,11 @@ row).
 
 Inference (ADR 0003, default ``OMNIX_CSV_INFERENCE_V2=1``) is the
 evidence-grounded pipeline: deterministic profile (Pass A) → REASON LLM call
-(Pass B) → adversarial REFUTE LLM call (Pass C) → conversion to
-:class:`CSVSchemaMapping`. Set ``OMNIX_CSV_INFERENCE_V2=0`` to fall back to
-the legacy single-LLM-call path (verbatim, including its post-hoc keyword
-patches)."""
+(Pass B) → adversarial REFUTE LLM call (Pass C) → conceptual COMPLETE LLM
+call (Pass D — dependent-entity promotions + constitutive core slots, max 3
+per type) → conversion to :class:`CSVSchemaMapping`. Set
+``OMNIX_CSV_INFERENCE_V2=0`` to fall back to the legacy single-LLM-call path
+(verbatim, including its post-hoc keyword patches)."""
 
 from __future__ import annotations
 
@@ -25,15 +26,21 @@ from cograph_client.resolver.models import (
     ColumnMapping,
     ColumnProfile,
     ColumnRole,
+    CoreSlot,
+    CoreSlotTests,
     CSVSchemaMapping,
+    DatasetConstant,
     EntityRelationSpec,
     EntitySpec,
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
     InferenceAudit,
+    OntologyExtensions,
+    RejectedSlot,
     SchemaViolation,
     TableProfile,
+    TypeExtension,
     ValueShape,
 )
 from cograph_client.resolver.profiler import profile_table
@@ -257,6 +264,72 @@ PROPOSED SCHEMA:
 Review against the failure templates and return the violations + corrected schema JSON now."""
 
 
+# --- ADR 0003 Pass D (COMPLETE) ----------------------------------------------
+# The validated completion prompt (COG-52). Concept knowledge enters ONLY via
+# the three constitutive-slot tests (existence/identity/universality) — no
+# domain keyword lists, no domain-noun examples beyond the validated artifact.
+# The explicit two-step framing is load-bearing: with promotion phrased as a
+# side-note, the model rejected dependent identifiers instead of promoting
+# them and attached dataset constants to the wrong slot.
+
+COMPLETE_SYSTEM = """\
+You are an ontology completion reviewer for a knowledge graph.
+Input: a schema inferred from ONE dataset (types, attributes, relationships) plus the dataset's
+column profile. The schema only models what is IN the data. Your job is to make each type
+CONCEPTUALLY COHERENT — and nothing more.
+
+Work in TWO STEPS, in order.
+
+STEP 1 — DEPENDENT-ENTITY PROMOTION. Scan every attribute in the schema and ask: does this
+value exist only RELATIVE TO some party or context the data does not model? An identifier,
+listing, offer, account-number, policy-number, registration etc. issued BY some external party
+is not a property of the thing it points to — it is a DEPENDENT ENTITY whose identity includes
+its issuer (the same target can carry different identifiers at different issuers; identical
+identifier strings at different issuers are different things). Promote such attributes to their
+own type. A promoted type's constitutive slots are typically: the issuing party (relationship),
+the thing it identifies (relationship), and the identifier string itself (attribute).
+The signature that demands promotion: "X is a <party>-specific identifier" — if you find
+yourself writing that sentence, promote X; do not merely reject it.
+
+STEP 2 — CORE SLOTS. For each type (including promoted ones), propose its CORE slots:
+relationships/attributes that are CONSTITUTIVE of the concept. A slot is core ONLY if it
+passes ALL THREE tests:
+1. EXISTENCE — an instance of this concept cannot exist in the real world without a value for
+   this slot (even when this dataset has no column for it).
+2. IDENTITY — the slot is required to individuate instances (two instances differing only here
+   are genuinely different things), OR the type is a dependent entity that exists only relative
+   to the slot's target (e.g. an identifier issued BY some party exists only relative to the issuer).
+3. UNIVERSALITY — holds for every instance of the concept in any dataset or domain.
+
+HARD RULES:
+- Max 3 core slots per type. If you list more, you are listing "commonly associated", not
+  "constitutive" — cut.
+- Every candidate you considered but did not mark core goes in `rejected` with the failed test
+  named. Be aggressive about rejecting: category/classification, price, dates, descriptions,
+  status etc. are almost never constitutive.
+- If the dataset context implies a single constant value for a missing core slot (e.g. the whole
+  file is one party's catalog/export), set `dataset_constant` with the implied value and your
+  confidence — the pipeline can then materialize ONE instance instead of leaving the slot empty.
+  Attach the constant ONLY to the slot whose ROLE matches the party's role in producing this
+  dataset (a catalog's publisher is the issuer/offerer of its identifiers — it is NOT the maker
+  of the products listed).
+
+Output strict JSON:
+{"types":[{"type","promoted_from_attribute": null|"<attr>","core_slots":[{"name","kind":"relationship|attribute",
+"target_type":null|"<T>","why","tests":{"existence":true,"identity":true,"universality":true},
+"dataset_constant":null|{"value","confidence"}}],"rejected":[{"name","failed_test","why"}]}]}
+JSON only."""
+
+COMPLETE_USER = """\
+COLUMN PROFILE (computed over {rows_profiled} of {total_rows} rows):
+{profile}
+
+INFERRED SCHEMA (models only what is IN the data):
+{schema}
+
+Apply the two steps and return the completion JSON now."""
+
+
 def _v2_enabled() -> bool:
     """ADR 0003 feature flag: ``OMNIX_CSV_INFERENCE_V2`` defaults ON; set it
     to 0 (or false/no/off) to run the legacy single-call inference verbatim."""
@@ -284,10 +357,11 @@ class CSVResolver:
 
         Default (``OMNIX_CSV_INFERENCE_V2`` unset or truthy): the ADR 0003
         evidence-grounded pipeline — deterministic profile (Pass A), REASON
-        LLM call (Pass B), adversarial REFUTE LLM call (Pass C), then
-        conversion to the same :class:`CSVSchemaMapping` contract the legacy
-        path returns (extended with optional ``key_strategy``/``why``/
-        ``confidence``/``violations``/``inference_audit`` fields).
+        LLM call (Pass B), adversarial REFUTE LLM call (Pass C), conceptual
+        COMPLETE LLM call (Pass D), then conversion to the same
+        :class:`CSVSchemaMapping` contract the legacy path returns (extended
+        with optional ``key_strategy``/``why``/``confidence``/``violations``/
+        ``inference_audit``/``ontology_extensions`` fields).
 
         ``OMNIX_CSV_INFERENCE_V2=0``: the legacy single-LLM-call path,
         verbatim — including its NAME_HINTS / FORCE_RELATIONSHIP post-hoc
@@ -421,7 +495,7 @@ class CSVResolver:
         )
         return mapping
 
-    # --- ADR 0003 v2 pipeline: profile → reason → refute → convert ---------
+    # --- ADR 0003 v2 pipeline: profile → reason → refute → complete --------
 
     async def _infer_schema_v2(
         self,
@@ -430,14 +504,17 @@ class CSVResolver:
         existing_types: dict[str, str],
         total_rows: int = 0,
     ) -> CSVSchemaMapping:
-        """Evidence-grounded inference (ADR 0003 Passes A–C).
+        """Evidence-grounded inference (ADR 0003 Passes A–D).
 
         Pass A profiles the provided rows deterministically; Pass B (REASON)
         proposes a schema grounded in that profile with per-decision
         ``why``/``confidence``; Pass C (REFUTE) adversarially checks it
-        against the six structural failure templates and corrects it. The
-        corrected schema is converted to the existing ``CSVSchemaMapping``
-        contract. No post-hoc keyword patches run on this path.
+        against the six structural failure templates and corrects it; Pass D
+        (COMPLETE) makes each type conceptually coherent — dependent-entity
+        promotions plus constitutive core slots under the three hard tests,
+        capped at 3 per type. The corrected schema is converted to the
+        existing ``CSVSchemaMapping`` contract, with the completion output on
+        ``ontology_extensions``. No post-hoc keyword patches run on this path.
         """
         profile = profile_table(headers, sample_rows, total_rows)
         profile_json = json.dumps(profile.to_prompt_dict())
@@ -482,12 +559,36 @@ class CSVResolver:
             refuted = await self._call_llm_v2(REFUTE_SYSTEM, refute_user, temperature=0.3)
             violations, corrected = _check_refute_shape(refuted, proposed)
 
-        mapping = self._convert_v2(corrected, violations, profile)
+        complete_user = COMPLETE_USER.format(
+            rows_profiled=profile.rows_profiled,
+            total_rows=profile.total_rows,
+            profile=profile_json,
+            schema=json.dumps(corrected),
+        )
+
+        # Pass D — COMPLETE (same retry contract; a >3-core-slot response
+        # fails pydantic validation here, triggering the retry).
+        try:
+            completed = await self._call_llm_v2(COMPLETE_SYSTEM, complete_user, temperature=0.0)
+            extensions = _check_complete_shape(completed)
+        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+            logger.warning("csv_complete_validation_retry", error=str(e))
+            completed = await self._call_llm_v2(COMPLETE_SYSTEM, complete_user, temperature=0.3)
+            extensions = _check_complete_shape(completed)
+
+        mapping = self._convert_v2(corrected, violations, profile, extensions)
         logger.info(
             "csv_schema_inferred_v2",
             entities=[e.type_name for e in (mapping.entities or [])],
             columns=len(mapping.columns),
             violations=[v.template for v in mapping.violations],
+            promotions=[
+                t.type_name for t in extensions.types if t.promoted_from_attribute
+            ],
+            held_for_review=[
+                t.type_name for t in extensions.types
+                if t.held_for_review or any(s.held_for_review for s in t.core_slots)
+            ],
         )
         return mapping
 
@@ -496,6 +597,7 @@ class CSVResolver:
         corrected: dict,
         violations: list[dict],
         profile: TableProfile,
+        extensions: OntologyExtensions | None = None,
     ) -> CSVSchemaMapping:
         """Convert a (corrected) Pass B/C schema into the ``CSVSchemaMapping``
         contract consumed by ``apply_mapping`` and the web Explorer.
@@ -621,6 +723,7 @@ class CSVResolver:
                 total_rows=profile.total_rows,
                 profile=profile.to_prompt_dict(),
             ),
+            ontology_extensions=extensions,
         )
 
     async def _call_llm(self, user_content: str, temperature: float = 0.0) -> dict:
@@ -796,6 +899,14 @@ class CSVResolver:
         silently dropped — an empty natural key falls back to a deterministic
         content-hash synthetic key, and a row is skipped (and counted) only
         when every owned value is empty.
+
+        ``mapping.ontology_extensions`` (ADR 0003 Pass D, COG-52) is consumed
+        here too: a promoted attribute's values become instances of the
+        promoted type with identifies-edges back to their owner entity, and a
+        relationship core slot carrying a dataset constant materializes ONE
+        instance of its target type plus per-instance edges. held_for_review
+        items are NOT filtered — the confirm gate is client-side (whatever
+        mapping the client posts to /ingest/csv/rows is applied).
         """
         # Multi-entity mode: one row expands into several fully-attributed,
         # linked entities. Legacy single-entity path below is untouched.
@@ -825,6 +936,8 @@ class CSVResolver:
         rel_entity_names: dict[str, str] = {}  # safe_id → original value for name attr
         rows_dropped = 0
         drops_by_entity: dict[str, int] = {}
+        # ADR 0003 Pass D: promoted-type instances + dataset-constant edges.
+        applier = _ExtensionApplier(mapping)
 
         for row in rows:
             # Owned non-empty values, keyed by column name — feed both the
@@ -933,6 +1046,10 @@ class CSVResolver:
             ))
             relationships.extend(entity_rels)
 
+            if applier.active:
+                # The single main entity is the only owner handle (None).
+                applier.process_row(row, {None: safe_id})
+
         # Create stub entities for relationship targets (so they exist in the graph)
         for target_id, target_type in seen_rel_entities.items():
             entities.append(ExtractedEntity(
@@ -940,6 +1057,10 @@ class CSVResolver:
                 id=target_id,
                 attributes=[ExtractedAttribute(name="name", value=rel_entity_names.get(target_id, target_id.replace("_", " ")), datatype="string")],
             ))
+
+        # ADR 0003 Pass D: merge materialized extension instances + edges.
+        entities.extend(applier.entities)
+        relationships.extend(applier.relationships)
 
         if rows_dropped:
             logger.warning(
@@ -991,6 +1112,10 @@ class CSVResolver:
         non-empty values; it is skipped (and counted in `drops_by_entity`)
         only when ALL of its owned values are empty. A row counts in
         `rows_dropped` only when it minted no entity at all.
+
+        Ontology extensions (ADR 0003 Pass D): promotions and dataset
+        constants are materialized per row against the entity keys minted
+        above — see :class:`_ExtensionApplier`.
         """
         specs = {e.name: e for e in (mapping.entities or [])}
 
@@ -1026,6 +1151,8 @@ class CSVResolver:
 
         rows_dropped = 0
         drops_by_entity: dict[str, int] = {}
+        # ADR 0003 Pass D: promoted-type instances + dataset-constant edges.
+        applier = _ExtensionApplier(mapping)
 
         for row in rows:
             row_ids: dict[str, str] = {}
@@ -1126,6 +1253,9 @@ class CSVResolver:
                         source_id=s, predicate=rel.predicate, target_id=o,
                     ))
 
+            if applier.active:
+                applier.process_row(row, row_ids)
+
         if rows_dropped:
             logger.warning(
                 "csv_rows_dropped",
@@ -1142,12 +1272,238 @@ class CSVResolver:
                 reason="all owned values empty (nothing to assert)",
             )
         return AppliedMapping(
-            list(entities_by_key.values()),
-            relationships,
+            # ADR 0003 Pass D: materialized extension instances merge in last.
+            list(entities_by_key.values()) + applier.entities,
+            relationships + applier.relationships,
             rows_in=len(rows),
             rows_dropped=rows_dropped,
             drops_by_entity=drops_by_entity,
         )
+
+
+# --- ADR 0003 Pass D: consuming ontology_extensions in apply_mapping --------
+
+
+@dataclass
+class _ConstantEdgePlan:
+    """One dataset constant to materialize: ONE instance of ``target_type``
+    labelled ``value``, plus a ``predicate`` edge from every source instance
+    (ADR 0003 §3 — the slot is filled by the dataset's single implied party,
+    not left empty)."""
+
+    predicate: str
+    target_type: str
+    value: str
+
+
+@dataclass
+class _PromotionPlan:
+    """How one dependent-entity promotion is applied per row: the source
+    column's value mints an instance of ``type_name`` carrying the id string
+    as ``id_attr``, linked to its owner entity via ``identifies_predicate``,
+    plus any dataset-constant edges (e.g. the issuer)."""
+
+    type_name: str
+    source_column: str
+    #: EntitySpec.name owning the source column in multi-entity mode;
+    #: None = the single main entity (legacy single-entity mode).
+    owner: str | None
+    id_attr: str
+    identifies_predicate: str
+    constants: list[_ConstantEdgePlan]
+
+
+@dataclass
+class _TypeConstantPlan:
+    """Dataset constants attached to a NON-promoted type already in the
+    mapping: per-row edges from that type's instances to the one
+    materialized constant instance."""
+
+    owner: str | None  # EntitySpec.name (multi) / None (single main entity)
+    constants: list[_ConstantEdgePlan]
+
+
+def _find_source_column(mapping: CSVSchemaMapping, attr: str) -> ColumnMapping | None:
+    """Locate the column a promoted attribute came from. The completion pass
+    names the schema attribute (e.g. the ``predicate_or_attr``), which may
+    differ from the raw header — match on attribute name first, then on the
+    (normalized) column name."""
+    want = _snake_case(attr)
+    for col in mapping.columns:
+        if col.attribute_name and _snake_case(col.attribute_name) == want:
+            return col
+    for col in mapping.columns:
+        if _snake_case(col.column_name) == want:
+            return col
+    return None
+
+
+def _build_extension_plans(
+    mapping: CSVSchemaMapping,
+) -> tuple[list[_PromotionPlan], list[_TypeConstantPlan]]:
+    """Compile ``mapping.ontology_extensions`` into per-row application plans.
+
+    ``held_for_review`` is deliberately NOT filtered here: the confirm gate
+    is client-side (`/ingest/csv/schema` flags held items; whatever the
+    client posts back to `/ingest/csv/rows` is applied as-is — COG-56 adds
+    judge-panel gating). Extensions that cannot be grounded in the mapping
+    (unknown source attribute / type) are skipped with a structured warning,
+    never an error — they still pre-register in the ontology at ingest.
+    """
+    ext = mapping.ontology_extensions
+    if ext is None or not ext.types:
+        return [], []
+    multi = bool(mapping.entities)
+    specs_by_name = {s.name: s for s in (mapping.entities or [])}
+
+    promotions: list[_PromotionPlan] = []
+    type_constants: list[_TypeConstantPlan] = []
+    for t in ext.types:
+        constants = [
+            _ConstantEdgePlan(
+                predicate=_snake_case(s.name),
+                target_type=s.target_type or _pascal_case(s.name),
+                value=s.dataset_constant.value,
+            )
+            for s in t.core_slots
+            if s.kind == "relationship" and s.dataset_constant and s.dataset_constant.value
+        ]
+        if t.promoted_from_attribute:
+            col = _find_source_column(mapping, t.promoted_from_attribute)
+            if col is None:
+                logger.warning(
+                    "csv_extension_source_column_missing",
+                    type=t.type_name, attribute=t.promoted_from_attribute,
+                )
+                continue
+            owner = col.entity if (multi and col.entity in specs_by_name) else None
+            if multi and owner is None:
+                logger.warning(
+                    "csv_extension_unowned_source_column",
+                    type=t.type_name, column=col.column_name,
+                )
+            owner_type = (
+                specs_by_name[owner].type_name if owner else mapping.entity_type
+            )
+            id_attr = next(
+                (_snake_case(s.name) for s in t.core_slots if s.kind == "attribute"),
+                _snake_case(t.promoted_from_attribute),
+            )
+            identifies = next(
+                (
+                    _snake_case(s.name) for s in t.core_slots
+                    if s.kind == "relationship"
+                    and s.target_type == owner_type
+                    and not s.dataset_constant
+                ),
+                "identifies",
+            )
+            promotions.append(_PromotionPlan(
+                type_name=t.type_name,
+                source_column=col.column_name,
+                owner=owner,
+                id_attr=id_attr,
+                identifies_predicate=identifies,
+                constants=constants,
+            ))
+        elif constants:
+            if multi:
+                owners: list[str | None] = [
+                    s.name for s in (mapping.entities or [])
+                    if s.type_name == t.type_name
+                ]
+            else:
+                owners = [None] if t.type_name == mapping.entity_type else []
+            if not owners:
+                # A type with no instance source (e.g. a zero-instance issuer
+                # type the completion invented): nothing to materialize here —
+                # it still exists in the ontology via ingest pre-registration.
+                continue
+            for owner in owners:
+                type_constants.append(_TypeConstantPlan(owner=owner, constants=constants))
+    return promotions, type_constants
+
+
+class _ExtensionApplier:
+    """Materializes ontology extensions while ``apply_mapping`` walks the
+    rows. Both mapping paths feed it one call per row with the row's resolved
+    owner keys; it accumulates its own (deduplicated) entities and edges,
+    merged into the result afterwards.
+
+    Determinism mirrors the rest of ``apply_mapping``: instance ids derive
+    from cell values only, edges dedup on (source, predicate, target), and a
+    dataset constant becomes exactly ONE instance no matter how many rows
+    reference it.
+    """
+
+    def __init__(self, mapping: CSVSchemaMapping):
+        self._promotions, self._type_constants = _build_extension_plans(mapping)
+        self._entities: dict[tuple[str, str], ExtractedEntity] = {}
+        self._relationships: list[ExtractedRelationship] = []
+        self._seen_edges: set[tuple[str, str, str]] = set()
+
+    @property
+    def active(self) -> bool:
+        return bool(self._promotions or self._type_constants)
+
+    @property
+    def entities(self) -> list[ExtractedEntity]:
+        return list(self._entities.values())
+
+    @property
+    def relationships(self) -> list[ExtractedRelationship]:
+        return list(self._relationships)
+
+    def process_row(self, row: dict, owner_keys: dict[str | None, str]) -> None:
+        """Apply every plan to one row. ``owner_keys`` maps an owner handle
+        (EntitySpec.name, or None for the single main entity) to the entity
+        key minted for this row — absent when the owner was skipped, in which
+        case the promoted instance is still minted but carries no
+        identifies edge (nothing to point at)."""
+        for plan in self._promotions:
+            value = _cell(row, plan.source_column)
+            if not value:
+                continue
+            pid = _safe_id(value)
+            self._ensure_entity(
+                plan.type_name, pid,
+                ExtractedAttribute(name=plan.id_attr, value=value, datatype="string"),
+            )
+            owner_key = owner_keys.get(plan.owner)
+            if owner_key:
+                self._edge(pid, plan.identifies_predicate, owner_key)
+            self._constant_edges(pid, plan.constants)
+        for type_plan in self._type_constants:
+            owner_key = owner_keys.get(type_plan.owner)
+            if owner_key:
+                self._constant_edges(owner_key, type_plan.constants)
+
+    def _constant_edges(self, source_id: str, constants: list[_ConstantEdgePlan]) -> None:
+        for c in constants:
+            cid = _safe_id(c.value)
+            self._ensure_entity(
+                c.target_type, cid,
+                ExtractedAttribute(name="name", value=c.value, datatype="string"),
+            )
+            self._edge(source_id, c.predicate, cid)
+
+    def _ensure_entity(self, type_name: str, key: str, attr: ExtractedAttribute) -> None:
+        ent = self._entities.get((type_name, key))
+        if ent is None:
+            self._entities[(type_name, key)] = ExtractedEntity(
+                type_name=type_name, id=key, attributes=[attr],
+            )
+        elif not any(a.name == attr.name and a.value == attr.value for a in ent.attributes):
+            ent.attributes.append(attr)
+
+    def _edge(self, source_id: str, predicate: str, target_id: str) -> None:
+        edge = (source_id, predicate, target_id)
+        if edge in self._seen_edges:
+            return
+        self._seen_edges.add(edge)
+        self._relationships.append(ExtractedRelationship(
+            source_id=source_id, predicate=predicate, target_id=target_id,
+        ))
 
 
 def _rank_sample_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -1217,6 +1573,102 @@ def _check_refute_shape(data: dict, proposed: dict) -> tuple[list[dict], dict]:
         corrected = proposed
     _check_reason_shape(corrected)
     return violations, corrected
+
+
+#: Below this confidence a completion item is held for client-side review
+#: (COG-52 wiring note 4); ALL promotions are held regardless of confidence.
+COMPLETION_REVIEW_THRESHOLD = 0.7
+
+
+def _check_complete_shape(data: dict) -> OntologyExtensions:
+    """Validate Pass D (COMPLETE) output and convert it to
+    :class:`OntologyExtensions`, computing ``held_for_review`` flags.
+
+    Degenerate output raises ``KeyError`` (feeding the retry-then-422
+    contract); a type with more than 3 core slots raises pydantic
+    ``ValidationError`` from the ``max_length=3`` cap — the boundedness rule
+    is enforced structurally, not just prompted. An empty ``types`` list is
+    accepted (nothing to extend), but the key itself must be present.
+
+    Held-for-review marking (client-side confirm gate — see the model
+    docstrings): every promotion is held; a type or slot with confidence
+    below :data:`COMPLETION_REVIEW_THRESHOLD` is held; a dataset constant
+    without a usable confidence is held (the prompt mandates one).
+    """
+    if not isinstance(data, dict):
+        raise KeyError("completion output must be a JSON object")
+    raw_types = data.get("types")
+    if not isinstance(raw_types, list):
+        raise KeyError("types")
+
+    parsed: list[TypeExtension] = []
+    for t in raw_types:
+        if not isinstance(t, dict):
+            raise KeyError("types[] entries must be objects")
+        type_name = t.get("type") or t.get("type_name")
+        if not type_name:
+            raise KeyError("types[].type")
+
+        core_slots: list[CoreSlot] = []
+        for s in t.get("core_slots") or []:
+            if not isinstance(s, dict) or not s.get("name"):
+                raise KeyError("core_slots[].name")
+            constant: DatasetConstant | None = None
+            dc = s.get("dataset_constant")
+            if isinstance(dc, dict) and dc.get("value") is not None:
+                constant = DatasetConstant(
+                    value=str(dc["value"]),
+                    confidence=_as_confidence(dc.get("confidence")),
+                )
+            tests = s.get("tests")
+            slot_confidence = _as_confidence(s.get("confidence"))
+            held = (
+                (slot_confidence is not None and slot_confidence < COMPLETION_REVIEW_THRESHOLD)
+                or (constant is not None and (
+                    constant.confidence is None
+                    or constant.confidence < COMPLETION_REVIEW_THRESHOLD
+                ))
+            )
+            kind = str(s.get("kind") or "attribute").strip().lower()
+            core_slots.append(CoreSlot(
+                name=str(s["name"]),
+                kind="relationship" if kind == "relationship" else "attribute",
+                target_type=s.get("target_type") or None,
+                why=s.get("why"),
+                tests=CoreSlotTests(
+                    existence=bool(tests.get("existence")),
+                    identity=bool(tests.get("identity")),
+                    universality=bool(tests.get("universality")),
+                ) if isinstance(tests, dict) else None,
+                dataset_constant=constant,
+                confidence=slot_confidence,
+                held_for_review=held,
+            ))
+
+        rejected = [
+            RejectedSlot(
+                name=str(r.get("name")),
+                failed_test=str(r.get("failed_test") or ""),
+                why=r.get("why"),
+            )
+            for r in (t.get("rejected") or [])
+            if isinstance(r, dict) and r.get("name")
+        ]
+
+        promoted = t.get("promoted_from_attribute") or None
+        type_confidence = _as_confidence(t.get("confidence"))
+        parsed.append(TypeExtension(
+            type_name=str(type_name),
+            promoted_from_attribute=promoted,
+            core_slots=core_slots,  # >3 → ValidationError (boundedness cap)
+            rejected=rejected,
+            confidence=type_confidence,
+            held_for_review=bool(promoted) or (
+                type_confidence is not None
+                and type_confidence < COMPLETION_REVIEW_THRESHOLD
+            ),
+        ))
+    return OntologyExtensions(types=parsed)
 
 
 def _as_violation(v: dict) -> SchemaViolation:
