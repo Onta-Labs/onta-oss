@@ -200,6 +200,117 @@ class CSVSchemaMapping(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# CSV profiling (ADR 0003 Pass A)
+# ---------------------------------------------------------------------------
+
+
+class ValueShape(str, Enum):
+    """Structural shape of a column's non-empty values. Decided purely from
+    value statistics — never from the column name (ADR 0003 litmus test)."""
+
+    EMPTY = "empty"
+    DATE = "date"
+    NUMBER = "number"
+    CODE_ID = "code/id"
+    LABEL = "label"
+    TEXT = "text"
+
+
+class ColumnProfile(BaseModel):
+    """Statistical evidence for one column of the profiled sample."""
+
+    name: str
+    completeness: float = Field(
+        ge=0.0, le=1.0, description="non-empty cells / rows profiled"
+    )
+    distinct: int = Field(ge=0, description="count of distinct non-empty values")
+    uniqueness: float = Field(
+        ge=0.0, le=1.0, description="distinct / non-empty cells"
+    )
+    card_ratio: float = Field(
+        ge=0.0, le=1.0, description="distinct / rows profiled"
+    )
+    value_shape: ValueShape = ValueShape.EMPTY
+    examples: list[str] = Field(
+        default_factory=list, description="top-3 most frequent non-empty values"
+    )
+    complete_unique_key: bool = Field(
+        default=False,
+        description="completeness > 0.99 and uniqueness > 0.99 — safe natural key",
+    )
+    incomplete: bool = Field(
+        default=False,
+        description="completeness < 0.98 — keying on this column drops rows",
+    )
+    low_cardinality_repeated: bool = Field(
+        default=False,
+        description=(
+            "1 < distinct, card_ratio < 0.5, values repeat — dimension-shaped, "
+            "candidate entity rather than string literal"
+        ),
+    )
+
+
+class TableProfile(BaseModel):
+    """ADR 0003 Pass A output: deterministic statistical profile of the sample
+    rows sent to /ingest/csv/schema. Grounds the reason/refute passes (B+C)."""
+
+    rows_profiled: int = Field(ge=0, description="rows actually profiled (the sample)")
+    total_rows: int = Field(
+        ge=0,
+        description="declared size of the full file; rows_profiled/total_rows = sample coverage",
+    )
+    columns: list[ColumnProfile] = Field(default_factory=list)
+    fd_mutual: list[tuple[str, str]] = Field(
+        default_factory=list,
+        description=(
+            "A<->B functional dependencies (both directions hold) — column pairs "
+            "describing ONE entity, e.g. code<->title"
+        ),
+    )
+    fd_oneway: list[tuple[str, str]] = Field(
+        default_factory=list,
+        description="(determinant, dependent) pairs where only A->B holds",
+    )
+
+    def column(self, name: str) -> ColumnProfile | None:
+        """Lookup one column's profile by header name."""
+        return next((c for c in self.columns if c.name == name), None)
+
+    def to_prompt_dict(self, max_example_len: int = 40) -> dict[str, Any]:
+        """Compact, JSON-serializable view for embedding in LLM prompts
+        (Pass B+C). Floats rounded, long examples truncated, flags listed
+        only when set, FDs rendered as readable arrow strings."""
+        columns: dict[str, Any] = {}
+        for c in self.columns:
+            entry: dict[str, Any] = {
+                "shape": c.value_shape.value,
+                "complete": round(c.completeness, 3),
+                "distinct": c.distinct,
+                "unique": round(c.uniqueness, 3),
+                "examples": [
+                    e if len(e) <= max_example_len else e[: max_example_len - 1] + "…"
+                    for e in c.examples
+                ],
+            }
+            flags = [
+                flag
+                for flag in ("complete_unique_key", "incomplete", "low_cardinality_repeated")
+                if getattr(c, flag)
+            ]
+            if flags:
+                entry["flags"] = flags
+            columns[c.name] = entry
+        return {
+            "rows_profiled": self.rows_profiled,
+            "total_rows": self.total_rows,
+            "columns": columns,
+            "fd_mutual": [f"{a} <-> {b}" for a, b in self.fd_mutual],
+            "fd_oneway": [f"{a} -> {b}" for a, b in self.fd_oneway],
+        }
+
+
+# ---------------------------------------------------------------------------
 # Ingest endpoint
 # ---------------------------------------------------------------------------
 
