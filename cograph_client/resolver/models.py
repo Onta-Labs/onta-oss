@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -164,6 +164,16 @@ class ColumnMapping(BaseModel):
     # Multi-entity ingest: which in-row entity (EntitySpec.name) owns this
     # column. None = the main/legacy entity (single-entity mode).
     entity: str | None = None
+    # ADR 0003 Pass B/C provenance (v2 inference only; defaults keep old
+    # serialized mappings parsing unchanged).
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="LLM confidence in this column decision (v2 inference)",
+    )
+    why: str | None = Field(
+        default=None,
+        description="Profile-evidence rationale for this column decision (v2 inference)",
+    )
 
 
 class EntitySpec(BaseModel):
@@ -179,6 +189,25 @@ class EntitySpec(BaseModel):
     type_name: str                    # ontology type, e.g. "Person" / "Reservation"
     id_column: str | None = None      # column whose value is this entity's key
     id_from: list[str] | None = None  # OR deterministic composite key from these columns
+    # ADR 0003 Pass B/C provenance (v2 inference only; defaults keep old
+    # serialized mappings parsing unchanged).
+    key_strategy: Literal["column", "composite", "synthetic"] | None = Field(
+        default=None,
+        description=(
+            "How this entity is keyed: 'column' = id_column natural key, "
+            "'composite' = deterministic id_from composite, 'synthetic' = "
+            "content-hash key minted per row (ADR 0003 §2). None = legacy "
+            "mapping that predates the v2 inference pipeline."
+        ),
+    )
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description="LLM confidence in this entity decision (v2 inference)",
+    )
+    why: str | None = Field(
+        default=None,
+        description="Profile-evidence rationale for this entity decision (v2 inference)",
+    )
 
 
 class EntityRelationSpec(BaseModel):
@@ -187,6 +216,45 @@ class EntityRelationSpec(BaseModel):
     subject: str
     predicate: str
     object: str
+    why: str | None = Field(
+        default=None,
+        description="Profile-evidence rationale for this edge (v2 inference)",
+    )
+
+
+class SchemaViolation(BaseModel):
+    """One structural violation found by the adversarial refute pass
+    (ADR 0003 Pass C). Templates are domain-free: KEY DROPS ROWS, DIMENSION AS
+    LITERAL, COLUMN-NAMED EDGE, KEYLESS ENTITY, DUPLICATE/DEAD ATTR, LOST KEY.
+    """
+
+    template: str = Field(description="Which of the six failure templates fired")
+    location: str = Field(
+        default="", description="Where in the proposed schema (entity/column/edge)"
+    )
+    evidence: str = Field(
+        default="", description="Profile evidence the reviewer cited"
+    )
+    severity: str = Field(default="warning", description="Reviewer-assigned severity")
+
+
+class InferenceAudit(BaseModel):
+    """Provenance of how a CSVSchemaMapping was inferred (ADR 0003 Passes A–C).
+
+    Rendered by the web Explorer alongside per-decision `why`/`confidence`
+    (on EntitySpec/ColumnMapping) and the mapping-level `violations`.
+    """
+
+    pipeline: str = Field(
+        default="reason_refute_v2",
+        description="'reason_refute_v2' (profile → reason → refute) — the legacy single-call path emits no audit",
+    )
+    rows_profiled: int = Field(default=0, ge=0, description="sample rows Pass A profiled")
+    total_rows: int = Field(default=0, ge=0, description="declared full-file size")
+    profile: dict[str, Any] | None = Field(
+        default=None,
+        description="compact Pass A profile (TableProfile.to_prompt_dict) the decisions were grounded in",
+    )
 
 
 class CSVSchemaMapping(BaseModel):
@@ -197,6 +265,17 @@ class CSVSchemaMapping(BaseModel):
     # `entity_type` is ignored. When None, the legacy single-entity path runs.
     entities: list[EntitySpec] | None = None
     relationships: list[EntityRelationSpec] | None = None
+    # ADR 0003 v2 inference output (optional, backward-compatible — old
+    # payloads without these fields parse unchanged). The Pass D ticket
+    # (COG-52) will add `ontology_extensions` alongside these.
+    violations: list[SchemaViolation] = Field(
+        default_factory=list,
+        description="Structural violations the refute pass found in the proposed schema (already corrected in this mapping)",
+    )
+    inference_audit: InferenceAudit | None = Field(
+        default=None,
+        description="How this mapping was inferred (v2 pipeline only)",
+    )
 
 
 # ---------------------------------------------------------------------------
