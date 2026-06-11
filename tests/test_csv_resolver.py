@@ -1,8 +1,15 @@
 """Tests for CSV schema inference and deterministic mapping."""
 
+import copy
+import csv
+import os
+from pathlib import Path
+
 import pytest
 
 from cograph_client.resolver.csv_resolver import (
+    REASON_SYSTEM,
+    REFUTE_SYSTEM,
     CSVResolver,
     _rank_sample_rows,
     _safe_id,
@@ -15,6 +22,28 @@ from cograph_client.resolver.models import (
     EntityRelationSpec,
     EntitySpec,
 )
+from cograph_client.resolver.profiler import profile_table
+
+# The dataset CSVs live in the proprietary parent repo and are gitignored —
+# present on dev machines, absent in fresh OSS clones. Tests that need them
+# skip with a clear reason when the file is missing.
+DATASETS_ROOT = Path(
+    os.environ.get("COGRAPH_DATASETS_ROOT") or Path(__file__).resolve().parents[2]
+)
+
+
+def _load_dataset(relpath: str) -> tuple[list[str], list[dict]]:
+    path = DATASETS_ROOT / relpath
+    if not path.exists():
+        pytest.skip(
+            f"dataset CSV not present: {path} "
+            "(gitignored, lives in the parent repo — set COGRAPH_DATASETS_ROOT)"
+        )
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        headers = list(reader.fieldnames or [])
+        rows = list(reader)
+    return headers, rows
 
 
 # Three PMS-style rows: each packs a guest (Person), a reservation, and a
@@ -434,10 +463,16 @@ class TestRankSampleRows:
 
 
 class TestInferSchemaRetry:
+    """Retry contract of the LEGACY single-call path. These tests predate the
+    ADR 0003 v2 pipeline (now the default), so they pin OMNIX_CSV_INFERENCE_V2=0
+    to keep exercising the code path they were written for; the v2 retry
+    contract is covered in TestInferSchemaV2Retry below."""
+
     @pytest.mark.asyncio
     async def test_retries_on_validation_error(self, monkeypatch):
         from unittest.mock import AsyncMock
 
+        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
         resolver = CSVResolver(client=None, openrouter_key="")
         valid_data = {
             "entity_type": "Mentor",
@@ -468,6 +503,7 @@ class TestInferSchemaRetry:
 
     @pytest.mark.asyncio
     async def test_propagates_when_retry_also_fails(self, monkeypatch):
+        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
         resolver = CSVResolver(client=None, openrouter_key="")
         bad_data = {"entity_type_oops": "Mentor", "columns": []}
 
@@ -503,3 +539,646 @@ class TestBatchedInsertTriples:
         triples = [("s", "p", "o")]
         batches = batched_insert_triples("https://g", triples)
         assert len(batches) == 1
+
+
+# --- COG-53 / ADR 0003 Passes B+C: profile → reason → refute → convert ------
+#
+# The LLM seam (_call_llm_v2) is scripted per pass: reason/refute outputs are
+# consumed in order, so retries pull the next entry. No network anywhere.
+
+
+def _mock_v2(monkeypatch, resolver, reason_outputs, refute_outputs):
+    """Script the v2 LLM seam. Returns the call log as (pass, temperature)."""
+    calls: list[tuple[str, float]] = []
+    queues = {"reason": list(reason_outputs), "refute": list(refute_outputs)}
+
+    async def fake(system, user_content, temperature=0.0):
+        assert system in (REASON_SYSTEM, REFUTE_SYSTEM)
+        which = "reason" if system == REASON_SYSTEM else "refute"
+        calls.append((which, temperature))
+        return queues[which].pop(0)
+
+    monkeypatch.setattr(resolver, "_call_llm_v2", fake)
+    return calls
+
+
+async def _run_v2(monkeypatch, headers, rows, reason, refute):
+    resolver = CSVResolver(client=None, openrouter_key="")
+    calls = _mock_v2(monkeypatch, resolver, [reason], [refute])
+    mapping = await resolver.infer_schema(headers, rows, {}, total_rows=len(rows))
+    return mapping, calls
+
+
+def _echo_refute(schema: dict) -> dict:
+    """A clean refute pass: nothing wrong, schema echoed (the prompt contract)."""
+    return {"violations": [], "corrected": copy.deepcopy(schema)}
+
+
+_SIMPLE_HEADERS = ["rec_id", "label"]
+
+
+def _simple_rows(n: int = 10) -> list[dict[str, str]]:
+    return [{"rec_id": f"R{i}", "label": f"Label {i}"} for i in range(n)]
+
+
+_SIMPLE_REASON = {
+    "entities": [
+        {"name": "rec", "type_name": "Record", "key_strategy": "column",
+         "key_columns": ["rec_id"], "why": "complete_unique_key", "confidence": 0.95},
+    ],
+    "columns": [
+        {"column": "rec_id", "role": "key", "entity": "rec",
+         "predicate_or_attr": "rec_id", "why": "key kept queryable", "confidence": 0.95},
+        {"column": "label", "role": "attribute", "entity": "rec",
+         "predicate_or_attr": "label", "why": "near-unique label", "confidence": 0.9},
+    ],
+    "relationships": [],
+}
+
+
+# Grainger-shaped scenario (the production failure ADR 0003 documents): the
+# reason pass keys the item on the 75%-complete column; the refute pass fires
+# KEY DROPS ROWS and corrects the key strategy to synthetic. Reuses
+# _catalog_rows: item_key 75% complete, item_name unique, dimension_code
+# 300-distinct dimension.
+_GRAINGER_REASON = {
+    "entities": [
+        {"name": "item", "type_name": "Item", "key_strategy": "column",
+         "key_columns": ["item_key"], "why": "id-shaped column", "confidence": 0.6},
+        {"name": "dimension", "type_name": "Dimension", "key_strategy": "column",
+         "key_columns": ["dimension_code"], "why": "low_cardinality_repeated", "confidence": 0.9},
+    ],
+    "columns": [
+        {"column": "item_key", "role": "key", "entity": "item",
+         "predicate_or_attr": "item_key", "why": "key", "confidence": 0.6},
+        {"column": "item_name", "role": "attribute", "entity": "item",
+         "predicate_or_attr": "item_name", "why": "near-unique label", "confidence": 0.9},
+        {"column": "dimension_code", "role": "key", "entity": "dimension",
+         "predicate_or_attr": "dimension_code", "why": "dimension key", "confidence": 0.9},
+    ],
+    "relationships": [
+        {"subject": "item", "predicate": "categorized_as", "object": "dimension",
+         "why": "row links each item to one shared dimension"},
+    ],
+}
+
+
+def _grainger_refute() -> dict:
+    corrected = copy.deepcopy(_GRAINGER_REASON)
+    corrected["entities"][0]["key_strategy"] = "synthetic"
+    corrected["entities"][0]["key_columns"] = []
+    return {
+        "violations": [
+            {"template": "KEY DROPS ROWS", "location": "entities.item",
+             "evidence": "item_key completeness 0.75 < 0.99", "severity": "error"},
+        ],
+        "corrected": corrected,
+    }
+
+
+class TestInferSchemaV2:
+    """The v2 pipeline end-to-end with scripted LLM outputs."""
+
+    @pytest.mark.asyncio
+    async def test_refute_corrects_incomplete_key_grainger_shape(self, monkeypatch):
+        rows = _catalog_rows(1000)
+        mapping, calls = await _run_v2(
+            monkeypatch, ["item_key", "item_name", "dimension_code"],
+            rows, _GRAINGER_REASON, _grainger_refute(),
+        )
+        # Reason then refute, each once, both at temperature 0.
+        assert calls == [("reason", 0.0), ("refute", 0.0)]
+        item = next(e for e in mapping.entities if e.type_name == "Item")
+        assert item.key_strategy == "synthetic"
+        assert item.id_column is None and item.id_from is None
+        assert [v.template for v in mapping.violations] == ["KEY DROPS ROWS"]
+        assert mapping.violations[0].severity == "error"
+        # Row conservation holds where the proposed schema would have dropped 250.
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        assert applied.rows_in == 1000 and applied.rows_dropped == 0
+        assert len([e for e in applied.entities if e.type_name == "Item"]) == 1000
+        assert len([e for e in applied.entities if e.type_name == "Dimension"]) == 300
+        assert len([r for r in applied.relationships if r.predicate == "categorized_as"]) == 1000
+
+    @pytest.mark.asyncio
+    async def test_role_key_column_is_identity_and_attribute(self, monkeypatch):
+        rows = _simple_rows()
+        mapping, _ = await _run_v2(
+            monkeypatch, _SIMPLE_HEADERS, rows, _SIMPLE_REASON, _echo_refute(_SIMPLE_REASON),
+        )
+        rec = mapping.entities[0]
+        # Identity half: the EntitySpec is keyed on the column…
+        assert rec.key_strategy == "column" and rec.id_column == "rec_id"
+        # …attribute half: the same column is a regular ATTRIBUTE mapping.
+        key_col = next(c for c in mapping.columns if c.column_name == "rec_id")
+        assert key_col.role == ColumnRole.ATTRIBUTE
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        rec0 = next(e for e in applied.entities if e.id == "R0")
+        assert any(a.name == "rec_id" and a.value == "R0" for a in rec0.attributes)
+
+    @pytest.mark.asyncio
+    async def test_decision_provenance_flows_to_mapping(self, monkeypatch):
+        mapping, _ = await _run_v2(
+            monkeypatch, _SIMPLE_HEADERS, _simple_rows(), _SIMPLE_REASON,
+            _echo_refute(_SIMPLE_REASON),
+        )
+        assert mapping.entities[0].why == "complete_unique_key"
+        assert mapping.entities[0].confidence == pytest.approx(0.95)
+        label = next(c for c in mapping.columns if c.column_name == "label")
+        assert label.why == "near-unique label"
+        assert label.confidence == pytest.approx(0.9)
+        audit = mapping.inference_audit
+        assert audit is not None
+        assert audit.pipeline == "reason_refute_v2"
+        assert audit.rows_profiled == 10 and audit.total_rows == 10
+        assert set(audit.profile["columns"]) == {"rec_id", "label"}
+
+    @pytest.mark.asyncio
+    async def test_datatypes_derived_from_profile_evidence(self, monkeypatch):
+        headers = ["rec_id", "when", "amount", "score", "flag", "link"]
+        rows = [
+            {"rec_id": f"R{i}", "when": f"2026-01-{i + 1:02d}", "amount": str(i),
+             "score": f"{i}.5", "flag": "true" if i % 2 else "false",
+             "link": f"https://example.test/{i}"}
+            for i in range(10)
+        ]
+        reason = {
+            "entities": [{"name": "rec", "type_name": "Record",
+                          "key_strategy": "column", "key_columns": ["rec_id"]}],
+            "columns": [
+                {"column": h, "role": "key" if h == "rec_id" else "attribute",
+                 "entity": "rec", "predicate_or_attr": h}
+                for h in headers
+            ],
+            "relationships": [],
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, reason, _echo_refute(reason))
+        dt = {c.column_name: c.datatype for c in mapping.columns}
+        assert dt["when"] == "datetime"
+        assert dt["amount"] == "integer"
+        assert dt["score"] == "float"
+        assert dt["flag"] == "boolean"
+        assert dt["link"] == "uri"
+        assert dt["rec_id"] == "string"
+
+    @pytest.mark.asyncio
+    async def test_v2_never_applies_keyword_patches(self, monkeypatch):
+        # 'city' is in the legacy FORCE_RELATIONSHIP keyword map. The v2 path
+        # must honor the (corrected) schema's attribute decision — the keyword
+        # map is exactly the anti-pattern ADR 0003 §4 retires.
+        headers = ["listing_id", "city"]
+        rows = [{"listing_id": f"L{i}", "city": f"City {i}"} for i in range(10)]
+        reason = {
+            "entities": [{"name": "listing", "type_name": "Listing",
+                          "key_strategy": "column", "key_columns": ["listing_id"]}],
+            "columns": [
+                {"column": "listing_id", "role": "key", "entity": "listing",
+                 "predicate_or_attr": "listing_id"},
+                {"column": "city", "role": "attribute", "entity": "listing",
+                 "predicate_or_attr": "city"},
+            ],
+            "relationships": [],
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, reason, _echo_refute(reason))
+        city = next(c for c in mapping.columns if c.column_name == "city")
+        assert city.role == ColumnRole.ATTRIBUTE
+        assert city.target_type is None
+
+    @pytest.mark.asyncio
+    async def test_flag_off_runs_legacy_path_with_keyword_patch(self, monkeypatch):
+        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        resolver = CSVResolver(client=None, openrouter_key="")
+
+        async def fake_legacy(user_content, temperature=0.0):
+            return {
+                "entity_type": "Listing",
+                "columns": [
+                    {"column_name": "listing_id", "role": "type_id", "datatype": "string"},
+                    {"column_name": "city", "role": "attribute", "datatype": "string",
+                     "attribute_name": "city"},
+                ],
+            }
+
+        async def v2_must_not_run(system, user_content, temperature=0.0):
+            raise AssertionError("v2 seam must not be called when the flag is off")
+
+        monkeypatch.setattr(resolver, "_call_llm", fake_legacy)
+        monkeypatch.setattr(resolver, "_call_llm_v2", v2_must_not_run)
+        mapping = await resolver.infer_schema(
+            ["listing_id", "city"], [{"listing_id": "L1", "city": "Austin"}], {}, 1,
+        )
+        # Legacy path verbatim: the FORCE_RELATIONSHIP keyword patch still fires…
+        city = next(c for c in mapping.columns if c.column_name == "city")
+        assert city.role == ColumnRole.RELATIONSHIP
+        assert city.target_type == "City"
+        # …and no v2 provenance is emitted.
+        assert mapping.violations == []
+        assert mapping.inference_audit is None
+
+    @pytest.mark.asyncio
+    async def test_relationship_role_column_becomes_dimension_edge(self, monkeypatch):
+        headers = ["rec_id", "origin"]
+        rows = [{"rec_id": f"R{i}", "origin": ["north", "south"][i % 2]} for i in range(10)]
+        reason = {
+            "entities": [{"name": "rec", "type_name": "Record",
+                          "key_strategy": "column", "key_columns": ["rec_id"]}],
+            "columns": [
+                {"column": "rec_id", "role": "key", "entity": "rec",
+                 "predicate_or_attr": "rec_id"},
+                {"column": "origin", "role": "relationship", "entity": "rec",
+                 "predicate_or_attr": "originates_from", "target_type": "Zone"},
+            ],
+            "relationships": [],
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, reason, _echo_refute(reason))
+        col = next(c for c in mapping.columns if c.column_name == "origin")
+        assert col.role == ColumnRole.RELATIONSHIP
+        assert col.target_type == "Zone"
+        assert col.attribute_name == "originates_from"
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        zones = [e for e in applied.entities if e.type_name == "Zone"]
+        assert len(zones) == 2  # deduped dimension stubs
+        assert len([r for r in applied.relationships if r.predicate == "originates_from"]) == 10
+
+    @pytest.mark.asyncio
+    async def test_relationship_without_target_type_falls_back_to_pascal(self, monkeypatch):
+        headers = ["rec_id", "origin"]
+        rows = [{"rec_id": f"R{i}", "origin": "north"} for i in range(5)]
+        reason = {
+            "entities": [{"name": "rec", "type_name": "Record",
+                          "key_strategy": "column", "key_columns": ["rec_id"]}],
+            "columns": [
+                {"column": "rec_id", "role": "key", "entity": "rec",
+                 "predicate_or_attr": "rec_id"},
+                {"column": "origin", "role": "relationship", "entity": "rec",
+                 "predicate_or_attr": "origin_zone"},
+            ],
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, reason, _echo_refute(reason))
+        col = next(c for c in mapping.columns if c.column_name == "origin")
+        assert col.target_type == "OriginZone"
+
+    @pytest.mark.asyncio
+    async def test_flat_schema_columns_default_to_single_entity(self, monkeypatch):
+        # A flat (one-entity) schema may omit per-column owners — repair by
+        # routing every column to the only entity.
+        reason = copy.deepcopy(_SIMPLE_REASON)
+        for col in reason["columns"]:
+            col.pop("entity")
+        mapping, _ = await _run_v2(
+            monkeypatch, _SIMPLE_HEADERS, _simple_rows(), reason, _echo_refute(reason),
+        )
+        assert all(c.entity == "rec" for c in mapping.columns)
+
+    @pytest.mark.asyncio
+    async def test_dangling_relationship_dropped(self, monkeypatch):
+        reason = copy.deepcopy(_SIMPLE_REASON)
+        reason["relationships"] = [
+            {"subject": "rec", "predicate": "linked_to", "object": "ghost"},
+        ]
+        mapping, _ = await _run_v2(
+            monkeypatch, _SIMPLE_HEADERS, _simple_rows(), reason, _echo_refute(reason),
+        )
+        assert mapping.relationships is None
+
+    def test_old_payload_without_new_fields_parses(self):
+        # Backward compat: a mapping serialized before COG-53 (no key_strategy,
+        # why, confidence, violations, inference_audit) must parse unchanged.
+        payload = {
+            "entity_type": "Item",
+            "columns": [{"column_name": "a", "role": "attribute", "datatype": "string"}],
+            "entities": [{"name": "item", "type_name": "Item", "id_column": "a"}],
+            "relationships": [{"subject": "item", "predicate": "linked_to", "object": "item"}],
+        }
+        mapping = CSVSchemaMapping.model_validate(payload)
+        assert mapping.violations == []
+        assert mapping.inference_audit is None
+        assert mapping.entities[0].key_strategy is None
+        assert mapping.entities[0].why is None and mapping.entities[0].confidence is None
+        assert mapping.columns[0].why is None and mapping.columns[0].confidence is None
+        assert mapping.relationships[0].why is None
+        # Pre-multi-entity payloads (no entities at all) parse too.
+        flat = CSVSchemaMapping.model_validate({
+            "entity_type": "Book",
+            "columns": [{"column_name": "isbn", "role": "type_id", "datatype": "string"}],
+        })
+        assert flat.entities is None and flat.violations == []
+
+
+class TestInferSchemaV2Retry:
+    """Per-call retry-at-0.3 contract on the v2 path (mirrors the legacy
+    contract the /ingest/csv/schema 422 guidance depends on)."""
+
+    @pytest.mark.asyncio
+    async def test_reason_retries_at_higher_temp(self, monkeypatch):
+        resolver = CSVResolver(client=None, openrouter_key="")
+        calls = _mock_v2(
+            monkeypatch, resolver,
+            [{"entities": [], "columns": []}, _SIMPLE_REASON],  # 1st degenerate
+            [_echo_refute(_SIMPLE_REASON)],
+        )
+        mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+        assert mapping.entities[0].type_name == "Record"
+        assert calls == [("reason", 0.0), ("reason", 0.3), ("refute", 0.0)]
+
+    @pytest.mark.asyncio
+    async def test_refute_retries_at_higher_temp(self, monkeypatch):
+        resolver = CSVResolver(client=None, openrouter_key="")
+        # 1st refute is degenerate: violations found but no corrected schema.
+        bad_refute = {"violations": [{"template": "KEYLESS ENTITY"}]}
+        calls = _mock_v2(
+            monkeypatch, resolver,
+            [_SIMPLE_REASON],
+            [bad_refute, _echo_refute(_SIMPLE_REASON)],
+        )
+        mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+        assert mapping.entities[0].type_name == "Record"
+        assert calls == [("reason", 0.0), ("refute", 0.0), ("refute", 0.3)]
+
+    @pytest.mark.asyncio
+    async def test_propagates_when_reason_retry_also_fails(self, monkeypatch):
+        resolver = CSVResolver(client=None, openrouter_key="")
+        bad = {"entities": [], "columns": []}
+        _mock_v2(monkeypatch, resolver, [bad, copy.deepcopy(bad)], [])
+        with pytest.raises(KeyError):
+            await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+
+    @pytest.mark.asyncio
+    async def test_clean_refute_without_echo_keeps_proposed_schema(self, monkeypatch):
+        # violations: [] with the echo omitted is repaired, not retried — the
+        # proposed schema stands.
+        resolver = CSVResolver(client=None, openrouter_key="")
+        calls = _mock_v2(
+            monkeypatch, resolver, [_SIMPLE_REASON], [{"violations": []}],
+        )
+        mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+        assert mapping.entities[0].type_name == "Record"
+        assert mapping.violations == []
+        assert calls == [("reason", 0.0), ("refute", 0.0)]
+
+
+class TestV2RefuteTemplates:
+    """Conversion of corrected schemas for each of the six refutation
+    templates (ADR 0003 Pass C). The mocked refute output mirrors the repair
+    each template demands; the converter must honor it. Template 1's
+    synthetic-key repair is covered by the Grainger-shape test above — the
+    composite repair is covered here."""
+
+    @pytest.mark.asyncio
+    async def test_t1_key_drops_rows_corrected_to_composite(self, monkeypatch):
+        headers = ["first", "last", "badge"]
+        rows = [{"first": f"F{i}", "last": f"L{i}",
+                 "badge": f"B{i}" if i % 2 else ""} for i in range(20)]
+        proposed = {
+            "entities": [{"name": "member", "type_name": "Member",
+                          "key_strategy": "column", "key_columns": ["badge"]}],
+            "columns": [
+                {"column": "first", "role": "attribute", "entity": "member",
+                 "predicate_or_attr": "first"},
+                {"column": "last", "role": "attribute", "entity": "member",
+                 "predicate_or_attr": "last"},
+                {"column": "badge", "role": "key", "entity": "member",
+                 "predicate_or_attr": "badge"},
+            ],
+        }
+        corrected = copy.deepcopy(proposed)
+        corrected["entities"][0]["key_strategy"] = "composite"
+        corrected["entities"][0]["key_columns"] = ["first", "last"]
+        refute = {
+            "violations": [{"template": "KEY DROPS ROWS", "location": "entities.member",
+                            "evidence": "badge completeness 0.5 < 0.99", "severity": "error"}],
+            "corrected": corrected,
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, proposed, refute)
+        member = mapping.entities[0]
+        assert member.key_strategy == "composite"
+        assert member.id_from == ["first", "last"] and member.id_column is None
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        assert applied.rows_dropped == 0
+        assert len(applied.entities) == 20
+
+    @pytest.mark.asyncio
+    async def test_t2_dimension_as_literal_promoted_to_entity_and_edge(self, monkeypatch):
+        headers = ["rec_id", "group_code"]
+        rows = [{"rec_id": f"R{i}", "group_code": f"G{i % 4}"} for i in range(20)]
+        proposed = {
+            "entities": [{"name": "rec", "type_name": "Record",
+                          "key_strategy": "column", "key_columns": ["rec_id"]}],
+            "columns": [
+                {"column": "rec_id", "role": "key", "entity": "rec",
+                 "predicate_or_attr": "rec_id"},
+                {"column": "group_code", "role": "attribute", "entity": "rec",
+                 "predicate_or_attr": "group_code"},
+            ],
+        }
+        corrected = {
+            "entities": [
+                proposed["entities"][0],
+                {"name": "group", "type_name": "Group",
+                 "key_strategy": "column", "key_columns": ["group_code"]},
+            ],
+            "columns": [
+                proposed["columns"][0],
+                {"column": "group_code", "role": "key", "entity": "group",
+                 "predicate_or_attr": "group_code"},
+            ],
+            "relationships": [
+                {"subject": "rec", "predicate": "belongs_to", "object": "group",
+                 "why": "shared dimension referenced by many rows"},
+            ],
+        }
+        refute = {
+            "violations": [{"template": "DIMENSION AS LITERAL", "location": "columns.group_code",
+                            "evidence": "card_ratio 0.2, values repeat", "severity": "warning"}],
+            "corrected": corrected,
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, proposed, refute)
+        assert [v.template for v in mapping.violations] == ["DIMENSION AS LITERAL"]
+        assert {e.type_name for e in mapping.entities} == {"Record", "Group"}
+        assert mapping.relationships[0].predicate == "belongs_to"
+        assert mapping.relationships[0].why == "shared dimension referenced by many rows"
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        assert len([e for e in applied.entities if e.type_name == "Group"]) == 4
+        assert len([r for r in applied.relationships if r.predicate == "belongs_to"]) == 20
+
+    @pytest.mark.asyncio
+    async def test_t3_column_named_edge_renamed_to_relation(self, monkeypatch):
+        headers = ["rec_id", "maker_name"]
+        rows = [{"rec_id": f"R{i}", "maker_name": f"M{i % 3}"} for i in range(12)]
+        proposed = {
+            "entities": [
+                {"name": "rec", "type_name": "Record",
+                 "key_strategy": "column", "key_columns": ["rec_id"]},
+                {"name": "maker", "type_name": "Maker",
+                 "key_strategy": "column", "key_columns": ["maker_name"]},
+            ],
+            "columns": [
+                {"column": "rec_id", "role": "key", "entity": "rec",
+                 "predicate_or_attr": "rec_id"},
+                {"column": "maker_name", "role": "key", "entity": "maker",
+                 "predicate_or_attr": "name"},
+            ],
+            "relationships": [
+                {"subject": "rec", "predicate": "maker_name", "object": "maker"},
+            ],
+        }
+        corrected = copy.deepcopy(proposed)
+        corrected["relationships"][0]["predicate"] = "made_by"
+        refute = {
+            "violations": [{"template": "COLUMN-NAMED EDGE", "location": "relationships[0]",
+                            "evidence": "predicate equals source column 'maker_name'",
+                            "severity": "warning"}],
+            "corrected": corrected,
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, proposed, refute)
+        assert [v.template for v in mapping.violations] == ["COLUMN-NAMED EDGE"]
+        predicates = {r.predicate for r in mapping.relationships}
+        assert predicates == {"made_by"}
+        assert "maker_name" not in predicates
+
+    @pytest.mark.asyncio
+    async def test_t4_keyless_entity_gets_synthetic_strategy(self, monkeypatch):
+        headers = ["note_text", "initials"]
+        rows = [{"note_text": f"observation number {i}", "initials": f"A{i % 5}"}
+                for i in range(15)]
+        proposed = {
+            "entities": [{"name": "note", "type_name": "Note", "key_columns": []}],
+            "columns": [
+                {"column": "note_text", "role": "attribute", "entity": "note",
+                 "predicate_or_attr": "note_text"},
+                {"column": "initials", "role": "attribute", "entity": "note",
+                 "predicate_or_attr": "initials"},
+            ],
+        }
+        corrected = copy.deepcopy(proposed)
+        corrected["entities"][0]["key_strategy"] = "synthetic"
+        refute = {
+            "violations": [{"template": "KEYLESS ENTITY", "location": "entities.note",
+                            "evidence": "no complete+unique column; no key strategy declared",
+                            "severity": "error"}],
+            "corrected": corrected,
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, proposed, refute)
+        note = mapping.entities[0]
+        assert note.key_strategy == "synthetic"
+        assert note.id_column is None and note.id_from is None
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        assert applied.rows_dropped == 0
+        # Deterministic content-hash keys: one entity per distinct row.
+        assert len({e.id for e in applied.entities}) == 15
+
+    @pytest.mark.asyncio
+    async def test_t5_dead_attribute_dropped_from_corrected(self, monkeypatch):
+        headers = ["rec_id", "notes"]
+        rows = [{"rec_id": f"R{i}", "notes": ""} for i in range(10)]
+        proposed = {
+            "entities": [{"name": "rec", "type_name": "Record",
+                          "key_strategy": "column", "key_columns": ["rec_id"]}],
+            "columns": [
+                {"column": "rec_id", "role": "key", "entity": "rec",
+                 "predicate_or_attr": "rec_id"},
+                {"column": "notes", "role": "attribute", "entity": "rec",
+                 "predicate_or_attr": "notes"},
+            ],
+        }
+        corrected = copy.deepcopy(proposed)
+        corrected["columns"] = [c for c in corrected["columns"] if c["column"] != "notes"]
+        refute = {
+            "violations": [{"template": "DUPLICATE/DEAD ATTR", "location": "columns.notes",
+                            "evidence": "completeness 0.0 — all-empty column",
+                            "severity": "warning"}],
+            "corrected": corrected,
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, proposed, refute)
+        assert [v.template for v in mapping.violations] == ["DUPLICATE/DEAD ATTR"]
+        assert all(c.column_name != "notes" for c in mapping.columns)
+
+    @pytest.mark.asyncio
+    async def test_t6_lost_key_reemitted_as_attribute(self, monkeypatch):
+        headers = ["code", "title"]
+        rows = [{"code": f"C{i}", "title": f"T{i}"} for i in range(10)]
+        proposed = {
+            "entities": [{"name": "item", "type_name": "Item",
+                          "key_strategy": "column", "key_columns": ["code"]}],
+            # The key column is consumed as identity only — not in columns.
+            "columns": [
+                {"column": "title", "role": "attribute", "entity": "item",
+                 "predicate_or_attr": "title"},
+            ],
+        }
+        corrected = copy.deepcopy(proposed)
+        corrected["columns"].append(
+            {"column": "code", "role": "key", "entity": "item", "predicate_or_attr": "code"},
+        )
+        refute = {
+            "violations": [{"template": "LOST KEY", "location": "columns.code",
+                            "evidence": "key column not also emitted as an attribute",
+                            "severity": "warning"}],
+            "corrected": corrected,
+        }
+        mapping, _ = await _run_v2(monkeypatch, headers, rows, proposed, refute)
+        assert mapping.entities[0].id_column == "code"
+        code_col = next(c for c in mapping.columns if c.column_name == "code")
+        assert code_col.role == ColumnRole.ATTRIBUTE
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        item0 = next(e for e in applied.entities if e.id == "C0")
+        assert any(a.name == "code" and a.value == "C0" for a in item0.attributes)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="live reason+refute inference needs OPENROUTER_API_KEY (network)",
+)
+class TestLiveHotelPMSInference:
+    """End-to-end Pass A→B→C against the real model (deepseek/deepseek-v3.2
+    via OpenRouter) on the hotel PMS export — ADR 0003's generality check:
+    zero domain hints anywhere in the prompts. Run on a dev machine with:
+
+        COGRAPH_DATASETS_ROOT=<parent repo> OPENROUTER_API_KEY=sk-or-... \
+            pytest tests/test_csv_resolver.py -m integration -v
+    """
+
+    @pytest.mark.asyncio
+    async def test_pms_reservations_reason_refute(self):
+        headers, rows = _load_dataset("demo_data/hotel_design_partner/pms_reservations.csv")
+        resolver = CSVResolver(client=None, openrouter_key=os.environ["OPENROUTER_API_KEY"])
+        # Pin the validated model/provider for live runs regardless of env.
+        resolver.EXTRACT_MODEL = "deepseek/deepseek-v3.2"
+        resolver.EXTRACT_PROVIDER = "openrouter"
+
+        mapping = await resolver.infer_schema(headers, rows, {}, total_rows=len(rows))
+
+        # 1. The row decomposes into the three core concepts (exact names may
+        #    legitimately vary under a domain-free prompt; accept close synonyms).
+        assert mapping.entities, "v2 must return in-row entity specs"
+        type_names = {e.type_name for e in mapping.entities}
+        assert any(t in type_names for t in ("Reservation", "Booking")), type_names
+        assert any(t in type_names for t in ("Property", "Hotel")), type_names
+        assert any(t in type_names for t in ("Guest", "Person", "Customer")), type_names
+
+        # 2. No entity keyed on a <99%-complete column (KEY DROPS ROWS).
+        profile = profile_table(headers, rows, len(rows))
+        for spec in mapping.entities:
+            key_cols = ([spec.id_column] if spec.id_column else []) + list(spec.id_from or [])
+            for key_col in key_cols:
+                col = profile.column(key_col)
+                assert col is not None, f"{spec.name} keyed on unknown column {key_col!r}"
+                assert col.completeness >= 0.99, (
+                    f"{spec.name} keyed on {key_col} "
+                    f"({col.completeness:.2f} complete — drops rows)"
+                )
+
+        # 3. Edge predicates name relations, never source columns — the
+        #    structural form of "predicates are verbs" (COLUMN-NAMED EDGE).
+        lower_headers = {h.lower() for h in headers}
+        rels = list(mapping.relationships or [])
+        assert rels, "a PMS row bundles several entities — edges expected"
+        for rel in rels:
+            assert rel.predicate.lower() not in lower_headers, (
+                f"edge predicate {rel.predicate!r} is a source column name"
+            )
+
+        # 4. The audit trail is present for the Explorer.
+        assert mapping.inference_audit is not None
+        assert mapping.inference_audit.pipeline == "reason_refute_v2"

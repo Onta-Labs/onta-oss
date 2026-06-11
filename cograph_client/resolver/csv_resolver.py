@@ -1,5 +1,12 @@
-"""CSV schema inference — one LLM call to infer column mapping, then
-deterministic mapping for all rows. No LLM per row."""
+"""CSV schema inference, then deterministic mapping for all rows (no LLM per
+row).
+
+Inference (ADR 0003, default ``OMNIX_CSV_INFERENCE_V2=1``) is the
+evidence-grounded pipeline: deterministic profile (Pass A) → REASON LLM call
+(Pass B) → adversarial REFUTE LLM call (Pass C) → conversion to
+:class:`CSVSchemaMapping`. Set ``OMNIX_CSV_INFERENCE_V2=0`` to fall back to
+the legacy single-LLM-call path (verbatim, including its post-hoc keyword
+patches)."""
 
 from __future__ import annotations
 
@@ -16,6 +23,7 @@ from pydantic import ValidationError
 
 from cograph_client.resolver.models import (
     ColumnMapping,
+    ColumnProfile,
     ColumnRole,
     CSVSchemaMapping,
     EntityRelationSpec,
@@ -23,7 +31,12 @@ from cograph_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
+    InferenceAudit,
+    SchemaViolation,
+    TableProfile,
+    ValueShape,
 )
+from cograph_client.resolver.profiler import profile_table
 
 logger = structlog.stdlib.get_logger("cograph.resolver.csv")
 
@@ -166,6 +179,92 @@ multi-entity shape (with `entities`) whenever the row bundles more than one
 real-world entity."""
 
 
+# --- ADR 0003 Pass B (REASON) -----------------------------------------------
+# Every rule below is structural — statable without domain nouns (ADR 0003 §4
+# litmus test). No keyword lists, no worked examples encoding a domain's
+# answer. The post-hoc NAME_HINTS / FORCE_RELATIONSHIP patches of the legacy
+# path are intentionally absent from this pipeline.
+
+REASON_SYSTEM = """\
+You convert a CSV table into a knowledge-graph schema (entities, attributes, relationships).
+You are given a STATISTICAL PROFILE of every column computed over the FULL table. Reason from that
+evidence, not from column names. Apply these domain-independent rules:
+
+ENTITY DECOMPOSITION
+- Columns that travel together (mutual functional dependency) and include an id-like member describe ONE
+  entity; a code column paired with its label/title column are the SAME entity (code = its key, title = its label).
+- A column with low card_ratio that repeats across rows (distinct far below row count) is a DIMENSION: a shared
+  entity referenced by many rows. Model it as its own entity + an edge, NOT a literal attribute.
+- A near-unique, free-text column is a literal attribute of the row's primary entity.
+
+KEYS (row conservation is mandatory)
+- An entity key must be a column that is BOTH ~100% complete AND unique.
+- If none qualifies, use a composite of identifying columns or a synthetic id. NEVER key on an incomplete
+  column: it silently drops every row missing that value.
+- A key column must ALSO be emitted as a queryable attribute, not consumed as identity only.
+
+EDGES
+- An edge predicate names the RELATIONSHIP (a role/verb) between two entities, never the source column name.
+
+TYPE REUSE
+- The user message lists the tenant's EXISTING ontology types. Reuse one ONLY when your entity is genuinely
+  the SAME real-world concept. If none genuinely matches, propose a NEW accurate PascalCase type name —
+  NEVER force-fit a different concept onto an available type just because it exists.
+
+Output strict JSON: {"entities":[{"name","type_name","key_strategy":"column|composite|synthetic","key_columns":[...],
+"why","confidence"}], "columns":[{"column","role":"attribute|relationship|key","entity","predicate_or_attr","why","confidence"}],
+"relationships":[{"subject","predicate","object","why"}]}.
+A column with role "relationship" references a shared out-of-row entity that is NOT one of your in-row
+entities: its "entity" is the in-row source, "predicate_or_attr" is the edge predicate, and it must also
+carry "target_type" (PascalCase type the values name). Prefer promoting dimensions to in-row entities.
+Where evidence is ambiguous, lower confidence and state what is unresolved instead of guessing. JSON only."""
+
+REASON_USER = """\
+COLUMN PROFILE (computed over {rows_profiled} of {total_rows} rows):
+{profile}
+
+SAMPLE ROWS ({n} highest-density rows — value context only; trust the profile for statistics):
+{sample_rows}
+
+EXISTING ONTOLOGY TYPES:
+{existing_types}
+
+Return the schema JSON now."""
+
+
+# --- ADR 0003 Pass C (REFUTE) -----------------------------------------------
+
+REFUTE_SYSTEM = """\
+You are an adversarial schema reviewer. Given a profile and a proposed schema, TRY TO BREAK it
+using only these structural failure templates (no domain knowledge):
+1. KEY DROPS ROWS — any entity keyed on a column with completeness < 0.99.
+2. DIMENSION AS LITERAL — any column with card_ratio < 0.5 that repeats, modeled as a literal attribute instead of an entity/edge.
+3. COLUMN-NAMED EDGE — any relationship predicate equal to a source column name rather than a relation/verb.
+4. KEYLESS ENTITY — any entity with no stable key strategy.
+5. DUPLICATE/DEAD ATTR — near-duplicate attribute names, or attributes over an all-empty column.
+6. LOST KEY — a key column not also emitted as an attribute.
+List every violation as {template, location, evidence, severity}. Then output a CORRECTED schema JSON in the
+same shape as the input. If nothing is wrong, return violations:[] and echo the schema. JSON only:
+{"violations":[...], "corrected": {...}}"""
+
+REFUTE_USER = """\
+COLUMN PROFILE (computed over {rows_profiled} of {total_rows} rows):
+{profile}
+
+PROPOSED SCHEMA:
+{schema}
+
+Review against the failure templates and return the violations + corrected schema JSON now."""
+
+
+def _v2_enabled() -> bool:
+    """ADR 0003 feature flag: ``OMNIX_CSV_INFERENCE_V2`` defaults ON; set it
+    to 0 (or false/no/off) to run the legacy single-call inference verbatim."""
+    return os.environ.get("OMNIX_CSV_INFERENCE_V2", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+
+
 class CSVResolver:
     EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
     EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
@@ -181,8 +280,37 @@ class CSVResolver:
         existing_types: dict[str, str],
         total_rows: int = 0,
     ) -> CSVSchemaMapping:
-        """Infer column-to-ontology mapping from sample rows. Single LLM call,
-        with one retry at higher temperature if the response fails validation."""
+        """Infer column-to-ontology mapping from sample rows.
+
+        Default (``OMNIX_CSV_INFERENCE_V2`` unset or truthy): the ADR 0003
+        evidence-grounded pipeline — deterministic profile (Pass A), REASON
+        LLM call (Pass B), adversarial REFUTE LLM call (Pass C), then
+        conversion to the same :class:`CSVSchemaMapping` contract the legacy
+        path returns (extended with optional ``key_strategy``/``why``/
+        ``confidence``/``violations``/``inference_audit`` fields).
+
+        ``OMNIX_CSV_INFERENCE_V2=0``: the legacy single-LLM-call path,
+        verbatim — including its NAME_HINTS / FORCE_RELATIONSHIP post-hoc
+        patches, which the v2 pipeline deliberately retires (ADR 0003 §4).
+
+        Each LLM call keeps the existing retry contract: one retry at
+        temperature 0.3 when the response fails validation, then propagate
+        (the /ingest/csv/schema route converts that into its 422 guidance).
+        """
+        if _v2_enabled():
+            return await self._infer_schema_v2(headers, sample_rows, existing_types, total_rows)
+        return await self._infer_schema_legacy(headers, sample_rows, existing_types, total_rows)
+
+    async def _infer_schema_legacy(
+        self,
+        headers: list[str],
+        sample_rows: list[dict[str, str]],
+        existing_types: dict[str, str],
+        total_rows: int = 0,
+    ) -> CSVSchemaMapping:
+        """Legacy single-call inference (pre-ADR 0003), kept verbatim behind
+        ``OMNIX_CSV_INFERENCE_V2=0``: one LLM call with one retry at higher
+        temperature if the response fails validation."""
         types_str = "\n".join(f"- {name}" for name in existing_types) if existing_types else "(none)"
 
         # Prefer rows with the most non-empty fields. CSVs whose leading rows
@@ -293,10 +421,221 @@ class CSVResolver:
         )
         return mapping
 
+    # --- ADR 0003 v2 pipeline: profile → reason → refute → convert ---------
+
+    async def _infer_schema_v2(
+        self,
+        headers: list[str],
+        sample_rows: list[dict[str, str]],
+        existing_types: dict[str, str],
+        total_rows: int = 0,
+    ) -> CSVSchemaMapping:
+        """Evidence-grounded inference (ADR 0003 Passes A–C).
+
+        Pass A profiles the provided rows deterministically; Pass B (REASON)
+        proposes a schema grounded in that profile with per-decision
+        ``why``/``confidence``; Pass C (REFUTE) adversarially checks it
+        against the six structural failure templates and corrects it. The
+        corrected schema is converted to the existing ``CSVSchemaMapping``
+        contract. No post-hoc keyword patches run on this path.
+        """
+        profile = profile_table(headers, sample_rows, total_rows)
+        profile_json = json.dumps(profile.to_prompt_dict())
+        types_str = "\n".join(f"- {name}" for name in existing_types) if existing_types else "(none)"
+
+        # Same density ranking as the legacy path: the sample exists for value
+        # context only — statistics come from the profile.
+        ranked_samples = _rank_sample_rows(sample_rows)[:6]
+        sample_str = "\n".join(json.dumps(row, default=str) for row in ranked_samples)
+
+        reason_user = REASON_USER.format(
+            rows_profiled=profile.rows_profiled,
+            total_rows=profile.total_rows,
+            profile=profile_json,
+            n=len(ranked_samples),
+            sample_rows=sample_str,
+            existing_types=types_str,
+        )
+
+        # Pass B — REASON (retry once at temperature 0.3, then propagate).
+        try:
+            proposed = await self._call_llm_v2(REASON_SYSTEM, reason_user, temperature=0.0)
+            _check_reason_shape(proposed)
+        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+            logger.warning("csv_reason_validation_retry", error=str(e))
+            proposed = await self._call_llm_v2(REASON_SYSTEM, reason_user, temperature=0.3)
+            _check_reason_shape(proposed)
+
+        refute_user = REFUTE_USER.format(
+            rows_profiled=profile.rows_profiled,
+            total_rows=profile.total_rows,
+            profile=profile_json,
+            schema=json.dumps(proposed),
+        )
+
+        # Pass C — REFUTE (same retry contract).
+        try:
+            refuted = await self._call_llm_v2(REFUTE_SYSTEM, refute_user, temperature=0.0)
+            violations, corrected = _check_refute_shape(refuted, proposed)
+        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+            logger.warning("csv_refute_validation_retry", error=str(e))
+            refuted = await self._call_llm_v2(REFUTE_SYSTEM, refute_user, temperature=0.3)
+            violations, corrected = _check_refute_shape(refuted, proposed)
+
+        mapping = self._convert_v2(corrected, violations, profile)
+        logger.info(
+            "csv_schema_inferred_v2",
+            entities=[e.type_name for e in (mapping.entities or [])],
+            columns=len(mapping.columns),
+            violations=[v.template for v in mapping.violations],
+        )
+        return mapping
+
+    def _convert_v2(
+        self,
+        corrected: dict,
+        violations: list[dict],
+        profile: TableProfile,
+    ) -> CSVSchemaMapping:
+        """Convert a (corrected) Pass B/C schema into the ``CSVSchemaMapping``
+        contract consumed by ``apply_mapping`` and the web Explorer.
+
+        - ``key_strategy: "column"`` → ``EntitySpec.id_column`` (first key
+          column); ``"composite"`` → ``EntitySpec.id_from``; ``"synthetic"``
+          → neither, so ``apply_mapping`` mints deterministic content-hash
+          keys per row (COG-51).
+        - ``role: "key"`` columns become regular ATTRIBUTE columns owned by
+          their entity — identity is carried by the owning ``EntitySpec``,
+          and COG-51 guarantees the key value is also emitted as a queryable
+          attribute (refute template 6, LOST KEY).
+        - ``role: "relationship"`` columns become out-of-row RELATIONSHIP
+          columns (dimension target + edge), exactly like the legacy contract.
+        - Datatypes are derived deterministically from the Pass A value-shape
+          evidence (the v2 schema carries none — the profile already measured
+          the values).
+        """
+        specs: list[EntitySpec] = []
+        for ent in corrected.get("entities", []):
+            type_name = ent["type_name"]
+            name = ent.get("name") or _snake_case(type_name)
+            strategy = ent.get("key_strategy")
+            key_columns = [c for c in (ent.get("key_columns") or []) if c]
+            id_column: str | None = None
+            id_from: list[str] | None = None
+            if strategy == "column" and key_columns:
+                id_column = key_columns[0]
+            elif strategy == "composite" and key_columns:
+                id_from = key_columns
+            elif strategy in ("column", "composite"):
+                # Keyed strategy declared with no key columns — degrade to a
+                # synthetic key (row conservation) rather than dropping rows.
+                logger.warning(
+                    "csv_v2_key_strategy_degraded", entity=name, declared=strategy,
+                )
+                strategy = "synthetic"
+            elif strategy != "synthetic":
+                # Unknown/missing strategy: infer it from the key columns.
+                if len(key_columns) == 1:
+                    strategy, id_column = "column", key_columns[0]
+                elif key_columns:
+                    strategy, id_from = "composite", key_columns
+                else:
+                    strategy = "synthetic"
+            specs.append(EntitySpec(
+                name=name,
+                type_name=type_name,
+                id_column=id_column,
+                id_from=id_from,
+                key_strategy=strategy,
+                confidence=_as_confidence(ent.get("confidence")),
+                why=ent.get("why"),
+            ))
+
+        spec_names = {s.name for s in specs}
+        default_owner = specs[0].name if len(specs) == 1 else None
+
+        columns: list[ColumnMapping] = []
+        for col in corrected.get("columns", []):
+            column_name = col["column"]
+            role = str(col.get("role") or "attribute").strip().lower()
+            owner = col.get("entity") or default_owner
+            if owner not in spec_names:
+                # Repair: a flat (single-entity) schema may omit owners.
+                logger.warning(
+                    "csv_v2_unowned_column", column=column_name, entity=owner,
+                )
+                owner = default_owner
+            raw_attr = col.get("predicate_or_attr")
+            attr_name = _snake_case(raw_attr) if raw_attr else _snake_case(column_name)
+            shared = {
+                "column_name": column_name,
+                "attribute_name": attr_name,
+                "entity": owner,
+                "confidence": _as_confidence(col.get("confidence")),
+                "why": col.get("why"),
+            }
+            if role == "relationship":
+                target = col.get("target_type") or _pascal_case(attr_name)
+                columns.append(ColumnMapping(
+                    role=ColumnRole.RELATIONSHIP,
+                    target_type=target,
+                    datatype="string",
+                    **shared,
+                ))
+            else:
+                # "key" and "attribute" both land as attribute columns: the
+                # identity half of a key column lives on its EntitySpec.
+                columns.append(ColumnMapping(
+                    role=ColumnRole.ATTRIBUTE,
+                    datatype=_datatype_from_profile(profile.column(column_name)),
+                    **shared,
+                ))
+
+        relationships: list[EntityRelationSpec] = []
+        for rel in corrected.get("relationships") or []:
+            if not isinstance(rel, dict):
+                continue
+            subject, predicate, obj = rel.get("subject"), rel.get("predicate"), rel.get("object")
+            if not (subject and predicate and obj):
+                continue
+            if subject not in spec_names or obj not in spec_names:
+                logger.warning(
+                    "csv_v2_dangling_relationship", subject=subject, object=obj,
+                )
+                continue
+            relationships.append(EntityRelationSpec(
+                subject=subject, predicate=predicate, object=obj, why=rel.get("why"),
+            ))
+
+        return CSVSchemaMapping(
+            # entity_type is ignored in multi-entity mode; keep it meaningful
+            # for older readers that only look at the headline type.
+            entity_type=specs[0].type_name,
+            columns=columns,
+            entities=specs,
+            relationships=relationships or None,
+            violations=[_as_violation(v) for v in violations],
+            inference_audit=InferenceAudit(
+                pipeline="reason_refute_v2",
+                rows_profiled=profile.rows_profiled,
+                total_rows=profile.total_rows,
+                profile=profile.to_prompt_dict(),
+            ),
+        )
+
     async def _call_llm(self, user_content: str, temperature: float = 0.0) -> dict:
         if self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key:
             return await self._infer_via_openrouter(user_content, temperature)
         return await self._infer_via_anthropic(user_content, temperature)
+
+    async def _call_llm_v2(
+        self, system: str, user_content: str, temperature: float = 0.0
+    ) -> dict:
+        """LLM seam for the v2 passes — like ``_call_llm`` but the system
+        prompt varies per pass (REASON vs REFUTE). Tests monkeypatch this."""
+        if self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key:
+            return await self._chat_openrouter(system, user_content, temperature, max_tokens=4096)
+        return await self._chat_anthropic(system, user_content, temperature, max_tokens=4096)
 
     def _build_mapping(self, data: dict) -> CSVSchemaMapping:
         # Gemini Flash occasionally emits `datatype: null` for a column it
@@ -330,6 +669,15 @@ class CSVResolver:
         )
 
     async def _infer_via_openrouter(self, user_content: str, temperature: float = 0.0) -> dict:
+        return await self._chat_openrouter(CSV_SCHEMA_SYSTEM, user_content, temperature)
+
+    async def _chat_openrouter(
+        self,
+        system: str,
+        user_content: str,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+    ) -> dict:
         async with httpx.AsyncClient(timeout=60) as client:
             res = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
@@ -340,20 +688,34 @@ class CSVResolver:
                 json={
                     "model": self.EXTRACT_MODEL,
                     "messages": [
-                        {"role": "system", "content": CSV_SCHEMA_SYSTEM},
+                        {"role": "system", "content": system},
                         {"role": "user", "content": user_content},
                     ],
-                    "max_tokens": 2048,
+                    "max_tokens": max_tokens,
                     "temperature": temperature,
                 },
             )
             res.raise_for_status()
             text = res.json()["choices"][0]["message"]["content"]
-            stripped = text.strip()
-            if stripped.startswith("```"):
-                lines = [l for l in stripped.split("\n") if not l.strip().startswith("```")]
-                stripped = "\n".join(lines)
-            return json.loads(stripped)
+            return json.loads(_strip_code_fences(text))
+
+    async def _chat_anthropic(
+        self,
+        system: str,
+        user_content: str,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> dict:
+        """Anthropic fallback for the v2 passes: free-form JSON (the pass
+        output shapes differ, so no fixed output_config schema here)."""
+        msg = await self._client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system,
+            messages=[{"role": "user", "content": user_content}],
+        )
+        return json.loads(_strip_code_fences(msg.content[0].text))
 
     async def _infer_via_anthropic(self, user_content: str, temperature: float = 0.0) -> dict:
         msg = await self._client.messages.create(
@@ -800,6 +1162,114 @@ def _rank_sample_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     indexed = list(enumerate(rows))
     indexed.sort(key=lambda t: (-score(t[1]), t[0]))
     return [r for _, r in indexed]
+
+
+# --- ADR 0003 v2 helpers -----------------------------------------------------
+
+
+def _strip_code_fences(text: str) -> str:
+    """LLMs sometimes wrap JSON in markdown fences despite 'JSON only'."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = [l for l in stripped.split("\n") if not l.strip().startswith("```")]
+        stripped = "\n".join(lines)
+    return stripped
+
+
+def _check_reason_shape(data: dict) -> None:
+    """Reject degenerate Pass B (or corrected Pass C) output by raising
+    KeyError, which feeds the existing retry-then-422 contract. Only the
+    load-bearing structure is enforced; optional fields (why, confidence,
+    relationships) may be absent."""
+    if not isinstance(data, dict):
+        raise KeyError("schema must be a JSON object")
+    entities = data.get("entities")
+    if not isinstance(entities, list) or not entities:
+        raise KeyError("entities")
+    for ent in entities:
+        if not isinstance(ent, dict) or not ent.get("type_name"):
+            raise KeyError("entities[].type_name")
+    columns = data.get("columns")
+    if not isinstance(columns, list) or not columns:
+        raise KeyError("columns")
+    for col in columns:
+        if not isinstance(col, dict) or not col.get("column"):
+            raise KeyError("columns[].column")
+
+
+def _check_refute_shape(data: dict, proposed: dict) -> tuple[list[dict], dict]:
+    """Validate Pass C output; returns ``(violations, corrected)``.
+
+    The reviewer must echo the schema when nothing is wrong — but a model
+    that returns ``violations: []`` without the echo is repaired (the
+    proposed schema stands). Violations without a corrected schema are
+    degenerate output → KeyError → retry."""
+    if not isinstance(data, dict):
+        raise KeyError("refute output must be a JSON object")
+    violations = data.get("violations")
+    if not isinstance(violations, list):
+        raise KeyError("violations")
+    violations = [v for v in violations if isinstance(v, dict)]
+    corrected = data.get("corrected")
+    if not isinstance(corrected, dict) or not corrected:
+        if violations:
+            raise KeyError("corrected")
+        corrected = proposed
+    _check_reason_shape(corrected)
+    return violations, corrected
+
+
+def _as_violation(v: dict) -> SchemaViolation:
+    """Lenient parse of one refute violation entry."""
+    return SchemaViolation(
+        template=str(v.get("template") or ""),
+        location=str(v.get("location") or ""),
+        evidence=str(v.get("evidence") or ""),
+        severity=str(v.get("severity") or "warning"),
+    )
+
+
+def _as_confidence(value) -> float | None:
+    """Coerce a model-emitted confidence to a clamped float (None if junk)."""
+    try:
+        if value is None:
+            return None
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_int(v: str) -> bool:
+    try:
+        int(v)
+    except ValueError:
+        return False
+    return True
+
+
+def _datatype_from_profile(col: ColumnProfile | None) -> str:
+    """Deterministic datatype from Pass A value-shape evidence. The v2 schema
+    carries no datatype field — the profile already measured the values, so
+    nothing is gained by asking the LLM to re-guess. Purely structural checks
+    (no column-name inspection)."""
+    if col is None:
+        return "string"
+    if col.value_shape == ValueShape.DATE:
+        return "datetime"
+    if col.value_shape == ValueShape.NUMBER:
+        return "integer" if col.examples and all(_is_int(e) for e in col.examples) else "float"
+    lowered = [e.lower() for e in col.examples]
+    if lowered and all(e in ("true", "false") for e in lowered):
+        return "boolean"
+    if lowered and all(e.startswith(("http://", "https://")) for e in lowered):
+        return "uri"
+    return "string"
+
+
+def _pascal_case(name: str) -> str:
+    """Mechanical PascalCase of a snake_case handle (fallback target type for
+    a relationship column whose target_type the model omitted)."""
+    return "".join(p.capitalize() for p in _snake_case(name).split("_")) or "Entity"
 
 
 def _rel_values(raw_value) -> list[str]:

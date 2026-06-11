@@ -93,7 +93,25 @@ async def infer_csv_schema(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    """Step 1: Infer column mapping from CSV headers + sample rows. Single LLM call."""
+    """Step 1: Infer column mapping from CSV headers + sample rows.
+
+    Default (``OMNIX_CSV_INFERENCE_V2`` unset/truthy) is the ADR 0003
+    evidence-grounded pipeline: a deterministic column profile (Pass A) feeds
+    a REASON LLM call (Pass B) and an adversarial REFUTE LLM call (Pass C).
+    The response is the same ``CSVSchemaMapping`` contract as before, extended
+    with optional, backward-compatible fields: per-decision ``why``/
+    ``confidence`` (on entities/columns), ``key_strategy`` per entity, the
+    refute pass's ``violations``, and an ``inference_audit`` block.
+    ``OMNIX_CSV_INFERENCE_V2=0`` falls back to the legacy single-LLM-call path.
+
+    Latency budget: schema inference is up to 3 sequential LLM calls, once per
+    CSV file — REASON + REFUTE here (each with at most one validation retry at
+    temperature 0.3), plus the completion pass when COG-52 lands; the Pass A
+    profile is milliseconds. Row ingestion (``/ingest/csv/rows``) stays
+    LLM-free, so the cost does not scale with row count. Clients should send
+    the full file (capped at a few thousand rows) as ``sample_rows`` — profile
+    fidelity, and therefore mapping quality, depends on it.
+    """
     import anthropic
     from cograph_client.resolver.csv_resolver import CSVResolver
     from cograph_client.resolver.schema_resolver import SchemaResolver
