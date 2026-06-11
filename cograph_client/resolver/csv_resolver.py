@@ -3,9 +3,11 @@ deterministic mapping for all rows. No LLM per row."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass, field
 
 import anthropic
 import httpx
@@ -24,6 +26,36 @@ from cograph_client.resolver.models import (
 )
 
 logger = structlog.stdlib.get_logger("cograph.resolver.csv")
+
+
+@dataclass
+class AppliedMapping:
+    """Result of ``CSVResolver.apply_mapping``: the extracted entities and
+    relationships plus row-conservation accounting (ADR 0003 §2 — input rows
+    are never silently dropped).
+
+    Iterates as the legacy ``(entities, relationships)`` pair, so existing
+    two-value unpacking call sites keep working unchanged; new callers read
+    ``rows_in`` / ``rows_dropped`` / ``drops_by_entity`` off the object.
+    """
+
+    entities: list[ExtractedEntity]
+    relationships: list[ExtractedRelationship]
+    #: Number of input rows this call received.
+    rows_in: int = 0
+    #: Rows that produced no entity at all. Only possible when every owned
+    #: value in the row is empty — a principled skip (nothing to assert),
+    #: never a silent drop: it is always counted and logged.
+    rows_dropped: int = 0
+    #: Skipped entity-instances per mapping entity. Keyed by entity_type in
+    #: single-entity mode, by EntitySpec.name in multi-entity mode (one row
+    #: can mint some entities while skipping an all-empty one without the
+    #: row itself counting as dropped).
+    drops_by_entity: dict[str, int] = field(default_factory=dict)
+
+    def __iter__(self):
+        yield self.entities
+        yield self.relationships
 
 CSV_SCHEMA_SYSTEM = """\
 You are a knowledge graph schema inference engine. Given CSV column names and
@@ -393,8 +425,16 @@ class CSVResolver:
     def apply_mapping(
         mapping: CSVSchemaMapping,
         rows: list[dict[str, str]],
-    ) -> tuple[list[ExtractedEntity], list[ExtractedRelationship]]:
-        """Deterministically convert all CSV rows to entities + relationships. No LLM."""
+    ) -> AppliedMapping:
+        """Deterministically convert all CSV rows to entities + relationships. No LLM.
+
+        Returns an :class:`AppliedMapping`, which unpacks as the legacy
+        ``(entities, relationships)`` tuple and additionally carries
+        row-conservation accounting (ADR 0003 §2): input rows are never
+        silently dropped — an empty natural key falls back to a deterministic
+        content-hash synthetic key, and a row is skipped (and counted) only
+        when every owned value is empty.
+        """
         # Multi-entity mode: one row expands into several fully-attributed,
         # linked entities. Legacy single-entity path below is untouched.
         if mapping.entities:
@@ -402,25 +442,60 @@ class CSVResolver:
 
         id_col = next((c for c in mapping.columns if c.role == ColumnRole.TYPE_ID), None)
         if not id_col:
-            return [], []
+            # Degenerate mapping (no key column at all): nothing can be minted.
+            # Account for every row so the mismatch is loud, not silent.
+            drops = {mapping.entity_type: len(rows)} if rows else {}
+            if rows:
+                logger.warning(
+                    "csv_rows_dropped",
+                    rows_in=len(rows),
+                    rows_dropped=len(rows),
+                    drops_by_entity=drops,
+                    reason="mapping has no type_id column",
+                )
+            return AppliedMapping(
+                [], [], rows_in=len(rows), rows_dropped=len(rows), drops_by_entity=drops,
+            )
 
         entities: list[ExtractedEntity] = []
         relationships: list[ExtractedRelationship] = []
         seen_rel_entities: dict[str, str] = {}  # safe_id → type for relationship targets
         rel_entity_names: dict[str, str] = {}  # safe_id → original value for name attr
+        rows_dropped = 0
+        drops_by_entity: dict[str, int] = {}
 
         for row in rows:
-            entity_id = row.get(id_col.column_name, "").strip()
-            if not entity_id:
+            # Owned non-empty values, keyed by column name — feed both the
+            # synthetic-key fallback and the nothing-to-assert skip. Emptiness
+            # matches the attribute loop below (strip-if-str, falsy = empty).
+            owned_values: dict[str, str] = {}
+            for col in mapping.columns:
+                raw = row.get(col.column_name, "")
+                if isinstance(raw, str):
+                    raw = raw.strip()
+                if raw:
+                    owned_values[col.column_name] = raw if isinstance(raw, str) else str(raw)
+
+            entity_id = _cell(row, id_col.column_name)
+            if entity_id:
+                safe_id = _safe_id(entity_id)
+            elif owned_values:
+                # ADR 0003 §2: never silently drop a row. Empty natural key
+                # with values to assert → deterministic content-hash key.
+                safe_id = _synthetic_key(mapping.entity_type, owned_values)
+            else:
+                # Empty key AND every owned value empty: nothing to assert.
+                # Principled skip — counted and logged, never silent.
+                rows_dropped += 1
+                drops_by_entity[mapping.entity_type] = (
+                    drops_by_entity.get(mapping.entity_type, 0) + 1
+                )
                 continue
 
-            safe_id = _safe_id(entity_id)
             attrs: list[ExtractedAttribute] = []
             entity_rels: list[ExtractedRelationship] = []
 
             for col in mapping.columns:
-                if col.role == ColumnRole.TYPE_ID:
-                    continue
                 raw_value = row.get(col.column_name, "")
                 if isinstance(raw_value, str):
                     raw_value = raw_value.strip()
@@ -429,9 +504,19 @@ class CSVResolver:
 
                 attr_name = col.attribute_name or _snake_case(col.column_name)
 
+                if col.role == ColumnRole.TYPE_ID:
+                    # The key is URI + label material AND a regular attribute.
+                    # Consuming it as URI-only made the key unqueryable
+                    # (ADR 0003 §2 — "key consumed, not kept").
+                    attrs.append(ExtractedAttribute(
+                        name=attr_name,
+                        value=raw_value if isinstance(raw_value, str) else str(raw_value),
+                        datatype=col.datatype,
+                    ))
+
                 # Handle JSON arrays, pipe-delimited, and comma-delimited strings
                 # by expanding into multiple values for relationships
-                if col.role == ColumnRole.RELATIONSHIP and col.target_type:
+                elif col.role == ColumnRole.RELATIONSHIP and col.target_type:
                     values: list[str] = []
                     if isinstance(raw_value, list):
                         values = [v.strip() for v in raw_value if isinstance(v, str) and v.strip()]
@@ -494,7 +579,21 @@ class CSVResolver:
                 attributes=[ExtractedAttribute(name="name", value=rel_entity_names.get(target_id, target_id.replace("_", " ")), datatype="string")],
             ))
 
-        return entities, relationships
+        if rows_dropped:
+            logger.warning(
+                "csv_rows_dropped",
+                rows_in=len(rows),
+                rows_dropped=rows_dropped,
+                drops_by_entity=drops_by_entity,
+                reason="all owned values empty (nothing to assert)",
+            )
+        return AppliedMapping(
+            entities,
+            relationships,
+            rows_in=len(rows),
+            rows_dropped=rows_dropped,
+            drops_by_entity=drops_by_entity,
+        )
 
     @staticmethod
     def _entity_key(spec, row: dict) -> str | None:
@@ -514,7 +613,7 @@ class CSVResolver:
     def _apply_multi_entity(
         mapping: CSVSchemaMapping,
         rows: list[dict[str, str]],
-    ) -> tuple[list[ExtractedEntity], list[ExtractedRelationship]]:
+    ) -> AppliedMapping:
         """Multi-entity mode: one row → several fully-attributed, linked entities.
 
         Each `EntitySpec` is keyed by its id_column or an id_from composite.
@@ -524,6 +623,12 @@ class CSVResolver:
         rows by (type, id) with attribute union — collapsing repeated keys (e.g.
         many reservations → 5 Properties) into one entity. ER fires per
         ER-enabled type downstream (schema_resolver); nothing ER-specific here.
+
+        Row conservation (ADR 0003 §2): an entity whose natural key resolves
+        empty gets a deterministic content-hash synthetic key from its owned
+        non-empty values; it is skipped (and counted in `drops_by_entity`)
+        only when ALL of its owned values are empty. A row counts in
+        `rows_dropped` only when it minted no entity at all.
         """
         specs = {e.name: e for e in (mapping.entities or [])}
 
@@ -557,14 +662,63 @@ class CSVResolver:
                     ent.attributes.append(a)
                     seen.add((a.name, a.value))
 
+        rows_dropped = 0
+        drops_by_entity: dict[str, int] = {}
+
         for row in rows:
             row_ids: dict[str, str] = {}
             for name, spec in specs.items():
+                # Owned non-empty values for this entity: its key column(s)
+                # plus the columns routed to it — never another entity's
+                # columns (unowned data must not leak into the key hash).
+                owned_values: dict[str, str] = {}
+                key_columns = ([spec.id_column] if spec.id_column else []) + list(spec.id_from or [])
+                for column in key_columns:
+                    v = _cell(row, column)
+                    if v:
+                        owned_values[column] = v
+                for col in cols_by_entity[name]:
+                    raw = row.get(col.column_name, "")
+                    if isinstance(raw, str):
+                        raw = raw.strip()
+                    if raw:
+                        owned_values[col.column_name] = raw if isinstance(raw, str) else str(raw)
+
                 key = CSVResolver._entity_key(spec, row)
                 if key is None:
-                    continue
+                    if not owned_values:
+                        # Empty key AND every owned value empty: nothing to
+                        # assert. Principled skip — counted, never silent.
+                        drops_by_entity[name] = drops_by_entity.get(name, 0) + 1
+                        continue
+                    # ADR 0003 §2: never silently drop an entity. Empty natural
+                    # key with values to assert → deterministic content-hash key.
+                    key = _synthetic_key(spec.type_name, owned_values)
                 row_ids[name] = key
                 attrs: list[ExtractedAttribute] = []
+                # The key column's value is also a regular attribute, not just
+                # URI + label material (ADR 0003 §2 — "key consumed, not
+                # kept"). When the id_column is routed to this entity it flows
+                # through the column loop below under its mapped name;
+                # otherwise emit it here.
+                if spec.id_column and not any(
+                    c.column_name == spec.id_column for c in cols_by_entity[name]
+                ):
+                    key_value = _cell(row, spec.id_column)
+                    if key_value:
+                        key_col = next(
+                            (c for c in mapping.columns if c.column_name == spec.id_column),
+                            None,
+                        )
+                        attrs.append(ExtractedAttribute(
+                            name=(
+                                key_col.attribute_name
+                                if key_col and key_col.attribute_name
+                                else _snake_case(spec.id_column)
+                            ),
+                            value=key_value,
+                            datatype=key_col.datatype if key_col else "string",
+                        ))
                 for col in cols_by_entity[name]:
                     raw = row.get(col.column_name, "")
                     if isinstance(raw, str):
@@ -597,6 +751,10 @@ class CSVResolver:
                             ))
                 add_entity(spec.type_name, key, attrs)
 
+            if specs and not row_ids:
+                # The whole row minted nothing — every entity was all-empty.
+                rows_dropped += 1
+
             # Inter-entity edges — only when both endpoints exist this row.
             for rel in (mapping.relationships or []):
                 s = row_ids.get(rel.subject)
@@ -606,7 +764,28 @@ class CSVResolver:
                         source_id=s, predicate=rel.predicate, target_id=o,
                     ))
 
-        return list(entities_by_key.values()), relationships
+        if rows_dropped:
+            logger.warning(
+                "csv_rows_dropped",
+                rows_in=len(rows),
+                rows_dropped=rows_dropped,
+                drops_by_entity=drops_by_entity,
+                reason="all owned values empty (nothing to assert)",
+            )
+        elif drops_by_entity:
+            logger.warning(
+                "csv_entities_skipped",
+                rows_in=len(rows),
+                drops_by_entity=drops_by_entity,
+                reason="all owned values empty (nothing to assert)",
+            )
+        return AppliedMapping(
+            list(entities_by_key.values()),
+            relationships,
+            rows_in=len(rows),
+            rows_dropped=rows_dropped,
+            drops_by_entity=drops_by_entity,
+        )
 
 
 def _rank_sample_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -642,6 +821,31 @@ def _rel_values(raw_value) -> list[str]:
 def _safe_id(raw: str) -> str:
     safe = re.sub(r"[^a-zA-Z0-9_-]", "_", raw.strip())
     return safe[:200] if safe else "unknown"
+
+
+def _cell(row: dict, column: str) -> str:
+    """One cell as a stripped string ('' when missing/empty). Non-string
+    values (typed JSON cells) are stringified deterministically."""
+    raw = row.get(column, "")
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        raw = str(raw)
+    return raw.strip()
+
+
+def _synthetic_key(type_name: str, owned_values: dict[str, str]) -> str:
+    """Deterministic content-hash key for a row whose natural key resolves
+    empty (ADR 0003 §2 — row conservation). Depends only on the entity type
+    and the row's owned non-empty column values — never on batch position,
+    row index, or anything random — so identical rows collapse into one
+    entity (true duplicates) and batched / re-run ingest stays idempotent.
+    """
+    material = type_name + "|" + "|".join(
+        sorted(f"{col}={val}" for col, val in owned_values.items())
+    )
+    digest = hashlib.sha1(material.encode("utf-8")).hexdigest()[:16]
+    return _safe_id(digest)
 
 
 def _snake_case(name: str) -> str:

@@ -175,8 +175,11 @@ async def ingest_csv_rows(
             col_datatype = _mget(col, "datatype", "string")
             col_target = _mget(col, "target_type")
 
-            if not col_name or col_role == "type_id":
+            if not col_name:
                 continue
+            # type_id columns are pre-registered too: the key value now also
+            # lands on instances as a regular attribute (ADR 0003 §2 —
+            # key-as-attribute), so the ontology must know it.
 
             type_attrs = existing_attrs.get(type_name, {})
             if col_name not in type_attrs:
@@ -185,10 +188,29 @@ async def ingest_csv_rows(
                 else:
                     await client.update(insert_attribute(graph_uri, type_name, col_name, "", col_datatype))
 
-    entities, relationships = CSVResolver.apply_mapping(body.mapping, body.rows)
+    applied = CSVResolver.apply_mapping(body.mapping, body.rows)
+    entities, relationships = applied.entities, applied.relationships
+
+    # Row-conservation accounting (ADR 0003 §2): report rows_in vs dropped so
+    # a mismatch is loud — rows only ever drop when ALL owned values are empty.
+    if applied.rows_dropped:
+        _log.warning(
+            "csv_rows_dropped",
+            tenant=tenant.tenant_id,
+            source=body.source,
+            kg_name=body.kg_name,
+            rows_in=applied.rows_in,
+            rows_dropped=applied.rows_dropped,
+            drops_by_entity=applied.drops_by_entity,
+        )
 
     extraction = ExtractionResult(entities=entities, relationships=relationships)
-    result = IngestResult(entities_extracted=len(entities))
+    result = IngestResult(
+        entities_extracted=len(entities),
+        rows_in=applied.rows_in,
+        rows_dropped=applied.rows_dropped,
+        drops_by_entity=applied.drops_by_entity,
+    )
     entity_uri_map: dict[str, str] = {}
     entity_type_map: dict[str, str] = {}
     batch_id = ""

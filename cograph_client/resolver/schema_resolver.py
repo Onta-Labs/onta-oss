@@ -546,11 +546,20 @@ class SchemaResolver:
         mapping = await csv_resolver.infer_schema(headers, rows[:10], existing_types, total_rows=len(rows))
 
         # Step 2: Apply mapping deterministically to ALL rows (no LLM)
-        entities, relationships = CSVResolver.apply_mapping(mapping, rows)
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        entities, relationships = applied.entities, applied.relationships
 
         # Step 3: Resolve entities + insert in batches
         batch_id = str(uuid4())
-        result = IngestResult(entities_extracted=len(entities), chunks_processed=1, batch_id=batch_id)
+        result = IngestResult(
+            entities_extracted=len(entities),
+            chunks_processed=1,
+            batch_id=batch_id,
+            # Row-conservation accounting (ADR 0003 §2).
+            rows_in=applied.rows_in,
+            rows_dropped=applied.rows_dropped,
+            drops_by_entity=applied.drops_by_entity,
+        )
         entity_uri_map: dict[str, str] = {}
         entity_type_map: dict[str, str] = {}
 
