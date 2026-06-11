@@ -67,6 +67,32 @@ def _load_enrichment_plugin() -> None:
         logger.error("enrichment_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_governance_plugin() -> None:
+    """Import and invoke the configured governance plugin, if any (COG-56).
+
+    Format: "module.path:callable". The callable is invoked with no
+    arguments and is expected to register a mapping-shape judge panel via
+    cograph_client.resolver.governance.register_governance_panel. Failures
+    are logged but do not prevent the app from starting — the app simply
+    falls back to the OSS default (proposals recorded pending,
+    tenant-layer-only behavior).
+    """
+    spec = settings.governance_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("governance_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("governance_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("governance_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
@@ -80,6 +106,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     _load_auth_plugin()
     _load_enrichment_plugin()
+    _load_governance_plugin()
     app = FastAPI(
         title="Omnix",
         description="Living Knowledge Graph Platform",

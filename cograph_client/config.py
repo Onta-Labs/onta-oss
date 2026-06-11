@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # to plug in proprietary adapters (web search, LLM, GS1, ...).
     enrichment_plugin: str = ""
 
+    # Optional governance plugin (COG-56): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and
+    # is expected to register a mapping-shape judge panel via
+    # cograph_client.resolver.governance.register_governance_panel. Without
+    # it, mapping-shape proposals are recorded pending (tenant-layer-only).
+    governance_plugin: str = ""
+
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 
