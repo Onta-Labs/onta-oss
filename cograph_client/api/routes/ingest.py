@@ -272,6 +272,31 @@ async def ingest_csv_rows(
                 ext_attrs[slot_name] = "core"
             await client.update(mark_core_slot(graph_uri, ext_type, slot_name))
 
+    # Judge-panel gating (ADR 0003 §5, COG-56): the tenant-layer writes above
+    # already happened — the tenant uses the shape immediately (ADR 0002 §2
+    # fallback rule). Mapping-shape decisions that are judge-panel material
+    # (dependent-entity promotions, core slots, dataset constants, and
+    # reason-pass decisions with confidence < 0.7) are now ENQUEUED as
+    # governance proposals on a fire-and-forget background task — this request
+    # never awaits the panel, so ingest latency is unchanged. With no premium
+    # service registered the proposals just land in the OSS pending holder
+    # (tenant-layer-only behavior); the premium judge service registers via
+    # register_governance_panel to judge, promote approved shapes to
+    # Global-Public, and align re-derivations to approved canonical shapes.
+    from cograph_client.resolver.governance import enqueue_shape_proposals, mapping_shape_proposals
+
+    try:
+        enqueue_shape_proposals(mapping_shape_proposals(
+            body.mapping,
+            tenant.tenant_id,
+            dataset_hint=body.source or body.kg_name or "",
+            proposer_model=CSVResolver.EXTRACT_MODEL,
+        ))
+    except Exception:
+        # Gating is best-effort by design: a seam failure degrades to
+        # tenant-layer-only behavior, never to a failed ingest.
+        _log.warning("shape_governance_enqueue_failed", tenant=tenant.tenant_id, exc_info=True)
+
     applied = CSVResolver.apply_mapping(body.mapping, body.rows)
     entities, relationships = applied.entities, applied.relationships
 
