@@ -3,6 +3,8 @@
 All KGs share the tenant's ontology but have separate instance data.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -22,6 +24,68 @@ OMNIX_ONTO = "https://cograph.tech/onto"
 TYPE_URI_PREFIX = "https://cograph.tech/types/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 NAME_ATTRS = ("name", "title", "label", "headline")
+
+# Predicate carrying a KG's precomputed triple count in the tenant metadata
+# graph (next to kg_name/kg_description). Counting every triple in a KG graph
+# is a full scan — seconds for a large KG — so `list_kgs` must NOT compute it
+# live on each request (the Explorer's load was dominated by N serial scans).
+# Instead the count is stored once and served as a tiny lookup inside the
+# metadata query that already lists the KGs. It is (re)materialized lazily on
+# read when absent and invalidated after ingest (see `invalidate_triple_count`,
+# called from explore.recompute_kg_stats).
+KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
+
+
+def _kg_meta_uri(tenant_id: str, name: str) -> str:
+    return f"https://cograph.tech/kgs/{tenant_id}/{name}"
+
+
+async def _live_triple_count(
+    client: "NeptuneClient", tenant_id: str, name: str
+) -> int:
+    """Full-scan COUNT(*) for one KG graph. Slow — fallback path only."""
+    graph = kg_graph_uri(tenant_id, name)
+    sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
+    try:
+        _, rows = parse_sparql_results(await client.query(sparql))
+        return int(rows[0].get("c", "0")) if rows else 0
+    except Exception:
+        return 0
+
+
+async def _store_triple_count(
+    client: "NeptuneClient", tenant_id: str, name: str, count: int
+) -> None:
+    """Persist a KG's triple count in the tenant metadata graph (best-effort)."""
+    base = tenant_graph_uri(tenant_id)
+    kg_uri = _kg_meta_uri(tenant_id, name)
+    try:
+        await client.update(
+            f"WITH <{base}>\n"
+            f"DELETE {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }}\n"
+            f"INSERT {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> {int(count)} }}\n"
+            f"WHERE {{ OPTIONAL {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }} }}"
+        )
+    except Exception:
+        pass
+
+
+async def invalidate_triple_count(
+    client: "NeptuneClient", tenant_id: str, name: str
+) -> None:
+    """Drop a KG's stored triple count so the next `list_kgs` recomputes it.
+
+    Called after ingest (data changed → count stale). Best-effort: a failure
+    just means the stale count lingers until the next write.
+    """
+    base = tenant_graph_uri(tenant_id)
+    kg_uri = _kg_meta_uri(tenant_id, name)
+    try:
+        await client.update(
+            f"WITH <{base}> DELETE WHERE {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }}"
+        )
+    except Exception:
+        pass
 
 # Predicates the resolver attaches to every entity at ingest time.
 # Always present, always 100%, drown out the actual columns the user
@@ -50,38 +114,61 @@ async def list_kgs(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    """List all knowledge graphs for a tenant."""
+    """List all knowledge graphs for a tenant.
+
+    Triple counts are read from the metadata graph (stored alongside the KG
+    registration) in the SAME query that lists the KGs — no per-KG scan on the
+    hot path. KGs with no stored count yet (legacy, or freshly invalidated
+    after ingest) fall back to a live COUNT(*); those run in PARALLEL and are
+    written back so the next read is again a single tiny lookup.
+    """
     base = tenant_graph_uri(tenant.tenant_id)
 
-    # Query the metadata graph for KG registrations
+    # One query: KG registrations + their stored triple counts.
     sparql = (
-        f"SELECT ?name ?desc FROM <{base}> WHERE {{"
+        f"SELECT ?name ?desc ?count FROM <{base}> WHERE {{"
         f"  ?kg <{OMNIX_ONTO}/kg_name> ?name ."
         f"  OPTIONAL {{ ?kg <{OMNIX_ONTO}/kg_description> ?desc }}"
+        f"  OPTIONAL {{ ?kg <{KG_TRIPLE_COUNT}> ?count }}"
         f"}}"
     )
     raw = await client.query(sparql)
     _, bindings = parse_sparql_results(raw)
 
-    kgs = []
+    # Preserve discovery order; dedupe defensively on name.
+    entries: list[dict] = []
+    seen: set[str] = set()
     for row in bindings:
         name = row.get("name", "")
-        if not name:
+        if not name or name in seen:
             continue
+        seen.add(name)
+        raw_count = row.get("count")
+        count = (
+            int(raw_count) if raw_count not in (None, "") and raw_count.isdigit() else None
+        )
+        entries.append({"name": name, "desc": row.get("desc", ""), "count": count})
 
-        # Get triple count for this KG
-        graph = kg_graph_uri(tenant.tenant_id, name)
-        count_sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
-        try:
-            count_raw = await client.query(count_sparql)
-            _, count_bindings = parse_sparql_results(count_raw)
-            count = int(count_bindings[0].get("c", "0")) if count_bindings else 0
-        except Exception:
-            count = 0
+    # Materialize any missing counts in parallel, then persist them.
+    missing = [e for e in entries if e["count"] is None]
+    if missing:
+        counts = await asyncio.gather(
+            *(_live_triple_count(client, tenant.tenant_id, e["name"]) for e in missing)
+        )
+        for e, c in zip(missing, counts):
+            e["count"] = c
+        await asyncio.gather(
+            *(
+                _store_triple_count(client, tenant.tenant_id, e["name"], e["count"])
+                for e in missing
+            ),
+            return_exceptions=True,
+        )
 
-        kgs.append(KGInfo(name=name, description=row.get("desc", ""), triple_count=count))
-
-    return kgs
+    return [
+        KGInfo(name=e["name"], description=e["desc"], triple_count=e["count"] or 0)
+        for e in entries
+    ]
 
 
 @router.post("", response_model=KGInfo, status_code=201)
@@ -98,6 +185,7 @@ async def create_kg(
         f"INSERT DATA {{\n"
         f"  GRAPH <{base}> {{\n"
         f'    <{kg_uri}> <{OMNIX_ONTO}/kg_name> "{body.name}" .\n'
+        f"    <{kg_uri}> <{KG_TRIPLE_COUNT}> 0 .\n"
     )
     if body.description:
         sparql += f'    <{kg_uri}> <{OMNIX_ONTO}/kg_description> "{body.description}" .\n'
