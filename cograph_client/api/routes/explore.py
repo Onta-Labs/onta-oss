@@ -628,6 +628,12 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     for key in [k for k in _summary_cache if k[0] == tenant_id and k[1] == kg_name]:
         _summary_cache.pop(key, None)
 
+    # Ingest changed the data → the KG's stored triple count is stale. Drop it
+    # so the next `list_kgs` recomputes (and re-stores) it once. Local import
+    # avoids an import cycle between this module and knowledge_graphs.
+    from cograph_client.api.routes.knowledge_graphs import invalidate_triple_count
+    await invalidate_triple_count(client, tenant_id, kg_name)
+
     result = {"types": len(entity_counts), "predicate_rows": len(triples) - len(entity_counts)}
     if drift_enabled:
         result["drift"] = await _build_drift_report(
