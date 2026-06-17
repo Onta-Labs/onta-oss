@@ -72,6 +72,20 @@ Post-processing enforces entity-first principles: geographic columns (city, stat
 country) and people columns (broker, agent) are forced to relationships even if the
 LLM mapped them as attributes.
 
+**Wide tables (COG-58).** Above `OMNIX_CSV_MAX_INFERENCE_COLUMNS` columns (default 40)
+the per-column REASON pass is split so no single LLM call must emit a tag for every
+column within its output-token budget (the ~300-column failure mode: truncated JSON →
+validation retry → 422/120s timeout). It becomes one global entity-decomposition call
+(output bounded by entity count) followed by chunked column-assignment calls of at most
+that many columns each (run concurrently under a small semaphore), merged back into the
+same `{entities, columns, relationships}` shape. Coverage is guaranteed deterministically:
+any column the model drops is backfilled as an attribute of the first entity, so every
+header is tagged exactly once (row conservation, ADR 0003 §2). Each pass's output-token
+budget also scales with the column count so the REFUTE/COMPLETE echoes aren't truncated.
+Note: *type matching* (`type_matcher.py`) is **not** a wide-table bottleneck — it resolves
+entity *type names*, not columns, and scales with the (small) distinct-type count via its
+cache + exact-name short-circuit, so no per-column concurrency cap is needed there.
+
 **Step 2 — Row mapping** (`omnix/resolver/csv_resolver.py:241-306`)
 
 Fully deterministic. No LLM. Each row produces:
@@ -247,7 +261,11 @@ Key rules in the system prompt (`omnix/nlp/prompts.py`):
 ### Enum Value Discovery
 
 During full ontology fetch, cardinality is checked for ALL attributes and relationships
-via concurrent SPARQL queries (one per predicate, via asyncio.gather).
+via concurrent SPARQL queries (one per predicate, via asyncio.gather). Concurrency is
+**bounded by a semaphore** (`OMNIX_ENUM_DISCOVERY_CONCURRENCY`, default 8 — COG-58): a
+wide table with hundreds of attributes would otherwise launch hundreds of simultaneous
+queries and throttle serverless Neptune. The in-flight query count is now capped
+regardless of column count, trading a little latency for stability.
 
 - **Zero-cardinality predicates are hidden.** If an attribute or relationship has no data
   in Neptune, it is excluded from the ontology summary. This prevents the LLM from

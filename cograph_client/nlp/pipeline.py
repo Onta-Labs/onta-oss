@@ -18,6 +18,16 @@ logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
 _ontology_cache: dict[str, tuple[str, float]] = {}
 ONTOLOGY_CACHE_TTL = 60  # seconds
 
+# Cap on concurrent enum-discovery SPARQL queries (COG-58). Enum discovery
+# fires one COUNT(DISTINCT) per attribute + per relationship; an unbounded
+# asyncio.gather meant a wide table (hundreds of columns → hundreds of
+# attributes) launched O(columns) simultaneous queries, throttling serverless
+# Neptune (1–2.5 NCU). The semaphore keeps the round-trip count bounded
+# regardless of column count, trading a little latency for stability.
+MAX_ENUM_DISCOVERY_CONCURRENCY = int(
+    os.environ.get("OMNIX_ENUM_DISCOVERY_CONCURRENCY", "8")
+)
+
 # Attribute-alias map cache (ADR 0002 §7): {graph_uri: (old->new map, timestamp)}
 _alias_cache: dict[str, tuple[dict[str, str], float]] = {}
 
@@ -250,9 +260,25 @@ class NLQueryPipeline:
 
             # Discover enumerated values for low-cardinality string attributes.
             # Runs cardinality checks concurrently (asyncio.gather) instead of
-            # serially, cutting ontology fetch from ~7s to ~500ms.
+            # serially, cutting ontology fetch from ~7s to ~500ms. Concurrency
+            # is bounded by a semaphore (COG-58) so a wide table with hundreds
+            # of attributes can't launch hundreds of simultaneous queries
+            # against serverless Neptune — the count stays capped regardless of
+            # column count.
             import asyncio
             MAX_ENUM_CARDINALITY = 25
+            _enum_sem = asyncio.Semaphore(MAX_ENUM_DISCOVERY_CONCURRENCY)
+
+            async def _gather_bounded(coros: list) -> list:
+                """asyncio.gather, but each coroutine acquires the shared enum
+                semaphore first so at most MAX_ENUM_DISCOVERY_CONCURRENCY run at
+                once. Preserves return_exceptions semantics for callers."""
+                async def _run(coro):
+                    async with _enum_sem:
+                        return await coro
+                return await asyncio.gather(
+                    *[_run(c) for c in coros], return_exceptions=True
+                )
             enum_values: dict[str, dict[str, list[str]]] = {}
             enum_counts: dict[str, dict[str, int]] = {}
             empty_rels: set[tuple[str, str]] = set()
@@ -286,9 +312,8 @@ class NLQueryPipeline:
                 # Phase 1: Concurrent cardinality checks for ALL attributes
                 if all_attrs:
                     try:
-                        count_results = await asyncio.gather(
-                            *[_count_predicate(tn, an, uri) for tn, an, uri in all_attrs],
-                            return_exceptions=True,
+                        count_results = await _gather_bounded(
+                            [_count_predicate(tn, an, uri) for tn, an, uri in all_attrs]
                         )
 
                         low_card_attrs: list[tuple[str, str, str]] = []
@@ -314,9 +339,8 @@ class NLQueryPipeline:
                             return tn, an, [r["val"] for r in bindings if r.get("val")]
 
                         if low_card_attrs:
-                            val_results = await asyncio.gather(
-                                *[_fetch_vals(tn, an, uri) for tn, an, uri in low_card_attrs],
-                                return_exceptions=True,
+                            val_results = await _gather_bounded(
+                                [_fetch_vals(tn, an, uri) for tn, an, uri in low_card_attrs]
                             )
                             for result in val_results:
                                 if isinstance(result, Exception):
@@ -331,9 +355,8 @@ class NLQueryPipeline:
                 empty_rels: set[tuple[str, str]] = set()  # (type_name, rel_name)
                 if rel_uris:
                     try:
-                        rel_counts = await asyncio.gather(
-                            *[_count_predicate(tn, rn, uri) for tn, rn, uri in rel_uris],
-                            return_exceptions=True,
+                        rel_counts = await _gather_bounded(
+                            [_count_predicate(tn, rn, uri) for tn, rn, uri in rel_uris]
                         )
                         for result in rel_counts:
                             if isinstance(result, Exception):

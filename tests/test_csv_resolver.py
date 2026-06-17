@@ -7,15 +7,20 @@ from pathlib import Path
 
 import pytest
 
+from cograph_client.resolver import csv_resolver
 from cograph_client.resolver.csv_resolver import (
+    COLUMN_ASSIGN_SYSTEM,
     COMPLETE_SYSTEM,
+    ENTITY_SYSTEM,
     REASON_SYSTEM,
     REFUTE_SYSTEM,
     CSVResolver,
     _check_complete_shape,
+    _chunked,
     _rank_sample_rows,
     _safe_id,
     _snake_case,
+    _v2_max_tokens,
 )
 from cograph_client.resolver.models import (
     ColumnMapping,
@@ -568,7 +573,7 @@ def _mock_v2(monkeypatch, resolver, reason_outputs, refute_outputs,
                          else [{"types": []}]),
     }
 
-    async def fake(system, user_content, temperature=0.0):
+    async def fake(system, user_content, temperature=0.0, max_tokens=None):
         assert system in (REASON_SYSTEM, REFUTE_SYSTEM, COMPLETE_SYSTEM)
         which = {REASON_SYSTEM: "reason", REFUTE_SYSTEM: "refute",
                  COMPLETE_SYSTEM: "complete"}[system]
@@ -1756,3 +1761,160 @@ class TestLiveGraingerCompletion:
         #    non-empty somewhere (aggressive rejection is mandated).
         assert all(len(t.core_slots) <= 3 for t in ext.types)
         assert any(t.rejected for t in ext.types), "expected rejected candidates"
+
+
+# --- COG-58: wide-table schema inference (chunked REASON) --------------------
+# The single per-column REASON pass is split for wide tables into a global
+# entity-decomposition call + chunked column-assignment calls, merged back into
+# the standard {entities, columns, relationships} shape. No network: the LLM
+# seam is scripted by system prompt so chunk concurrency/order doesn't matter.
+
+
+def _mock_wide(monkeypatch, resolver, headers, entities, *, drop=(),
+               refute=None, complete=None):
+    """Script the wide-path LLM seam, dispatching by system prompt.
+
+    The column-assignment fake infers its chunk's columns from the headers that
+    appear (quoted) in the call's user_content — robust to chunk concurrency —
+    and tags each as an attribute of the first entity, skipping any in ``drop``
+    (to exercise the deterministic backfill)."""
+    calls: list[str] = []
+    owner = entities[0]["name"]
+    drop = set(drop)
+
+    async def fake(system, user_content, temperature=0.0, max_tokens=None):
+        calls.append(system)
+        if system == ENTITY_SYSTEM:
+            return {"entities": entities, "relationships": []}
+        if system == COLUMN_ASSIGN_SYSTEM:
+            chunk_cols = [h for h in headers if f'"{h}"' in user_content]
+            return {"columns": [
+                {"column": h, "role": "attribute", "entity": owner,
+                 "predicate_or_attr": h, "why": "tagged", "confidence": 0.9}
+                for h in chunk_cols if h not in drop
+            ]}
+        if system == REFUTE_SYSTEM:
+            return refute if refute is not None else {"violations": []}
+        if system == COMPLETE_SYSTEM:
+            return complete if complete is not None else {"types": []}
+        raise AssertionError(f"unexpected system prompt: {system[:40]!r}")
+
+    monkeypatch.setattr(resolver, "_call_llm_v2", fake)
+    return calls
+
+
+def _wide_headers(n: int) -> list[str]:
+    return [f"col_{i:03d}" for i in range(n)]
+
+
+def _wide_rows(headers: list[str], n: int = 10) -> list[dict[str, str]]:
+    return [{h: f"{h}_v{r}" for h in headers} for r in range(n)]
+
+
+class TestWideTableInference:
+    """COG-58: schema inference for tables wider than MAX_INFERENCE_COLUMNS."""
+
+    def test_v2_max_tokens_scales_and_caps(self):
+        narrow = _v2_max_tokens(2)
+        wide = _v2_max_tokens(300)
+        huge = _v2_max_tokens(100_000)
+        assert narrow == csv_resolver._V2_BASE_MAX_TOKENS
+        assert wide > narrow
+        assert huge == csv_resolver._V2_MAX_TOKENS_CAP
+
+    def test_chunked_splits_evenly(self):
+        assert _chunked(list(range(25)), 10) == [
+            list(range(10)), list(range(10, 20)), list(range(20, 25)),
+        ]
+        assert _chunked([], 10) == []
+
+    @pytest.mark.asyncio
+    async def test_wide_table_chunks_and_covers_all_columns(self, monkeypatch):
+        monkeypatch.setattr(csv_resolver, "MAX_INFERENCE_COLUMNS", 10)
+        headers = _wide_headers(25)  # 3 chunks of 10/10/5
+        entities = [{"name": "rec", "type_name": "Record",
+                     "key_strategy": "synthetic", "key_columns": [],
+                     "why": "single wide entity", "confidence": 0.8}]
+        resolver = CSVResolver(client=None, openrouter_key="")
+        calls = _mock_wide(monkeypatch, resolver, headers, entities)
+
+        mapping = await resolver.infer_schema(
+            headers, _wide_rows(headers), {}, total_rows=10,
+        )
+
+        # One entity pass, three column-assignment passes, one refute, one complete.
+        assert calls.count(ENTITY_SYSTEM) == 1
+        assert calls.count(COLUMN_ASSIGN_SYSTEM) == 3
+        assert calls.count(REFUTE_SYSTEM) == 1
+        assert calls.count(COMPLETE_SYSTEM) == 1
+        # The narrow single-call REASON path must NOT run.
+        assert REASON_SYSTEM not in calls
+        # Every column is tagged exactly once and owned by the decided entity.
+        assert {c.column_name for c in mapping.columns} == set(headers)
+        assert len(mapping.columns) == len(headers)
+        assert all(c.entity == "rec" for c in mapping.columns)
+
+    @pytest.mark.asyncio
+    async def test_wide_table_backfills_dropped_columns(self, monkeypatch):
+        monkeypatch.setattr(csv_resolver, "MAX_INFERENCE_COLUMNS", 10)
+        headers = _wide_headers(25)
+        entities = [{"name": "rec", "type_name": "Record",
+                     "key_strategy": "synthetic", "key_columns": [],
+                     "why": "single wide entity", "confidence": 0.8}]
+        dropped = {"col_003", "col_017"}
+        resolver = CSVResolver(client=None, openrouter_key="")
+        _mock_wide(monkeypatch, resolver, headers, entities, drop=dropped)
+
+        mapping = await resolver.infer_schema(
+            headers, _wide_rows(headers), {}, total_rows=10,
+        )
+
+        # Row conservation: dropped columns are backfilled, never lost.
+        assert {c.column_name for c in mapping.columns} == set(headers)
+        for name in dropped:
+            col = next(c for c in mapping.columns if c.column_name == name)
+            assert col.role == ColumnRole.ATTRIBUTE
+            assert col.entity == "rec"
+
+    @pytest.mark.asyncio
+    async def test_wide_table_repairs_unknown_owner(self, monkeypatch):
+        monkeypatch.setattr(csv_resolver, "MAX_INFERENCE_COLUMNS", 10)
+        headers = _wide_headers(12)  # 2 chunks
+        entities = [{"name": "rec", "type_name": "Record",
+                     "key_strategy": "synthetic", "key_columns": [],
+                     "why": "x", "confidence": 0.8}]
+        resolver = CSVResolver(client=None, openrouter_key="")
+
+        async def fake(system, user_content, temperature=0.0, max_tokens=None):
+            if system == ENTITY_SYSTEM:
+                return {"entities": entities, "relationships": []}
+            if system == COLUMN_ASSIGN_SYSTEM:
+                chunk = [h for h in headers if f'"{h}"' in user_content]
+                # Tag with a bogus owner the entity pass never declared.
+                return {"columns": [
+                    {"column": h, "role": "attribute", "entity": "ghost",
+                     "predicate_or_attr": h, "confidence": 0.9}
+                    for h in chunk
+                ]}
+            if system == REFUTE_SYSTEM:
+                return {"violations": []}
+            return {"types": []}
+
+        monkeypatch.setattr(resolver, "_call_llm_v2", fake)
+        mapping = await resolver.infer_schema(
+            headers, _wide_rows(headers), {}, total_rows=10,
+        )
+        # Unknown owners are reassigned to the first (default) entity, never None.
+        assert all(c.entity == "rec" for c in mapping.columns)
+        assert {c.column_name for c in mapping.columns} == set(headers)
+
+    @pytest.mark.asyncio
+    async def test_narrow_table_keeps_single_reason_pass(self, monkeypatch):
+        # At/under the threshold the wide split must not engage.
+        monkeypatch.setattr(csv_resolver, "MAX_INFERENCE_COLUMNS", 40)
+        mapping, calls = await _run_v2(
+            monkeypatch, _SIMPLE_HEADERS, _simple_rows(), _SIMPLE_REASON,
+            _echo_refute(_SIMPLE_REASON),
+        )
+        passes = [c for c, _ in calls]
+        assert passes == ["reason", "refute", "complete"]
