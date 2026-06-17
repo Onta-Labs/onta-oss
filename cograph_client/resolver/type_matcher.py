@@ -12,21 +12,23 @@ Cascade architecture (fast → slow):
 
 from __future__ import annotations
 
+import json
 import os
 
 import numpy as np
 
-import anthropic
 import structlog
 
+from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.models import MatchVerdict, TypeMatch
 from cograph_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
 logger = structlog.stdlib.get_logger("cograph.resolver.type_matcher")
 
 # Type-matching decision model (reuse-vs-expand verdict + ambiguous judge
-# fan-out) — env-overridable; default preserves prior behavior.
-MATCH_MODEL = os.environ.get("OMNIX_MATCH_MODEL", "claude-sonnet-4-6")
+# fan-out) — env-overridable; defaults to the shared primary, routed through
+# OpenRouter with the configured fallback.
+MATCH_MODEL = os.environ.get("OMNIX_MATCH_MODEL", PRIMARY_MODEL)
 
 # Embedding similarity thresholds
 EMBEDDING_SAME_THRESHOLD = 0.92
@@ -112,12 +114,12 @@ Return JSON:
 class TypeMatcher:
     def __init__(
         self,
-        client: anthropic.AsyncAnthropic,
+        openrouter_key: str,
         cache: JsonVerdictCache,
         embedding_service: object | None = None,
         graph_uri: str = "",
     ):
-        self._client = client
+        self._openrouter_key = openrouter_key
         self._cache = cache
         self._embedding_service = embedding_service
         self._graph_uri = graph_uri
@@ -382,23 +384,20 @@ class TypeMatcher:
         )
         desc_line = f'Description: "{proposed_description}"' if proposed_description else ""
 
-        msg = await self._client.messages.create(
+        text = await openrouter_chat(
+            self._openrouter_key,
+            MATCH_SYSTEM_PROMPT,
+            MATCH_USER_TEMPLATE.format(
+                existing_types=types_text,
+                proposed_type=proposed_type,
+                proposed_description=desc_line,
+            ),
             model=MATCH_MODEL,
             max_tokens=256,
-            system=MATCH_SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": MATCH_USER_TEMPLATE.format(
-                    existing_types=types_text,
-                    proposed_type=proposed_type,
-                    proposed_description=desc_line,
-                ),
-            }],
         )
 
-        import json
         try:
-            result = json.loads(msg.content[0].text)
+            result = json.loads(text)
             return {
                 "verdict": result.get("verdict", "DIFFERENT"),
                 "matched_type": result.get("matched_type"),
@@ -406,7 +405,7 @@ class TypeMatcher:
                 "reasoning": result.get("reasoning", ""),
             }
         except (json.JSONDecodeError, IndexError, KeyError) as e:
-            logger.warning("type_match_parse_error", error=str(e), raw=msg.content[0].text)
+            logger.warning("type_match_parse_error", error=str(e), raw=text)
             return {"verdict": "DIFFERENT", "matched_type": None, "confidence": 0.5, "reasoning": "parse error"}
 
     async def _judge_ambiguous(
@@ -418,26 +417,23 @@ class TypeMatcher:
     ) -> TypeMatch:
         """Fan out to 3 independent LLM judges for ambiguous matches."""
         import asyncio
-        import json
 
         async def single_judge() -> dict:
-            msg = await self._client.messages.create(
+            text = await openrouter_chat(
+                self._openrouter_key,
+                JUDGE_SYSTEM_PROMPT,
+                JUDGE_USER_TEMPLATE.format(
+                    existing_type=existing_type,
+                    existing_description=existing_description,
+                    proposed_type=proposed_type,
+                    proposed_description=proposed_description,
+                ),
                 model=MATCH_MODEL,
-                max_tokens=256,
                 temperature=0.7,  # diversity between judges
-                system=JUDGE_SYSTEM_PROMPT,
-                messages=[{
-                    "role": "user",
-                    "content": JUDGE_USER_TEMPLATE.format(
-                        existing_type=existing_type,
-                        existing_description=existing_description,
-                        proposed_type=proposed_type,
-                        proposed_description=proposed_description,
-                    ),
-                }],
+                max_tokens=256,
             )
             try:
-                return json.loads(msg.content[0].text)
+                return json.loads(text)
             except (json.JSONDecodeError, IndexError):
                 return {"verdict": "DIFFERENT", "confidence": 0.5}
 
