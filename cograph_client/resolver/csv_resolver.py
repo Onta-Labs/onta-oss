@@ -339,6 +339,134 @@ def _v2_enabled() -> bool:
     }
 
 
+# --- COG-58: wide-table schema inference ------------------------------------
+# Above this column count the per-column REASON tagging is SPLIT: one global
+# entity-decomposition pass (output bounded by entity count) followed by
+# chunked column-assignment passes of at most this many columns each (output
+# bounded by chunk size). This keeps any single LLM call's output within its
+# token budget — the wide-table failure mode is a ~300-column REASON pass whose
+# per-column JSON exceeds max_tokens, truncates, fails validation, retries, and
+# eventually 422s or hits the 120s route timeout. Narrow tables (<= threshold)
+# keep the single-call path unchanged.
+MAX_INFERENCE_COLUMNS = int(os.environ.get("OMNIX_CSV_MAX_INFERENCE_COLUMNS", "40"))
+
+# Output-token budget for v2 passes, scaled to the column count. The REFUTE and
+# COMPLETE passes still echo the (whole) schema, so even with chunked REASON
+# they need headroom proportional to the column count — bounded so we never
+# request an absurd budget from the provider.
+_V2_BASE_MAX_TOKENS = 4096
+_V2_MAX_TOKENS_CAP = 32768
+_V2_TOKENS_PER_COLUMN = 80
+
+# Bound on concurrent column-assignment chunk calls in the wide path.
+_WIDE_CHUNK_CONCURRENCY = 5
+
+
+def _v2_max_tokens(n_columns: int) -> int:
+    """Per-pass output budget scaled to column count (COG-58)."""
+    return min(
+        _V2_MAX_TOKENS_CAP,
+        max(_V2_BASE_MAX_TOKENS, 1024 + n_columns * _V2_TOKENS_PER_COLUMN),
+    )
+
+
+def _chunked(seq: list, size: int) -> list[list]:
+    """Split a list into consecutive chunks of at most ``size``."""
+    return [seq[i : i + size] for i in range(0, len(seq), size)]
+
+
+# --- COG-58 Pass B split: ENTITY (global) -----------------------------------
+# Same entity-decomposition rules as REASON_SYSTEM, but the model returns ONLY
+# the entity list + inter-entity edges — never a per-column array. Output is
+# therefore bounded by the (small) entity count, not the column count, so this
+# pass is safe at any table width.
+
+ENTITY_SYSTEM = """\
+You decompose a CSV table into the knowledge-graph ENTITIES it describes (not
+the columns yet). You are given a STATISTICAL PROFILE of every column computed
+over the full table. Reason from that evidence, not from column names.
+
+ENTITY DECOMPOSITION
+- Columns that travel together (mutual functional dependency) and include an
+  id-like member describe ONE entity; a code column paired with its label/title
+  column are the SAME entity (code = its key, title = its label).
+- A column with low card_ratio that repeats across rows (distinct far below row
+  count) is a DIMENSION: a shared entity referenced by many rows. Model it as
+  its own entity, NOT a literal attribute of the row's primary entity.
+- Wide/denormalized exports usually bundle SEVERAL distinct entities per row — a
+  person, a transaction, a place, an organization, a product. Default to
+  multi-entity unless the row genuinely describes ONE thing.
+- SAME TYPE TWICE: two column-clusters of the same base type in different roles
+  (buyer & seller, patient & provider, applicant & co_applicant) are TWO
+  separate entities with distinct names — NEVER merge them.
+
+KEYS (row conservation is mandatory)
+- An entity key must be a column that is BOTH ~100% complete AND unique.
+- If none qualifies, use a composite of identifying columns or a synthetic id.
+  NEVER key on an incomplete column: it silently drops every row missing it.
+
+TYPE REUSE
+- The user message lists the tenant's EXISTING ontology types. Reuse one ONLY
+  when your entity is genuinely the SAME real-world concept. Otherwise propose a
+  NEW accurate PascalCase type name — never force-fit a different concept.
+
+Output strict JSON ONLY (no columns array):
+{"entities":[{"name","type_name","key_strategy":"column|composite|synthetic",
+"key_columns":[...],"why","confidence"}],
+"relationships":[{"subject","predicate","object","why"}]}
+An edge predicate names the RELATIONSHIP (a role/verb) between two entity
+names, never a source column name. JSON only."""
+
+ENTITY_USER = """\
+COLUMN PROFILE (computed over {rows_profiled} of {total_rows} rows):
+{profile}
+
+SAMPLE ROWS ({n} highest-density rows — value context only; trust the profile for statistics):
+{sample_rows}
+
+EXISTING ONTOLOGY TYPES:
+{existing_types}
+
+This table has {n_columns} columns — return ONLY the entity decomposition
+(entities + inter-entity relationships). Column assignment happens separately.
+Return the JSON now."""
+
+
+# --- COG-58 Pass B split: COLUMN ASSIGNMENT (chunked) -----------------------
+# Given the already-decided entities, assign a BATCH of columns to them. Output
+# is bounded by the batch size, so arbitrarily wide tables are handled by
+# running this pass once per chunk and merging the column arrays.
+
+COLUMN_ASSIGN_SYSTEM = """\
+You assign CSV columns to an ALREADY-DECIDED set of knowledge-graph entities.
+The entities (with their types and keys) are fixed — do NOT invent new entities.
+For EACH column in the batch, decide:
+- role: "attribute" (a literal property), "relationship" (a reference to a
+  shared OUT-OF-ROW entity that is NOT one of the decided entities — carry a
+  "target_type"), or "key" (an identifying column of its owner entity).
+- entity: the NAME of the decided entity this column belongs to.
+- predicate_or_attr: a snake_case attribute name, or the edge predicate for a
+  relationship (a role/verb, never the raw column name).
+Datatypes are derived later from the profile — do not emit them.
+Tag EVERY column in the batch exactly once. Output strict JSON ONLY:
+{"columns":[{"column","role":"attribute|relationship|key","entity",
+"predicate_or_attr","target_type":null|"<T>","why","confidence"}]}
+JSON only."""
+
+COLUMN_ASSIGN_USER = """\
+DECIDED ENTITIES (fixed — assign each column to one of these by name):
+{entities}
+
+COLUMN PROFILE for THIS BATCH (computed over {rows_profiled} of {total_rows} rows):
+{profile}
+
+SAMPLE ROWS ({n} highest-density rows — value context only):
+{sample_rows}
+
+Assign every column in this batch to one of the decided entities and return the
+columns JSON now."""
+
+
 class CSVResolver:
     EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
     EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
@@ -526,23 +654,39 @@ class CSVResolver:
         ranked_samples = _rank_sample_rows(sample_rows)[:6]
         sample_str = "\n".join(json.dumps(row, default=str) for row in ranked_samples)
 
-        reason_user = REASON_USER.format(
-            rows_profiled=profile.rows_profiled,
-            total_rows=profile.total_rows,
-            profile=profile_json,
-            n=len(ranked_samples),
-            sample_rows=sample_str,
-            existing_types=types_str,
-        )
+        # COG-58: scale each pass's output budget to the column count so the
+        # REFUTE/COMPLETE echoes (which still carry the whole schema) aren't
+        # truncated on wide tables.
+        max_tokens = _v2_max_tokens(len(headers))
 
-        # Pass B — REASON (retry once at temperature 0.3, then propagate).
-        try:
-            proposed = await self._call_llm_v2(REASON_SYSTEM, reason_user, temperature=0.0)
-            _check_reason_shape(proposed)
-        except (ValidationError, KeyError, json.JSONDecodeError) as e:
-            logger.warning("csv_reason_validation_retry", error=str(e))
-            proposed = await self._call_llm_v2(REASON_SYSTEM, reason_user, temperature=0.3)
-            _check_reason_shape(proposed)
+        # Pass B — REASON. Narrow tables: one call. Wide tables (COG-58): a
+        # global entity-decomposition pass plus chunked column-assignment passes
+        # so no single call must emit a per-column tag for every column.
+        if len(headers) > MAX_INFERENCE_COLUMNS:
+            proposed = await self._reason_wide(
+                headers, profile, profile_json, types_str, ranked_samples, sample_str,
+            )
+        else:
+            reason_user = REASON_USER.format(
+                rows_profiled=profile.rows_profiled,
+                total_rows=profile.total_rows,
+                profile=profile_json,
+                n=len(ranked_samples),
+                sample_rows=sample_str,
+                existing_types=types_str,
+            )
+            # Retry once at temperature 0.3, then propagate.
+            try:
+                proposed = await self._call_llm_v2(
+                    REASON_SYSTEM, reason_user, temperature=0.0, max_tokens=max_tokens,
+                )
+                _check_reason_shape(proposed)
+            except (ValidationError, KeyError, json.JSONDecodeError) as e:
+                logger.warning("csv_reason_validation_retry", error=str(e))
+                proposed = await self._call_llm_v2(
+                    REASON_SYSTEM, reason_user, temperature=0.3, max_tokens=max_tokens,
+                )
+                _check_reason_shape(proposed)
 
         refute_user = REFUTE_USER.format(
             rows_profiled=profile.rows_profiled,
@@ -553,11 +697,15 @@ class CSVResolver:
 
         # Pass C — REFUTE (same retry contract).
         try:
-            refuted = await self._call_llm_v2(REFUTE_SYSTEM, refute_user, temperature=0.0)
+            refuted = await self._call_llm_v2(
+                REFUTE_SYSTEM, refute_user, temperature=0.0, max_tokens=max_tokens,
+            )
             violations, corrected = _check_refute_shape(refuted, proposed)
         except (ValidationError, KeyError, json.JSONDecodeError) as e:
             logger.warning("csv_refute_validation_retry", error=str(e))
-            refuted = await self._call_llm_v2(REFUTE_SYSTEM, refute_user, temperature=0.3)
+            refuted = await self._call_llm_v2(
+                REFUTE_SYSTEM, refute_user, temperature=0.3, max_tokens=max_tokens,
+            )
             violations, corrected = _check_refute_shape(refuted, proposed)
 
         complete_user = COMPLETE_USER.format(
@@ -570,11 +718,15 @@ class CSVResolver:
         # Pass D — COMPLETE (same retry contract; a >3-core-slot response
         # fails pydantic validation here, triggering the retry).
         try:
-            completed = await self._call_llm_v2(COMPLETE_SYSTEM, complete_user, temperature=0.0)
+            completed = await self._call_llm_v2(
+                COMPLETE_SYSTEM, complete_user, temperature=0.0, max_tokens=max_tokens,
+            )
             extensions = _check_complete_shape(completed)
         except (ValidationError, KeyError, json.JSONDecodeError) as e:
             logger.warning("csv_complete_validation_retry", error=str(e))
-            completed = await self._call_llm_v2(COMPLETE_SYSTEM, complete_user, temperature=0.3)
+            completed = await self._call_llm_v2(
+                COMPLETE_SYSTEM, complete_user, temperature=0.3, max_tokens=max_tokens,
+            )
             extensions = _check_complete_shape(completed)
 
         mapping = self._convert_v2(corrected, violations, profile, extensions)
@@ -592,6 +744,177 @@ class CSVResolver:
             ],
         )
         return mapping
+
+    async def _reason_wide(
+        self,
+        headers: list[str],
+        profile: TableProfile,
+        profile_json: str,
+        types_str: str,
+        ranked_samples: list[dict],
+        sample_str: str,
+    ) -> dict:
+        """COG-58 wide-table REASON: split the single per-column pass into a
+        global entity-decomposition call plus chunked column-assignment calls,
+        then merge into the standard ``{entities, columns, relationships}``
+        shape that :func:`_check_reason_shape` validates and :meth:`_convert_v2`
+        consumes.
+
+        No single call's output scales with the total column count: the entity
+        pass emits only the (small) entity list, and each column pass emits tags
+        for at most :data:`MAX_INFERENCE_COLUMNS` columns. Coverage is
+        guaranteed deterministically — any column the model drops is backfilled
+        as an attribute of the first entity, so every header is tagged exactly
+        once (row conservation, ADR 0003 §2). The chunk calls run concurrently
+        under a small semaphore so a very wide table doesn't fan out unbounded.
+        """
+        import asyncio
+
+        # --- Pass B1: global entity decomposition (output bounded by entity count).
+        entity_user = ENTITY_USER.format(
+            rows_profiled=profile.rows_profiled,
+            total_rows=profile.total_rows,
+            profile=profile_json,
+            n=len(ranked_samples),
+            sample_rows=sample_str,
+            existing_types=types_str,
+            n_columns=len(headers),
+        )
+
+        def _check_entities(data: dict) -> None:
+            if not isinstance(data, dict):
+                raise KeyError("entity output must be a JSON object")
+            ents = data.get("entities")
+            if not isinstance(ents, list) or not ents:
+                raise KeyError("entities")
+            for e in ents:
+                if not isinstance(e, dict) or not e.get("type_name"):
+                    raise KeyError("entities[].type_name")
+
+        try:
+            decomposition = await self._call_llm_v2(
+                ENTITY_SYSTEM, entity_user, temperature=0.0, max_tokens=_V2_BASE_MAX_TOKENS,
+            )
+            _check_entities(decomposition)
+        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+            logger.warning("csv_entity_validation_retry", error=str(e))
+            decomposition = await self._call_llm_v2(
+                ENTITY_SYSTEM, entity_user, temperature=0.3, max_tokens=_V2_BASE_MAX_TOKENS,
+            )
+            _check_entities(decomposition)
+
+        entities = decomposition["entities"]
+        relationships = decomposition.get("relationships") or []
+        # Every entity needs a stable name handle for column assignment + convert.
+        for e in entities:
+            if not e.get("name"):
+                e["name"] = _snake_case(e["type_name"])
+        entity_names = [e["name"] for e in entities]
+        valid_names = set(entity_names)
+        default_owner = entity_names[0]
+
+        entities_brief = "\n".join(
+            f'- "{e["name"]}" (type {e["type_name"]}, key '
+            f'{e.get("key_strategy") or "?"}: '
+            f'{", ".join(e.get("key_columns") or []) or "none"})'
+            for e in entities
+        )
+
+        profile_dict = profile.to_prompt_dict()
+        all_col_profiles = profile_dict.get("columns", {})
+
+        # --- Pass B2: chunked column assignment (output bounded by chunk size).
+        chunks = _chunked(headers, MAX_INFERENCE_COLUMNS)
+        sem = asyncio.Semaphore(_WIDE_CHUNK_CONCURRENCY)
+
+        def _check_cols(data: dict) -> None:
+            if not isinstance(data, dict):
+                raise KeyError("column output must be a JSON object")
+            cols = data.get("columns")
+            if not isinstance(cols, list) or not cols:
+                raise KeyError("columns")
+
+        async def _assign_chunk(chunk: list[str]) -> list[dict]:
+            chunk_profile = {
+                "rows_profiled": profile_dict.get("rows_profiled"),
+                "total_rows": profile_dict.get("total_rows"),
+                "columns": {h: all_col_profiles.get(h, {}) for h in chunk},
+            }
+            chunk_samples = "\n".join(
+                json.dumps({h: row.get(h) for h in chunk}, default=str)
+                for row in ranked_samples
+            )
+            user = COLUMN_ASSIGN_USER.format(
+                entities=entities_brief,
+                rows_profiled=profile.rows_profiled,
+                total_rows=profile.total_rows,
+                profile=json.dumps(chunk_profile),
+                n=len(ranked_samples),
+                sample_rows=chunk_samples,
+            )
+            tokens = _v2_max_tokens(len(chunk))
+            async with sem:
+                try:
+                    data = await self._call_llm_v2(
+                        COLUMN_ASSIGN_SYSTEM, user, temperature=0.0, max_tokens=tokens,
+                    )
+                    _check_cols(data)
+                except (ValidationError, KeyError, json.JSONDecodeError) as e:
+                    logger.warning("csv_column_assign_retry", error=str(e), chunk=len(chunk))
+                    data = await self._call_llm_v2(
+                        COLUMN_ASSIGN_SYSTEM, user, temperature=0.3, max_tokens=tokens,
+                    )
+                    _check_cols(data)
+            return [
+                c for c in data.get("columns", [])
+                if isinstance(c, dict) and c.get("column")
+            ]
+
+        chunk_results = await asyncio.gather(*[_assign_chunk(c) for c in chunks])
+
+        # Merge + coverage repair. First tag per column wins; unknown owners are
+        # reassigned to the default entity; any untagged header is backfilled as
+        # an attribute so EVERY column is tagged exactly once (row conservation).
+        header_set = set(headers)
+        columns: list[dict] = []
+        seen: set[str] = set()
+        for chunk_cols in chunk_results:
+            for col in chunk_cols:
+                name = col["column"]
+                if name in seen or name not in header_set:
+                    continue
+                if col.get("entity") not in valid_names:
+                    col["entity"] = default_owner
+                columns.append(col)
+                seen.add(name)
+
+        tagged = len(seen)
+        for h in headers:
+            if h not in seen:
+                columns.append({
+                    "column": h,
+                    "role": "attribute",
+                    "entity": default_owner,
+                    "predicate_or_attr": _snake_case(h),
+                    "why": "backfilled — model did not tag this column",
+                    "confidence": 0.3,
+                })
+                seen.add(h)
+
+        proposed = {
+            "entities": entities,
+            "columns": columns,
+            "relationships": relationships,
+        }
+        _check_reason_shape(proposed)
+        logger.info(
+            "csv_reason_wide",
+            columns=len(headers),
+            chunks=len(chunks),
+            entities=[e["type_name"] for e in entities],
+            backfilled=len(headers) - tagged,
+        )
+        return proposed
 
     def _convert_v2(
         self,
@@ -733,13 +1056,19 @@ class CSVResolver:
         return await self._infer_via_anthropic(user_content, temperature)
 
     async def _call_llm_v2(
-        self, system: str, user_content: str, temperature: float = 0.0
+        self,
+        system: str,
+        user_content: str,
+        temperature: float = 0.0,
+        max_tokens: int = _V2_BASE_MAX_TOKENS,
     ) -> dict:
         """LLM seam for the v2 passes — like ``_call_llm`` but the system
-        prompt varies per pass (REASON vs REFUTE). Tests monkeypatch this."""
+        prompt varies per pass (REASON vs REFUTE). ``max_tokens`` is scaled to
+        the column count by callers (COG-58) so a wide-table pass that must
+        echo every column isn't truncated. Tests monkeypatch this."""
         if self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key:
-            return await self._chat_openrouter(system, user_content, temperature, max_tokens=4096)
-        return await self._chat_anthropic(system, user_content, temperature, max_tokens=4096)
+            return await self._chat_openrouter(system, user_content, temperature, max_tokens=max_tokens)
+        return await self._chat_anthropic(system, user_content, temperature, max_tokens=max_tokens)
 
     def _build_mapping(self, data: dict) -> CSVSchemaMapping:
         # Gemini Flash occasionally emits `datatype: null` for a column it
