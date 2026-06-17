@@ -43,6 +43,7 @@ from cograph_client.resolver.models import (
     TypeExtension,
     ValueShape,
 )
+from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.profiler import profile_table
 
 logger = structlog.stdlib.get_logger("cograph.resolver.csv")
@@ -468,11 +469,13 @@ columns JSON now."""
 
 
 class CSVResolver:
-    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
+    # Primary schema-inference model, routed through OpenRouter with the
+    # configured fallback. Defaults to the shared primary.
+    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", PRIMARY_MODEL)
     EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
-    # Anthropic inference path for the v2 schema passes — env-overridable;
-    # default preserves prior behavior.
-    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-sonnet-4-6")
+    # Anthropic-SDK offline fallback (used only when no OpenRouter key is set) —
+    # must be a NATIVE Anthropic model id. Env-overridable.
+    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-opus-4-8")
 
     def __init__(self, client: anthropic.AsyncAnthropic, openrouter_key: str = ""):
         self._client = client
@@ -1114,26 +1117,16 @@ class CSVResolver:
         temperature: float = 0.0,
         max_tokens: int = 2048,
     ) -> dict:
-        async with httpx.AsyncClient(timeout=60) as client:
-            res = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._openrouter_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.EXTRACT_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user_content},
-                    ],
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                },
-            )
-            res.raise_for_status()
-            text = res.json()["choices"][0]["message"]["content"]
-            return json.loads(_strip_code_fences(text))
+        text = await openrouter_chat(
+            self._openrouter_key,
+            system,
+            user_content,
+            model=self.EXTRACT_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=60,
+        )
+        return json.loads(_strip_code_fences(text))
 
     async def _chat_anthropic(
         self,

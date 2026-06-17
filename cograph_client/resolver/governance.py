@@ -36,6 +36,7 @@ from cograph_client.graph.layers import Layer, layer_type_uri, public_graph_uri
 from cograph_client.graph.ontology_queries import RDF, RDFS, XSD, entity_exists_query
 from cograph_client.graph.provenance import provenance_graph_uri
 from cograph_client.graph.queries import insert_triples
+from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.models import CSVSchemaMapping, TypeExtension
 
 logger = structlog.stdlib.get_logger("cograph.resolver.governance")
@@ -126,40 +127,39 @@ Return JSON:
 }}"""
 
 
-# OSS governance judge model — env-overridable; default preserves prior
-# behavior. The premium ShapeJudgePanel uses COGRAPH_GOV_JUDGE_MODEL (no default)
-# and overrides this panel entirely when registered.
-DEFAULT_GOV_JUDGE_MODEL = os.environ.get("OMNIX_GOV_JUDGE_MODEL", "claude-sonnet-4-6")
+# OSS governance judge model — env-overridable; defaults to the shared primary,
+# routed through OpenRouter with the configured fallback. The premium
+# ShapeJudgePanel uses COGRAPH_GOV_JUDGE_MODEL (no default) and overrides this
+# panel entirely when registered.
+DEFAULT_GOV_JUDGE_MODEL = os.environ.get("OMNIX_GOV_JUDGE_MODEL", PRIMARY_MODEL)
 
 
 class LLMJudgePanel:
     """Default panel: N independent LLM judges, mirroring the type-matcher's
     3-judge fan-out (temperature 0.7 for diversity, asyncio.gather)."""
 
-    def __init__(self, client, n_judges: int = 3, model: str = DEFAULT_GOV_JUDGE_MODEL):
-        self._client = client
+    def __init__(self, openrouter_key: str, n_judges: int = 3, model: str = DEFAULT_GOV_JUDGE_MODEL):
+        self._openrouter_key = openrouter_key
         self._n_judges = n_judges
         self._model = model
 
     async def judge(self, proposal: TypeProposal) -> list[JudgeVerdict]:
         async def single_judge() -> JudgeVerdict:
-            msg = await self._client.messages.create(
+            text = await openrouter_chat(
+                self._openrouter_key,
+                GOV_JUDGE_SYSTEM_PROMPT,
+                GOV_JUDGE_USER_TEMPLATE.format(
+                    type_name=proposal.type_name,
+                    parent_chain=proposal.parent_chain or "(top-level type)",
+                    tenant_id=proposal.tenant_id,
+                    reasoning=proposal.reasoning or "(none given)",
+                ),
                 model=self._model,
-                max_tokens=256,
                 temperature=0.7,  # diversity between judges
-                system=GOV_JUDGE_SYSTEM_PROMPT,
-                messages=[{
-                    "role": "user",
-                    "content": GOV_JUDGE_USER_TEMPLATE.format(
-                        type_name=proposal.type_name,
-                        parent_chain=proposal.parent_chain or "(top-level type)",
-                        tenant_id=proposal.tenant_id,
-                        reasoning=proposal.reasoning or "(none given)",
-                    ),
-                }],
+                max_tokens=256,
             )
             try:
-                data = json.loads(msg.content[0].text)
+                data = json.loads(text)
                 return JudgeVerdict(
                     approve=bool(data.get("approve", False)),
                     reasoning=str(data.get("reasoning", "")),

@@ -95,33 +95,34 @@ def _update_sparql(mock_neptune) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _mock_anthropic(reply: str):
-    client = AsyncMock()
-    msg = MagicMock()
-    msg.content = [MagicMock(text=reply)]
-    client.messages.create.return_value = msg
-    return client
+def _patch_judge_chat(monkeypatch, reply: str):
+    """Patch the OpenRouter helper the judge panel calls; return the mock so
+    tests can assert fan-out and inspect the prompt."""
+    mock = AsyncMock(return_value=reply)
+    monkeypatch.setattr("cograph_client.resolver.governance.openrouter_chat", mock)
+    return mock
 
 
 @pytest.mark.asyncio
-async def test_llm_judge_panel_fans_out_n_independent_calls():
-    client = _mock_anthropic('{"approve": true, "reasoning": "universal"}')
-    panel = LLMJudgePanel(client, n_judges=3)
+async def test_llm_judge_panel_fans_out_n_independent_calls(monkeypatch):
+    chat = _patch_judge_chat(monkeypatch, '{"approve": true, "reasoning": "universal"}')
+    panel = LLMJudgePanel("test-openrouter-key", n_judges=3)
 
     verdicts = await panel.judge(_proposal())
 
-    assert client.messages.create.call_count == 3
+    assert chat.call_count == 3
     assert len(verdicts) == 3
     assert all(v.approve for v in verdicts)
     assert all(v.reasoning == "universal" for v in verdicts)
-    # The proposal's content reaches the judges.
-    prompt = client.messages.create.call_args.kwargs["messages"][0]["content"]
-    assert "LoyaltyTier" in prompt and "acme" in prompt
+    # The proposal's content reaches the judges (user prompt = 3rd positional arg).
+    user_prompt = chat.call_args.args[2]
+    assert "LoyaltyTier" in user_prompt and "acme" in user_prompt
 
 
 @pytest.mark.asyncio
-async def test_llm_judge_panel_parse_error_counts_as_rejection():
-    panel = LLMJudgePanel(_mock_anthropic("not json at all"), n_judges=3)
+async def test_llm_judge_panel_parse_error_counts_as_rejection(monkeypatch):
+    _patch_judge_chat(monkeypatch, "not json at all")
+    panel = LLMJudgePanel("test-openrouter-key", n_judges=3)
     verdicts = await panel.judge(_proposal())
     assert len(verdicts) == 3
     assert all(not v.approve for v in verdicts)
