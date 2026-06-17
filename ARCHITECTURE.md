@@ -544,14 +544,24 @@ running container, causing 500 errors on in-flight requests.
 | `embeddings_s3_prefix` | `omnix/embeddings` | S3 key prefix |
 | `embeddings_top_k` | `15` | Semantic retrieval result count |
 
-Additional env vars (not in Settings):
-- `OMNIX_QUERY_MODEL` — default `llama3.1-8b`
+LLM model routing (all resolver/governance/query calls go through OpenRouter
+with a primary model + automatic fallback via OpenRouter's `models` array, see
+`cograph_client/resolver/llm_router.py`):
+- `OMNIX_LLM_MODEL` — default `anthropic/claude-opus-4.8`. Primary model for every
+  decision/inference call. Per-role knobs below default to this, so changing it
+  flips all roles at once unless one is individually overridden.
+- `OMNIX_LLM_FALLBACK_MODEL` — default `openai/gpt-5.5`. Tried automatically when
+  the primary errors/rate-limits (OpenRouter `models` routing).
+- `OMNIX_EXTRACT_MODEL` — default = `OMNIX_LLM_MODEL` (schema/entity extraction — the "propose" stage)
+- `OMNIX_MATCH_MODEL` — default = `OMNIX_LLM_MODEL` (type matching: reuse-vs-expand verdict + ambiguous judge fan-out)
+- `OMNIX_GOV_JUDGE_MODEL` — default = `OMNIX_LLM_MODEL` (OSS governance judge panel; premium `ShapeJudgePanel` uses `COGRAPH_GOV_JUDGE_MODEL`)
+- `OMNIX_INFER_MODEL` — default `claude-opus-4-8` (NATIVE Anthropic id; used only by the offline Anthropic-SDK fallback path when no OpenRouter key is set)
+
+Query + other models (not in Settings):
+- `OMNIX_QUERY_MODEL` — default `llama3.1-8b` (SPARQL generation; production sets this to the primary). Also gets the `OMNIX_LLM_FALLBACK_MODEL` fallback.
 - `OMNIX_QUERY_PROVIDER` — default `cerebras`
-- `OMNIX_EXTRACT_MODEL` — default `deepseek/deepseek-v3.2` (schema/entity extraction — the "propose" stage)
-- `OMNIX_INFER_MODEL` — default `claude-sonnet-4-6` (Anthropic inference/extraction path for the v2 schema passes)
-- `OMNIX_MATCH_MODEL` — default `claude-sonnet-4-6` (type matching: reuse-vs-expand verdict + ambiguous judge fan-out)
-- `OMNIX_GOV_JUDGE_MODEL` — default `claude-sonnet-4-6` (OSS governance judge panel; premium `ShapeJudgePanel` uses `COGRAPH_GOV_JUDGE_MODEL`)
 - `OMNIX_EVAL_MODEL` — default `deepseek/deepseek-v3.2`
+- The narrative answer summarizer is a deliberately cheap, fast path (hardcoded `meta-llama/llama-3.1-8b-instruct` on Cerebras) and is intentionally NOT routed through the primary model.
 
 ## API Endpoints
 
