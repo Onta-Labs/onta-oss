@@ -11,6 +11,7 @@ from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
+from cograph_client.resolver.llm_router import model_chain
 
 logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
 
@@ -751,6 +752,7 @@ class NLQueryPipeline:
                 },
                 json={
                     "model": self._query_model,
+                    "models": model_chain(self._query_model),
                     "messages": [
                         {"role": "system", "content": SPARQL_GENERATION_SYSTEM},
                         {"role": "user", "content": prompt},
