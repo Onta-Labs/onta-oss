@@ -55,6 +55,7 @@ from cograph_client.resolver.models import (
     ValidatedTriple,
     ValidationOutcome,
 )
+from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.predicate_normalizer import normalize_predicate
 from cograph_client.resolver.type_matcher import TypeMatcher
 from cograph_client.resolver.validator import validate_triple
@@ -141,11 +142,13 @@ Return JSON:
 
 
 class SchemaResolver:
-    # Extraction model config — smart model, latency doesn't matter
-    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
+    # Primary extraction model, routed through OpenRouter with the configured
+    # fallback. Defaults to the shared primary.
+    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", PRIMARY_MODEL)
     EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
-    # Anthropic extraction path — env-overridable; default preserves prior behavior.
-    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-sonnet-4-6")
+    # Anthropic-SDK offline fallback (used only when no OpenRouter key is set) —
+    # must be a NATIVE Anthropic model id. Env-overridable.
+    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-opus-4-8")
     ONTOLOGY_REFRESH_INTERVAL = int(os.environ.get("OMNIX_ONTOLOGY_REFRESH_INTERVAL", "50"))
 
     def __init__(
@@ -158,9 +161,9 @@ class SchemaResolver:
         self._neptune = neptune
         self._anthropic = anthropic.AsyncAnthropic(api_key=anthropic_key)
         self._embedding_service = embedding_service
-        self._type_matcher = TypeMatcher(self._anthropic, verdict_cache, embedding_service)
         from cograph_client.config import settings
         self._openrouter_key = settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        self._type_matcher = TypeMatcher(self._openrouter_key, verdict_cache, embedding_service)
         # Cross-file entity resolution. Best-effort: failures never block ingest.
         from cograph_client.resolver.er import ERPipeline
         self._er = ERPipeline(neptune)
@@ -178,7 +181,7 @@ class SchemaResolver:
         if self._governance_enabled:
             from cograph_client.resolver.governance import GovernanceEngine, LLMJudgePanel
             self._governance = GovernanceEngine(neptune)
-            self._judge_panel = LLMJudgePanel(self._anthropic)
+            self._judge_panel = LLMJudgePanel(self._openrouter_key)
         # Background governance tasks (COG-46): the judge panel + Public-layer
         # write are scheduled off the ingest path; references are retained
         # here so drain_governance() can await them deterministically.
@@ -741,26 +744,16 @@ class SchemaResolver:
             return ExtractionResult(source_text=content)
 
     async def _extract_via_openrouter(self, user_content: str) -> str:
-        """Extract entities via OpenRouter (for Gemini, etc.)."""
-        async with httpx.AsyncClient(timeout=60) as client:
-            res = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._openrouter_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.EXTRACT_MODEL,
-                    "messages": [
-                        {"role": "system", "content": EXTRACTION_SYSTEM},
-                        {"role": "user", "content": user_content},
-                    ],
-                    "max_tokens": 4096,
-                    "temperature": 0,
-                },
-            )
-            res.raise_for_status()
-            return res.json()["choices"][0]["message"]["content"]
+        """Extract entities via OpenRouter, with primary→fallback routing."""
+        return await openrouter_chat(
+            self._openrouter_key,
+            EXTRACTION_SYSTEM,
+            user_content,
+            model=self.EXTRACT_MODEL,
+            temperature=0,
+            max_tokens=4096,
+            timeout=60,
+        )
 
     async def _fetch_ontology(
         self, graph_uri: str

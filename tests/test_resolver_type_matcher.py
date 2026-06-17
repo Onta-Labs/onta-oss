@@ -1,7 +1,7 @@
 """Tests for the type matcher."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -16,27 +16,27 @@ def mock_cache(tmp_path):
 
 
 @pytest.fixture
-def mock_anthropic():
-    return AsyncMock()
+def fake_chat(monkeypatch):
+    """Patch the OpenRouter helper the matcher calls; returns the mock so tests
+    set its return_value / side_effect and assert call counts."""
+    mock = AsyncMock()
+    monkeypatch.setattr("cograph_client.resolver.type_matcher.openrouter_chat", mock)
+    return mock
 
 
 @pytest.fixture
-def matcher(mock_anthropic, mock_cache):
-    return TypeMatcher(mock_anthropic, mock_cache)
+def matcher(mock_cache):
+    return TypeMatcher("test-openrouter-key", mock_cache)
 
 
-def _make_llm_response(verdict: str, matched_type: str | None, confidence: float):
-    """Helper to create a mock Anthropic response."""
-    mock = AsyncMock()
-    content_block = MagicMock()
-    content_block.text = json.dumps({
+def _verdict_json(verdict: str, matched_type: str | None, confidence: float) -> str:
+    """The raw JSON string the router helper returns for a verdict."""
+    return json.dumps({
         "verdict": verdict,
         "matched_type": matched_type,
         "confidence": confidence,
         "reasoning": "test",
     })
-    mock.content = [content_block]
-    return mock
 
 
 @pytest.mark.asyncio
@@ -48,8 +48,8 @@ async def test_auto_new_empty_ontology(matcher):
 
 
 @pytest.mark.asyncio
-async def test_high_confidence_same(matcher, mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_llm_response("SAME", "Property", 0.98)
+async def test_high_confidence_same(matcher, fake_chat):
+    fake_chat.return_value = _verdict_json("SAME", "Property", 0.98)
     result = await matcher.match("House", "A house", {"Property": "A real estate property"})
     assert result.verdict == MatchVerdict.SAME
     assert result.resolved == "Property"
@@ -57,8 +57,8 @@ async def test_high_confidence_same(matcher, mock_anthropic):
 
 
 @pytest.mark.asyncio
-async def test_low_confidence_different(matcher, mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_llm_response("DIFFERENT", None, 0.3)
+async def test_low_confidence_different(matcher, fake_chat):
+    fake_chat.return_value = _verdict_json("DIFFERENT", None, 0.3)
     result = await matcher.match("Vehicle", "A car", {"Property": "Real estate"})
     assert result.verdict == MatchVerdict.DIFFERENT
     assert result.is_new is True
@@ -66,8 +66,8 @@ async def test_low_confidence_different(matcher, mock_anthropic):
 
 
 @pytest.mark.asyncio
-async def test_high_confidence_subtype(matcher, mock_anthropic):
-    mock_anthropic.messages.create.return_value = _make_llm_response("SUBTYPE", "Property", 0.97)
+async def test_high_confidence_subtype(matcher, fake_chat):
+    fake_chat.return_value = _verdict_json("SUBTYPE", "Property", 0.97)
     result = await matcher.match("Condo", "A condominium unit", {"Property": "Real estate"})
     assert result.verdict == MatchVerdict.SUBTYPE
     assert result.is_new is True
@@ -75,23 +75,22 @@ async def test_high_confidence_subtype(matcher, mock_anthropic):
 
 
 @pytest.mark.asyncio
-async def test_cached_verdict_reused(matcher, mock_cache, mock_anthropic):
+async def test_cached_verdict_reused(matcher, mock_cache, fake_chat):
     await mock_cache.put(VerdictEntry("House", "Property", MatchVerdict.SAME, 0.97))
     result = await matcher.match("House", "", {"Property": "Real estate"})
     assert result.verdict == MatchVerdict.SAME
     assert result.resolved == "Property"
     # LLM should NOT have been called
-    mock_anthropic.messages.create.assert_not_called()
+    fake_chat.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_ambiguous_triggers_judges(matcher, mock_anthropic):
-    # First call returns ambiguous match
-    initial = _make_llm_response("SAME", "Property", 0.75)
-    # Judge calls return majority SAME
-    judge = _make_llm_response("SAME", None, 0.8)
-    mock_anthropic.messages.create.side_effect = [initial, judge, judge, judge]
+async def test_ambiguous_triggers_judges(matcher, fake_chat):
+    # First call returns ambiguous match; judges return majority SAME.
+    initial = _verdict_json("SAME", "Property", 0.75)
+    judge = _verdict_json("SAME", None, 0.8)
+    fake_chat.side_effect = [initial, judge, judge, judge]
 
     result = await matcher.match("Residence", "", {"Property": "Real estate"})
     assert result.verdict == MatchVerdict.SAME
-    assert mock_anthropic.messages.create.call_count == 4  # 1 initial + 3 judges
+    assert fake_chat.call_count == 4  # 1 initial + 3 judges
