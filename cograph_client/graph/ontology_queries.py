@@ -44,6 +44,126 @@ def insert_attribute(graph_uri: str, type_name: str, attr_name: str, description
     return f"INSERT DATA {{\n  GRAPH <{graph_uri}> {{\n{body}\n  }}\n}}"
 
 
+def upsert_type(graph_uri: str, name: str, description: str = "", parent_type: str | None = None) -> str:
+    """Atomically UPSERT a type declaration — idempotent under agent retries.
+
+    Unlike :func:`insert_type` (blind ``INSERT DATA``), this REPLACES the
+    single-valued ``rdfs:comment`` and ``rdfs:subClassOf`` instead of appending,
+    so re-asserting a *changed* description or parent does not leave a second
+    stale triple behind.
+
+    Predicate handling:
+      - ``rdf:type rdfs:Class`` and ``rdfs:label`` are plain idempotent
+        ``INSERT DATA`` (re-asserting an identical triple is a no-op in RDF).
+      - ``rdfs:comment`` and ``rdfs:subClassOf`` are SINGLE-VALUED and emitted as
+        atomic ``DELETE/INSERT/WHERE`` operations: the old value is removed and
+        the new one set in one update.
+
+    Empty-description / None-parent semantics (authoritative upsert): if
+    ``description`` is empty or ``parent_type`` is None we still DELETE any
+    existing value (clearing it) but do NOT INSERT a replacement. The resulting
+    graph state therefore reflects exactly the arguments passed — an upsert with
+    no description never leaves a stale comment, and clearing a parent un-roots
+    the type. The multi-operation update string separates each DELETE/INSERT/
+    WHERE block with ``;``.
+    """
+    uri = type_uri(name)
+
+    # Plain idempotent inserts: rdf:type rdfs:Class + rdfs:label.
+    insert_block = (
+        f"INSERT DATA {{\n"
+        f"  GRAPH <{graph_uri}> {{\n"
+        f'    <{uri}> <{RDF}#type> <{RDFS}#Class> .\n'
+        f'    <{uri}> <{RDFS}#label> "{_esc(name)}" .\n'
+        f"  }}\n"
+        f"}}"
+    )
+    ops = [insert_block]
+
+    # Single-valued rdfs:comment: delete old, insert new only if non-empty.
+    if description:
+        comment_insert = f"INSERT {{ GRAPH <{graph_uri}> {{ <{uri}> <{RDFS}#comment> \"{_esc(description)}\" }} }}\n"
+    else:
+        comment_insert = ""
+    ops.append(
+        f"DELETE {{ GRAPH <{graph_uri}> {{ <{uri}> <{RDFS}#comment> ?c }} }}\n"
+        f"{comment_insert}"
+        f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{uri}> <{RDFS}#comment> ?c }} }} }}"
+    )
+
+    # Single-valued rdfs:subClassOf: delete old, insert new only if parent given.
+    if parent_type:
+        parent_insert = f"INSERT {{ GRAPH <{graph_uri}> {{ <{uri}> <{RDFS}#subClassOf> <{type_uri(parent_type)}> }} }}\n"
+    else:
+        parent_insert = ""
+    ops.append(
+        f"DELETE {{ GRAPH <{graph_uri}> {{ <{uri}> <{RDFS}#subClassOf> ?p }} }}\n"
+        f"{parent_insert}"
+        f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{uri}> <{RDFS}#subClassOf> ?p }} }} }}"
+    )
+
+    return " ;\n".join(ops)
+
+
+def upsert_attribute(graph_uri: str, type_name: str, attr_name: str, description: str = "", datatype: str = "string") -> str:
+    """Atomically UPSERT an attribute declaration — idempotent under agent retries.
+
+    Unlike :func:`insert_attribute` (blind ``INSERT DATA``), this REPLACES the
+    single-valued ``rdfs:range`` and ``rdfs:comment`` instead of appending. This
+    matters because ``rdfs:range`` flips between an XSD primitive and a
+    ``types/`` URI when an attribute is later seen carrying an entity value (i.e.
+    becomes a relationship); a blind re-insert would leave the property with two
+    conflicting ranges.
+
+    Predicate handling:
+      - ``rdf:type rdf:Property``, ``rdfs:label`` and ``rdfs:domain`` are plain
+        idempotent ``INSERT DATA`` (re-asserting identical triples is a no-op).
+      - ``rdfs:range`` and ``rdfs:comment`` are SINGLE-VALUED and emitted as
+        atomic ``DELETE/INSERT/WHERE`` operations.
+
+    ``rdfs:range`` is always set (``_datatype_to_xsd`` maps a primitive name to
+    an XSD URI and any other name to that type's ``types/`` URI), so the range
+    block always inserts a fresh value after deleting the old one. ``rdfs:comment``
+    follows the same clear-on-empty rule as :func:`upsert_type`: an empty
+    ``description`` deletes any existing comment without inserting a replacement.
+    """
+    t_uri = type_uri(type_name)
+    a_uri = attr_uri(type_name, attr_name)
+    xsd_type = _datatype_to_xsd(datatype)
+
+    # Plain idempotent inserts: rdf:type rdf:Property + rdfs:label + rdfs:domain.
+    insert_block = (
+        f"INSERT DATA {{\n"
+        f"  GRAPH <{graph_uri}> {{\n"
+        f'    <{a_uri}> <{RDF}#type> <{RDF}#Property> .\n'
+        f'    <{a_uri}> <{RDFS}#label> "{_esc(attr_name)}" .\n'
+        f'    <{a_uri}> <{RDFS}#domain> <{t_uri}> .\n'
+        f"  }}\n"
+        f"}}"
+    )
+    ops = [insert_block]
+
+    # Single-valued rdfs:range: always replaced (range is always known).
+    ops.append(
+        f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{RDFS}#range> ?r }} }}\n"
+        f"INSERT {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{RDFS}#range> <{xsd_type}> }} }}\n"
+        f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{RDFS}#range> ?r }} }} }}"
+    )
+
+    # Single-valued rdfs:comment: delete old, insert new only if non-empty.
+    if description:
+        comment_insert = f"INSERT {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{RDFS}#comment> \"{_esc(description)}\" }} }}\n"
+    else:
+        comment_insert = ""
+    ops.append(
+        f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{RDFS}#comment> ?c }} }}\n"
+        f"{comment_insert}"
+        f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{RDFS}#comment> ?c }} }} }}"
+    )
+
+    return " ;\n".join(ops)
+
+
 def set_object_property_range(graph_uri: str, type_name: str, attr_name: str, target_type: str) -> str:
     """Re-point an existing property's ``rdfs:range`` at a type URI.
 
