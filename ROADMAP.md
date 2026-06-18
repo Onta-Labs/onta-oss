@@ -26,7 +26,7 @@
 
 ### P1 — Should have for launch
 
-- [ ] **MCP server** — expose `ask`, `list_kgs`, `ingest` as MCP tools so AI agents (Claude, Cursor, etc.) can query knowledge graphs
+- [x] **MCP server** — ships with `ask`, `list_knowledge_graphs`, `ingest_csv`, and `view_ontology` so AI agents (Claude, Cursor, etc.) can query knowledge graphs. Now also includes natural-language ontology evolution (`evolve_ontology` + `apply_ontology_change`): agents reshape the schema with a fuzzy ask, high-confidence changes auto-apply, ambiguous ones return as proposals to confirm.
 - [ ] **CONTRIBUTING.md** — dev setup, code style, PR process
 - [ ] **Integration test** — ingest sample CSV + ask 5 questions, assert >= 80%
 - [ ] **Ollama support** — test and document local model usage (no API key needed)

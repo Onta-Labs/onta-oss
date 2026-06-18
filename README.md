@@ -172,7 +172,7 @@ Connect Cograph to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 }
 ```
 
-Tools: `ask`, `list_knowledge_graphs`, `ingest_csv`, `view_ontology`.
+Tools: `ask`, `list_knowledge_graphs`, `ingest_csv`, `view_ontology`, `evolve_ontology`, `apply_ontology_change`.
 
 ## API
 

@@ -480,6 +480,41 @@ export class Client {
   }
 
   /**
+   * Resolve a natural-language ontology change against the existing ontology.
+   * The caller does not need to know exact type/attribute/relationship names —
+   * the server matches the plain-language `ask` to the current schema and
+   * returns auto-applied changes plus proposals that need confirmation.
+   */
+  async ontologyResolve(
+    ask: string,
+    opts: { knowledge_graph?: string } = {},
+  ): Promise<OntologyResolveResult> {
+    const body: Record<string, unknown> = { ask };
+    if (opts.knowledge_graph) body.knowledge_graph = opts.knowledge_graph;
+    return this.request<OntologyResolveResult>(
+      "POST",
+      `${this.base()}/ontology/resolve`,
+      body,
+      60_000,
+    );
+  }
+
+  /**
+   * Apply a single resolved ontology change — one of the `proposals` returned
+   * by {@link ontologyResolve}. Pass the proposal object through unchanged.
+   */
+  async ontologyApply(
+    proposal: ResolvedChange,
+  ): Promise<OntologyApplyResult> {
+    return this.request<OntologyApplyResult>(
+      "POST",
+      `${this.base()}/ontology/apply`,
+      proposal,
+      60_000,
+    );
+  }
+
+  /**
    * Second-pass entity resolution: re-run ER over an already-ingested KG to
    * collapse intra-batch fragments. Synchronous on the server; returns a
    * per-type before/after report. Generous timeout — it rewrites triples.
@@ -613,6 +648,33 @@ export class Client {
     );
     return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
   }
+}
+
+/**
+ * A single ontology change resolved against the existing schema. The same
+ * shape is returned under `applied`/`proposals` by {@link Client.ontologyResolve}
+ * and accepted as the request body by {@link Client.ontologyApply}.
+ */
+export interface ResolvedChange {
+  kind: "attribute" | "relationship";
+  subject_type: string;
+  name: string;
+  datatype_or_target: string;
+  action: "reuse" | "extend" | "create";
+  confidence: number;
+  reason: string;
+}
+
+export interface OntologyResolveResult {
+  applied: ResolvedChange[];
+  proposals: ResolvedChange[];
+  summary: string;
+}
+
+export interface OntologyApplyResult {
+  applied: ResolvedChange;
+  operations: number;
+  summary: string;
 }
 
 export interface TypeCount {

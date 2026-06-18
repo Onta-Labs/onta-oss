@@ -33,6 +33,8 @@ npx -y cograph-mcp
 - `ask` — ask a natural language question; returns the answer
 - `ingest_csv` — ingest a CSV file by absolute path into a named KG
 - `view_ontology` — show types, attributes, relationships across KGs
+- `evolve_ontology` — resolve a fuzzy natural-language ontology-evolution ask (no exact names needed); auto-applies high-confidence changes and returns a summary plus any proposals to confirm
+- `apply_ontology_change` — confirm and commit a single proposal returned by `evolve_ontology`
 
 ## Environment
 

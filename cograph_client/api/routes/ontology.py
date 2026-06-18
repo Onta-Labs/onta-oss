@@ -1,7 +1,10 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.ontology_queries import (
     get_full_ontology_query,
@@ -13,18 +16,30 @@ from cograph_client.graph.ontology_queries import (
     insert_subtype,
     insert_type,
     list_types_query,
+    upsert_attribute,
 )
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import tenant_graph_uri
 from cograph_client.models.ontology import (
     AttributeAdd,
     AttributeDefinition,
+    ResolutionResult,
+    ResolvedChange,
+    ResolveRequest,
     SubtypeAdd,
     TypeCreate,
     TypeResponse,
 )
+from cograph_client.nlp.pipeline import get_embedding_service
+from cograph_client.resolver.ontology_resolver import OntologyResolver
+from cograph_client.resolver.type_matcher import TypeMatcher
+from cograph_client.resolver.verdict_cache import JsonVerdictCache
 
 router = APIRouter(prefix="/graphs/{tenant}/ontology")
+
+# Verdict cache lives alongside the app data (same path the ingest route uses);
+# for ECS/Fargate this should be on an EFS mount or replaced with DynamoDB.
+_VERDICT_CACHE_PATH = Path("/tmp/omnix-verdict-cache.json")
 
 
 @router.post("/types", status_code=201)
@@ -163,6 +178,111 @@ async def get_full_schema(
             types[type_label]["functions"].append(row["funcName"])
 
     return {"types": types}
+
+
+# ── Natural-language ontology evolution (COG-80) ──────────────────────────────
+#
+# `resolve` takes a fuzzy ask, resolves it against the current ontology, AUTO-
+# APPLIES the high-confidence changes, and returns the rest as proposals. `apply`
+# commits a single proposal the agent chose to confirm. Both write through the
+# atomic upsert builders so retries are idempotent.
+
+
+def _build_resolver(graph_uri: str) -> OntologyResolver:
+    """Assemble an :class:`OntologyResolver` from the shared app primitives.
+
+    Degrades gracefully: if the embedding service can't initialise (no key /
+    offline) the resolver still runs on the TypeMatcher cascade's other layers.
+    """
+    try:
+        embedding_service = get_embedding_service()
+    except Exception:  # pragma: no cover - defensive: embeddings are optional
+        embedding_service = None
+
+    matcher = TypeMatcher(
+        openrouter_key=settings.openrouter_api_key,
+        cache=JsonVerdictCache(_VERDICT_CACHE_PATH),
+        embedding_service=embedding_service,
+        graph_uri=graph_uri,
+    )
+    return OntologyResolver(
+        openrouter_key=settings.openrouter_api_key,
+        type_matcher=matcher,
+        embedding_service=embedding_service,
+    )
+
+
+async def _apply_change(change: ResolvedChange, graph_uri: str, client: NeptuneClient) -> list[str]:
+    """Translate one resolved change into atomic upsert SPARQL and run it.
+
+    Shared by `/resolve` (for confident `applied` changes) and `/apply` (for a
+    confirmed proposal). Type minting uses the non-destructive `insert_type`
+    (only ever adds class+label, never clears an existing type's
+    description/parent); the property itself goes through `upsert_attribute`,
+    whose single-valued `rdfs:range`/`rdfs:comment` are replaced atomically.
+    """
+    sparqls: list[str] = []
+
+    # A `create` change means the subject type is newly minted — ensure it
+    # exists first (idempotent on an existing type, never clobbers it).
+    if change.action == "create":
+        sparqls.append(insert_type(graph_uri, change.subject_type))
+
+    # A relationship's range points at another type; ensure that target type
+    # exists before we point an object property at it.
+    if change.kind == "relationship":
+        sparqls.append(insert_type(graph_uri, change.datatype_or_target))
+
+    # `reuse` is already satisfied, but the upsert is idempotent, so emitting it
+    # keeps the property authoritative without risk.
+    sparqls.append(
+        upsert_attribute(graph_uri, change.subject_type, change.name, datatype=change.datatype_or_target)
+    )
+
+    for sparql in sparqls:
+        await client.update(sparql)
+    return sparqls
+
+
+@router.post("/resolve", response_model=ResolutionResult)
+async def resolve_ontology(
+    body: ResolveRequest,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+) -> ResolutionResult:
+    """Resolve a fuzzy NL ask into ontology changes; auto-apply the confident
+    ones, return ambiguous/new-type ones as proposals for the caller to confirm
+    via `POST .../ontology/apply`."""
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    resolver = _build_resolver(graph_uri)
+    result = await resolver.resolve(body.ask, graph_uri, client)
+
+    for change in result.applied:
+        await _apply_change(change, graph_uri, client)
+
+    return result
+
+
+@router.post("/apply")
+async def apply_ontology_change(
+    body: ResolvedChange,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Commit a single proposal previously returned by `/resolve` (stateless —
+    the caller passes the change object straight back). Idempotent."""
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    operations = await _apply_change(body, graph_uri, client)
+    return {
+        "applied": body,
+        "operations": len(operations),
+        "summary": f"Applied {change_label(body)}",
+    }
+
+
+def change_label(change: ResolvedChange) -> str:
+    target = f" → {change.datatype_or_target}" if change.kind == "relationship" else f" ({change.datatype_or_target})"
+    return f"{change.action} {change.kind} '{change.name}'{target} on {change.subject_type}"
 
 
 def _extract_name(uri: str | None) -> str | None:
