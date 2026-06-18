@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { Client, CographError } from "./client.js";
+import { readConfig, writeConfig, configPathForDisplay } from "./config.js";
 
 // Read version from package.json at runtime so we never drift again.
 // dist/cli.js sits next to package.json once published; in dev (`npm link`)
@@ -20,7 +21,14 @@ function pkgVersion(): string {
 }
 
 function client(): Client {
-  return new Client();
+  // Honor the global flags: --tenant overrides the saved default for this
+  // command; --local points at a self-hosted backend. Both fall through to
+  // env / ~/.cograph/config.json when not passed.
+  const g = program.opts() as { tenant?: string; local?: boolean };
+  return new Client({
+    ...(g.tenant ? { tenant: g.tenant } : {}),
+    ...(g.local ? { baseUrl: "http://localhost:8000" } : {}),
+  });
 }
 
 function printJson(data: unknown): void {
@@ -53,6 +61,206 @@ async function confirm(prompt: string): Promise<boolean> {
   });
 }
 
+/** Like confirm() but defaults to yes (used for the primary "apply" action). */
+async function confirmYes(prompt: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${prompt} [Y/n] `, (ans) => {
+      rl.close();
+      const a = ans.trim().toLowerCase();
+      resolve(a === "" || a === "y" || a === "yes");
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// CSV schema review — terminal port of the Explorer's confirm/override gate.
+// The backend applies exactly what /ingest/csv/rows is given, so the client is
+// responsible for surfacing the inferred mapping and gating held-for-review
+// type extensions before any rows are written.
+// ---------------------------------------------------------------------------
+
+const useColor = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+const sgr = (code: string) => (s: string): string =>
+  useColor ? `\x1b[${code}m${s}\x1b[0m` : s;
+const bold = sgr("1");
+const dim = sgr("2");
+
+type Mapping = Record<string, any>;
+
+interface EntityView {
+  name: string;
+  type_name: string;
+  id_column?: string | null;
+  id_from?: string[] | null;
+  key_strategy?: string | null;
+  confidence?: number | null;
+  why?: string | null;
+}
+
+function entityViews(m: Mapping): EntityView[] {
+  if (Array.isArray(m.entities) && m.entities.length > 0) {
+    return m.entities.map((e: any) => ({
+      name: e.name,
+      type_name: e.type_name,
+      id_column: e.id_column,
+      id_from: e.id_from,
+      key_strategy: e.key_strategy ?? null,
+      confidence: e.confidence,
+      why: e.why,
+    }));
+  }
+  return [
+    {
+      name: m.entity_type,
+      type_name: m.entity_type,
+      key_strategy: m.key_strategy ?? null,
+      confidence: m.confidence,
+      why: m.why,
+    },
+  ];
+}
+
+function heldTypes(m: Mapping): any[] {
+  const types = m.ontology_extensions?.types;
+  return Array.isArray(types) ? types.filter((t: any) => t.held_for_review) : [];
+}
+
+/** Strip response-only audit fields (violations, inference_audit, profile) and
+ *  keep only what /ingest/csv/rows applies. Held type extensions are dropped
+ *  unless explicitly approved — same gate the Explorer applies on confirm. */
+function buildMappingForIngest(m: Mapping, approved: Set<string>): Mapping {
+  const out: Mapping = { entity_type: m.entity_type, columns: m.columns };
+  if (m.entities) out.entities = m.entities;
+  if (m.relationships) out.relationships = m.relationships;
+  const types = m.ontology_extensions?.types;
+  if (Array.isArray(types)) {
+    out.ontology_extensions = {
+      types: types.filter(
+        (t: any) => !t.held_for_review || approved.has(t.type_name),
+      ),
+    };
+  }
+  return out;
+}
+
+function fmtConf(v: any): string {
+  if (v == null) return "";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "";
+  return dim(` (${n.toFixed(2)}${n < 0.7 ? " !" : ""})`);
+}
+
+function renderMapping(
+  m: Mapping,
+  info: { totalRows: number; rowsProfiled: number },
+): void {
+  const w = (s: string) => process.stdout.write(s);
+  w(
+    "\n" +
+      bold("Proposed schema") +
+      dim(
+        `  (profiled ${info.rowsProfiled.toLocaleString()} of ${info.totalRows.toLocaleString()} rows)`,
+      ) +
+      "\n",
+  );
+  w(dim("Review how the data maps to the graph before any rows are written.") + "\n\n");
+
+  const ents = entityViews(m);
+  const multi = Array.isArray(m.entities) && m.entities.length > 0;
+  w(bold("Entities & keys") + "\n");
+  for (const e of ents) {
+    const key = e.id_column
+      ? `key: ${e.id_column}`
+      : e.id_from && e.id_from.length
+        ? `key: ${e.id_from.join(" + ")}`
+        : e.key_strategy === "synthetic"
+          ? "key: (synthetic)"
+          : "key: —";
+    w(`  • ${bold(e.type_name)}  ${dim(key)}${fmtConf(e.confidence)}\n`);
+    if (e.why) w(`      ${dim(e.why)}\n`);
+    const cols = (m.columns ?? []).filter((col: any) =>
+      multi ? col.entity === e.name : true,
+    );
+    for (const col of cols) {
+      const role =
+        col.role === "type_id"
+          ? "key "
+          : col.role === "relationship"
+            ? "edge"
+            : "attr";
+      let detail = "";
+      if (col.role === "relationship" && col.target_type)
+        detail = ` → ${col.target_type}`;
+      else if (
+        col.role === "attribute" &&
+        col.attribute_name &&
+        col.attribute_name !== col.column_name
+      )
+        detail = ` as ${col.attribute_name}`;
+      const dt =
+        col.datatype && col.datatype !== "string"
+          ? " " + dim(`[${col.datatype}]`)
+          : "";
+      w(
+        `      ${dim("[" + role + "]")} ${col.column_name}${detail}${dt}${fmtConf(col.confidence)}\n`,
+      );
+    }
+  }
+
+  const rels = m.relationships ?? [];
+  if (rels.length) {
+    w("\n" + bold("Edges") + "\n");
+    for (const r of rels)
+      w(`  • ${r.subject} ${dim(r.predicate)} ${r.object}${fmtConf(r.confidence)}\n`);
+  }
+
+  const vio = m.violations ?? [];
+  if (vio.length) {
+    w(
+      "\n" +
+        dim(
+          `Refute pass corrected ${vio.length} issue${vio.length === 1 ? "" : "s"}: ${vio
+            .map((v: any) => v.template)
+            .join(", ")}`,
+        ) +
+        "\n",
+    );
+  }
+}
+
+/** Interactive confirm/override gate, passed to client.ingest as
+ *  onSchemaInferred. Returns the mapping to ingest, or null to cancel. */
+async function reviewMapping(
+  m: Mapping,
+  info: { totalRows: number; rowsProfiled: number },
+): Promise<Mapping | null> {
+  renderMapping(m, info);
+  const approved = new Set<string>();
+  const held = heldTypes(m);
+  if (held.length) {
+    process.stdout.write(
+      "\n" +
+        bold(`${held.length} new type${held.length === 1 ? "" : "s"} held for review`) +
+        dim(" — approve to create, or skip to leave for later") +
+        "\n",
+    );
+    for (const t of held) {
+      const from = t.promoted_from_attribute
+        ? dim(` (from "${t.promoted_from_attribute}")`)
+        : "";
+      process.stdout.write(`  • ${t.type_name}${from}${fmtConf(t.confidence)}\n`);
+      if (await confirm(`    Approve "${t.type_name}"?`)) approved.add(t.type_name);
+    }
+  }
+  process.stdout.write("\n");
+  const ok = await confirmYes(
+    `Apply this mapping and ingest ${info.totalRows.toLocaleString()} rows?`,
+  );
+  if (!ok) return null;
+  return buildMappingForIngest(m, approved);
+}
+
 const program = new Command();
 program
   .name("cograph")
@@ -64,6 +272,10 @@ program
   // actions because commander dispatches subcommands first.
   .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
   .option("--no-login", "Skip browser login (assume open-access backend)")
+  .option(
+    "--tenant <id>",
+    "Target a specific tenant for this command (overrides the saved default)",
+  )
   .action(async (opts: { local?: boolean; login?: boolean }) => {
     const { runShell } = await import("./shell.js");
     await runShell({
@@ -121,6 +333,67 @@ kg.command("delete <name>")
   });
 
 // ---------------------------------------------------------------------------
+// tenant
+// ---------------------------------------------------------------------------
+
+const tenantCmd = program
+  .command("tenant")
+  .description("Show or switch the active tenant");
+
+tenantCmd
+  .command("current", { isDefault: true })
+  .description("Show the active tenant")
+  .action(() => {
+    const active = client().tenant;
+    const saved = readConfig().tenant;
+    process.stdout.write(`Active tenant: ${bold(active)}\n`);
+    process.stdout.write(
+      saved
+        ? dim(`  saved default in ${configPathForDisplay()}\n`)
+        : dim(`  (built-in default — set one with: cograph tenant use <id>)\n`),
+    );
+  });
+
+tenantCmd
+  .command("list")
+  .description("List the tenants you can access")
+  .action(async () => {
+    await withErrors(async () => {
+      const c = client();
+      let tenants: Array<{ id: string; label: string }>;
+      try {
+        tenants = await c.listTenants();
+      } catch (err) {
+        if (err instanceof CographError && err.status === 501) {
+          fail(
+            "This backend doesn't support tenant management (no tenant provider configured).",
+          );
+        }
+        throw err;
+      }
+      if (!tenants.length) {
+        process.stdout.write("No tenants found for your account.\n");
+        return;
+      }
+      const active = c.tenant;
+      for (const t of tenants) {
+        const marker = t.id === active ? "*" : " ";
+        process.stdout.write(`  ${marker} ${t.id.padEnd(24)} ${dim(t.label)}\n`);
+      }
+      process.stdout.write(dim(`\nSwitch with: cograph tenant use <id>\n`));
+    });
+  });
+
+tenantCmd
+  .command("use <id>")
+  .description("Set the active tenant (saved to ~/.cograph/config.json)")
+  .action((id: string) => {
+    writeConfig({ tenant: id });
+    process.stdout.write(`${bold("✓")} Active tenant set to ${bold(id)}\n`);
+    process.stdout.write(dim(`Saved to ${configPathForDisplay()}\n`));
+  });
+
+// ---------------------------------------------------------------------------
 // ingest
 // ---------------------------------------------------------------------------
 
@@ -133,10 +406,14 @@ program
     "-f, --format <fmt>",
     "Override format detection (text|csv|json)",
   )
+  .option(
+    "-y, --yes",
+    "Skip the CSV schema review and apply the inferred mapping non-interactively",
+  )
   .action(
     async (
       file: string | undefined,
-      opts: { text?: string; kg?: string; format?: string },
+      opts: { text?: string; kg?: string; format?: string; yes?: boolean },
     ) => {
       await withErrors(async () => {
         const c = client();
@@ -154,12 +431,32 @@ program
         if (!file) {
           fail("Provide a file or --text");
         }
+        // For CSV, interpose the same schema review/confirm gate the Explorer
+        // shows. Interactive on a TTY unless --yes; otherwise apply the
+        // inferred mapping as-is (held type extensions auto-approved, matching
+        // the prior non-interactive behavior). Hook is ignored for text/json.
+        const interactive =
+          Boolean(process.stdin.isTTY) && Boolean(process.stdout.isTTY) && !opts.yes;
+        const onSchemaInferred = interactive
+          ? reviewMapping
+          : (m: Mapping) =>
+              Promise.resolve(
+                buildMappingForIngest(
+                  m,
+                  new Set(heldTypes(m).map((t: any) => t.type_name)),
+                ),
+              );
         // ingest() handles file reading + format detection + CSV two-step flow.
         process.stdout.write(`Ingesting ${file}...\n`);
         const result = await c.ingest(file, {
           kg: opts.kg,
           contentType: opts.format,
+          onSchemaInferred,
         });
+        if ((result as Record<string, unknown>).cancelled) {
+          process.stdout.write("Cancelled — nothing was written.\n");
+          return;
+        }
         printIngestResult(result);
       });
     },
