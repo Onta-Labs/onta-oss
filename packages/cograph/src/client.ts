@@ -32,6 +32,15 @@ export interface IngestOptions {
   /** Called after each batch completes during CSV ingest, in batch order.
    *  Use for progress UI. Not invoked for text/json ingest. */
   onProgress?: (progress: IngestProgress) => void;
+  /** CSV only. Called once after schema inference and BEFORE any rows are
+   *  written, with the inferred mapping. Return the (possibly edited/approved)
+   *  mapping to ingest, or `null` to cancel without writing anything. When
+   *  omitted the inferred mapping is applied as-is (non-interactive). This is
+   *  the same confirm/override gate the Explorer surfaces in its review step. */
+  onSchemaInferred?: (
+    mapping: Record<string, unknown>,
+    info: { totalRows: number; rowsProfiled: number },
+  ) => Promise<Record<string, unknown> | null>;
 }
 
 export interface IngestProgress {
@@ -39,6 +48,19 @@ export interface IngestProgress {
   totalRows: number;
   entitiesResolved: number;
   triplesInserted: number;
+}
+
+/** Rows sent to schema inference. Profile fidelity = decision quality, so we
+ *  send the whole file up to this cap, evenly strided across it (never the
+ *  head — head-of-file bias is exactly what evidence-grounded inference fixes).
+ *  Matches the Explorer's SCHEMA_SAMPLE_CAP. */
+export const SCHEMA_SAMPLE_CAP = 5000;
+
+function stridedSample<T>(rows: T[], cap: number = SCHEMA_SAMPLE_CAP): T[] {
+  if (rows.length <= cap) return rows;
+  const out: T[] = [];
+  for (let i = 0; i < cap; i++) out.push(rows[Math.floor((i * rows.length) / cap)]!);
+  return out;
 }
 
 export interface AskOptions {
@@ -314,21 +336,11 @@ export class Client {
     if (rows.length === 0) throw new CographError("CSV is empty");
     const headers = Object.keys(rows[0]!);
 
-    // Pick the rows with the most non-empty fields for schema inference.
-    // Mostly-empty leading rows (e.g. soft-deleted records) otherwise feed
-    // the LLM a near-blank sample and reliably produce malformed JSON.
-    // Stable on ties — original order preserved within equal scores.
-    const sampleRows = rows
-      .map((row, idx) => ({
-        row,
-        idx,
-        score: Object.values(row).filter(
-          (v) => v != null && String(v).trim() !== "",
-        ).length,
-      }))
-      .sort((a, b) => b.score - a.score || a.idx - b.idx)
-      .slice(0, 10)
-      .map((s) => s.row);
+    // Send the whole file to the profiler, evenly strided across it (never the
+    // head — head-of-file bias, e.g. a key column that goes sparse later, is
+    // exactly what evidence-grounded inference fixes). Profile fidelity =
+    // decision quality. Mirrors the Explorer's upload flow.
+    const sampleRows = stridedSample(rows);
 
     const schemaBody = {
       headers,
@@ -341,6 +353,22 @@ export class Client {
       schemaBody,
       300_000,
     );
+
+    // Confirm/override gate (same contract as the Explorer's review step): the
+    // caller inspects the inferred mapping and returns what to ingest, or null
+    // to cancel before any rows are written. /ingest/csv/rows applies exactly
+    // what we post back. When no hook is given, apply the inference as-is.
+    let mappingToPost: Record<string, unknown> = mapping;
+    if (opts.onSchemaInferred) {
+      const reviewed = await opts.onSchemaInferred(mapping, {
+        totalRows: rows.length,
+        rowsProfiled: sampleRows.length,
+      });
+      if (reviewed == null) {
+        return { cancelled: true, message: "Ingest cancelled before any rows were written." };
+      }
+      mappingToPost = reviewed;
+    }
 
     // Slice rows into batches up front so we can fire them off in a
     // bounded worker pool. Sequential 50-row batches over 891 rows took
@@ -358,7 +386,7 @@ export class Client {
 
     const postBatch = async (batch: Record<string, string>[]) => {
       const body: Record<string, unknown> = {
-        mapping,
+        mapping: mappingToPost,
         rows: batch,
         source: "client",
       };
@@ -430,6 +458,19 @@ export class Client {
     if (opts.kg) body.kg_name = opts.kg;
     if (opts.model) body.model = opts.model;
     return this.request("POST", `${this.base()}/ask`, body, 60_000);
+  }
+
+  /** List the tenants the authenticated user can access (GET /v1/me/tenants).
+   *  Keyed by the API key (X-API-Key → user), so it's independent of the active
+   *  tenant. Throws CographError with status 501 on deployments without a tenant
+   *  provider (e.g. OSS-only). */
+  async listTenants(): Promise<Array<{ id: string; label: string }>> {
+    return this.request<Array<{ id: string; label: string }>>(
+      "GET",
+      `${this.baseUrl}/v1/me/tenants`,
+      undefined,
+      15_000,
+    );
   }
 
   /** List all knowledge graphs for the current tenant. */
