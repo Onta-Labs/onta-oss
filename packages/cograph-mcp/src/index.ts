@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client, CographError } from "cograph";
+import type { ResolvedChange } from "cograph";
 import { z } from "zod";
 
 const VERSION = "0.1.0";
@@ -160,6 +161,114 @@ server.registerTool(
           );
         }
       }
+      return textResult(lines.join("\n"));
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
+);
+
+function describeChange(c: ResolvedChange): string {
+  const verb =
+    c.kind === "relationship"
+      ? `relationship "${c.name}" from ${c.subject_type} -> ${c.datatype_or_target}`
+      : `attribute "${c.name}" (${c.datatype_or_target}) on ${c.subject_type}`;
+  return `[${c.action}] ${verb} — confidence ${c.confidence.toFixed(2)}: ${c.reason}`;
+}
+
+server.registerTool(
+  "evolve_ontology",
+  {
+    description:
+      "Evolve the knowledge-graph ontology from a plain-language description of " +
+      "the change you want. You do NOT need to know exact type, attribute, or " +
+      'relationship names — just describe the change in natural language (e.g. ' +
+      '"track which company a person works for" or "people should have a birth ' +
+      'date") and the server resolves it against the existing ontology. ' +
+      "High-confidence changes are applied automatically; lower-confidence ones " +
+      "are returned as proposals for you to confirm by passing them to " +
+      "apply_ontology_change.",
+    inputSchema: {
+      ask: z
+        .string()
+        .describe(
+          "A plain-language description of the ontology change to make " +
+            '(e.g. "track which company a person works for"). No exact schema ' +
+            "names required.",
+        ),
+      knowledge_graph: z
+        .string()
+        .optional()
+        .describe(
+          "Optional name of the knowledge graph to scope the change to. " +
+            "Use list_knowledge_graphs to see available KGs.",
+        ),
+    },
+  },
+  async ({ ask, knowledge_graph }) => {
+    try {
+      const result = await client().ontologyResolve(ask, { knowledge_graph });
+      const lines: string[] = [result.summary];
+
+      if (result.applied.length) {
+        lines.push("", "Auto-applied:");
+        for (const c of result.applied) lines.push(`  ${describeChange(c)}`);
+      } else {
+        lines.push("", "Auto-applied: none");
+      }
+
+      if (result.proposals.length) {
+        lines.push(
+          "",
+          "Proposals needing confirmation (pass one straight to apply_ontology_change):",
+        );
+        for (const c of result.proposals) lines.push(`  ${describeChange(c)}`);
+        lines.push(
+          "",
+          "Raw proposal objects:",
+          JSON.stringify(result.proposals, null, 2),
+        );
+      } else {
+        lines.push("", "Proposals needing confirmation: none");
+      }
+
+      return textResult(lines.join("\n"));
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
+);
+
+server.registerTool(
+  "apply_ontology_change",
+  {
+    description:
+      "Confirm and apply a single ontology change proposal returned by " +
+      "evolve_ontology. Pass one of the raw proposal objects through unchanged " +
+      "as `proposal`.",
+    inputSchema: {
+      proposal: z
+        .object({
+          kind: z.enum(["attribute", "relationship"]),
+          subject_type: z.string(),
+          name: z.string(),
+          datatype_or_target: z.string(),
+          action: z.enum(["reuse", "extend", "create"]),
+          confidence: z.number(),
+          reason: z.string(),
+        })
+        .describe(
+          "A ResolvedChange proposal object exactly as returned by " +
+            "evolve_ontology.",
+        ),
+    },
+  },
+  async ({ proposal }) => {
+    try {
+      const result = await client().ontologyApply(proposal as ResolvedChange);
+      const lines = [result.summary];
+      lines.push("", `Operations applied: ${result.operations}`);
+      lines.push(describeChange(result.applied));
       return textResult(lines.join("\n"));
     } catch (err) {
       return errorResult(err);

@@ -116,6 +116,8 @@ new Client({
 - `ask(question, { kg? })` — returns `{ answer, sparql?, ... }`.
 - `listKgs()`, `createKg(name, description?)`, `deleteKg(name)` — knowledge-graph CRUD.
 - `ontologyTypes()` — list every type in the tenant ontology with attributes and parents.
+- `ontologyResolve(ask, { knowledge_graph? })` — resolve a fuzzy natural-language ontology-evolution ask (no exact type/attribute/relationship names needed) against the current schema. Returns `{ applied, proposals, summary }`; high-confidence changes land automatically, ambiguous/new-type ones come back as `proposals`.
+- `ontologyApply(proposal)` — confirm and commit a single `ResolvedChange` from `ontologyResolve`'s `proposals`. Pass the object through unchanged; returns `{ applied, operations, summary }`.
 - `typeCounts(kg)` — `[{ name, entity_count }]` for the given KG, sorted desc. Powers `/types`.
 - `typeUsage(kg, name, { includeSystem? })` — full breakdown for one type: attributes (with usage counts), relationships, and 3 sample entities. Powers `/type`. System predicates filtered by default.
 
