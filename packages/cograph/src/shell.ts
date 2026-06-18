@@ -8,6 +8,7 @@ import {
   type ConflictReview,
   type JobSummary,
 } from "./client.js";
+import { writeConfig } from "./config.js";
 
 const CYAN = "\x1b[36m";
 const CYAN_BOLD = "\x1b[1;36m";
@@ -64,6 +65,8 @@ function showCommands(): void {
     ["/kg switch <name>", "Switch to a different KG"],
     ["/kg create <name>", "Create a new KG and switch to it"],
     ["/kg delete <name>", "Delete a KG (irreversible)"],
+    ["/tenant list", "List tenants you can access"],
+    ["/tenant use <id>", "Switch tenant (then pick a KG)"],
     ["/types [query]", "List types in the current KG (with entity counts)"],
     ["/type <name>", "Drill into one type — attributes, relationships, samples"],
     ["/type <name> --system", "…also include auto-attached system attributes"],
@@ -1126,6 +1129,60 @@ export async function runShell(opts: {
         // Pick up the new key from ~/.cograph/config.json for subsequent calls.
         client = new Client();
         await refresh();
+      } else if (line === "/tenant" || line.startsWith("/tenant ")) {
+        const args = splitArgs(line.slice("/tenant".length).trim());
+        const sub = args[0] ?? "list";
+        const target = args.slice(1).join(" ");
+
+        if (sub === "use" || sub === "switch") {
+          if (!target) {
+            stdout.write(`  ${YELLOW}Usage:${RESET} /tenant use <id>\n`);
+          } else {
+            writeConfig({ tenant: target });
+            // Rebuild the client so it picks up the new tenant; preserve the
+            // current base URL (self-hosted/local) and key.
+            client = new Client({ baseUrl: client.baseUrl });
+            stdout.write(
+              `  ${GREEN}✓${RESET} Switched to tenant ${BOLD}${target}${RESET}\n`,
+            );
+            // KGs are per-tenant — the old current KG may not exist here, so
+            // pick one from the new tenant.
+            const picked = await selectKg(client, rl);
+            if (picked) {
+              kg = picked;
+            } else {
+              stdout.write(
+                `  ${DIM}No KGs in ${target} yet — /kg create <name>${RESET}\n`,
+              );
+            }
+            await refresh();
+          }
+        } else if (sub === "current") {
+          stdout.write(`  ${BOLD}${client.tenant}${RESET}\n`);
+        } else {
+          try {
+            const tenants = await client.listTenants();
+            if (!tenants.length) {
+              stdout.write(`  ${DIM}No tenants found for your account.${RESET}\n`);
+            } else {
+              for (const t of tenants) {
+                const marker =
+                  t.id === client.tenant ? `${CYAN_BOLD}*${RESET}` : " ";
+                stdout.write(
+                  `  ${marker} ${BOLD}${t.id}${RESET} ${DIM}${t.label}${RESET}\n`,
+                );
+              }
+              stdout.write(`  ${DIM}/tenant use <id> to switch${RESET}\n`);
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (err instanceof CographError && err.status === 501) {
+              printError("Tenant management isn't configured on this backend.");
+            } else {
+              printError(msg);
+            }
+          }
+        }
       } else if (line === "/kg" || line.startsWith("/kg ")) {
         const args = splitArgs(line.slice("/kg".length).trim());
         const sub = args[0] ?? "list";
