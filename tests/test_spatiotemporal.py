@@ -129,6 +129,29 @@ async def test_query_polygon(idx):
     assert _uris(res) == {"e:ferry"}
 
 
+async def test_query_polygon_bbox_fallback(idx):
+    """An unparseable ring falls back to the BBOX of the coords (not all facts)."""
+    await idx.upsert_many(
+        [_fact("e:ferry", *SF_FERRY), _fact("e:times", *NYC_TIMES_SQ)]
+    )
+    # A malformed WKT whose outer ring won't parse (a non-numeric coordinate
+    # token makes _parse_wkt_polygon return None), but whose extractable numeric
+    # coords describe an SF-only box. The bbox fallback must include SF, exclude
+    # NYC — NOT return everything (which the old `lambda: True` fallback did).
+    malformed = "POLYGON((-122.6 37.6, -122.3 37.6, foo bar, -122.6 37.9))"
+    res = await idx.query_polygon(TENANT, malformed)
+    assert _uris(res) == {"e:ferry"}
+
+
+async def test_query_polygon_no_coords_no_spatial_filter(idx):
+    """Only when NO coords are extractable does the spatial filter drop entirely."""
+    await idx.upsert_many(
+        [_fact("e:ferry", *SF_FERRY), _fact("e:times", *NYC_TIMES_SQ)]
+    )
+    res = await idx.query_polygon(TENANT, "POLYGON((no numbers here))")
+    assert _uris(res) == {"e:ferry", "e:times"}
+
+
 async def test_time_window_overlap(idx):
     await idx.upsert_many(
         [
@@ -389,7 +412,7 @@ async def test_postgis_upsert_sql(pg):
     assert inserts, "no INSERT was emitted"
     sql, args = inserts[-1]
     assert "ST_SetSRID(ST_MakePoint($6, $7), 4326)" in sql
-    assert "tstzrange($4, $5, '[)')" in sql
+    assert "tstzrange($4::timestamptz, $5::timestamptz, '[)')" in sql
     assert "ON CONFLICT (tenant_id, entity_uri, valid_time) DO UPDATE" in sql
     # args order: uri, tenant, attrs_json, from, to, lon, lat
     assert args[0] == "e:ferry"
@@ -434,8 +457,8 @@ async def test_postgis_query_bbox_sql(pg):
     )
     sql, args = next((s, a) for (op, s, a) in recorder if op == "fetch")
     assert "ST_MakeEnvelope($2, $3, $4, $5, 4326)" in sql
-    # time_window overlap predicate at $6/$7.
-    assert "valid_time && tstzrange($6, $7, '[)')" in sql
+    # time_window overlap predicate at $6/$7, both bounds cast to timestamptz.
+    assert "valid_time && tstzrange($6::timestamptz, $7::timestamptz, '[)')" in sql
     assert args == (TENANT, -122.6, 37.6, -122.3, 37.9, _dt(2025), _dt(2026))
 
 
@@ -449,6 +472,42 @@ async def test_postgis_query_polygon_sql(pg):
     # No temporal predicate when neither given.
     assert "tstzrange" not in sql and "<@" not in sql
     assert args == (TENANT, wkt)
+
+
+async def test_postgis_null_bounds_are_typed(pg):
+    """Open-ended validity + open-ended windows must bind NULLs as ``::timestamptz``.
+
+    asyncpg can't infer the type of a bare ``None`` bound, so a real Postgres
+    raises "could not determine data type of parameter" without the cast. Assert
+    the emitted SQL casts both range bounds so the NULL is typed, not bare.
+    """
+    store, recorder, conn = pg
+
+    # upsert with fully open-ended validity (valid_from=None, valid_to=None).
+    await store.upsert(_fact("e:openend", *SF_FERRY, valid_from=None, valid_to=None))
+    insert_sql, insert_args = next(
+        (sql, args)
+        for (op, sql, args) in recorder
+        if op == "execute" and "INSERT INTO entity_spatiotemporal" in sql
+    )
+    assert "tstzrange($4::timestamptz, $5::timestamptz, '[)')" in insert_sql
+    # The bound params are genuinely None (the cast is what makes them safe).
+    assert insert_args[3] is None and insert_args[4] is None
+
+    # overlap query with an open lower bound: time_window=(None, something).
+    conn.rows = []
+    await store.query_bbox(
+        TENANT, -122.6, 37.6, -122.3, 37.9, time_window=(None, _dt(2026))
+    )
+    fetch_sql, fetch_args = next(
+        (s, a) for (op, s, a) in recorder if op == "fetch"
+    )
+    assert (
+        "valid_time && tstzrange($6::timestamptz, $7::timestamptz, '[)')"
+        in fetch_sql
+    )
+    # Lower bound binds as a typed NULL; upper bound is the given datetime.
+    assert fetch_args[5] is None and fetch_args[6] == _dt(2026)
 
 
 async def test_postgis_delete_and_clear_sql(pg):

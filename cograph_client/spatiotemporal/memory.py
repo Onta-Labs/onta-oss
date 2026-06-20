@@ -7,10 +7,11 @@ Postgres (and the whole test suite) work without any external service:
   geodesic semantics as PostGIS ``ST_DWithin(geom::geography, …)``.
 * ``query_bbox`` is an exact axis-aligned point-in-box test.
 * ``query_polygon`` is an **approximation**: it uses a ray-casting point-in-polygon
-  test against the WKT ring when parseable, and otherwise falls back to the polygon's
-  bounding box. The PostGIS backend is exact (``ST_Within``); this default trades a
-  little precision (no holes, no spherical edges) for "no dependencies". Documented
-  here and in the package README so callers know the limitation.
+  test against the WKT ring when parseable, and otherwise falls back to the bounding
+  box of whatever coordinates are extractable from the WKT (only if NO coordinates can
+  be extracted does it apply no spatial filter). The PostGIS backend is exact
+  (``ST_Within``); this default trades a little precision (no holes, no spherical
+  edges) for "no dependencies". Documented inline so callers know the limitation.
 
 Temporal filtering matches the Protocol contract: ``as_of`` (containment) takes
 precedence over ``time_window`` (overlap) when both are given.
@@ -64,6 +65,30 @@ def _parse_wkt_polygon(wkt: str) -> Optional[list[tuple[float, float]]]:
         except ValueError:
             return None
     return pts or None
+
+
+def _wkt_bbox(wkt: str) -> Optional[tuple[float, float, float, float]]:
+    """Best-effort bounding box ``(min_lon, min_lat, max_lon, max_lat)`` of a WKT.
+
+    Used as the fallback when the full polygon ring can't be parsed (e.g. holes,
+    odd whitespace, or a coordinate the ring parser chokes on): we scan every
+    ``lon lat`` pair we *can* extract and take their axis-aligned envelope. The
+    PostGIS backend is exact (``ST_Within``); this trades precision for "always
+    returns something sane". Returns ``None`` only when NO coordinate pair is
+    extractable, in which case the caller applies no spatial filter.
+    """
+    coords: list[tuple[float, float]] = []
+    for pair in re.findall(r"-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?", wkt):
+        nums = pair.split()
+        try:
+            coords.append((float(nums[0]), float(nums[1])))
+        except (ValueError, IndexError):
+            continue
+    if not coords:
+        return None
+    lons = [c[0] for c in coords]
+    lats = [c[1] for c in coords]
+    return (min(lons), min(lats), max(lons), max(lats))
 
 
 def _point_in_ring(lon: float, lat: float, ring: list[tuple[float, float]]) -> bool:
@@ -192,13 +217,29 @@ class InMemorySpatioTemporalIndex:
         time_window: Optional[TimeWindow] = None,
         as_of: Optional[datetime] = None,
     ) -> list[STQueryResult]:
+        """Approximate point-in-polygon over the in-memory facts.
+
+        Exact-ish path: ray-cast against the parsed outer ring. If the full ring
+        can't be parsed, fall back to the **bounding box** of whatever coordinates
+        are extractable from the WKT (more conservative than returning everything).
+        Only when NO coordinates can be extracted at all is the spatial filter
+        dropped (returns all temporally-matching tenant facts). The PostGIS
+        backend is exact (``ST_Within``); see the module docstring.
+        """
         ring = _parse_wkt_polygon(wkt_polygon)
         if ring:
             test = lambda f: _point_in_ring(f.lon, f.lat, ring)  # noqa: E731
         else:
-            # Unparseable WKT → fall back to "no spatial filter" (documented
-            # approximation); the PostGIS backend uses exact ST_Within instead.
-            test = lambda f: True  # noqa: E731
+            bbox = _wkt_bbox(wkt_polygon)
+            if bbox is not None:
+                # Unparseable ring → bounding-box approximation of its coords.
+                min_lon, min_lat, max_lon, max_lat = bbox
+                test = lambda f: (  # noqa: E731
+                    min_lon <= f.lon <= max_lon and min_lat <= f.lat <= max_lat
+                )
+            else:
+                # No coordinates extractable at all → no spatial filter.
+                test = lambda f: True  # noqa: E731
         async with self._lock:
             return [
                 self._result(f)

@@ -117,8 +117,13 @@ class PostGISSpatioTemporalIndex:
     # ----------------------------------------------------------------- writes
     @staticmethod
     def _valid_time_sql() -> str:
-        """SQL fragment building a tstzrange from $from/$to params (NULL = open)."""
-        return "tstzrange($4, $5, '[)')"
+        """SQL fragment building a tstzrange from $from/$to params (NULL = open).
+
+        Both bounds are cast to ``timestamptz`` so an open-ended (``None``) bound
+        binds as a *typed* NULL — without the cast asyncpg sends an untyped NULL
+        and Postgres raises "could not determine data type of parameter".
+        """
+        return "tstzrange($4::timestamptz, $5::timestamptz, '[)')"
 
     async def upsert(self, fact: SpatioTemporalFact) -> None:
         pool = await self._ensure_pool()
@@ -178,8 +183,12 @@ class PostGISSpatioTemporalIndex:
             return f" AND ${start_param}::timestamptz <@ valid_time", [as_of]
         if time_window is not None:
             w_lo, w_hi = time_window
+            # Cast both bounds to timestamptz so an open-ended (None) window bound
+            # binds as a typed NULL — mirrors _valid_time_sql / the as_of cast and
+            # avoids "could not determine data type of parameter" on real Postgres.
             return (
-                f" AND valid_time && tstzrange(${start_param}, ${start_param + 1}, '[)')",
+                f" AND valid_time && tstzrange("
+                f"${start_param}::timestamptz, ${start_param + 1}::timestamptz, '[)')",
                 [w_lo, w_hi],
             )
         return "", []

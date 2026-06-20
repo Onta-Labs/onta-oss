@@ -39,6 +39,7 @@ def _make_job(
     trigger: JobTrigger = JobTrigger.manual,
     status: JobStatus = JobStatus.queued,
     progress: JobProgress | None = None,
+    created_at: datetime | None = None,
 ) -> EnrichJob:
     return EnrichJob(
         id=job_id,
@@ -49,7 +50,7 @@ def _make_job(
         tier=EnrichmentTier.lite,
         status=status,
         progress=progress or JobProgress(),
-        created_at=datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(timezone.utc),
         conflict_policy=ConflictPolicy.stage,
         category=category,
         trigger=trigger,
@@ -120,6 +121,26 @@ def test_make_job_store_postgres_when_db_set(monkeypatch):
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
     store = make_job_store()
     assert isinstance(store, PostgresJobStore)
+
+
+def test_inmemory_list_for_tenant_newest_first():
+    """InMemoryJobStore must match the unified /jobs "newest first" contract
+    (PostgresJobStore sorts ORDER BY created_at DESC) even when jobs are created
+    out of chronological order — not dict-insertion order."""
+    store = InMemoryJobStore()
+    # Created OUT of chronological order: insert middle, then oldest, then newest.
+    mid = _make_job(job_id="mid", created_at=datetime(2026, 6, 2, tzinfo=timezone.utc))
+    old = _make_job(job_id="old", created_at=datetime(2026, 6, 1, tzinfo=timezone.utc))
+    new = _make_job(job_id="new", created_at=datetime(2026, 6, 3, tzinfo=timezone.utc))
+
+    async def run():
+        await store.create(mid)
+        await store.create(old)
+        await store.create(new)
+        return await store.list_for_tenant("test-tenant")
+
+    summaries = asyncio.run(run())
+    assert [s.id for s in summaries] == ["new", "mid", "old"]
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +357,17 @@ def test_unified_jobs_list_and_category_filter(client, auth_headers):
     assert r2.status_code == 200
     ids2 = {j["id"] for j in r2.json()}
     assert ids2 == {"d1"}
+
+
+def test_unified_jobs_list_newest_first(client, auth_headers):
+    # Seed out of chronological order; the endpoint must return newest first.
+    _seed(_make_job(job_id="mid", created_at=datetime(2026, 6, 2, tzinfo=timezone.utc)))
+    _seed(_make_job(job_id="old", created_at=datetime(2026, 6, 1, tzinfo=timezone.utc)))
+    _seed(_make_job(job_id="new", created_at=datetime(2026, 6, 3, tzinfo=timezone.utc)))
+
+    r = client.get("/graphs/test-tenant/jobs", headers=auth_headers)
+    assert r.status_code == 200
+    assert [j["id"] for j in r.json()] == ["new", "mid", "old"]
 
 
 def test_action_find_merge_duplicates_creates_dedupe_job(

@@ -46,11 +46,15 @@ class InMemoryJobStore:
 
     async def list_for_tenant(self, tenant_id: str) -> list[JobSummary]:
         async with self._lock:
-            return [
-                job_to_summary(j)
-                for j in self._jobs.values()
-                if j.tenant_id == tenant_id
-            ]
+            jobs = [j for j in self._jobs.values() if j.tenant_id == tenant_id]
+        # Newest first — match the unified /jobs contract and PostgresJobStore's
+        # ORDER BY created_at DESC. created_at is a required field, but guard a
+        # None defensively (treat as oldest so it sorts last) rather than raising.
+        from datetime import datetime, timezone
+
+        _OLDEST = datetime.min.replace(tzinfo=timezone.utc)
+        jobs.sort(key=lambda j: j.created_at or _OLDEST, reverse=True)
+        return [job_to_summary(j) for j in jobs]
 
     async def delete(self, job_id: str) -> None:
         async with self._lock:

@@ -49,6 +49,20 @@ logger = structlog.stdlib.get_logger("cograph.actions")
 router = APIRouter(prefix="/graphs/{tenant}/actions")
 
 
+# Background fire-and-forget tasks: CPython only holds a *weak* reference to a
+# bare ``asyncio.create_task(...)`` result, so it can be garbage-collected
+# mid-flight and silently strand a job. Keep a strong reference in a module-level
+# set and drop it on completion (mirrors explore.py's schedule_recompute).
+_bg_tasks: set = set()
+
+
+def _spawn(coro) -> None:
+    """Schedule a background coroutine, keeping a strong ref until it finishes."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
 # --- Premium recommender seam (COG-99) ----------------------------------------
 # Relationship suggestion is premium. OSS exposes a registration hook (mirroring
 # register_external_verifier / register_adapter) so a downstream deployment can
@@ -198,7 +212,7 @@ async def find_merge_duplicates(
         category=JobCategory.dedupe,
     )
     await job_store.create(job)
-    asyncio.create_task(
+    _spawn(
         _run_dedupe(client, job_store, job.id, tenant.tenant_id, body.kg_name)
     )
     return {
@@ -235,7 +249,7 @@ async def enrich_action(
         limit=body.limit,
     )
     await job_store.create(job)
-    asyncio.create_task(executor.run(job, tenant.tenant_id))
+    _spawn(executor.run(job, tenant.tenant_id))
     return {
         "job_id": job.id,
         "status": job.status.value,
@@ -320,7 +334,7 @@ async def suggest_relationships(
         }
 
     await job_store.create(job)
-    asyncio.create_task(
+    _spawn(
         _run_suggest(client, job_store, job.id, tenant.tenant_id, body.kg_name)
     )
     return {

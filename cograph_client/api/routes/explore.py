@@ -936,6 +936,12 @@ async def get_type_records(
     # come from the predicates actually attached to instances of the type, minus
     # rdf:type and system predicates; literal-valued only (entity-valued objects
     # are relationships, not table columns).
+    # Intentional: records uses RAW rdf:type (no primary-type guard, unlike the
+    # summary/search endpoints). Records is a flat data table — a multi-typed
+    # entity is a legitimate row under EACH of its types, so attributing it to a
+    # single primary type would drop rows. The COUNT below and the page query
+    # share this same raw-type filter, so "X of Y" stays internally consistent
+    # (it can differ from the summary panel's primary-type count by design).
     count_sparql = (
         f"SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <{kg_graph}> WHERE {{\n"
         f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
