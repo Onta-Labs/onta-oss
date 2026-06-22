@@ -27,6 +27,22 @@ router = APIRouter(prefix="/graphs/{tenant}/enrich")
 CONFLICT_RESULT_TRUNCATE = 100
 
 
+# Background fire-and-forget tasks: CPython only holds a *weak* reference to a
+# bare ``asyncio.create_task(...)`` result, so it can be garbage-collected at the
+# first ``await`` after the request returns — silently stranding the enrichment
+# job right after it selects entities (COG-112). Keep a strong reference in a
+# module-level set and drop it on completion (mirrors actions.py / explore.py's
+# schedule_recompute).
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    """Schedule a background coroutine, keeping a strong ref until it finishes."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
 class ApplyRequest(BaseModel):
     decisions: list[ConflictReview]
 
@@ -62,7 +78,7 @@ async def create_job(
     )
     await job_store.create(job)
 
-    asyncio.create_task(executor.run(job, tenant.tenant_id))
+    _spawn(executor.run(job, tenant.tenant_id))
 
     return {
         "job_id": job.id,

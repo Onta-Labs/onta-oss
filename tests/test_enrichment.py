@@ -1681,6 +1681,45 @@ def test_post_jobs_returns_job_id(client, auth_headers, mock_neptune):
     assert data["matched_entities"] is None
 
 
+def test_post_jobs_holds_strong_ref_to_background_task(
+    client, auth_headers, mock_neptune, monkeypatch
+):
+    """COG-112 regression guard: the create path must keep a *strong* reference to
+    the spawned executor task. A bare ``asyncio.create_task(...)`` is only
+    weak-referenced by the loop and gets GC'd at the first await after the request
+    returns — stranding the job right after it selects entities. We capture the
+    coroutine handed to the executor and assert create routes it through the
+    module-level ``_spawn`` helper (which registers it in ``_bg_tasks``), never as
+    a bare task."""
+    import cograph_client.api.routes.enrich as enrich_mod
+
+    captured: list = []
+    real_spawn = enrich_mod._spawn
+
+    def _tracking_spawn(coro):
+        captured.append(coro)
+        real_spawn(coro)
+        # Right after scheduling, the task must be held by the module set so it
+        # cannot be garbage-collected mid-run.
+        assert len(enrich_mod._bg_tasks) >= 1
+
+    monkeypatch.setattr(enrich_mod, "_spawn", _tracking_spawn)
+    mock_neptune.query.return_value = _count_response(0)
+
+    response = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+        },
+    )
+    assert response.status_code == 202
+    # create scheduled exactly one background task via the strong-ref helper.
+    assert len(captured) == 1
+
+
 def test_post_jobs_with_scope_threads_scope_without_blocking(
     client, auth_headers, mock_neptune
 ):
