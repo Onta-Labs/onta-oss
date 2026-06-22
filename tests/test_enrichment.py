@@ -1775,6 +1775,204 @@ def test_apply_decisions_no_accept_does_not_recompute(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Enrichment extends the ontology (declare-then-write) — COG-112
+# ---------------------------------------------------------------------------
+
+
+def _declaration_updates(neptune) -> list[str]:
+    """SPARQL update strings that look like an attribute ONTOLOGY declaration
+    (carry ``rdf:Property`` + ``rdfs:domain``), as sent to the fake Neptune."""
+    rdf_property = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+    rdfs_domain = "http://www.w3.org/2000/01/rdf-schema#domain"
+    out: list[str] = []
+    for call in neptune.update.await_args_list:
+        sparql = call.args[0] if call.args else call.kwargs.get("sparql", "")
+        if rdf_property in sparql and rdfs_domain in sparql:
+            out.append(sparql)
+    return out
+
+
+def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
+    """An auto-apply that writes a value for an attribute must ALSO declare that
+    attribute in the TENANT (ontology) graph — rdf:Property + rdfs:domain <Type> —
+    plus its provenance companions, so the enriched attribute is first-class
+    schema (COG-112)."""
+    import cograph_client.api.routes.explore as explore_mod
+
+    monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
+
+    async def run():
+        rows = [
+            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+        ]
+        neptune = AsyncMock()
+        neptune.query.return_value = _entities_query_response(rows)
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata(
+            {
+                ("Bosch", "company"): [
+                    Verdict(
+                        value="Robert Bosch GmbH",
+                        confidence=0.95,
+                        source="wikidata",
+                        source_url="https://www.wikidata.org/wiki/Q234021",
+                    )
+                ],
+            }
+        )
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        job = _make_job(attributes=["company"], policy=ConflictPolicy.overwrite)
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final.status == JobStatus.applied
+
+        decls = _declaration_updates(neptune)
+        assert decls, "expected at least one ontology declaration update"
+
+        tenant_graph = "https://cograph.tech/graphs/test-tenant"
+        company_attr = "https://cograph.tech/types/Product/attrs/company"
+        type_uri = "https://cograph.tech/types/Product"
+        xsd_string = "http://www.w3.org/2001/XMLSchema#string"
+
+        # The primary 'company' attribute is declared into the TENANT graph as an
+        # rdf:Property with rdfs:domain <Product> and an xsd:string range.
+        primary = [d for d in decls if company_attr in d]
+        assert primary, "company attribute not declared"
+        d = primary[0]
+        assert tenant_graph in d
+        assert type_uri in d
+        assert xsd_string in d
+
+        # Companion provenance attrs were written for this value (source_url +
+        # provenance) → they must be declared too, into the same tenant graph.
+        src_attr = "https://cograph.tech/types/Product/attrs/company_source_url"
+        prov_attr = "https://cograph.tech/types/Product/attrs/company_provenance"
+        assert any(src_attr in d for d in decls), "company_source_url not declared"
+        assert any(prov_attr in d for d in decls), "company_provenance not declared"
+        for d in decls:
+            assert tenant_graph in d  # declarations go to the ontology graph only
+
+    asyncio.run(run())
+
+
+def test_executor_stage_mode_does_not_declare(monkeypatch):
+    """Review (stage) mode writes nothing yet → it must NOT declare attributes in
+    the ontology."""
+    import cograph_client.api.routes.explore as explore_mod
+
+    monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
+
+    async def run():
+        rows = [
+            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+        ]
+        neptune = AsyncMock()
+        neptune.query.return_value = _entities_query_response(rows)
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata(
+            {
+                ("Bosch", "company"): [
+                    Verdict(value="Robert Bosch GmbH", confidence=0.95, source="wikidata")
+                ],
+            }
+        )
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        job = _make_job(attributes=["company"], policy=ConflictPolicy.stage)
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final.status == JobStatus.review
+        # Nothing written, nothing declared.
+        assert _declaration_updates(neptune) == []
+        neptune.update.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_executor_no_match_does_not_declare(monkeypatch):
+    """An attribute that found no value contributes no triples → it must NOT be
+    declared (no ontology pollution with empty slots)."""
+    import cograph_client.api.routes.explore as explore_mod
+
+    monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
+
+    async def run():
+        rows = [
+            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Unknown", "vals": ""},
+        ]
+        neptune = AsyncMock()
+        neptune.query.return_value = _entities_query_response(rows)
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata({})  # no verdicts → no_match
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        job = _make_job(attributes=["company"], policy=ConflictPolicy.overwrite)
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        assert _declaration_updates(neptune) == []
+
+    asyncio.run(run())
+
+
+def test_apply_decisions_declares_accepted_attribute(monkeypatch):
+    """Accepting a review decision also extends the ontology (declares the
+    accepted attribute + its provenance companions in the tenant graph)."""
+    import cograph_client.api.routes.explore as explore_mod
+
+    monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
+
+    async def run():
+        neptune = AsyncMock()
+        neptune.update.return_value = None
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata({})
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+        job = _make_job(attributes=["company"], policy=ConflictPolicy.stage)
+        await store.create(job)
+
+        decisions = [
+            ConflictReview(
+                entity_uri="https://cograph.tech/entities/Product/p1",
+                attribute="company",
+                existing_value="Acme",
+                proposed=Verdict(
+                    value="Robert Bosch GmbH",
+                    confidence=0.95,
+                    source="wikidata",
+                    source_url="https://www.wikidata.org/wiki/Q234021",
+                ),
+                decision="accept",
+            ),
+        ]
+        applied = await executor.apply_decisions(job.id, decisions)
+        assert applied == 1
+
+        decls = _declaration_updates(neptune)
+        company_attr = "https://cograph.tech/types/Product/attrs/company"
+        tenant_graph = "https://cograph.tech/graphs/test-tenant"
+        assert any(company_attr in d for d in decls)
+        assert all(tenant_graph in d for d in decls)
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
 
