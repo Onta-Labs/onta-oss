@@ -1028,7 +1028,9 @@ async def get_type_records(
     fetches all attribute values, excluding ``rdf:type`` and
     ``SYSTEM_PREDICATES``.  Attribute predicates are resolved to display names
     via the ontology (same ``attr_def`` query shape as ``get_type_summary``).
-    The row ``name`` is ``rdfs:label`` when present, else the entity-URI leaf.
+    The row ``name`` is the declared ``attrs/name`` attribute value when present
+    (ingest stores the human-readable name there; ``rdfs:label`` holds the
+    opaque entity-id slug), else ``rdfs:label``, else the entity-URI leaf.
 
     Response shape::
 
@@ -1169,10 +1171,12 @@ async def get_type_records(
     # --- (5) assemble rows ---
     # Collect per-entity: label + attribute values keyed by display name.
     # ``_name_attr`` captures the instance value of the declared "name" attribute
-    # (``…/onto/name`` ← ``attrs/name``): these entities carry their real name
-    # there, NOT in rdfs:label. We don't render it as a SEPARATE column (it would
-    # duplicate the first "name" column), but the first column must fall back to
-    # it when rdfs:label is absent — otherwise the name degrades to the URI slug.
+    # (``…/onto/name`` ← ``attrs/name``): these entities carry their real,
+    # human-readable name THERE. ``rdfs:label`` holds the opaque entity-id slug
+    # (ingest writes ``(entity_uri, rdfs:label, entity.id)``), so attrs/name is
+    # the PREFERRED name source — rdfs:label is only the fallback below it. We
+    # don't render attrs/name as a SEPARATE column (it would duplicate the first
+    # "name" column); its value feeds the first column instead.
     LABEL_PRED = f"{RDFS}#label"
     entity_data: dict[str, dict] = {
         u: {"_label": None, "_name_attr": None, "_attrs": {}} for u in entity_uris
@@ -1204,8 +1208,9 @@ async def get_type_records(
         )
         # "name" is rendered in the first column; a declared/instance predicate
         # named "name" (e.g. …/onto/name ← attrs/name) must not become a SEPARATE
-        # column. But its value is the entity's real name — capture it so the
-        # first column can fall back to it when rdfs:label is missing.
+        # column. But its value is the entity's real, human-readable name —
+        # capture it so the first column can PREFER it over the slug-shaped
+        # rdfs:label.
         if display == "name":
             if entity_data[e_uri]["_name_attr"] is None:
                 entity_data[e_uri]["_name_attr"] = o_val
@@ -1220,10 +1225,13 @@ async def get_type_records(
     rows = []
     for u in entity_uris:
         d = entity_data[u]
-        # Name precedence: rdfs:label, else the declared "name" attribute's value
-        # (attrs/name), else the URI slug. attrs/name is where these entities
-        # actually store their name, so it must win over the slug fallback.
-        label = d["_label"] or d["_name_attr"] or u.rstrip("/").split("/")[-1]
+        # Name precedence: the declared "name" attribute's value (attrs/name)
+        # FIRST, else rdfs:label, else the URI slug. Ingest writes
+        # `(entity_uri, rdfs:label, entity.id)` — i.e. rdfs:label IS the opaque
+        # entity-id slug — while the human-readable name lives in attrs/name. So
+        # attrs/name must win over rdfs:label, otherwise the row degrades to the
+        # slug (e.g. "4akvVWgTcS") even when a real name is present.
+        label = d["_name_attr"] or d["_label"] or u.rstrip("/").split("/")[-1]
         row: dict = {"id": u, "name": label}
         for col in col_display:
             # Declared columns with no value on this entity render blank.

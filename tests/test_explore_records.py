@@ -470,10 +470,11 @@ def test_records_declared_attribute_exempt_from_cap(client, mock_neptune, auth_h
 
 
 # ---------------------------------------------------------------------------
-# 7. The first "name" column resolves from rdfs:label → attrs/name → slug
-#    (COG-112: regression from PR #36 — entities store their name in attrs/name,
-#    not rdfs:label; dropping the declared "name" column degraded the name to the
-#    URI slug. The first column must show the real attrs/name value again.)
+# 7. The first "name" column resolves from attrs/name → rdfs:label → slug
+#    (COG-112: ingest writes (entity_uri, rdfs:label, entity.id) — rdfs:label IS
+#    the opaque entity-id slug — and the human-readable name lives in attrs/name.
+#    So attrs/name must WIN over rdfs:label; rdfs:label-first still yields the
+#    slug. attrs/name must not become a separate second column either.)
 # ---------------------------------------------------------------------------
 
 # attrs/name is a declared attribute whose instance predicate is …/onto/name.
@@ -523,8 +524,10 @@ def test_records_name_prefers_attrs_name_over_slug(client, mock_neptune, auth_he
     # (the value lives only in the first column)
 
 
-def test_records_name_prefers_rdfs_label_over_attrs_name(client, mock_neptune, auth_headers):
-    """When both rdfs:label and attrs/name are present, rdfs:label wins."""
+def test_records_name_prefers_attrs_name_over_label(client, mock_neptune, auth_headers):
+    """When both attrs/name and a slug-shaped rdfs:label are present, attrs/name
+    wins — ingest stores the opaque entity-id slug in rdfs:label, so the
+    human-readable attrs/name value must be displayed instead of the slug."""
 
     def route(sparql, *a, **k):
         if "attrLabel" in sparql:
@@ -534,9 +537,10 @@ def test_records_name_prefers_rdfs_label_over_attrs_name(client, mock_neptune, a
         if "entityCount" in sparql:
             return _rows({"ec": "1"})
         if "VALUES ?e" in sparql:
+            # rdfs:label is the slug-shaped entity id; attrs/name is the real name
             return _rows(
-                {"e": E1, "p": LABEL_PRED, "o": "Label Name"},
-                {"e": E1, "p": NAME_PRED, "o": "Attr Name"},
+                {"e": E1, "p": LABEL_PRED, "o": "4akvVWgTcS"},
+                {"e": E1, "p": NAME_PRED, "o": "Jane Doe"},
             )
         return _empty()
 
@@ -548,7 +552,9 @@ def test_records_name_prefers_rdfs_label_over_attrs_name(client, mock_neptune, a
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["rows"][0]["name"] == "Label Name"
+    # attrs/name wins over the slug-shaped rdfs:label
+    assert data["rows"][0]["name"] == "Jane Doe"
+    # attrs/name does NOT become a separate second "name" column
     assert data["columns"].count("name") == 1
 
 
