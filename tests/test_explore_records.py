@@ -467,3 +467,113 @@ def test_records_declared_attribute_exempt_from_cap(client, mock_neptune, auth_h
         assert n in cols, f"declared {n} missing from columns {cols}"
     assert data["rows"][0]["attr05"] == "v5"
     assert data["rows"][0]["attr00"] == ""
+
+
+# ---------------------------------------------------------------------------
+# 7. The first "name" column resolves from rdfs:label → attrs/name → slug
+#    (COG-112: regression from PR #36 — entities store their name in attrs/name,
+#    not rdfs:label; dropping the declared "name" column degraded the name to the
+#    URI slug. The first column must show the real attrs/name value again.)
+# ---------------------------------------------------------------------------
+
+# attrs/name is a declared attribute whose instance predicate is …/onto/name.
+NAME_ATTR = ONTO + "types/Movie/attrs/name"
+NAME_PRED = ONTO + "name"
+
+
+def test_records_name_prefers_attrs_name_over_slug(client, mock_neptune, auth_headers):
+    """An entity with attrs/name but NO rdfs:label shows its attrs/name value in
+    the `name` field — not the URI slug. attrs/name must not become a separate
+    second column."""
+
+    def route(sparql, *a, **k):
+        if "attrLabel" in sparql:
+            # ontology declares a "name" attribute (its value holds the real name)
+            return _rows(
+                {"attr": NAME_ATTR, "attrLabel": "name", "range": ""},
+                {"attr": ONTO + "types/Movie/attrs/title", "attrLabel": "title", "range": ""},
+            )
+        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
+            return _rows({"e": E1})
+        if "entityCount" in sparql:
+            return _rows({"ec": "1"})
+        if "VALUES ?e" in sparql:
+            # E1 has attrs/name ("Jane Doe") but NO rdfs:label
+            return _rows(
+                {"e": E1, "p": NAME_PRED, "o": "Jane Doe"},
+                {"e": E1, "p": TITLE_PRED, "o": "Some Title"},
+            )
+        return _empty()
+
+    mock_neptune.query.side_effect = route
+
+    resp = client.get(
+        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # name shows the attrs/name value, NOT the URI slug ("m1")
+    assert data["rows"][0]["name"] == "Jane Doe"
+    # attrs/name does NOT become a separate second "name" column
+    assert data["columns"].count("name") == 1
+    assert data["columns"][0] == "name"
+    # the row carries no separate "name" attribute key beyond the first column
+    # (the value lives only in the first column)
+
+
+def test_records_name_prefers_rdfs_label_over_attrs_name(client, mock_neptune, auth_headers):
+    """When both rdfs:label and attrs/name are present, rdfs:label wins."""
+
+    def route(sparql, *a, **k):
+        if "attrLabel" in sparql:
+            return _rows({"attr": NAME_ATTR, "attrLabel": "name", "range": ""})
+        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
+            return _rows({"e": E1})
+        if "entityCount" in sparql:
+            return _rows({"ec": "1"})
+        if "VALUES ?e" in sparql:
+            return _rows(
+                {"e": E1, "p": LABEL_PRED, "o": "Label Name"},
+                {"e": E1, "p": NAME_PRED, "o": "Attr Name"},
+            )
+        return _empty()
+
+    mock_neptune.query.side_effect = route
+
+    resp = client.get(
+        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rows"][0]["name"] == "Label Name"
+    assert data["columns"].count("name") == 1
+
+
+def test_records_name_falls_back_to_slug_when_neither(client, mock_neptune, auth_headers):
+    """With neither rdfs:label nor attrs/name, name falls back to the URI slug."""
+
+    def route(sparql, *a, **k):
+        if "attrLabel" in sparql:
+            return _rows({"attr": NAME_ATTR, "attrLabel": "name", "range": ""})
+        if "DISTINCT ?e" in sparql and "ORDER BY ?e" in sparql:
+            return _rows({"e": E1})
+        if "entityCount" in sparql:
+            return _rows({"ec": "1"})
+        if "VALUES ?e" in sparql:
+            # neither rdfs:label nor attrs/name; only title
+            return _rows({"e": E1, "p": TITLE_PRED, "o": "Some Title"})
+        return _empty()
+
+    mock_neptune.query.side_effect = route
+
+    resp = client.get(
+        f"/graphs/{TENANT}/explore/kgs/{KG}/types/{TYPE}/records",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # E1 = ".../Movie/m1" → leaf is "m1"
+    assert data["rows"][0]["name"] == "m1"

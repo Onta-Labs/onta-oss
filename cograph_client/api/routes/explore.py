@@ -1167,9 +1167,16 @@ async def get_type_records(
         total = _to_int(cnt_rows[0].get("n") if cnt_rows else None)
 
     # --- (5) assemble rows ---
-    # Collect per-entity: label + attribute values keyed by display name
+    # Collect per-entity: label + attribute values keyed by display name.
+    # ``_name_attr`` captures the instance value of the declared "name" attribute
+    # (``…/onto/name`` ← ``attrs/name``): these entities carry their real name
+    # there, NOT in rdfs:label. We don't render it as a SEPARATE column (it would
+    # duplicate the first "name" column), but the first column must fall back to
+    # it when rdfs:label is absent — otherwise the name degrades to the URI slug.
     LABEL_PRED = f"{RDFS}#label"
-    entity_data: dict[str, dict] = {u: {"_label": None, "_attrs": {}} for u in entity_uris}
+    entity_data: dict[str, dict] = {
+        u: {"_label": None, "_name_attr": None, "_attrs": {}} for u in entity_uris
+    }
     # Column order: declared attributes ALWAYS first (schema columns, not subject
     # to the frequency cap), then any extra non-declared predicates observed on
     # the page — bounded by _MAX_COLS so a stray entity can't inflate the table.
@@ -1195,20 +1202,28 @@ async def get_type_records(
             or attr_label_by_onto.get(p_uri)
             or p_uri.rstrip("/").split("/")[-1]
         )
-        # "name" is rendered from rdfs:label; an instance predicate named "name"
-        # must not collide with that first column.
-        if display != "name" and display not in col_set and extra_count < _MAX_COLS:
+        # "name" is rendered in the first column; a declared/instance predicate
+        # named "name" (e.g. …/onto/name ← attrs/name) must not become a SEPARATE
+        # column. But its value is the entity's real name — capture it so the
+        # first column can fall back to it when rdfs:label is missing.
+        if display == "name":
+            if entity_data[e_uri]["_name_attr"] is None:
+                entity_data[e_uri]["_name_attr"] = o_val
+            continue
+        if display not in col_set and extra_count < _MAX_COLS:
             col_set.add(display)
             col_display.append(display)
             extra_count += 1
-        if display != "name":
-            entity_data[e_uri]["_attrs"][display] = o_val
+        entity_data[e_uri]["_attrs"][display] = o_val
 
     columns = ["name"] + col_display
     rows = []
     for u in entity_uris:
         d = entity_data[u]
-        label = d["_label"] or u.rstrip("/").split("/")[-1]
+        # Name precedence: rdfs:label, else the declared "name" attribute's value
+        # (attrs/name), else the URI slug. attrs/name is where these entities
+        # actually store their name, so it must win over the slug fallback.
+        label = d["_label"] or d["_name_attr"] or u.rstrip("/").split("/")[-1]
         row: dict = {"id": u, "name": label}
         for col in col_display:
             # Declared columns with no value on this entity render blank.
