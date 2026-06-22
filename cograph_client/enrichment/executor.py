@@ -39,6 +39,7 @@ from cograph_client.enrichment.strategy import (
 )
 from cograph_client.enrichment.tiers import get_chain
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.ontology_queries import upsert_attribute
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
     insert_triples,
@@ -63,6 +64,14 @@ ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
 NAME_FALLBACK_ATTRS = ["name", "title", "headline"]
 WORKER_POOL_SIZE = 8
 PROGRESS_FLUSH_EVERY = 10
+
+# rdfs:comment stamped on an enrichment-declared attribute so the ontology /schema
+# view + Explorer can distinguish a schema slot that arrived via enrichment from
+# one declared by ingest or the ontology endpoint. Enriched values are strings
+# (the wikidata/adapter funnel yields literal text), so the declared range is
+# always xsd:string — matching what the instance triples actually carry.
+ENRICH_ATTR_DESCRIPTION = "Added by enrichment job"
+ENRICH_ATTR_DATATYPE = "string"
 
 # Hard ceiling on a single adapter lookup (COG-112). A misbehaving adapter — a
 # stalled TCP/TLS connect, a server that dribbles keepalive bytes (which resets
@@ -780,6 +789,18 @@ class EnrichmentExecutor:
 
             triples = self._select_triples_for_policy(all_rows, job.type_name, policy)
             if triples:
+                # Declare schema, THEN write data. Enrichment must EXTEND THE
+                # ONTOLOGY (COG-112): before writing instance values, upsert the
+                # ontology declaration for every attribute that actually got a
+                # value (primary + its provenance companions) into the tenant
+                # (ontology) graph, so an enriched attribute is first-class schema
+                # — visible in the /schema view, the Explorer column schema, and
+                # the Enrich dialog's predicate dropdown, not just as orphan data.
+                # One idempotent upsert per attribute (not per row). This runs in
+                # the apply branch only (skip/verify/overwrite); `stage` returned
+                # above before any write, so review-mode declares nothing.
+                applied_attrs = self._applied_attribute_names(all_rows, policy)
+                await self._declare_attributes(tenant_id, job.type_name, applied_attrs)
                 await self._neptune.update(insert_triples(graph_uri, triples))
                 # New attribute values were written → the Explorer's precomputed
                 # type-stats (coverage %, counts) are now stale. Recompute them
@@ -932,23 +953,90 @@ class EnrichmentExecutor:
             out.append((entity_uri, _attr_uri(type_name, f"{attribute}_provenance"), prov))
         return out
 
+    @staticmethod
+    def _row_is_applied(r: RowResult, policy: ConflictPolicy) -> bool:
+        """Whether a row's verdict actually contributes instance triples under
+        ``policy``. Single source of truth shared by :meth:`_select_triples_for_policy`
+        (which data to write) and :meth:`_applied_attribute_names` (which schema to
+        declare) so the two can never drift."""
+        if r.verdict is None:
+            return False
+        if policy == ConflictPolicy.overwrite:
+            return r.action in ("filled", "conflict", "verified")
+        if policy in (ConflictPolicy.verify, ConflictPolicy.skip):
+            return r.action == "filled"
+        return False
+
     def _select_triples_for_policy(
         self, rows: list[RowResult], type_name: str, policy: ConflictPolicy
     ) -> list[tuple[str, str, str]]:
         triples: list[tuple[str, str, str]] = []
         for r in rows:
-            if r.verdict is None:
+            if not self._row_is_applied(r, policy):
                 continue
             p = _attr_uri(type_name, r.attribute)
-            applied = False
-            if policy == ConflictPolicy.overwrite:
-                applied = r.action in ("filled", "conflict", "verified")
-            elif policy in (ConflictPolicy.verify, ConflictPolicy.skip):
-                applied = r.action == "filled"
-            if applied:
-                triples.append((r.entity_uri, p, r.verdict.value))
-                triples.extend(self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict))
+            triples.append((r.entity_uri, p, r.verdict.value))
+            triples.extend(self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict))
         return triples
+
+    def _applied_attribute_names(
+        self, rows: list[RowResult], policy: ConflictPolicy
+    ) -> list[str]:
+        """The attribute names (primary + their provenance companions) that
+        ACTUALLY received a written value under ``policy`` — the set whose ontology
+        declarations the apply step upserts so an enriched attribute becomes
+        first-class schema (visible in the /schema view, the Explorer column
+        schema, and the Enrich dialog's predicate dropdown). Attributes that found
+        nothing are excluded so enrichment never pollutes the ontology with empty
+        slots. Order-preserving + deduped so the caller issues one declaration per
+        attribute, not one per row.
+
+        The provenance companions (``<attr>_source_url``, ``<attr>_provenance``)
+        are declared only when :meth:`_provenance_triples` actually emitted them
+        for some applied row — matching the citation columns that were really
+        written (a verdict with no ``source_url`` writes no ``_source_url`` triple,
+        so we don't declare a phantom column)."""
+        names: list[str] = []
+        seen: set[str] = set()
+
+        def _add(name: str) -> None:
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+
+        for r in rows:
+            if not self._row_is_applied(r, policy):
+                continue
+            _add(r.attribute)
+            # Mirror the companion provenance triples this row actually wrote, so
+            # the declared schema matches the data exactly.
+            for _s, prov_pred, _o in self._provenance_triples(
+                r.entity_uri, "", r.attribute, r.verdict
+            ):
+                _add(_local_name(prov_pred))
+        return names
+
+    async def _declare_attributes(
+        self, tenant_id: str, type_name: str, attr_names: list[str]
+    ) -> None:
+        """Upsert each enrichment-applied attribute's ontology declaration into the
+        TENANT (ontology) graph so it becomes first-class schema. Reuses the same
+        idempotent :func:`upsert_attribute` the ontology endpoint uses
+        (``rdf:Property ; rdfs:label ; rdfs:domain <Type> ; rdfs:range xsd:string``),
+        one update per attribute. Called BEFORE the instance ``insert_triples``
+        write (declare schema, then write data) and inside the job's try/except so
+        a declaration failure fails the job, consistent with existing behavior."""
+        onto_graph = tenant_graph_uri(tenant_id)
+        for name in attr_names:
+            await self._neptune.update(
+                upsert_attribute(
+                    onto_graph,
+                    type_name,
+                    name,
+                    description=ENRICH_ATTR_DESCRIPTION,
+                    datatype=ENRICH_ATTR_DATATYPE,
+                )
+            )
 
     async def apply_decisions(
         self, job_id: str, decisions: list[ConflictReview]
@@ -959,14 +1047,27 @@ class EnrichmentExecutor:
         graph_uri = kg_graph_uri(job.tenant_id, job.kg_name)
         triples: list[tuple[str, str, str]] = []
         applied = 0  # number of accepted facts (provenance triples don't count)
+        applied_attrs: list[str] = []
+        seen_attrs: set[str] = set()
         for d in decisions:
             if d.decision != "accept":
                 continue
             p = _attr_uri(job.type_name, d.attribute)
             triples.append((d.entity_uri, p, d.proposed.value))
-            triples.extend(self._provenance_triples(d.entity_uri, job.type_name, d.attribute, d.proposed))
+            prov = self._provenance_triples(d.entity_uri, job.type_name, d.attribute, d.proposed)
+            triples.extend(prov)
+            # Track the attribute names (primary + provenance companions actually
+            # written) so we can declare them in the ontology, mirroring run().
+            for name in [d.attribute, *(_local_name(pp) for _s, pp, _o in prov)]:
+                if name not in seen_attrs:
+                    seen_attrs.add(name)
+                    applied_attrs.append(name)
             applied += 1
         if triples:
+            # Declare schema, THEN write data — accepted review decisions extend
+            # the ontology too (COG-112), so the enriched attribute is first-class
+            # schema, mirroring the auto-apply path in run().
+            await self._declare_attributes(job.tenant_id, job.type_name, applied_attrs)
             await self._neptune.update(insert_triples(graph_uri, triples))
             # Accepted facts were written → refresh the Explorer's precomputed
             # type-stats in the background (mirrors the auto-apply path in run()).
