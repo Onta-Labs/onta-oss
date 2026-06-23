@@ -19,12 +19,23 @@ from cograph_client.enrichment.models import Verdict
 
 @runtime_checkable
 class SourceAdapter(Protocol):
+    """Protocol for an enrichment source adapter.
+
+    REQUIRED: ``name`` and ``lookup``.
+
+    OPTIONAL: ``is_paid`` and ``cost_per_call`` are the OSS cost signal
+    (COG-123). They are NOT required — the planner reads them via
+    :func:`adapter_cost`, which uses ``getattr`` with safe defaults
+    (``is_paid=False`` / ``cost_per_call=0.0``). A third-party or legacy
+    adapter that declares neither is correctly treated as FREE; it does not
+    need to carry these attributes at all. A paid adapter opts in by setting
+    ``is_paid = True`` and/or ``cost_per_call`` to its per-entity-lookup USD
+    cost (either signal alone marks the adapter paid).
+    """
+
     name: str
-    # OSS cost signal (COG-123). OPTIONAL — both default to "free" so existing
-    # adapters that don't declare them are treated as zero-cost. A paid adapter
-    # sets ``is_paid = True`` and ``cost_per_call`` to its per-entity-lookup USD
-    # cost; the planner reads these via :func:`adapter_cost` (getattr with
-    # defaults) so an adapter need not actually carry the attributes.
+    # Optional cost signal — see the class docstring. Declared here for typing /
+    # documentation only; defaulted to free in :func:`adapter_cost`.
     is_paid: bool
     cost_per_call: float
 

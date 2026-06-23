@@ -146,6 +146,14 @@ class EnrichCapability:
         confidence_lowered = False
         user_set_confidence = abs(requested_confidence - _DEFAULT_CONFIDENCE_MIN) > 1e-9
         if has_paid and not user_set_confidence:
+            # NOTE (interaction): the executor's per-attribute ontology-confidence
+            # override only fires when confidence_min == _DEFAULT_CONFIDENCE_MIN
+            # (0.85), i.e. the "unset" sentinel. Lowering to the web floor here is
+            # INTENTIONAL and relaxes BOTH the global 0.85 default AND any stricter
+            # per-attribute ontology threshold for these web-sourced facts: without
+            # the floor the low-prior web verdicts are all filtered → 0 writes. A
+            # user who wants per-attribute thresholds honored sets confidence_min
+            # explicitly (which keeps user_set_confidence True and skips this floor).
             confidence_min = _WEB_CONFIDENCE_MIN
             confidence_lowered = True
 
@@ -183,9 +191,12 @@ class EnrichCapability:
 
         # Estimate how many entities the job will touch (the scope's matched
         # count, reusing the executor's existing index-efficient COUNT — no new
-        # query engine). Cost ≈ per-entity-paid-cost × min(matched, limit). If we
-        # can't compute the count cheaply we fall back to a clearly-labeled
-        # estimate (min(limit, …)) rather than silently reporting 0.
+        # query engine). The executor calls the adapter chain once per
+        # (entity, attribute) pair (executor.process_entity loops over
+        # job.attributes around _lookup_chain), so a paid lookup runs
+        # min(matched, limit) × len(attributes) times. Cost ≈ per-entity-paid-cost
+        # × that paid-call count. If we can't compute the count cheaply we fall
+        # back to a clearly-labeled estimate (the cap) rather than reporting 0.
         matched, matched_exact = await self._estimate_matched(
             ctx, type_name, scope, attributes
         )
@@ -197,6 +208,7 @@ class EnrichCapability:
             matched=matched,
             matched_exact=matched_exact,
             limit=limit,
+            n_attributes=len(attributes),
         )
 
         enrich_step = PlanStep(
@@ -308,8 +320,12 @@ class EnrichCapability:
             scope=scope,
             # Carry the plan's proposed cap so the job actually honors the bound
             # surfaced to the user at plan time (COG-123). int() guards a stray
-            # non-int; None leaves whole-subset behavior unchanged.
-            limit=int(limit) if isinstance(limit, (int, float)) and limit else None,
+            # non-int; None leaves whole-subset behavior unchanged. bool is a
+            # subclass of int, so exclude it explicitly — a stray True/False must
+            # not be coerced to a 1/0 limit.
+            limit=int(limit)
+            if isinstance(limit, (int, float)) and not isinstance(limit, bool) and limit
+            else None,
         )
         await job_store.create(job)
         _spawn(executor.run(job, ctx.tenant_id))
@@ -390,57 +406,88 @@ def _estimate_cost(
     matched: Optional[int],
     matched_exact: bool,
     limit: Optional[int],
+    n_attributes: int = 1,
 ) -> dict:
     """Honest plan-time cost estimate (COG-123).
 
-    Cost ≈ per-entity-paid-cost × min(matched, limit). The per-entity cost and the
-    paid/free decision are driven by adapter-declared metadata (see
-    :func:`_resolve_chain_cost`), so this never special-cases an adapter by name.
+    Cost ≈ per-entity-paid-cost × min(matched, limit) × ``n_attributes``. The
+    executor calls the adapter chain once per (entity, attribute) pair (see
+    ``EnrichmentExecutor.process_entity`` looping over ``job.attributes`` around
+    ``_lookup_chain``), so a multi-attribute enrich multiplies the paid-call
+    count — quoting only by entities under-counts by ``n_attributes×``. The
+    per-entity cost and the paid/free decision are driven by adapter-declared
+    metadata (see :func:`_resolve_chain_cost`), so this never special-cases an
+    adapter by name.
 
     - **All-free chain** (no paid adapter — e.g. the OSS ``lite`` Wikidata-only
       tier): ``paid_calls=0`` and an explicit "no paid calls" note.
     - **Paid chain**: report the estimated paid-call count (= entities to process,
-      capped at ``limit``) and the dollar estimate. When the matched count was
-      computed exactly we say ``N``; when it couldn't be computed cheaply we fall
-      back to the ``limit`` as a clearly-labeled UPPER-BOUND estimate ("up to N")
-      — NEVER a silent 0 for a paid tier.
+      capped at ``limit``, times ``n_attributes``) and the dollar estimate. When
+      the matched count was computed exactly we say ``N``; when it couldn't be
+      computed cheaply we fall back to the ``limit`` as a clearly-labeled
+      UPPER-BOUND estimate ("up to N") — NEVER a silent 0 for a paid tier.
     """
     if not has_paid:
         return {
             "paid_calls": 0,
-            "estimated_cost_usd": 0.0,
+            # Key names match the web plan-step cost contract EXACTLY
+            # (``step.cost.estimated_usd`` / ``step.cost.paid_calls`` —
+            # web/app/components/explore/useAgentChat.ts AgentStepCost +
+            # AgentChat.tsx PlanStepRow). Do NOT rename without updating both.
+            "estimated_usd": 0.0,
             "per_entity_cost_usd": 0.0,
             "note": f"{tier.value} tier — no paid calls (all sources are free).",
         }
 
-    # Number of entities the paid adapters will be called for, capped at limit.
+    # Number of ENTITIES the paid adapters will be called for, capped at limit.
     if matched_exact and matched is not None:
-        effective = matched if limit is None else min(matched, limit)
-        count_phrase = f"{effective}"
+        entities = matched if limit is None else min(matched, limit)
         estimated = True
     else:
         # Couldn't compute the matched count cheaply — bound by the proposed
         # limit and label it an upper bound rather than reporting a bogus 0.
-        effective = limit if limit is not None else 0
-        count_phrase = f"up to {effective}" if effective else "an unknown number of"
+        entities = limit if limit is not None else 0
         estimated = False
 
-    estimated_cost = round(per_entity_cost * effective, 4)
+    # The chain runs once per (entity, attribute) pair, so the paid-call count
+    # (and dollar cost) scales by the number of attributes being enriched.
+    n_attributes = max(int(n_attributes), 1)
+    paid_calls = entities * n_attributes
+    estimated_cost = round(per_entity_cost * paid_calls, 4)
+
+    entity_phrase = f"{entities}" if estimated else (
+        f"up to {entities}" if entities else "an unknown number of"
+    )
     matched_clause = (
         f"~{matched} matched" if (matched_exact and matched is not None)
         else "matched count unavailable (using the cap as an upper bound)"
     )
-    note = (
-        f"{tier.value} tier (paid): {count_phrase} paid lookups "
-        f"(${per_entity_cost:.4f}/entity × {effective}) ≈ ${estimated_cost:.2f} "
-        f"[{matched_clause}]."
-    )
+    if n_attributes > 1:
+        # Multi-attribute: state the basis so the entities × attributes = calls
+        # arithmetic is transparent.
+        note = (
+            f"{tier.value} tier (paid): ≈ {entity_phrase} entities × "
+            f"{n_attributes} attributes = {paid_calls} paid lookups "
+            f"(${per_entity_cost:.4f}/call) ≈ ${estimated_cost:.2f} "
+            f"[{matched_clause}]."
+        )
+    else:
+        note = (
+            f"{tier.value} tier (paid): {entity_phrase} paid lookups "
+            f"(${per_entity_cost:.4f}/entity × {entities}) ≈ ${estimated_cost:.2f} "
+            f"[{matched_clause}]."
+        )
     return {
-        "paid_calls": effective,
+        "paid_calls": paid_calls,
         "paid_calls_estimated": not estimated,  # True = upper-bound, not exact
         "paid_adapters": paid_adapters,
+        "attributes": n_attributes,
         "per_entity_cost_usd": round(per_entity_cost, 4),
-        "estimated_cost_usd": estimated_cost,
+        # Key names match the web plan-step cost contract EXACTLY
+        # (``step.cost.estimated_usd`` / ``step.cost.paid_calls`` —
+        # web/app/components/explore/useAgentChat.ts AgentStepCost +
+        # AgentChat.tsx PlanStepRow). Do NOT rename without updating both.
+        "estimated_usd": estimated_cost,
         "matched_entities": matched if matched_exact else None,
         "limit": limit,
         "note": note,
