@@ -136,6 +136,54 @@ def _stub_classifier(monkeypatch, intent: str, clarify: str = ""):
     monkeypatch.setattr(planner_mod, "openrouter_chat", fake_chat)
 
 
+# The Mentor type's schema the agent grounds extraction in: ``company`` is
+# ABSENT (so it must be proposed as a new attribute), ``title`` + ``skills`` are
+# present attributes, and ``speaks`` is a relationship to a Language type.
+_MENTOR_SCHEMA = {
+    "attributes": ["title", "skills"],
+    "relationships": [{"name": "speaks", "target_type": "Language"}],
+}
+
+
+def _stub_schema(monkeypatch, schema: dict | None = None):
+    """Stub ``list_type_schema`` in BOTH capabilities to the Mentor schema."""
+    schema = schema if schema is not None else _MENTOR_SCHEMA
+
+    async def fake_schema(neptune, tenant_id, type_name):
+        return schema
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+    )
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.normalize_cap.list_type_schema", fake_schema
+    )
+
+
+def _stub_enrich_extract(monkeypatch, payload: dict):
+    """Stub the enrich capability's extraction LLM to return ``payload`` JSON."""
+    import json
+
+    async def fake_chat(*args, **kwargs):
+        return json.dumps(payload)
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
+    )
+
+
+def _stub_normalize_extract(monkeypatch, payload: dict):
+    """Stub the normalize capability's directive LLM to return ``payload`` JSON."""
+    import json
+
+    async def fake_chat(*args, **kwargs):
+        return json.dumps(payload)
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.normalize_cap.openrouter_chat", fake_chat
+    )
+
+
 # --------------------------------------------------------------------------- #
 # 1. Registry roundtrip — adding a capability needs no route change
 # --------------------------------------------------------------------------- #
@@ -191,6 +239,11 @@ async def test_question_routes_to_answer(monkeypatch):
 @pytest.mark.asyncio
 async def test_enrich_routes_to_plan(monkeypatch):
     _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {"attributes": ["company"], "scope": None, "tier": "core"},
+    )
     out = await asyncio.wait_for(
         handle(_ctx(), "enrich company for managers"), TIMEOUT
     )
@@ -228,6 +281,15 @@ async def test_clean_before_enrich_composes_depends_on(monkeypatch):
     sample is composite ('English__Persian') → the plan contains a normalize
     step that the enrich step depends_on, ordered normalize-first."""
     _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["company"],
+            "scope": {"predicate": "speaks", "value": "Persian"},
+            "tier": "core",
+        },
+    )
 
     # The scope predicate 'speaks' has a composite target sample.
     async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
@@ -286,6 +348,15 @@ async def test_clean_before_enrich_composes_depends_on(monkeypatch):
 async def test_no_prereq_when_scope_target_atomic(monkeypatch):
     """If the scope target sample is already atomic, no normalize prerequisite."""
     _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["company"],
+            "scope": {"predicate": "speaks", "value": "Persian"},
+            "tier": "core",
+        },
+    )
 
     async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
         return (["English", "Persian"], "relationship")  # atomic
@@ -309,6 +380,15 @@ async def test_no_prereq_when_scope_target_atomic(monkeypatch):
 async def test_execute_plan_runs_in_dependency_order(monkeypatch):
     """A persisted [normalize→enrich] plan executes normalize before enrich."""
     _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["company"],
+            "scope": {"predicate": "speaks", "value": "Persian"},
+            "tier": "core",
+        },
+    )
 
     async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
         return (["English__Persian"], "relationship")
@@ -413,6 +493,15 @@ async def test_route_confirm_executes_plan(monkeypatch):
     from cograph_client.graph.client import NeptuneClient
 
     _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["company"],
+            "scope": {"predicate": "speaks", "value": "Persian"},
+            "tier": "core",
+        },
+    )
 
     async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
         return (["English"], "relationship")  # atomic → single enrich step
@@ -456,3 +545,166 @@ async def test_route_confirm_executes_plan(monkeypatch):
     result = r2.json()
     assert result["kind"] == "result"
     assert all(s["status"] == "ok" for s in result["steps"])
+
+
+# --------------------------------------------------------------------------- #
+# 6. Schema-grounded plan() extraction (COG-119)
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_enrich_extracts_real_attr_and_web_tier(monkeypatch):
+    """'enrich the current company for mentors who speak Persian':
+    - attribute is the real noun 'company' (NOT the modifier 'current'),
+    - tier is 'core' (company is an open-web fact Wikidata lacks),
+    - scope is the validated 'speaks' relationship = Persian.
+    company is ABSENT from the schema, so it is proposed as a new attribute."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["company"],
+            "scope": {"predicate": "speaks", "value": "Persian"},
+            "tier": "core",
+            "confidence_min": 0.85,
+        },
+    )
+
+    # speaks samples are atomic → no clean-before-enrich prerequisite.
+    async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
+        return (["English", "Persian"], "relationship")
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        fake_sample,
+    )
+
+    out = await asyncio.wait_for(
+        handle(_ctx(), "enrich the current company for mentors who speak Persian"),
+        TIMEOUT,
+    )
+    assert out["kind"] == "plan"
+    steps = out["steps"]
+    assert len(steps) == 1
+    enrich_step = steps[0]
+    assert enrich_step["capability"] == "enrich"
+    assert enrich_step["params"]["attributes"] == ["company"]
+    assert enrich_step["params"]["tier"] == "core"
+    assert enrich_step["params"]["scope"] == {
+        "predicate": "speaks",
+        "value": "Persian",
+    }
+
+
+@pytest.mark.asyncio
+async def test_enrich_drops_stray_modifier_word_on_fallback(monkeypatch):
+    """When the LLM extraction is unavailable, the deterministic fallback still
+    yields a real attribute ('company') from 'the current company' — never the
+    stray modifier 'current' — and defaults the tier to the paid web 'core'."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("no llm")
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", boom
+    )
+
+    out = await asyncio.wait_for(
+        handle(_ctx(), "enrich the current company"), TIMEOUT
+    )
+    assert out["kind"] == "plan"
+    step = out["steps"][0]
+    assert step["params"]["attributes"] == ["company"]
+    assert step["params"]["tier"] == "core"  # web-fact backstop
+
+
+@pytest.mark.asyncio
+async def test_normalize_strip_emoji_on_title_is_a_plan(monkeypatch):
+    """'remove emojis from the title field' → a strip_emoji PLAN on 'title',
+    NOT a clarify (the old behavior, because the live sample had no emoji)."""
+    _stub_classifier(monkeypatch, "clean")
+    _stub_schema(monkeypatch)
+    _stub_normalize_extract(
+        monkeypatch,
+        {
+            "rule_type": "strip_emoji",
+            "predicate": "title",
+            "params": {},
+            "confidence": 0.9,
+            "rationale": "user asked to remove emoji from title",
+        },
+    )
+
+    # sample_predicate_values powers the dry-run preview for the built rule.
+    async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
+        assert pred_leaf == "title"
+        return (["🚀 Founder", "CTO"], "attribute")
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.normalize_cap.sample_predicate_values",
+        fake_sample,
+    )
+
+    out = await asyncio.wait_for(
+        handle(_ctx(), "remove emojis from the title field"), TIMEOUT
+    )
+    assert out["kind"] == "plan", out
+    step = out["steps"][0]
+    assert step["capability"] == "normalize"
+    rule = step["params"]["rule"]
+    assert rule["rule_type"] == "strip_emoji"
+    assert rule["predicate"] == "title"
+    assert step["preview"]["rule_type"] == "strip_emoji"
+
+
+@pytest.mark.asyncio
+async def test_normalize_list_explode_maps_languages_to_speaks(monkeypatch):
+    """'split the languages into separate ones' → list_explode on the 'speaks'
+    relationship (the NL phrase 'languages' maps onto the real predicate)."""
+    _stub_classifier(monkeypatch, "clean")
+    _stub_schema(monkeypatch)
+    _stub_normalize_extract(
+        monkeypatch,
+        {
+            "rule_type": "list_explode",
+            "predicate": "speaks",
+            "params": {},
+            "confidence": 0.92,
+            "rationale": "languages packed together",
+        },
+    )
+
+    async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
+        assert pred_leaf == "speaks"
+        return (["English__Persian", "French"], "relationship")
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.normalize_cap.sample_predicate_values",
+        fake_sample,
+    )
+
+    out = await asyncio.wait_for(
+        handle(_ctx(), "split the languages into separate ones"), TIMEOUT
+    )
+    assert out["kind"] == "plan", out
+    rule = out["steps"][0]["params"]["rule"]
+    assert rule["rule_type"] == "list_explode"
+    assert rule["predicate"] == "speaks"
+    assert rule["target_kind"] == "relationship"
+    assert rule["params"]["target"] == "entity"
+
+
+@pytest.mark.asyncio
+async def test_normalize_vague_message_still_clarifies(monkeypatch):
+    """A genuinely vague instruction ('fix this data') → clarify: no field can
+    be identified, the LLM returns no rule_type, and no predicate is spotted."""
+    _stub_classifier(monkeypatch, "clean")
+    _stub_schema(monkeypatch)
+    _stub_normalize_extract(
+        monkeypatch,
+        {"rule_type": None, "predicate": None, "params": {}, "confidence": 0.0},
+    )
+
+    out = await asyncio.wait_for(handle(_ctx(), "fix this data"), TIMEOUT)
+    assert out["kind"] == "clarify"
