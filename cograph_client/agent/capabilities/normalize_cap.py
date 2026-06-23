@@ -19,6 +19,7 @@ engine functions directly.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import datetime, timezone
 
@@ -26,10 +27,24 @@ import structlog
 
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.normalization.execute import apply_rule
-from cograph_client.normalization.inference import suggest_rules_for_predicates
-from cograph_client.normalization.rules import NormalizationRule, NormalizationRuleStore
+from cograph_client.normalization.inference import (
+    list_type_schema,
+    sample_predicate_values,
+    suggest_rules_for_predicates,
+)
+from cograph_client.normalization.rules import (
+    NormalizationRule,
+    NormalizationRuleStore,
+    make_rule_id,
+)
+from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
 logger = structlog.stdlib.get_logger("cograph.agent.normalize")
+
+# Rule types the execute engine + dry-run preview actually support today
+# (cograph_client.normalization.inference._SUPPORTED_RULE_TYPES). The planner
+# only ever emits one of these; anything else falls through to clarify.
+_SUPPORTED_RULE_TYPES = ("list_explode", "strip_emoji")
 
 # Strong refs to background apply tasks (mirrors enrich.py / normalize.py): a
 # bare create_task() is only weakly held by CPython and can be GC'd at its first
@@ -75,37 +90,115 @@ class NormalizeCapability:
         instruction: str,
         predicate_leaves: list[str] | None = None,
     ) -> list[PlanStep]:
-        """Infer rules for the predicate(s) named in the instruction.
+        """Map the instruction to a concrete normalization rule (a PLAN).
 
-        The planner (or the enrich capability composing a prerequisite) may pass
-        ``predicate_leaves`` explicitly; otherwise we extract candidate
-        predicate names from the instruction. We deliberately target only those
-        predicate(s) — never scan every predicate (COG-118 perf).
+        Two callers, two modes:
+
+        * **Prerequisite mode** — the enrich capability passes
+          ``predicate_leaves`` explicitly (clean-before-enrich). We INFER the
+          rule from the predicate's sampled values via
+          :func:`suggest_rules_for_predicates`, exactly as before, so the
+          composition logic is unchanged.
+
+        * **User-instruction mode** — no ``predicate_leaves``. We ground the
+          extraction in the type's REAL schema and ask the LLM which supported
+          rule (``strip_emoji`` | ``list_explode``) applies to which real
+          attribute/relationship. "remove emojis from the title field" →
+          ``strip_emoji`` on ``title`` (a PLAN, not a clarify); "split the
+          languages" → ``list_explode`` on ``speaks``. We only return [] (→
+          clarify) when the field genuinely can't be identified.
+
+        We never scan every predicate of a type (COG-118 perf).
         """
         type_name = ctx.type_name or ""
-        leaves = predicate_leaves or _extract_predicate_leaves(instruction)
-        if not type_name or not leaves:
+        if not type_name:
             return []
+
+        # Prerequisite mode: keep the inference-from-samples behavior intact.
+        if predicate_leaves:
+            return await self._plan_from_inference(ctx, type_name, predicate_leaves)
+
+        # User-instruction mode: schema-grounded direct extraction.
+        schema = await list_type_schema(ctx.neptune, ctx.tenant_id, type_name)
+        directive = await _extract_normalize_directive(
+            ctx, instruction, type_name, schema
+        )
+        if directive and directive.get("rule_type") and directive.get("predicate"):
+            step = await self._build_rule_step(ctx, type_name, directive)
+            if step is not None:
+                return [step]
+
+        # Fallback: no explicit rule_type extracted (or no key) — try the
+        # inference-from-samples path on any predicate names we can spot, so a
+        # vague-but-targeted "clean the speaks values" still works.
+        leaves = _extract_predicate_leaves(instruction)
+        if leaves:
+            inferred = await self._plan_from_inference(ctx, type_name, leaves)
+            if inferred:
+                return inferred
+        return []
+
+    async def _plan_from_inference(
+        self, ctx: AgentContext, type_name: str, leaves: list[str]
+    ) -> list[PlanStep]:
+        """Infer rule(s) for named predicate(s) from their sampled values."""
         rules = await suggest_rules_for_predicates(
             ctx.neptune, ctx.tenant_id, ctx.kg_name, type_name, leaves
         )
-        steps: list[PlanStep] = []
-        for rule in rules:
-            steps.append(
-                PlanStep(
-                    capability=self.name,
-                    action="apply_rule",
-                    params={
-                        "rule": rule.model_dump(),
-                    },
-                    rationale=rule.rationale
-                    or f"Normalize '{rule.predicate}' on {type_name}.",
-                    confidence=rule.confidence,
-                    preview=_dry_run_preview(rule),
-                    cost={},  # normalization is free (no paid calls)
-                )
+        return [self._step_for_rule(rule, type_name) for rule in rules]
+
+    async def _build_rule_step(
+        self, ctx: AgentContext, type_name: str, directive: dict
+    ) -> PlanStep | None:
+        """Build one PlanStep from an extracted {rule_type, predicate, params}.
+
+        Samples the predicate's current values so the dry-run preview is real,
+        and resolves the predicate's ``target_kind`` for a correct list_explode
+        default. Returns None for an unsupported rule type (→ caller clarifies).
+        """
+        rule_type = directive["rule_type"]
+        if rule_type not in _SUPPORTED_RULE_TYPES:
+            return None
+        predicate = directive["predicate"]
+        samples, target_kind = await sample_predicate_values(
+            ctx.neptune, ctx.tenant_id, ctx.kg_name, type_name, predicate
+        )
+        params = dict(directive.get("params") or {})
+        if rule_type == "list_explode":
+            params.setdefault(
+                "target", "entity" if target_kind == "relationship" else "literal"
             )
-        return steps
+            if not params.get("delimiters"):
+                params["delimiters"] = _PREVIEW_DELIMITERS
+        elif rule_type == "strip_emoji":
+            if not params.get("targets"):
+                params["targets"] = ["attribute"]
+        rule = NormalizationRule(
+            id=make_rule_id(ctx.kg_name, type_name, predicate, rule_type),
+            kg_name=ctx.kg_name,
+            type_name=type_name,
+            predicate=predicate,
+            target_kind=target_kind,
+            rule_type=rule_type,
+            params=params,
+            confidence=float(directive.get("confidence", 0.8) or 0.8),
+            rationale=directive.get("rationale", "")
+            or f"{rule_type} on '{predicate}' per the instruction.",
+            sample_values=samples[:25],
+            status="suggested",
+        )
+        return self._step_for_rule(rule, type_name)
+
+    def _step_for_rule(self, rule: NormalizationRule, type_name: str) -> PlanStep:
+        return PlanStep(
+            capability=self.name,
+            action="apply_rule",
+            params={"rule": rule.model_dump()},
+            rationale=rule.rationale or f"Normalize '{rule.predicate}' on {type_name}.",
+            confidence=rule.confidence,
+            preview=_dry_run_preview(rule),
+            cost={},  # normalization is free (no paid calls)
+        )
 
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         """Persist the rule as confirmed + apply it in the background; ack now."""
@@ -192,6 +285,124 @@ def _summary_line(rule: NormalizationRule, changes: list[dict]) -> str:
             f"{ex['before']!r} → {ex['after']}."
         )
     return f"Strip junk from '{rule.predicate}', e.g. {ex['before']!r} → {ex['after']}."
+
+
+# --- LLM directive extraction grounded in the type's real schema ------------- #
+
+_DIRECTIVE_SYSTEM = """\
+You translate a data-cleaning instruction into ONE normalization rule, GROUNDED \
+in the active type's real schema. You are given the type's actual ATTRIBUTE and \
+RELATIONSHIP names; map the field the user names onto one of them.
+
+Only two rule types are supported — choose the one the instruction asks for:
+- "strip_emoji": remove emoji / pictographic junk characters from text values \
+("remove emojis from title", "strip the icons out of the name", "clean up the \
+junk symbols in description").
+- "list_explode": split a composite multi-value cell into atomic values \
+("split the languages into separate ones", "these are packed together, separate \
+the skills", "explode the comma-separated tags"). For a relationship like \
+"languages" / "what they speak", target the matching relationship (e.g. \
+"speaks").
+
+Return STRICT JSON only (no markdown):
+{
+  "rule_type": "strip_emoji" | "list_explode" | null,
+  "predicate": "<an attribute or relationship NAME from the schema>" | null,
+  "params": { ...optional rule params... },
+  "confidence": 0.0,
+  "rationale": "one short sentence"
+}
+
+RULES:
+- "predicate" MUST be one of the given attribute or relationship names. Map \
+phrases: "the title field"/"titles" -> "title"; "languages"/"what they speak" \
+-> the "speaks" relationship; "names" -> "name". If the field the user means is \
+NOT in the schema and you cannot confidently map it, set predicate to null.
+- If the instruction is NOT a strip_emoji or list_explode request (e.g. it asks \
+to lowercase, trim, dedupe, or rename), set rule_type to null.
+- Set confidence in [0,1] for how sure you are."""
+
+_DIRECTIVE_USER_TEMPLATE = """\
+Type: {type_name}
+Attributes: {attributes}
+Relationships: {relationships}
+
+Instruction: {instruction}
+
+Which normalization rule does this ask for? Respond with strict JSON."""
+
+
+async def _extract_normalize_directive(
+    ctx: AgentContext,
+    instruction: str,
+    type_name: str,
+    schema: dict,
+) -> dict | None:
+    """LLM-extract {rule_type, predicate, params}, validated against the schema.
+
+    Returns None when there is no key, the LLM errors, the request isn't a
+    supported rule type, or the predicate can't be mapped to a real
+    attribute/relationship — the caller then falls back / clarifies.
+    """
+    if not ctx.openrouter_key:
+        return None
+    attr_names = [a for a in schema.get("attributes", []) if a]
+    rel_names = [r.get("name") for r in schema.get("relationships", []) if r.get("name")]
+    rels_block = ", ".join(
+        f"{r['name']} (-> {r.get('target_type') or '?'})"
+        for r in schema.get("relationships", [])
+        if r.get("name")
+    ) or "(none)"
+    user = _DIRECTIVE_USER_TEMPLATE.format(
+        type_name=type_name,
+        attributes=", ".join(attr_names) or "(none)",
+        relationships=rels_block,
+        instruction=instruction,
+    )
+    try:
+        text = await openrouter_chat(
+            ctx.openrouter_key,
+            _DIRECTIVE_SYSTEM,
+            user,
+            model=PRIMARY_MODEL,
+            temperature=0,
+            max_tokens=400,
+            timeout=30,
+        )
+        data = _parse_json_object(text)
+    except Exception:
+        logger.warning("agent_normalize_extract_failed", exc_info=True)
+        return None
+    if not data or data.get("rule_type") not in _SUPPORTED_RULE_TYPES:
+        return None
+    pred = data.get("predicate")
+    if not isinstance(pred, str) or not pred.strip():
+        return None
+    # Resolve the predicate against the real schema (case-insensitively). When
+    # the schema is empty we can't validate, so accept the extracted name.
+    known = {n.lower(): n for n in (*attr_names, *rel_names)}
+    resolved = known.get(pred.strip().lower(), pred.strip() if not known else None)
+    if not resolved:
+        return None
+    data["predicate"] = resolved
+    return data
+
+
+def _parse_json_object(text: str) -> dict | None:
+    """Best-effort parse of an LLM JSON object reply (tolerant of code fences)."""
+    stripped = (text or "").strip()
+    if stripped.startswith("```"):
+        stripped = "\n".join(
+            l for l in stripped.split("\n") if not l.strip().startswith("```")
+        )
+    start, end = stripped.find("{"), stripped.rfind("}")
+    if start != -1 and end > start:
+        stripped = stripped[start : end + 1]
+    try:
+        data = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 # Quoted-token | word-after-trigger extraction for predicate names in NL.
