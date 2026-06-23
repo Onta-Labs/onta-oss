@@ -708,3 +708,234 @@ async def test_normalize_vague_message_still_clarifies(monkeypatch):
 
     out = await asyncio.wait_for(handle(_ctx(), "fix this data"), TIMEOUT)
     assert out["kind"] == "clarify"
+
+
+# --------------------------------------------------------------------------- #
+# 7. COG-123 cost estimate + COG-121 confidence — the agent's plan is honest
+# --------------------------------------------------------------------------- #
+from cograph_client.enrichment.models import EnrichmentTier  # noqa: E402
+from cograph_client.enrichment.sources.base import (  # noqa: E402
+    _adapters,
+    register_adapter,
+)
+from cograph_client.enrichment.tiers import register_tier, reset_tiers  # noqa: E402
+
+
+class _CountingExecutor:
+    """A FakeExecutor that also answers count_entities (the matched-count path
+    the plan reuses for its cost estimate, COG-123)."""
+
+    def __init__(self, count: int = 0, raises: bool = False):
+        self.ran = []
+        self._count = count
+        self._raises = raises
+        self.count_calls = []
+
+    async def run(self, job, tenant_id):
+        self.ran.append((job, tenant_id))
+
+    async def count_entities(self, tenant_id, kg_name, type_name, scope=None,
+                             entity_uris=None):
+        self.count_calls.append((type_name, scope))
+        if self._raises:
+            raise RuntimeError("neptune down")
+        return self._count
+
+
+class _MockPaidAdapter:
+    """A generic PAID adapter declaring cost via the protocol's metadata — stands
+    in for a proprietary web adapter (Exa/Parallel) WITHOUT importing one. The
+    cost model must derive everything from these declared attributes, never the
+    name (COG-123 boundary)."""
+
+    name = "mock_paid_web"
+    is_paid = True
+    cost_per_call = 0.01
+
+    async def lookup(self, entity_label, attribute, context):
+        return []
+
+
+class _MockFreeAdapter:
+    name = "mock_free"
+    is_paid = False
+    cost_per_call = 0.0
+
+    async def lookup(self, entity_label, attribute, context):
+        return []
+
+
+@pytest.fixture
+def _adapters_and_tiers():
+    """Register mock adapters + wire tiers, restoring global state afterwards so
+    the registry/tier mutations never leak into other tests."""
+    saved = dict(_adapters)
+    register_adapter(_MockPaidAdapter())
+    register_adapter(_MockFreeAdapter())
+    # core => a paid/web chain; lite => an all-free chain.
+    register_tier(EnrichmentTier.core, ["cache", "mock_paid_web"])
+    register_tier(EnrichmentTier.lite, ["cache", "mock_free"])
+    yield
+    _adapters.clear()
+    _adapters.update(saved)
+    reset_tiers()
+
+
+@pytest.mark.asyncio
+async def test_paid_tier_cost_scales_with_matched_count(monkeypatch, _adapters_and_tiers):
+    """COG-123: a paid chain yields a non-zero cost that scales with the matched
+    count, the plan proposes a bounded limit, and the preview no longer says
+    'no paid calls'."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {"attributes": ["company"], "scope": None, "tier": "core"},
+    )
+    executor = _CountingExecutor(count=50)
+    ctx = _ctx(executor=executor)
+
+    out = await asyncio.wait_for(handle(ctx, "enrich company"), TIMEOUT)
+    assert out["kind"] == "plan"
+    step = out["steps"][0]
+    cost = step["cost"]
+    # 50 matched × $0.01/entity = $0.50, paid_calls = 50 (under the 200 cap).
+    assert cost["paid_calls"] == 50
+    assert cost["estimated_cost_usd"] == 0.5
+    assert cost["per_entity_cost_usd"] == 0.01
+    assert cost["paid_calls_estimated"] is False  # exact count, not an upper bound
+    assert "no paid calls" not in cost["note"].lower()
+    # A bounded limit was proposed + surfaced.
+    assert step["params"]["limit"] == 200
+    assert step["preview"]["limit"] == 200
+    # The matched-count COUNT was reused (not a new query engine).
+    assert executor.count_calls == [("Mentor", None)]
+
+
+@pytest.mark.asyncio
+async def test_paid_cost_capped_by_limit(monkeypatch, _adapters_and_tiers):
+    """COG-123: cost is bounded by the proposed limit — matched 5000 but the
+    plan caps paid calls at the default limit (200)."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {"attributes": ["company"], "scope": None, "tier": "core"},
+    )
+    ctx = _ctx(executor=_CountingExecutor(count=5000))
+    out = await asyncio.wait_for(handle(ctx, "enrich company"), TIMEOUT)
+    cost = out["steps"][0]["cost"]
+    assert cost["paid_calls"] == 200  # min(5000, limit)
+    assert cost["estimated_cost_usd"] == 2.0  # 200 × $0.01
+
+
+@pytest.mark.asyncio
+async def test_free_tier_cost_is_zero(monkeypatch, _adapters_and_tiers):
+    """COG-123: an all-free chain (Wikidata-style) costs nothing, even with a
+    large matched count."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        # 'lite' resolves to the all-free chain; confidence stays at the strict
+        # default for a free/structured source (not a web override).
+        {"attributes": ["country"], "scope": None, "tier": "lite"},
+    )
+    ctx = _ctx(executor=_CountingExecutor(count=1000))
+    out = await asyncio.wait_for(handle(ctx, "look up the country code"), TIMEOUT)
+    cost = out["steps"][0]["cost"]
+    assert cost["paid_calls"] == 0
+    assert cost["estimated_cost_usd"] == 0.0
+    # A free tier keeps the strict default confidence (no web override).
+    assert out["steps"][0]["params"]["confidence_min"] == 0.85
+
+
+@pytest.mark.asyncio
+async def test_cost_falls_back_to_limit_when_count_unavailable(
+    monkeypatch, _adapters_and_tiers
+):
+    """COG-123: when the matched COUNT can't be computed (executor raises), the
+    paid cost is reported as a clearly-labeled UPPER BOUND (the cap), never a
+    silent 0 for a paid tier."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {"attributes": ["company"], "scope": None, "tier": "core"},
+    )
+    ctx = _ctx(executor=_CountingExecutor(raises=True))
+    out = await asyncio.wait_for(handle(ctx, "enrich company"), TIMEOUT)
+    cost = out["steps"][0]["cost"]
+    assert cost["paid_calls"] == 200          # bounded by the proposed cap
+    assert cost["paid_calls_estimated"] is True  # flagged as upper-bound
+    assert "up to" in cost["note"].lower()
+    assert cost["estimated_cost_usd"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_web_tier_lowers_confidence_min(monkeypatch, _adapters_and_tiers):
+    """COG-121: a web-sourced (paid-chain) enrich lowers confidence_min from the
+    strict 0.85 default to a functional floor, surfaced in the preview, so web
+    verdicts aren't all silently filtered → 0 writes."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        # No explicit confidence → the default; the plan should override it.
+        {"attributes": ["company"], "scope": None, "tier": "core"},
+    )
+    ctx = _ctx(executor=_CountingExecutor(count=10))
+    out = await asyncio.wait_for(handle(ctx, "enrich company"), TIMEOUT)
+    step = out["steps"][0]
+    assert step["params"]["confidence_min"] == 0.4  # functional web floor
+    assert step["preview"]["confidence_min"] == 0.4
+    assert "confidence_min lowered" in step["preview"]["confidence_note"]
+
+
+@pytest.mark.asyncio
+async def test_user_confidence_not_overridden_on_web_tier(
+    monkeypatch, _adapters_and_tiers
+):
+    """COG-121: an EXPLICIT user confidence is respected even on a web tier — we
+    only override the unset (default 0.85) value."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["company"],
+            "scope": None,
+            "tier": "core",
+            "confidence_min": 0.9,  # user asked for stricter
+        },
+    )
+    ctx = _ctx(executor=_CountingExecutor(count=10))
+    out = await asyncio.wait_for(handle(ctx, "enrich company strictly"), TIMEOUT)
+    step = out["steps"][0]
+    assert step["params"]["confidence_min"] == 0.9  # respected, not lowered
+
+
+@pytest.mark.asyncio
+async def test_plan_limit_carried_into_enrich_job(monkeypatch, _adapters_and_tiers):
+    """COG-123: the proposed limit is honored at execute time — the EnrichJob the
+    capability builds carries the cap."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    _stub_enrich_extract(
+        monkeypatch,
+        {"attributes": ["company"], "scope": None, "tier": "core"},
+    )
+    job_store = FakeJobStore()
+    executor = _CountingExecutor(count=10)
+    ctx = _ctx(executor=executor, job_store=job_store)
+
+    plan_out = await asyncio.wait_for(handle(ctx, "enrich company"), TIMEOUT)
+    result = await asyncio.wait_for(
+        execute_plan(ctx, plan_out["plan_id"]), TIMEOUT
+    )
+    assert result["kind"] == "result"
+    await asyncio.sleep(0)
+    assert len(job_store.created) == 1
+    job = job_store.created[0]
+    assert job.limit == 200
+    assert abs(job.confidence_min - 0.4) < 1e-9  # web floor carried through

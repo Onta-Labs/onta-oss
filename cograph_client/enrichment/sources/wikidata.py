@@ -143,6 +143,11 @@ WIKIDATA_PROPS: dict[str, str] = {
 
 class WikidataAdapter:
     name = "wikidata"
+    # Wikidata's API is free, so this adapter contributes nothing to the agent's
+    # paid-cost estimate (COG-123). Declared explicitly to document the contract;
+    # ``adapter_cost`` would default it to free anyway.
+    is_paid = False
+    cost_per_call = 0.0
 
     def __init__(self, client: Optional[httpx.AsyncClient] = None) -> None:
         self._client = client
