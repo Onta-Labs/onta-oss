@@ -801,7 +801,7 @@ async def test_paid_tier_cost_scales_with_matched_count(monkeypatch, _adapters_a
     cost = step["cost"]
     # 50 matched × $0.01/entity = $0.50, paid_calls = 50 (under the 200 cap).
     assert cost["paid_calls"] == 50
-    assert cost["estimated_cost_usd"] == 0.5
+    assert cost["estimated_usd"] == 0.5
     assert cost["per_entity_cost_usd"] == 0.01
     assert cost["paid_calls_estimated"] is False  # exact count, not an upper bound
     assert "no paid calls" not in cost["note"].lower()
@@ -826,7 +826,7 @@ async def test_paid_cost_capped_by_limit(monkeypatch, _adapters_and_tiers):
     out = await asyncio.wait_for(handle(ctx, "enrich company"), TIMEOUT)
     cost = out["steps"][0]["cost"]
     assert cost["paid_calls"] == 200  # min(5000, limit)
-    assert cost["estimated_cost_usd"] == 2.0  # 200 × $0.01
+    assert cost["estimated_usd"] == 2.0  # 200 × $0.01
 
 
 @pytest.mark.asyncio
@@ -845,7 +845,7 @@ async def test_free_tier_cost_is_zero(monkeypatch, _adapters_and_tiers):
     out = await asyncio.wait_for(handle(ctx, "look up the country code"), TIMEOUT)
     cost = out["steps"][0]["cost"]
     assert cost["paid_calls"] == 0
-    assert cost["estimated_cost_usd"] == 0.0
+    assert cost["estimated_usd"] == 0.0
     # A free tier keeps the strict default confidence (no web override).
     assert out["steps"][0]["params"]["confidence_min"] == 0.85
 
@@ -869,7 +869,80 @@ async def test_cost_falls_back_to_limit_when_count_unavailable(
     assert cost["paid_calls"] == 200          # bounded by the proposed cap
     assert cost["paid_calls_estimated"] is True  # flagged as upper-bound
     assert "up to" in cost["note"].lower()
-    assert cost["estimated_cost_usd"] == 2.0
+    assert cost["estimated_usd"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_paid_cost_scales_with_attribute_count(monkeypatch, _adapters_and_tiers):
+    """COG-123 (review fix): the executor calls the adapter chain once per
+    (entity, attribute) pair, so a multi-attribute enrich must scale paid_calls
+    AND the dollar estimate by len(attributes). Quoting only by entities
+    under-counts by n_attributes×. This test FAILS against the entity-only
+    estimate."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_schema(monkeypatch)
+    # TWO paid attributes on a paid (core) chain.
+    _stub_enrich_extract(
+        monkeypatch,
+        {"attributes": ["company", "website"], "scope": None, "tier": "core"},
+    )
+    executor = _CountingExecutor(count=50)
+    ctx = _ctx(executor=executor)
+
+    out = await asyncio.wait_for(handle(ctx, "enrich company and website"), TIMEOUT)
+    assert out["kind"] == "plan"
+    cost = out["steps"][0]["cost"]
+    # 50 entities × 2 attributes = 100 paid calls; 100 × $0.01 = $1.00.
+    assert cost["paid_calls"] == 100
+    assert cost["estimated_usd"] == 1.0
+    assert cost["attributes"] == 2
+    # The note states the entities × attributes = calls basis.
+    note = cost["note"].lower()
+    assert "2 attributes" in note
+    assert "100 paid lookups" in note
+
+
+def test_estimate_cost_keys_match_web_contract():
+    """MAJOR review fix: the emitted cost dict MUST use the EXACT keys the web
+    plan-step cost contract reads — ``estimated_usd`` and ``paid_calls`` (see
+    web/app/components/explore/useAgentChat.ts ``AgentStepCost`` and
+    AgentChat.tsx ``PlanStepRow``). Asserting on the literal keys here pins the
+    contract so a future rename can't silently blank the cost badge again. Covers
+    both the free and paid branches of _estimate_cost."""
+    from cograph_client.agent.capabilities.enrich_cap import _estimate_cost
+
+    # Free branch (no paid adapter).
+    free = _estimate_cost(
+        tier=EnrichmentTier.lite,
+        per_entity_cost=0.0,
+        paid_adapters=0,
+        has_paid=False,
+        matched=10,
+        matched_exact=True,
+        limit=200,
+        n_attributes=1,
+    )
+    assert "estimated_usd" in free
+    assert "paid_calls" in free
+    assert "estimated_cost_usd" not in free  # the old (wrong) key is gone
+
+    # Paid branch.
+    paid = _estimate_cost(
+        tier=EnrichmentTier.core,
+        per_entity_cost=0.01,
+        paid_adapters=1,
+        has_paid=True,
+        matched=10,
+        matched_exact=True,
+        limit=200,
+        n_attributes=2,
+    )
+    assert "estimated_usd" in paid
+    assert "paid_calls" in paid
+    assert "estimated_cost_usd" not in paid
+    # The web UI only reads these two; confirm both are populated/typed.
+    assert isinstance(paid["paid_calls"], int)
+    assert isinstance(paid["estimated_usd"], float)
 
 
 @pytest.mark.asyncio
