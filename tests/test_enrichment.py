@@ -2476,6 +2476,43 @@ def test_cancel_job(client, auth_headers, mock_neptune):
 # ---------------------------------------------------------------------------
 
 
+def test_adapter_cost_metadata_protocol():
+    """COG-123: the OSS cost model reads is_paid/cost_per_call generically.
+
+    - An adapter that declares neither (legacy / OSS Wikidata) is free.
+    - is_paid OR a positive cost_per_call marks an adapter paid.
+    - The cograph-shipped WikidataAdapter declares free explicitly.
+    - A malformed cost_per_call coerces to 0.0 (never raises).
+    """
+    from cograph_client.enrichment.sources.base import adapter_cost
+    from cograph_client.enrichment.sources.wikidata import WikidataAdapter
+
+    class _Bare:  # declares nothing → free
+        name = "bare"
+
+    class _PaidFlagOnly:  # is_paid True, no cost → paid, $0
+        name = "p1"
+        is_paid = True
+        cost_per_call = 0.0
+
+    class _CostOnly:  # positive cost ⇒ paid even without is_paid
+        name = "p2"
+        cost_per_call = 0.02
+
+    class _Malformed:
+        name = "bad"
+        is_paid = True
+        cost_per_call = "not-a-number"
+
+    assert adapter_cost(_Bare()) == (False, 0.0)
+    assert adapter_cost(_PaidFlagOnly()) == (True, 0.0)
+    assert adapter_cost(_CostOnly()) == (True, 0.02)
+    # Malformed cost coerces to 0.0 but is_paid flag is honored.
+    assert adapter_cost(_Malformed()) == (True, 0.0)
+    # The OSS Wikidata adapter is free.
+    assert adapter_cost(WikidataAdapter()) == (False, 0.0)
+
+
 def test_register_tier_and_get_chain():
     from cograph_client.enrichment.tiers import (
         get_chain,
