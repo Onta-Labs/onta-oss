@@ -28,6 +28,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 import structlog
 
@@ -39,6 +40,8 @@ from cograph_client.enrichment.models import (
     EnrichmentTier,
     JobStatus,
 )
+from cograph_client.enrichment.sources.base import adapter_cost, get_adapter
+from cograph_client.enrichment.tiers import get_chain
 from cograph_client.normalization.inference import (
     list_type_schema,
     sample_predicate_values,
@@ -48,6 +51,25 @@ from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 logger = structlog.stdlib.get_logger("cograph.agent.enrich")
 
 _bg_tasks: set[asyncio.Task] = set()
+
+# Conservative default cap so a large/expensive enrich is BOUNDED by default
+# (COG-123). It is written into the plan ``params`` (and the EnrichJob.limit at
+# execute time) and surfaced in the preview; the user can override it. 200 keeps
+# a first paid run small enough to inspect cheaply while still covering most
+# scoped subsets in one pass.
+_DEFAULT_PLAN_LIMIT = 200
+
+# Functional confidence floor the AGENT'S PLAN uses for web-sourced enrichments
+# (COG-121). Web adapters (Exa/Parallel/…) return verdicts at a low, conservative
+# prior, so the global EnrichRequest default of 0.85 silently filters ALL of them
+# → 0 values written. This floor is conservative (still rejects junk) but low
+# enough that calibrated web verdicts actually land. It is applied ONLY in the
+# agent's plan and is overridable; the global 0.85 default is unchanged, so
+# direct API callers keep the safe default.
+_WEB_CONFIDENCE_MIN = 0.4
+# The global EnrichRequest default; the marker for "user did not ask for a
+# specific confidence" so we only override an UNSET (default) confidence.
+_DEFAULT_CONFIDENCE_MIN = 0.85
 
 
 def _spawn(coro) -> None:
@@ -104,8 +126,36 @@ class EnrichCapability:
         if not attributes:
             return []
         tier = _coerce_tier(req.get("tier"))
-        confidence_min = float(req.get("confidence_min", 0.85) or 0.85)
+        requested_confidence = float(
+            req.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
+            or _DEFAULT_CONFIDENCE_MIN
+        )
         scope = req.get("scope")  # {"predicate":..., "value":...} | None
+
+        # Resolve the tier's adapter chain ONCE and derive (a) whether it is a
+        # paid/web chain and (b) the per-entity paid cost — both driven by
+        # adapter-declared metadata, never adapter names (COG-123/COG-121 boundary).
+        per_entity_cost, paid_adapters, has_paid = _resolve_chain_cost(tier)
+
+        # COG-121: for a WEB-sourced enrichment (the resolved chain has a paid/web
+        # adapter) lower the plan's confidence_min to a functional floor so the
+        # low-prior web verdicts aren't all silently filtered → 0 writes. Only
+        # override an UNSET (default 0.85) confidence: if the user explicitly asked
+        # for a stricter/looser value we respect it. Overridable downstream.
+        confidence_min = requested_confidence
+        confidence_lowered = False
+        user_set_confidence = abs(requested_confidence - _DEFAULT_CONFIDENCE_MIN) > 1e-9
+        if has_paid and not user_set_confidence:
+            # NOTE (interaction): the executor's per-attribute ontology-confidence
+            # override only fires when confidence_min == _DEFAULT_CONFIDENCE_MIN
+            # (0.85), i.e. the "unset" sentinel. Lowering to the web floor here is
+            # INTENTIONAL and relaxes BOTH the global 0.85 default AND any stricter
+            # per-attribute ontology threshold for these web-sourced facts: without
+            # the floor the low-prior web verdicts are all filtered → 0 writes. A
+            # user who wants per-attribute thresholds honored sets confidence_min
+            # explicitly (which keeps user_set_confidence True and skips this floor).
+            confidence_min = _WEB_CONFIDENCE_MIN
+            confidence_lowered = True
 
         steps: list[PlanStep] = []
         depends_on: list[str] = []
@@ -134,7 +184,33 @@ class EnrichCapability:
                     steps.append(norm)
                     depends_on = [norm.id]
 
-        cost = _estimate_cost(tier)
+        # Propose a conservative default cap so a large/expensive enrich is
+        # bounded by default (COG-123). User-overridable: it is just the plan's
+        # proposed value, surfaced in the preview and carried into the EnrichJob.
+        limit = _DEFAULT_PLAN_LIMIT
+
+        # Estimate how many entities the job will touch (the scope's matched
+        # count, reusing the executor's existing index-efficient COUNT — no new
+        # query engine). The executor calls the adapter chain once per
+        # (entity, attribute) pair (executor.process_entity loops over
+        # job.attributes around _lookup_chain), so a paid lookup runs
+        # min(matched, limit) × len(attributes) times. Cost ≈ per-entity-paid-cost
+        # × that paid-call count. If we can't compute the count cheaply we fall
+        # back to a clearly-labeled estimate (the cap) rather than reporting 0.
+        matched, matched_exact = await self._estimate_matched(
+            ctx, type_name, scope, attributes
+        )
+        cost = _estimate_cost(
+            tier=tier,
+            per_entity_cost=per_entity_cost,
+            paid_adapters=paid_adapters,
+            has_paid=has_paid,
+            matched=matched,
+            matched_exact=matched_exact,
+            limit=limit,
+            n_attributes=len(attributes),
+        )
+
         enrich_step = PlanStep(
             capability=self.name,
             action="run_enrichment",
@@ -144,6 +220,7 @@ class EnrichCapability:
                 "tier": tier.value,
                 "confidence_min": confidence_min,
                 "scope": scope,
+                "limit": limit,
             },
             rationale=(
                 f"Enrich {', '.join(attributes)} on {type_name}"
@@ -154,16 +231,62 @@ class EnrichCapability:
             preview={
                 "summary": (
                     f"Look up {', '.join(attributes)} for matched {type_name} "
-                    f"entities and stage the results for review."
+                    f"entities (capped at {limit}) and stage the results for review."
                 ),
                 "scope": scope,
                 "tier": tier.value,
+                "limit": limit,
+                "confidence_min": confidence_min,
+                "confidence_note": _confidence_note(
+                    confidence_min, confidence_lowered
+                ),
+                "cost_estimate": cost.get("note", ""),
             },
             cost=cost,
             depends_on=depends_on,
         )
         steps.append(enrich_step)
         return steps
+
+    async def _estimate_matched(
+        self,
+        ctx: AgentContext,
+        type_name: str,
+        scope: dict | None,
+        attributes: list[str],
+    ) -> tuple[Optional[int], bool]:
+        """Estimate how many entities the enrich job will match.
+
+        Reuses the executor's existing index-efficient ``count_entities`` (the
+        same SELECT/COUNT path COG-112 built — no new query engine). Returns
+        ``(count, exact)``: ``exact=True`` when the COUNT actually ran, else
+        ``(None, False)`` so the caller falls back to a labeled estimate rather
+        than reporting a misleading 0. Defensive: any executor/Neptune error or a
+        missing executor degrades to ``(None, False)`` — the plan must never fail
+        on a cost estimate.
+        """
+        executor = ctx.extras.get("enrichment_executor")
+        if executor is None or not hasattr(executor, "count_entities"):
+            return None, False
+        enrich_scope = None
+        if scope and scope.get("predicate") and scope.get("value"):
+            try:
+                enrich_scope = EnrichScope(
+                    predicate=scope["predicate"], value=scope["value"]
+                )
+            except Exception:  # noqa: BLE001 — a bad scope just means "no count"
+                return None, False
+        try:
+            n = await executor.count_entities(
+                ctx.tenant_id,
+                ctx.kg_name,
+                type_name,
+                scope=enrich_scope,
+            )
+            return int(n), True
+        except Exception:  # noqa: BLE001
+            logger.warning("agent_enrich_count_failed", exc_info=True)
+            return None, False
 
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         """Create + run an EnrichJob in the background (same as /enrich/jobs)."""
@@ -179,6 +302,7 @@ class EnrichCapability:
             scope = EnrichScope(
                 predicate=p["scope"]["predicate"], value=p["scope"]["value"]
             )
+        limit = p.get("limit")
         job = EnrichJob(
             id=str(uuid.uuid4()),
             tenant_id=ctx.tenant_id,
@@ -189,8 +313,19 @@ class EnrichCapability:
             status=JobStatus.queued,
             created_at=datetime.now(timezone.utc),
             conflict_policy=_default_conflict_policy(),
-            confidence_min=float(p.get("confidence_min", 0.85) or 0.85),
+            confidence_min=float(
+                p.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
+                or _DEFAULT_CONFIDENCE_MIN
+            ),
             scope=scope,
+            # Carry the plan's proposed cap so the job actually honors the bound
+            # surfaced to the user at plan time (COG-123). int() guards a stray
+            # non-int; None leaves whole-subset behavior unchanged. bool is a
+            # subclass of int, so exclude it explicitly — a stray True/False must
+            # not be coerced to a 1/0 limit.
+            limit=int(limit)
+            if isinstance(limit, (int, float)) and not isinstance(limit, bool) and limit
+            else None,
         )
         await job_store.create(job)
         _spawn(executor.run(job, ctx.tenant_id))
@@ -231,19 +366,144 @@ def _coerce_tier(tier) -> EnrichmentTier:
         return EnrichmentTier.lite
 
 
-def _estimate_cost(tier: EnrichmentTier) -> dict:
-    """Cost estimate. The matched count is resolved by the executor at run time
-    (not in the request path — COG-112), so at plan time we report the tier and
-    a note rather than a blocking COUNT. ``lite`` is free (Wikidata only)."""
-    if tier == EnrichmentTier.lite:
-        return {"paid_calls": 0, "note": "lite tier (Wikidata) — no paid calls"}
+def _resolve_chain_cost(tier: EnrichmentTier) -> tuple[float, int, bool]:
+    """Per-entity paid cost for a tier, derived GENERICALLY from adapter metadata.
+
+    Resolves the tier's adapter chain (:func:`get_chain`), looks up each adapter
+    in the global registry, and sums the declared ``cost_per_call`` of the PAID
+    adapters (:func:`adapter_cost`). Returns
+    ``(per_entity_paid_cost, paid_adapter_count, has_paid)``.
+
+    Boundary-clean (COG-123): "paid" and "how much" come ONLY from what an
+    adapter declares about itself — never a hardcoded adapter name. The OSS
+    Wikidata adapter declares free, so the OSS-only ``lite`` chain costs 0; a
+    downstream deployment that registers a paid adapter (Exa/Parallel/…) with
+    ``is_paid``/``cost_per_call`` gets a non-zero estimate with no OSS change.
+    The "cache" pseudo-entry in a chain is not an adapter and is skipped, mirroring
+    the executor's :meth:`_lookup_chain`. An unregistered adapter name contributes
+    nothing (it can't run, so it can't cost) — same as the executor skipping it.
+    """
+    per_entity_cost = 0.0
+    paid_adapters = 0
+    for name in get_chain(tier):
+        if name == "cache":
+            continue
+        adapter = get_adapter(name)
+        if adapter is None:
+            continue
+        is_paid, cost = adapter_cost(adapter)
+        if is_paid:
+            paid_adapters += 1
+            per_entity_cost += cost
+    return per_entity_cost, paid_adapters, paid_adapters > 0
+
+
+def _estimate_cost(
+    tier: EnrichmentTier,
+    per_entity_cost: float,
+    paid_adapters: int,
+    has_paid: bool,
+    matched: Optional[int],
+    matched_exact: bool,
+    limit: Optional[int],
+    n_attributes: int = 1,
+) -> dict:
+    """Honest plan-time cost estimate (COG-123).
+
+    Cost ≈ per-entity-paid-cost × min(matched, limit) × ``n_attributes``. The
+    executor calls the adapter chain once per (entity, attribute) pair (see
+    ``EnrichmentExecutor.process_entity`` looping over ``job.attributes`` around
+    ``_lookup_chain``), so a multi-attribute enrich multiplies the paid-call
+    count — quoting only by entities under-counts by ``n_attributes×``. The
+    per-entity cost and the paid/free decision are driven by adapter-declared
+    metadata (see :func:`_resolve_chain_cost`), so this never special-cases an
+    adapter by name.
+
+    - **All-free chain** (no paid adapter — e.g. the OSS ``lite`` Wikidata-only
+      tier): ``paid_calls=0`` and an explicit "no paid calls" note.
+    - **Paid chain**: report the estimated paid-call count (= entities to process,
+      capped at ``limit``, times ``n_attributes``) and the dollar estimate. When
+      the matched count was computed exactly we say ``N``; when it couldn't be
+      computed cheaply we fall back to the ``limit`` as a clearly-labeled
+      UPPER-BOUND estimate ("up to N") — NEVER a silent 0 for a paid tier.
+    """
+    if not has_paid:
+        return {
+            "paid_calls": 0,
+            # Key names match the web plan-step cost contract EXACTLY
+            # (``step.cost.estimated_usd`` / ``step.cost.paid_calls`` —
+            # web/app/components/explore/useAgentChat.ts AgentStepCost +
+            # AgentChat.tsx PlanStepRow). Do NOT rename without updating both.
+            "estimated_usd": 0.0,
+            "per_entity_cost_usd": 0.0,
+            "note": f"{tier.value} tier — no paid calls (all sources are free).",
+        }
+
+    # Number of ENTITIES the paid adapters will be called for, capped at limit.
+    if matched_exact and matched is not None:
+        entities = matched if limit is None else min(matched, limit)
+        estimated = True
+    else:
+        # Couldn't compute the matched count cheaply — bound by the proposed
+        # limit and label it an upper bound rather than reporting a bogus 0.
+        entities = limit if limit is not None else 0
+        estimated = False
+
+    # The chain runs once per (entity, attribute) pair, so the paid-call count
+    # (and dollar cost) scales by the number of attributes being enriched.
+    n_attributes = max(int(n_attributes), 1)
+    paid_calls = entities * n_attributes
+    estimated_cost = round(per_entity_cost * paid_calls, 4)
+
+    entity_phrase = f"{entities}" if estimated else (
+        f"up to {entities}" if entities else "an unknown number of"
+    )
+    matched_clause = (
+        f"~{matched} matched" if (matched_exact and matched is not None)
+        else "matched count unavailable (using the cap as an upper bound)"
+    )
+    if n_attributes > 1:
+        # Multi-attribute: state the basis so the entities × attributes = calls
+        # arithmetic is transparent.
+        note = (
+            f"{tier.value} tier (paid): ≈ {entity_phrase} entities × "
+            f"{n_attributes} attributes = {paid_calls} paid lookups "
+            f"(${per_entity_cost:.4f}/call) ≈ ${estimated_cost:.2f} "
+            f"[{matched_clause}]."
+        )
+    else:
+        note = (
+            f"{tier.value} tier (paid): {entity_phrase} paid lookups "
+            f"(${per_entity_cost:.4f}/entity × {entities}) ≈ ${estimated_cost:.2f} "
+            f"[{matched_clause}]."
+        )
     return {
-        "paid_calls": None,
-        "note": (
-            f"{tier.value} tier may use paid sources; matched-entity count is "
-            "resolved when the job runs (no blocking COUNT at plan time)."
-        ),
+        "paid_calls": paid_calls,
+        "paid_calls_estimated": not estimated,  # True = upper-bound, not exact
+        "paid_adapters": paid_adapters,
+        "attributes": n_attributes,
+        "per_entity_cost_usd": round(per_entity_cost, 4),
+        # Key names match the web plan-step cost contract EXACTLY
+        # (``step.cost.estimated_usd`` / ``step.cost.paid_calls`` —
+        # web/app/components/explore/useAgentChat.ts AgentStepCost +
+        # AgentChat.tsx PlanStepRow). Do NOT rename without updating both.
+        "estimated_usd": estimated_cost,
+        "matched_entities": matched if matched_exact else None,
+        "limit": limit,
+        "note": note,
     }
+
+
+def _confidence_note(confidence_min: float, lowered: bool) -> str:
+    """Human-facing explanation of the chosen ``confidence_min`` (COG-121)."""
+    if lowered:
+        return (
+            f"Web-sourced facts: confidence_min lowered to {confidence_min:g} so "
+            f"low-prior web verdicts are written instead of all being filtered out "
+            f"(the strict {_DEFAULT_CONFIDENCE_MIN:g} default would write nothing). "
+            f"Overridable."
+        )
+    return f"confidence_min = {confidence_min:g}."
 
 
 # --- LLM extraction grounded in the type's real schema ----------------------- #
