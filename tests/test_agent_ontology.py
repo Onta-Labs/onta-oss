@@ -291,7 +291,8 @@ async def test_execute_declare_attribute_calls_ontology_engine(monkeypatch):
     # the website attribute on Mentor.
     assert len(neptune.updates) == 1
     update = neptune.updates[0]
-    assert "graphs/t1" in update  # tenant ontology graph
+    assert "<https://cograph.tech/graphs/t1>" in update  # tenant ontology graph
+    assert "/kg/" not in update  # NOT the KG graph
     assert "Mentor" in update
     assert "website" in update
 
