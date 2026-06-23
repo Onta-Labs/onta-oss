@@ -254,6 +254,57 @@ async def sample_predicate_values(
     return [], "attribute"
 
 
+_TYPE_URI_PREFIX = "https://cograph.tech/types/"
+
+
+async def list_type_schema(
+    neptune: NeptuneClient,
+    tenant_id: str,
+    type_name: str,
+) -> dict:
+    """List a type's declared ATTRIBUTES and RELATIONSHIPS for prompt grounding.
+
+    Returns ``{"attributes": [<leaf>, ...], "relationships": [{"name": <leaf>,
+    "target_type": <type leaf or None>}, ...]}`` — exactly the schema the agent
+    planners need to map an NL phrase ("current company", "languages") onto a
+    REAL predicate of the active type instead of guessing a stray word.
+
+    Reuses the same ontology query shape as :func:`_list_predicates` (so the set
+    of predicates is identical to what inference/the Explorer see); it just keeps
+    the relationship's ``rdfs:range`` target-type leaf, which ``_list_predicates``
+    drops. A bounded, single round-trip read — never an instance scan.
+    """
+    from cograph_client.graph.queries import tenant_graph_uri
+
+    onto_graph = tenant_graph_uri(tenant_id)
+    t_uri = type_uri(type_name)
+    q = (
+        f"SELECT ?attr ?range FROM <{onto_graph}> WHERE {{\n"
+        f"  ?attr <{RDF}#type> <{RDF}#Property> .\n"
+        f"  ?attr <{RDFS}#domain> <{t_uri}> .\n"
+        f"  OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
+        f"}}"
+    )
+    _, rows = parse_sparql_results(await neptune.query(q))
+    attributes: list[str] = []
+    relationships: list[dict] = []
+    seen: set[str] = set()
+    for r in rows:
+        attr = r.get("attr", "")
+        if not attr or attr in seen:
+            continue
+        seen.add(attr)
+        leaf = _predicate_leaf(attr)
+        rng = r.get("range", "")
+        if rng.startswith(_TYPE_URI_PREFIX):
+            relationships.append(
+                {"name": leaf, "target_type": rng[len(_TYPE_URI_PREFIX):] or None}
+            )
+        else:
+            attributes.append(leaf)
+    return {"attributes": attributes, "relationships": relationships}
+
+
 _SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji"}
 _DEFAULT_DELIMITERS = [", ", "; ", " / ", " | ", "__"]
 
