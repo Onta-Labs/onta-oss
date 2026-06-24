@@ -434,8 +434,8 @@ def test_confirm_execute_resolves_plan_via_store(monkeypatch):
 
     register_capability(_StubCap())
 
-    async def fake_classify(ctx, message):
-        return {"intent": "enrich", "clarify": ""}
+    async def fake_classify(ctx, message, history=None, prior_clarify_count=0):
+        return {"intents": ["enrich"], "clarify": ""}
 
     monkeypatch.setattr(planner_mod, "_classify", fake_classify)
 
