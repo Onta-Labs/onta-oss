@@ -16,6 +16,7 @@ from cograph_client.agent import planner as planner_mod
 from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
 from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
 from cograph_client.agent.capabilities.query import QueryCapability
+from cograph_client.agent.conversation_store import reset_conversation_store
 from cograph_client.agent.planner import (
     execute_plan,
     handle,
@@ -100,10 +101,12 @@ def _fresh_registry():
     """Each test starts from the default OSS capability set + an empty plan store."""
     reset_capabilities()
     reset_plan_store()
+    reset_conversation_store()
     register_default_capabilities()
     yield
     reset_capabilities()
     reset_plan_store()
+    reset_conversation_store()
 
 
 @pytest.fixture(autouse=True)
