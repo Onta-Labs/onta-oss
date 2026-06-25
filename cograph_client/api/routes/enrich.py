@@ -75,6 +75,8 @@ async def create_job(
         limit=body.limit,
         scope=body.scope,
         entity_uris=body.entity_uris,
+        instructions=body.instructions,
+        sources=body.sources,
     )
     await job_store.create(job)
 

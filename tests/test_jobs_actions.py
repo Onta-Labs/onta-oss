@@ -544,6 +544,146 @@ def test_action_enrich_threads_scope(client, auth_headers, mock_neptune):
 
 
 # ---------------------------------------------------------------------------
+# Optional enrichment knobs (instructions + sources) parse + land on the job
+# ---------------------------------------------------------------------------
+
+
+def test_action_enrich_threads_instructions_and_sources(
+    client, auth_headers, mock_neptune
+):
+    """The /actions/enrich body accepts instructions + sources and persists them
+    on the job (visible via the get-job route)."""
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "0"}}]},
+    }
+    r = client.post(
+        "/graphs/test-tenant/actions/enrich",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+            "instructions": "Prefer official legal entity names.",
+            "sources": ["wikidata", "exa"],
+        },
+    )
+    assert r.status_code == 202
+    job_id = r.json()["job_id"]
+
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{job_id}", headers=auth_headers
+    ).json()
+    assert job["instructions"] == "Prefer official legal entity names."
+    assert job["sources"] == ["wikidata", "exa"]
+
+
+def test_create_job_threads_instructions_and_sources(
+    client, auth_headers, mock_neptune
+):
+    """The POST /enrich/jobs body accepts instructions + sources and persists
+    them on the job too."""
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "0"}}]},
+    }
+    r = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+            "instructions": "Only use peer-reviewed sources.",
+            "sources": ["wikidata"],
+        },
+    )
+    assert r.status_code == 202
+    job_id = r.json()["job_id"]
+
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{job_id}", headers=auth_headers
+    ).json()
+    assert job["instructions"] == "Only use peer-reviewed sources."
+    assert job["sources"] == ["wikidata"]
+
+
+def test_enrich_knobs_default_to_none_when_absent(
+    client, auth_headers, mock_neptune
+):
+    """Omitting the new fields leaves them None on the job (behavior unchanged)."""
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "0"}}]},
+    }
+    r = client.post(
+        "/graphs/test-tenant/actions/enrich",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+        },
+    )
+    assert r.status_code == 202
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{r.json()['job_id']}",
+        headers=auth_headers,
+    ).json()
+    assert job["instructions"] is None
+    assert job["sources"] is None
+
+
+def test_scheduled_params_carry_instructions_and_sources():
+    """A schedule whose params include instructions/sources dispatches a job
+    carrying them (the scheduled path honors the new knobs)."""
+    import cograph_client.api.routes.actions as actions_mod
+
+    schedule = type(
+        "S",
+        (),
+        {
+            "tenant_id": "test-tenant",
+            "kg_name": "kg",
+            "category": JobCategory.enrichment,
+            "action": "enrich",
+            "params": {
+                "type_name": "Product",
+                "attributes": ["manufacturer"],
+                "instructions": "Use the manufacturer's official site.",
+                "sources": ["wikidata", "exa"],
+            },
+        },
+    )()
+
+    job = actions_mod._job_from_schedule(schedule)
+    assert job.trigger == JobTrigger.scheduled
+    assert job.instructions == "Use the manufacturer's official site."
+    assert job.sources == ["wikidata", "exa"]
+
+
+def test_scheduled_params_without_knobs_default_none():
+    """A schedule without the new params leaves the job's knobs None (unchanged)."""
+    import cograph_client.api.routes.actions as actions_mod
+
+    schedule = type(
+        "S",
+        (),
+        {
+            "tenant_id": "test-tenant",
+            "kg_name": "kg",
+            "category": JobCategory.enrichment,
+            "action": "enrich",
+            "params": {"type_name": "Product", "attributes": ["manufacturer"]},
+        },
+    )()
+
+    job = actions_mod._job_from_schedule(schedule)
+    assert job.instructions is None
+    assert job.sources is None
+
+
+# ---------------------------------------------------------------------------
 # COG-112 review: injection rejected at the API boundary (422)
 # ---------------------------------------------------------------------------
 
