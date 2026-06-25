@@ -106,9 +106,13 @@ external sources ("enrich", "fill in the X", "look up the Y for Z").
 - "ontology": change the schema / types / attributes / relationships.
 - "discover": find a NEW set of records FROM THE WEB and ingest them as a new \
 dataset ("find a list of X from the web", "pull all Y", "add data about Z from \
-the web", "get me <records> and add them"). This CREATES new entities that don't \
-exist in the graph yet — distinct from "enrich", which fills attributes on \
-entities that ALREADY exist.
+the web", "get me <records> and add them"). ALSO route question-phrased requests \
+to bring in EXTERNAL records here — "can we ingest <X>", "can we get/pull <X>", \
+"do you have <X that some site offers>" — when X is a set of real-world things \
+NOT already in this graph (e.g. "open-router's TTS models", "S&P 500 companies"). \
+This CREATES new entities that don't exist in the graph yet — distinct from \
+"question" (read-only about data ALREADY in the graph) and from "enrich" (fills \
+attributes on entities that ALREADY exist).
 - "ambiguous": you genuinely cannot tell what is wanted and must ask ONE \
 clarifying question.
 
