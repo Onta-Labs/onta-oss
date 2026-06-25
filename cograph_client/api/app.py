@@ -93,6 +93,33 @@ def _load_governance_plugin() -> None:
         logger.error("governance_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_web_source_plugin() -> None:
+    """Import and invoke the configured web-source plugin, if any.
+
+    Format: "module.path:callable". The callable is invoked with no arguments
+    and is expected to register a web-discovery provider via
+    cograph_client.web_sources.base.register_web_source. Failures are logged but
+    do not prevent startup — the "discover" intent simply stays dormant
+    (plan() returns a "not enabled" message). The OSS dev stub registers via
+    "cograph_client.web_sources.stub:register"; a downstream deployment points
+    this at its paid provider with no OSS change.
+    """
+    spec = settings.web_source_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("web_source_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("web_source_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("web_source_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 def _load_router_plugins(app: FastAPI) -> None:
     """Import and invoke the configured router plugins, if any.
 
@@ -159,6 +186,7 @@ def create_app() -> FastAPI:
     _load_auth_plugin()
     _load_enrichment_plugin()
     _load_governance_plugin()
+    _load_web_source_plugin()
     app = FastAPI(
         title="Omnix",
         description="Living Knowledge Graph Platform",
