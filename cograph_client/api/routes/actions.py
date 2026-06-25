@@ -109,6 +109,11 @@ class EnrichActionRequest(BaseModel):
     # COG-112 scoped enrichment (mirrors EnrichRequest). entity_uris wins.
     scope: Optional[EnrichScope] = None
     entity_uris: Optional[list[str]] = None
+    # Optional enrichment knobs (mirror EnrichRequest). Both default None → same
+    # behavior as today when omitted. instructions → adapter lookup context;
+    # sources → adapter-chain override (unknown names fall back gracefully).
+    instructions: Optional[str] = None
+    sources: Optional[list[str]] = None
 
     # Reject malformed IRIs at the API boundary with 422 (COG-112 review fix #1).
     _check_entity_uris = field_validator("entity_uris")(_validate_entity_uris_field)
@@ -137,6 +142,8 @@ def _new_job(
     cost_note: Optional[str] = None,
     scope: Optional[EnrichScope] = None,
     entity_uris: Optional[list[str]] = None,
+    instructions: Optional[str] = None,
+    sources: Optional[list[str]] = None,
 ) -> EnrichJob:
     return EnrichJob(
         id=str(uuid.uuid4()),
@@ -155,6 +162,8 @@ def _new_job(
         cost_note=cost_note,
         scope=scope,
         entity_uris=entity_uris,
+        instructions=instructions,
+        sources=sources,
     )
 
 
@@ -197,6 +206,8 @@ def _job_from_schedule(schedule) -> EnrichJob:
         limit=params.get("limit"),
         scope=scope,
         entity_uris=params.get("entity_uris"),
+        instructions=params.get("instructions"),
+        sources=params.get("sources"),
     )
     job.trigger = JobTrigger.scheduled
     return job
@@ -373,6 +384,8 @@ async def enrich_action(
         limit=body.limit,
         scope=body.scope,
         entity_uris=body.entity_uris,
+        instructions=body.instructions,
+        sources=body.sources,
     )
     await job_store.create(job)
     _spawn(executor.run(job, tenant.tenant_id))

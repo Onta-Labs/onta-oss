@@ -8,6 +8,7 @@ review or applies them directly based on conflict_policy.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 from datetime import datetime, timezone
@@ -103,6 +104,24 @@ def _attr_uri(type_name: str, attr: str) -> str:
 def _esc_lit(value: str) -> str:
     """Escape a string for use inside a SPARQL double-quoted literal."""
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _strategy_version_with_instructions(
+    strategy_version: str, instructions: Optional[str]
+) -> str:
+    """Fold optional ``instructions`` into the cache ``strategy_version`` string.
+
+    Custom instructions can change what an agentic adapter returns, so two
+    different instruction sets must NOT collide on a cached verdict. Rather than
+    widen the cache key tuple (and every call site), we append a short stable
+    hash of the instructions to ``strategy_version`` — a different instructions
+    string yields a different key (clean miss), the same string reuses the
+    cached verdict, and the no-instructions path is BYTE-FOR-BYTE the old
+    ``strategy_version`` (so existing caches/keys are unchanged)."""
+    if not instructions:
+        return strategy_version
+    digest = hashlib.sha256(instructions.encode("utf-8")).hexdigest()[:12]
+    return f"{strategy_version}+instr:{digest}"
 
 
 # A well-formed http(s) IRI with none of the characters that could break out of
@@ -707,6 +726,14 @@ class EnrichmentExecutor:
             # wants a real strategy_version field on TypeStrategy/AttributeStrategy;
             # derive a stable string until that lands.
             strategy_version = str(getattr(strategy, "version", "v1"))
+            # Fold optional custom instructions into the cache version so two
+            # different instruction sets never collide on a cached verdict (an
+            # agentic adapter can read job.instructions and return a different
+            # value). No instructions → unchanged version (clean reuse of the
+            # existing cache keys). See _strategy_version_with_instructions.
+            strategy_version = _strategy_version_with_instructions(
+                strategy_version, job.instructions
+            )
             # Track which adapter names were missing so we warn once per job.
             missing_adapter_names: set[str] = set()
 
@@ -773,10 +800,18 @@ class EnrichmentExecutor:
                             if abs(job.confidence_min - 0.85) < 1e-9:
                                 effective_confidence = attr_strategy.confidence_min
 
-                        # Adapter chain: per-attribute sources (if any) override
-                        # the tier chain.
+                        # Adapter chain precedence (most specific wins):
+                        #   1. per-attribute ontology strategy sources, then
+                        #   2. the request-level job.sources override, then
+                        #   3. the tier default chain.
+                        # An unknown/premium-only provider name in either
+                        # override resolves to no adapter and is skipped by
+                        # _lookup_chain with the existing one-shot warning, so a
+                        # named source falls back gracefully.
                         if attr_strategy and attr_strategy.sources:
                             chain = list(attr_strategy.sources)
+                        elif job.sources:
+                            chain = list(job.sources)
                         else:
                             chain = get_chain(job.tier)
 
@@ -905,7 +940,10 @@ class EnrichmentExecutor:
             if cache_hit_inc:
                 job.progress.cache_hits += 1
             return cached
-        verdicts = await self._wikidata.lookup(entity_label, attribute, {})
+        # Thread optional custom instructions into the lookup context (empty
+        # when none), mirroring _lookup_chain. Wikidata ignores it harmlessly.
+        ctx = {"instructions": job.instructions} if job.instructions else {}
+        verdicts = await self._wikidata.lookup(entity_label, attribute, ctx)
         await self._cache.put(
             entity_label, attribute, source, verdicts, job.type_name, strategy_version
         )
@@ -954,12 +992,17 @@ class EnrichmentExecutor:
                     cache_hit_counted = True
                 verdicts = cached
             else:
+                # Optional custom instructions ride in the adapter lookup
+                # context dict. Adapters that don't use it (wikidata) ignore it
+                # harmlessly; agentic/premium adapters can read it. Empty when no
+                # instructions so the call shape is unchanged in the common case.
+                ctx = {"instructions": job.instructions} if job.instructions else {}
                 try:
                     # Bound every adapter call so one stalled lookup (e.g. a
                     # hung network call whose own client lacks a total-operation
                     # timeout) can never strand the whole job (COG-112).
                     verdicts = await asyncio.wait_for(
-                        adapter.lookup(entity_label, attribute, {}),
+                        adapter.lookup(entity_label, attribute, ctx),
                         timeout=ADAPTER_LOOKUP_TIMEOUT_S,
                     )
                 except asyncio.TimeoutError:

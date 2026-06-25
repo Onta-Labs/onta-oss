@@ -153,6 +153,14 @@ class EnrichRequest(BaseModel):
     # subset is the lower-level primitive and takes precedence over ``scope``).
     scope: Optional[EnrichScope] = None
     entity_uris: Optional[list[str]] = None
+    # Optional enrichment knobs. Both default None → behavior is exactly as
+    # today when omitted. ``instructions`` is free-text guidance threaded into
+    # the adapter lookup context (agentic/premium adapters can read it; free
+    # adapters like wikidata ignore it). ``sources`` overrides the adapter chain
+    # (provider/adapter-name list, e.g. ["wikidata"], ["exa"]); unknown names
+    # fall back gracefully (skipped with the existing one-shot warning).
+    instructions: Optional[str] = None
+    sources: Optional[list[str]] = None
 
     _check_entity_uris = field_validator("entity_uris")(_validate_entity_uris_field)
 
@@ -232,6 +240,12 @@ class EnrichJob(BaseModel):
     # If both are set, ``entity_uris`` wins (see EnrichRequest).
     scope: Optional[EnrichScope] = None
     entity_uris: Optional[list[str]] = None
+    # Optional enrichment knobs (mirror EnrichRequest). Both default None so
+    # existing enrichment-job construction keeps working unchanged. They carry
+    # into the executor: ``instructions`` is folded into the adapter lookup
+    # context (and the cache key), ``sources`` overrides the adapter chain.
+    instructions: Optional[str] = None
+    sources: Optional[list[str]] = None
     # COG-101: unified-jobs fields. All optional with safe defaults so existing
     # enrichment-job construction keeps working unchanged.
     category: JobCategory = JobCategory.enrichment
