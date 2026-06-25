@@ -99,14 +99,16 @@ class WebIngestCapability:
                 )
             ]
 
-        query = _clean_query(instruction)
-        if not query:
-            return []
-
-        # 1. Resolve the entity type + the attributes to collect. If the user only
-        #    named the entity, propose a set and confirm before spending anything.
+        # 1. Resolve the entity type, the attributes to collect, and a CLEAN search
+        #    subject — so we search for "OpenRouter TTS models", NOT the user's raw
+        #    conversational sentence ("can we ingest open-router's TTS models that
+        #    it currently offers"). If the user only named the entity, propose a set
+        #    and confirm before spending anything.
         spec = parsed or await _resolve_spec(ctx, instruction)
         type_name = spec.get("entity_type") or "WebRecord"
+        query = (spec.get("query") or "").strip() or _clean_query(instruction)
+        if not query:
+            return []
         key_attr = spec.get("key_attribute") or "name"
         confirmed = _dedupe([key_attr, *spec.get("confirmed_attributes", [])])
         suggested = _dedupe([key_attr, *spec.get("suggested_attributes", [])])
@@ -168,16 +170,15 @@ class WebIngestCapability:
                 "provider": provider.name,
             },
             rationale=(
-                f"Search the web for “{query}” and ingest the results as "
-                f"{type_name} with {', '.join(attributes)} (capped at {cap})."
+                f"Find {query} on the web and add them to this graph as "
+                f"{type_name} records."
             ),
             confidence=0.7,
             preview={
                 "summary": (
-                    f"Found ~{est_total} record(s) on the web for “{query}”. "
-                    f"Ingest them as a new “{type_name}” dataset with "
-                    f"{len(attributes)} attribute(s), capped at {cap}, and review "
-                    f"before they go live."
+                    f"Capturing {_and_join(attributes)} for each. "
+                    f"~{est_total} found so far; capped at {cap} and staged for "
+                    f"your review before anything goes live."
                 ),
                 "proposed_type": type_name,
                 "attributes": attributes,
@@ -256,10 +257,17 @@ STRICT JSON only (no markdown):
 {
   "entity_type": "<PascalCase singular type for the records, e.g. Model, Company, Drug>",
   "key_attribute": "<the natural identifier, usually 'name', snake_case>",
+  "query": "<a clean, concise SEARCH SUBJECT — the thing to find on the web, with all conversational framing removed>",
   "confirmed_attributes": ["<attributes the user EXPLICITLY named; [] if they only named the entity>"],
   "suggested_attributes": ["<3-6 useful, web-discoverable attributes for this entity, snake_case, excluding the key>"]
 }
 RULES:
+- query: the SUBJECT to search for, NOT the user's literal sentence. Strip \
+questions, meta-framing and filler. "can we ingest open-router's TTS models that \
+it currently offers" -> "OpenRouter text-to-speech (TTS) models". "I'm looking \
+for a list of models offered by OpenRouter" -> "models offered by OpenRouter". \
+Keep it short and specific; do NOT include words like "ingest", "add", "list of", \
+"can we", "I'm looking for".
 - entity_type: specific but clean — "a list of models offered by OpenRouter" -> \
 "Model" (prefer the domain term the user used; singular).
 - key_attribute: the human-readable identifier (name/title), snake_case.
@@ -310,9 +318,24 @@ def _normalize_spec(parsed: dict) -> dict:
     return {
         "entity_type": _pascal(et),
         "key_attribute": key,
+        # Free-text search subject (NOT slugged — it's prose for the provider/card).
+        "query": str(parsed.get("query") or "").strip(),
         "confirmed_attributes": [a for a in confirmed if a],
         "suggested_attributes": [a for a in suggested if a],
     }
+
+
+def _and_join(items: list[str], limit: int = 6) -> str:
+    """Human-readable list: 'a, b and c'; '+N more' beyond ``limit``."""
+    items = [i for i in items if i]
+    if not items:
+        return "their details"
+    extra = len(items) - limit
+    shown = items[:limit]
+    head = ", ".join(shown[:-1])
+    tail = shown[-1]
+    joined = f"{head} and {tail}" if head else tail
+    return f"{joined} (+{extra} more)" if extra > 0 else joined
 
 
 def _clarify_step(type_name: str, key_attr: str, suggested: list[str]) -> PlanStep:
