@@ -35,6 +35,7 @@ from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
 from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
 from cograph_client.agent.capabilities.ontology_cap import OntologyCapability
 from cograph_client.agent.capabilities.query import QueryCapability
+from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
 from cograph_client.agent.conversation_store import (  # noqa: F401  (re-exported)
     Turn,
     make_conversation_store,
@@ -66,6 +67,7 @@ _INTENT_TO_CAPABILITY = {
     "clean": "normalize",
     "dedup": "dedup",  # registered (DedupCapability) → plans an ER rebuild
     "ontology": "ontology",  # registered (OntologyCapability) → inspect/declare
+    "discover": "web_ingest",  # registered (WebIngestCapability) → web search + ingest
 }
 
 # When the user asks for SEVERAL actions in one breath ("clean the names and
@@ -73,7 +75,7 @@ _INTENT_TO_CAPABILITY = {
 # is the order they run in: cleaning the VALUES first means the dedup/enrich pass
 # operates on already-normalized data — the documented clean-before-dedup /
 # clean-before-enrich pattern. Lower number = earlier.
-_INTENT_PLAN_ORDER = {"clean": 0, "enrich": 1, "dedup": 2, "ontology": 3}
+_INTENT_PLAN_ORDER = {"clean": 0, "enrich": 1, "dedup": 2, "ontology": 3, "discover": 4}
 
 # Convergence guard (COG-130): once the agent has asked this many clarifying
 # questions in a session, the classifier is told to STOP asking and commit. The
@@ -102,6 +104,11 @@ external sources ("enrich", "fill in the X", "look up the Y for Z").
 - "dedup": find and merge duplicate entities ("remove duplicates", "de-dupe", \
 "merge duplicate records").
 - "ontology": change the schema / types / attributes / relationships.
+- "discover": find a NEW set of records FROM THE WEB and ingest them as a new \
+dataset ("find a list of X from the web", "pull all Y", "add data about Z from \
+the web", "get me <records> and add them"). This CREATES new entities that don't \
+exist in the graph yet — distinct from "enrich", which fills attributes on \
+entities that ALREADY exist.
 - "ambiguous": you genuinely cannot tell what is wanted and must ask ONE \
 clarifying question.
 
@@ -318,6 +325,12 @@ async def _respond(
     prior_clarify_count: int,
 ) -> dict:
     """The classify → dispatch core, factored out of transcript bookkeeping."""
+    # Expose the running clarify count to capabilities so a capability that asks
+    # its own clarifying question (e.g. web discovery confirming which attributes
+    # to collect) can commit to its suggested default instead of re-asking once
+    # it has already asked — the capability-level analogue of the classifier's
+    # _MAX_CLARIFY_ROUNDS guard.
+    ctx.extras["prior_clarify_count"] = prior_clarify_count
     # Only the recent tail grounds the prompt — a long history-backed thread
     # shouldn't blow up the classifier context (COG-131).
     recent = (
@@ -389,11 +402,12 @@ async def _respond(
         if payload is not None:
             return {"kind": "answer", **payload}
 
-    # Brief clarification step: a capability couldn't pin down WHICH entities the
-    # user means (e.g. enrich couldn't resolve a described subset, or the scope
-    # matched nothing). Surface a short, targeted question (with clickable options)
-    # so the user can guide the scope; the running transcript accumulates their
-    # reply, so next turn the capability re-resolves with the added detail.
+    # A capability may need one round of clarification before it can plan — e.g.
+    # enrich couldn't pin down WHICH entities the user means, or web discovery
+    # needs to confirm which attributes to collect. A lone clarify step
+    # short-circuits to {kind:"clarify"} (the same shape the classifier emits) so
+    # the panel renders the question + clickable options; the running transcript
+    # accumulates the user's reply, so next turn the capability re-resolves.
     if len(steps) == 1 and steps[0].action == "clarify":
         p = steps[0].params
         return {
@@ -593,3 +607,7 @@ def register_default_capabilities() -> None:
     register_capability(EnrichCapability(normalize=normalize))
     register_capability(DedupCapability())
     register_capability(OntologyCapability())
+    # Web discovery: registered in OSS so the "discover" intent routes, but
+    # DORMANT until a downstream deployment registers a web-source provider —
+    # plan() returns a plain "not enabled" answer when none is registered.
+    register_capability(WebIngestCapability())
