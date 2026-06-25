@@ -1129,6 +1129,227 @@ def test_executor_completes_with_fast_adapter_under_wait_for():
 
 
 # ---------------------------------------------------------------------------
+# Optional enrichment knobs: instructions + sources override
+# ---------------------------------------------------------------------------
+
+
+class _NamedAdapter:
+    """A SourceAdapter that yields a fixed verdict and records the context dict
+    it was called with, so tests can assert instructions threading + which
+    adapter a chain override actually invoked. Configurable ``name``."""
+
+    def __init__(self, name: str, value: str = "FromAdapter") -> None:
+        self.name = name
+        self._value = value
+        self.calls: list[tuple[str, str, dict]] = []
+
+    async def lookup(self, entity_label, attribute, context):
+        self.calls.append((entity_label, attribute, dict(context)))
+        return [Verdict(value=self._value, confidence=0.95, source=self.name)]
+
+
+def _single_product_neptune():
+    rows = [
+        {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+    ]
+    neptune = AsyncMock()
+    neptune.query.return_value = _entities_query_response(rows)
+    neptune.update.return_value = None
+    return neptune
+
+
+def test_executor_sources_override_uses_named_chain():
+    """When job.sources is set (and no per-attribute strategy sources), the
+    executor walks THAT chain instead of the tier default — invoking the named,
+    registered adapter."""
+
+    async def run():
+        from cograph_client.enrichment.sources.base import register_adapter
+
+        neptune = _single_product_neptune()
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata({})  # tier default would call this; it must NOT
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        custom = _NamedAdapter("customsrc", value="Robert Bosch GmbH")
+        register_adapter(custom)
+
+        job = _make_job(policy=ConflictPolicy.stage)
+        job.sources = ["customsrc"]
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final.status == JobStatus.review
+        assert final.progress.filled == 1
+        # The override adapter was used; the tier-default wikidata was not.
+        assert custom.calls and custom.calls[0][1] == "manufacturer"
+        assert wikidata.calls == []
+
+    asyncio.run(run())
+
+
+def test_executor_sources_empty_falls_back_to_tier_chain():
+    """An empty sources list is falsy → the executor keeps today's tier default
+    (wikidata), so omitting/clearing the override changes nothing."""
+
+    async def run():
+        neptune = _single_product_neptune()
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata(
+            {
+                ("Bosch", "manufacturer"): [
+                    Verdict(value="Robert Bosch GmbH", confidence=0.95, source="wikidata")
+                ],
+            }
+        )
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        job = _make_job(policy=ConflictPolicy.stage)
+        job.sources = []  # explicitly empty → fall back
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final.progress.filled == 1
+        # Fell back to the tier default chain (wikidata).
+        assert wikidata.calls == [("Bosch", "manufacturer")]
+
+    asyncio.run(run())
+
+
+def test_executor_sources_unknown_provider_falls_back_to_tier_chain():
+    """A sources override naming ONLY unregistered (e.g. premium-only) providers
+    falls back to the tier default chain rather than enriching nothing — matching
+    the UI's "falls back to Auto if unavailable" promise. The job completes and
+    the default (wikidata) adapter is still consulted."""
+
+    async def run():
+        neptune = _single_product_neptune()
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        wikidata = FakeWikidata(
+            {
+                ("Bosch", "manufacturer"): [
+                    Verdict(value="Robert Bosch GmbH", confidence=0.95, source="wikidata")
+                ],
+            }
+        )
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        job = _make_job(policy=ConflictPolicy.stage)
+        job.sources = ["exa"]  # not registered in OSS → no available override
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        # The all-unavailable override falls back to the tier chain, so wikidata
+        # is consulted and the attribute is filled (not a silent empty job).
+        assert final.status == JobStatus.review
+        assert final.progress.filled == 1
+        assert final.progress.processed == 1
+        assert wikidata.calls != []
+
+    asyncio.run(run())
+
+
+def test_executor_instructions_flow_into_lookup_context():
+    """job.instructions is threaded into the adapter lookup context dict; when
+    absent the context stays empty (unchanged call shape)."""
+
+    async def run():
+        from cograph_client.enrichment.sources.base import register_adapter
+
+        # With instructions.
+        neptune = _single_product_neptune()
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
+        adapter = _NamedAdapter("instr_src", value="Robert Bosch GmbH")
+        register_adapter(adapter)
+
+        job = _make_job(policy=ConflictPolicy.stage)
+        job.sources = ["instr_src"]
+        job.instructions = "Prefer the official legal entity name."
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        assert adapter.calls
+        assert adapter.calls[0][2] == {
+            "instructions": "Prefer the official legal entity name."
+        }
+
+        # Without instructions → empty context.
+        neptune2 = _single_product_neptune()
+        store2 = InMemoryJobStore()
+        executor2 = EnrichmentExecutor(
+            neptune2, store2, EnrichmentCache(), FakeWikidata({})
+        )
+        adapter2 = _NamedAdapter("instr_src2", value="Robert Bosch GmbH")
+        register_adapter(adapter2)
+        job2 = _make_job(policy=ConflictPolicy.stage)
+        job2.sources = ["instr_src2"]
+        await store2.create(job2)
+        await executor2.run(job2, "test-tenant")
+        assert adapter2.calls and adapter2.calls[0][2] == {}
+
+    asyncio.run(run())
+
+
+def test_executor_instructions_vary_cache_key():
+    """Two jobs with DIFFERENT instructions must not share a cached verdict —
+    instructions are folded into the cache strategy_version, so the second job
+    re-queries the adapter rather than reusing the first job's cached result."""
+
+    async def run():
+        from cograph_client.enrichment.sources.base import register_adapter
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()  # shared across both jobs
+        adapter = _NamedAdapter("cachesrc", value="Robert Bosch GmbH")
+        register_adapter(adapter)
+
+        async def run_job(instructions):
+            neptune = _single_product_neptune()
+            executor = EnrichmentExecutor(neptune, store, cache, FakeWikidata({}))
+            job = _make_job(policy=ConflictPolicy.stage)
+            job.id = f"job-{instructions or 'none'}"
+            job.sources = ["cachesrc"]
+            job.instructions = instructions
+            await store.create(job)
+            await executor.run(job, "test-tenant")
+
+        await run_job("instruction A")
+        await run_job("instruction B")
+        # Different instructions → different cache key → adapter invoked twice.
+        assert len(adapter.calls) == 2
+
+        # Same instructions as the first run → cache HIT, no third invocation.
+        await run_job("instruction A")
+        assert len(adapter.calls) == 2
+
+    asyncio.run(run())
+
+
+def test_strategy_version_with_instructions_helper():
+    """The cache-version helper is byte-for-byte identity without instructions,
+    and stable + distinct per instruction string with them."""
+    from cograph_client.enrichment.executor import (
+        _strategy_version_with_instructions,
+    )
+
+    assert _strategy_version_with_instructions("v1", None) == "v1"
+    assert _strategy_version_with_instructions("v1", "") == "v1"
+    a = _strategy_version_with_instructions("v1", "do X")
+    b = _strategy_version_with_instructions("v1", "do Y")
+    assert a != b and a.startswith("v1+instr:")
+    # Stable for the same input.
+    assert a == _strategy_version_with_instructions("v1", "do X")
+
+
+# ---------------------------------------------------------------------------
 # COG-112 scoped enrichment: executor end-to-end
 # ---------------------------------------------------------------------------
 
