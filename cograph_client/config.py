@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     # mounted.
     router_plugins: str = ""
 
+    # Optional web-source plugin: a dotted "module.path:callable" imported at
+    # app startup. The callable is invoked with no arguments and is expected to
+    # register a web-discovery provider via
+    # cograph_client.web_sources.base.register_web_source. Without it, the
+    # "discover" agent intent stays dormant (plan() returns a "not enabled"
+    # message). The OSS dev stub registers via
+    # "cograph_client.web_sources.stub:register"; a downstream deployment points
+    # this at its paid provider (Exa/Perplexity fan-out) with no OSS change.
+    web_source_plugin: str = ""
+
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 

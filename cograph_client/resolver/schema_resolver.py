@@ -45,6 +45,7 @@ from cograph_client.resolver.attribute_resolver import (
 )
 from cograph_client.resolver.models import (
     AttrAction,
+    CSVSchemaMapping,
     ExtractionResult,
     ExtractedAttribute,
     ExtractedEntity,
@@ -564,6 +565,59 @@ class SchemaResolver:
         # Step 1: Infer schema from sample (1 LLM call)
         csv_resolver = CSVResolver(self._anthropic, self._openrouter_key)
         mapping = await csv_resolver.infer_schema(headers, rows[:10], existing_types, total_rows=len(rows))
+
+        # Step 2+: apply the mapping and run the shared resolve→dedup→insert
+        # tail (also reused by web-discovery ingest via ingest_mapped_records).
+        return await self._ingest_mapped(
+            mapping, rows, graph_uri, existing_types, existing_attrs, source,
+        )
+
+    async def ingest_mapped_records(
+        self,
+        rows: list[dict[str, str]],
+        mapping: CSVSchemaMapping,
+        tenant_id: str,
+        source: str = "",
+        instance_graph: str | None = None,
+    ) -> IngestResult:
+        """Ingest pre-mapped records (no schema inference) — the web-discovery seam.
+
+        A caller infers a :class:`CSVSchemaMapping` once (e.g. from a sample at
+        plan time) and applies that SAME mapping to the full record set here, so
+        the schema previewed to the user is exactly the schema committed
+        (preview == commit). Records flow through the identical type-resolution,
+        batch existence-dedup, ER and batch-insert path CSV ingest uses.
+
+        Mirrors :meth:`ingest`'s per-call setup (instance graph, type-matcher
+        graph URI, ontology + parent-map fetch) so it can be called standalone,
+        not only inside the CSV pipeline.
+        """
+        graph_uri = tenant_graph_uri(tenant_id)
+        # Ontology always goes to the base tenant graph; instance data goes to
+        # instance_graph when a specific KG is targeted, else the base graph.
+        self._instance_graph = instance_graph or graph_uri
+        self._type_matcher._graph_uri = graph_uri
+        existing_types, existing_attrs = await self._fetch_ontology(graph_uri)
+        self._parent_of = await self._fetch_parent_map(graph_uri)
+        return await self._ingest_mapped(
+            mapping, rows, graph_uri, existing_types, existing_attrs, source,
+        )
+
+    async def _ingest_mapped(
+        self,
+        mapping: CSVSchemaMapping,
+        rows: list[dict[str, str]],
+        graph_uri: str,
+        existing_types: dict[str, str],
+        existing_attrs: dict[str, dict[str, AttributeSchema]],
+        source: str,
+    ) -> IngestResult:
+        """Apply a pre-inferred mapping to rows and run the resolve→insert tail.
+
+        Extracted verbatim from the former ``_ingest_csv`` body (Step 2 onward)
+        so CSV ingest and web-discovery ingest commit through one code path.
+        """
+        from cograph_client.resolver.csv_resolver import CSVResolver
 
         # Step 2: Apply mapping deterministically to ALL rows (no LLM)
         applied = CSVResolver.apply_mapping(mapping, rows)
