@@ -804,14 +804,21 @@ class EnrichmentExecutor:
                         #   1. per-attribute ontology strategy sources, then
                         #   2. the request-level job.sources override, then
                         #   3. the tier default chain.
-                        # An unknown/premium-only provider name in either
-                        # override resolves to no adapter and is skipped by
-                        # _lookup_chain with the existing one-shot warning, so a
-                        # named source falls back gracefully.
                         if attr_strategy and attr_strategy.sources:
                             chain = list(attr_strategy.sources)
                         elif job.sources:
-                            chain = list(job.sources)
+                            # Request-level provider override. Keep only names
+                            # that resolve to a registered adapter; if the
+                            # override names ONLY unavailable providers (e.g. a
+                            # premium adapter not registered on this deployment),
+                            # fall back to the tier default chain rather than
+                            # enriching nothing — matching the UI's "falls back
+                            # to Auto if unavailable" promise. A partially-valid
+                            # override uses just its available names.
+                            available = [
+                                s for s in job.sources if get_adapter(s) is not None
+                            ]
+                            chain = available if available else get_chain(job.tier)
                         else:
                             chain = get_chain(job.tier)
 

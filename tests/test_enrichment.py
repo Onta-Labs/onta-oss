@@ -1220,10 +1220,11 @@ def test_executor_sources_empty_falls_back_to_tier_chain():
     asyncio.run(run())
 
 
-def test_executor_sources_unknown_provider_degrades_gracefully():
-    """A sources override naming an unregistered (e.g. premium-only) provider
-    resolves to no adapter → skipped with the one-shot warning, the chain yields
-    nothing, and the job still completes (no_match), never failing."""
+def test_executor_sources_unknown_provider_falls_back_to_tier_chain():
+    """A sources override naming ONLY unregistered (e.g. premium-only) providers
+    falls back to the tier default chain rather than enriching nothing — matching
+    the UI's "falls back to Auto if unavailable" promise. The job completes and
+    the default (wikidata) adapter is still consulted."""
 
     async def run():
         neptune = _single_product_neptune()
@@ -1239,17 +1240,17 @@ def test_executor_sources_unknown_provider_degrades_gracefully():
         executor = EnrichmentExecutor(neptune, store, cache, wikidata)
 
         job = _make_job(policy=ConflictPolicy.stage)
-        job.sources = ["exa"]  # not registered in OSS → graceful skip
+        job.sources = ["exa"]  # not registered in OSS → no available override
         await store.create(job)
         await executor.run(job, "test-tenant")
 
         final = await store.get(job.id)
-        # Job completes; the override did NOT fall through to wikidata (the
-        # override replaces the chain), so the attribute finds no match.
+        # The all-unavailable override falls back to the tier chain, so wikidata
+        # is consulted and the attribute is filled (not a silent empty job).
         assert final.status == JobStatus.review
-        assert final.progress.filled == 0
+        assert final.progress.filled == 1
         assert final.progress.processed == 1
-        assert wikidata.calls == []
+        assert wikidata.calls != []
 
     asyncio.run(run())
 
