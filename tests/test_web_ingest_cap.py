@@ -32,16 +32,19 @@ FULL_ROWS = [
     {"name": "meta/llama-4", "context_length": "128000"},
 ]
 
-# Spec as the LLM resolver would return it (already normalized).
+# Spec as the LLM resolver would return it (already normalized). ``query`` is the
+# CLEAN search subject the resolver distills from the raw message.
 CONFIRMED_SPEC = {
     "entity_type": "OpenRouterModel",
     "key_attribute": "name",
+    "query": "OpenRouter models",
     "confirmed_attributes": ["context_length"],
     "suggested_attributes": ["provider", "context_length"],
 }
 ENTITY_ONLY_SPEC = {
     "entity_type": "OpenRouterModel",
     "key_attribute": "name",
+    "query": "OpenRouter models",
     "confirmed_attributes": [],
     "suggested_attributes": ["provider", "context_length", "pricing"],
 }
@@ -114,17 +117,22 @@ async def test_confirmed_attributes_builds_deterministic_plan():
     provider = FakeProvider()
     register_web_source(provider)
     steps = await WebIngestCapability().plan(
-        _ctx(), "I'm looking for a list of models offered by OpenRouter",
+        _ctx(), "can we ingest the models OpenRouter currently offers?",
         parsed=CONFIRMED_SPEC,
     )
     assert len(steps) == 1
     step = steps[0]
     assert step.action == "discover_ingest"
 
-    # Sample fetched with the confirmed attributes as hint_columns.
+    # Sample fetched with the CLEAN search subject (from spec.query) + the
+    # confirmed attributes as hint_columns — NOT the raw conversational sentence.
     q, sample, _max, cols = provider.calls[0]
     assert sample is True
+    assert q == "OpenRouter models"
     assert set(cols) == {"name", "context_length"}
+    # The card text uses the clean subject, never echoes the raw question.
+    assert "OpenRouter models" in step.rationale
+    assert "can we ingest" not in step.rationale
 
     # Preview surfaces the confirmed shape.
     assert step.preview["proposed_type"] == "OpenRouterModel"
@@ -204,8 +212,8 @@ async def test_execute_runs_full_discover_and_ingests(monkeypatch):
     assert set(captured["rows"][0].keys()) == {"name", "context_length"}
     assert isinstance(captured["mapping"], CSVSchemaMapping)
     assert captured["mapping"].entity_type == "OpenRouterModel"
-    # _clean_query strips the leading "find a " filler before the provider sees it.
-    assert captured["source"] == "web:fake:list of OpenRouter models"
+    # The clean search subject (spec.query) is what the provider + source use.
+    assert captured["source"] == "web:fake:OpenRouter models"
 
 
 def test_capability_registered_by_default():
