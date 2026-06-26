@@ -257,7 +257,7 @@ async def _run_dedup(
     # Imported lazily inside the worker (not at module import) to keep the OSS
     # capability importable without the route module, and to avoid any import
     # cycle through explore.py at agent-package import time.
-    from cograph_client.api.routes.explore import schedule_recompute
+    from cograph_client.graph.kg_writer import refresh_after_write
     from cograph_client.resolver.er.rebuild import rebuild_kg
 
     job = await job_store.get(job_id)
@@ -281,9 +281,12 @@ async def _run_dedup(
             f"{len(report.get('types', []))} type(s)"
         )
         job.status = JobStatus.applied
-        # Merge volume changed per-type counts → refresh the Explorer's
-        # precomputed type-stats in the background (best-effort).
-        schedule_recompute(neptune, tenant_id, kg_name)
+        # Shared post-write housekeeping path (kg_writer.refresh_after_write):
+        # merge changed counts, not the type schema → affected_types=() (no
+        # re-embed; still cache-invalidates + recomputes Explorer type-stats).
+        await refresh_after_write(
+            neptune, tenant_id=tenant_id, kg_name=kg_name, affected_types=()
+        )
     except Exception as exc:  # noqa: BLE001 — detached worker, never raise
         logger.warning(
             "agent_dedup_failed", tenant=tenant_id, kg=kg_name, error=str(exc)
