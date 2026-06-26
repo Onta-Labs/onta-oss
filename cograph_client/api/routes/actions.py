@@ -292,7 +292,7 @@ async def _run_dedupe(
     ``er_rebuild`` route — a dedupe collapses fragments and changes per-type
     counts, so the Explorer's precomputed stats are stale until recomputed.
     """
-    from cograph_client.api.routes.explore import schedule_recompute
+    from cograph_client.graph.kg_writer import refresh_after_write
     from cograph_client.resolver.er.rebuild import rebuild_kg
 
     job = await job_store.get(job_id)
@@ -315,10 +315,12 @@ async def _run_dedupe(
             f"{len(report.get('types', []))} type(s)"
         )
         job.status = JobStatus.applied
-        # Merge volume changed per-type counts → refresh the Explorer's
-        # precomputed type-stats in the background (best-effort), exactly as the
-        # explore.py er-rebuild route does after rebuild_kg.
-        schedule_recompute(client, tenant_id, kg_name)
+        # Shared post-write housekeeping path (kg_writer.refresh_after_write):
+        # merge changed counts, not the type schema → affected_types=() (no
+        # re-embed; still cache-invalidates + recomputes Explorer type-stats).
+        await refresh_after_write(
+            client, tenant_id=tenant_id, kg_name=kg_name, affected_types=()
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning(
             "dedupe_action_failed", tenant=tenant_id, kg=kg_name, error=str(exc)

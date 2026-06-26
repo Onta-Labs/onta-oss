@@ -47,10 +47,10 @@ import re
 import structlog
 
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.kg_writer import insert_facts, refresh_after_write
 from cograph_client.graph.ontology_queries import RDF, RDFS, attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
-    batched_insert_triples,
     delete_triples,
     kg_graph_uri,
     tenant_graph_uri,
@@ -124,7 +124,14 @@ async def apply_rule(neptune: NeptuneClient, tenant_id: str, rule) -> dict:
     summary = await _dispatch(neptune, kg_graph, onto_graph, rule)
 
     if _summary_mutated(summary):
-        _schedule_stats_recompute(neptune, tenant_id, rule.kg_name)
+        # Shared post-write housekeeping (graph/kg_writer.py) — same path every
+        # KG writer uses. affected_types=() because normalization changes instance
+        # data + counts but NEVER the type SCHEMA (no new types/attributes), so no
+        # re-embed is needed; the shared refresh still invalidates the NL-planning
+        # cache and recomputes type-stats.
+        await refresh_after_write(
+            neptune, tenant_id=tenant_id, kg_name=rule.kg_name, affected_types=()
+        )
     return summary
 
 
@@ -171,19 +178,6 @@ def _summary_mutated(summary: dict) -> bool:
             "literals_cleaned",
         )
     )
-
-
-def _schedule_stats_recompute(neptune: NeptuneClient, tenant_id: str, kg_name: str) -> None:
-    """Fire-and-forget a type-stats recompute after a mutating apply.
-
-    Lazy-imported from the explore route to avoid a module-load import cycle (the
-    enrichment executor + ingest hook use the same lazy pattern).
-    ``schedule_recompute`` is best-effort — it swallows Neptune errors internally
-    — so this never affects the apply's outcome.
-    """
-    from cograph_client.api.routes.explore import schedule_recompute
-
-    schedule_recompute(neptune, tenant_id, kg_name)
 
 
 def _delimiters(rule) -> list[str]:
@@ -338,11 +332,9 @@ async def _explode_relationship(
 
     # 2) Apply: add atomic entity triples + new edges, then delete composite edges.
     if atomic_triples:
-        for sparql in batched_insert_triples(kg_graph, atomic_triples):
-            await neptune.update(sparql)
+        await insert_facts(neptune, kg_graph, atomic_triples)
     if edges_to_add:
-        for sparql in batched_insert_triples(kg_graph, edges_to_add):
-            await neptune.update(sparql)
+        await insert_facts(neptune, kg_graph, edges_to_add)
     if edges_to_delete:
         # delete_triples batches all in one DELETE DATA; chunk to stay safe.
         for i in range(0, len(edges_to_delete), 500):
@@ -587,8 +579,7 @@ async def _explode_literal(
         rewritten += 1
 
     if to_add:
-        for sparql in batched_insert_triples(kg_graph, to_add):
-            await neptune.update(sparql)
+        await insert_facts(neptune, kg_graph, to_add)
     if to_delete:
         for i in range(0, len(to_delete), 500):
             await neptune.update(delete_triples(kg_graph, to_delete[i : i + 500]))
@@ -660,8 +651,7 @@ async def _strip_emoji(neptune: NeptuneClient, kg_graph: str, rule) -> dict:
         # else: cleaned is empty (pure-emoji value) — drop the triple entirely.
 
     if to_add:
-        for sparql in batched_insert_triples(kg_graph, to_add):
-            await neptune.update(sparql)
+        await insert_facts(neptune, kg_graph, to_add)
     if to_delete:
         for i in range(0, len(to_delete), 500):
             await neptune.update(delete_triples(kg_graph, to_delete[i : i + 500]))
