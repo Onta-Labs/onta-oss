@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, Query
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.kg_writer import refresh_after_write
 from cograph_client.graph.ontology_queries import attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
@@ -1266,8 +1267,12 @@ async def er_rebuild(
 
     instance_graph = kg_graph_uri(tenant.tenant_id, kg_name)
     report = await rebuild_kg(client, instance_graph)
-    # Counts changed → refresh precomputed stats (best-effort, background).
-    schedule_recompute(client, tenant.tenant_id, kg_name)
+    # Shared post-write housekeeping path (kg_writer.refresh_after_write):
+    # merge changed counts, not the type schema → affected_types=() (no
+    # re-embed; still cache-invalidates + recomputes Explorer type-stats).
+    await refresh_after_write(
+        client, tenant_id=tenant.tenant_id, kg_name=kg_name, affected_types=()
+    )
     return {"status": "complete", "kg": kg_name, **report}
 
 

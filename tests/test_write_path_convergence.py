@@ -106,6 +106,45 @@ def test_ingest_writer_uses_shared_insert_and_refresh():
     )
 
 
+def test_normalization_writer_uses_shared_path():
+    """normalization/execute.py mutates instance data; its inserts must go
+    through insert_facts and its post-write housekeeping through
+    refresh_after_write — no bespoke batched insert or stats-recompute."""
+    import cograph_client.normalization.execute as norm_mod
+
+    src = inspect.getsource(norm_mod)
+    assert _calls(src, "insert_facts"), "normalization must insert via kg_writer.insert_facts"
+    assert _calls(src, "refresh_after_write"), (
+        "normalization must run housekeeping via kg_writer.refresh_after_write"
+    )
+    assert not _calls(src, "batched_insert_triples"), (
+        "normalization reintroduced a bespoke batched_insert_triples — route inserts "
+        "through kg_writer.insert_facts (write-path convergence rule)."
+    )
+    assert "_schedule_stats_recompute" not in src, (
+        "normalization reintroduced a bespoke stats-recompute — use "
+        "kg_writer.refresh_after_write."
+    )
+
+
+def test_dedupe_writers_use_shared_refresh():
+    """The dedupe / entity-resolution writers (which mutate counts, not schema)
+    must run their post-write refresh through the shared refresh_after_write, not
+    a bare schedule_recompute."""
+    import cograph_client.agent.capabilities.dedup_cap as dedup_mod
+    import cograph_client.api.routes.actions as actions_mod
+
+    for mod, name in [(dedup_mod, "dedup_cap"), (actions_mod, "actions")]:
+        src = inspect.getsource(mod)
+        assert _calls(src, "refresh_after_write"), (
+            f"{name} dedupe must refresh via kg_writer.refresh_after_write"
+        )
+        assert not _calls(src, "schedule_recompute"), (
+            f"{name} reintroduced a bare schedule_recompute after a graph mutation — "
+            "use kg_writer.refresh_after_write."
+        )
+
+
 def test_shared_writer_is_the_single_housekeeping_owner():
     """Sanity: the shared writer itself is the one place embed/cache-invalidate/
     recompute live, so delegating to it actually centralizes the behavior."""
