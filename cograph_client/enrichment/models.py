@@ -37,6 +37,11 @@ def _validate_entity_uris_field(value):
 
 
 class EnrichmentTier(str, Enum):
+    # "auto" is a meta-tier (COG-124): it is NOT a real adapter chain. The route
+    # resolves it to a concrete tier (``lite`` or ``core``) via the shared tier
+    # router BEFORE a job is created, so an EnrichJob always carries a concrete
+    # tier. It exists only on the request as the smart default.
+    auto = "auto"
     lite = "lite"
     base = "base"
     core = "core"
@@ -146,7 +151,10 @@ class EnrichScope(BaseModel):
 class EnrichRequest(BaseModel):
     type_name: str
     attributes: list[str]
-    tier: EnrichmentTier = EnrichmentTier.lite
+    # COG-124: ``auto`` is the smart default — the route resolves it to a concrete
+    # tier (free Wikidata ``lite`` vs paid web ``core``) via the shared tier router
+    # before creating the job, leaning paid when Wikidata is likely weak.
+    tier: EnrichmentTier = EnrichmentTier.auto
     kg_name: str
     conflict_policy: ConflictPolicy = ConflictPolicy.stage
     confidence_min: float = 0.85
@@ -218,6 +226,9 @@ class JobProgress(BaseModel):
     verified: int = 0
     conflicts: int = 0
     skipped: int = 0
+    # COG: a lookup that found nothing is a first-class, counted outcome — not a
+    # black hole. Kept distinct from ``skipped`` (which is backward-compat).
+    no_match: int = 0
     cache_hits: int = 0
 
 

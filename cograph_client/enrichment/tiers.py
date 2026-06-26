@@ -13,7 +13,13 @@ from __future__ import annotations
 from cograph_client.enrichment.models import EnrichmentTier
 
 # Default OSS chains. cograph overrides via register_tier().
+#
+# ``auto`` is a META-tier (COG-124): it is resolved to a concrete tier
+# (``lite``/``core``) by the tier router BEFORE a job is created, so a real chain
+# is never walked for ``auto``. It is mapped to the free ``lite`` chain only as a
+# defensive fallback so ``get_chain(auto)`` can never KeyError.
 _DEFAULT_CHAINS: dict[EnrichmentTier, list[str]] = {
+    EnrichmentTier.auto: ["wikidata"],
     EnrichmentTier.lite: ["wikidata"],
     EnrichmentTier.base: ["wikidata"],
     EnrichmentTier.core: ["wikidata"],
