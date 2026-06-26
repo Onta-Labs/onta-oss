@@ -865,6 +865,8 @@ class EnrichmentExecutor:
                                 job.progress.conflicts += 1
                             elif action == "skipped":
                                 job.progress.skipped += 1
+                            elif action == "no_match":
+                                job.progress.no_match += 1
                             job.progress.processed = counter["n"]
                             if counter["n"] % PROGRESS_FLUSH_EVERY == 0:
                                 await self._jobs.update(job)
@@ -888,6 +890,29 @@ class EnrichmentExecutor:
             # verdict (value + source_url + provenance) is retrievable via the
             # job API, not just conflicts. Skips/no-matches carry no verdict.
             job.results = [r for r in all_rows if r.action in ("conflict", "filled", "verified")]
+
+            # One structured summary on the common terminal path (covers BOTH the
+            # review and applied states below). Makes the miss count visible from
+            # logs so a run that simply found nothing is distinguishable from a
+            # broken pipeline. NOT emitted on the cancelled/failed early-returns.
+            logger.info(
+                "enrichment_job_summary",
+                job_id=job.id,
+                type_name=job.type_name,
+                tier=job.tier.value if hasattr(job.tier, "value") else str(job.tier),
+                total=job.progress.total,
+                filled=job.progress.filled,
+                verified=job.progress.verified,
+                conflicts=job.progress.conflicts,
+                no_match=job.progress.no_match,
+                sources_tried=sorted(
+                    {
+                        r.verdict.source
+                        for r in all_rows
+                        if r.verdict and getattr(r.verdict, "source", None)
+                    }
+                ),
+            )
 
             # Apply phase
             policy = job.conflict_policy

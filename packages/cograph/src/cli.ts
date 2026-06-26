@@ -708,7 +708,7 @@ program
   .requiredOption("--kg <name>", "Knowledge graph")
   .requiredOption("--type <Type>", "Entity type to enrich")
   .requiredOption("--attribute <attr>", "Attribute to fill (e.g. reviews, description)")
-  .option("--tier <tier>", "lite | base | core | pro (paid adapters live in core/pro)", "core")
+  .option("--tier <tier>", "auto | lite | base | core | pro (auto lets the backend pick free vs paid web search)", "auto")
   .option("--limit <n>", "Max entities to enrich", "3")
   .option("--apply", "Write results to the graph (with provenance), not just stage")
   .action(
@@ -725,26 +725,45 @@ program
         process.stdout.write(
           `Enriching ${opts.type}.${opts.attribute} in ${opts.kg} (tier ${opts.tier})…\n`,
         );
-        const created = await c.enrichRun({
-          kg_name: opts.kg,
-          type_name: opts.type,
-          attributes: [opts.attribute],
-          tier: opts.tier as "lite" | "base" | "core" | "pro",
-          limit: Number(opts.limit),
-          conflict_policy: opts.apply ? "overwrite" : "stage",
-          confidence_min: 0.1,
-        });
+        const runEnrich = (tier: "auto" | "lite" | "base" | "core" | "pro") =>
+          c.enrichRun({
+            kg_name: opts.kg,
+            type_name: opts.type,
+            attributes: [opts.attribute],
+            tier,
+            limit: Number(opts.limit),
+            conflict_policy: opts.apply ? "overwrite" : "stage",
+            confidence_min: 0.1,
+          });
+        let created = await runEnrich(
+          opts.tier as "auto" | "lite" | "base" | "core" | "pro",
+        );
+        // Non-interactive: we can't ask the user, so on an ambiguous "auto"
+        // route we default to web search (core) per the product decision.
+        if (created.needs_clarification || created.status === "needs_clarification") {
+          process.stdout.write(
+            "Source ambiguous — defaulting to web search (core).\n",
+          );
+          created = await runEnrich("core");
+        } else if (created.resolved_tier) {
+          const sourceLabel =
+            created.resolved_tier === "lite" ? "Wikidata (free)" : "live web search";
+          process.stdout.write(
+            `Source: ${sourceLabel}${created.routing_note ? ` — ${created.routing_note}` : ""}\n`,
+          );
+        }
+        if (!created.job_id) {
+          fail("Error: backend did not return a job id.");
+        }
+        const jobId = created.job_id;
         const terminal = ["applied", "review", "failed", "cancelled"];
-        let job = await c.enrichJob(created.job_id);
+        let job = await c.enrichJob(jobId);
         for (let i = 0; i < 40 && !terminal.includes(job.status); i++) {
           await new Promise((r) => setTimeout(r, 2000));
-          job = await c.enrichJob(created.job_id);
+          job = await c.enrichJob(jobId);
         }
+        const p = job.progress;
         const filled = (job.results ?? []).filter((r) => r.verdict);
-        if (!filled.length) {
-          process.stdout.write("No enrichment results (no source returned a value).\n");
-          return;
-        }
         for (const r of filled) {
           const v = r.verdict!;
           process.stdout.write(`\n  ${r.entity_uri.split("/").pop()}\n`);
@@ -755,7 +774,10 @@ program
           if (v.reasoning) process.stdout.write(`    ${v.reasoning}\n`);
         }
         process.stdout.write(
-          `\n${opts.apply ? "Applied to the graph (value + provenance triples)." : "Staged for review — re-run with --apply to write."}\n`,
+          `\nChecked ${p.processed} · filled ${p.filled} · verified ${p.verified} · conflicts ${p.conflicts} · not found ${p.no_match}\n`,
+        );
+        process.stdout.write(
+          `${opts.apply ? "Applied to the graph (value + provenance triples)." : "Staged for review — re-run with --apply to write."}\n`,
         );
       });
     },

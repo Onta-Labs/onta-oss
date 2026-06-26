@@ -1106,6 +1106,55 @@ def test_executor_stage_with_no_results_completes_applied():
     asyncio.run(run())
 
 
+def test_executor_no_match_is_counted_and_excluded_from_results():
+    """A lookup that finds nothing is a FIRST-CLASS, COUNTED outcome — not a black
+    hole. When the adapter chain returns NO verdict for EVERY (entity, attribute)
+    pair, the finished job must report ``progress.no_match == n*a`` (every pair
+    missed) with ``filled``/``verified``/``conflicts`` all 0, and the no_match rows
+    (which carry no verdict) must NOT appear in ``job.results``."""
+
+    async def run():
+        # 2 entities × 2 attributes = 4 pairs, all missing.
+        rows = [
+            {"uri": "https://cograph.tech/entities/Product/p1", "label": "ZZZNOPE", "vals": ""},
+            {"uri": "https://cograph.tech/entities/Product/p2", "label": "QQQNADA", "vals": ""},
+        ]
+        neptune = AsyncMock()
+        neptune.query.return_value = _entities_query_response(rows)
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        cache = EnrichmentCache()
+        # Empty mapping → FakeWikidata returns [] for every (label, attribute).
+        wikidata = FakeWikidata({})
+        executor = EnrichmentExecutor(neptune, store, cache, wikidata)
+
+        job = _make_job(
+            attributes=["manufacturer", "country"],
+            policy=ConflictPolicy.stage,
+        )
+        await store.create(job)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final is not None
+        # Every (entity, attribute) pair is a miss.
+        assert final.progress.total == 4
+        assert final.progress.processed == 4
+        assert final.progress.no_match == 4  # 2 entities × 2 attributes
+        # Nothing was filled / verified / conflicted.
+        assert final.progress.filled == 0
+        assert final.progress.verified == 0
+        assert final.progress.conflicts == 0
+        # no_match rows carry no verdict → they are dropped from results entirely.
+        assert final.results == []
+        assert all(r.action != "no_match" for r in final.results)
+        # No SPARQL writes for a stage policy that found nothing.
+        neptune.update.assert_not_called()
+
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------------------
 # COG-112: a hung adapter lookup must NOT strand the whole job (the production
 # hang). A single ``await adapter.lookup(...)`` that never returns and never
@@ -3137,3 +3186,250 @@ def test_verdict_backcompat_and_provenance():
     assert restored.grounding_score == 0.88
     assert restored.extraction_method == "llm-extract"
     assert restored.calibration_method == "isotonic"
+
+
+# ---------------------------------------------------------------------------
+# COG-124: smart "auto" tier resolution + web confidence floor on create
+# ---------------------------------------------------------------------------
+
+
+class _FakePaidAdapter:
+    """A registered PAID adapter so the ``core`` chain reads as paid (COG-123:
+    paid is detected from declared metadata, never the adapter name)."""
+
+    name = "fakepaid"
+    is_paid = True
+    cost_per_call = 0.01
+
+    async def lookup(self, *args, **kwargs):  # pragma: no cover - never called
+        return []
+
+
+@pytest.fixture
+def _paid_core_chain():
+    """Register a paid adapter and point the ``core`` tier chain at it, so
+    ``chain_has_paid(core)`` is True in this OSS test. Restores defaults after."""
+    from cograph_client.enrichment.sources import base as base_mod
+    from cograph_client.enrichment.tiers import register_tier, reset_tiers
+
+    adapter = _FakePaidAdapter()
+    base_mod.register_adapter(adapter)
+    register_tier(EnrichmentTier.core, ["fakepaid"])
+    try:
+        yield
+    finally:
+        reset_tiers()
+        base_mod._adapters.pop("fakepaid", None)
+
+
+def test_resolve_auto_tier_no_key_falls_back_to_heuristic():
+    """With no openrouter_key the resolver must NOT raise, must pick a concrete
+    tier (never needs_clarification), and must set a routing_note."""
+    from cograph_client.enrichment.tier_router import resolve_auto_tier
+
+    async def run():
+        # Open-web fact → core, leaning paid.
+        web = await resolve_auto_tier(["company", "website"], "Person", None)
+        assert web.resolved_tier == "core"
+        assert web.needs_clarification is False
+        assert web.routing_note  # non-empty explanation
+
+        # Structured identifier → lite (free Wikidata).
+        structured = await resolve_auto_tier(["iso_code"], "Country", None)
+        assert structured.resolved_tier == "lite"
+        assert structured.needs_clarification is False
+        assert structured.routing_note
+
+        # Unknown attribute with no clear structured signal → lean paid (core).
+        unknown = await resolve_auto_tier(["vibe"], "Person", None)
+        assert unknown.resolved_tier == "core"
+        assert unknown.needs_clarification is False
+
+        # Empty key string is treated as "no key" too — still concrete, no raise.
+        empty = await resolve_auto_tier(["company"], "Person", "")
+        assert empty.resolved_tier in ("lite", "core")
+        assert empty.needs_clarification is False
+
+    asyncio.run(run())
+
+
+def test_create_job_auto_needs_clarification_creates_no_job(
+    client, auth_headers, mock_neptune, monkeypatch
+):
+    """When the auto resolver returns needs_clarification, create returns status
+    'needs_clarification' with candidates and creates NO job (the store stays
+    empty / the executor is never spawned)."""
+    import cograph_client.api.routes.enrich as enrich_mod
+    from cograph_client.enrichment.tier_router import TierDecision
+
+    async def _ambiguous(attributes, type_name, openrouter_key, timeout_s=8.0):
+        return TierDecision(
+            resolved_tier=None,
+            needs_clarification=True,
+            candidates=["lite", "core"],
+            routing_note="ambiguous — pick a tier",
+        )
+
+    monkeypatch.setattr(enrich_mod, "resolve_auto_tier", _ambiguous)
+
+    # Guard: the executor must never be spawned on the clarification branch.
+    spawned: list = []
+    monkeypatch.setattr(enrich_mod, "_spawn", lambda coro: spawned.append(coro))
+
+    response = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Person",
+            "attributes": ["company"],
+            "kg_name": "kg",
+            "tier": "auto",
+        },
+    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["status"] == "needs_clarification"
+    assert data["needs_clarification"] is True
+    assert data["candidates"] == ["lite", "core"]
+    assert data["job_id"] is None
+    assert data["resolved_tier"] is None
+    assert data["routing_note"] == "ambiguous — pick a tier"
+    # NO job created, NO background work spawned.
+    assert spawned == []
+    listing = client.get(
+        "/graphs/test-tenant/jobs?category=enrichment", headers=auth_headers
+    ).json()
+    assert listing == []
+
+
+def test_create_job_auto_resolves_core_lowers_confidence_to_web_floor(
+    client, auth_headers, mock_neptune, monkeypatch, _paid_core_chain
+):
+    """auto → core (paid) with the DEFAULT confidence must create a job at core
+    AND lower confidence_min to the web floor (0.4) so web verdicts actually
+    land instead of all being filtered out."""
+    import cograph_client.api.routes.enrich as enrich_mod
+    from cograph_client.enrichment.tier_router import TierDecision
+
+    async def _to_core(attributes, type_name, openrouter_key, timeout_s=8.0):
+        return TierDecision(
+            resolved_tier="core",
+            needs_clarification=False,
+            routing_note="auto-routed to core",
+        )
+
+    monkeypatch.setattr(enrich_mod, "resolve_auto_tier", _to_core)
+    mock_neptune.query.return_value = _count_response(0)
+
+    response = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Person",
+            "attributes": ["company"],
+            "kg_name": "kg",
+            "tier": "auto",
+            # confidence_min omitted → default 0.85 sentinel → floor applies.
+        },
+    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["status"] == "queued"
+    assert data["resolved_tier"] == "core"
+    assert data["needs_clarification"] is False
+    assert data["candidates"] is None
+    assert data["routing_note"] == "auto-routed to core"
+
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{data['job_id']}", headers=auth_headers
+    ).json()
+    assert job["tier"] == "core"
+    # The web confidence floor was applied (0.85 default → 0.4).
+    assert job["confidence_min"] == 0.4
+
+
+def test_create_job_explicit_core_lowers_confidence_to_web_floor(
+    client, auth_headers, mock_neptune, _paid_core_chain
+):
+    """An EXPLICIT (non-auto) core tier with the default confidence must ALSO get
+    the web floor — previously only the agent path did this, so a direct core
+    enrich filtered out every web verdict → 0 fills."""
+    mock_neptune.query.return_value = _count_response(0)
+
+    response = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Person",
+            "attributes": ["company"],
+            "kg_name": "kg",
+            "tier": "core",
+        },
+    )
+    assert response.status_code == 202
+    data = response.json()
+    # Uniform contract for explicit tiers: resolved_tier echoes the request tier.
+    assert data["resolved_tier"] == "core"
+    assert data["routing_note"] is None
+    assert data["needs_clarification"] is False
+    assert data["candidates"] is None
+
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{data['job_id']}", headers=auth_headers
+    ).json()
+    assert job["tier"] == "core"
+    assert job["confidence_min"] == 0.4
+
+
+def test_create_job_explicit_core_respects_user_confidence(
+    client, auth_headers, mock_neptune, _paid_core_chain
+):
+    """A user-supplied (non-default) confidence_min must be respected — the floor
+    only overrides the UNSET 0.85 sentinel, never an explicit value."""
+    mock_neptune.query.return_value = _count_response(0)
+
+    response = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Person",
+            "attributes": ["company"],
+            "kg_name": "kg",
+            "tier": "core",
+            "confidence_min": 0.7,
+        },
+    )
+    assert response.status_code == 202
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{response.json()['job_id']}",
+        headers=auth_headers,
+    ).json()
+    # User value preserved, NOT lowered to the floor.
+    assert job["confidence_min"] == 0.7
+
+
+def test_create_job_lite_does_not_lower_confidence(
+    client, auth_headers, mock_neptune
+):
+    """A free tier (lite — no paid adapter) must NOT trigger the web floor; the
+    default 0.85 confidence is preserved."""
+    mock_neptune.query.return_value = _count_response(0)
+
+    response = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Country",
+            "attributes": ["iso_code"],
+            "kg_name": "kg",
+            "tier": "lite",
+        },
+    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["resolved_tier"] == "lite"
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{data['job_id']}", headers=auth_headers
+    ).json()
+    assert job["tier"] == "lite"
+    assert job["confidence_min"] == 0.85
