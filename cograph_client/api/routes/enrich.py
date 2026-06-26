@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -17,11 +19,66 @@ from cograph_client.enrichment.models import (
     ConflictReview,
     EnrichJob,
     EnrichRequest,
+    EnrichmentTier,
     JobStatus,
     JobSummary,
 )
+from cograph_client.enrichment.tier_router import (
+    DEFAULT_CONFIDENCE_MIN,
+    WEB_CONFIDENCE_MIN,
+    chain_has_paid,
+    resolve_auto_tier,
+)
 
 router = APIRouter(prefix="/graphs/{tenant}/enrich")
+
+
+def _openrouter_key() -> str:
+    """The OpenRouter key the auto-tier resolver needs for its classify call.
+
+    Same source the rest of OSS uses (``normalization.inference._openrouter_key``):
+    the app ``settings`` (env ``OMNIX_OPENROUTER_API_KEY``) with a plain
+    ``OPENROUTER_API_KEY`` env fallback. When empty, ``resolve_auto_tier`` falls
+    back to its deterministic heuristic — it never requires a key.
+    """
+    from cograph_client.config import settings
+
+    return settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
+
+
+def _effective_confidence_min(tier: EnrichmentTier, requested: float) -> float:
+    """Apply the web confidence floor (COG-121) for a PAID/web tier.
+
+    When the EFFECTIVE tier's chain has a paid adapter AND the caller left
+    ``confidence_min`` at the default sentinel (0.85 — i.e. did not ask for a
+    specific value), lower it to ``WEB_CONFIDENCE_MIN`` (0.4) so the low-prior web
+    verdicts are written instead of all being filtered out → 0 fills. A
+    user-supplied non-default confidence is respected unchanged. Free tiers are
+    untouched. Generic: "paid" comes from adapter-declared metadata, never an
+    adapter name (COG-123).
+    """
+    user_set = abs(requested - DEFAULT_CONFIDENCE_MIN) > 1e-9
+    if not user_set and chain_has_paid(tier):
+        return WEB_CONFIDENCE_MIN
+    return requested
+
+
+class CreateJobResponse(BaseModel):
+    """Uniform create-job response across all branches (COG-124).
+
+    Every branch — explicit tier, auto→lite, auto→core, and needs-clarification —
+    returns the SAME keys so clients have one stable contract. ``job_id`` /
+    ``resolved_tier`` are ``None`` only on the needs-clarification branch (no job
+    is created); ``candidates`` is populated only there.
+    """
+
+    job_id: Optional[str] = None
+    status: str
+    matched_entities: Optional[int] = None
+    resolved_tier: Optional[str] = None
+    routing_note: Optional[str] = None
+    needs_clarification: bool = False
+    candidates: Optional[list[str]] = None
 
 
 CONFLICT_RESULT_TRUNCATE = 100
@@ -47,13 +104,51 @@ class ApplyRequest(BaseModel):
     decisions: list[ConflictReview]
 
 
-@router.post("/jobs", status_code=202)
+@router.post("/jobs", status_code=202, response_model=CreateJobResponse)
 async def create_job(
     body: EnrichRequest,
     tenant: TenantContext = Depends(get_tenant),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
-):
+) -> CreateJobResponse:
+    routing_note: Optional[str] = None
+
+    # COG-124: resolve the smart ``auto`` tier BEFORE creating a job. The shared
+    # router (re)uses the agent's web-fact judgment to decide free Wikidata
+    # (``lite``) vs paid web search (``core``), leaning paid when Wikidata is
+    # weak; it only asks for clarification when genuinely ambiguous.
+    if body.tier == EnrichmentTier.auto:
+        decision = await resolve_auto_tier(
+            body.attributes, body.type_name, _openrouter_key()
+        )
+        if decision.needs_clarification:
+            # Genuinely ambiguous — do NOT create a job. The client picks a tier
+            # and re-submits with an explicit ``lite``/``core``. Still 202: the
+            # request was understood, it just needs a follow-up choice.
+            return CreateJobResponse(
+                job_id=None,
+                status="needs_clarification",
+                matched_entities=None,
+                resolved_tier=None,
+                routing_note=decision.routing_note,
+                needs_clarification=True,
+                candidates=decision.candidates,
+            )
+        effective_tier = EnrichmentTier(decision.resolved_tier)
+        routing_note = decision.routing_note
+    else:
+        effective_tier = body.tier
+
+    # WEB CONFIDENCE FLOOR (COG-121): for a paid/web EFFECTIVE tier with an UNSET
+    # confidence, lower confidence_min to the web floor so the low-prior web
+    # verdicts actually land instead of all being filtered → 0 fills. Applies to
+    # auto-resolved ``core`` AND an explicit ``core``/``pro`` (the direct API path
+    # previously skipped this, so a direct core enrich wrote nothing). A
+    # user-supplied confidence is respected.
+    effective_confidence = _effective_confidence_min(
+        effective_tier, body.confidence_min
+    )
+
     # NON-BLOCKING create (COG-112): we deliberately do NOT count_entities() in
     # the request path. A scoped COUNT over a large type (e.g. ~13.5k Mentors)
     # can be slow and was timing out the create (~55s → 504). The executor's
@@ -67,11 +162,11 @@ async def create_job(
         kg_name=body.kg_name,
         type_name=body.type_name,
         attributes=body.attributes,
-        tier=body.tier,
+        tier=effective_tier,
         status=JobStatus.queued,
         created_at=datetime.now(timezone.utc),
         conflict_policy=body.conflict_policy,
-        confidence_min=body.confidence_min,
+        confidence_min=effective_confidence,
         limit=body.limit,
         scope=body.scope,
         entity_uris=body.entity_uris,
@@ -82,14 +177,18 @@ async def create_job(
 
     _spawn(executor.run(job, tenant.tenant_id))
 
-    return {
-        "job_id": job.id,
-        "status": job.status.value,
+    return CreateJobResponse(
+        job_id=job.id,
+        status=job.status.value,
         # Matched count is resolved by the background executor (progress.total),
         # not at create time — so create never blocks on a scoped COUNT. The web
         # dialog reads job_id + status; matched_entities is optional in the UI.
-        "matched_entities": None,
-    }
+        matched_entities=None,
+        resolved_tier=effective_tier.value,
+        routing_note=routing_note,
+        needs_clarification=False,
+        candidates=None,
+    )
 
 
 @router.get("/jobs", response_model=list[JobSummary])

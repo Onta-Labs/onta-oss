@@ -1130,7 +1130,7 @@ export interface TypeSummary {
   relationships: RelationshipSummary[];
 }
 
-export type EnrichmentTier = "lite" | "base" | "core" | "pro";
+export type EnrichmentTier = "auto" | "lite" | "base" | "core" | "pro";
 export type JobStatus =
   | "queued"
   | "running"
@@ -1171,10 +1171,27 @@ export interface EnrichRequest {
 }
 
 export interface EnrichJobCreate {
-  job_id: string;
-  status: JobStatus;
-  estimated_cost_usd: number;
-  total_entities: number;
+  /** Null when the backend needs the client to clarify the source before a job
+   *  is created (see {@link needs_clarification}). */
+  job_id: string | null;
+  /** Either a real {@link JobStatus} (e.g. "queued") or the routing sentinel
+   *  "needs_clarification" when the backend wants the client to pick a tier. */
+  status: "queued" | "needs_clarification" | JobStatus | string;
+  /** The concrete tier a job was actually created at — e.g. "lite" (Wikidata,
+   *  free) or "core" (live web search) — once the backend's "auto" routing
+   *  resolves. Null/absent when {@link needs_clarification}. */
+  resolved_tier?: EnrichmentTier | null;
+  /** Short human reason for the routing decision, e.g. "Wikidata is thin for
+   *  these attributes — using web search". */
+  routing_note?: string | null;
+  /** True when the backend could not confidently route "auto" and wants the
+   *  client to choose among {@link candidates}; no job was created. */
+  needs_clarification?: boolean;
+  /** The tiers to offer the user when {@link needs_clarification}, e.g.
+   *  ["lite","core"]. */
+  candidates?: string[] | null;
+  estimated_cost_usd?: number;
+  total_entities?: number;
 }
 
 export interface Verdict {
@@ -1192,6 +1209,7 @@ export interface JobProgress {
   verified: number;
   conflicts: number;
   skipped: number;
+  no_match: number;
   cache_hits: number;
 }
 

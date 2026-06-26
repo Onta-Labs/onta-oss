@@ -40,8 +40,15 @@ from cograph_client.enrichment.models import (
     EnrichmentTier,
     JobStatus,
 )
-from cograph_client.enrichment.sources.base import adapter_cost, get_adapter
-from cograph_client.enrichment.tiers import get_chain
+from cograph_client.enrichment.tier_router import (
+    DEFAULT_CONFIDENCE_MIN as _DEFAULT_CONFIDENCE_MIN,
+)
+from cograph_client.enrichment.tier_router import (
+    WEB_CONFIDENCE_MIN as _WEB_CONFIDENCE_MIN,
+)
+from cograph_client.enrichment.tier_router import (
+    resolve_chain_cost as _resolve_chain_cost,
+)
 from cograph_client.graph.ontology_queries import list_types_query
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
@@ -68,17 +75,14 @@ _DEFAULT_PLAN_LIMIT = 200
 # only bounds the worst case.
 _SUBSET_MAX = 500
 
-# Functional confidence floor the AGENT'S PLAN uses for web-sourced enrichments
-# (COG-121). Web adapters (Exa/Parallel/…) return verdicts at a low, conservative
-# prior, so the global EnrichRequest default of 0.85 silently filters ALL of them
-# → 0 values written. This floor is conservative (still rejects junk) but low
-# enough that calibrated web verdicts actually land. It is applied ONLY in the
-# agent's plan and is overridable; the global 0.85 default is unchanged, so
-# direct API callers keep the safe default.
-_WEB_CONFIDENCE_MIN = 0.4
-# The global EnrichRequest default; the marker for "user did not ask for a
-# specific confidence" so we only override an UNSET (default) confidence.
-_DEFAULT_CONFIDENCE_MIN = 0.85
+# The web confidence floor (``_WEB_CONFIDENCE_MIN``) and the "unset confidence"
+# sentinel (``_DEFAULT_CONFIDENCE_MIN``) now live in
+# ``cograph_client.enrichment.tier_router`` so the agent path and the /enrich
+# route share ONE definition (imported at the top of this module). Web adapters
+# (Exa/Parallel/…) return verdicts at a low prior, so the global 0.85 default
+# silently filters ALL of them → 0 writes; the floor lets calibrated web verdicts
+# land. Applied here in the plan and is overridable; the global default is
+# unchanged for direct API callers that don't go through the floor.
 
 
 def _spawn(coro) -> None:
@@ -650,36 +654,10 @@ def _coerce_tier(tier) -> EnrichmentTier:
         return EnrichmentTier.lite
 
 
-def _resolve_chain_cost(tier: EnrichmentTier) -> tuple[float, int, bool]:
-    """Per-entity paid cost for a tier, derived GENERICALLY from adapter metadata.
-
-    Resolves the tier's adapter chain (:func:`get_chain`), looks up each adapter
-    in the global registry, and sums the declared ``cost_per_call`` of the PAID
-    adapters (:func:`adapter_cost`). Returns
-    ``(per_entity_paid_cost, paid_adapter_count, has_paid)``.
-
-    Boundary-clean (COG-123): "paid" and "how much" come ONLY from what an
-    adapter declares about itself — never a hardcoded adapter name. The OSS
-    Wikidata adapter declares free, so the OSS-only ``lite`` chain costs 0; a
-    downstream deployment that registers a paid adapter (Exa/Parallel/…) with
-    ``is_paid``/``cost_per_call`` gets a non-zero estimate with no OSS change.
-    The "cache" pseudo-entry in a chain is not an adapter and is skipped, mirroring
-    the executor's :meth:`_lookup_chain`. An unregistered adapter name contributes
-    nothing (it can't run, so it can't cost) — same as the executor skipping it.
-    """
-    per_entity_cost = 0.0
-    paid_adapters = 0
-    for name in get_chain(tier):
-        if name == "cache":
-            continue
-        adapter = get_adapter(name)
-        if adapter is None:
-            continue
-        is_paid, cost = adapter_cost(adapter)
-        if is_paid:
-            paid_adapters += 1
-            per_entity_cost += cost
-    return per_entity_cost, paid_adapters, paid_adapters > 0
+# ``_resolve_chain_cost`` is imported from ``cograph_client.enrichment.tier_router``
+# (single source of truth — see the imports at the top of this module). It derives
+# the per-entity paid cost / has_paid for a tier GENERICALLY from adapter-declared
+# metadata, never adapter names (COG-123).
 
 
 def _estimate_cost(

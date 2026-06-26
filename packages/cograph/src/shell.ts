@@ -8,6 +8,7 @@ import {
   type EnrichJob,
   type ConflictReview,
   type JobSummary,
+  type EnrichmentTier,
 } from "./client.js";
 import { renderAgentResult } from "./agentRender.js";
 import { writeConfig } from "./config.js";
@@ -707,40 +708,73 @@ async function cmdEnrichRun(
   const typeName = await resolveTypeName(client, kg, rl, typeInput);
   if (!typeName) return;
 
-  const tier: "lite" = "lite";
   const policy: "stage" = "stage";
+  // The backend now picks the source ("auto"): free (Wikidata) vs paid web
+  // search, asking us to clarify only when it's genuinely unsure. So we no
+  // longer prompt up front or claim a fixed tier here.
   stdout.write(
     `\n  ${BOLD}Plan:${RESET} enrich ${CYAN}${typeName}${RESET}.${attrs
       .map((a) => `${CYAN}${a}${RESET}`)
-      .join(`, .`)} in ${BOLD}${kg}${RESET}  ${DIM}·${RESET} tier: ${tier}  ${DIM}·${RESET} policy: ${policy}\n\n`,
+      .join(`, .`)} in ${BOLD}${kg}${RESET}  ${DIM}·${RESET} ${DIM}auto-routing source…${RESET}\n\n`,
   );
 
-  const sp = startSpinner(`Queueing enrichment for ${typeName}...`);
-  let created;
-  try {
-    created = await client.enrichRun({
-      type_name: typeName,
-      attributes: attrs,
-      tier,
-      kg_name: kg,
-      conflict_policy: policy,
-    });
-  } catch (err) {
-    sp.stop();
-    if (err instanceof CographError) printError(err.message);
-    else printError(err instanceof Error ? err.message : String(err));
+  // Queue at tier "auto" and let the backend route. If it needs us to clarify,
+  // re-queue with the explicit tier the user picks.
+  let created = await queueEnrich(client, typeName, attrs, kg, policy, "auto");
+  if (!created) return;
+
+  if (created.needs_clarification || created.status === "needs_clarification") {
+    if (created.routing_note) {
+      stdout.write(`  ${DIM}${created.routing_note}${RESET}\n`);
+    }
+    const candidates = created.candidates ?? ["lite", "core"];
+    const offersWeb = candidates.includes("core");
+    const offersFree = candidates.includes("lite");
+    const prompt = offersWeb && offersFree
+      ? `  Source unclear — [w]eb search (paid) or [f]ree (Wikidata)? [w/f/c]: `
+      : `  Pick a source — ${candidates.join(" / ")} [c]ancel: `;
+    const ans = (await ask(rl, prompt)).trim().toLowerCase();
+    let chosen: EnrichmentTier | null = null;
+    if (ans === "c" || ans === "cancel") {
+      stdout.write(`  ${DIM}Cancelled.${RESET}\n`);
+      return;
+    } else if (ans === "w" || ans === "web") {
+      chosen = "core";
+    } else if (ans === "f" || ans === "free") {
+      chosen = "lite";
+    } else if (candidates.includes(ans)) {
+      chosen = ans as EnrichmentTier;
+    } else {
+      stdout.write(`  ${DIM}Cancelled.${RESET}\n`);
+      return;
+    }
+    created = await queueEnrich(client, typeName, attrs, kg, policy, chosen);
+    if (!created) return;
+  } else {
+    // A job was created — surface the routing decision so the user sees which
+    // source ran and why.
+    const sourceLabel =
+      created.resolved_tier === "lite" ? "Wikidata (free)" : "live web search";
+    stdout.write(
+      `  ${DIM}Source:${RESET} ${sourceLabel}${created.routing_note ? ` — ${created.routing_note}` : ""}\n`,
+    );
+  }
+
+  if (!created.job_id) {
+    printError("Backend did not return a job id.");
     return;
   }
-  sp.stop();
 
   const cost = (created.estimated_cost_usd ?? 0).toFixed(4);
   stdout.write(
     `  ${GREEN}✓${RESET} Job queued: ${CYAN_BOLD}${created.job_id}${RESET} ${DIM}·${RESET} estimated cost ${BOLD}$${cost}${RESET} ${DIM}·${RESET} ${fmtNum(created.total_entities ?? 0)} entities\n`,
   );
 
+  const resolvedTier: EnrichmentTier = created.resolved_tier ?? "core";
   const watch = (await ask(rl, `  Watch progress? [Y/n]: `)).trim().toLowerCase();
   if (watch === "" || watch === "y" || watch === "yes") {
-    await watchJob(client, created.job_id);
+    const finished = await watchJob(client, created.job_id);
+    await maybeEscalateToWeb(client, rl, typeName, attrs, kg, policy, resolvedTier, finished);
   } else {
     stdout.write(
       `  ${DIM}Tip: /enrich watch ${created.job_id} to follow it.${RESET}\n`,
@@ -748,7 +782,88 @@ async function cmdEnrichRun(
   }
 }
 
-async function watchJob(client: Client, jobId: string): Promise<void> {
+/**
+ * Queue one enrichment job, with a spinner and error rendering. Returns the
+ * create-response (which may carry a routing decision or a needs_clarification
+ * flag) or null when the call failed.
+ */
+async function queueEnrich(
+  client: Client,
+  typeName: string,
+  attrs: string[],
+  kg: string,
+  policy: "stage",
+  tier: EnrichmentTier,
+): Promise<import("./client.js").EnrichJobCreate | null> {
+  const sp = startSpinner(`Queueing enrichment for ${typeName}...`);
+  try {
+    const created = await client.enrichRun({
+      type_name: typeName,
+      attributes: attrs,
+      tier,
+      kg_name: kg,
+      conflict_policy: policy,
+    });
+    sp.stop();
+    return created;
+  } catch (err) {
+    sp.stop();
+    if (err instanceof CographError) printError(err.message);
+    else printError(err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
+// ALL-MISS FALLBACK: if the backend routed to FREE (Wikidata, resolved_tier
+// "lite") and that run found nothing — nothing filled/verified/conflicting AND
+// at least one miss — offer to escalate to live web search ("core"). When the
+// backend already chose "core", web search has run, so we never offer it again.
+async function maybeEscalateToWeb(
+  client: Client,
+  rl: readline.Interface,
+  typeName: string,
+  attrs: string[],
+  kg: string,
+  policy: "stage",
+  resolvedTier: EnrichmentTier,
+  finished: EnrichJob | null,
+): Promise<void> {
+  if (!finished) return;
+  if (finished.status !== "applied" && finished.status !== "review") return;
+  if (resolvedTier !== "lite") return;
+  const p = finished.progress;
+  if (p.filled + p.verified + p.conflicts > 0) return;
+  if (p.no_match <= 0) return;
+
+  const ans = (
+    await ask(
+      rl,
+      `  Nothing found in Wikidata. Try live web search? [Y/n]: `,
+    )
+  )
+    .trim()
+    .toLowerCase();
+  if (ans !== "" && ans !== "y" && ans !== "yes") {
+    stdout.write(
+      `  ${DIM}Tip: re-run /enrich ${typeName} ${attrs.join(" ")} to try again.${RESET}\n`,
+    );
+    return;
+  }
+
+  const created = await queueEnrich(client, typeName, attrs, kg, policy, "core");
+  if (!created || !created.job_id) return;
+
+  const cost = (created.estimated_cost_usd ?? 0).toFixed(4);
+  stdout.write(
+    `  ${GREEN}✓${RESET} Job queued: ${CYAN_BOLD}${created.job_id}${RESET} ${DIM}·${RESET} estimated cost ${BOLD}$${cost}${RESET} ${DIM}·${RESET} ${fmtNum(created.total_entities ?? 0)} entities\n`,
+  );
+  await watchJob(client, created.job_id);
+}
+
+async function watchJob(
+  client: Client,
+  jobId: string,
+): Promise<EnrichJob | null> {
   const startedAt = Date.now();
   let lastJob: EnrichJob | null = null;
   // Render in place
@@ -773,6 +888,7 @@ async function watchJob(client: Client, jobId: string): Promise<void> {
         `${DIM}·${RESET} filled ${GREEN}${fmtNum(p.filled)}${RESET} ` +
         `${DIM}·${RESET} verified ${CYAN}${fmtNum(p.verified)}${RESET} ` +
         `${DIM}·${RESET} conflicts ${YELLOW}${fmtNum(p.conflicts)}${RESET} ` +
+        `${DIM}·${RESET} not found ${DIM}${fmtNum(p.no_match)}${RESET} ` +
         `${DIM}·${RESET} ETA ${etaStr}`,
     );
   };
@@ -785,7 +901,7 @@ async function watchJob(client: Client, jobId: string): Promise<void> {
       stdout.write("\r\x1b[2K");
       if (err instanceof CographError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
-      return;
+      return null;
     }
     lastJob = job;
     draw(job);
@@ -795,22 +911,24 @@ async function watchJob(client: Client, jobId: string): Promise<void> {
 
   // Final newline after the live line.
   stdout.write("\n");
-  if (!lastJob) return;
+  if (!lastJob) return null;
   const p = lastJob.progress;
   if (lastJob.status === "review") {
     stdout.write(
-      `  ${YELLOW}✦${RESET} ${fmtNum(p.conflicts)} conflict${p.conflicts === 1 ? "" : "s"} need review. ` +
+      `  ${YELLOW}✦${RESET} ${fmtNum(p.conflicts)} conflict${p.conflicts === 1 ? "" : "s"} need review ` +
+        `${DIM}·${RESET} filled ${fmtNum(p.filled)}, verified ${fmtNum(p.verified)}, not found ${fmtNum(p.no_match)}. ` +
         `${DIM}Run${RESET} /enrich review ${lastJob.id}${DIM} to walk through them.${RESET}\n`,
     );
   } else if (lastJob.status === "applied") {
     stdout.write(
-      `  ${GREEN}✓${RESET} Applied ${DIM}·${RESET} filled ${fmtNum(p.filled)}, verified ${fmtNum(p.verified)}, skipped ${fmtNum(p.skipped)}\n`,
+      `  ${GREEN}✓${RESET} Applied ${DIM}·${RESET} filled ${fmtNum(p.filled)}, verified ${fmtNum(p.verified)}, not found ${fmtNum(p.no_match)}\n`,
     );
   } else if (lastJob.status === "failed") {
     printError(`Job failed: ${lastJob.error ?? "(no error message)"}`);
   } else if (lastJob.status === "cancelled") {
     stdout.write(`  ${DIM}Job cancelled.${RESET}\n`);
   }
+  return lastJob;
 }
 
 async function cmdEnrichJobs(client: Client): Promise<void> {
