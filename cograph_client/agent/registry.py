@@ -48,6 +48,11 @@ class AgentContext:
     selection: Optional[dict] = None
     openrouter_key: str = ""
     anthropic_key: str = ""
+    # Explicit URLs the user supplied for this turn (from the request context —
+    # the Explorer's "attach links" affordance, or parsed from the message).
+    # Capabilities read this defensively (``getattr(ctx, "urls", None)``) so they
+    # keep working even if a context predates this field.
+    urls: list[str] = field(default_factory=list)
     # Free-form extras (e.g. the enrichment executor/job-store stashed on
     # app.state) so a capability can reuse app-scoped singletons without the
     # context model needing to know about every engine.
