@@ -991,6 +991,11 @@ class EnrichmentExecutor:
         # Thread optional custom instructions into the lookup context (empty
         # when none), mirroring _lookup_chain. Wikidata ignores it harmlessly.
         ctx = {"instructions": job.instructions} if job.instructions else {}
+        # URL-targeted enrichment: hand any user-supplied pages to the adapter so
+        # a URL-aware premium adapter (e.g. Firecrawl) reads values FROM them.
+        # Wikidata ignores it harmlessly. Empty by default → unchanged call shape.
+        if job.source_urls:
+            ctx["target_urls"] = list(job.source_urls)
         verdicts = await self._wikidata.lookup(entity_label, attribute, ctx)
         await self._cache.put(
             entity_label, attribute, source, verdicts, job.type_name, strategy_version
@@ -1045,6 +1050,12 @@ class EnrichmentExecutor:
                 # harmlessly; agentic/premium adapters can read it. Empty when no
                 # instructions so the call shape is unchanged in the common case.
                 ctx = {"instructions": job.instructions} if job.instructions else {}
+                # URL-targeted enrichment: hand any user-supplied pages to the
+                # adapter via ``target_urls`` so a URL-aware premium adapter
+                # (e.g. Firecrawl) reads values FROM them. Free adapters ignore
+                # it harmlessly; empty by default → unchanged call shape.
+                if job.source_urls:
+                    ctx["target_urls"] = list(job.source_urls)
                 try:
                     # Bound every adapter call so one stalled lookup (e.g. a
                     # hung network call whose own client lacks a total-operation

@@ -653,12 +653,17 @@ export class Client {
    * direct path enforces — the gate lives behind the endpoint, not in this client.
    */
   async agent(opts: AgentTurnOptions): Promise<AgentResult> {
+    const context: Record<string, unknown> = {
+      kg_name: opts.kgName ?? "",
+      type_name: opts.typeName ?? null,
+    };
+    // Explicit links the user attached for this turn. Threaded into the request
+    // context so the server routes/extracts from these pages; omitted entirely
+    // when none are given so the body is unchanged for existing callers.
+    if (opts.urls && opts.urls.length) context.urls = opts.urls;
     const body: Record<string, unknown> = {
       message: opts.message ?? "",
-      context: {
-        kg_name: opts.kgName ?? "",
-        type_name: opts.typeName ?? null,
-      },
+      context,
     };
     if (opts.sessionId) body.session_id = opts.sessionId;
     // confirm.plan_id present → the server routes to execute_plan (mutating).
@@ -1310,6 +1315,10 @@ export interface AgentTurnOptions {
   kgName?: string;
   /** Optional active type scope (needed for enrich/clean/dedup planning). */
   typeName?: string;
+  /** Optional explicit links to parse for this turn (threaded into the request
+   *  `context.urls`). The server routes a URL-bearing turn to enrich existing
+   *  entities or discover new ones, then extracts records from these pages. */
+  urls?: string[];
   /** Optional conversation/session id for multi-turn continuity. */
   sessionId?: string;
   /** When set, the server CONFIRMS + EXECUTES this previously-proposed plan

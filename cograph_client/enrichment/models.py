@@ -172,6 +172,13 @@ class EnrichRequest(BaseModel):
     # fall back gracefully (skipped with the existing one-shot warning).
     instructions: Optional[str] = None
     sources: Optional[list[str]] = None
+    # URL-targeted enrichment: explicit page(s) to read the attribute values
+    # FROM, instead of (or in addition to) a web search. Default None → today's
+    # behavior. The route copies these onto ``EnrichJob.source_urls``; the
+    # executor threads them into the adapter lookup context as ``target_urls`` so
+    # a URL-aware premium adapter (e.g. Firecrawl) reads the supplied pages.
+    # Free adapters (wikidata) ignore it harmlessly.
+    target_urls: Optional[list[str]] = None
 
     _check_entity_uris = field_validator("entity_uris")(_validate_entity_uris_field)
 
@@ -260,6 +267,12 @@ class EnrichJob(BaseModel):
     # context (and the cache key), ``sources`` overrides the adapter chain.
     instructions: Optional[str] = None
     sources: Optional[list[str]] = None
+    # URL-targeted enrichment: the explicit page(s) to read attribute values
+    # FROM (mirrors EnrichRequest.target_urls). Empty by default → today's
+    # behavior. The executor threads these into the adapter lookup context as
+    # ``target_urls`` so a URL-aware premium adapter (e.g. Firecrawl) reads the
+    # supplied pages; free adapters ignore it harmlessly.
+    source_urls: list[str] = Field(default_factory=list)
     # COG-101: unified-jobs fields. All optional with safe defaults so existing
     # enrichment-job construction keeps working unchanged.
     category: JobCategory = JobCategory.enrichment

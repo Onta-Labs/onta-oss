@@ -57,6 +57,7 @@ from cograph_client.normalization.inference import (
     sample_predicate_values,
 )
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from cograph_client.web_sources.url_extract import extract_urls
 
 logger = structlog.stdlib.get_logger("cograph.agent.enrich")
 
@@ -145,6 +146,15 @@ class EnrichCapability:
         attributes: list[str] = req.get("attributes") or []
         if not attributes:
             return []
+        # URL-targeted enrichment: explicit page(s) the user wants the values
+        # read FROM — structured Explorer context (``ctx.urls``) wins, else the
+        # links pasted in the message. Read defensively so this works even if
+        # ``AgentContext.urls`` hasn't landed yet. Threaded into the step params
+        # → the EnrichJob → the adapter lookup context (``target_urls``); a
+        # URL-aware premium adapter (e.g. Firecrawl) reads them, free adapters
+        # ignore them. No adapter name is hardcoded — selection stays the tier
+        # chain's job.
+        urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
         tier = _coerce_tier(req.get("tier"))
         requested_confidence = float(
             req.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
@@ -272,6 +282,15 @@ class EnrichCapability:
             )
         else:
             target_phrase = f"matched {type_name} entities (capped at {limit})"
+        # When the user supplied page(s), say so in the rationale/preview so they
+        # can confirm we'll read the values from THOSE pages (Rail B URL mode).
+        n_urls = len(urls)
+        url_clause = (
+            f" reading values from {n_urls} supplied "
+            f"page{'s' if n_urls != 1 else ''}"
+            if urls
+            else ""
+        )
         enrich_step = PlanStep(
             capability=self.name,
             action="run_enrichment",
@@ -283,6 +302,11 @@ class EnrichCapability:
                 "scope": scope,
                 "limit": limit,
                 "entity_uris": entity_uris,
+                # Explicit page(s) to read attribute values FROM (URL-targeted
+                # mode). Threaded into the EnrichJob at execute time. Only set
+                # when present so existing (non-URL) plans are byte-for-byte
+                # unchanged.
+                **({"source_urls": urls} if urls else {}),
             },
             rationale=(
                 f"Enrich {', '.join(attributes)} on {type_name}"
@@ -293,13 +317,20 @@ class EnrichCapability:
                         if scope else ""
                     )
                 )
+                + url_clause
                 + f" via the {tier.value} tier."
             ),
             confidence=0.8,
             preview={
                 "summary": (
-                    f"Look up {', '.join(attributes)} for {target_phrase} "
-                    "and stage the results for review."
+                    f"Look up {', '.join(attributes)} for {target_phrase}"
+                    + (
+                        f", reading from {n_urls} supplied "
+                        f"page{'s' if n_urls != 1 else ''},"
+                        if urls
+                        else ""
+                    )
+                    + " and stage the results for review."
                 ),
                 "scope": scope,
                 "tier": tier.value,
@@ -310,6 +341,8 @@ class EnrichCapability:
                     confidence_min, confidence_lowered
                 ),
                 "cost_estimate": cost.get("note", ""),
+                # Surface the supplied pages so the confirm UI can show them.
+                "source_urls": urls,
             },
             cost=cost,
             depends_on=depends_on,
@@ -417,6 +450,10 @@ class EnrichCapability:
         # Explicit entity set (resolved from a ranked/specific subset at plan time);
         # the executor uses a VALUES block and lets it win over scope.
         entity_uris = p.get("entity_uris") or None
+        # URL-targeted mode: the page(s) to read values FROM (set at plan time).
+        # Threaded onto the job → the executor's adapter lookup context
+        # (``target_urls``). Empty by default → unchanged behavior.
+        source_urls = p.get("source_urls") or []
         limit = p.get("limit")
         job = EnrichJob(
             id=str(uuid.uuid4()),
@@ -434,6 +471,7 @@ class EnrichCapability:
             ),
             scope=scope,
             entity_uris=entity_uris,
+            source_urls=source_urls,
             # Carry the plan's proposed cap so the job actually honors the bound
             # surfaced to the user at plan time (COG-123). int() guards a stray
             # non-int; None leaves whole-subset behavior unchanged. bool is a

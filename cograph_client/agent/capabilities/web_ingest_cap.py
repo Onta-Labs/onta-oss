@@ -62,6 +62,7 @@ from cograph_client.web_sources.base import (
     get_web_source,
     provider_cost,
 )
+from cograph_client.web_sources.url_extract import extract_urls
 
 logger = structlog.stdlib.get_logger("cograph.agent.web_ingest")
 
@@ -100,8 +101,25 @@ class WebIngestCapability:
         instruction: str,
         parsed: dict | None = None,
     ) -> list[PlanStep]:
-        provider = get_web_source()
+        # Explicit URLs the user handed us — from structured request context
+        # (ctx.urls, read defensively so this works before that field lands) or
+        # parsed out of the message. When present we run URL-TARGETED extraction:
+        # pull records FROM those pages instead of web-searching for a query.
+        urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
+
+        # URL mode needs a URL-capable provider; query mode the default one. When
+        # the required provider isn't registered, degrade gracefully the same way.
+        provider = get_web_source(for_urls=bool(urls))
         if provider is None:
+            if urls:
+                return [
+                    _answer_step(
+                        "I can see the link(s) you shared, but URL extraction isn't "
+                        "enabled in this deployment. An admin can configure a "
+                        "URL-capable web-source provider to parse pages like these "
+                        "into ingested data."
+                    )
+                ]
             return [
                 _answer_step(
                     "Web discovery isn't enabled in this deployment. An admin can "
@@ -135,7 +153,8 @@ class WebIngestCapability:
         # already asked once (don't loop).
         attributes = confirmed if len(confirmed) > 1 else suggested
 
-        # 2. Cheap sample, constrained to the chosen attributes.
+        # 2. Cheap sample, constrained to the chosen attributes. In URL mode the
+        #    provider extracts the sample FROM the supplied pages.
         try:
             sample = await provider.discover(
                 query,
@@ -143,6 +162,7 @@ class WebIngestCapability:
                 max_rows=_SAMPLE_ROWS,
                 hint_columns=attributes,
                 context=_provider_context(ctx),
+                urls=urls or None,
             )
         except Exception:  # noqa: BLE001 — a sample failure must never 500 the turn
             logger.warning("web_ingest_sample_failed", exc_info=True)
@@ -179,6 +199,9 @@ class WebIngestCapability:
                 "max_rows": cap,
                 "kg_name": ctx.kg_name,
                 "provider": provider.name,
+                # Persist the explicit URLs so execute() re-passes them (preview ==
+                # commit). Empty in plain query-discovery mode.
+                "urls": urls,
             },
             rationale=(
                 f"Find {query} on the web and add them to this graph as "
@@ -205,7 +228,13 @@ class WebIngestCapability:
 
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         p = step.params
-        provider = get_web_source(p.get("provider"))
+        # URLs persisted at plan time (empty for plain query discovery). Provider
+        # selection mirrors plan(): by the persisted name, falling back to the
+        # mode-appropriate default (for_urls=bool(urls)) so the same provider runs.
+        urls = list(p.get("urls") or [])
+        provider = get_web_source(p.get("provider")) or get_web_source(
+            for_urls=bool(urls)
+        )
         if provider is None:
             raise RuntimeError("web-source provider not available at execute time")
 
@@ -259,6 +288,7 @@ class WebIngestCapability:
                     max_rows=cap,
                     hint_columns=attributes,
                     context=pctx,
+                    urls=urls or None,
                 )
                 rows = full.rows[:cap]
                 platforms = _platforms(getattr(full, "sources", None), provider)

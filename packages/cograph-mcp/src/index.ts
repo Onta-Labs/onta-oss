@@ -372,6 +372,15 @@ server.registerTool(
           "Optional active type to scope the turn to (needed for enrich / clean " +
             "/ dedup planning, e.g. 'Mentor').",
         ),
+      urls: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Optional explicit web page links to parse for this turn. When the " +
+            "message asks to fill in attributes on existing records, the agent " +
+            "extracts those values from these pages; otherwise it pulls a new " +
+            "set of records from them. Plain http(s) URLs.",
+        ),
       session_id: z
         .string()
         .optional()
@@ -388,12 +397,13 @@ server.registerTool(
         ),
     },
   },
-  async ({ message, kg_name, type_name, session_id, confirm_plan_id }) => {
+  async ({ message, kg_name, type_name, urls, session_id, confirm_plan_id }) => {
     try {
       const result = await client().agent({
         message,
         kgName: kg_name,
         typeName: type_name,
+        urls,
         sessionId: session_id,
         confirmPlanId: confirm_plan_id,
       });
