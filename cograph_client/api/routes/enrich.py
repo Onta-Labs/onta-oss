@@ -172,6 +172,10 @@ async def create_job(
         entity_uris=body.entity_uris,
         instructions=body.instructions,
         sources=body.sources,
+        # Explicit pages to extract attribute values FROM (the URL-targeted
+        # enrichment rail). Defaults to [] so a normal enrich is unchanged; a
+        # URL-aware adapter reads them via the executor's lookup context.
+        source_urls=body.target_urls or [],
     )
     await job_store.create(job)
 

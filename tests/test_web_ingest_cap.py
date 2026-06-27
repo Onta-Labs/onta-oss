@@ -60,7 +60,7 @@ class FakeProvider:
         self._rows = FULL_ROWS if rows is None else rows
         self.calls: list[tuple] = []
 
-    async def discover(self, query, *, sample, max_rows, hint_columns, context):
+    async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
         self.calls.append((query, sample, max_rows, tuple(hint_columns or ())))
         rows = self._rows[: (5 if sample else max_rows)]
         if hint_columns:

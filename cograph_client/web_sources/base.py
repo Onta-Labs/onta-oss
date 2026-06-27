@@ -62,6 +62,19 @@ class WebSourceProvider(Protocol):
     is treated as FREE. A paid provider opts in by setting ``is_paid = True``
     and/or a positive ``cost_per_call`` (the per-discovery-call USD cost). Either
     signal alone marks the provider paid.
+
+    OPTIONAL (URL-targeted extraction): two boolean attributes, both read
+    DEFENSIVELY elsewhere via ``getattr(provider, ..., False)`` so a provider that
+    declares neither stays a plain query-discovery provider:
+
+    - ``supports_urls: bool`` — the provider can extract records from explicit
+      URLs (passed to :meth:`discover` via the ``urls`` kwarg) instead of (or in
+      addition to) web-searching for ``query``. :func:`get_web_source` with
+      ``for_urls=True`` selects the first provider that sets this.
+    - ``url_only: bool`` — the provider ONLY does URL-targeted extraction and is
+      never used for plain query discovery. Such a provider is SKIPPED when
+      :func:`get_web_source` picks a default query provider, so registering it
+      alongside a query provider leaves the no-arg query default unaffected.
     """
 
     name: str
@@ -69,6 +82,10 @@ class WebSourceProvider(Protocol):
     # in :func:`provider_cost`.
     is_paid: bool
     cost_per_call: float
+    # Optional URL-extraction capability flags — declared for typing/docs; read
+    # defensively (default False) wherever a provider is selected/invoked.
+    supports_urls: bool
+    url_only: bool
 
     async def discover(
         self,
@@ -78,6 +95,7 @@ class WebSourceProvider(Protocol):
         max_rows: int,
         hint_columns: Optional[list[str]],
         context: dict,
+        urls: Optional[list[str]] = None,
     ) -> DiscoverResult:
         """Find records on the web matching ``query``.
 
@@ -87,6 +105,14 @@ class WebSourceProvider(Protocol):
         matches the committed one. ``max_rows`` caps the result; ``hint_columns``
         are optional desired fields the user named; ``context`` carries
         tenant/kg/type hints the provider may use.
+
+        ``urls`` is an OPTIONAL list of explicit pages to extract records FROM. When
+        non-empty, a URL-capable provider (``supports_urls=True``) EXTRACTS records
+        from those pages instead of web-searching for ``query`` (``query`` may
+        still carry "what to pull from these pages"). In URL mode the returned
+        :class:`DiscoverResult` shape is UNCHANGED, but ``sources`` is the input
+        URLs and ``provenance`` maps each row's natural key to the URL it came
+        from. A query-only provider may ignore ``urls``.
         """
         ...
 
@@ -100,17 +126,37 @@ def register_web_source(provider: WebSourceProvider) -> None:
     _providers[provider.name] = provider
 
 
-def get_web_source(name: Optional[str] = None) -> Optional[WebSourceProvider]:
-    """Return a provider by ``name``, or the sole registered provider when
-    ``name`` is omitted and exactly one is registered, else ``None``.
+def get_web_source(
+    name: Optional[str] = None, *, for_urls: bool = False
+) -> Optional[WebSourceProvider]:
+    """Return a provider by ``name``, or select one for the requested mode.
 
-    The no-name single-provider convenience lets the capability stay decoupled
-    from provider names: OSS registers none (returns ``None`` → graceful
-    degradation), a deployment registers exactly one paid provider and it is
-    selected automatically.
+    With ``name`` given, returns that provider (or ``None``). Otherwise selection
+    tolerates TWO registered providers — a plain query provider and a URL-only one:
+
+    - ``for_urls=True`` → the first provider that declares ``supports_urls`` (the
+      URL-targeted extractor), or ``None`` if none does.
+    - query mode (default) → the sole provider that is NOT ``url_only``; if no
+      such single provider exists it falls back to the lone registered provider
+      (the backward-compatible single-provider convenience).
+
+    The no-name conveniences keep the capability decoupled from provider names:
+    OSS registers none (returns ``None`` → graceful degradation), a deployment
+    registers exactly one query provider and it is selected automatically; adding
+    a ``url_only`` extractor alongside it does not disturb the query default.
     """
     if name is not None:
         return _providers.get(name)
+    candidates = list(_providers.values())
+    if for_urls:
+        for p in candidates:
+            if getattr(p, "supports_urls", False):
+                return p
+        return None
+    # Query mode: ignore url_only providers.
+    q = [p for p in candidates if not getattr(p, "url_only", False)]
+    if len(q) == 1:
+        return q[0]
     if len(_providers) == 1:
         return next(iter(_providers.values()))
     return None
