@@ -58,6 +58,7 @@ from cograph_client.agent.registry import (
     order_steps,
 )
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from cograph_client.web_sources.url_extract import extract_urls
 
 logger = structlog.stdlib.get_logger("cograph.agent.planner")
 
@@ -116,6 +117,11 @@ This CREATES new entities that don't exist in the graph yet — distinct from \
 attributes on entities that ALREADY exist).
 - "ambiguous": you genuinely cannot tell what is wanted and must ask ONE \
 clarifying question.
+
+When the user supplies explicit LINKS to parse (one or more http(s) URLs in the \
+message, or attached page links), route by what they want done with those pages: \
+filling in attributes on entities that ALREADY exist → "enrich"; bringing in a \
+NEW set of records from those pages → "discover".
 
 CRITICAL rules:
 - The user may ask for several things at once. "clean up the names and remove \
@@ -183,6 +189,36 @@ def _is_web_discovery_request(message: str) -> bool:
     if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
         return False
     return bool(_WEB_FETCH_RE.search(msg))
+
+
+# --- deterministic links-to-parse guard -------------------------------------- #
+# When the user hands us explicit URLs (in the message, or attached as structured
+# request context) the turn is an URL-targeted web extraction, NOT a plain
+# question — even though the payload often reads like one ("get the prices from
+# https://…"). We route it ourselves so it can't be mis-filed by the classifier:
+# an enrich-type verb (fill attributes on entities that ALREADY exist) → Rail B
+# ("enrich"); anything else (bring in a NEW set of records) → Rail A
+# ("discover"). The actual fetching lives behind the premium URL-targeted seam;
+# capabilities read the URLs themselves (ctx.urls or extract_urls(instruction)).
+_ENRICH_VERB_RE = re.compile(
+    r"\b(?:enrich|fill|update|complete|populate)\b", re.IGNORECASE
+)
+
+
+def _message_has_urls(message: str, ctx_urls: list[str] | None) -> bool:
+    """True when this turn carries explicit URLs — in the message or the ctx."""
+    return bool(ctx_urls) or bool(extract_urls(message))
+
+
+def _url_intent(message: str) -> str:
+    """Route a URL-bearing turn: 'enrich' on an enrich-type verb, else 'discover'.
+
+    Enrich-type verbs (enrich/fill/update/complete/populate) mean "fill in
+    attributes on entities that ALREADY exist" (Rail B). Everything else —
+    add/ingest/import/pull/parse/scrape/extract/collect a NEW set — is Rail A
+    (new entities), so it defaults to discovery.
+    """
+    return "enrich" if _ENRICH_VERB_RE.search(message or "") else "discover"
 
 
 def _format_history(history: list[Turn] | None) -> str:
@@ -392,6 +428,25 @@ async def _respond(
             "discover",
             *[i for i in intents if i not in ("discover", "question", "ambiguous")],
         ]
+
+    # Deterministic links-to-parse override: when the user hands us explicit URLs
+    # (in the message or as structured request context), this is a URL-targeted
+    # web extraction, not a plain question — route it by intent ourselves. An
+    # enrich-type verb fills attributes on existing entities ("enrich"); anything
+    # else brings in a NEW set of records ("discover"). Force the chosen intent to
+    # the front and drop question/ambiguous so it can't be hijacked by the
+    # question fast-path below. Only when the target capability is registered.
+    if _message_has_urls(message, getattr(ctx, "urls", None)):
+        url_intent = _url_intent(message)
+        if get_capability(_INTENT_TO_CAPABILITY[url_intent]) is not None:
+            intents = [
+                url_intent,
+                *[
+                    i
+                    for i in intents
+                    if i not in (url_intent, "question", "ambiguous")
+                ],
+            ]
 
     # A read-only question is terminal and does not compose with actions.
     if "question" in intents:

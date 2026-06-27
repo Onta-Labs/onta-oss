@@ -51,6 +51,11 @@ class AgentRequestContext(BaseModel):
     kg_name: str = ""
     type_name: str | None = None
     selection: dict | None = None
+    # Explicit URLs the user attached for this turn (the Explorer's "paste links"
+    # affordance). Optional + defaulted so existing clients are unaffected; the
+    # planner routes a URL-bearing turn and capabilities extract records from
+    # these pages via the premium URL-targeted seam.
+    urls: list[str] = []
 
 
 class Confirm(BaseModel):
@@ -77,6 +82,7 @@ def _build_ctx(
         neptune=client,
         type_name=body.context.type_name,
         selection=body.context.selection,
+        urls=body.context.urls,
         openrouter_key=settings.openrouter_api_key
         or os.environ.get("OPENROUTER_API_KEY", ""),
         anthropic_key=settings.anthropic_api_key,
