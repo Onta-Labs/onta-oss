@@ -507,3 +507,79 @@ async def test_planner_short_circuits_capability_clarify(monkeypatch):
     assert result["kind"] == "clarify"
     assert any(o.startswith("Use these:") for o in result["options"])
     reset_capabilities()
+
+
+async def test_execute_records_provider_log_on_success(monkeypatch):
+    """A completed discovery run records which web provider was used and how many
+    records it returned — surfaced in the run-detail view alongside platforms."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+
+    register_web_source(FakeProvider())
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert len(done.provider_logs) == 1
+    plog = done.provider_logs[0]
+    assert plog.provider == "fake"
+    assert plog.status == "ok"
+    assert plog.matches == len(FULL_ROWS)
+    assert done.error_summary == []
+
+
+async def test_execute_records_provider_error_when_discover_fails(monkeypatch):
+    """When the web provider itself fails during the full pull, the job is failed
+    AND the provider log + error summary attribute the failure to that provider."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    class FullFailProvider(FakeProvider):
+        async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
+            if not sample:  # plan-time sample works; the full pull explodes
+                raise RuntimeError("provider 503 unavailable")
+            return await super().discover(
+                query, sample=sample, max_rows=max_rows,
+                hint_columns=hint_columns, context=context, urls=urls,
+            )
+
+    register_web_source(FullFailProvider())
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    failed = await store.get(ack["job_id"])
+    assert failed.status == JobStatus.failed
+    assert len(failed.provider_logs) == 1
+    assert failed.provider_logs[0].provider == "fake"
+    assert failed.provider_logs[0].status == "error"
+    assert failed.error_summary and failed.error_summary[0].provider == "fake"
+    assert "503" in (failed.provider_logs[0].last_error or "")

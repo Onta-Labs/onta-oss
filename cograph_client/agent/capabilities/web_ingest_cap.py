@@ -50,7 +50,9 @@ from cograph_client.enrichment.models import (
     EnrichJob,
     EnrichmentTier,
     JobCategory,
+    JobErrorItem,
     JobStatus,
+    ProviderLog,
 )
 from cograph_client.graph.kg_writer import refresh_after_write
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
@@ -288,6 +290,11 @@ class WebIngestCapability:
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
                 await job_store.update(job)
+            # Per-provider activity log for "which provider we used" + its outcome,
+            # surfaced in the run-detail view alongside the platforms list. A
+            # single provider drives one discovery run, so this is one entry.
+            plog = ProviderLog(provider=provider.name)
+            discover_ok = False
             try:
                 full = await provider.discover(
                     query,
@@ -297,13 +304,25 @@ class WebIngestCapability:
                     context=pctx,
                     urls=urls or None,
                 )
+                discover_ok = True
                 rows = full.rows[:cap]
                 platforms = _platforms(getattr(full, "sources", None), provider)
-                # Surface the row count + platforms as soon as discovery returns,
-                # before the (slower) ingest — so a poll mid-run shows progress.
+                # The provider ran: record one attempt with the discovered-record
+                # count as its "matches", or a no_match when it came back empty.
+                plog.attempts = 1
+                plog.matches = len(rows)
+                if rows:
+                    plog.status = "ok"
+                else:
+                    plog.no_match = 1
+                    plog.status = "no_match"
+                # Surface the row count + platforms + provider log as soon as
+                # discovery returns, before the (slower) ingest — so a poll
+                # mid-run already shows progress and which provider was consulted.
                 if job is not None and job_store is not None:
                     job.progress.total = len(rows)
                     job.platforms = platforms
+                    job.provider_logs = [plog]
                     await job_store.update(job)
                 if not rows:
                     logger.info("web_ingest_no_rows", query=query)
@@ -353,7 +372,25 @@ class WebIngestCapability:
                 )
             except Exception as exc:  # noqa: BLE001 — background job self-contains errors
                 logger.error("web_ingest_failed", query=query, exc_info=True)
-                await _fail_job(job, job_store, str(exc))
+                msg = str(exc)
+                # Attribute the failure: a crash BEFORE discovery returned is the
+                # provider's; a later crash (ingest/refresh) is a job-level error
+                # while the provider log stays whatever it recorded as "ok".
+                if not discover_ok:
+                    plog.attempts = 1
+                    plog.errors = 1
+                    plog.status = "error"
+                    plog.last_error = msg[:300]
+                if job is not None:
+                    job.provider_logs = [plog]
+                    job.error_summary = [
+                        JobErrorItem(
+                            provider=provider.name if not discover_ok else None,
+                            kind="error",
+                            message=msg[:300],
+                        )
+                    ]
+                await _fail_job(job, job_store, msg)
 
         _spawn(_run())
         ack = {
