@@ -42,6 +42,7 @@ from cograph_client.enrichment.tiers import get_chain
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import insert_facts, refresh_after_write
 from cograph_client.graph.ontology_queries import (
+    PRIMITIVE_TYPES,
     XSD_STRING,
     get_attribute_range_query,
     upsert_attribute,
@@ -52,6 +53,8 @@ from cograph_client.graph.queries import (
     kg_graph_uri,
     tenant_graph_uri,
 )
+from cograph_client.resolver.models import ValidatedTriple
+from cograph_client.resolver.validator import validate_triple
 
 logger = structlog.stdlib.get_logger("cograph.enrichment")
 
@@ -164,7 +167,16 @@ def _is_int(v: str) -> bool:
 
     Mirrors agent/capabilities/web_ingest_cap.py's helper — kept as a small local
     copy rather than imported so the enrichment layer takes no dependency on the
-    agent layer."""
+    agent layer.
+
+    Tightened (P1 mis-declaration fix): we reject ``_`` digit-group separators that
+    Python's ``int()`` accepts (``int("1_000") == 1000``). A real numeric column
+    never uses underscores, and accepting them mis-DECLARES a plain string column
+    (e.g. an SKU like ``1_000``) as ``xsd:integer``."""
+    if not isinstance(v, str) or "_" in v:
+        # Underscores are a Python literal grouping ("1_000") never present in real
+        # data — treat them as "not an int" so the column isn't mis-typed.
+        return False
     try:
         int(v.replace(",", ""))
         return True
@@ -173,12 +185,29 @@ def _is_int(v: str) -> bool:
 
 
 def _is_float(v: str) -> bool:
-    """True if ``v`` parses as a float (tolerating thousands separators / sign)."""
+    """True if ``v`` parses as a float (tolerating thousands separators / sign).
+
+    Tightened (P1 mis-declaration fix): Python's ``float()`` happily parses the
+    special tokens ``inf``/``-inf``/``infinity``/``nan`` and underscore groupings,
+    none of which are real numeric data — accepting them mis-DECLARES a string
+    column as ``xsd:float``. We reject underscores and any value whose normalized
+    form is a non-finite special token. Ordinary decimals and scientific notation
+    of real numbers (``8.5``, ``1e10``) still parse True."""
+    if not isinstance(v, str) or "_" in v:
+        return False
+    # Reject the non-finite special tokens float() accepts (inf/-inf/infinity/nan).
+    cleaned = v.replace(",", "").strip().lstrip("+-").lower()
+    if cleaned in ("inf", "infinity", "nan"):
+        return False
     try:
-        float(v.replace(",", ""))
-        return True
+        f = float(v.replace(",", ""))
     except (ValueError, AttributeError):
         return False
+    # Belt-and-suspenders: any non-finite result (should already be caught above)
+    # is not a real float value.
+    import math
+
+    return math.isfinite(f)
 
 
 ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
@@ -1046,8 +1075,12 @@ class EnrichmentExecutor:
                 await self._jobs.update(job)
                 return
 
-            triples = self._select_triples_for_policy(all_rows, job.type_name, policy)
-            if triples:
+            # `applied_attr_values` is the source of truth for "was anything
+            # applied?" — the attributes (primary + provenance companions) that
+            # actually received a written value under `policy`, mapped to their
+            # values. Empty ⇒ nothing to declare or write.
+            applied_attr_values = self._applied_attribute_values(all_rows, policy)
+            if applied_attr_values:
                 # Declare schema, THEN write data. Enrichment must EXTEND THE
                 # ONTOLOGY (COG-112): before writing instance values, upsert the
                 # ontology declaration for every attribute that actually got a
@@ -1060,9 +1093,21 @@ class EnrichmentExecutor:
                 # downgrading an existing richer range. This runs in the apply
                 # branch only (skip/verify/overwrite); `stage` returned above
                 # before any write, so review-mode declares nothing.
-                applied_attr_values = self._applied_attribute_values(all_rows, policy)
-                await self._declare_attributes(
+                #
+                # `_declare_attributes` RETURNS the {attr -> resolved_datatype} map
+                # it just declared, so we type each INSTANCE value with the SAME
+                # datatype the attribute is DECLARED with (P1 fix): the stored
+                # literal (`"92"^^xsd:integer`) now matches the declared range,
+                # instead of a bare `xsd:string` literal the typed NL filters miss.
+                resolved_datatypes = await self._declare_attributes(
                     tenant_id, job.type_name, applied_attr_values
+                )
+                # Build the instance triples USING that resolved-datatype map:
+                # primitives route through validate_triple (typed literal, or a
+                # skip on a non-conforming value); relationships write the entity
+                # IRI directly; provenance companions stay plain string literals.
+                triples = self._select_triples_for_policy(
+                    all_rows, job.type_name, policy, resolved_datatypes
                 )
                 # Single shared write path — identical to CSV/JSON ingestion
                 # (graph/kg_writer.py): batched insert, then post-write
@@ -1257,14 +1302,35 @@ class EnrichmentExecutor:
         return False
 
     def _select_triples_for_policy(
-        self, rows: list[RowResult], type_name: str, policy: ConflictPolicy
+        self,
+        rows: list[RowResult],
+        type_name: str,
+        policy: ConflictPolicy,
+        resolved_datatypes: dict[str, str],
     ) -> list[tuple[str, str, str]]:
+        """Build the instance triples to write for ``policy``.
+
+        ``resolved_datatypes`` is the ``{attribute -> datatype}`` map
+        :meth:`_declare_attributes` just declared, so each primary value is TYPED
+        with the SAME datatype its attribute is DECLARED with (P1 fix). The primary
+        value goes through :meth:`_instance_triples_for_value` (relationship → IRI;
+        primitive → ``validate_triple`` typed literal, skipped if non-conforming);
+        the provenance companions (``*_source_url`` / ``*_provenance``) stay plain
+        string literals exactly as before."""
         triples: list[tuple[str, str, str]] = []
         for r in rows:
             if not self._row_is_applied(r, policy):
                 continue
-            p = _attr_uri(type_name, r.attribute)
-            triples.append((r.entity_uri, p, r.verdict.value))
+            # Default to ``string`` if a datatype somehow wasn't resolved for this
+            # attribute (defensive — _declare_attributes covers every applied attr).
+            datatype = resolved_datatypes.get(r.attribute, "string")
+            triples.extend(
+                self._instance_triples_for_value(
+                    r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
+                )
+            )
+            # Provenance companions are user-facing citations (URLs / free text) —
+            # always plain string literals, never typed.
             triples.extend(self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict))
         return triples
 
@@ -1337,7 +1403,7 @@ class EnrichmentExecutor:
 
     async def _declare_attributes(
         self, tenant_id: str, type_name: str, attr_values: dict[str, list[str]]
-    ) -> None:
+    ) -> dict[str, str]:
         """Upsert each enrichment-applied attribute's ontology declaration into the
         TENANT (ontology) graph so it becomes first-class schema. Reuses the same
         idempotent :func:`upsert_attribute` the ontology endpoint uses
@@ -1350,12 +1416,24 @@ class EnrichmentExecutor:
         consistent with existing behavior.
 
         ``attr_values`` maps each applied attribute name (primary + provenance
-        companions) to the string values written for it."""
+        companions) to the string values written for it.
+
+        Returns the ``{attribute_name -> resolved_datatype}`` map so the caller can
+        type each INSTANCE value with the SAME datatype the attribute is DECLARED
+        with (P1 data-correctness fix): a numeric value must be stored as a typed
+        literal (``"92"^^xsd:integer``) matching the declared integer range, not as
+        a bare ``xsd:string`` literal the typed NL filters then miss. Computing the
+        datatype ONCE here and reusing it for both the declaration and the value
+        typing is what keeps the declared range and the stored literal in lock-step.
+        The provenance companions resolve to ``string`` (URLs / free text) and are
+        intentionally never typed as anything richer."""
         onto_graph = tenant_graph_uri(tenant_id)
+        resolved: dict[str, str] = {}
         for name, values in attr_values.items():
             datatype = await self._resolve_declared_datatype(
                 onto_graph, type_name, name, values
             )
+            resolved[name] = datatype
             await self._neptune.update(
                 upsert_attribute(
                     onto_graph,
@@ -1365,6 +1443,56 @@ class EnrichmentExecutor:
                     datatype=datatype,
                 )
             )
+        return resolved
+
+    @staticmethod
+    def _instance_triples_for_value(
+        entity_uri: str,
+        type_name: str,
+        attribute: str,
+        value: str,
+        datatype: str,
+    ) -> list[tuple[str, str, str]]:
+        """Build the instance triple(s) for ONE applied attribute value, typed with
+        the SAME resolved ``datatype`` the attribute is DECLARED with (P1 fix).
+
+        Two branches mirror ingestion's value-typing path
+        (resolver/schema_resolver.py around 1393–1410):
+
+        - **relationship** — ``datatype`` is NOT a primitive (it is an entity-type
+          name, e.g. ``Manufacturer``), so the value is an entity IRI. Write it
+          directly as the object IRI; ``_escape_value`` wraps an ``http(s)`` object
+          as ``<…>``. We do NOT run ``validate_triple`` for relationships (the IRI
+          is already the right shape and isn't an XSD-typed literal).
+        - **primitive** (string/integer/float/datetime/boolean/uri) — route the
+          value through the SAME ``validate_triple`` ingestion uses so the stored
+          literal is properly TYPED (``"92^^…#integer"`` → a typed literal via
+          ``_escape_value``). A ``ValidatedTriple`` is written; a ``RejectedValue``
+          (value can't conform/coerce to the declared range) yields NO triple — we
+          skip it rather than pin a mismatched literal that the typed NL filters
+          would then miss (validate_triple already logs the rejection).
+
+        Returns ``[]`` when a primitive value is rejected; otherwise the single
+        instance triple."""
+        attr_uri_str = _attr_uri(type_name, attribute)
+        # Relationship: a non-primitive datatype is an entity-type name → the value
+        # is the target entity IRI. Write the edge directly (no validate_triple).
+        if datatype not in PRIMITIVE_TYPES:
+            return [(entity_uri, attr_uri_str, value)]
+        # Primitive: type the literal exactly as ingestion does. validate_triple
+        # returns a ValidatedTriple (typed object) on conform/coerce, else a
+        # RejectedValue (skip — never write a literal that mismatches the range).
+        validated = validate_triple(
+            entity_uri,
+            attr_uri_str,
+            value,
+            datatype,
+            entity_id=entity_uri,
+            attribute_name=attribute,
+        )
+        if isinstance(validated, ValidatedTriple):
+            return [(validated.subject, validated.predicate, validated.object)]
+        return []
 
     async def apply_decisions(
         self, job_id: str, decisions: list[ConflictReview]
@@ -1373,32 +1501,51 @@ class EnrichmentExecutor:
         if not job:
             raise KeyError(job_id)
         graph_uri = kg_graph_uri(job.tenant_id, job.kg_name)
-        triples: list[tuple[str, str, str]] = []
         applied = 0  # number of accepted facts (provenance triples don't count)
         # Insertion-ordered map of applied attribute name -> the string values
         # written for it, so declarations infer the right range (and never
         # downgrade an existing one), mirroring run()'s _applied_attribute_values.
         applied_attr_values: dict[str, list[str]] = {}
+        # The accepted decisions whose primary value we'll later type + write.
+        accepted: list[ConflictReview] = []
         for d in decisions:
             if d.decision != "accept":
                 continue
-            p = _attr_uri(job.type_name, d.attribute)
-            triples.append((d.entity_uri, p, d.proposed.value))
+            accepted.append(d)
             prov = self._provenance_triples(d.entity_uri, job.type_name, d.attribute, d.proposed)
-            triples.extend(prov)
             # Track the attribute names + values (primary + provenance companions
             # actually written) so we declare them in the ontology, mirroring run().
             applied_attr_values.setdefault(d.attribute, []).append(d.proposed.value)
             for _s, prov_pred, prov_val in prov:
                 applied_attr_values.setdefault(_local_name(prov_pred), []).append(prov_val)
             applied += 1
-        if triples:
+        if applied_attr_values:
             # Declare schema, THEN write data — accepted review decisions extend
             # the ontology too (COG-112), so the enriched attribute is first-class
-            # schema, mirroring the auto-apply path in run().
-            await self._declare_attributes(
+            # schema, mirroring the auto-apply path in run(). The returned
+            # {attr -> resolved_datatype} map types each INSTANCE value with the
+            # SAME datatype the attribute is DECLARED with (P1 fix): the stored
+            # literal matches the declared range instead of a bare xsd:string.
+            resolved_datatypes = await self._declare_attributes(
                 job.tenant_id, job.type_name, applied_attr_values
             )
+            # Build the instance triples USING that map: primitives route through
+            # validate_triple (typed literal, or a skip on a non-conforming value);
+            # relationships write the entity IRI directly; provenance companions
+            # stay plain string literals.
+            triples: list[tuple[str, str, str]] = []
+            for d in accepted:
+                datatype = resolved_datatypes.get(d.attribute, "string")
+                triples.extend(
+                    self._instance_triples_for_value(
+                        d.entity_uri, job.type_name, d.attribute, d.proposed.value, datatype
+                    )
+                )
+                triples.extend(
+                    self._provenance_triples(
+                        d.entity_uri, job.type_name, d.attribute, d.proposed
+                    )
+                )
             # Same shared write path as run() / ingestion (graph/kg_writer.py):
             # batched insert + post-write housekeeping (cache-invalidate,
             # re-embed the type, recompute stats).
