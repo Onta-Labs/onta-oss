@@ -148,17 +148,30 @@ class WebIngestCapability:
             return [_clarify_step(type_name, key_attr, suggested)]
 
         # Commit: use the confirmed set, or fall back to the suggested set if we
-        # already asked once (don't loop).
+        # already asked once (don't loop). These drive entity naming + the
+        # preview card — NOT the fetch breadth.
         attributes = confirmed if len(confirmed) > 1 else suggested
 
-        # 2. Cheap sample, constrained to the chosen attributes. In URL mode the
-        #    provider extracts the sample FROM the supplied pages.
+        # Decouple the PROVIDER FETCH from the user's minimal named attributes
+        # (Cause 1): every provider PROJECTS rows to hint_columns, so passing the
+        # confirmed minimal set (e.g. [name, score]) drops the rest of the table
+        # (provider, rating, latency, price, votes) before extraction can model
+        # the domain. Build a COMPREHENSIVE hint = key ∪ confirmed ∪ suggested
+        # (the suggested set is the LLM's richer guess at web-discoverable
+        # columns), so the provider returns a rich table the extractor can
+        # normalize into Model/Organization/Score/etc. The confirmed set still
+        # drives naming + preview above.
+        hint_columns = _dedupe([key_attr, *confirmed, *suggested])
+
+        # 2. Cheap sample fetched with the COMPREHENSIVE hint so the preview sees
+        #    the same rich table the commit will. In URL mode the provider
+        #    extracts the sample FROM the supplied pages.
         try:
             sample = await provider.discover(
                 query,
                 sample=True,
                 max_rows=_SAMPLE_ROWS,
-                hint_columns=attributes,
+                hint_columns=hint_columns,
                 context=_provider_context(ctx),
                 urls=urls or None,
             )
@@ -205,6 +218,10 @@ class WebIngestCapability:
                 "query": query,
                 "proposed_type": type_name,
                 "attributes": attributes,
+                # The COMPREHENSIVE fetch hint (key ∪ confirmed ∪ suggested) —
+                # persisted so the full fetch in execute() uses the SAME rich
+                # projection the sample/preview did (preview == commit).
+                "hint_columns": hint_columns,
                 "max_rows": cap,
                 "kg_name": ctx.kg_name,
                 "provider": provider.name,
@@ -248,6 +265,11 @@ class WebIngestCapability:
 
         query = p["query"]
         attributes = p.get("attributes") or []
+        # COMPREHENSIVE fetch hint persisted at plan time so the full pull uses the
+        # SAME rich projection the sample did (preview == commit). Older persisted
+        # steps predate this key — fall back to the named attributes so they still
+        # run (graceful degradation).
+        hint_columns = p.get("hint_columns") or attributes
         proposed_type = p.get("proposed_type") or "WebRecord"
         cap = int(p.get("max_rows") or _DEFAULT_PLAN_CAP)
         kg_name = p.get("kg_name") or ctx.kg_name
@@ -293,7 +315,7 @@ class WebIngestCapability:
                     query,
                     sample=False,
                     max_rows=cap,
-                    hint_columns=attributes,
+                    hint_columns=hint_columns,
                     context=pctx,
                     urls=urls or None,
                 )
@@ -384,7 +406,7 @@ STRICT JSON only (no markdown):
   "key_attribute": "<the natural identifier, usually 'name', snake_case>",
   "query": "<a clean, concise SEARCH SUBJECT — the thing to find on the web, with all conversational framing removed>",
   "confirmed_attributes": ["<attributes the user EXPLICITLY named; [] if they only named the entity>"],
-  "suggested_attributes": ["<3-6 useful, web-discoverable attributes for this entity, snake_case, excluding the key>"]
+  "suggested_attributes": ["<a COMPREHENSIVE set (6-12) of web-discoverable columns for this entity, snake_case, excluding the key>"]
 }
 RULES:
 - query: the SUBJECT to search for, NOT the user's literal sentence. Strip \
@@ -400,8 +422,15 @@ Keep it short and specific; do NOT include words like "ingest", "add", "list of"
 names and pricing" -> ["name","pricing"]; "a list of models" -> []. When the user \
 replies with a list (e.g. "Use these: name, provider, pricing" or "just the name") \
 treat THOSE as confirmed. snake_case; exclude nothing they named.
-- suggested_attributes: a sensible default set the user is likely to want, \
-snake_case, EXCLUDING the key. For Model: ["provider","open_source","context_length","input_price","modality"]."""
+- suggested_attributes: a COMPREHENSIVE set (aim for 6-12) of the columns this \
+entity is typically described by ON THE WEB — every web-discoverable property a \
+rich source table (leaderboard, catalog, listing) would carry, snake_case, \
+EXCLUDING the key. This is the FETCH hint: the provider projects rows to it, so a \
+thin list silently drops the rest of the table before extraction. Be generous and \
+include any recurring provider/vendor/organization column and any score/rating/ \
+price/ranking column (those become reified entities downstream). For Model: \
+["provider","organization","open_source","context_length","input_price",\
+"output_price","modality","latency","rating","score","votes","release_date"]."""
 
 
 async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:

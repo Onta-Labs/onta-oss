@@ -106,6 +106,33 @@ attributes and relationships added later; literals are dead ends. Only use liter
 attributes for truly atomic values: numbers, dates, booleans, short enums, or \
 identifiers.
 
+Reify measurements:
+When a value is a MEASUREMENT, METRIC, or other observation that can CHANGE OVER \
+TIME or carries PROVENANCE (a score, rating, price, ranking, benchmark result), \
+model it as its OWN entity (e.g. type_name "Score", "Rating", "Price") with \
+attributes "value" and, when available, "timestamp"/"as_of" — plus relationships \
+linking it to the thing measured and to the source/provider that produced it — \
+INSTEAD of a bare scalar attribute on the parent. A bare number on the parent \
+loses its history and its source the moment a newer reading arrives. Reify only \
+genuine observations; do NOT reify a fixed intrinsic property (a person's \
+birth_year, a product's sku).
+
+Lift providers / organizations:
+When records carry a recurring CATEGORICAL naming a provider, vendor, publisher, \
+manufacturer, organization, or brand (a value that repeats across records and \
+names a real-world actor), create an "Organization" entity per distinct value and \
+relate to it (e.g. provided_by / published_by / made_by) instead of leaving it a \
+string. Do NOT lift free-form descriptive text or a one-off label that names no \
+actor.
+
+Subtypes with a description:
+When a measurement or entity is a SPECIALIZED KIND of a more general type (e.g. a \
+"Humanness Index" is a kind of Score; a "Condo" is a kind of Property), emit it \
+as a subtype via parent_chain AND set subtype_description to a brief sentence \
+explaining what it is / what it measures. The description becomes the new type's \
+definition in the ontology. Set subtype_description ONLY for a new specialized \
+type you are minting — leave it null otherwise.
+
 Respond with valid JSON only. No markdown."""
 
 EXTRACTION_USER_TEMPLATE = """\
@@ -128,6 +155,7 @@ Return JSON:
       "parent_type": "<existing type name if this is a subtype, else null>",
       "parent_chain": ["<immediate parent>", "<grandparent>", "..."],
       "also_types": ["<independent co-type, rare>"],
+      "subtype_description": "<brief definition when minting a NEW specialized subtype, else null>",
       "attributes": [
         {{"name": "attr_name", "value": "attr_value", "datatype": "string"}}
       ]
@@ -1106,7 +1134,7 @@ class SchemaResolver:
                 logger.info("type_same_as_verified", proposed=entity.type_name, resolved=match.resolved)
                 return match.resolved
             elif match.verdict == MatchVerdict.SUBTYPE:
-                sparql = insert_type(graph_uri, entity.type_name, "")
+                sparql = insert_type(graph_uri, entity.type_name, entity.subtype_description or "")
                 await self._neptune.update(sparql)
                 sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
                 await self._neptune.update(sparql)
@@ -1128,7 +1156,7 @@ class SchemaResolver:
                 logger.info("type_same_as_trusted", proposed=entity.type_name, resolved=entity.same_as)
                 return entity.same_as
             else:
-                sparql = insert_type(graph_uri, entity.type_name, "")
+                sparql = insert_type(graph_uri, entity.type_name, entity.subtype_description or "")
                 await self._neptune.update(sparql)
                 logger.info("type_same_as_rejected", proposed=entity.type_name, claimed=entity.same_as)
                 result.types_created.append(entity.type_name)
@@ -1141,7 +1169,7 @@ class SchemaResolver:
                 logger.info("type_matched_existing", proposed=entity.type_name, resolved=match.resolved)
                 return match.resolved
             elif match.verdict == MatchVerdict.SUBTYPE:
-                sparql = insert_type(graph_uri, entity.type_name, "")
+                sparql = insert_type(graph_uri, entity.type_name, entity.subtype_description or "")
                 await self._neptune.update(sparql)
                 sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
                 await self._neptune.update(sparql)
@@ -1156,7 +1184,7 @@ class SchemaResolver:
                 )
                 return entity.type_name
             elif match.verdict == MatchVerdict.FLAGGED:
-                sparql = insert_type(graph_uri, entity.type_name, "")
+                sparql = insert_type(graph_uri, entity.type_name, entity.subtype_description or "")
                 await self._neptune.update(sparql)
                 result.types_created.append(entity.type_name)
                 existing_types[entity.type_name] = ""
@@ -1166,7 +1194,7 @@ class SchemaResolver:
                 result.flagged_types.append(entity.type_name)
                 return entity.type_name
             else:
-                sparql = insert_type(graph_uri, entity.type_name, "")
+                sparql = insert_type(graph_uri, entity.type_name, entity.subtype_description or "")
                 await self._neptune.update(sparql)
                 result.types_created.append(entity.type_name)
                 existing_types[entity.type_name] = ""

@@ -167,11 +167,14 @@ async def test_confirmed_attributes_builds_discovery_plan(monkeypatch):
     assert step.action == "discover_ingest"
 
     # Sample fetched with the CLEAN search subject (from spec.query) + the
-    # confirmed attributes as hint_columns — NOT the raw conversational sentence.
+    # COMPREHENSIVE hint (key ∪ confirmed ∪ suggested) as hint_columns — NOT the
+    # raw conversational sentence, and NOT the confirmed minimal list (Cause 1:
+    # the provider projects to hint_columns, so a thin hint starves the fetch).
     q, sample, _max, cols = provider.calls[0]
     assert sample is True
     assert q == "OpenRouter models"
-    assert set(cols) == {"name", "context_length"}
+    # key=name, confirmed=[context_length], suggested=[provider, context_length].
+    assert set(cols) == {"name", "context_length", "provider"}
     # The card text uses the clean subject, never echoes the raw question.
     assert "OpenRouter models" in step.rationale
     assert "can we ingest" not in step.rationale
@@ -183,7 +186,10 @@ async def test_confirmed_attributes_builds_discovery_plan(monkeypatch):
     # No more flat mapping persisted; proposed_type stays as a useful label.
     assert "mapping" not in step.params
     assert step.params["proposed_type"] == "OpenRouterModel"
+    # attributes = the confirmed naming set; hint_columns = the comprehensive
+    # fetch union, persisted so execute() fetches the same rich projection.
     assert step.params["attributes"] == ["name", "context_length"]
+    assert set(step.params["hint_columns"]) == {"name", "context_length", "provider"}
 
 
 async def test_preview_surfaces_multiple_types_and_relationships(monkeypatch):
@@ -317,15 +323,18 @@ async def test_execute_runs_full_discover_and_ingests(monkeypatch):
 
     await spawned["task"]
 
-    # Full pull (sample=False) with the confirmed attributes, committed through
-    # the multi-type ingest path (content_type="json").
+    # Full pull (sample=False) with the COMPREHENSIVE hint (key ∪ confirmed ∪
+    # suggested) — the SAME rich projection the sample used (preview == commit),
+    # NOT the confirmed minimal list. Committed through the multi-type ingest
+    # path (content_type="json").
     assert provider.calls[-1][1] is False
-    assert set(provider.calls[-1][3]) == {"name", "context_length"}
+    assert set(provider.calls[-1][3]) == {"name", "context_length", "provider"}
     assert captured["content_type"] == "json"
-    # The JSON round-trips back to the rows the provider returned.
+    # The JSON round-trips back to the rows the provider returned (projected to
+    # the comprehensive hint).
     rows_back = json.loads(captured["content"])
     assert len(rows_back) == len(FULL_ROWS)
-    assert set(rows_back[0].keys()) == {"name", "context_length"}
+    assert set(rows_back[0].keys()) == {"name", "context_length", "provider"}
     # The clean search subject (spec.query) is what the provider + source use.
     assert captured["source"] == "web:fake:OpenRouter models"
 
