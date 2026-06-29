@@ -306,9 +306,10 @@ class WebIngestCapability:
                 rows = full.rows[:cap]
                 # Per-record source-URL provenance (ONTA-151): stamp each row with
                 # the page it was drawn from (DiscoverResult.provenance) BEFORE
-                # serialization, so every created entity is traceable to its origin
-                # — committed through the SAME ingest → insert_facts path as the
-                # rest of the row's data (no bespoke write path).
+                # serialization, so it rides through the SAME extract → ingest →
+                # insert_facts path as the rest of the row's data (no bespoke write
+                # path) and lands as a `source_url` citation on the entity. See
+                # SOURCE_URL_ATTR on the best-effort (LLM-carried) reliability.
                 source_urls = _attach_source_urls(
                     rows, getattr(full, "provenance", None) or {}
                 )
@@ -653,17 +654,27 @@ def _estimate_cost(
 
 # --- per-record source-URL provenance (ONTA-151) ----------------------------- #
 
-# Attribute minted on each discovered entity so a data point is traceable to the
-# exact page it was drawn from — the discovery counterpart to enrichment's
-# `<attr>_source_url` citations (enrichment/executor.py `_provenance_triples`) and
-# the user-facing source the Explorer renders (any URL-valued attribute renders as
-# a clickable link in the records table). Threaded as an ordinary row field so it
-# flows through the SAME ingest → insert_facts write path as every other attribute
-# (write-path convergence) — no bespoke writer, no separate provenance graph. The
-# run-level provenance the resolver already writes (`onto/source` =
-# web:<provider>:<query>, `onto/ingested_at`, the batch id) is unchanged; this
-# adds the missing PER-RECORD citation so "this exact data point came from this
-# exact page" is answerable, not just "this came from a discovery for query X".
+# Attribute minted on each discovered entity citing the exact page it was drawn
+# from — the discovery counterpart to enrichment's `<attr>_source_url` citations
+# and the user-facing source the Explorer renders (any URL-valued attribute is a
+# clickable link in the records table). The run-level provenance the resolver
+# already writes (`onto/source` = web:<provider>:<query>, `onto/ingested_at`, the
+# batch id) is unchanged; this adds the missing PER-RECORD citation so "this exact
+# data point came from this exact page" is answerable, not just "this came from a
+# discovery for query X".
+#
+# Threaded as an ordinary row field so it flows through the SAME ingest →
+# insert_facts write path as every other attribute (write-path convergence) — no
+# bespoke writer, no separate provenance graph. NOTE on the reliability contract:
+# unlike enrichment, which writes `<attr>_source_url` DETERMINISTICALLY onto the
+# entity URI (no LLM), discovery carries `source_url` as a row field THROUGH the
+# multi-type LLM extractor. So it is best-effort: exactly as reliable as the row's
+# OTHER discovered attributes (name, pricing, …) — the same extractor decides them
+# all — but not a hard guarantee, and on a multi-type row the extractor chooses
+# which entity it lands on. `uri` is a declared attribute datatype, so a field
+# named `source_url` is overwhelmingly kept as a literal at temperature 0. If
+# GUARANTEED per-record citations are ever required, stamp this deterministically
+# post-extraction keyed by entity id (a follow-up; would touch the shared resolver).
 SOURCE_URL_ATTR = "source_url"
 
 
