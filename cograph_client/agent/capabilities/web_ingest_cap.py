@@ -385,8 +385,12 @@ class WebIngestCapability:
                     job.provider_logs = [plog]
                     job.error_summary = [
                         JobErrorItem(
+                            # A crash before discovery returned is the provider's
+                            # ("error"); a later crash (ingest/refresh) is a
+                            # job-level failure ("job"), matching the enrichment
+                            # executor's fatal-path classification.
                             provider=provider.name if not discover_ok else None,
-                            kind="error",
+                            kind="error" if not discover_ok else "job",
                             message=msg[:300],
                         )
                     ]

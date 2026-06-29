@@ -583,3 +583,42 @@ async def test_execute_records_provider_error_when_discover_fails(monkeypatch):
     assert failed.provider_logs[0].status == "error"
     assert failed.error_summary and failed.error_summary[0].provider == "fake"
     assert "503" in (failed.provider_logs[0].last_error or "")
+
+
+async def test_execute_does_not_blame_provider_when_ingest_fails(monkeypatch):
+    """A failure AFTER the provider returned (ingest/refresh) is a job-level
+    error: the provider log stays 'ok' (not mis-blamed) and the error-summary
+    entry is kind='job' with no provider attribution."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    register_web_source(FakeProvider())  # discover() succeeds
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def boom(self, *a, **k):  # ingest explodes after a clean discover
+        raise RuntimeError("ingest exploded")
+
+    monkeypatch.setattr(SchemaResolver, "ingest", boom)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    failed = await store.get(ack["job_id"])
+    assert failed.status == JobStatus.failed
+    # Provider ran fine — its log is NOT flipped to error.
+    assert failed.provider_logs[0].provider == "fake"
+    assert failed.provider_logs[0].status == "ok"
+    # The failure is attributed at job level, not to the provider.
+    assert failed.error_summary and failed.error_summary[0].kind == "job"
+    assert failed.error_summary[0].provider is None
+    assert "ingest exploded" in (failed.error or "")
