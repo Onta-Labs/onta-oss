@@ -43,6 +43,58 @@ logger = structlog.stdlib.get_logger("cograph.graph.kg_writer")
 
 Triple = tuple[str, str, str]
 
+# KG-registration triple shape — the `<kg_uri> <onto/kg_name> "name"` record in
+# the tenant metadata graph that ``list_kgs`` reads to populate the Explorer
+# dropdown. Kept here (not imported from the API route) so this module stays in
+# the ``graph/`` layer with no dependency on ``api.routes``. Must match the
+# shape ``api/routes/knowledge_graphs.py`` writes/reads (``OMNIX_ONTO/kg_name``,
+# ``OMNIX_ONTO/kg_triple_count``, and the ``_kg_meta_uri`` URI).
+_OMNIX_ONTO = "https://cograph.tech/onto"
+_KG_NAME_PRED = f"{_OMNIX_ONTO}/kg_name"
+_KG_TRIPLE_COUNT_PRED = f"{_OMNIX_ONTO}/kg_triple_count"
+
+
+def _kg_meta_uri(tenant_id: str, kg_name: str) -> str:
+    return f"https://cograph.tech/kgs/{tenant_id}/{kg_name}"
+
+
+async def ensure_kg_registered(neptune, tenant_id: str, kg_name: str) -> None:
+    """Idempotently register a KG in the tenant metadata graph.
+
+    Writes the ``<kg_uri> <onto/kg_name> "name"`` record (plus an initial
+    ``kg_triple_count 0``) that ``list_kgs`` reads to populate the Explorer
+    dropdown — but ONLY if the KG is not already registered. Historically this
+    record was written in exactly one place (``create_kg``, the Explorer's "New
+    KG" button), so any non-UI writer (agent web-discovery, CLI, MCP) that
+    ingested into a brand-new ``kg_name`` left the KG invisible. Folding
+    registration into the shared write path fixes that for every writer at once.
+
+    Idempotent + non-clobbering by construction: a single
+    ``INSERT … WHERE { FILTER NOT EXISTS { ?kg <kg_name> ?n } }`` so it (a) never
+    duplicates the registration triples and (b) never overwrites an existing
+    registration or its ``kg_description`` (the whole INSERT is skipped when any
+    ``kg_name`` already exists for this KG URI). Best-effort: a failure is logged,
+    never raised, matching the rest of the post-write housekeeping.
+    """
+    if not kg_name:
+        return
+    base = tenant_graph_uri(tenant_id)
+    kg_uri = _kg_meta_uri(tenant_id, kg_name)
+    sparql = (
+        f"WITH <{base}>\n"
+        f"INSERT {{\n"
+        f'  <{kg_uri}> <{_KG_NAME_PRED}> "{kg_name}" .\n'
+        f"  <{kg_uri}> <{_KG_TRIPLE_COUNT_PRED}> 0 .\n"
+        f"}}\n"
+        f"WHERE {{\n"
+        f"  FILTER NOT EXISTS {{ <{kg_uri}> <{_KG_NAME_PRED}> ?n }}\n"
+        f"}}"
+    )
+    try:
+        await neptune.update(sparql)
+    except Exception:  # noqa: BLE001 — never fail a write on a registration hiccup
+        logger.warning("ensure_kg_registered_failed", kg_name=kg_name, exc_info=True)
+
 
 async def insert_facts(
     neptune,
@@ -85,7 +137,7 @@ async def refresh_after_write(
 ) -> None:
     """Post-write housekeeping shared by ingest + enrichment.
 
-    Runs the three refreshes a write can invalidate, in order:
+    Runs the refreshes a write can invalidate, in order:
 
     1. **Invalidate the NL-planning ontology cache** for the tenant graph, so a
        newly-declared type/attribute is visible to query planning immediately
@@ -94,7 +146,11 @@ async def refresh_after_write(
        changed: new types, or types that gained an attribute) so semantic
        retrieval never serves a stale schema embedding. No-op when the embedding
        service is unconfigured.
-    3. **Schedule the Explorer type-stats recompute** for the KG (coverage %,
+    3. **Register the KG** in the tenant metadata graph (idempotently) when
+       ``kg_name`` is given, so a non-UI writer (web-discovery, CLI, MCP) that
+       ingested into a brand-new KG still shows up in the Explorer dropdown —
+       not just KGs created via the "New KG" button (ONTA-153).
+    4. **Schedule the Explorer type-stats recompute** for the KG (coverage %,
        counts) when ``kg_name`` is given and ``recompute_stats`` is set.
 
     Best-effort: embedding and stats failures are logged and swallowed (a write
@@ -124,7 +180,12 @@ async def refresh_after_write(
         except Exception:  # noqa: BLE001 — non-blocking, mirrors the ingest routes
             logger.warning("embed_types_failed", types=types, exc_info=True)
 
-    # 3. Explorer type-stats recompute (background, best-effort).
+    # 3. Register the KG in the tenant metadata graph (idempotent, best-effort)
+    #    so non-UI writers don't leave it invisible to list_kgs (ONTA-153).
+    if kg_name:
+        await ensure_kg_registered(neptune, tenant_id, kg_name)
+
+    # 4. Explorer type-stats recompute (background, best-effort).
     if recompute_stats and kg_name:
         try:
             from cograph_client.api.routes.explore import schedule_recompute

@@ -264,19 +264,34 @@ async def create_kg(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    """Create a new knowledge graph for a tenant."""
-    base = tenant_graph_uri(tenant.tenant_id)
-    kg_uri = f"https://cograph.tech/kgs/{tenant.tenant_id}/{body.name}"
+    """Create a new knowledge graph for a tenant.
 
-    sparql = (
-        f"INSERT DATA {{\n"
-        f"  GRAPH <{base}> {{\n"
-        f'    <{kg_uri}> <{OMNIX_ONTO}/kg_name> "{body.name}" .\n'
-        f"    <{kg_uri}> <{KG_TRIPLE_COUNT}> 0 .\n"
-    )
+    Idempotent-safe: guarded with ``FILTER NOT EXISTS`` so calling it twice
+    never duplicates the registration triples and never clobbers an existing
+    registration (or its ``kg_description``). This is the same registration the
+    shared write path performs via ``ensure_kg_registered`` (ONTA-153) — here we
+    additionally write the description, which only the explicit "New KG" flow
+    supplies.
+    """
+    base = tenant_graph_uri(tenant.tenant_id)
+    kg_uri = _kg_meta_uri(tenant.tenant_id, body.name)
+
+    insert_lines = [
+        f'    <{kg_uri}> <{OMNIX_ONTO}/kg_name> "{body.name}" .',
+        f"    <{kg_uri}> <{KG_TRIPLE_COUNT}> 0 .",
+    ]
     if body.description:
-        sparql += f'    <{kg_uri}> <{OMNIX_ONTO}/kg_description> "{body.description}" .\n'
-    sparql += f"  }}\n}}"
+        insert_lines.append(
+            f'    <{kg_uri}> <{OMNIX_ONTO}/kg_description> "{body.description}" .'
+        )
+    insert_block = "\n".join(insert_lines)
+    sparql = (
+        f"WITH <{base}>\n"
+        f"INSERT {{\n{insert_block}\n}}\n"
+        f"WHERE {{\n"
+        f"  FILTER NOT EXISTS {{ <{kg_uri}> <{OMNIX_ONTO}/kg_name> ?n }}\n"
+        f"}}"
+    )
 
     await client.update(sparql)
     return KGInfo(name=body.name, description=body.description, triple_count=0)
