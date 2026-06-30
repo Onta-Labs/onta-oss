@@ -2,9 +2,14 @@
 
 All tests run fully offline: the model call is injected via the ``extractor``
 argument or exercises the deterministic default extractor. No network/LLM.
+
+``extract_value`` is async (ONTA-160), so the extractor protocol is async and
+the end-to-end tests ``await`` it.
 """
 
 from __future__ import annotations
+
+import pytest
 
 from cograph_client.enrichment.extraction import (
     CALIBRATION_METHOD,
@@ -21,12 +26,13 @@ from cograph_client.enrichment.models import Verdict
 # ---------------------------------------------------------------------------
 
 
-def test_successful_extraction_populates_fields():
-    def fake_extractor(raw_text, attribute, entity_label):
+@pytest.mark.asyncio
+async def test_successful_extraction_populates_fields():
+    async def fake_extractor(raw_text, attribute, entity_label):
         # Honours the strict-JSON contract shape.
         return {"value": "Robert Bosch GmbH", "confidence": 0.8}
 
-    v = extract_value(
+    v = await extract_value(
         "Bosch is a German engineering company...",
         "manufacturer",
         "Bosch",
@@ -52,28 +58,30 @@ def test_successful_extraction_populates_fields():
 # ---------------------------------------------------------------------------
 
 
-def test_blank_input_returns_none():
-    assert extract_value("", "manufacturer", "Bosch", source="exa") is None
-    assert extract_value("   \n  ", "manufacturer", "Bosch", source="exa") is None
+@pytest.mark.asyncio
+async def test_blank_input_returns_none():
+    assert await extract_value("", "manufacturer", "Bosch", source="exa") is None
+    assert await extract_value("   \n  ", "manufacturer", "Bosch", source="exa") is None
 
 
-def test_no_plausible_value_returns_none():
+@pytest.mark.asyncio
+async def test_no_plausible_value_returns_none():
     # Extractor yields a nullish value → nothing extractable.
-    def null_extractor(raw_text, attribute, entity_label):
+    async def null_extractor(raw_text, attribute, entity_label):
         return {"value": None, "confidence": 0.0}
 
     assert (
-        extract_value(
+        await extract_value(
             "some text", "manufacturer", "Bosch", source="exa", extractor=null_extractor
         )
         is None
     )
 
-    def empty_extractor(raw_text, attribute, entity_label):
+    async def empty_extractor(raw_text, attribute, entity_label):
         return None
 
     assert (
-        extract_value(
+        await extract_value(
             "some text", "manufacturer", "Bosch", source="exa", extractor=empty_extractor
         )
         is None
@@ -85,13 +93,14 @@ def test_no_plausible_value_returns_none():
 # ---------------------------------------------------------------------------
 
 
-def test_raw_confidence_passthrough_and_calibration_differs():
-    def fake_extractor(raw_text, attribute, entity_label):
+@pytest.mark.asyncio
+async def test_raw_confidence_passthrough_and_calibration_differs():
+    async def fake_extractor(raw_text, attribute, entity_label):
         # No model confidence → calibration falls back to raw_confidence basis.
         return {"value": "Germany"}
 
     raw = 0.9
-    v = extract_value(
+    v = await extract_value(
         "Germany",
         "country",
         "Bosch",
@@ -141,9 +150,16 @@ def test_default_extractor_blank_returns_none():
     assert default_extractor("   ", "x", "y") is None
 
 
-def test_extract_value_end_to_end_with_default_extractor():
-    # No injected extractor → uses the deterministic default, fully offline.
-    v = extract_value(
+@pytest.mark.asyncio
+async def test_extract_value_end_to_end_with_default_extractor(monkeypatch):
+    # No injected extractor → the factory resolves the default. Force the
+    # keyless branch so the deterministic offline extractor is used (no network)
+    # regardless of the ambient OPENROUTER_API_KEY.
+    import cograph_client.enrichment.llm_extractor as llm_extractor
+
+    monkeypatch.setattr(llm_extractor, "_openrouter_key", lambda: "")
+
+    v = await extract_value(
         '{"value": "Germany", "confidence": 0.85}',
         "country",
         "Bosch",
