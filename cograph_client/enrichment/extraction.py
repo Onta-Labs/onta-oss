@@ -53,15 +53,17 @@ _DEFAULT_RAW = 0.7  # assumed model confidence when none is provided
 
 
 class ExtractorFn(Protocol):
-    """A single-pass extractor honouring the strict-JSON contract.
+    """A single-pass async extractor honouring the strict-JSON contract.
 
     Implementations receive the raw text plus the attribute/entity context and
     MUST return a ``dict`` shaped like ``{"value": ..., "confidence": ...}``
     (or ``None`` to signal "nothing extractable"). Production implementations
-    wrap an LLM call; the OSS default is deterministic.
+    wrap an LLM call (async, network-bound); the OSS default wraps the
+    deterministic :func:`default_extractor`. The protocol is async so the
+    real LLM path can ``await`` its HTTP call without blocking the event loop.
     """
 
-    def __call__(
+    async def __call__(
         self, raw_text: str, attribute: str, entity_label: str
     ) -> Optional[dict]: ...
 
@@ -142,7 +144,7 @@ def _try_parse_json(text: str) -> Optional[dict]:
     return parsed if isinstance(parsed, dict) else None
 
 
-def extract_value(
+async def extract_value(
     raw_text: str,
     attribute: str,
     entity_label: str,
@@ -165,8 +167,10 @@ def extract_value(
         raw_confidence: Optional untrusted upstream signal (e.g. neural
             relevance). Passed through verbatim onto the Verdict; the model's
             own confidence is preferred for calibration when present.
-        extractor: Optional injected extractor (defaults to the deterministic
-            offline :func:`default_extractor`).
+        extractor: Optional injected async extractor. Defaults to the
+            production factory :func:`get_default_extractor`, which returns the
+            LLM-backed extractor when an OpenRouter key is configured and the
+            deterministic offline extractor otherwise.
 
     Returns:
         A :class:`Verdict` with ``extraction_method = "single_pass_json"`` and a
@@ -176,8 +180,12 @@ def extract_value(
     if not raw_text or not raw_text.strip():
         return None
 
-    fn = extractor or default_extractor
-    result = fn(raw_text, attribute, entity_label)
+    # Imported lazily to avoid a module-import cycle (llm_extractor imports
+    # from this module).
+    from cograph_client.enrichment.llm_extractor import get_default_extractor
+
+    fn = extractor or get_default_extractor()
+    result = await fn(raw_text, attribute, entity_label)
     if not result:
         return None
 
