@@ -20,6 +20,7 @@ import pytest
 from cograph_client.enrichment.extraction import (
     coerce_url_attribute_value,
     is_url_attribute,
+    is_website_attribute,
     looks_like_url,
     normalize_url,
 )
@@ -123,3 +124,60 @@ def test_returns_same_object_when_nothing_to_change():
     original = _v("https://x.ai", "https://x.ai")
     out = coerce_url_attribute_value("website", original)
     assert out is original  # no needless copy when already normalized
+
+
+# --- review hardening (PR #82 P2s) -----------------------------------------
+
+@pytest.mark.parametrize("text", ["file.tar.gz", "report.docx", "archive.zip",
+                                  "logo.png", "data.json", "build.css"])
+def test_file_extension_tokens_are_not_urls(text):
+    """A dotted filename must NOT be treated as a URL (else junk gets kept and
+    https-prefixed instead of recovering the real citation)."""
+    assert not looks_like_url(text)
+
+
+def test_filename_value_recovers_source_url_not_kept_as_url():
+    """Regression: 'file.tar.gz' lifted from page chrome must fall back to the
+    real site, not become 'https://file.tar.gz'."""
+    v = coerce_url_attribute_value("website", _v("file.tar.gz", "https://real.io/"))
+    assert v.value == "https://real.io"
+
+
+def test_idn_unicode_domain_is_a_url_and_preserved():
+    """Raw-unicode (IDN) website values must be recognized and kept, not dropped
+    and replaced by the provenance page."""
+    assert looks_like_url("münchen.de")
+    v = coerce_url_attribute_value("website", _v("münchen.de", "https://provenance.org/page"))
+    assert v.value == "https://münchen.de"
+
+
+def test_normalize_url_preserves_trailing_slash_inside_query():
+    """A trailing slash inside a ?query/#fragment is significant — never strip
+    it; only a plain path-terminating slash is trimmed."""
+    assert normalize_url("https://x.ai/search?q=a/") == "https://x.ai/search?q=a/"
+    assert normalize_url("https://x.ai/p#frag/") == "https://x.ai/p#frag/"
+    assert normalize_url("https://x.ai/path/") == "https://x.ai/path"  # plain path slash trimmed
+
+
+def test_non_website_url_attribute_does_not_inherit_provenance():
+    """image_url / redirect_uri must NOT fall back to source_url (the citation
+    page is not the image/redirect). Junk value is left as-is instead."""
+    for attr in ("image_url", "redirect_uri", "logo_uri"):
+        v = coerce_url_attribute_value(attr, _v("Logo", "https://page.com/about"))
+        assert v.value == "Logo", attr
+
+
+def test_non_website_url_attribute_still_normalizes_a_real_url_value():
+    v = coerce_url_attribute_value("image_url", _v("cdn.example.com/a.png", None))
+    assert v.value == "https://cdn.example.com/a.png"
+
+
+@pytest.mark.parametrize("attr", ["website", "homepage", "url", "site", "company_website"])
+def test_is_website_attribute_positive(attr):
+    assert is_website_attribute(attr)
+
+
+@pytest.mark.parametrize("attr", ["image_url", "redirect_uri", "logo_uri",
+                                  "source_url", "founded_year", "name"])
+def test_is_website_attribute_negative(attr):
+    assert not is_website_attribute(attr)
