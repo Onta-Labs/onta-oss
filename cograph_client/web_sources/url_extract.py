@@ -134,10 +134,17 @@ def _promote_bare_host(host: str, path: str) -> str | None:
 
 
 def _split_host(url: str) -> tuple[str, str]:
-    """Return ``(host_lc, path)`` for ``url`` (scheme + any userinfo stripped)."""
-    rest = url.split("://", 1)[-1].split("@", 1)[-1]
+    """Return ``(host_lc, path)`` for ``url`` (scheme + any userinfo stripped).
+
+    The userinfo strip is confined to the **authority** component: split off the
+    path/query/fragment FIRST, then drop a ``user:pw@`` prefix from the authority
+    only. Splitting on ``@`` across the whole URL would mis-key a path that
+    contains ``@`` (e.g. ``/@scope/pkg``), wrongly collapsing distinct hosts.
+    """
+    rest = url.split("://", 1)[-1]
     parts = re.split(r"([/?#])", rest, maxsplit=1)
-    host = parts[0].lower()
+    authority = parts[0].split("@", 1)[-1]  # userinfo strip confined to authority
+    host = authority.lower()
     path = "".join(parts[1:]) if len(parts) > 1 else ""
     return host, path
 

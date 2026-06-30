@@ -5,7 +5,7 @@ capabilities and planner act on, so it is the single place URL recognition is
 defined. ReDoS-safe by construction (one character class, single ``+``).
 """
 
-from cograph_client.web_sources.url_extract import extract_urls
+from cograph_client.web_sources.url_extract import _split_host, extract_urls
 
 
 def test_extracts_http_and_https_in_order_deduped():
@@ -195,3 +195,29 @@ def test_bare_host_lowercased_path_preserved():
 def test_cctld_extension_conflict_dropped_by_design():
     assert extract_urls("clone rust-lang.rs for the source") == []
     assert extract_urls("run deploy.sh and main.go") == []
+
+
+# P1-3: userinfo strip must be confined to the authority — an "@" in the PATH
+# must not become the dedup key and collapse two different hosts.
+def test_split_host_at_in_path_does_not_become_host():
+    assert _split_host("https://host.com/path@thing") == ("host.com", "/path@thing")
+    # A real userinfo prefix is still stripped from the authority only.
+    assert _split_host("https://user:pw@host.com/p") == ("host.com", "/p")
+
+
+def test_different_hosts_with_at_in_path_both_survive():
+    # Scoped-package style paths share the "@scope/pkg" segment but differ by host.
+    assert extract_urls(
+        "docs at https://npm.im/@scope/pkg and https://other.com/@scope/pkg"
+    ) == ["https://npm.im/@scope/pkg", "https://other.com/@scope/pkg"]
+    assert extract_urls("https://a.com/x@thing and https://b.com/x@thing") == [
+        "https://a.com/x@thing",
+        "https://b.com/x@thing",
+    ]
+
+
+# Guard re-confirmation: emails and SSH git remotes carry "@" but are NOT URLs
+# (the bare-domain look-behind rejects a host glued to "@"); must stay out.
+def test_email_and_ssh_remote_not_promoted():
+    assert extract_urls("ping a@b.com about it") == []
+    assert extract_urls("clone git@github.com:o/r.git now") == []
