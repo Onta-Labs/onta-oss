@@ -5,9 +5,9 @@ This is a *prompt* guard: its real effect is on live LLM extraction, which is
 non-deterministic and can't be unit-asserted here. What we CAN lock down
 deterministically is that the guard's intent stays present in
 ``EXTRACTION_SYSTEM`` — so a future edit can't silently drop it and regress the
-Humanness-Index-style failure (the benchmark name 'Humanness Index' and the
-baseline 'Human' getting minted as Organizations, with the publisher split
-across duplicate orgs).
+failure mode (a data source / benchmark / leaderboard name, and its baseline
+placeholder rows, getting minted as Organizations, with the publisher split
+across duplicate orgs). See ONTA-155 for the originating example.
 
 The asserts are intentionally concept-level (not exact-string) so benign
 rewording of the prompt doesn't break them, but removing the guard does.
@@ -19,11 +19,22 @@ from cograph_client.resolver.schema_resolver import EXTRACTION_SYSTEM
 
 
 def _lift_block() -> str:
-    """The 'Lift providers / organizations' section, lowercased."""
+    """The 'Lift providers / organizations' section, lowercased.
+
+    Anchored on stable section titles. If the section titles are ever reworded
+    the anchors fail loudly with a clear message (rather than silently slicing
+    the wrong span); the end anchor falls back to end-of-text so a section
+    reorder degrades to "scan the rest of the prompt" instead of a ValueError.
+    """
     text = EXTRACTION_SYSTEM
-    start = text.index("Lift providers / organizations")
-    # Up to the next titled section (each ends with a trailing ':').
-    end = text.index("Subtypes with a description", start)
+    start = text.find("Lift providers / organizations")
+    assert start != -1, (
+        "EXTRACTION_SYSTEM no longer has a 'Lift providers / organizations' "
+        "section — the org-minting guard may have been moved or removed"
+    )
+    end = text.find("Subtypes with a description", start)
+    if end == -1:
+        end = len(text)
     return text[start:end].lower()
 
 
