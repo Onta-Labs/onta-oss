@@ -20,6 +20,7 @@ import io
 import time
 from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import urlparse
 
 # Recognized field types for a target-schema column. The extractor returns bare
 # string values; these are advisory hints for the extraction prompt + downstream
@@ -30,6 +31,25 @@ FIELD_TYPES = ("string", "number", "boolean", "date", "url")
 # from untrusted web pages / LLM extraction, so a value like ``=cmd|'…'!A1`` would
 # execute when the exported CSV is opened in Excel/Sheets. Prefix such cells.
 _CSV_FORMULA_LEADERS = ("=", "+", "-", "@", "\t", "\r")
+
+# Column names that duplicate provenance the harness already tracks as citations
+# (and emits as the trailing ``sources`` column). A planner must not mint these as
+# schema fields — see TargetSchema.drop_provenance_fields. Narrow on purpose so a
+# real content column ("website", "homepage_url") is untouched.
+_PROVENANCE_FIELDS = frozenset(
+    {
+        "source",
+        "sources",
+        "source_url",
+        "source_urls",
+        "source_link",
+        "citation",
+        "citations",
+        "provenance",
+        "reference",
+        "references",
+    }
+)
 
 
 def _csv_safe(value: object) -> str:
@@ -86,6 +106,20 @@ class TargetSchema:
     def field_names(self) -> list[str]:
         return [f.name for f in self.fields if f.name]
 
+    def drop_provenance_fields(self) -> "TargetSchema":
+        """Remove any planner-invented source/citation column.
+
+        Citations are tracked STRUCTURALLY on each row and emitted as the trailing
+        ``sources`` column — a schema field like ``source_url`` is redundant AND
+        pernicious: because every source has a different URL it makes each row's
+        dedup key unique, so identical facts from N sources never collapse (they
+        read as N duplicate rows). Kept narrow so a legitimate content column such
+        as ``website`` / ``homepage_url`` survives."""
+        self.fields = [
+            f for f in self.fields if f.name.strip().lower() not in _PROVENANCE_FIELDS
+        ]
+        return self
+
     def required_names(self) -> list[str]:
         return [f.name for f in self.fields if f.name and f.required]
 
@@ -112,6 +146,49 @@ class TargetSchema:
             seen.add(key)
             fields_out.append(sf)
         return cls(entity=str(d.get("entity", "item") or "item"), fields=fields_out)
+
+
+# The interfaces we tag telemetry with. A client-supplied `medium` outside this
+# set is coerced to "other" so it can't explode log/metric cardinality; blank
+# stays blank ("unknown"). Keep in sync with AgentRequestContext.medium senders.
+_KNOWN_MEDIA = frozenset({"explorer", "cli", "mcp", "sdk", "api", "eval"})
+
+
+def normalize_medium(value: object) -> str:
+    """Clamp a client-supplied ``medium`` to a known low-cardinality label.
+
+    ``medium`` rides the request body and is stamped onto every telemetry event
+    and log line, so an unvalidated free-form value would let a client explode
+    log/metric cardinality (a unique string per request) or bloat logs (a huge
+    string amplified across ~10 lines/run). Unknown non-empty values collapse to
+    ``"other"``; blank stays ``""``."""
+    s = str(value or "").strip().lower()
+    if not s:
+        return ""
+    return s if s in _KNOWN_MEDIA else "other"
+
+
+def redact_url(url: object) -> str:
+    """Strip credentials from a URL before it lands in logs / the trace.
+
+    A user-attached URL can carry a secret in userinfo (``https://user:tok@h``)
+    or a query token (``?api_key=…``); those must not be written verbatim to ops
+    logs. Drops userinfo entirely and masks any query string. Never raises — a
+    URL it can't parse is returned truncated."""
+    raw = str(url or "")
+    try:
+        p = urlparse(raw)
+    except ValueError:
+        return raw[:200]
+    if not p.scheme or not p.netloc:
+        return raw[:200]
+    host = p.hostname or ""
+    if p.port:
+        host = f"{host}:{p.port}"
+    out = f"{p.scheme}://{host}{p.path}"
+    if p.query:
+        out += "?<redacted>"
+    return out[:300]
 
 
 @dataclass
@@ -156,6 +233,9 @@ class ResearchTrace:
 
     medium: str = ""
     events: list[StageEvent] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.medium = normalize_medium(self.medium)
 
     def add(
         self,
@@ -346,12 +426,18 @@ class ResearchPlan:
     :class:`ClarifyingQuestion`\\ s to ask the user BEFORE spending on the web,
     each optionally carrying suggested answer options. The default is to proceed
     with the best interpretation; asking is the exception, not the rule.
+
+    ``single_record`` is True when the question asks for the attributes of ONE
+    specific entity ("find Dr. X's clinic phone and address") rather than a list —
+    the harness then consolidates every source's findings into a SINGLE merged row
+    instead of emitting one row per source (which reads as duplicate spam).
     """
 
     question: str
     schema: TargetSchema = field(default_factory=TargetSchema)
     needs_web: bool = True
     fast_path: bool = False
+    single_record: bool = False
     queries: list[str] = field(default_factory=list)
     seed_urls: list[str] = field(default_factory=list)
     rationale: str = ""
@@ -364,6 +450,7 @@ class ResearchPlan:
             "schema": self.schema.to_dict(),
             "needs_web": self.needs_web,
             "fast_path": self.fast_path,
+            "single_record": self.single_record,
             "queries": list(self.queries),
             "seed_urls": list(self.seed_urls),
             "rationale": self.rationale,
@@ -383,6 +470,7 @@ class ResearchPlan:
             schema=TargetSchema.from_dict(d.get("schema") or {}),
             needs_web=bool(d.get("needs_web", True)),
             fast_path=bool(d.get("fast_path", False)),
+            single_record=bool(d.get("single_record", False)),
             queries=[str(q) for q in (d.get("queries") or []) if str(q).strip()],
             seed_urls=[str(u) for u in (d.get("seed_urls") or []) if str(u).strip()],
             rationale=str(d.get("rationale", "") or ""),

@@ -243,6 +243,14 @@ class WebResearchCapability:
             "budget": budget.to_dict(),
             # Per-stage cost/latency observability (medium-tagged) for the run.
             "trace": result.trace.to_dict() if result.trace is not None else None,
+            # If the harness short-circuited to ask (reachable when execute
+            # re-plans an empty-schema step), carry the questions STRUCTURALLY so
+            # a client renders chips rather than only the prose in `answer`.
+            "needs_clarification": result.needs_clarification,
+            "clarifying_questions": [
+                q.to_dict()
+                for q in normalize_clarifying_questions(result.clarifying_questions)
+            ],
         }
 
 
