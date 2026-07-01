@@ -772,6 +772,42 @@ def test_redact_url_strips_credentials_and_query():
     assert redact_url("https://example.com/models") == "https://example.com/models"
     assert redact_url("http://h:8080/x") == "http://h:8080/x"
     assert redact_url("not a url") == "not a url"  # unparseable → returned, not raised
+    # scheme-relative //user:pass@host must NOT leak userinfo (review S1 #4)
+    assert "tok" not in redact_url("//user:tok@example.com/x?api_key=S")
+    assert "S" not in redact_url("//user:tok@example.com/x?api_key=S").split("?")[0]
+
+
+async def test_fetch_exception_scrubs_credentials_from_trace(monkeypatch):
+    # A fetcher that RAISES with a URL-bearing message must not leak the user's
+    # credentials into the returned trace (review S1 #1): the trace event records
+    # the exception TYPE only, and detail is the redacted URL.
+    import json
+
+    secret = "SUPERSECRET"
+    secret_url = f"https://user:{secret}@ex.example/p?api_key=LEAKME"
+
+    class _Raiser:
+        name = "static"
+        tier = 0
+        is_paid = False
+        cost_per_call = 0.0
+
+        async def fetch(self, url, *, want=""):
+            raise RuntimeError(f"connect to {url} failed")
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    harness = WebResearchHarness(fetchers=[_Raiser()], extractor=_empty)
+    res = await harness.run(
+        "q", schema=_schema(), urls=[secret_url],
+        budget=Budget(max_iterations=1, max_fetches=2),
+    )
+    ev = next(e for e in res.trace.events if e.stage == "fetch")
+    assert ev.meta["error"] == "RuntimeError"  # type only, no message
+    blob = json.dumps(ev.to_dict())
+    assert secret not in blob and "LEAKME" not in blob
+    assert ev.detail == "https://ex.example/p?<redacted>"
 
 
 def test_trace_normalizes_medium_on_construction():

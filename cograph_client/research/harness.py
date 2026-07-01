@@ -550,8 +550,17 @@ class WebResearchHarness:
             try:
                 page = await fetcher.fetch(url, want=want)
             except Exception as exc:  # fetchers shouldn't raise, but never trust
+                # A fetcher's exception text can embed the raw URL (userinfo /
+                # query token — e.g. httpx errors quote the request URL). Scrub it
+                # out of the LOG, and put only the exception TYPE on the returned
+                # trace, so a user-supplied secret can never ride back to the
+                # caller (the trace is returned in the /agent response).
+                safe_err = str(exc).replace(url, safe_url)
                 logger.warning(
-                    "research_fetch_raised", url=url, fetcher=fetcher.name, error=str(exc)
+                    "research_fetch_raised",
+                    url=safe_url,
+                    fetcher=fetcher.name,
+                    error=safe_err[:200],
                 )
                 _note_stage(
                     trace,
@@ -562,7 +571,7 @@ class WebResearchHarness:
                     ok=False,
                     fetcher=fetcher.name,
                     tier=int(getattr(fetcher, "tier", 0)),
-                    error=str(exc)[:160],
+                    error=type(exc).__name__,
                 )
                 continue
             _note_stage(
