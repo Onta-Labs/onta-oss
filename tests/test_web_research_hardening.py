@@ -24,6 +24,7 @@ from cograph_client.research.plan import plan_research
 from cograph_client.research.types import (
     Budget,
     FetchedPage,
+    ResearchPlan,
     ResearchResult,
     ResearchRow,
     SchemaField,
@@ -282,6 +283,110 @@ def test_looks_incomplete_flags_nav_only_shell():
     )
     assert len(prose) > 200
     assert not _looks_incomplete(FetchedPage(url="u", text=prose, ok=True))
+
+
+# --- ONTA-166 local: clarify-on-true-ambiguity -------------------------------- #
+async def test_plan_emits_clarifying_questions_when_ambiguous(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"model","fields":[{"name":"name","required":true}],'
+            '"needs_web":true,"fast_path":false,"queries":["best models"],'
+            '"needs_clarification":true,'
+            '"clarifying_questions":["Best by what metric?","Which modality?"],'
+            '"rationale":"ambiguous"}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("list the best models", openrouter_key="k")
+    assert plan.needs_clarification is True
+    assert plan.clarifying_questions == ["Best by what metric?", "Which modality?"]
+
+
+async def test_plan_clarification_ignored_when_no_questions(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"item","fields":[{"name":"answer"}],"needs_web":true,'
+            '"needs_clarification":true,"clarifying_questions":[]}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("q", openrouter_key="k")
+    assert plan.needs_clarification is False  # a flag with no questions → proceed
+
+
+async def test_plan_fallback_never_asks_for_clarification():
+    plan = await plan_research("anything", openrouter_key="")  # keyless → fallback
+    assert plan.needs_clarification is False
+    assert plan.clarifying_questions == []
+
+
+async def test_harness_asks_for_clarification_without_web_spend():
+    async def _ambiguous_planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            needs_clarification=True,
+            clarifying_questions=["By what metric — speed, cost, or quality?"],
+            schema=TargetSchema(entity="item", fields=[SchemaField(name="answer")]),
+        )
+
+    fetcher = FakeFetcher(default=FetchedPage(url="u", text="x" * 500, ok=True))
+    extracted: list[int] = []
+
+    async def _extract(pages, schema, **kw):
+        extracted.append(1)
+        return []
+
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        fetchers=[fetcher],
+        planner=_ambiguous_planner,
+        extractor=_extract,
+    )
+    res = await harness.run("list the best models", urls=["https://ex.example/x"])
+    assert res.needs_clarification is True
+    assert res.clarifying_questions == ["By what metric — speed, cost, or quality?"]
+    assert res.abstained is False  # asking is not abstaining
+    assert res.rows == []
+    assert fetcher.calls == 0  # short-circuited BEFORE any fetch → no web spend
+    assert extracted == []  # …and before any extraction
+
+
+async def test_harness_pinned_schema_skips_clarification():
+    called: list[int] = []
+
+    async def _ambiguous_planner(question, **kw):  # pragma: no cover - must NOT run
+        called.append(1)
+        return ResearchPlan(
+            question=question, needs_clarification=True, clarifying_questions=["?"]
+        )
+
+    fetcher = FakeFetcher(default=FetchedPage(url="u", text="rich " * 100, ok=True))
+
+    async def _extract(pages, schema, **kw):
+        return [
+            ResearchRow(
+                values={"name": "X", "score": "1"},
+                citations=[pages[0].url],
+                confidence=0.9,
+            )
+        ]
+
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        fetchers=[fetcher],
+        planner=_ambiguous_planner,
+        extractor=_extract,
+    )
+    res = await harness.run(
+        "q",
+        schema=_schema(),  # a pinned schema IS the disambiguation
+        urls=["https://ex.example/x"],
+        budget=Budget(max_iterations=1, max_fetches=2, max_llm_calls=2),
+    )
+    assert called == []  # planner never consulted when schema is pinned
+    assert res.needs_clarification is False
+    assert not res.abstained
+    assert len(res.rows) == 1
 
 
 async def test_ladder_escalates_past_nav_only_shell():
