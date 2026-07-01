@@ -62,29 +62,34 @@ def _answer_step(text: str) -> PlanStep:
 
 
 def _clarify_step(questions: list) -> PlanStep:
-    """A no-spend 'answer' step that asks the user to disambiguate a genuinely
-    ambiguous question BEFORE running (and paying for) the research loop. The
-    questions ride the payload STRUCTURED (``{"question", "options"}``) so a
-    client can render each one's suggested answers as one-tap reply chips;
-    options are also inlined in the text for plain-text clients."""
+    """A no-spend clarify step routed through the CANONICAL ``kind:"clarify"``
+    contract — the planner short-circuits a lone ``action="clarify"`` step to
+    ``{kind:"clarify", question, options}``, which the Explorer + MCP renderers
+    already turn into reply chips.
+
+    The single-question case is a perfect fit (``question`` + ``options``). A
+    multi-question case fills the primary ``question``/``options`` for existing
+    clients AND a structured ``questions`` list for clients that render several —
+    additive, so no client breaks."""
     qs = normalize_clarifying_questions(questions)
-    lines = [
-        f"- {q.question}" + (f" ({' / '.join(q.options)})" if q.options else "")
-        for q in qs
-    ]
-    text = (
-        "This question has more than one reasonable reading — a quick "
-        "clarification will get you a sharper answer:\n" + "\n".join(lines)
-    )
+    if len(qs) <= 1:
+        question = qs[0].question if qs else "Could you clarify what you're looking for?"
+        options = qs[0].options if qs else []
+    else:
+        # Options are per-question when there are several — inline them in the
+        # prompt text so a single-question renderer still shows the choices.
+        question = "A quick clarification will sharpen the answer:\n" + "\n".join(
+            f"- {q.question}" + (f" ({' / '.join(q.options)})" if q.options else "")
+            for q in qs
+        )
+        options = []
     return PlanStep(
         capability=WebResearchCapability.name,
-        action="answer",
+        action="clarify",
         params={
-            "answer_payload": {
-                "answer": text,
-                "narrative": text,
-                "clarifying_questions": [q.to_dict() for q in qs],
-            }
+            "question": question,
+            "options": options,
+            "questions": [q.to_dict() for q in qs],
         },
         rationale="Question is ambiguous — asking before spending on web tools.",
         confidence=1.0,

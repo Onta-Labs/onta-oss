@@ -131,14 +131,37 @@ async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
         _ctx(urls=["https://example.com/board"]), "list the best models"
     )
     assert len(steps) == 1
-    assert steps[0].action == "answer"  # not "research" — nothing will be spent
-    payload = steps[0].params["answer_payload"]
-    assert payload["clarifying_questions"] == [
+    # Canonical clarify shape (planner short-circuits action="clarify" →
+    # kind:"clarify"), not a research step and not a bespoke answer payload.
+    assert steps[0].action == "clarify"
+    p = steps[0].params
+    assert p["questions"] == [
         {"question": "Best by what metric?", "options": ["benchmark score", "price"]},
         {"question": "Which modality?", "options": []},
     ]
-    assert "clarification" in payload["answer"].lower()
-    assert "(benchmark score / price)" in payload["answer"]
+    # Two questions → options inlined in the primary question text for old clients.
+    assert "(benchmark score / price)" in p["question"]
+
+
+async def test_plan_single_clarifying_question_is_canonical_chip(monkeypatch):
+    # One question is a perfect fit for the canonical {question, options} shape.
+    from cograph_client.research.types import ClarifyingQuestion, ResearchPlan
+
+    async def _one_q(instruction, **kw):
+        return ResearchPlan(
+            question=instruction,
+            needs_clarification=True,
+            clarifying_questions=[
+                ClarifyingQuestion(question="Which modality?", options=["LLMs", "image"])
+            ],
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.plan_research", _one_q)
+    cap = WebResearchCapability()
+    steps = await cap.plan(_ctx(urls=["https://example.com/x"]), "best models?")
+    assert steps[0].action == "clarify"
+    assert steps[0].params["question"] == "Which modality?"
+    assert steps[0].params["options"] == ["LLMs", "image"]
 
 
 async def test_paid_fetcher_shows_up_in_cost_estimate():
