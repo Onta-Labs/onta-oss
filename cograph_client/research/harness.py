@@ -37,7 +37,10 @@ from cograph_client.research.fetch import (
     default_ladder,
     is_fetchable_url,
 )
-from cograph_client.research.synthesize import synthesize_result
+from cograph_client.research.synthesize import (
+    clarification_result,
+    synthesize_result,
+)
 from cograph_client.research.types import (
     Budget,
     ResearchPlan,
@@ -182,6 +185,8 @@ class WebResearchHarness:
         context = context or {}
         seed_urls = list(seed_urls or [])
         user_urls = list(urls or [])
+        # A caller-pinned schema IS the disambiguation — never ask in that case.
+        pinned_schema = schema is not None
 
         # 1. Plan (schema-first) unless the caller pinned a schema.
         if schema is None:
@@ -195,6 +200,17 @@ class WebResearchHarness:
             plan = ResearchPlan(
                 question=question, schema=schema, queries=[question], seed_urls=seed_urls
             )
+
+        # A genuinely ambiguous question: ask rather than guess. Return the
+        # planner's questions immediately — no discovery, fetch, or LLM spend
+        # beyond the one planning call already made (ADR 0006 §Plan).
+        if (
+            not pinned_schema
+            and plan.needs_clarification
+            and plan.clarifying_questions
+        ):
+            return clarification_result(question, plan.clarifying_questions)
+
         if schema.is_empty():
             schema = TargetSchema(
                 entity=schema.entity or "item", fields=[SchemaField(name="answer")]

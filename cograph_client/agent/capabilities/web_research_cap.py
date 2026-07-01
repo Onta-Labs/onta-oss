@@ -57,6 +57,31 @@ def _answer_step(text: str) -> PlanStep:
     )
 
 
+def _clarify_step(questions: list[str]) -> PlanStep:
+    """A no-spend 'answer' step that asks the user to disambiguate a genuinely
+    ambiguous question BEFORE running (and paying for) the research loop. The
+    questions ride the payload so a client can render them as reply chips."""
+    qs = [str(q).strip() for q in questions if str(q).strip()][:3]
+    text = (
+        "This question has more than one reasonable reading — a quick "
+        "clarification will get you a sharper answer:\n"
+        + "\n".join(f"- {q}" for q in qs)
+    )
+    return PlanStep(
+        capability=WebResearchCapability.name,
+        action="answer",
+        params={
+            "answer_payload": {
+                "answer": text,
+                "narrative": text,
+                "clarifying_questions": qs,
+            }
+        },
+        rationale="Question is ambiguous — asking before spending on web tools.",
+        confidence=1.0,
+    )
+
+
 def _estimate_cost(max_fetches: int) -> dict:
     """A conservative plan-card cost estimate, read generically from the registered
     provider + fetcher cost signals (never by vendor name)."""
@@ -121,6 +146,11 @@ class WebResearchCapability:
                 seed_urls=urls or None,
                 openrouter_key=ctx.openrouter_key,
             )
+            # Genuinely ambiguous → ask before spending. This replaces the research
+            # step entirely with a no-write answer step carrying the questions, so
+            # the confirm-before-spend gate is never even reached.
+            if plan.needs_clarification and plan.clarifying_questions:
+                return [_clarify_step(plan.clarifying_questions)]
             schema = plan.schema
             if plan.rationale:
                 rationale = plan.rationale
