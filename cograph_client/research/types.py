@@ -176,8 +176,12 @@ def redact_url(url: object) -> str:
     logs. Drops userinfo entirely and masks any query string. Never raises — a
     URL it can't parse is returned truncated."""
     raw = str(url or "")
+    # A scheme-relative //user:pass@host/... would otherwise fall through the
+    # no-scheme branch with its userinfo intact; parse it as if it had a scheme so
+    # credentials are stripped either way.
+    candidate = "http:" + raw if raw.startswith("//") else raw
     try:
-        p = urlparse(raw)
+        p = urlparse(candidate)
     except ValueError:
         return raw[:200]
     if not p.scheme or not p.netloc:
