@@ -11,7 +11,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from cograph_client.api.deps import get_enrichment_job_store, get_executor
+from cograph_client.api.deps import (
+    get_enrichment_job_store,
+    get_executor,
+    get_neptune_client,
+)
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.enrichment.executor import EnrichmentExecutor
 from cograph_client.enrichment.job_store import InMemoryJobStore
@@ -23,6 +27,8 @@ from cograph_client.enrichment.models import (
     JobStatus,
     JobSummary,
 )
+from cograph_client.enrichment.strategy import resolve_type_name, unknown_type_message
+from cograph_client.graph.client import NeptuneClient
 from cograph_client.enrichment.tier_router import (
     DEFAULT_CONFIDENCE_MIN,
     WEB_CONFIDENCE_MIN,
@@ -110,6 +116,7 @@ async def create_job(
     tenant: TenantContext = Depends(get_tenant),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
+    neptune: NeptuneClient = Depends(get_neptune_client),
 ) -> CreateJobResponse:
     routing_note: Optional[str] = None
 
@@ -149,6 +156,28 @@ async def create_job(
         effective_tier, body.confidence_min
     )
 
+    # Resolve the target type to the tenant's canonical declared name up front:
+    # a miscased type (e.g. `organization` vs the declared `Organization`)
+    # auto-corrects, and a type that genuinely doesn't exist is rejected with an
+    # actionable 422 — instead of creating a job that finishes "Completed" having
+    # silently enriched nothing (the entity SELECT keys on <types/Name>). One
+    # bounded ontology read, never an instance scan (COG-112 safe); fail-open when
+    # the read fails or no types are declared (known == []). The executor applies
+    # the SAME guard as a safety net for jobs created outside this route
+    # (schedules, actions).
+    resolved_type, known_types = await resolve_type_name(
+        neptune, tenant.tenant_id, body.type_name
+    )
+    if known_types and resolved_type is None:
+        raise HTTPException(
+            status_code=422,
+            detail=unknown_type_message(body.type_name, known_types),
+        )
+    type_name = resolved_type or body.type_name
+    if resolved_type and resolved_type != body.type_name:
+        correction = f"Interpreted type '{body.type_name}' as '{resolved_type}'."
+        routing_note = f"{routing_note} {correction}".strip() if routing_note else correction
+
     # NON-BLOCKING create (COG-112): we deliberately do NOT count_entities() in
     # the request path. A scoped COUNT over a large type (e.g. ~13.5k Mentors)
     # can be slow and was timing out the create (~55s → 504). The executor's
@@ -160,7 +189,7 @@ async def create_job(
         id=str(uuid.uuid4()),
         tenant_id=tenant.tenant_id,
         kg_name=body.kg_name,
-        type_name=body.type_name,
+        type_name=type_name,
         attributes=body.attributes,
         tier=effective_tier,
         status=JobStatus.queued,
