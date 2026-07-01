@@ -556,12 +556,18 @@ async def _respond(
     # accumulates the user's reply, so next turn the capability re-resolves.
     if len(steps) == 1 and steps[0].action == "clarify":
         p = steps[0].params
-        return {
+        out = {
             "kind": "clarify",
             "question": p.get("question")
             or "Could you clarify which entities you mean?",
             "options": p.get("options") or [],
         }
+        # A capability may ask SEVERAL questions (each with its own options) — pass
+        # the structured list through for clients that render more than one; the
+        # singular question/options above keep older clients working.
+        if p.get("questions"):
+            out["questions"] = p["questions"]
+        return out
 
     steps = order_steps(steps)
     plan_id = _new_plan_id()
