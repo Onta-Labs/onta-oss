@@ -1,0 +1,1060 @@
+"""Hardening tests for the web-research harness — driven by the independent
+code review of ONTA-166. Cover the SSRF fixes, budget metering/stops, the
+reflect loop's 2nd iteration, extract dedupe/cap, plan fallback, ladder
+best-page selection, and CSV formula-injection escaping. All offline/deterministic
+(fakes + httpx MockTransport + `max_wall_clock_s=0.0`, never a real sleep/network).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+
+import httpx
+import pytest
+
+from cograph_client.research import extract as extract_mod
+from cograph_client.research import fetch as fetch_mod
+from cograph_client.research.fetch import (
+    StaticHttpFetcher,
+    is_fetchable_url,
+    reset_page_fetchers,
+)
+from cograph_client.research.harness import (
+    _MIN_SUBSTANTIVE_CHARS,
+    WebResearchHarness,
+    _looks_incomplete,
+    _substantive_chars,
+)
+from cograph_client.research.plan import plan_research
+from cograph_client.research.types import (
+    Budget,
+    FetchedPage,
+    ResearchPlan,
+    ResearchResult,
+    ResearchRow,
+    SchemaField,
+    TargetSchema,
+)
+from cograph_client.research.verify import reset_research_verifier
+from cograph_client.web_sources.base import DiscoverResult, reset_web_sources
+
+
+@pytest.fixture(autouse=True)
+def _clean():
+    reset_page_fetchers()
+    reset_research_verifier()
+    reset_web_sources()
+    yield
+    reset_page_fetchers()
+    reset_research_verifier()
+    reset_web_sources()
+
+
+@pytest.fixture(autouse=True)
+def _offline_dns(monkeypatch):
+    # Keep StaticHttpFetcher.fetch offline + deterministic: resolve every host to
+    # a fixed PUBLIC ip by default (the fetch-time SSRF guard now does DNS). Tests
+    # that exercise the DNS guard override this locally.
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
+
+
+def _schema() -> TargetSchema:
+    return TargetSchema(
+        entity="model", fields=[SchemaField(name="name"), SchemaField(name="score")]
+    )
+
+
+class FakeFetcher:
+    def __init__(self, default=None, *, name="static", tier=0, is_paid=False, cost_per_call=0.0):
+        self.default = default
+        self.name = name
+        self.tier = tier
+        self.is_paid = is_paid
+        self.cost_per_call = cost_per_call
+        self.calls = 0
+        self.seen: list[str] = []
+
+    async def fetch(self, url, *, want=""):
+        self.calls += 1
+        self.seen.append(url)
+        if self.default is not None:
+            return dataclasses.replace(self.default, url=url)
+        return FetchedPage(url=url, ok=False, error="none")
+
+
+# --- BLOCKER 1: SSRF IP-encoding bypasses now blocked --------------------------- #
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://2130706433/",       # decimal 127.0.0.1
+        "http://0x7f000001/",       # hex
+        "http://0177.0.0.1/",       # octal
+        "http://127.1/",            # short form
+        "http://[::1]/",            # ipv6 loopback
+        "http://0.0.0.0/",          # unspecified
+        "http://169.254.169.254/",  # cloud metadata
+        "http://127.0.0.1./",       # trailing dot
+    ],
+)
+def test_ssrf_blocks_ip_encodings(url):
+    assert not is_fetchable_url(url)
+
+
+@pytest.mark.parametrize("url", ["https://example.com/x", "http://public.example.org/a"])
+def test_ssrf_allows_public_hosts_offline(url):
+    # Deterministic without DNS — a real hostname is not resolved by the guard.
+    assert is_fetchable_url(url)
+
+
+# --- BLOCKER 2: redirects are re-validated per hop ------------------------------ #
+def _mock_client_factory(handler):
+    real = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real(*args, **kwargs)
+
+    return factory
+
+
+async def test_static_fetch_refuses_redirect_to_internal_host(monkeypatch):
+    def handler(request):
+        if request.url.host == "public.example.org":
+            return httpx.Response(302, headers={"location": "http://127.0.0.1/secret"})
+        return httpx.Response(200, text="INTERNAL SECRET")
+
+    monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", _mock_client_factory(handler))
+    page = await StaticHttpFetcher().fetch("http://public.example.org/x")
+    assert not page.ok
+    assert "redirect" in (page.error or "")
+    assert "SECRET" not in page.text
+
+
+async def test_static_fetch_follows_public_redirect(monkeypatch):
+    def handler(request):
+        if request.url.host == "a.example.org":
+            return httpx.Response(302, headers={"location": "http://b.example.org/final"})
+        return httpx.Response(
+            200, text="FINAL CONTENT " * 20, headers={"content-type": "text/plain"}
+        )
+
+    monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", _mock_client_factory(handler))
+    page = await StaticHttpFetcher().fetch("http://a.example.org/x")
+    assert page.ok
+    assert "FINAL CONTENT" in page.text
+
+
+async def test_static_fetch_bounds_redirect_loops(monkeypatch):
+    def handler(request):
+        return httpx.Response(302, headers={"location": "http://public.example.org/loop"})
+
+    monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", _mock_client_factory(handler))
+    page = await StaticHttpFetcher().fetch("http://public.example.org/loop")
+    assert not page.ok
+    assert "too many redirects" in (page.error or "")
+
+
+# --- DNS-record SSRF: resolve-and-check at fetch time (review S1) --------------- #
+async def test_static_fetch_refuses_host_resolving_to_internal(monkeypatch):
+    # A public-looking name whose A record points at cloud metadata — invisible to
+    # the string guard, caught by the resolve-and-check guard before connecting.
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
+    page = await StaticHttpFetcher().fetch(
+        "http://imds.attacker.example/latest/meta-data/"
+    )
+    assert not page.ok
+    assert "blocked address" in (page.error or "")
+
+
+async def test_static_fetch_refuses_redirect_resolving_to_internal(monkeypatch):
+    # First host public, redirect target a public NAME that resolves internal.
+    def handler(request):
+        return httpx.Response(302, headers={"location": "http://evil.example/x"})
+
+    def _resolve(host):
+        return ["10.0.0.5"] if host == "evil.example" else ["93.184.216.34"]
+
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", _resolve)
+    monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", _mock_client_factory(handler))
+    page = await StaticHttpFetcher().fetch("http://public.example.org/x")
+    assert not page.ok
+    assert "blocked address" in (page.error or "")
+
+
+def test_host_dns_blocked_is_false_for_ip_literals_and_unresolvable(monkeypatch):
+    from cograph_client.research.fetch import _host_dns_blocked
+
+    # IP literals are the string guard's job — no redundant lookup here.
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
+    assert _host_dns_blocked("127.0.0.1") is False
+    # A name that doesn't resolve is not "blocked" (it just can't connect).
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: [])
+    assert _host_dns_blocked("nope.invalid") is False
+    # A name resolving to a public IP is allowed.
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
+    assert _host_dns_blocked("example.com") is False
+
+
+# --- static fetcher blocked-URL path (review F6) ------------------------------- #
+async def test_static_fetch_blocked_url_is_honest():
+    page = await StaticHttpFetcher().fetch("http://localhost/x")
+    assert not page.ok
+    assert page.error
+    assert not page.has_content()
+    assert page.tier == "static"
+
+
+# --- MAJOR 3: discovery is metered + gated by budget --------------------------- #
+async def test_discovery_is_metered_and_bounded_by_budget():
+    calls = {"n": 0}
+
+    async def _discover(query, **kw):
+        calls["n"] += 1
+        return DiscoverResult(rows=[], sources=[])
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    fetcher = FakeFetcher(default=FetchedPage(url="x", ok=False))
+    harness = WebResearchHarness(discover=_discover, fetchers=[fetcher], extractor=_empty)
+    # Only 1 fetch of budget → at most one discovery call, then the loop stops.
+    res = await harness.run(
+        "q", schema=_schema(), budget=Budget(max_iterations=5, max_fetches=1)
+    )
+    assert calls["n"] == 1
+    assert res.abstained
+
+
+# --- review F3: the reflect loop actually runs a 2nd iteration ----------------- #
+async def test_reflect_loop_second_iteration_recovers():
+    seen_queries: list[str] = []
+    state = {"n": 0}
+
+    async def _discover(query, **kw):
+        seen_queries.append(query)
+        state["n"] += 1
+        if state["n"] == 1:
+            return DiscoverResult(rows=[], sources=[])
+        return DiscoverResult(
+            rows=[{"name": "A", "score": "1"}],
+            provenance={"A": "https://src.example/a"},
+            sources=["https://src.example/a"],
+        )
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    fetcher = FakeFetcher(default=FetchedPage(url="x", ok=False))
+    harness = WebResearchHarness(discover=_discover, fetchers=[fetcher], extractor=_empty)
+    res = await harness.run(
+        "q", schema=_schema(), budget=Budget(max_iterations=2, max_fetches=20)
+    )
+    assert res.iterations == 2
+    assert not res.abstained
+    assert any(r.values.get("name") == "A" for r in res.rows)
+    assert any("full list" in q for q in seen_queries)  # followup query fired
+
+
+# --- review F4: budget wall-clock + max_llm_calls stops ------------------------ #
+async def test_wall_clock_zero_stops_before_any_fetch():
+    fetcher = FakeFetcher(default=FetchedPage(url="x", text="rich " * 100, ok=True))
+
+    async def _rows(pages, schema, **kw):
+        return [ResearchRow(values={"name": "A"}, citations=[pages[0].url], confidence=0.9)]
+
+    harness = WebResearchHarness(fetchers=[fetcher], extractor=_rows)
+    res = await harness.run(
+        "q", schema=_schema(), urls=["https://ex.example/a"], budget=Budget(max_wall_clock_s=0.0)
+    )
+    assert fetcher.calls == 0
+    assert res.abstained
+
+
+async def test_max_llm_calls_zero_fetches_but_skips_extraction():
+    fetcher = FakeFetcher(default=FetchedPage(url="x", text="rich " * 100, ok=True))
+
+    async def _rows(pages, schema, **kw):  # would return rows if ever called
+        return [ResearchRow(values={"name": "A"}, citations=[pages[0].url], confidence=0.9)]
+
+    harness = WebResearchHarness(fetchers=[fetcher], extractor=_rows)
+    res = await harness.run(
+        "q",
+        schema=_schema(),
+        urls=["https://ex.example/a"],
+        budget=Budget(max_llm_calls=0, max_fetches=5, max_iterations=1),
+    )
+    assert fetcher.calls == 1  # fetched
+    assert res.abstained  # but extraction was budget-gated off
+
+
+# --- review F5: a raising discovery provider is swallowed ---------------------- #
+async def test_discovery_exception_is_swallowed():
+    async def _discover(query, **kw):
+        raise RuntimeError("boom")
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    fetcher = FakeFetcher(default=FetchedPage(url="x", ok=False))
+    harness = WebResearchHarness(discover=_discover, fetchers=[fetcher], extractor=_empty)
+    res = await harness.run("q", schema=_schema())  # must not raise
+    assert res.abstained
+
+
+# --- review F7: _looks_incomplete boundary ------------------------------------- #
+def test_looks_incomplete_boundary():
+    assert _looks_incomplete(FetchedPage(url="u", text="x" * 199, ok=True))
+    assert not _looks_incomplete(FetchedPage(url="u", text="x" * 200, ok=True))
+    assert _looks_incomplete(
+        FetchedPage(url="u", text="Please enable JavaScript to continue " + "y" * 300, ok=True)
+    )
+    assert _looks_incomplete(FetchedPage(url="u", ok=False, error="boom"))
+
+
+# --- ONTA-166 local test: nav-only SPA shell must escalate --------------------- #
+# A client-side-rendered page whose JS never ran (openrouter.ai/models static ≈407
+# chars of pure nav) used to PASS the completeness gate — it clears
+# _INCOMPLETE_CHARS but carries zero prose/data — so the ladder never escalated to
+# the render rung and URL-only research abstained. Guard the substantive-char fix.
+_NAV_SHELL = "\n".join(
+    [
+        "Chat", "Rankings", "Apps", "Models", "Providers", "Pricing",
+        "Enterprise", "Docs", "API Reference", "SDK", "Status", "Discord",
+        "GitHub", "Careers", "Privacy", "Terms of Service", "Support",
+    ]
+    * 4
+)
+
+
+def test_looks_incomplete_flags_nav_only_shell():
+    assert len(_NAV_SHELL) > 200  # clears the size bar…
+    assert _looks_incomplete(FetchedPage(url="u", text=_NAV_SHELL, ok=True))
+    # …but a real paragraph of the same/greater size is complete (prose-length line).
+    prose = (
+        "Net international migration drove the highest US population growth in "
+        "years. California remained the most populous state, followed by Texas "
+        "and Florida, according to the Census Bureau's vintage 2024 estimates."
+    )
+    assert len(prose) > 200
+    assert not _looks_incomplete(FetchedPage(url="u", text=prose, ok=True))
+
+
+# --- ONTA-166 local: clarify-on-true-ambiguity -------------------------------- #
+async def test_plan_emits_clarifying_questions_with_options(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"model","fields":[{"name":"name","required":true}],'
+            '"needs_web":true,"fast_path":false,"queries":["best models"],'
+            '"needs_clarification":true,'
+            '"clarifying_questions":['
+            '{"question":"Best by what metric?",'
+            '"options":["benchmark score","price","popularity"]},'
+            '{"question":"Which modality?","options":["LLMs","image","speech"]}],'
+            '"rationale":"ambiguous"}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("list the best models", openrouter_key="k")
+    assert plan.needs_clarification is True
+    assert [q.question for q in plan.clarifying_questions] == [
+        "Best by what metric?",
+        "Which modality?",
+    ]
+    assert plan.clarifying_questions[0].options == [
+        "benchmark score",
+        "price",
+        "popularity",
+    ]
+
+
+async def test_plan_accepts_bare_string_clarifying_questions(monkeypatch):
+    # Defensive parsing: a model that returns plain strings (the pre-options
+    # shape) still works — options just come back empty (free-form).
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"item","fields":[{"name":"answer"}],"needs_web":true,'
+            '"needs_clarification":true,'
+            '"clarifying_questions":["Which region?", {"question":"What year?"}]}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("q", openrouter_key="k")
+    assert plan.needs_clarification is True
+    assert [(q.question, q.options) for q in plan.clarifying_questions] == [
+        ("Which region?", []),
+        ("What year?", []),
+    ]
+
+
+def test_normalize_clarifying_questions_caps_and_dedupes():
+    from cograph_client.research.types import normalize_clarifying_questions
+
+    qs = normalize_clarifying_questions(
+        [
+            {"question": "Q1", "options": ["a", "A", " b ", "", "c", "d", "e", "f"]},
+            "Q2",
+            {"question": "  "},  # blank → dropped
+            42,  # junk → dropped
+            "Q3",
+            "Q4",  # over the 3-question cap → dropped
+        ]
+    )
+    assert [q.question for q in qs] == ["Q1", "Q2", "Q3"]
+    assert qs[0].options == ["a", "b", "c", "d", "e"]  # deduped (case), capped at 5
+
+
+def test_clarification_result_renders_options_inline():
+    from cograph_client.research.synthesize import clarification_result
+
+    res = clarification_result(
+        "best models?",
+        [{"question": "Which modality?", "options": ["LLMs", "image", "speech"]}],
+    )
+    assert res.needs_clarification is True
+    assert "Which modality? (LLMs / image / speech)" in res.answer
+    d = res.to_dict()
+    assert d["clarifying_questions"] == [
+        {"question": "Which modality?", "options": ["LLMs", "image", "speech"]}
+    ]
+
+
+async def test_plan_clarification_ignored_when_no_questions(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"item","fields":[{"name":"answer"}],"needs_web":true,'
+            '"needs_clarification":true,"clarifying_questions":[]}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("q", openrouter_key="k")
+    assert plan.needs_clarification is False  # a flag with no questions → proceed
+
+
+async def test_plan_fallback_never_asks_for_clarification():
+    plan = await plan_research("anything", openrouter_key="")  # keyless → fallback
+    assert plan.needs_clarification is False
+    assert plan.clarifying_questions == []
+
+
+async def test_harness_asks_for_clarification_without_web_spend():
+    async def _ambiguous_planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            needs_clarification=True,
+            clarifying_questions=["By what metric — speed, cost, or quality?"],
+            schema=TargetSchema(entity="item", fields=[SchemaField(name="answer")]),
+        )
+
+    fetcher = FakeFetcher(default=FetchedPage(url="u", text="x" * 500, ok=True))
+    extracted: list[int] = []
+
+    async def _extract(pages, schema, **kw):
+        extracted.append(1)
+        return []
+
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        fetchers=[fetcher],
+        planner=_ambiguous_planner,
+        extractor=_extract,
+    )
+    res = await harness.run("list the best models", urls=["https://ex.example/x"])
+    assert res.needs_clarification is True
+    assert [q.question for q in res.clarifying_questions] == [
+        "By what metric — speed, cost, or quality?"
+    ]
+    assert res.abstained is False  # asking is not abstaining
+    assert res.rows == []
+    assert fetcher.calls == 0  # short-circuited BEFORE any fetch → no web spend
+    assert extracted == []  # …and before any extraction
+
+
+async def test_discovery_never_starves_user_url_fetches():
+    # Caught live by the stage trace: with max_fetches=3, two discovery calls
+    # charged 2 credits BEFORE the user's URL was read, leaving budget for the
+    # static rung only — the render escalation never fired and the run abstained
+    # on a page the user explicitly attached. Discovery must spend only when no
+    # known candidate URL is still unread.
+    url = "https://spa.example/models"
+    discover_calls: list[str] = []
+
+    async def _discover(query, **kw):
+        discover_calls.append(query)
+        return DiscoverResult()
+
+    cheap = FakeFetcher(
+        default=FetchedPage(url=url, text=_NAV_SHELL, tier="static", ok=True),
+        name="static",
+        tier=0,
+    )
+    pricey = FakeFetcher(
+        default=FetchedPage(url=url, text="Model X context 128k. " * 30, tier="render", ok=True),
+        name="render",
+        tier=2,
+        is_paid=True,
+        cost_per_call=0.02,
+    )
+
+    async def _extract(pages, schema, **kw):
+        return [
+            ResearchRow(values={"name": "X", "score": "1"}, citations=[url], confidence=0.9)
+        ]
+
+    async def _planner(question, **kw):
+        # A plan WITH discovery queries — the starvation scenario needs both.
+        return ResearchPlan(question=question, schema=_schema(), queries=["q1", "q2"])
+
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        fetchers=[cheap, pricey],
+        discover=_discover,
+        planner=_planner,
+        extractor=_extract,
+    )
+    res = await harness.run(
+        "list models on this page",
+        urls=[url],
+        budget=Budget(max_iterations=1, max_fetches=3, max_llm_calls=3),
+    )
+    # The user's page was read FIRST — static + escalated render both fit in
+    # budget — and discovery never spent a credit this iteration.
+    assert pricey.calls == 1
+    assert discover_calls == []
+    assert not res.abstained and len(res.rows) == 1
+
+
+# --- ONTA-166 local: single-entity dedup / provenance-column strip ------------- #
+async def test_plan_strips_provenance_column_and_sets_single_record(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"clinic contact","fields":['
+            '{"name":"physician_name","required":true},{"name":"phone"},'
+            '{"name":"website"},{"name":"source_url"},{"name":"sources"}],'
+            '"needs_web":true,"single_record":true,"queries":["q"]}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("find Dr. X's clinic phone", openrouter_key="k")
+    assert plan.single_record is True
+    # source_url + sources dropped; the legitimate `website` content column stays.
+    assert plan.schema.field_names() == ["physician_name", "phone", "website"]
+
+
+def test_consolidate_single_record_merges_gaps_and_variants():
+    rows = [
+        ResearchRow(
+            values={"name": "Dr. Carrie Lam, MD", "phone": "714-709-8000", "email": "info@lamclinic.com"},
+            citations=["https://a"],
+            confidence=0.9,
+        ),
+        ResearchRow(
+            values={"name": "Dr. Carrie Lam, MD", "phone": "714-709-8000", "email": "unknown"},
+            citations=["https://b"],
+            confidence=0.7,
+        ),
+        ResearchRow(
+            values={"name": "unknown", "phone": "unknown", "email": "unknown"},
+            citations=["https://c"],
+            confidence=0.5,
+        ),
+    ]
+    out = WebResearchHarness._consolidate_single_record(rows, ["name", "phone", "email"])
+    assert len(out) == 1
+    assert out[0].values["name"] == "Dr. Carrie Lam, MD"  # most common non-blank
+    assert out[0].values["phone"] == "714-709-8000"  # 2 real vs 1 "unknown"
+    assert out[0].values["email"] == "info@lamclinic.com"  # a real value beats "unknown"
+    # the all-blank third row contributes nothing — including its citation (a
+    # source that yielded no fact isn't cited); union of the two real rows only.
+    assert out[0].citations == ["https://a", "https://b"]
+    assert out[0].confidence == 0.9  # max over the CONTRIBUTING rows
+
+
+async def test_harness_single_record_returns_one_row():
+    async def _planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            single_record=True,
+            schema=TargetSchema(
+                entity="contact",
+                fields=[SchemaField(name="name", required=True), SchemaField(name="phone")],
+            ),
+            queries=["find contact"],
+        )
+
+    async def _discover(query, **kw):
+        # The SAME entity from three "sources", with a gap in the middle one.
+        return DiscoverResult(
+            rows=[
+                {"name": "Dr. X", "phone": "111-222"},
+                {"name": "Dr. X", "phone": "unknown"},
+                {"name": "Dr. X", "phone": "111-222"},
+            ],
+            sources=["https://s1", "https://s2", "https://s3"],
+        )
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    fetcher = FakeFetcher(default=FetchedPage(url="x", ok=False))
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        planner=_planner,
+        discover=_discover,
+        fetchers=[fetcher],
+        extractor=_empty,
+    )
+    res = await harness.run(
+        "find Dr. X's phone", budget=Budget(max_iterations=1, max_fetches=5)
+    )
+    assert not res.abstained
+    assert len(res.rows) == 1  # three per-source rows fused into one
+    assert res.rows[0].values["phone"] == "111-222"
+
+
+def test_looks_incomplete_trusts_ample_short_lined_table():
+    # A compact data table / leaderboard renders as many SHORT lines (one per
+    # cell) → ~0 prose-length chars, but it IS content. Once sizable it must not
+    # be flagged incomplete (would needlessly pay for a render escalation).
+    table = "\n".join(f"Model{i}\t{i * 1000}" for i in range(200))
+    assert len(table) >= 1500
+    assert _substantive_chars(table) < _MIN_SUBSTANTIVE_CHARS  # short-lined
+    assert not _looks_incomplete(FetchedPage(url="u", text=table, ok=True))
+
+
+async def test_url_seeded_discovery_uses_planner_queries_not_followups():
+    # Regression: the pending-URL gate defers discovery past iteration 1, but the
+    # reflect step used to overwrite `queries` with generic follow-ups at the end
+    # of EVERY iteration — so the planner's crafted queries were discarded before
+    # discovery ever ran. They must survive until discovery consumes them.
+    discover_qs: list[str] = []
+
+    async def _discover(query, **kw):
+        discover_qs.append(query)
+        return DiscoverResult()
+
+    async def _planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            schema=_schema(),
+            queries=["crafted authoritative query"],
+            needs_web=True,
+        )
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    cheap = FakeFetcher(
+        default=FetchedPage(url="https://u.example/p", text=_NAV_SHELL, ok=True),
+        name="static",
+        tier=0,
+    )
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        planner=_planner,
+        discover=_discover,
+        fetchers=[cheap],
+        extractor=_empty,
+    )
+    await harness.run(
+        "q",
+        urls=["https://u.example/p"],
+        budget=Budget(max_iterations=2, max_fetches=6, max_llm_calls=4),
+    )
+    assert discover_qs and discover_qs[0] == "crafted authoritative query"
+
+
+async def test_planner_sees_user_urls():
+    # `urls=` (user-attached pages) must reach the planner as seed URLs — a
+    # planner blind to them asks "which page?" about a page it was handed.
+    seen: list[list[str]] = []
+
+    async def _spy_planner(question, *, seed_urls=None, **kw):
+        seen.append(list(seed_urls or []))
+        return ResearchPlan(question=question, schema=_schema(), queries=[])
+
+    fetcher = FakeFetcher(default=FetchedPage(url="u", text="rich " * 100, ok=True))
+
+    async def _extract(pages, schema, **kw):
+        return [ResearchRow(values={"name": "X"}, citations=["u"], confidence=0.9)]
+
+    harness = WebResearchHarness(
+        openrouter_key="k", fetchers=[fetcher], planner=_spy_planner, extractor=_extract
+    )
+    await harness.run(
+        "list models on this page",
+        urls=["https://ex.example/models"],
+        seed_urls=["https://ex.example/docs"],
+        budget=Budget(max_iterations=1, max_fetches=2, max_llm_calls=2),
+    )
+    assert seen and set(seen[0]) == {
+        "https://ex.example/docs",
+        "https://ex.example/models",
+    }
+
+
+async def test_harness_pinned_schema_skips_clarification():
+    called: list[int] = []
+
+    async def _ambiguous_planner(question, **kw):  # pragma: no cover - must NOT run
+        called.append(1)
+        return ResearchPlan(
+            question=question, needs_clarification=True, clarifying_questions=["?"]
+        )
+
+    fetcher = FakeFetcher(default=FetchedPage(url="u", text="rich " * 100, ok=True))
+
+    async def _extract(pages, schema, **kw):
+        return [
+            ResearchRow(
+                values={"name": "X", "score": "1"},
+                citations=[pages[0].url],
+                confidence=0.9,
+            )
+        ]
+
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        fetchers=[fetcher],
+        planner=_ambiguous_planner,
+        extractor=_extract,
+    )
+    res = await harness.run(
+        "q",
+        schema=_schema(),  # a pinned schema IS the disambiguation
+        urls=["https://ex.example/x"],
+        budget=Budget(max_iterations=1, max_fetches=2, max_llm_calls=2),
+    )
+    assert called == []  # planner never consulted when schema is pinned
+    assert res.needs_clarification is False
+    assert not res.abstained
+    assert len(res.rows) == 1
+
+
+# --- ONTA-166 local: per-stage cost/latency trace + medium tagging ------------- #
+def test_trace_totals_aggregate_per_stage():
+    from cograph_client.research.types import ResearchTrace
+
+    tr = ResearchTrace(medium="cli")
+    tr.add("fetch", detail="u1", elapsed_ms=100.0, cost_usd=0.02, tier=2)
+    tr.add("fetch", detail="u2", elapsed_ms=50.0, cost_usd=0.0, tier=0)
+    tr.add("extract", elapsed_ms=200.0, llm_calls=1)
+    t = tr.totals()
+    assert t["cost_usd"] == 0.02
+    assert t["elapsed_ms"] == 350.0
+    assert t["by_stage"]["fetch"] == {
+        "calls": 2,
+        "elapsed_ms": 150.0,
+        "cost_usd": 0.02,
+    }
+    d = tr.to_dict()
+    assert d["medium"] == "cli"
+    assert len(d["events"]) == 3
+    assert d["events"][0]["meta"]["tier"] == 2
+
+
+def test_normalize_medium_clamps_unknown_and_blank():
+    from cograph_client.research.types import normalize_medium
+
+    assert normalize_medium("cli") == "cli"
+    assert normalize_medium("  Explorer ") == "explorer"
+    assert normalize_medium("") == ""
+    assert normalize_medium(None) == ""
+    assert normalize_medium("evil\n" + "x" * 100000) == "other"  # cardinality/bloat guard
+
+
+def test_redact_url_strips_credentials_and_query():
+    from cograph_client.research.types import redact_url
+
+    assert (
+        redact_url("https://user:tok@example.com/p?api_key=SECRET")
+        == "https://example.com/p?<redacted>"
+    )
+    assert redact_url("https://example.com/models") == "https://example.com/models"
+    assert redact_url("http://h:8080/x") == "http://h:8080/x"
+    assert redact_url("not a url") == "not a url"  # unparseable → returned, not raised
+    # scheme-relative //user:pass@host must NOT leak userinfo (review S1 #4)
+    assert "tok" not in redact_url("//user:tok@example.com/x?api_key=S")
+    assert "S" not in redact_url("//user:tok@example.com/x?api_key=S").split("?")[0]
+
+
+async def test_fetch_exception_scrubs_credentials_from_trace(monkeypatch):
+    # A fetcher that RAISES with a URL-bearing message must not leak the user's
+    # credentials into the returned trace (review S1 #1): the trace event records
+    # the exception TYPE only, and detail is the redacted URL.
+    import json
+
+    secret = "SUPERSECRET"
+    secret_url = f"https://user:{secret}@ex.example/p?api_key=LEAKME"
+
+    class _Raiser:
+        name = "static"
+        tier = 0
+        is_paid = False
+        cost_per_call = 0.0
+
+        async def fetch(self, url, *, want=""):
+            raise RuntimeError(f"connect to {url} failed")
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    harness = WebResearchHarness(fetchers=[_Raiser()], extractor=_empty)
+    res = await harness.run(
+        "q", schema=_schema(), urls=[secret_url],
+        budget=Budget(max_iterations=1, max_fetches=2),
+    )
+    ev = next(e for e in res.trace.events if e.stage == "fetch")
+    assert ev.meta["error"] == "RuntimeError"  # type only, no message
+    blob = json.dumps(ev.to_dict())
+    assert secret not in blob and "LEAKME" not in blob
+    assert ev.detail == "https://ex.example/p?<redacted>"
+
+
+def test_trace_normalizes_medium_on_construction():
+    from cograph_client.research.types import ResearchTrace
+
+    assert ResearchTrace(medium="Weird-Client/1.0").medium == "other"
+    assert ResearchTrace(medium="MCP").medium == "mcp"
+
+
+async def test_harness_traces_stages_costs_and_medium():
+    url = "https://ex.example/js"
+    cheap = FakeFetcher(
+        default=FetchedPage(url=url, text="short", tier="static", ok=True),
+        name="static",
+        tier=0,
+    )
+    pricey = FakeFetcher(
+        default=FetchedPage(url=url, text="rendered content " * 40, tier="render", ok=True),
+        name="render",
+        tier=2,
+        is_paid=True,
+        cost_per_call=0.02,
+    )
+
+    async def _extract(pages, schema, **kw):
+        return [
+            ResearchRow(values={"name": "R", "score": "1"}, citations=[url], confidence=0.9)
+        ]
+
+    harness = WebResearchHarness(fetchers=[cheap, pricey], extractor=_extract)
+    res = await harness.run(
+        "q",
+        schema=_schema(),
+        urls=[url],
+        budget=Budget(max_iterations=1, max_fetches=4, max_llm_calls=4),
+        context={"medium": "mcp"},
+    )
+    tr = res.trace
+    assert tr is not None
+    assert tr.medium == "mcp"
+    stages = [e.stage for e in tr.events]
+    # pinned schema → no plan event; both ladder rungs + extract + verify traced.
+    assert stages.count("fetch") == 2
+    assert "extract" in stages and "verify" in stages
+    fetch_events = [e for e in tr.events if e.stage == "fetch"]
+    assert {e.meta["fetcher"] for e in fetch_events} == {"static", "render"}
+    # the paid rung's declared cost is metered; the free rung is 0.
+    assert tr.totals()["cost_usd"] == 0.02
+    verify = next(e for e in tr.events if e.stage == "verify")
+    assert verify.meta["kept"] == 1 and verify.meta["abstained"] is False
+    # …and the trace serializes onto the result payload.
+    assert res.to_dict()["trace"]["totals"]["cost_usd"] == 0.02
+
+
+async def test_clarification_result_carries_trace_with_plan_stage():
+    async def _ambiguous_planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            needs_clarification=True,
+            clarifying_questions=["Which metric?"],
+        )
+
+    harness = WebResearchHarness(
+        openrouter_key="k", fetchers=[], planner=_ambiguous_planner
+    )
+    res = await harness.run("best?", context={"medium": "explorer"})
+    assert res.needs_clarification is True
+    assert res.trace is not None and res.trace.medium == "explorer"
+    assert [e.stage for e in res.trace.events] == ["plan"]
+    assert res.trace.events[0].meta["needs_clarification"] is True
+
+
+async def test_ladder_escalates_past_nav_only_shell():
+    url = "https://spa.example/models"
+    cheap = FakeFetcher(
+        default=FetchedPage(url=url, text=_NAV_SHELL, tier="static", ok=True),
+        name="static",
+        tier=0,
+    )
+    pricey = FakeFetcher(
+        default=FetchedPage(
+            url=url,
+            text="GPT-5 offers a 400000 token context window on OpenRouter. " * 20,
+            tier="render",
+            ok=True,
+        ),
+        name="render",
+        tier=2,
+        is_paid=True,
+        cost_per_call=0.02,
+    )
+    seen_tiers: list[str] = []
+
+    async def _record(pages, schema, **kw):
+        seen_tiers.extend(p.tier for p in pages)
+        return [ResearchRow(values={"name": "GPT-5"}, citations=[url], confidence=0.9)]
+
+    harness = WebResearchHarness(fetchers=[cheap, pricey], extractor=_record)
+    res = await harness.run(
+        "list models", schema=_schema(), urls=[url], budget=Budget(max_fetches=4)
+    )
+    assert pricey.calls == 1  # escalated past the >200-char nav-only shell
+    assert "render" in seen_tiers  # extraction ran on the rendered page
+    assert not res.abstained
+
+
+# --- review F8: plan_research keyless + budget-exhausted fallback --------------- #
+async def test_plan_research_keyless_fallback():
+    plan = await plan_research("find models", hint_columns=["name", "score"], openrouter_key="")
+    assert plan.rationale.startswith("fallback")
+    assert set(["name", "score"]).issubset(set(plan.schema.field_names()))
+    assert plan.queries == ["find models"]
+
+
+async def test_plan_research_budget_exhausted_makes_no_call():
+    b = Budget(max_llm_calls=0)
+    plan = await plan_research("q", openrouter_key="would-be-used", budget=b)
+    assert b.llm_calls_used == 0  # gated before the call
+    assert plan.rationale.startswith("fallback")
+
+
+# --- MAJOR 4 + review F9: extract dedupe (all fields) + cap -------------------- #
+async def test_extract_keeps_records_sharing_a_required_field(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"rows":[{"values":{"name":"GPT","score":"90"},"confidence":0.9},'
+            '{"values":{"name":"GPT","score":"85"},"confidence":0.8}]}'
+        )
+
+    monkeypatch.setattr(extract_mod, "openrouter_chat", _chat)
+    schema = TargetSchema(
+        entity="m",
+        fields=[SchemaField(name="name", required=True), SchemaField(name="score")],
+    )
+    pages = [FetchedPage(url="u1", text="content " * 50, ok=True)]
+    rows = await extract_mod.extract_rows(pages, schema, openrouter_key="k")
+    # Two distinct records sharing the required `name` must BOTH survive (M4 fix).
+    assert len(rows) == 2
+    assert {r.values["score"] for r in rows} == {"90", "85"}
+
+
+async def test_extract_dedupes_identical_rows_and_merges_citations(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return '{"rows":[{"values":{"name":"X","score":"1"},"confidence":0.9}]}'
+
+    monkeypatch.setattr(extract_mod, "openrouter_chat", _chat)
+    schema = _schema()
+    pages = [
+        FetchedPage(url="u1", text="c " * 50, ok=True),
+        FetchedPage(url="u2", text="c " * 50, ok=True),
+    ]
+    rows = await extract_mod.extract_rows(pages, schema, openrouter_key="k")
+    assert len(rows) == 1
+    assert rows[0].citations == ["u1", "u2"]
+
+
+async def test_extract_caps_rows(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"rows":[{"values":{"name":"A"}},{"values":{"name":"B"}},'
+            '{"values":{"name":"C"}}]}'
+        )
+
+    monkeypatch.setattr(extract_mod, "openrouter_chat", _chat)
+    pages = [FetchedPage(url="u1", text="c " * 50, ok=True)]
+    rows = await extract_mod.extract_rows(pages, _schema(), openrouter_key="k", max_rows=2)
+    assert len(rows) == 2
+
+
+# --- MINOR 5: ladder returns the richest page, not the last -------------------- #
+async def test_ladder_returns_richest_page_when_all_incomplete():
+    url = "https://ex.example/js"
+    big = FakeFetcher(
+        default=FetchedPage(url=url, text="Please enable JavaScript " + "z" * 400, ok=True),
+        name="static",
+        tier=0,
+    )
+    tiny = FakeFetcher(
+        default=FetchedPage(url=url, text="tiny", ok=True),
+        name="render",
+        tier=2,
+        is_paid=True,
+        cost_per_call=0.02,
+    )
+    seen_lens: list[int] = []
+
+    async def _record(pages, schema, **kw):
+        seen_lens.append(len(pages[0].text))
+        return [ResearchRow(values={"name": "R"}, citations=[pages[0].url], confidence=0.8)]
+
+    harness = WebResearchHarness(fetchers=[big, tiny], extractor=_record)
+    await harness.run("q", schema=_schema(), urls=[url], budget=Budget(max_fetches=4))
+    # Both rungs looked incomplete, so the richer (bigger) page must be the one
+    # handed to extraction — not the 4-char one.
+    assert seen_lens and max(seen_lens) > 400 - 1
+
+
+# --- review F10: provenance keyed by index ------------------------------------- #
+async def test_discovery_provenance_by_index():
+    async def _discover(query, **kw):
+        return DiscoverResult(
+            rows=[{"score": "1"}],  # no "name" key → provenance keyed by index "0"
+            provenance={"0": "https://src.example/a"},
+            sources=["https://src.example/a"],
+        )
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    fetcher = FakeFetcher(default=FetchedPage(url="x", ok=False))
+    harness = WebResearchHarness(discover=_discover, fetchers=[fetcher], extractor=_empty)
+    res = await harness.run("q", schema=_schema())
+    assert not res.abstained
+    assert res.rows[0].citations == ["https://src.example/a"]
+
+
+# --- review F11: non-http URLs are filtered from harness input ----------------- #
+async def test_harness_filters_non_fetchable_input_urls():
+    fetcher = FakeFetcher(default=FetchedPage(url="x", text="rich " * 100, ok=True))
+
+    async def _rows(pages, schema, **kw):
+        return [ResearchRow(values={"name": "A"}, citations=[pages[0].url], confidence=0.9)]
+
+    harness = WebResearchHarness(fetchers=[fetcher], extractor=_rows)
+    await harness.run(
+        "q",
+        schema=_schema(),
+        urls=["ftp://x.example/a", "http://localhost/x", "https://ok.example/a"],
+        budget=Budget(max_fetches=5),
+    )
+    assert fetcher.seen == ["https://ok.example/a"]
+
+
+# --- MINOR 6: CSV formula injection is neutralized ----------------------------- #
+def test_to_csv_escapes_formula_injection():
+    res = ResearchResult(
+        question="q",
+        schema=_schema(),
+        rows=[ResearchRow(values={"name": "=1+2", "score": "@SUM(A1)"}, citations=["http://u"])],
+    )
+    csv = res.to_csv()
+    assert "'=1+2" in csv
+    assert "'@SUM(A1)" in csv
+    # a benign value is untouched
+    res2 = ResearchResult(
+        question="q",
+        schema=_schema(),
+        rows=[ResearchRow(values={"name": "Alpha", "score": "94"}, citations=["u"])],
+    )
+    assert "Alpha,94,u" in res2.to_csv()
