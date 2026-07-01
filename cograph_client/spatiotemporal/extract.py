@@ -65,6 +65,14 @@ _VALID_TO_LOCALS = {"valid_to", "effective_to", "valid_end"}
 _START_LOCALS = {"start_date", "start", "start_time", "begin", "starts_at"}
 _END_LOCALS = {"end_date", "end", "end_time", "until", "ends_at"}
 
+# Public recognition vocabulary. The Explorer's type-stats scan (api.routes.
+# explore) marks a type "temporally indexed" with the SAME rules used for fact
+# extraction below: an explicit validity bound, or a complete start+end pair.
+# Exported so the two call sites can never drift apart.
+VALIDITY_BOUND_LOCALS: frozenset[str] = frozenset(_VALID_FROM_LOCALS | _VALID_TO_LOCALS)
+INTERVAL_START_LOCALS: frozenset[str] = frozenset(_START_LOCALS)
+INTERVAL_END_LOCALS: frozenset[str] = frozenset(_END_LOCALS)
+
 _POINT_RE = re.compile(
     r"POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)", re.IGNORECASE
 )

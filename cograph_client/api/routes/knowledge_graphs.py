@@ -409,6 +409,12 @@ async def delete_kg(
 class TypeCount(BaseModel):
     name: str
     entity_count: int
+    # Spatio-temporal index markers, read from the precomputed stats graph
+    # (recompute_kg_stats materializes them; absence = False). Spatial = the
+    # type's instances carry geo:wktLiteral geometry; temporal = they carry
+    # validity bounds or a complete start+end date pair.
+    spatially_indexed: bool = False
+    temporally_indexed: bool = False
 
 
 class AttributeUsage(BaseModel):
@@ -457,7 +463,10 @@ async def list_type_counts(
         f'  FILTER(STRSTARTS(STR(?type), "{TYPE_URI_PREFIX}"))\n'
         f"}} GROUP BY ?type ORDER BY DESC(?cnt)"
     )
-    raw = await client.query(sparql)
+    raw, index_flags = await asyncio.gather(
+        client.query(sparql),
+        _read_type_index_flags(client, tenant.tenant_id, kg_name),
+    )
     _, bindings = parse_sparql_results(raw)
     out: list[TypeCount] = []
     for row in bindings:
@@ -472,8 +481,58 @@ async def list_type_counts(
             count = int(row.get("cnt", "0"))
         except ValueError:
             count = 0
-        out.append(TypeCount(name=leaf, entity_count=count))
+        spatial, temporal = index_flags.get(leaf, (False, False))
+        out.append(TypeCount(
+            name=leaf,
+            entity_count=count,
+            spatially_indexed=spatial,
+            temporally_indexed=temporal,
+        ))
     return out
+
+
+async def _read_type_index_flags(
+    client: NeptuneClient, tenant_id: str, kg_name: str
+) -> dict[str, tuple[bool, bool]]:
+    """Per-type (spatially_indexed, temporally_indexed) from the stats graph.
+
+    The markers are materialized by ``recompute_kg_stats``; a KG whose stats
+    were never recomputed (or whose types carry neither marker) simply yields
+    no rows — every type then defaults to (False, False). Best-effort: the
+    flags decorate the type list, so a stats-graph hiccup must not take down
+    the endpoint that powers the Explorer rail.
+    """
+    # Local import: explore imports this module (locally) for the triple-count
+    # invalidation hook, so a module-level import here would create a cycle.
+    from cograph_client.api.routes.explore import (
+        _STAT_SPATIAL,
+        _STAT_TEMPORAL,
+        _stats_graph_uri,
+    )
+
+    stats = _stats_graph_uri(tenant_id, kg_name)
+    sparql = (
+        f"SELECT ?type ?sp ?tp FROM <{stats}> WHERE {{\n"
+        f"  {{ ?type <{_STAT_SPATIAL}> ?sp }} UNION {{ ?type <{_STAT_TEMPORAL}> ?tp }}\n"
+        f"}}"
+    )
+    flags: dict[str, tuple[bool, bool]] = {}
+    try:
+        _, rows = parse_sparql_results(await client.query(sparql))
+    except Exception:  # noqa: BLE001 — decoration only, never fail the list
+        return flags
+    for row in rows:
+        t = row.get("type", "")
+        if not t.startswith(TYPE_URI_PREFIX):
+            continue
+        leaf = t[len(TYPE_URI_PREFIX):]
+        spatial, temporal = flags.get(leaf, (False, False))
+        if row.get("sp", "") == "true":
+            spatial = True
+        if row.get("tp", "") == "true":
+            temporal = True
+        flags[leaf] = (spatial, temporal)
+    return flags
 
 
 @router.get("/{kg_name}/types/{type_name}/usage", response_model=TypeUsage)
