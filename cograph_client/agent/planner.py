@@ -37,6 +37,7 @@ from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
 from cograph_client.agent.capabilities.ontology_cap import OntologyCapability
 from cograph_client.agent.capabilities.query import QueryCapability
 from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from cograph_client.agent.capabilities.web_research_cap import WebResearchCapability
 from cograph_client.agent.conversation_store import (  # noqa: F401  (re-exported)
     Turn,
     make_conversation_store,
@@ -70,6 +71,7 @@ _INTENT_TO_CAPABILITY = {
     "dedup": "dedup",  # registered (DedupCapability) → plans an ER rebuild
     "ontology": "ontology",  # registered (OntologyCapability) → inspect/declare
     "discover": "web_ingest",  # registered (WebIngestCapability) → web search + ingest
+    "research": "web_research",  # registered (WebResearchCapability) → cited answer/artifact, no KG write
 }
 
 # When the user asks for SEVERAL actions in one breath ("clean the names and
@@ -77,7 +79,14 @@ _INTENT_TO_CAPABILITY = {
 # is the order they run in: cleaning the VALUES first means the dedup/enrich pass
 # operates on already-normalized data — the documented clean-before-dedup /
 # clean-before-enrich pattern. Lower number = earlier.
-_INTENT_PLAN_ORDER = {"clean": 0, "enrich": 1, "dedup": 2, "ontology": 3, "discover": 4}
+_INTENT_PLAN_ORDER = {
+    "clean": 0,
+    "enrich": 1,
+    "dedup": 2,
+    "ontology": 3,
+    "discover": 4,
+    "research": 5,
+}
 
 # Convergence guard (COG-130): once the agent has asked this many clarifying
 # questions in a session, the classifier is told to STOP asking and commit. The
@@ -115,6 +124,14 @@ NOT already in this graph (e.g. "open-router's TTS models", "S&P 500 companies")
 This CREATES new entities that don't exist in the graph yet — distinct from \
 "question" (read-only about data ALREADY in the graph) and from "enrich" (fills \
 attributes on entities that ALREADY exist).
+- "research": answer a question using the WEB and return a cited answer plus a \
+downloadable table (CSV/JSON), WITHOUT storing anything in the graph ("research \
+X and give me a CSV", "what's the <value> of every <thing> on <site>", \
+"compare/look up <facts> across the web and make me a table/report"). This \
+returns an ANSWER/artifact FROM the web — distinct from "discover" (which INGESTS \
+web records as NEW graph entities to keep) and from "question" (read-only about \
+data ALREADY in the graph). Prefer "discover" when the user wants the results \
+ADDED to the graph; prefer "research" when they want an answer/report/CSV back.
 - "ambiguous": you genuinely cannot tell what is wanted and must ask ONE \
 clarifying question.
 
@@ -539,12 +556,18 @@ async def _respond(
     # accumulates the user's reply, so next turn the capability re-resolves.
     if len(steps) == 1 and steps[0].action == "clarify":
         p = steps[0].params
-        return {
+        out = {
             "kind": "clarify",
             "question": p.get("question")
             or "Could you clarify which entities you mean?",
             "options": p.get("options") or [],
         }
+        # A capability may ask SEVERAL questions (each with its own options) — pass
+        # the structured list through for clients that render more than one; the
+        # singular question/options above keep older clients working.
+        if p.get("questions"):
+            out["questions"] = p["questions"]
+        return out
 
     steps = order_steps(steps)
     plan_id = _new_plan_id()
@@ -740,3 +763,12 @@ def register_default_capabilities() -> None:
     # DORMANT until a downstream deployment registers a web-source provider —
     # plan() returns a plain "not enabled" answer when none is registered.
     register_capability(WebIngestCapability())
+    # Web research (ADR 0006): the read-only counterpart — answers a question from
+    # the web and returns a cited answer/artifact, no KG write. Works in OSS from
+    # user-supplied URLs via the default static fetcher; open-web search lights up
+    # when a web-source provider is registered. Register the default fetch ladder
+    # (the OSS static fetcher) so a plain deployment can read pages out of the box.
+    from cograph_client.research.fetch import register_default_fetchers
+
+    register_default_fetchers()
+    register_capability(WebResearchCapability())
