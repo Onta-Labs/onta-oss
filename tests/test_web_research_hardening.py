@@ -19,7 +19,12 @@ from cograph_client.research.fetch import (
     is_fetchable_url,
     reset_page_fetchers,
 )
-from cograph_client.research.harness import WebResearchHarness, _looks_incomplete
+from cograph_client.research.harness import (
+    _MIN_SUBSTANTIVE_CHARS,
+    WebResearchHarness,
+    _looks_incomplete,
+    _substantive_chars,
+)
 from cograph_client.research.plan import plan_research
 from cograph_client.research.types import (
     Budget,
@@ -469,6 +474,146 @@ async def test_discovery_never_starves_user_url_fetches():
     assert not res.abstained and len(res.rows) == 1
 
 
+# --- ONTA-166 local: single-entity dedup / provenance-column strip ------------- #
+async def test_plan_strips_provenance_column_and_sets_single_record(monkeypatch):
+    async def _chat(key, system, user, **kw):
+        return (
+            '{"entity":"clinic contact","fields":['
+            '{"name":"physician_name","required":true},{"name":"phone"},'
+            '{"name":"website"},{"name":"source_url"},{"name":"sources"}],'
+            '"needs_web":true,"single_record":true,"queries":["q"]}'
+        )
+
+    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    plan = await plan_research("find Dr. X's clinic phone", openrouter_key="k")
+    assert plan.single_record is True
+    # source_url + sources dropped; the legitimate `website` content column stays.
+    assert plan.schema.field_names() == ["physician_name", "phone", "website"]
+
+
+def test_consolidate_single_record_merges_gaps_and_variants():
+    rows = [
+        ResearchRow(
+            values={"name": "Dr. Carrie Lam, MD", "phone": "714-709-8000", "email": "info@lamclinic.com"},
+            citations=["https://a"],
+            confidence=0.9,
+        ),
+        ResearchRow(
+            values={"name": "Dr. Carrie Lam, MD", "phone": "714-709-8000", "email": "unknown"},
+            citations=["https://b"],
+            confidence=0.7,
+        ),
+        ResearchRow(
+            values={"name": "unknown", "phone": "unknown", "email": "unknown"},
+            citations=["https://c"],
+            confidence=0.5,
+        ),
+    ]
+    out = WebResearchHarness._consolidate_single_record(rows, ["name", "phone", "email"])
+    assert len(out) == 1
+    assert out[0].values["name"] == "Dr. Carrie Lam, MD"  # most common non-blank
+    assert out[0].values["phone"] == "714-709-8000"  # 2 real vs 1 "unknown"
+    assert out[0].values["email"] == "info@lamclinic.com"  # a real value beats "unknown"
+    # the all-blank third row contributes nothing — including its citation (a
+    # source that yielded no fact isn't cited); union of the two real rows only.
+    assert out[0].citations == ["https://a", "https://b"]
+    assert out[0].confidence == 0.9  # max over the CONTRIBUTING rows
+
+
+async def test_harness_single_record_returns_one_row():
+    async def _planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            single_record=True,
+            schema=TargetSchema(
+                entity="contact",
+                fields=[SchemaField(name="name", required=True), SchemaField(name="phone")],
+            ),
+            queries=["find contact"],
+        )
+
+    async def _discover(query, **kw):
+        # The SAME entity from three "sources", with a gap in the middle one.
+        return DiscoverResult(
+            rows=[
+                {"name": "Dr. X", "phone": "111-222"},
+                {"name": "Dr. X", "phone": "unknown"},
+                {"name": "Dr. X", "phone": "111-222"},
+            ],
+            sources=["https://s1", "https://s2", "https://s3"],
+        )
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    fetcher = FakeFetcher(default=FetchedPage(url="x", ok=False))
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        planner=_planner,
+        discover=_discover,
+        fetchers=[fetcher],
+        extractor=_empty,
+    )
+    res = await harness.run(
+        "find Dr. X's phone", budget=Budget(max_iterations=1, max_fetches=5)
+    )
+    assert not res.abstained
+    assert len(res.rows) == 1  # three per-source rows fused into one
+    assert res.rows[0].values["phone"] == "111-222"
+
+
+def test_looks_incomplete_trusts_ample_short_lined_table():
+    # A compact data table / leaderboard renders as many SHORT lines (one per
+    # cell) → ~0 prose-length chars, but it IS content. Once sizable it must not
+    # be flagged incomplete (would needlessly pay for a render escalation).
+    table = "\n".join(f"Model{i}\t{i * 1000}" for i in range(200))
+    assert len(table) >= 1500
+    assert _substantive_chars(table) < _MIN_SUBSTANTIVE_CHARS  # short-lined
+    assert not _looks_incomplete(FetchedPage(url="u", text=table, ok=True))
+
+
+async def test_url_seeded_discovery_uses_planner_queries_not_followups():
+    # Regression: the pending-URL gate defers discovery past iteration 1, but the
+    # reflect step used to overwrite `queries` with generic follow-ups at the end
+    # of EVERY iteration — so the planner's crafted queries were discarded before
+    # discovery ever ran. They must survive until discovery consumes them.
+    discover_qs: list[str] = []
+
+    async def _discover(query, **kw):
+        discover_qs.append(query)
+        return DiscoverResult()
+
+    async def _planner(question, **kw):
+        return ResearchPlan(
+            question=question,
+            schema=_schema(),
+            queries=["crafted authoritative query"],
+            needs_web=True,
+        )
+
+    async def _empty(pages, schema, **kw):
+        return []
+
+    cheap = FakeFetcher(
+        default=FetchedPage(url="https://u.example/p", text=_NAV_SHELL, ok=True),
+        name="static",
+        tier=0,
+    )
+    harness = WebResearchHarness(
+        openrouter_key="k",
+        planner=_planner,
+        discover=_discover,
+        fetchers=[cheap],
+        extractor=_empty,
+    )
+    await harness.run(
+        "q",
+        urls=["https://u.example/p"],
+        budget=Budget(max_iterations=2, max_fetches=6, max_llm_calls=4),
+    )
+    assert discover_qs and discover_qs[0] == "crafted authoritative query"
+
+
 async def test_planner_sees_user_urls():
     # `urls=` (user-attached pages) must reach the planner as seed URLs — a
     # planner blind to them asks "which page?" about a page it was handed.
@@ -556,6 +701,35 @@ def test_trace_totals_aggregate_per_stage():
     assert d["medium"] == "cli"
     assert len(d["events"]) == 3
     assert d["events"][0]["meta"]["tier"] == 2
+
+
+def test_normalize_medium_clamps_unknown_and_blank():
+    from cograph_client.research.types import normalize_medium
+
+    assert normalize_medium("cli") == "cli"
+    assert normalize_medium("  Explorer ") == "explorer"
+    assert normalize_medium("") == ""
+    assert normalize_medium(None) == ""
+    assert normalize_medium("evil\n" + "x" * 100000) == "other"  # cardinality/bloat guard
+
+
+def test_redact_url_strips_credentials_and_query():
+    from cograph_client.research.types import redact_url
+
+    assert (
+        redact_url("https://user:tok@example.com/p?api_key=SECRET")
+        == "https://example.com/p?<redacted>"
+    )
+    assert redact_url("https://example.com/models") == "https://example.com/models"
+    assert redact_url("http://h:8080/x") == "http://h:8080/x"
+    assert redact_url("not a url") == "not a url"  # unparseable → returned, not raised
+
+
+def test_trace_normalizes_medium_on_construction():
+    from cograph_client.research.types import ResearchTrace
+
+    assert ResearchTrace(medium="Weird-Client/1.0").medium == "other"
+    assert ResearchTrace(medium="MCP").medium == "mcp"
 
 
 async def test_harness_traces_stages_costs_and_medium():
