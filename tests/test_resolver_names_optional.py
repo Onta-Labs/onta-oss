@@ -20,19 +20,23 @@ from cograph_client.resolver.schema_resolver import EXTRACTION_SYSTEM
 def _names_optional_block() -> str:
     """The 'Names are optional' section of EXTRACTION_SYSTEM, lowercased.
 
-    Anchored on stable section titles; if they are reworded the anchor fails
-    loudly rather than silently slicing the wrong span (end falls back to
-    end-of-text so a reorder degrades to "scan the rest").
+    Anchored on the section HEADER ("Names are optional:" — the trailing colon
+    disambiguates it from the '(see "Names are optional" below)' cross-ref
+    earlier in the prompt) and bounded by the next section header. BOTH anchors
+    are hard-asserted, so a rename fails loudly rather than silently slicing the
+    wrong span.
     """
     text = EXTRACTION_SYSTEM
-    start = text.find("Names are optional")
+    start = text.find("Names are optional:")
     assert start != -1, (
-        "EXTRACTION_SYSTEM no longer has a 'Names are optional' section — the "
-        "no-fabricated-name guidance may have been moved or removed"
+        "EXTRACTION_SYSTEM no longer has a 'Names are optional:' section header "
+        "— the no-fabricated-name guidance may have been moved or removed"
     )
     end = text.find("Lift providers / organizations", start)
-    if end == -1:
-        end = len(text)
+    assert end != -1, (
+        "EXTRACTION_SYSTEM: the 'Lift providers / organizations' section that "
+        "bounds 'Names are optional' is gone — re-anchor this slice"
+    )
     return text[start:end].lower()
 
 
