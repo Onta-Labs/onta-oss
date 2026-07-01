@@ -51,6 +51,7 @@ from cograph_client.research.types import (
     ResearchTrace,
     SchemaField,
     TargetSchema,
+    redact_url,
 )
 from cograph_client.research.verify import (
     ResearchVerifier,
@@ -80,6 +81,13 @@ _PROSE_LINE_CHARS = 40
 # unrendered SPA shell (~0) and genuine content (models.dev static ≈730, census
 # ≈4900), and at the tiny-page bar so a single long content line still counts.
 _MIN_SUBSTANTIVE_CHARS = 200
+# A page with at least this much TOTAL text is trusted as real content even if it
+# scores low on substantive chars — a data table / leaderboard / pretty-printed
+# JSON renders as many SHORT lines (one per cell), so it has few "prose-length"
+# lines yet is genuine content, not an unrendered shell (which is small). This
+# keeps the substantive-chars escalation from paying for a render on a compact
+# table static already read in full (review finding).
+_AMPLE_TOTAL_CHARS = 1500
 
 # Confidence at/above which the reflect loop considers the answer done.
 _DONE_CONFIDENCE = 0.6
@@ -109,16 +117,29 @@ def _looks_incomplete(page: FetchedPage) -> bool:
         return True
     if any(marker in text.lower()[:4000] for marker in _JS_GATE_MARKERS):
         return True
-    # Over the size bar but almost all short nav labels → an unrendered SPA shell
-    # (e.g. a 407-char menu with zero model data). Escalate to a JS-rendering rung,
-    # which the OSS static tier is not. This is what distinguishes "407 chars of
-    # navigation" from "407 chars of answer".
+    # A page with plenty of TOTAL text is real content even if it's short-lined
+    # (a data table / leaderboard / JSON) — don't escalate it.
+    if len(text) >= _AMPLE_TOTAL_CHARS:
+        return False
+    # Otherwise: over the size bar but almost all short nav labels → an unrendered
+    # SPA shell (e.g. a 407-char menu with zero model data). Escalate to a
+    # JS-rendering rung. This distinguishes "407 chars of navigation" from
+    # "407 chars of answer".
     return _substantive_chars(text) < _MIN_SUBSTANTIVE_CHARS
 
 
 def _row_key(values: dict, cols: list[str]) -> str:
     keys = cols or list(values.keys())
     return "|".join(str(values.get(c, "")).strip().lower() for c in keys)
+
+
+# Placeholder the extractor emits for a field it couldn't find; treated as blank
+# for consolidation so a real value from another source always wins.
+_BLANK_VALUES = {"", "unknown", "n/a", "na", "none", "null", "-"}
+
+
+def _is_present(value: object) -> bool:
+    return str(value).strip().lower() not in _BLANK_VALUES
 
 
 def _note_stage(
@@ -298,6 +319,7 @@ class WebResearchHarness:
         outcome = VerifyOutcome(abstained=True)
         iterations = 0
         max_iters = max(1, budget.max_iterations)
+        discovery_ran = False
         while iterations < max_iters:
             iterations += 1
 
@@ -311,6 +333,7 @@ class WebResearchHarness:
             #    iteration re-enters here after those pages proved thin.
             pending_urls = any(u not in seen_urls for u in candidate_urls)
             if plan.needs_web and queries and not pending_urls and budget.can_fetch():
+                discovery_ran = True
                 disc_rows, disc_urls = await self._discover(
                     queries, cols, max_rows, context, budget, trace
                 )
@@ -390,7 +413,17 @@ class WebResearchHarness:
             )
             if done or out_of_budget or iterations >= max_iters:
                 break
-            queries = self._followup_queries(question, cols)
+            # Keep the planner's crafted queries for the FIRST discovery
+            # consultation; only fall back to generic follow-ups once discovery
+            # has actually consumed them (else a URL-seeded run, which defers
+            # discovery past iteration 1, would discard plan.queries unused).
+            if discovery_ran:
+                queries = self._followup_queries(question, cols)
+
+        # Single-entity questions: fuse the per-source rows into one consolidated
+        # record so the user sees the answer, not N formatting variants of it.
+        if plan.single_record and not outcome.abstained and outcome.rows:
+            outcome.rows = self._consolidate_single_record(outcome.rows, cols)
 
         complete = (
             not outcome.abstained
@@ -509,6 +542,9 @@ class WebResearchHarness:
                 break
             budget.note_fetch(1)
             _, rung_cost = fetcher_cost(fetcher)
+            # Credentials in a user-supplied URL (userinfo / query token) must not
+            # land verbatim in ops logs or the returned trace.
+            safe_url = redact_url(url)
             t0 = time.monotonic()
             try:
                 page = await fetcher.fetch(url, want=want)
@@ -519,7 +555,7 @@ class WebResearchHarness:
                 _note_stage(
                     trace,
                     "fetch",
-                    detail=url,
+                    detail=safe_url,
                     elapsed_ms=(time.monotonic() - t0) * 1000,
                     cost_usd=rung_cost,
                     ok=False,
@@ -531,7 +567,7 @@ class WebResearchHarness:
             _note_stage(
                 trace,
                 "fetch",
-                detail=url,
+                detail=safe_url,
                 elapsed_ms=(time.monotonic() - t0) * 1000,
                 cost_usd=rung_cost,
                 ok=page.ok if page is not None else False,
@@ -581,6 +617,48 @@ class WebResearchHarness:
             if len(out) >= max_rows:
                 break
         return out
+
+    @staticmethod
+    def _consolidate_single_record(
+        rows: list[ResearchRow], cols: list[str]
+    ) -> list[ResearchRow]:
+        """Collapse a single-entity question's many per-source rows into ONE.
+
+        "Find Dr. X's clinic phone / address" returns the SAME record from every
+        source, with formatting drift and gaps ("unknown"), so dedup can't merge
+        them and the user sees N near-identical rows. When the planner marked the
+        question ``single_record`` we fuse them: per column, take the most common
+        non-blank value (ties → first seen); union every citation; keep the max
+        confidence. A blank / "unknown" cell never wins over a real one, so the
+        merged row is the most complete view across sources."""
+        real = [r for r in rows if any(_is_present(v) for v in r.values.values())]
+        if len(real) <= 1:
+            return rows
+        keys = cols or list(dict.fromkeys(k for r in real for k in r.values.keys()))
+        merged: dict[str, str] = {}
+        for col in keys:
+            counts: dict[str, int] = {}
+            for r in real:
+                v = str(r.values.get(col, "")).strip()
+                if _is_present(v):
+                    counts[v] = counts.get(v, 0) + 1
+            if counts:  # most common non-blank value; ties → first seen
+                merged[col] = max(counts, key=lambda v: counts[v])
+        citations: list[str] = []
+        seen: set[str] = set()
+        for r in real:
+            for c in r.citations:
+                c = str(c).strip()
+                if c and c not in seen:
+                    seen.add(c)
+                    citations.append(c)
+        return [
+            ResearchRow(
+                values=merged,
+                citations=citations,
+                confidence=max((r.confidence for r in real), default=0.0),
+            )
+        ]
 
     async def _safe_verify(
         self, question, rows, pages, schema
