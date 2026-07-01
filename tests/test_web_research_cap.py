@@ -96,6 +96,36 @@ async def test_plan_available_via_registered_provider_without_urls():
     assert steps[0].action == "research"
 
 
+async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
+    # A genuinely ambiguous question surfaces a no-write 'answer' step carrying the
+    # clarifying questions — the confirm-before-spend research step is never made.
+    from cograph_client.research.types import ResearchPlan, SchemaField, TargetSchema
+
+    async def _ambiguous_plan(instruction, **kw):
+        return ResearchPlan(
+            question=instruction,
+            needs_clarification=True,
+            clarifying_questions=["Best by what metric?", "Which modality?"],
+            schema=TargetSchema(entity="model", fields=[SchemaField(name="name")]),
+        )
+
+    monkeypatch.setattr(
+        "cograph_client.research.plan.plan_research", _ambiguous_plan
+    )
+    cap = WebResearchCapability()
+    steps = await cap.plan(
+        _ctx(urls=["https://example.com/board"]), "list the best models"
+    )
+    assert len(steps) == 1
+    assert steps[0].action == "answer"  # not "research" — nothing will be spent
+    payload = steps[0].params["answer_payload"]
+    assert payload["clarifying_questions"] == [
+        "Best by what metric?",
+        "Which modality?",
+    ]
+    assert "clarification" in payload["answer"].lower()
+
+
 async def test_paid_fetcher_shows_up_in_cost_estimate():
     class _PaidFetcher(_FakeFetcher):
         name = "render"

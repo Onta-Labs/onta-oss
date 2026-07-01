@@ -85,6 +85,33 @@ def _prose_answer(
     return lead + tail
 
 
+def clarification_result(question: str, questions: list[str]) -> ResearchResult:
+    """A no-spend result that asks the user to disambiguate rather than guessing.
+
+    Returned by the harness when the planner flags the question as genuinely
+    ambiguous (ADR 0006 §Plan — ask only on true ambiguity). Carries no rows and
+    is NOT an abstain: ``abstained`` means "searched, found nothing supportable",
+    while this means "I haven't searched yet — pick a reading first"."""
+    qs = [str(q).strip() for q in (questions or []) if str(q).strip()][:3]
+    body = "\n".join(f"- {q}" for q in qs)
+    answer = (
+        "Before I search the web for this, I need one clarification — the question "
+        "has more than one reasonable reading:\n" + body
+        if qs
+        else "Could you clarify what exactly you're looking for?"
+    )
+    return ResearchResult(
+        question=question,
+        answer=answer,
+        needs_clarification=True,
+        clarifying_questions=qs,
+        confidence=0.0,
+        is_complete=False,
+        abstained=False,
+        iterations=0,
+    )
+
+
 def synthesize_result(
     question: str,
     schema: TargetSchema,
@@ -121,4 +148,4 @@ def synthesize_result(
     )
 
 
-__all__ = ["synthesize_result"]
+__all__ = ["clarification_result", "synthesize_result"]

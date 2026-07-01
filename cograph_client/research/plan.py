@@ -41,7 +41,10 @@ _PLAN_SYSTEM = (
     "of the answer (a target schema: what each output row represents and its "
     "columns) and how to go find it on the open web. You return ONLY a single "
     "JSON object and nothing else. You never invent columns the question does "
-    "not ask for, and you keep discovery queries concrete and searchable."
+    "not ask for, and you keep discovery queries concrete and searchable. You "
+    "DEFAULT to answering with the most reasonable interpretation; you ask the "
+    "user to clarify ONLY when the question is genuinely ambiguous — when two or "
+    "more readings would lead to materially different answers."
 )
 
 
@@ -60,6 +63,8 @@ def _build_prompt(
         '"type": "string|number|boolean|date|url", "required": <bool>}], '
         '"needs_web": <bool>, "fast_path": <bool>, '
         '"queries": ["<concrete discovery query>", ...], '
+        '"needs_clarification": <bool>, '
+        '"clarifying_questions": ["<question to ask the user>", ...], '
         '"rationale": "<one line>"}\n\n'
         "Rules:\n"
         "- `entity` names one row (e.g. \"TTS model\", \"company\").\n"
@@ -71,6 +76,15 @@ def _build_prompt(
         "page covers.\n"
         "- `queries` are concrete search strings that would surface the "
         "authoritative sources.\n"
+        "- `needs_clarification` is true ONLY when the question is genuinely "
+        "ambiguous — two or more readings give materially different answers "
+        "(e.g. \"list the best models\" — best by what metric? which modality? "
+        "over what time window?). DEFAULT to false and just pick the most "
+        "reasonable interpretation; do NOT ask about minor details you can "
+        "sensibly assume.\n"
+        "- `clarifying_questions` holds 1–3 short, specific questions ONLY when "
+        "`needs_clarification` is true; otherwise an empty list. When you ask, "
+        "you may still fill `entity`/`fields`/`queries` with your best guess.\n"
         "- `rationale` is one short line.\n",
     ]
     if hints:
@@ -240,6 +254,14 @@ async def plan_research(
         plan = ResearchPlan.from_dict(plan_payload)
     except Exception:
         return _fallback_plan(question, hint_columns, seed_urls)
+
+    # Clarification only counts when the planner actually supplied questions; cap
+    # to a few crisp ones so we ask, not interrogate. A `needs_clarification: true`
+    # with no questions is a model slip — treat it as "proceed".
+    plan.clarifying_questions = plan.clarifying_questions[:3]
+    plan.needs_clarification = plan.needs_clarification and bool(
+        plan.clarifying_questions
+    )
 
     # Caller's hint columns are authoritative — guarantee they all appear.
     plan.schema = _ensure_hint_fields(plan.schema, hint_columns)

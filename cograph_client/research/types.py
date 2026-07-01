@@ -189,6 +189,12 @@ class ResearchPlan:
     question that a single cited answer covers — the harness may skip the full
     ladder. ``queries`` are discovery queries; ``seed_urls`` are pages the planner
     already knows are authoritative (or the user supplied).
+
+    ``needs_clarification`` is True ONLY when the question is genuinely ambiguous —
+    it has more than one materially different reading that would change the schema
+    or the answer — in which case ``clarifying_questions`` holds 1–3 crisp things
+    to ask the user BEFORE spending on the web. The default is to proceed with the
+    best interpretation; asking is the exception, not the rule.
     """
 
     question: str
@@ -198,6 +204,8 @@ class ResearchPlan:
     queries: list[str] = field(default_factory=list)
     seed_urls: list[str] = field(default_factory=list)
     rationale: str = ""
+    needs_clarification: bool = False
+    clarifying_questions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -208,6 +216,8 @@ class ResearchPlan:
             "queries": list(self.queries),
             "seed_urls": list(self.seed_urls),
             "rationale": self.rationale,
+            "needs_clarification": self.needs_clarification,
+            "clarifying_questions": list(self.clarifying_questions),
         }
 
     @classmethod
@@ -220,6 +230,10 @@ class ResearchPlan:
             queries=[str(q) for q in (d.get("queries") or []) if str(q).strip()],
             seed_urls=[str(u) for u in (d.get("seed_urls") or []) if str(u).strip()],
             rationale=str(d.get("rationale", "") or ""),
+            needs_clarification=bool(d.get("needs_clarification", False)),
+            clarifying_questions=[
+                str(q) for q in (d.get("clarifying_questions") or []) if str(q).strip()
+            ],
         )
 
 
@@ -245,6 +259,11 @@ class ResearchResult:
     iterations: int = 0
     sources_consulted: list[str] = field(default_factory=list)
     notes: str = ""
+    # Set when the harness asked the user to disambiguate instead of running the
+    # loop — no rows, no web spend, an honest question back (distinct from
+    # ``abstained``, which means "I searched and found nothing supportable").
+    needs_clarification: bool = False
+    clarifying_questions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -259,6 +278,8 @@ class ResearchResult:
             "iterations": self.iterations,
             "sources_consulted": list(self.sources_consulted),
             "notes": self.notes,
+            "needs_clarification": self.needs_clarification,
+            "clarifying_questions": list(self.clarifying_questions),
         }
 
     def to_csv(self) -> str:
