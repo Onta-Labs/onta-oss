@@ -53,6 +53,11 @@ class AgentContext:
     # Capabilities read this defensively (``getattr(ctx, "urls", None)``) so they
     # keep working even if a context predates this field.
     urls: list[str] = field(default_factory=list)
+    # Which interface issued this request — "explorer" / "cli" / "mcp" / "sdk" /
+    # "" when the client didn't say. Threaded from the canonical /agent request
+    # body (context.medium) so cost/latency telemetry can be broken down per
+    # medium without any per-interface endpoint divergence.
+    medium: str = ""
     # The conversation/thread id for this turn (the ``session_id`` on the agent
     # request). Capabilities stamp it onto any job they create so a chat-spawned
     # job is traceable back to its conversation. Read defensively
