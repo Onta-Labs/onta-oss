@@ -19,6 +19,7 @@ Boundary: OSS. Imports only stdlib / ``cograph_client.*`` / ``httpx``.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import re
 import socket
@@ -187,7 +188,12 @@ def _is_blocked_host(host: str) -> bool:
 
 
 def is_fetchable_url(url: str) -> bool:
-    """True when ``url`` is an http(s) URL to a non-internal host."""
+    """True when ``url`` is an http(s) URL to a non-internal host.
+
+    STRING-ONLY and NO DNS — deterministic offline (tests/CI never hit the
+    network). It catches IP literals + obvious internal names; a real hostname
+    that RESOLVES to an internal IP (a DNS-record SSRF) is caught separately at
+    fetch time by :func:`host_dns_blocked`, so this stays a cheap pre-filter."""
     try:
         parsed = urlparse((url or "").strip())
     except ValueError:
@@ -195,6 +201,61 @@ def is_fetchable_url(url: str) -> bool:
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return False
     return not _is_blocked_host(parsed.hostname)
+
+
+# --- DNS-resolving SSRF guard (fetch-time) ------------------------------------ #
+# The string guard above is name-blind: a public hostname whose A record points
+# at 169.254.169.254 (cloud metadata) or a private range sails through it. Before
+# the static fetcher opens a socket we RESOLVE the host and re-check every
+# returned address against the same block rules. (This narrows, but does not
+# fully close, DNS rebinding — a locked-down egress proxy remains the belt to
+# this suspenders; resolve-time validation is the defense a proxy-less bare-OSS
+# deployment otherwise lacked entirely.)
+def _resolve_ips(host: str) -> list[str]:
+    """Resolve a hostname to its A/AAAA addresses; ``[]`` on failure.
+
+    Isolated at module scope so tests can stub it (keeping them offline). A name
+    that doesn't resolve returns ``[]`` → not treated as blocked, since it simply
+    can't connect anywhere."""
+    try:
+        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError):
+        return []
+    return list({str(info[4][0]) for info in infos})
+
+
+def _host_dns_blocked(host: str) -> bool:
+    """True when a real hostname RESOLVES to a blocked address.
+
+    IP-literal hosts are already covered by :func:`_is_blocked_host`, so they
+    short-circuit False here (no redundant lookup)."""
+    if not host or _host_to_ip(host) is not None:
+        return False
+    for ip in _resolve_ips(host):
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        if (
+            addr.is_loopback
+            or addr.is_link_local
+            or addr.is_private
+            or addr.is_reserved
+            or addr.is_multicast
+            or addr.is_unspecified
+        ):
+            return True
+    return False
+
+
+async def host_dns_blocked(host: str) -> bool:
+    """Async wrapper — runs the blocking lookup off the event loop; never raises
+    (a resolver hiccup must not sink the fetch, the connect will fail instead)."""
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _host_dns_blocked, host)
+    except Exception:  # pragma: no cover - defensive
+        return False
 
 
 # --- HTML → text -------------------------------------------------------------- #
@@ -276,6 +337,13 @@ class StaticHttpFetcher:
             return FetchedPage(
                 url=url, tier=self.name, ok=False, error="blocked or non-http(s) URL"
             )
+        # Resolve-and-check the host before connecting — catches a public name
+        # whose DNS points at an internal/metadata address (SSRF the string guard
+        # can't see).
+        if await host_dns_blocked(urlparse(url).hostname or ""):
+            return FetchedPage(
+                url=url, tier=self.name, ok=False, error="host resolves to a blocked address"
+            )
         content_type = ""
         body = ""
         truncated = False
@@ -303,6 +371,15 @@ class StaticHttpFetcher:
                                     tier=self.name,
                                     ok=False,
                                     error="redirect to blocked or missing location",
+                                )
+                            # Re-resolve the redirect target too — a 302 to a
+                            # public name that DNS-maps to an internal address.
+                            if await host_dns_blocked(urlparse(nxt).hostname or ""):
+                                return FetchedPage(
+                                    url=url,
+                                    tier=self.name,
+                                    ok=False,
+                                    error="redirect to a host resolving to a blocked address",
                                 )
                             current = nxt
                             continue
@@ -352,6 +429,7 @@ __all__ = [
     "default_ladder",
     "fetcher_cost",
     "get_page_fetchers",
+    "host_dns_blocked",
     "html_to_text",
     "is_fetchable_url",
     "register_default_fetchers",
