@@ -11,6 +11,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.ontology_queries import list_types_query
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import tenant_graph_uri
 
@@ -175,3 +176,83 @@ async def load_strategy(
                 attr.conflict_policy = obj or None
 
     return strategy
+
+
+# ── Type-name resolution ─────────────────────────────────────────────────────
+# Root-cause guard for the "job Completed but enriched nothing" no-op: the entity
+# SELECT keys on ``?e a <types/Name>`` case-sensitively, so a lowercase
+# ``organization`` against a declared PascalCase ``Organization`` matches zero
+# entities and the run silently finishes empty. These resolve a requested type to
+# the tenant's canonical declared name (auto-correcting case) and let callers
+# reject a type that truly doesn't exist. Both the enrich route (up-front 422)
+# and the executor (safety net for schedules / actions) use them.
+
+
+async def list_declared_types(client: NeptuneClient, tenant_id: str) -> list[str]:
+    """The tenant's declared type names — the local part of each ``rdfs:Class``
+    URI in the ontology graph (e.g. ``Organization`` from
+    ``…/types/Organization``).
+
+    A single bounded ontology read — the SAME query :func:`load_strategy` and the
+    ``/ontology/types`` route use, never an instance scan (COG-112 safe). Keys on
+    the class URI (not ``rdfs:label``) because that local part is exactly what
+    :func:`_type_uri` / the entity SELECT match on. Returns ``[]`` on any read
+    error so callers fail open (an unavailable ontology must never block a job).
+    """
+    try:
+        onto_graph = tenant_graph_uri(tenant_id)
+        _, rows = parse_sparql_results(await client.query(list_types_query(onto_graph)))
+    except Exception:  # noqa: BLE001 — a type-list read must never break a job
+        logger.warning("enrich_list_types_failed", tenant_id=tenant_id, exc_info=True)
+        return []
+    prefix = f"{TYPES_PREFIX}/"
+    seen: set[str] = set()
+    names: list[str] = []
+    for row in rows:
+        uri = (row.get("type") or "").strip()
+        if not uri.startswith(prefix):
+            continue
+        name = uri[len(prefix):]
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+async def resolve_type_name(
+    client: NeptuneClient, tenant_id: str, requested: str
+) -> tuple[str | None, list[str]]:
+    """Resolve ``requested`` to the tenant's canonical declared type name.
+
+    Matching is exact first, then case-insensitive — so a lowercase
+    ``organization`` resolves to the declared ``Organization`` (the reported
+    root-cause: a miscased type selected zero entities → a silent no-op run).
+
+    Returns ``(canonical, known)``:
+
+    - ``known`` — the declared type names; ``[]`` means the ontology read failed
+      or the tenant declared none, i.e. "cannot judge" → callers MUST fail open
+      and keep ``requested`` unchanged.
+    - ``canonical`` — the matched declared name, or ``None`` when ``known`` is
+      non-empty but nothing matches (a genuinely unknown type).
+    """
+    known = await list_declared_types(client, tenant_id)
+    if not known:
+        return None, []
+    if requested in known:
+        return requested, known
+    lowered = requested.strip().lower()
+    for name in known:
+        if name.lower() == lowered:
+            return name, known
+    return None, known
+
+
+def unknown_type_message(requested: str, known: list[str]) -> str:
+    """Actionable error for an enrich job whose type doesn't exist in the graph."""
+    preview = ", ".join(sorted(known)[:10])
+    more = "" if len(known) <= 10 else f" (+{len(known) - 10} more)"
+    return (
+        f"Type '{requested}' doesn't exist in this graph. "
+        f"Available types: {preview}{more}."
+    )

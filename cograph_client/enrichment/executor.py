@@ -39,6 +39,8 @@ from cograph_client.enrichment.strategy import (
     AttributeStrategy,
     TypeStrategy,
     load_strategy,
+    resolve_type_name,
+    unknown_type_message,
 )
 from cograph_client.enrichment.extraction import coerce_url_attribute_value
 from cograph_client.enrichment.tiers import get_chain
@@ -976,6 +978,29 @@ class EnrichmentExecutor:
             job.status = JobStatus.running
             job.started_at = _now()
             await self._jobs.update(job)
+
+            # Resolve the target type to the tenant's canonical declared name
+            # BEFORE selecting entities. The SELECT keys on ?e a <types/Name>
+            # case-sensitively, so a miscased/unknown type would otherwise match
+            # zero entities and this run would finish "Completed" having enriched
+            # nothing (the reported no-op). Auto-correct a case-insensitive match;
+            # fail fast with a clear error for a type that genuinely doesn't
+            # exist. This guards EVERY caller of run() (direct enrich, schedules,
+            # actions), not just the enrich route. Fail-open: when the ontology
+            # read fails or declares no types (known == []) we proceed unchanged.
+            canonical, known_types = await resolve_type_name(
+                self._neptune, tenant_id, job.type_name
+            )
+            if known_types and canonical is None:
+                job.status = JobStatus.failed
+                job.error = unknown_type_message(job.type_name, known_types)
+                job.completed_at = _now()
+                job.error_summary = [JobErrorItem(kind="job", message=job.error)]
+                await self._jobs.update(job)
+                return
+            if canonical and canonical != job.type_name:
+                job.type_name = canonical
+                await self._jobs.update(job)
 
             # Load ontology-driven strategy. Always returns a TypeStrategy.
             strategy = await load_strategy(self._neptune, tenant_id, job.type_name)
