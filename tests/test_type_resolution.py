@@ -131,6 +131,30 @@ def test_list_declared_types_ignores_non_type_rows():
     asyncio.run(run())
 
 
+def test_resolve_trims_whitespace_and_stores_canonical():
+    # A padded input (e.g. a pasted "  organization  ") resolves to the clean
+    # declared name — the stored type must be the canonical `Organization`, not
+    # the padded string (which would itself select zero entities).
+    async def run():
+        n = _fake_neptune(_types_response(["Organization"]))
+        canonical, _ = await resolve_type_name(n, "t", "  organization  ")
+        assert canonical == "Organization"
+
+    asyncio.run(run())
+
+
+def test_resolve_exact_match_wins_over_case_variant():
+    # Pathological ontology with both casings declared: an exact match must
+    # short-circuit to itself deterministically (never silently rewrite to the
+    # other casing).
+    async def run():
+        n = _fake_neptune(_types_response(["Organization", "organization"]))
+        assert (await resolve_type_name(n, "t", "organization"))[0] == "organization"
+        assert (await resolve_type_name(n, "t", "Organization"))[0] == "Organization"
+
+    asyncio.run(run())
+
+
 def test_unknown_type_message_lists_available_types():
     msg = unknown_type_message("organisation", ["Organization", "Person"])
     assert "organisation" in msg
