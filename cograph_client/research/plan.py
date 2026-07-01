@@ -62,6 +62,7 @@ def _build_prompt(
         '"fields": [{"name": "<column>", "description": "<what it holds>", '
         '"type": "string|number|boolean|date|url", "required": <bool>}], '
         '"needs_web": <bool>, "fast_path": <bool>, '
+        '"single_record": <bool>, '
         '"queries": ["<concrete discovery query>", ...], '
         '"needs_clarification": <bool>, '
         '"clarifying_questions": [{"question": "<question to ask the user>", '
@@ -70,11 +71,18 @@ def _build_prompt(
         "Rules:\n"
         "- `entity` names one row (e.g. \"TTS model\", \"company\").\n"
         "- `fields` are ONLY the columns the question asks for; mark the "
-        "identifying column(s) `required: true`.\n"
+        "identifying column(s) `required: true`. NEVER add a source / source_url "
+        "/ citation / provenance / reference column — the system attaches sources "
+        "to every row automatically, and such a column corrupts de-duplication.\n"
         "- `needs_web` is false ONLY when the question can be answered with no "
         "web lookup at all.\n"
         "- `fast_path` is true for a trivial single-fact question one cited "
         "page covers.\n"
+        "- `single_record` is true when the question asks for the attributes of "
+        "ONE specific entity (e.g. \"find Dr. Smith's clinic phone and address\", "
+        "\"what is Acme Corp's HQ address\") — the answer is a SINGLE consolidated "
+        "row. It is false for list/multi questions (\"list the TTS models\", "
+        "\"top 5 countries\").\n"
         "- `queries` are concrete search strings that would surface the "
         "authoritative sources.\n"
         "- `needs_clarification` is true ONLY when the question is genuinely "
@@ -268,6 +276,11 @@ async def plan_research(
     plan.needs_clarification = plan.needs_clarification and bool(
         plan.clarifying_questions
     )
+
+    # A planner-invented source/citation column duplicates the citations the
+    # harness tracks structurally AND breaks row de-dup (every source URL differs,
+    # so identical facts never collapse). Strip it regardless of the prompt.
+    plan.schema = plan.schema.drop_provenance_fields()
 
     # Caller's hint columns are authoritative — guarantee they all appear.
     plan.schema = _ensure_hint_fields(plan.schema, hint_columns)
