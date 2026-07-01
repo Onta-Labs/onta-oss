@@ -28,6 +28,12 @@ from cograph_client.graph.ontology_queries import attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.resolver import drift_control
+from cograph_client.spatiotemporal.extract import (
+    GEO_WKT,
+    INTERVAL_END_LOCALS,
+    INTERVAL_START_LOCALS,
+    VALIDITY_BOUND_LOCALS,
+)
 
 logger = structlog.stdlib.get_logger("cograph.explore")
 
@@ -157,6 +163,16 @@ _STAT_CNT = _STATS_NS + "cnt"
 _STAT_REL = _STATS_NS + "rel"
 _STAT_TARGET = _STATS_NS + "targetType"
 _STAT_ENTITY_COUNT = _STATS_NS + "entityCount"
+# Per-type spatio-temporal index markers (COG-103 follow-up). A type is
+# spatially indexed when instances carry geo:wktLiteral geometry (the one
+# signal that puts an entity in the spatio-temporal index), temporally indexed
+# when instances carry validity per the extract.py recognition rules — an
+# explicit validity bound, or a complete start+end pair of date/dateTime
+# values. Materialized as boolean triples on the type URI, only when true.
+_STAT_SPATIAL = _STATS_NS + "spatiallyIndexed"
+_STAT_TEMPORAL = _STATS_NS + "temporallyIndexed"
+_XSD_DATE_URI = "http://www.w3.org/2001/XMLSchema#date"
+_XSD_DATETIME_URI = "http://www.w3.org/2001/XMLSchema#dateTime"
 
 # --- Drift history graph (COG-57) ---------------------------------------------
 # The observe-only mode (ADR 0004 §7) computes the per-relationship coverage
@@ -255,6 +271,53 @@ def _coverage(count: int, entity_count: int) -> float:
     return round(count / entity_count * 100, 1)
 
 
+# SPARQL aggregates shared by the recompute scan and the live fallback: per
+# predicate, how many objects are geometry-typed (geo:wktLiteral) and how many
+# are date/dateTime-typed. isLiteral() guards DATATYPE() so an IRI object
+# contributes 0 instead of erroring the whole aggregate row.
+_ST_FLAG_AGGREGATES = (
+    f"  (SUM(IF(isLiteral(?o) && DATATYPE(?o) = <{GEO_WKT}>, 1, 0)) AS ?geo)\n"
+    f"  (SUM(IF(isLiteral(?o) && (DATATYPE(?o) = <{_XSD_DATE_URI}> || "
+    f"DATATYPE(?o) = <{_XSD_DATETIME_URI}>), 1, 0)) AS ?tmp)\n"
+)
+
+
+class _IndexFlagAccumulator:
+    """Fold per-predicate (geo, temporal) counts into per-type index flags.
+
+    Mirrors the spatio-temporal extraction rules (spatiotemporal.extract) at
+    type granularity: spatial = any geometry-bearing predicate; temporal = an
+    explicit validity bound, or BOTH ends of a start+end interval pair.
+    """
+
+    __slots__ = ("spatial", "_has_bound", "_has_start", "_has_end")
+
+    def __init__(self) -> None:
+        self.spatial = False
+        self._has_bound = False
+        self._has_start = False
+        self._has_end = False
+
+    def add(self, p_uri: str, geo: int, tmp: int) -> None:
+        if geo > 0:
+            self.spatial = True
+        if tmp > 0:
+            local = p_uri.rsplit("#", 1)[-1].rsplit("/", 1)[-1].lower()
+            if local in VALIDITY_BOUND_LOCALS:
+                self._has_bound = True
+            elif local in INTERVAL_START_LOCALS:
+                self._has_start = True
+            elif local in INTERVAL_END_LOCALS:
+                self._has_end = True
+
+    @property
+    def temporal(self) -> bool:
+        return self._has_bound or (self._has_start and self._has_end)
+
+    def flags(self) -> dict:
+        return {"spatially_indexed": self.spatial, "temporally_indexed": self.temporal}
+
+
 def _xsd_to_datatype(uri: str) -> str:
     if not uri:
         return "string"
@@ -272,6 +335,7 @@ def _assemble_summary(
     entity_count: int,
     pred_records: list[dict],
     attr_defs: dict[str, dict[str, str]],
+    index_flags: dict | None = None,
 ) -> dict:
     """Build the panel payload from per-predicate records (cnt + rel total).
 
@@ -319,6 +383,7 @@ def _assemble_summary(
                 "count": cnt,
                 "coverage_pct": cov,
             })
+    flags = index_flags or {}
     return {
         "name": type_name,
         "description": onto_row.get("comment", ""),
@@ -326,18 +391,24 @@ def _assemble_summary(
         "entity_count": entity_count,
         "attributes": attributes,
         "relationships": relationships,
+        "spatially_indexed": bool(flags.get("spatially_indexed")),
+        "temporally_indexed": bool(flags.get("temporally_indexed")),
     }
 
 
-async def _live_scan(client: NeptuneClient, kg_graph: str, t_uri: str) -> tuple[int, list[dict]]:
-    """Fallback: one instance scan → (entity_count, per-predicate records).
+async def _live_scan(
+    client: NeptuneClient, kg_graph: str, t_uri: str
+) -> tuple[int, list[dict], dict]:
+    """Fallback: one instance scan → (entity_count, per-predicate records, flags).
 
     Used only when precomputed stats are absent for a type. The rdf:type row
-    yields the entity count; ``rel`` is the entity-valued object total.
+    yields the entity count; ``rel`` is the entity-valued object total; flags
+    are the per-type spatio-temporal index markers (same rules as recompute).
     """
     pred_sparql = (
         f"SELECT ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
         f'  (SUM(IF(STRSTARTS(STR(?o), "{ENTITY_URI_PREFIX}"), 1, 0)) AS ?rel)\n'
+        f"{_ST_FLAG_AGGREGATES}"
         f"FROM <{kg_graph}> WHERE {{\n"
         f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
         f"  ?e ?p ?o .\n"
@@ -354,6 +425,7 @@ async def _live_scan(client: NeptuneClient, kg_graph: str, t_uri: str) -> tuple[
     _, rows = parse_sparql_results(await client.query(pred_sparql))
     entity_count = 0
     records: list[dict] = []
+    facc = _IndexFlagAccumulator()
     for r in rows:
         p_uri = r.get("p", "")
         try:
@@ -374,17 +446,33 @@ async def _live_scan(client: NeptuneClient, kg_graph: str, t_uri: str) -> tuple[
         # relationship named e.g. `onto/source` is kept, not hidden.
         if _is_internal_predicate(p_uri, is_relationship=rel > 0):
             continue
+        try:
+            geo = int(r.get("geo", "0") or "0")
+        except ValueError:
+            geo = 0
+        try:
+            tmp = int(r.get("tmp", "0") or "0")
+        except ValueError:
+            tmp = 0
+        if geo or tmp:
+            facc.add(p_uri, geo, tmp)
         records.append({"p": p_uri, "cnt": cnt, "rel": rel,
                         "target": _target_from_entity_uri(r.get("sample", ""))})
-    return entity_count, records
+    return entity_count, records, facc.flags()
 
 
 async def _read_type_stats(
     client: NeptuneClient, tenant_id: str, kg_name: str, t_uri: str
-) -> tuple[int, list[dict]] | None:
+) -> tuple[int, list[dict], dict] | None:
     """Read precomputed stats for one type, or None if not materialized."""
     stats = _stats_graph_uri(tenant_id, kg_name)
-    ec_q = f"SELECT ?ec FROM <{stats}> WHERE {{ <{t_uri}> <{_STAT_ENTITY_COUNT}> ?ec }}"
+    ec_q = (
+        f"SELECT ?ec ?sp ?tp FROM <{stats}> WHERE {{\n"
+        f"  <{t_uri}> <{_STAT_ENTITY_COUNT}> ?ec .\n"
+        f"  OPTIONAL {{ <{t_uri}> <{_STAT_SPATIAL}> ?sp }}\n"
+        f"  OPTIONAL {{ <{t_uri}> <{_STAT_TEMPORAL}> ?tp }}\n"
+        f"}}"
+    )
     pred_q = (
         f"SELECT ?pred ?cnt ?rel ?target FROM <{stats}> WHERE {{\n"
         f"  ?s <{_STAT_FOR_TYPE}> <{t_uri}> ; <{_STAT_FOR_PRED}> ?pred ; <{_STAT_CNT}> ?cnt .\n"
@@ -400,6 +488,12 @@ async def _read_type_stats(
         entity_count = int(ec_rows[0].get("ec", "0"))
     except ValueError:
         entity_count = 0
+    # "1"^^xsd:boolean is an equally valid true — accept both lexical forms so
+    # a future writer/backfill touching the stats graph can't silently read False.
+    flags = {
+        "spatially_indexed": ec_rows[0].get("sp", "") in ("true", "1"),
+        "temporally_indexed": ec_rows[0].get("tp", "") in ("true", "1"),
+    }
     _, pred_rows = parse_sparql_results(pred_raw)
     records: list[dict] = []
     for r in pred_rows:
@@ -414,7 +508,7 @@ async def _read_type_stats(
         target_uri = r.get("target", "")
         target = target_uri[len(TYPE_URI_PREFIX):] if target_uri.startswith(TYPE_URI_PREFIX) else None
         records.append({"p": r.get("pred", ""), "cnt": cnt, "rel": rel, "target": target})
-    return entity_count, records
+    return entity_count, records, flags
 
 
 def _dedupe_undirected(pairs: list[tuple[str, str]]) -> list[dict]:
@@ -665,6 +759,7 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     scan = (
         f"SELECT ?type ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
         f'  (SUM(IF(STRSTARTS(STR(?o), "{ENTITY_URI_PREFIX}"), 1, 0)) AS ?rel)\n'
+        f"{_ST_FLAG_AGGREGATES}"
         f"FROM <{kg}> WHERE {{\n"
         f"  ?e <{RDF_TYPE}> ?type .\n"
         f"  ?e ?p ?o .\n"
@@ -683,6 +778,7 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     # row may come after its predicate rows). Only collected when the flag is ON.
     drift_enabled = drift_control.drift_control_enabled()
     rel_decls: list[tuple[str, str, int]] = []
+    flag_accs: dict[str, _IndexFlagAccumulator] = {}
     for r in rows:
         type_uri_str = r.get("type", "")
         leaf = type_uri_str[len(TYPE_URI_PREFIX):] if type_uri_str.startswith(TYPE_URI_PREFIX) else ""
@@ -709,6 +805,17 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
         # housekeeping markers (FIX 2) so a real `onto/source` edge is materialized.
         if _is_internal_predicate(p_uri, is_relationship=rel > 0):
             continue
+        # Per-type spatio-temporal index flags, from the same scan rows.
+        try:
+            geo = int(r.get("geo", "0") or "0")
+        except ValueError:
+            geo = 0
+        try:
+            tmp = int(r.get("tmp", "0") or "0")
+        except ValueError:
+            tmp = 0
+        if geo or tmp:
+            flag_accs.setdefault(type_uri_str, _IndexFlagAccumulator()).add(p_uri, geo, tmp)
         total_edges += rel
         node = _stat_node(type_uri_str, p_uri)
         stat = (
@@ -724,8 +831,15 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
         # objects (rel > 0). Those are the declarations the drift floor gates.
         if drift_enabled and rel > 0:
             rel_decls.append((type_uri_str, p_uri, rel))
+    pred_row_count = len(triples)
     for type_uri_str, n in entity_counts.items():
         triples.append(f"<{type_uri_str}> <{_STAT_ENTITY_COUNT}> {n} .")
+    # Materialize the per-type index markers (only when true — absence = false).
+    for type_uri_str, facc in flag_accs.items():
+        if facc.spatial:
+            triples.append(f"<{type_uri_str}> <{_STAT_SPATIAL}> true .")
+        if facc.temporal:
+            triples.append(f"<{type_uri_str}> <{_STAT_TEMPORAL}> true .")
 
     if triples:
         body = "\n".join(triples)
@@ -770,7 +884,7 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     except Exception:  # noqa: BLE001 — store write is best-effort
         logger.warning("kg_stats_store_upsert_failed", kg=kg_name, exc_info=True)
 
-    result = {"types": len(entity_counts), "predicate_rows": len(triples) - len(entity_counts)}
+    result = {"types": len(entity_counts), "predicate_rows": pred_row_count}
     if drift_enabled:
         result["drift"] = await _build_drift_report(
             client, tenant_id, kg_name, rel_decls, entity_counts
@@ -1054,12 +1168,15 @@ async def get_type_summary(
     }
 
     if stats is not None:
-        entity_count, pred_records = stats
+        entity_count, pred_records, index_flags = stats
     else:
         # Stats not materialized for this type — fall back to a live scan.
-        entity_count, pred_records = await _live_scan(client, kg_graph, t_uri)
+        entity_count, pred_records, index_flags = await _live_scan(client, kg_graph, t_uri)
 
-    result = _assemble_summary(type_name, onto_row, parent_type, entity_count, pred_records, attr_defs)
+    result = _assemble_summary(
+        type_name, onto_row, parent_type, entity_count, pred_records, attr_defs,
+        index_flags=index_flags,
+    )
     _summary_cache[cache_key] = (time.monotonic(), result)
     return result
 
