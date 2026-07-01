@@ -127,7 +127,8 @@ Not every entity has a name. Emit a "name" (or other name-like label) attribute 
 ONLY when the entity has a real, human-identifying proper name (a person, place, \
 organization, product, titled work). Do NOT fabricate one for an entity that is \
 identified structurally or by its links — a reified measurement/observation \
-(score, rating, price, ranking), an event, or a dependent/association entity has \
+(score, rating, price, ranking), an untitled event or transaction, or a \
+dependent/association entity has \
 NO proper name. Identify those by their "value", timestamp, and relationships; a \
 descriptive label stitched together from those fields (the measured thing + the \
 number) is redundant — omit it. Forcing a name onto a nameless entity is a \
