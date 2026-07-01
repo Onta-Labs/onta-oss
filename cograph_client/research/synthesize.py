@@ -90,7 +90,7 @@ def clarification_result(question: str, questions: list) -> ResearchResult:
     """A no-spend result that asks the user to disambiguate rather than guessing.
 
     Returned by the harness when the planner flags the question as genuinely
-    ambiguous (ADR 0006 §Plan — ask only on true ambiguity). Carries no rows and
+    ambiguous (ADR 0006 adopted extension — ask only on true ambiguity). Carries no rows and
     is NOT an abstain: ``abstained`` means "searched, found nothing supportable",
     while this means "I haven't searched yet — pick a reading first".
 

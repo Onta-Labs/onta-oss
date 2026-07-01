@@ -288,7 +288,8 @@ class WebResearchHarness:
 
         # A genuinely ambiguous question: ask rather than guess. Return the
         # planner's questions immediately — no discovery, fetch, or LLM spend
-        # beyond the one planning call already made (ADR 0006 §Plan).
+        # beyond the one planning call already made (ADR 0006 adopted extension:
+        # clarify-on-true-ambiguity).
         if (
             not pinned_schema
             and plan.needs_clarification
