@@ -59,7 +59,7 @@ jobs:
       - name: Run semantic pgvector integration tests
         run: |
           source .venv/bin/activate
-          pytest tests/test_semantic_postgres.py tests/test_semantic_parity.py -v --tb=short
+          pytest tests/test_semantic_postgres.py tests/test_semantic_parity.py tests/test_semantic_relevance_golden.py -v --tb=short
         env:
           OMNIX_API_KEYS: '{"test-key": "test-tenant"}'
           OMNIX_NEPTUNE_ENDPOINT: "http://fake-neptune:8182"

@@ -289,6 +289,12 @@ export class Client {
   /** @internal */ pExploreSearch(query: string): string {
     return `${this.base()}/explore/search${query}`;
   }
+  /** @internal Canonical semantic instance search (ONTA-178) — hybrid
+   *  lexical+vector search over marked free-text attributes, grouped by
+   *  entity. ONE route for every interface (webapp/CLI/MCP). */
+  pSearch(): string {
+    return `${this.base()}/search`;
+  }
   /** @internal */ pNormalizeSuggest(query: string): string {
     return `${this.base()}/normalize/suggest${query}`;
   }
@@ -913,6 +919,39 @@ export class Client {
     );
   }
 
+  /**
+   * Semantic instance search (`POST /graphs/{tenant}/search`, ONTA-178) —
+   * "which entities talk about X?" answered by the backend's hybrid
+   * lexical+vector index over marked free-text attributes, grouped by entity.
+   *
+   * This is THE canonical search operation every interface rides (the
+   * interface-convergence rule): the MCP `search` tool, the CLI and the
+   * webapp all call this method / route — never a bespoke endpoint. The
+   * backend embeds the query server-side; when it can't (embedding service
+   * down/unconfigured) it answers lexical-only and sets `degraded: true` —
+   * surface that to users as "reduced recall", never silently.
+   *
+   * `topK` is clamped server-side to 1..50 (the response echoes the effective
+   * value). An unknown `kg` yields empty hits, not an error. A deployment with
+   * the semantic index disabled answers 503 naming the
+   * `COGRAPH_SEMANTIC_INDEX_ENABLED` gate (thrown here as a CographError).
+   */
+  async search(
+    query: string,
+    opts: { kg?: string; type?: string; topK?: number } = {},
+  ): Promise<SemanticSearchResponse> {
+    const body: Record<string, unknown> = { query };
+    if (opts.kg) body.kg_name = opts.kg;
+    if (opts.type) body.type = opts.type;
+    if (opts.topK != null) body.top_k = opts.topK;
+    return this.request<SemanticSearchResponse>(
+      "POST",
+      this.pSearch(),
+      body,
+      30_000,
+    );
+  }
+
   /** Search types or attributes by name substring within a KG. */
   async exploreSearch(
     kg: string,
@@ -1397,6 +1436,31 @@ export interface NormalizationRule {
   [key: string]: unknown;
 }
 
+// --- Semantic instance search (ONTA-178) -------------------------------------- #
+
+/** One entity-grouped hit from the canonical `/search` route: the entity that
+ *  matched, small denormalized display fields (`attrs.label`, `attrs.type`, …),
+ *  and the best-matching chunk's snippet + source attribute so a UI can show
+ *  WHERE the match happened without a follow-up fetch. */
+export interface SemanticSearchHit {
+  entity_uri: string;
+  attrs: Record<string, unknown>;
+  snippet: string;
+  attr: string;
+  score: number;
+}
+
+/** The `/search` response envelope. `degraded: true` means the query ran
+ *  lexical-only (no query embedding was available) — reduced recall that must
+ *  be surfaced, never hidden. `top_k` echoes the server-side clamped value
+ *  (1..50) actually used. */
+export interface SemanticSearchResponse {
+  hits: SemanticSearchHit[];
+  count: number;
+  degraded: boolean;
+  top_k: number;
+}
+
 // --- Raw / passthrough API (COG-128) ----------------------------------------- #
 
 /**
@@ -1624,6 +1688,12 @@ export class RawApi {
   /** `GET /graphs/{tenant}/kgs/{kg}/type-counts`. */
   typeCounts(kg: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pTypeCounts(kg), init);
+  }
+
+  /** `POST /graphs/{tenant}/search` — canonical semantic instance search
+   *  (ONTA-178). Body `{query, kg_name?, type?, top_k?}`. */
+  search(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pSearch(), { body, ...init });
   }
 
   /** `GET /graphs/{tenant}/explore/search?kg&q&kind`. */

@@ -27,4 +27,7 @@ export type {
   TypeRecordsPage,
   TypeEdge,
   NormalizationRule,
+  // ONTA-178 — canonical semantic instance search
+  SemanticSearchHit,
+  SemanticSearchResponse,
 } from "./client.js";
