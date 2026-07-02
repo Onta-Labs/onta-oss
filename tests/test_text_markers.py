@@ -6,8 +6,11 @@ Covers the three deliverables around the marker itself:
 - the single-valued, idempotent ``textKind`` upsert (same DELETE/INSERT/WHERE
   string contract test_ontology_upsert.py pins for the other upserts);
 - the per-tenant {predicate URI -> is_free_text} cache: hit / TTL miss /
-  invalidate / best-effort fetch failure, plus the refresh_after_write
-  invalidation hook in graph/kg_writer.py.
+  invalidate / best-effort fetch failure, the decided-no ``not_text`` map
+  semantics (False-and-PRESENT — ONTA-173), and the invalidation ownership
+  contract: marker WRITE sites invalidate (via ``invalidate_for_graph``);
+  ``refresh_after_write`` deliberately does NOT (it would defeat the TTL on
+  the hot path).
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import pytest
 
 import cograph_client.graph.text_markers as tm
 from cograph_client.graph.ontology_queries import (
+    TEXT_KIND_NOT_TEXT,
     attr_uri,
     text_kind_map_query,
     upsert_attribute_text_kind,
@@ -29,6 +33,7 @@ from cograph_client.graph.text_markers import (
     get_free_text_map,
     invalidate,
     invalidate_all,
+    invalidate_for_graph,
     reset_for_tests,
 )
 
@@ -168,6 +173,31 @@ class TestFreeTextMapCache:
 
         asyncio.run(run())
 
+    def test_not_text_marker_reads_back_false_and_present(self):
+        """ONTA-173 decided-no semantics: a durable ``not_text`` marker must
+        read back as ``False`` AND be PRESENT in the map. Presence is the
+        whole point — it distinguishes "adjudicated NO" from "never decided"
+        (absent), which is what lets the reconciler's presence-based skip stop
+        re-sampling the attribute and prevents the name-blind ≥120-char auto
+        tier from later overruling the LLM's NO."""
+        async def run():
+            neptune = _neptune_with([(_TRANSCRIPT, TEXT_KIND_NOT_TEXT)])
+            marker_map = await get_free_text_map(neptune, "tenant-a")
+            assert _TRANSCRIPT in marker_map  # present = decided
+            assert marker_map[_TRANSCRIPT] is False  # decided NO
+
+        asyncio.run(run())
+
+    def test_not_text_constant_matches_reconcilers_local_duplicate(self):
+        """semantic/reconciler.py predates the shared constant and keeps a
+        same-valued local duplicate (follow-up: converge it onto
+        ontology_queries.TEXT_KIND_NOT_TEXT). Until then the string values
+        must never drift — the reconciler's presence-based skip and the map
+        semantics both key on the literal."""
+        from cograph_client.semantic import reconciler
+
+        assert reconciler.TEXT_KIND_NOT_TEXT == TEXT_KIND_NOT_TEXT == "not_text"
+
     def test_cache_is_per_tenant(self):
         async def run():
             neptune = _neptune_with([(_TRANSCRIPT, "free_text")])
@@ -238,13 +268,17 @@ class TestFreeTextMapCache:
         asyncio.run(run())
 
 
-# --- refresh_after_write invalidation hook (graph/kg_writer.py) --------------
+# --- invalidation ownership: write sites, NOT refresh_after_write ------------
 
 
-def test_refresh_after_write_invalidates_text_marker_cache(monkeypatch):
-    """The ONE kg_writer block this issue adds: a converged write drops the
-    tenant's marker map so fresh textKind verdicts are visible before the TTL
-    (mirrors the NL-planning cache-invalidate block style)."""
+def test_refresh_after_write_does_not_invalidate_text_marker_cache(monkeypatch):
+    """FIX (ONTA-173): refresh_after_write runs after EVERY converged write,
+    so an unconditional marker invalidation there defeated the cache's 60s TTL
+    on the hot path (each write→refresh cycle forced the semantic hook's next
+    marker read back to Neptune). Marker WRITE sites own the invalidation
+    instead (see the write-site tests in test_text_candidacy_seam.py and the
+    reconciler's self-invalidation); a plain data write must leave the cached
+    map untouched."""
     import cograph_client.nlp.pipeline as pipeline_mod
     from cograph_client.graph.kg_writer import refresh_after_write
 
@@ -259,13 +293,39 @@ def test_refresh_after_write_invalidates_text_marker_cache(monkeypatch):
         assert "t" in tm._cache
 
         # kg_name=None keeps the write tenant-graph-only (no stats recompute
-        # import needed) — the marker invalidation must still fire.
+        # import needed). The cached marker map must SURVIVE the refresh.
         await refresh_after_write(
             AsyncMock(), tenant_id="t", kg_name=None, affected_types=set(),
         )
-        assert "t" not in tm._cache
-        # And the next read refetches.
+        assert "t" in tm._cache
+        # And the next read is still a cache hit — no extra Neptune round-trip.
         await get_free_text_map(neptune, "t")
-        assert neptune.query.await_count == 2
+        assert neptune.query.await_count == 1
+
+    asyncio.run(run())
+
+
+def test_invalidate_for_graph_derives_tenant_from_ontology_graph():
+    """The write-site helper: an ontology-graph URI drops exactly that
+    tenant's cached map, leaving other tenants untouched."""
+    async def run():
+        neptune = _neptune_with([(_TRANSCRIPT, "free_text")])
+        await get_free_text_map(neptune, "tenant-a")
+        await get_free_text_map(neptune, "tenant-b")
+        invalidate_for_graph("https://cograph.tech/graphs/tenant-a")
+        assert "tenant-a" not in tm._cache
+        assert "tenant-b" in tm._cache
+
+    asyncio.run(run())
+
+
+def test_invalidate_for_graph_unknown_shape_over_invalidates():
+    """An unrecognized graph shape must fail SAFE: drop everything (one
+    refetch per tenant) rather than risk serving a stale verdict."""
+    async def run():
+        neptune = _neptune_with([])
+        await get_free_text_map(neptune, "tenant-a")
+        invalidate_for_graph("https://example.org/not-a-tenant-graph")
+        assert tm._cache == {}
 
     asyncio.run(run())

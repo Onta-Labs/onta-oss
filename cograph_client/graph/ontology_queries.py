@@ -259,6 +259,21 @@ def retract_object_property(graph_uri: str, type_name: str, attr_name: str) -> s
 #: kinds ("code", "label", …) can share the same single-valued predicate.
 TEXT_KIND_FREE_TEXT = "free_text"
 
+#: Canonical value of the ``textKind`` marker for a DURABLE decided-NO
+#: candidacy verdict (ONTA-173): the candidacy tier genuinely ADJUDICATED this
+#: attribute (the LLM REASON layer declined a TEXT-shaped column, or the
+#: reconciler's name-blind heuristic classified it NOT_CANDIDATE) and found it
+#: not free text. Persisting the NO matters: absence from the marker map means
+#: "never decided" — the reconciler would re-sample the attribute every run,
+#: and the name-blind ≥120-char auto tier could later overrule the LLM's
+#: explicit NO. In ``text_markers.get_free_text_map`` any kind other than
+#: ``free_text`` reads back as ``is_free_text=False`` while remaining PRESENT
+#: in the map (presence = decided), which is exactly the skip signal the
+#: reconciler keys on. NOTE: ``semantic/reconciler.py`` predates this constant
+#: and carries a same-valued local duplicate (``TEXT_KIND_NOT_TEXT`` at module
+#: scope) — converge it onto this one in a follow-up.
+TEXT_KIND_NOT_TEXT = "not_text"
+
 
 def upsert_attribute_text_kind(
     graph_uri: str, type_name: str, attr_name: str, text_kind: str = TEXT_KIND_FREE_TEXT,

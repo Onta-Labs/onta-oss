@@ -22,7 +22,11 @@ import json
 
 import pytest
 
-from cograph_client.graph.ontology_queries import attr_uri
+import cograph_client.graph.text_markers as tm
+from cograph_client.graph.ontology_queries import (
+    TEXT_KIND_NOT_TEXT,
+    attr_uri,
+)
 from cograph_client.resolver.models import (
     ColumnMapping,
     ColumnRole,
@@ -39,6 +43,14 @@ from cograph_client.resolver.schema_resolver import (
 )
 
 GRAPH = "https://cograph.tech/graphs/test-tenant"
+TENANT = "test-tenant"
+
+
+@pytest.fixture(autouse=True)
+def _clean_marker_cache():
+    tm.reset_for_tests()
+    yield
+    tm.reset_for_tests()
 
 _PROSE = (
     "After resetting my password this morning I am redirected back to the "
@@ -100,7 +112,7 @@ class TestExtractPathSeam:
 
         async def record_adjudication(candidates):
             adjudications.append(candidates)
-            return set()
+            return set(), set()
 
         resolver._adjudicate_free_text = record_adjudication
         result = await _run_extract_path(resolver, _ticket_entities())
@@ -120,8 +132,8 @@ class TestExtractPathSeam:
 
         async def adjudicate(candidates):
             # The REASON layer judges by name: subject = prose-ish, marked;
-            # site_address = structured, declined.
-            return {("Ticket", "subject")}
+            # site_address = structured, EXPLICITLY declined (decided NO).
+            return {("Ticket", "subject")}, {("Ticket", "site_address")}
 
         resolver._adjudicate_free_text = adjudicate
         result = await _run_extract_path(resolver, _ticket_entities())
@@ -129,8 +141,71 @@ class TestExtractPathSeam:
         assert sorted(result.free_text_attributes) == ["Ticket.body", "Ticket.subject"]
         marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
         assert any(attr_uri("Ticket", "subject") in u for u in marker_updates)
-        assert not any(attr_uri("Ticket", "site_address") in u for u in marker_updates)
+        # The LLM's decided NO is PERSISTED as the durable not_text marker
+        # (ONTA-173) — not left absent (absent = never-decided would be
+        # re-sampled by the reconciler forever).
+        declined = [
+            u for u in marker_updates if attr_uri("Ticket", "site_address") in u
+        ]
+        assert len(declined) == 1 and f'"{TEXT_KIND_NOT_TEXT}"' in declined[0]
+        # Non-candidates (code is CODE-shaped) get NO marker of either polarity.
         assert not any(attr_uri("Ticket", "code") in u for u in marker_updates)
+
+    @pytest.mark.asyncio
+    async def test_undecided_candidates_get_no_marker(self, mock_neptune):
+        """A candidate the LLM did not adjudicate (absent from its response)
+        stays UNDECIDED: no free_text marker, no not_text marker — only a
+        genuine adjudication may persist a decided-no (ONTA-173)."""
+        resolver = _resolver(mock_neptune)
+
+        async def adjudicate(candidates):
+            return {("Ticket", "subject")}, set()  # site_address unadjudicated
+
+        resolver._adjudicate_free_text = adjudicate
+        await _run_extract_path(resolver, _ticket_entities())
+
+        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
+        assert not any(attr_uri("Ticket", "site_address") in u for u in marker_updates)
+
+    @pytest.mark.asyncio
+    async def test_marker_writes_invalidate_tenant_marker_cache(self, mock_neptune):
+        """FIX (ONTA-173): the marker WRITE SITE owns the cache invalidation
+        (mirroring the reconciler's self-invalidation) — refresh_after_write
+        no longer blanket-invalidates on every write."""
+        resolver = _resolver(mock_neptune)
+
+        async def adjudicate(candidates):
+            return set(), {("Ticket", "subject"), ("Ticket", "site_address")}
+
+        resolver._adjudicate_free_text = adjudicate
+        # Pre-populate the tenant's cached marker map.
+        tm._cache[TENANT] = (999999.0, {})
+        await _run_extract_path(resolver, _ticket_entities())
+        assert TENANT not in tm._cache  # dropped by the write site
+
+    @pytest.mark.asyncio
+    async def test_no_marker_writes_no_cache_invalidation(self, mock_neptune):
+        """A schema pass that decides NOTHING (auto tier empty, adjudication
+        empty) writes no markers and must NOT drop the tenant's cache — the
+        60s TTL is the hot path's protection (ONTA-173 FIX-3)."""
+        resolver = _resolver(mock_neptune)
+
+        async def adjudicate(candidates):
+            return set(), set()
+
+        resolver._adjudicate_free_text = adjudicate
+        entities = [
+            ExtractedEntity(
+                type_name="Ticket",
+                id="tk-0",
+                attributes=[
+                    ExtractedAttribute(name="code", value="TK-000", datatype="string"),
+                ],
+            )
+        ]
+        tm._cache[TENANT] = (999999.0, {"sentinel": True})
+        await _run_extract_path(resolver, entities)
+        assert TENANT in tm._cache  # untouched — nothing was written
 
     @pytest.mark.asyncio
     async def test_off_by_default_for_mapped_rows_route(self, mock_neptune):
@@ -187,11 +262,14 @@ class TestAdjudicationCall:
         monkeypatch.setattr(
             "cograph_client.resolver.schema_resolver.openrouter_chat", recorded_chat,
         )
-        confirmed = await resolver._adjudicate_free_text({
+        confirmed, declined = await resolver._adjudicate_free_text({
             ("Ticket", "subject"): [_SUBJECT],
             ("Ticket", "site_address"): [_ADDRESS],
         })
         assert confirmed == {("Ticket", "subject")}
+        # free_text=false on an OFFERED candidate is a genuine decided NO;
+        # the hallucinated Ghost entry is filtered from BOTH sets.
+        assert declined == {("Ticket", "site_address")}
         # The REASON layer sees names + samples under the candidacy prompt.
         assert prompts[0][0] is TEXT_CANDIDACY_SYSTEM
         assert "site_address" in prompts[0][1] and _ADDRESS in prompts[0][1]
@@ -208,7 +286,9 @@ class TestAdjudicationCall:
             "cograph_client.resolver.schema_resolver.openrouter_chat", broken_chat,
         )
         out = await resolver._adjudicate_free_text({("Ticket", "subject"): [_SUBJECT]})
-        assert out == set()  # unmarked, never raised — ONTA-181 gets another look
+        # BOTH sets empty: a failure must not fabricate decided-no verdicts —
+        # unmarked AND undecided, never raised (ONTA-181 gets another look).
+        assert out == (set(), set())
 
     @pytest.mark.asyncio
     async def test_junk_json_fails_closed(self, mock_neptune, monkeypatch):
@@ -222,7 +302,7 @@ class TestAdjudicationCall:
             "cograph_client.resolver.schema_resolver.openrouter_chat", junk_chat,
         )
         out = await resolver._adjudicate_free_text({("Ticket", "subject"): [_SUBJECT]})
-        assert out == set()
+        assert out == (set(), set())
 
 
 def _listing_mapping(remarks_kind: str | None = "free_text") -> CSVSchemaMapping:
@@ -259,6 +339,36 @@ class TestMappedPathSeam:
         assert len(marker_updates) == 1
         assert attr_uri("Listing", "remarks") in marker_updates[0]
         assert not any(attr_uri("Listing", "address") in u for u in marker_updates)
+
+    @pytest.mark.asyncio
+    async def test_mapping_not_text_verdict_persists_durable_marker(self, mock_neptune):
+        """A mapping column carrying the decided-no ``"not_text"`` verdict
+        (the REASON pass explicitly declined a TEXT-shaped column) persists
+        the durable marker at apply time (ONTA-173) — and does NOT count as a
+        free-text attribute in the result."""
+        resolver = _resolver(mock_neptune)
+        result = await resolver._ingest_mapped(
+            _listing_mapping(remarks_kind=TEXT_KIND_NOT_TEXT), _LISTING_ROWS,
+            GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+        )
+        assert result.free_text_attributes == []
+        marker_updates = [u for u in _updates(mock_neptune) if "textKind" in u]
+        assert len(marker_updates) == 1
+        assert attr_uri("Listing", "remarks") in marker_updates[0]
+        assert f'"{TEXT_KIND_NOT_TEXT}"' in marker_updates[0]
+
+    @pytest.mark.asyncio
+    async def test_mapping_marker_writes_invalidate_tenant_marker_cache(
+        self, mock_neptune,
+    ):
+        """FIX (ONTA-173): the mapped path's marker write site self-invalidates
+        the tenant marker cache (refresh_after_write no longer does)."""
+        resolver = _resolver(mock_neptune)
+        tm._cache[TENANT] = (999999.0, {})
+        await resolver._ingest_mapped(
+            _listing_mapping(), _LISTING_ROWS, GRAPH, {"Listing": ""}, {"Listing": {}}, "",
+        )
+        assert TENANT not in tm._cache
 
     @pytest.mark.asyncio
     async def test_reingest_reemits_the_same_idempotent_upsert(self, mock_neptune):

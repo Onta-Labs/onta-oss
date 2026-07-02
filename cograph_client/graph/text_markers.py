@@ -16,13 +16,20 @@ every consumer — the SchemaResolver seam, the CSV REASON conversion, the
    attribute NAME may be consulted — to adjudicate.
 
 2. The per-tenant ``{attribute predicate URI -> is_free_text}`` map, read from
-   the ``<attr> <onto/textKind> "free_text"`` markers the schema pass writes.
+   the ``<attr> <onto/textKind> ?kind`` markers the schema pass writes.
    Query-side consumers (routing a query's type filter to the semantic index,
    ONTA-176) need this on every request, so it is TTL-cached (~60s — the
    multi-task safety valve: another worker/process writing markers is picked
    up within one TTL even if no local invalidation fired) and explicitly
-   invalidated by :func:`cograph_client.graph.kg_writer.refresh_after_write`
-   after every converged write.
+   invalidated at the marker WRITE sites (the schema pass's candidacy seams
+   and the reconciler's default heuristic) right after they upsert markers —
+   NOT on every converged write, which would defeat the TTL on the hot path.
+
+   Map semantics: ``True`` exactly when the kind is ``"free_text"``; any other
+   kind (e.g. the durable decided-no ``"not_text"``) reads back as ``False``
+   **while still being PRESENT in the map** — presence means "candidacy was
+   decided", which is what lets the reconciler skip re-sampling and prevents
+   the name-blind auto tier from overruling an LLM's explicit NO.
 """
 
 from __future__ import annotations
@@ -153,9 +160,29 @@ async def get_free_text_map(neptune, tenant_id: str) -> dict[str, bool]:
 
 
 def invalidate(tenant_id: str) -> None:
-    """Drop one tenant's cached marker map (called from ``refresh_after_write``
+    """Drop one tenant's cached marker map (called by the marker WRITE sites —
+    the schema pass's candidacy seams and the reconciler's default heuristic —
     so a just-written marker is visible before the TTL expires)."""
     _cache.pop(tenant_id, None)
+
+
+def invalidate_for_graph(graph_uri: str) -> None:
+    """Drop the cached marker map for the tenant owning ``graph_uri``.
+
+    Convenience for marker write sites that hold a graph URI rather than a
+    bare tenant id (the SchemaResolver seams receive the tenant ONTOLOGY graph
+    ``https://cograph.tech/graphs/{tenant}``). Deriving the tenant here keeps
+    the URI-shape knowledge next to the cache instead of in every caller. An
+    unrecognized shape over-invalidates (drops everything) — safe, since the
+    only cost is one refetch per tenant on the next read.
+    """
+    prefix = tenant_graph_uri("")  # "https://cograph.tech/graphs/"
+    if isinstance(graph_uri, str) and graph_uri.startswith(prefix):
+        tenant_id = graph_uri[len(prefix):].split("/", 1)[0]
+        if tenant_id:
+            invalidate(tenant_id)
+            return
+    invalidate_all()
 
 
 def invalidate_all() -> None:

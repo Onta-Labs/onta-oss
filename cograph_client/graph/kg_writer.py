@@ -70,9 +70,22 @@ def _semantic_upsert_timeout_s() -> float:
     """Timeout for the semantic-index write hook (ONTA-181) — the same hang-to-
     TimeoutError conversion as ``_INDEX_UPSERT_TIMEOUT_S``, with its own knob
     because the semantic hook does strictly more work per write (marker-map
-    read + chunk upsert + empty-doc deletes). Read per call so tests/ops can
-    tune it without re-importing the module."""
+    read + touched-entity re-read + chunk upsert + empty-doc deletes). Read per
+    call so tests/ops can tune it without re-importing the module."""
     return float(os.environ.get("COGRAPH_SEMANTIC_UPSERT_TIMEOUT_S", "10"))
+
+
+def _semantic_hook_max_entities() -> int:
+    """Cap on TOUCHED ENTITIES the semantic hook re-reads from Neptune per
+    write. The touched-entity fetch is one VALUES-scoped SELECT, so its cost
+    scales with the entity count of the write; a huge ingest batch must not
+    turn the hook into a full-graph scan. Overflow is logged (never silent)
+    and repaired by the reconciler's next full scan. Read per call so
+    tests/ops can tune it without re-importing the module."""
+    try:
+        return int(float(os.environ.get("COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES", "500")))
+    except ValueError:
+        return 500
 
 # KG-registration triple shape — the `<kg_uri> <onto/kg_name> "name"` record in
 # the tenant metadata graph that ``list_kgs`` reads to populate the Explorer
@@ -248,17 +261,29 @@ async def _index_semantic(
     unlike the spatio-temporal hook this one needs the ``neptune`` handle to
     consult the (TTL-cached) marker map.
 
-    Empty-doc contract: a marked attr present in THIS WRITE whose canonicalized
-    doc came out empty (or was deduped away because it mirrors another attr's
-    doc) gets ``delete(entity, tenant, kg_name=…, attr=…)`` — per the ONTA-175
-    upsert contract an empty doc has no chunk rows to carry its key, so the
-    hook must issue the delete explicitly.
+    Completeness contract (the ONTA-173 partial-doc fix): the write's triples
+    only tell the hook WHICH (entity, marked attr) docs were touched — the docs
+    themselves are rebuilt from a re-read of the touched entities' FULL current
+    triples in Neptune (the write has already been committed by the time the
+    hook runs, so the re-read includes it). Upsert is replace-per-doc and the
+    reconciler builds docs from the full KG, so indexing only the write's
+    triples would (a) wipe the previously indexed tail of a multi-valued attr
+    that just got one value appended, and (b) feed the intra-entity cross-attr
+    dedup a different input than the reconciler sees, making mirrored attrs
+    flip-flop between hook and reconcile runs.
+
+    Empty-doc contract: a marked attr on a touched entity whose RE-READ
+    canonicalized doc came out empty (or was deduped away because it mirrors
+    another attr's doc) gets ``delete(entity, tenant, kg_name=…, attr=…)`` —
+    per the ONTA-175 upsert contract an empty doc has no chunk rows to carry
+    its key, so the hook must issue the delete explicitly.
 
     Best-effort and time-bounded exactly like ``_index_spatiotemporal``: the
-    whole body (marker read + upsert + deletes + schedule ensure) runs under
-    one ``asyncio.wait_for`` so a hung index backend can't block the KG write,
-    and ANY failure is logged, never raised — the KG write must NEVER fail on
-    an index hiccup (Neptune is already the source of truth at this point).
+    whole body (marker read + entity re-read + upsert + deletes + schedule
+    ensure) runs under one ``asyncio.wait_for`` so a hung index backend can't
+    block the KG write, and ANY failure is logged, never raised — the KG write
+    must NEVER fail on an index hiccup (Neptune is already the source of truth
+    at this point).
     """
     scope = parse_kg_graph_uri(instance_graph)
     if scope is None:
@@ -270,7 +295,9 @@ async def _index_semantic(
         if not semantic_index_enabled():
             return
         await asyncio.wait_for(
-            _index_semantic_inner(neptune, tenant_id, kg_name, instance_triples),
+            _index_semantic_inner(
+                neptune, instance_graph, tenant_id, kg_name, instance_triples
+            ),
             timeout=_semantic_upsert_timeout_s(),
         )
     except Exception:  # noqa: BLE001 — never fail a KG write on a derived-index hiccup
@@ -282,7 +309,11 @@ async def _index_semantic(
 
 
 async def _index_semantic_inner(
-    neptune, tenant_id: str, kg_name: str, instance_triples: list[Triple]
+    neptune,
+    instance_graph: str,
+    tenant_id: str,
+    kg_name: str,
+    instance_triples: list[Triple],
 ) -> None:
     """The unguarded body of :func:`_index_semantic` (wrapped in one timeout).
 
@@ -299,28 +330,69 @@ async def _index_semantic_inner(
 
     marker_map = await get_free_text_map(neptune, tenant_id)
     marked = {uri for uri, is_free_text in marker_map.items() if is_free_text}
-    if marked:
+    # Which (entity, marked attr) docs did THIS write touch? Only those
+    # entities are re-read — an unmarked write costs zero extra Neptune reads.
+    touched = marked_doc_keys(instance_triples, marked) if marked else set()
+    if touched:
+        entity_uris = sorted({entity_uri for entity_uri, _ in touched})
+        cap = _semantic_hook_max_entities()
+        if len(entity_uris) > cap:
+            # Bounded: index the first `cap` entities (deterministic — sorted),
+            # loudly leave the rest to the reconciler's next full scan.
+            logger.warning(
+                "semantic_index_hook_entity_cap",
+                tenant_id=tenant_id,
+                kg_name=kg_name,
+                touched_entities=len(entity_uris),
+                cap=cap,
+            )
+            entity_uris = entity_uris[:cap]
+
+        # Completeness re-read (see _index_semantic's docstring): rebuild the
+        # touched entities' docs from their FULL current triples in Neptune —
+        # NEVER from the write's own (possibly partial) triples. On failure we
+        # SKIP indexing for this write (the reconciler repairs on its cadence);
+        # degrading to write-local partial docs would reintroduce the exact
+        # partial-doc-wipe bug this re-read exists to fix.
+        try:
+            fetched = await _fetch_touched_entity_triples(
+                neptune, instance_graph, entity_uris
+            )
+        except Exception:  # noqa: BLE001 — skip the index, never the KG write
+            logger.warning(
+                "semantic_index_hook_fetch_failed",
+                tenant_id=tenant_id,
+                kg_name=kg_name,
+                touched_entities=len(entity_uris),
+                exc_info=True,
+            )
+            await ensure_reconcile_schedule_from_hook(tenant_id, kg_name)
+            return
+
         index = get_semantic_index()
         chunks = extract_semantic_chunks(
-            instance_triples,
+            fetched,
             tenant_id=tenant_id,
             kg_name=kg_name,
             marked_predicates=marked,
         )
         if chunks:
             await index.upsert_chunks(chunks)
-        # Empty-doc deletes: marked (entity, attr) docs touched by THIS write
-        # that produced no chunks of their own (emptied or deduped — see the
-        # docstring above). Only docs in this write are considered — full ghost
-        # repair (deleted entities, marker flips) is the reconciler's job.
+        # Empty-doc deletes, from the RE-READ values: a marked (entity, attr)
+        # doc present in the fetched triples that produced no chunks of its own
+        # (canonical text emptied, or deduped away as a mirror of another
+        # attr's doc — see the docstring above). Only the touched entities are
+        # considered — full ghost repair (deleted entities, marker flips) is
+        # the reconciler's job.
         emitted = {(c.entity_uri, c.attr) for c in chunks}
-        emptied = marked_doc_keys(instance_triples, marked) - emitted
+        emptied = marked_doc_keys(fetched, marked) - emitted
         for entity_uri, attr in sorted(emptied):
             await index.delete(entity_uri, tenant_id, kg_name=kg_name, attr=attr)
         logger.info(
             "semantic_index_hook",
             tenant_id=tenant_id,
             kg_name=kg_name,
+            entities_fetched=len(entity_uris),
             chunks_written=len(chunks),
             docs_deleted=len(emptied),
         )
@@ -329,6 +401,42 @@ async def _index_semantic_inner(
     # marked yet: the reconciler's default candidacy heuristic may mark
     # attributes this hook can't (client-mapped CSV rows, enrichment-minted).
     await ensure_reconcile_schedule_from_hook(tenant_id, kg_name)
+
+
+async def _fetch_touched_entity_triples(
+    neptune, instance_graph: str, entity_uris: list[str]
+) -> list[Triple]:
+    """Fetch the full current ``?e ?p ?o`` triples of the given entities.
+
+    One VALUES-scoped SELECT over the touched entity URIs against the instance
+    graph (the same VALUES batching style as ``batch_entity_exists_query`` and
+    the reconciler's scan). ALL predicates are fetched — marked attrs plus
+    ``rdf:type`` / label predicates for the extractor's denormalized display
+    fields; the extractor itself filters to the marked set, exactly as it does
+    for the reconciler's scan, so the two can never disagree on matching.
+
+    Ordered like the reconciler's scan (``ORDER BY ?e ?p ?o``, re-sorted
+    client-side to be safe) so the extractor's first-attr-wins intra-entity
+    dedup picks the SAME winner the reconciler's full scan picks — otherwise
+    mirrored attrs flip-flop between hook writes and reconcile runs.
+    """
+    from cograph_client.graph.parser import parse_sparql_results
+
+    values = " ".join(f"<{u}>" for u in entity_uris)
+    sparql = (
+        f"SELECT ?e ?p ?o FROM <{instance_graph}> WHERE {{\n"
+        f"  VALUES ?e {{ {values} }}\n"
+        f"  ?e ?p ?o .\n"
+        f"}} ORDER BY ?e ?p ?o"
+    )
+    _, rows = parse_sparql_results(await neptune.query(sparql))
+    triples: list[Triple] = []
+    for row in rows:
+        e, p = row.get("e", ""), row.get("p", "")
+        if e and p:
+            triples.append((e, p, row.get("o", "")))
+    triples.sort()
+    return triples
 
 
 async def refresh_after_write(
@@ -372,17 +480,16 @@ async def refresh_after_write(
     except Exception:  # noqa: BLE001 — never fail a write on a cache hiccup
         logger.warning("ontology_cache_invalidate_failed", exc_info=True)
 
-    # 1b. Free-text marker map (ONTA-177): a schema pass may have written
-    #     `<attr> <onto/textKind> "free_text"` markers with this write, so drop
-    #     the tenant's cached {predicate -> is_free_text} map — query-side
-    #     consumers (semantic-index routing, ONTA-176) must see fresh verdicts
-    #     immediately, not after the TTL (which remains the multi-task backstop).
-    try:
-        from cograph_client.graph.text_markers import invalidate as invalidate_text_markers
-
-        invalidate_text_markers(tenant_id)
-    except Exception:  # noqa: BLE001 — never fail a write on a cache hiccup
-        logger.warning("text_marker_cache_invalidate_failed", exc_info=True)
+    # NOTE (ONTA-177/ONTA-173): the free-text marker cache
+    # (graph/text_markers.py) is deliberately NOT invalidated here. Most writes
+    # touch no textKind markers, and refresh_after_write runs after EVERY
+    # converged write — an unconditional invalidation here defeated the cache's
+    # 60s TTL on the hot path (every write→refresh cycle forced the semantic
+    # hook's next marker read back to Neptune). Marker WRITE sites own their
+    # own invalidation instead: the schema pass's candidacy seams
+    # (SchemaResolver._mark_free_text_attributes / _apply_mapping_text_markers)
+    # and the reconciler's default-candidacy heuristic each self-invalidate
+    # right after upserting markers; the TTL remains the cross-process backstop.
 
     # 2. Re-embed affected types (dedup, order-preserving).
     types = list(dict.fromkeys(t for t in affected_types if t))

@@ -24,6 +24,7 @@ from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     TEXT_KIND_FREE_TEXT,
+    TEXT_KIND_NOT_TEXT,
     batch_entity_exists_query,
     entity_exists_query,
     get_full_ontology_query,
@@ -39,7 +40,11 @@ from cograph_client.graph.ontology_queries import (
     attr_uri,
 )
 from cograph_client.graph.layers import LayerStack, type_name_from_uri
-from cograph_client.graph.text_markers import TextCandidacy, classify_text_candidacy
+from cograph_client.graph.text_markers import (
+    TextCandidacy,
+    classify_text_candidacy,
+    invalidate_for_graph as invalidate_text_marker_cache,
+)
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.kg_writer import insert_facts
 from cograph_client.graph.provenance import build_provenance_triples, provenance_graph_uri
@@ -1833,9 +1838,17 @@ class SchemaResolver:
            the attribute NAME may be consulted.
 
         Confirmed attributes get the single-valued, idempotent
-        ``<attr> <onto/textKind> "free_text"`` upsert, written alongside the
-        other schema-apply attribute upserts. Best-effort throughout: any
-        failure logs a warning and never blocks or fails the ingest (the
+        ``<attr> <onto/textKind> "free_text"`` upsert; attributes the LLM
+        EXPLICITLY declined get the durable decided-no ``"not_text"`` upsert
+        (ONTA-173: an unpersisted NO is indistinguishable from never-decided —
+        the reconciler would re-sample it every run and its name-blind
+        ≥120-char auto tier could later overrule the LLM). Non-candidates
+        (non-TEXT shapes) are never marked at all — absence = not-a-candidate,
+        and the reconciler's cheap heuristic re-classifies them itself. Both
+        upserts are written alongside the other schema-apply attribute upserts,
+        and the tenant's marker cache is invalidated HERE (the write site owns
+        it — refresh_after_write deliberately doesn't). Best-effort throughout:
+        any failure logs a warning and never blocks or fails the ingest (the
         ONTA-181 reconciler heuristic can revisit undecided attributes).
         """
         try:
@@ -1848,35 +1861,57 @@ class SchemaResolver:
                 elif verdict is TextCandidacy.AMBIGUOUS:
                     ambiguous[(type_name, attr_name)] = values
             confirmed: set[tuple[str, str]] = set(auto)
+            declined: set[tuple[str, str]] = set()
             if ambiguous:
-                confirmed |= await self._adjudicate_free_text(ambiguous)
+                adjudicated_yes, adjudicated_no = await self._adjudicate_free_text(
+                    ambiguous
+                )
+                confirmed |= adjudicated_yes
+                declined |= adjudicated_no - confirmed
             for type_name, attr_name in sorted(confirmed):
                 await self._neptune.update(
                     upsert_attribute_text_kind(graph_uri, type_name, attr_name)
                 )
                 result.free_text_attributes.append(f"{type_name}.{attr_name}")
-            if confirmed:
+            for type_name, attr_name in sorted(declined):
+                await self._neptune.update(
+                    upsert_attribute_text_kind(
+                        graph_uri, type_name, attr_name, TEXT_KIND_NOT_TEXT
+                    )
+                )
+            if confirmed or declined:
+                # Marker write site self-invalidates (mirrors the reconciler's
+                # heuristic) so query-side consumers see the fresh verdicts
+                # before the TTL; the TTL stays the cross-process backstop.
+                invalidate_text_marker_cache(graph_uri)
                 logger.info(
                     "free_text_attributes_marked",
                     auto=len(auto),
                     adjudicated=len(confirmed) - len(auto),
+                    declined=len(declined),
                     attributes=sorted(f"{t}.{a}" for t, a in confirmed),
+                    not_text_attributes=sorted(f"{t}.{a}" for t, a in declined),
                 )
         except Exception:
             logger.warning("free_text_marking_failed", exc_info=True)
 
     async def _adjudicate_free_text(
         self, candidates: dict[tuple[str, str], list[str]],
-    ) -> set[tuple[str, str]]:
+    ) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
         """One REASON-layer LLM call adjudicating AMBIGUOUS free-text candidates.
 
         This is the only layer where the attribute NAME is consulted
         (ADR 0003 keeps names out of the deterministic layers; ONTA-177).
-        Returns the ``(type_name, attr_name)`` pairs judged free-running
-        prose, filtered to the offered candidate set — the model cannot mint
-        candidacy for attributes the name-blind classifier never proposed.
-        Fail-closed and best-effort: any LLM/parse failure returns an empty
-        set (attributes stay unmarked; a later re-ingest or the ONTA-181
+        Returns ``(confirmed, declined)`` — the ``(type_name, attr_name)``
+        pairs the model judged free-running prose, and the pairs it EXPLICITLY
+        judged not (``free_text`` falsy in its response). Both sets are
+        filtered to the offered candidate set — the model cannot mint (or
+        decline) candidacy for attributes the name-blind classifier never
+        proposed. A candidate absent from the response stays UNDECIDED (in
+        neither set): a genuine adjudication is required before ONTA-173's
+        durable ``not_text`` marker may be persisted. Fail-closed and
+        best-effort: any LLM/parse failure returns two empty sets (attributes
+        stay unmarked AND undecided; a later re-ingest or the ONTA-181
         reconciler heuristic gets another look), never raises.
         """
         try:
@@ -1920,25 +1955,33 @@ class SchemaResolver:
                 )
             data = json.loads(stripped)
             confirmed: set[tuple[str, str]] = set()
+            declined: set[tuple[str, str]] = set()
             for item in data.get("attributes", []):
-                if not isinstance(item, dict) or not item.get("free_text"):
+                if not isinstance(item, dict):
                     continue
                 key = (str(item.get("type")), str(item.get("attribute")))
-                if key in candidates:  # offered candidates only — never mint new ones
+                if key not in candidates:
+                    continue  # offered candidates only — never mint new ones
+                if item.get("free_text"):
                     confirmed.add(key)
+                else:
+                    # An entry the model returned with free_text falsy is a
+                    # genuine adjudicated NO — persisted durably by the caller.
+                    declined.add(key)
             logger.info(
                 "free_text_adjudicated",
                 candidates=len(candidates),
                 confirmed=len(confirmed),
+                declined=len(declined),
             )
-            return confirmed
+            return confirmed, declined
         except Exception:
             logger.warning(
                 "free_text_adjudication_failed",
                 candidates=len(candidates),
                 exc_info=True,
             )
-            return set()
+            return set(), set()
 
     async def _apply_mapping_text_markers(
         self,
@@ -1954,19 +1997,31 @@ class SchemaResolver:
         ``ColumnMapping.text_kind``, ONTA-177); this applies that verdict at
         schema-apply time as the idempotent ``textKind`` upsert on the
         RESOLVED attribute URI (the mapping's declared type may have been
-        matched onto an existing ontology type). Attribute names are
-        normalized exactly like the ingest pass normalizes them
-        (:func:`_normalize_attr_name`) so the marker lands on the same attr
-        URI the instance triples use. Legacy / hand-written mappings carry no
-        ``text_kind`` → no markers, no LLM (candidacy undecided; the
-        reconciler-side default heuristic covers those later — ONTA-181).
-        Best-effort: failures log a warning and never block ingest.
+        matched onto an existing ontology type). BOTH verdict polarities are
+        persisted (ONTA-173): ``"free_text"`` marks the attribute for the
+        semantic index; ``"not_text"`` (the REASON pass explicitly declined a
+        TEXT-shaped column) durably records the decided NO so the reconciler
+        stops re-sampling it and its name-blind auto tier can never overrule
+        the LLM. Attribute names are normalized exactly like the ingest pass
+        normalizes them (:func:`_normalize_attr_name`) so the marker lands on
+        the same attr URI the instance triples use. Legacy / hand-written
+        mappings carry no ``text_kind`` → no markers, no LLM (candidacy
+        undecided; the reconciler-side default heuristic covers those later —
+        ONTA-181). After any marker write the tenant's marker cache is
+        invalidated HERE (write sites own it — refresh_after_write
+        deliberately doesn't). Best-effort: failures log a warning and never
+        block ingest.
         """
         try:
             specs_by_name = {s.name: s for s in (mapping.entities or [])}
             seen: set[tuple[str, str]] = set()
+            marked_free_text: list[str] = []
+            marked_not_text: list[str] = []
             for col in mapping.columns:
-                if col.text_kind != TEXT_KIND_FREE_TEXT or col.role != ColumnRole.ATTRIBUTE:
+                if col.role != ColumnRole.ATTRIBUTE or col.text_kind not in (
+                    TEXT_KIND_FREE_TEXT,
+                    TEXT_KIND_NOT_TEXT,
+                ):
                     continue
                 if col.entity and col.entity in specs_by_name:
                     decl_type = specs_by_name[col.entity].type_name
@@ -1981,13 +2036,23 @@ class SchemaResolver:
                     continue
                 seen.add(key)
                 await self._neptune.update(
-                    upsert_attribute_text_kind(graph_uri, resolved_type, attr_name)
+                    upsert_attribute_text_kind(
+                        graph_uri, resolved_type, attr_name, col.text_kind
+                    )
                 )
-                result.free_text_attributes.append(f"{resolved_type}.{attr_name}")
+                if col.text_kind == TEXT_KIND_FREE_TEXT:
+                    result.free_text_attributes.append(f"{resolved_type}.{attr_name}")
+                    marked_free_text.append(f"{resolved_type}.{attr_name}")
+                else:
+                    marked_not_text.append(f"{resolved_type}.{attr_name}")
             if seen:
+                # Marker write site self-invalidates (mirrors the reconciler's
+                # heuristic); the TTL stays the cross-process backstop.
+                invalidate_text_marker_cache(graph_uri)
                 logger.info(
                     "free_text_mapping_markers_applied",
-                    attributes=sorted(f"{t}.{a}" for t, a in seen),
+                    attributes=sorted(marked_free_text),
+                    not_text_attributes=sorted(marked_not_text),
                 )
         except Exception:
             logger.warning("free_text_mapping_markers_failed", exc_info=True)

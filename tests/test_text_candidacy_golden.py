@@ -21,7 +21,10 @@ The fixture set spans the representative bands: parliamentary speeches and
 listing remarks (unambiguous long prose → auto tier, including an old-shape
 recording with NO text_kind field at all), reviews/eligibility criteria
 (ambiguous band, adjudicated free_text), addresses and organization names
-(ambiguous band, adjudicated NOT free text — omitted and explicit-null forms),
+(ambiguous band, adjudicated NOT free text — the EXPLICIT-null form is a
+genuine decided NO and persists the durable ``not_text`` marker (ONTA-173);
+the omitted form stays UNDECIDED with no marker of either polarity, because
+omission is indistinguishable from an old recording or a backfilled column),
 codes/numbers (never candidates, including adversarial recordings the gate
 must discard), a multi-entity table with a relationship-role column, and an
 all-numeric table with a fully legacy recording.
@@ -136,7 +139,8 @@ async def test_golden_fixture_resolves_full_schema(path, monkeypatch):
 def test_fixture_suite_is_present_and_representative():
     """The suite must keep covering the representative bands: at least ten
     fixtures, with at least one marker in each decision tier (auto,
-    adjudicated-yes, adjudicated-no/omitted, gated-adversarial)."""
+    adjudicated-yes, adjudicated-no explicit-null → durable not_text,
+    omitted → undecided, gated-adversarial)."""
     assert len(FIXTURE_PATHS) >= 10
     marked = {
         p.stem
@@ -147,9 +151,55 @@ def test_fixture_suite_is_present_and_representative():
     # Auto tier and adjudicated tier both appear among the marked fixtures.
     assert "parliamentary_speeches" in marked
     assert "product_reviews" in marked
-    # Unmarked structured-text bands stay unmarked.
+    # Structured-text bands never resolve to free_text.
     unmarked = {"street_addresses", "org_directory", "inventory_codes"}
     assert not (unmarked & marked)
+    # Decided-no tier (ONTA-173): at least one fixture pins the durable
+    # not_text verdict for an explicitly adjudicated NO.
+    not_text = {
+        p.stem
+        for p in FIXTURE_PATHS
+        for c in _load(p)["expected"]["columns"]
+        if c["text_kind"] == "not_text"
+    }
+    assert "org_directory" in not_text
+
+
+def test_explicit_null_persists_durable_not_text_but_omission_stays_undecided():
+    """ONTA-173 decided-no persistence, both forms side by side:
+
+    - org_directory records an EXPLICIT ``"text_kind": null`` on a TEXT-shaped
+      column — a genuine adjudicated NO → the resolved schema carries the
+      durable ``"not_text"`` verdict (persisted as an ontology marker at
+      apply time, so the reconciler's presence-based skip stops re-sampling
+      it and the name-blind ≥120-char auto tier can never overrule the LLM).
+    - street_addresses OMITS the field entirely on a TEXT-shaped column —
+      indistinguishable from an old recording or a backfilled column, so
+      candidacy stays UNDECIDED (``None``): no marker of either polarity.
+    """
+    org = _load(FIXTURE_DIR / "org_directory.json")
+    org_rec = next(
+        c for c in org["recorded"]["reason"]["columns"]
+        if c["column"] == "organization_name"
+    )
+    assert "text_kind" in org_rec and org_rec["text_kind"] is None  # explicit null
+    org_col = next(
+        c for c in org["expected"]["columns"]
+        if c["column_name"] == "organization_name"
+    )
+    assert org_col["text_kind"] == "not_text"
+
+    streets = _load(FIXTURE_DIR / "street_addresses.json")
+    st_rec = next(
+        c for c in streets["recorded"]["reason"]["columns"]
+        if c["column"] == "site_address"
+    )
+    assert "text_kind" not in st_rec  # omitted, not explicit null
+    st_col = next(
+        c for c in streets["expected"]["columns"]
+        if c["column_name"] == "site_address"
+    )
+    assert st_col["text_kind"] is None
 
 
 def test_old_shape_recording_still_auto_marks():

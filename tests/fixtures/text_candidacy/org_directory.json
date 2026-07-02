@@ -1,5 +1,5 @@
 {
-  "description": "Organization proper names: ambiguous band with an EXPLICIT null text_kind in the recording \u2014 stays unmarked.",
+  "description": "Organization proper names: ambiguous band with an EXPLICIT null text_kind in the recording \u2014 a genuine adjudicated NO, persisted as the durable 'not_text' verdict (ONTA-173) so the reconciler stops re-sampling it and the name-blind auto tier can never overrule the LLM.",
   "headers": [
     "org_id",
     "organization_name",
@@ -112,7 +112,7 @@
         "attribute_name": "name",
         "entity": "org",
         "target_type": null,
-        "text_kind": null
+        "text_kind": "not_text"
       },
       {
         "column_name": "founded_year",
