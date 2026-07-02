@@ -52,22 +52,22 @@ unified Jobs feed; observability is structlog counters (``chunks_written``,
 ``skipped_unchanged_hash``, ``embeds_pending``, ``embeds_filled``,
 ``embed_failures``, ``ghosts_deleted``), logged every run, never silently zero.
 
-Ghost enumeration seam (NOTE for ONTA-176/178)
-----------------------------------------------
+Ghost enumeration (the ``list_docs`` Protocol method)
+-----------------------------------------------------
 
-Diffing "docs in the index" against "docs in Neptune" needs a listing the
-:class:`~cograph_client.semantic.protocol.SemanticIndex` Protocol does not
-define. The reconciler therefore duck-types an OPTIONAL backend method::
-
-    async def list_docs(tenant_id: str, *, kg_name: Optional[str] = None
-                        ) -> list[tuple[str, str, str]]  # (entity_uri, attr, content_hash)
-
-(one row per (entity, attr) document). When the backend lacks it, ghost
-deletion and the unchanged-hash skip are SKIPPED — loudly logged with
-``doc_listing_supported=False`` — and everything else still converges (upserts
-are hash-idempotent; shrunk docs still lose their stale tail via the upsert
-contract). The durable pgvector backend (ONTA-176) should implement it (one
-``SELECT DISTINCT entity_uri, attr, content_hash`` per KG).
+Diffing "docs in the index" against "docs in Neptune" uses
+:meth:`~cograph_client.semantic.protocol.SemanticIndex.list_docs` —
+``(entity_uri, attr, content_hash)``, one row per (entity, attr) document.
+Both first-party backends implement it (InMemory sorts a set; the pgvector
+adapter runs one ``SELECT DISTINCT`` per KG), so every default deployment
+ghost-repairs. The method started life as an OPTIONAL duck-typed seam (the
+Protocol was frozen while ONTA-181 was built), and the reconciler still looks
+it up with ``getattr``: a third-party backend registered via
+``register_semantic_index`` that predates the Protocol method must DEGRADE,
+not crash. In that case ghost deletion and the unchanged-hash skip are
+SKIPPED — loudly logged with ``doc_listing_supported=False`` — and everything
+else still converges (upserts are hash-idempotent; shrunk docs still lose
+their stale tail via the upsert contract).
 
 Candidacy default heuristic (ONTA-177 hand-off)
 -----------------------------------------------
@@ -740,8 +740,8 @@ async def reconcile_kg(
        survive);
     5. DELETE ghosts: index docs absent from the expected set (covers ER-merged
        entities, normalization deletes, emptied values, AND marker-removed
-       attributes in one diff). Requires the optional ``list_docs`` backend
-       seam (module docstring); skipped loudly when unsupported.
+       attributes in one diff). Uses the ``list_docs`` Protocol method; skipped
+       loudly for third-party backends that predate it (module docstring).
 
     Raises on Neptune failures — the schedule runner logs and retries on the
     next cadence; acting on partial reads would be worse than waiting.
@@ -803,6 +803,10 @@ async def reconcile_kg(
     for c in chunks:
         expected[(c.entity_uri, c.attr)] = c.content_hash
 
+    # getattr, not a direct call: list_docs is a Protocol method now, but a
+    # third-party backend compiled against the pre-list_docs Protocol must
+    # degrade gracefully, never crash (module docstring). Both first-party
+    # backends implement it, so the default paths always take this branch.
     lister = getattr(idx, "list_docs", None)
     doc_listing_supported = callable(lister)
     current: dict[tuple[str, str], str] = {}
@@ -839,7 +843,7 @@ async def reconcile_kg(
             "semantic_reconcile_ghost_scan_skipped",
             tenant_id=tenant_id,
             kg_name=kg_name,
-            reason="backend lacks the optional list_docs seam",
+            reason="backend predates the Protocol's list_docs method",
         )
 
     logger.info(

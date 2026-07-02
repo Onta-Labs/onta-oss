@@ -16,9 +16,13 @@ Covers both duties over the InMemory backend (no DSN required):
   ``FOR UPDATE SKIP LOCKED`` SQL on Postgres), so two runner instances fire a
   due row exactly once.
 
-Ghost enumeration uses the reconciler's OPTIONAL duck-typed backend seam
-(``list_docs``) — :class:`ListableInMemoryIndex` below is the reference
-implementation of that contract for the ONTA-176 durable backend to mirror.
+Ghost enumeration uses the ``SemanticIndex.list_docs`` Protocol method, which
+the real InMemory backend implements — the reconcile tests below run against
+plain :class:`InMemorySemanticIndex` (ghost repair works on the OSS default,
+no helper subclass). :class:`LegacyThirdPartyIndex` simulates a third-party
+backend compiled against the pre-``list_docs`` Protocol to pin the
+graceful-degrade branch (ghost repair skipped loudly, everything else
+converges).
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import pytest
+import structlog
 
 import cograph_client.graph.text_markers as tm
 import cograph_client.nlp.embed_client as embed_client_mod
@@ -146,25 +151,22 @@ class FakeNeptune:
             self.markers[(m.group(1), m.group(2))] = m.group(3)
 
 
-class ListableInMemoryIndex(InMemorySemanticIndex):
-    """InMemory backend + the OPTIONAL ``list_docs`` seam the reconciler
-    duck-types for ghost enumeration — the reference contract for ONTA-176:
-    one ``(entity_uri, attr, content_hash)`` row per (entity, attr) doc."""
+class LegacyThirdPartyIndex:
+    """A backend compiled against the pre-``list_docs`` Protocol (the frozen
+    window while ONTA-181 was built): delegates the whole contract to a real
+    InMemory index but genuinely LACKS ``list_docs`` — ``getattr`` on it must
+    miss, exercising the reconciler's graceful-degrade branch."""
 
-    async def list_docs(
-        self, tenant_id: str, *, kg_name: Optional[str] = None
-    ) -> list[tuple[str, str, str]]:
-        async with self._lock:
-            docs: dict[tuple[str, str], str] = {}
-            for c in self._chunks.values():
-                if c.tenant_id == tenant_id and (
-                    kg_name is None or c.kg_name == kg_name
-                ):
-                    docs[(c.entity_uri, c.attr)] = c.content_hash
-            return [(e, a, h) for (e, a), h in sorted(docs.items())]
+    def __init__(self) -> None:
+        self._inner = InMemorySemanticIndex()
+
+    def __getattr__(self, name: str):
+        if name == "list_docs":
+            raise AttributeError(name)  # the whole point of this class
+        return getattr(self._inner, name)
 
 
-class CrashingIndex(ListableInMemoryIndex):
+class CrashingIndex(InMemorySemanticIndex):
     """Raises on the Nth upsert call — simulates a deploy kill mid-reconcile."""
 
     def __init__(self, fail_after: int) -> None:
@@ -235,7 +237,7 @@ def test_first_reconcile_is_the_backfill():
     """An already-ingested KG (marked attrs, empty index) gets fully indexed by
     the FIRST reconcile run — no re-ingest (the parliamentary-speeches case)."""
     neptune = _kg(_doc_entities(3), {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -253,7 +255,7 @@ def test_reconcile_skips_unchanged_docs_and_preserves_embeddings():
     """Rerunning reconcile over unchanged data writes nothing and NEVER
     re-queues an already-filled embedding (content_hash is the currency)."""
     neptune = _kg(_doc_entities(2), {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -276,7 +278,7 @@ def test_reconcile_deletes_ghosts_of_merged_entities():
     from Neptune must lose its index rows on reconcile, siblings untouched."""
     entities = _doc_entities(2)
     neptune = _kg(entities, {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -295,7 +297,7 @@ def test_reconcile_decided_no_flip_removes_rows_without_reclassifying():
     attr's rows via the ghost diff — and the default heuristic must NOT fight
     the decision (the attr is in the map, so it is decided, not undecided)."""
     neptune = _kg(_doc_entities(2), {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -315,7 +317,7 @@ def test_reconcile_marker_added_indexes_existing_data():
     """Candidacy flip the other way: marking an attr AFTER its data landed gets
     it indexed on the next reconcile (no re-ingest)."""
     neptune = _kg(_doc_entities(2))  # data present, nothing marked
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         # The heuristic will mark long prose itself; pin the flip explicitly by
@@ -348,7 +350,7 @@ def test_reconcile_default_candidacy_heuristic():
         for i in range(1, 5)
     }
     neptune = _kg(entities)  # NO markers at all
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -372,7 +374,7 @@ def test_reconcile_heuristic_verdicts_stick_across_runs():
         _entity(1): {RDF_TYPE: [DOC_TYPE], SKU_PRED: ["SKU-1", "SKU-2", "SKU-3"]}
     }
     neptune = _kg(entities)
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -391,7 +393,7 @@ def test_reconcile_aborts_on_marker_fetch_failure_without_ghost_deleting():
     KG's index. This is why the reconciler does NOT use the best-effort
     get_free_text_map."""
     neptune = _kg(_doc_entities(1), {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -409,19 +411,47 @@ def test_reconcile_aborts_on_marker_fetch_failure_without_ghost_deleting():
 
 
 def test_reconcile_without_list_docs_still_upserts_and_skips_ghosts():
-    """A backend without the optional list_docs seam still converges on
-    upserts (hash-idempotent); ghost deletion is skipped LOUDLY, not wrongly."""
+    """A third-party backend that predates the Protocol's list_docs still
+    converges on upserts (hash-idempotent); ghost deletion is skipped LOUDLY
+    (``doc_listing_supported=False``), not wrongly."""
     neptune = _kg(_doc_entities(2), {("Doc", "description"): "free_text"})
-    index = InMemorySemanticIndex()  # no list_docs
+    index = LegacyThirdPartyIndex()  # genuinely lacks list_docs
 
     async def run():
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
         assert counters["chunks_written"] == 2
         del neptune.entities[_entity(1)]
-        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
-        # Ghost repair needs the seam — nothing was (wrongly) deleted.
+        with structlog.testing.capture_logs() as logs:
+            counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        # Ghost repair needs the method — nothing was (wrongly) deleted, and
+        # the degrade is loud, never silent.
         assert counters["ghosts_deleted"] == 0
         assert len(await index.fetch_pending(limit=100)) == 2
+        [summary] = [e for e in logs if e["event"] == "semantic_reconcile"]
+        assert summary["doc_listing_supported"] is False
+        assert any(
+            e["event"] == "semantic_reconcile_ghost_scan_skipped" for e in logs
+        )
+
+    asyncio.run(run())
+
+
+def test_reconcile_reports_doc_listing_supported_on_plain_inmemory():
+    """The OSS-default InMemory backend implements the Protocol's list_docs,
+    so the default path must report ``doc_listing_supported=True`` — the
+    graceful-degrade branch is reserved for third-party backends that lag the
+    Protocol, never the first-party defaults."""
+    neptune = _kg(_doc_entities(1), {("Doc", "description"): "free_text"})
+    index = InMemorySemanticIndex()
+
+    async def run():
+        with structlog.testing.capture_logs() as logs:
+            await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        [summary] = [e for e in logs if e["event"] == "semantic_reconcile"]
+        assert summary["doc_listing_supported"] is True
+        assert not any(
+            e["event"] == "semantic_reconcile_ghost_scan_skipped" for e in logs
+        )
 
     asyncio.run(run())
 
@@ -429,7 +459,7 @@ def test_reconcile_without_list_docs_still_upserts_and_skips_ghosts():
 def test_reconcile_disabled_is_a_noop(monkeypatch):
     monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
     neptune = _kg(_doc_entities(1), {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
@@ -474,7 +504,7 @@ def test_reconcile_scan_pages_through_large_kgs(monkeypatch):
     is still fully indexed."""
     monkeypatch.setenv("COGRAPH_SEMANTIC_SCAN_PAGE_SIZE", "3")
     neptune = _kg(_doc_entities(4), {("Doc", "description"): "free_text"})
-    index = ListableInMemoryIndex()
+    index = InMemorySemanticIndex()
 
     async def run():
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)

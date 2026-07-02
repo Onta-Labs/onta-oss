@@ -373,6 +373,63 @@ async def test_clear_per_tenant(idx):
 
 
 # ---------------------------------------------------------------------------
+# list_docs (the reconciler's ghost-diff enumeration)
+# ---------------------------------------------------------------------------
+
+
+async def test_list_docs_empty_index(idx):
+    assert await idx.list_docs(TENANT) == []
+
+
+async def test_list_docs_is_doc_granular_not_chunk_granular(idx):
+    """One row per (entity, attr) DOC: a multi-chunk doc collapses to a single
+    triple (every chunk carries the same doc-level hash by construction) —
+    the granularity the reconciler's ghost diff operates on."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:1", "part one about quasars", ix=0, doc_text="d1"),
+            _chunk("e:1", "part two about pulsars", ix=1, doc_text="d1"),
+            _chunk("e:1", "the notes text", attr="notes"),
+            _chunk("e:2", "other entity text"),
+        ]
+    )
+    assert await idx.list_docs(TENANT) == [
+        ("e:1", "description", content_hash("d1")),
+        ("e:1", "notes", content_hash("the notes text")),
+        ("e:2", "description", content_hash("other entity text")),
+    ]  # sorted (deterministic), one row per doc despite the two d1 chunks
+
+
+async def test_list_docs_scoping(idx):
+    """Identical scoping semantics to search/clear: tenant mandatory (never
+    cross tenants), kg_name None = every KG in the tenant."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:a", "alpha text", tenant=TENANT, kg=KG),
+            _chunk("e:b", "beta text", tenant=TENANT, kg=OTHER_KG),
+            _chunk("e:c", "gamma text", tenant=OTHER_TENANT, kg=KG),
+        ]
+    )
+    assert [e for e, _a, _h in await idx.list_docs(TENANT)] == ["e:a", "e:b"]
+    assert [e for e, _a, _h in await idx.list_docs(TENANT, kg_name=KG)] == ["e:a"]
+    assert [e for e, _a, _h in await idx.list_docs(OTHER_TENANT)] == ["e:c"]
+    assert await idx.list_docs("no-such-tenant") == []
+
+
+async def test_list_docs_tracks_hash_changes_and_deletes(idx):
+    """The listing is the reconciler's change-detection currency: a replaced
+    doc surfaces its NEW hash (still one row), and a deleted doc vanishes."""
+    await idx.upsert_chunks([_chunk("e:1", "version one")])
+    [(_, _, h1)] = await idx.list_docs(TENANT)
+    assert h1 == content_hash("version one")
+    await idx.upsert_chunks([_chunk("e:1", "version two")])
+    [(_, _, h2)] = await idx.list_docs(TENANT)  # still exactly one row
+    assert h2 == content_hash("version two") != h1
+    await idx.delete("e:1", TENANT, attr="description")
+    assert await idx.list_docs(TENANT) == []
+
+
+# ---------------------------------------------------------------------------
 # embed-fill sweep seam (the NULL embedding IS the queue)
 # ---------------------------------------------------------------------------
 

@@ -8,7 +8,7 @@ Two layers, mirroring ``test_spatiotemporal.py``:
   statement's leg pre-filters, the ANN mode selection (exact / hnsw_default /
   hnsw_iterative) incl. the pgvector-0.8 capability probe and its
   placeholder-GUC false-positive guard, the degraded lexical-only path, the
-  queue SQL, and the registry seam.
+  queue SQL, the ``list_docs`` doc-listing SQL, and the registry seam.
 * **Live integration tests** gated on ``OMNIX_DATABASE_URL`` (skipped without
   it): the full protocol contract against a real Postgres + pgvector. These
   run in CI against the ``pgvector/pgvector:pg16`` service container, and
@@ -583,6 +583,29 @@ async def test_delete_and_clear_sql(pg):
     assert deletes[3].endswith("AND kg_name = $2")
 
 
+# -- list_docs (reconciler ghost-diff enumeration) -------------------------------
+
+
+async def test_list_docs_sql_shape_and_hydration(pg):
+    store, recorder, conn, _pool = pg
+    conn.rows = [
+        {"entity_uri": "e:1", "attr": "description", "content_hash": "h1"},
+        {"entity_uri": "e:1", "attr": "notes", "content_hash": "h2"},
+    ]
+    docs = await store.list_docs(TENANT, kg_name=KG)
+    sql = _fetch_sql(recorder)
+    # One row per (entity, attr) DOC: DISTINCT collapses a doc's chunk rows
+    # (same doc-level hash on every chunk by construction).
+    assert "SELECT DISTINCT entity_uri, attr, content_hash" in sql
+    # Scoping identical to the other methods: tenant mandatory, kg optional.
+    assert "tenant_id = $1" in sql
+    assert "($2::text IS NULL OR kg_name = $2::text)" in sql
+    # Deterministic ordering (the Protocol contract).
+    assert "ORDER BY entity_uri, attr, content_hash" in sql
+    assert _fetch_args(recorder) == (TENANT, KG)
+    assert docs == [("e:1", "description", "h1"), ("e:1", "notes", "h2")]
+
+
 # -- embed queue ---------------------------------------------------------------
 
 
@@ -866,6 +889,61 @@ async def test_live_delete_and_clear_scoping(live):
     assert (await live.search(tenant, "delete probe", kg_name=OTHER_KG)).hits == []
     await live.clear(tenant)
     assert (await live.search(tenant, "delete probe")).hits == []
+
+
+@needs_pg
+@pytest.mark.integration
+async def test_live_list_docs_doc_granularity_and_scoping(live):
+    """The Protocol's list_docs contract on the real store: one row per
+    (entity, attr) DOC (DISTINCT collapses a multi-chunk doc — every chunk
+    carries the doc-level hash), deterministic order, tenant/kg scoping."""
+    tenant = _t()
+    await live.upsert_chunks(
+        [
+            _chunk("e:1", "part one about quasars", ix=0, doc_text="d1", tenant=tenant),
+            _chunk("e:1", "part two about pulsars", ix=1, doc_text="d1", tenant=tenant),
+            _chunk("e:1", "the notes text", attr="notes", tenant=tenant),
+            _chunk("e:2", "sibling kg text", tenant=tenant, kg=OTHER_KG),
+        ]
+    )
+    # kg-scoped: the two d1 chunk rows collapse into ONE doc row.
+    assert await live.list_docs(tenant, kg_name=KG) == [
+        ("e:1", "description", content_hash("d1")),
+        ("e:1", "notes", content_hash("the notes text")),
+    ]
+    # kg_name=None spans every KG in the tenant.
+    assert await live.list_docs(tenant) == [
+        ("e:1", "description", content_hash("d1")),
+        ("e:1", "notes", content_hash("the notes text")),
+        ("e:2", "description", content_hash("sibling kg text")),
+    ]
+    # Tenant isolation: a different tenant sees nothing.
+    assert await live.list_docs(_t()) == []
+
+
+@needs_pg
+@pytest.mark.integration
+async def test_live_list_docs_tracks_hash_change_and_delete(live):
+    """The listing is the reconciler's change-detection currency: a replaced
+    doc surfaces its NEW hash — still exactly one row, proving the
+    hash-per-doc invariant survives the replace-per-doc upsert transaction
+    (what makes DISTINCT safe) — and a deleted doc vanishes."""
+    tenant = _t()
+    await live.upsert_chunks(
+        [
+            _chunk("e:1", "version one part a", ix=0, doc_text="v1", tenant=tenant),
+            _chunk("e:1", "version one part b", ix=1, doc_text="v1", tenant=tenant),
+        ]
+    )
+    assert await live.list_docs(tenant) == [("e:1", "description", content_hash("v1"))]
+    # Replace with a shorter, changed doc: still ONE row, the new hash.
+    await live.upsert_chunks(
+        [_chunk("e:1", "version two", ix=0, doc_text="v2", tenant=tenant)]
+    )
+    assert await live.list_docs(tenant) == [("e:1", "description", content_hash("v2"))]
+    # The ghost-deletion primitive removes the doc from the listing.
+    await live.delete("e:1", tenant, kg_name=KG, attr="description")
+    assert await live.list_docs(tenant) == []
 
 
 @needs_pg

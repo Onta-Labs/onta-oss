@@ -267,6 +267,40 @@ class SemanticIndex(Protocol):
         KG-delete path); ``None`` clears the whole tenant (tenant teardown)."""
         ...
 
+    # -- doc enumeration (ONTA-181's reconciler ghost diff) -------------------
+
+    async def list_docs(
+        self, tenant_id: str, *, kg_name: Optional[str] = None
+    ) -> list[tuple[str, str, str]]:
+        """Enumerate indexed documents as ``(entity_uri, attr, content_hash)``
+        rows — one row per (entity, attr) **document**, never per chunk.
+
+        The consumer is the ONTA-181 reconciler's claim diff: it compares this
+        listing against what a fresh Neptune scan says SHOULD be indexed to
+        (a) DELETE ghosts — docs whose (entity, attr) no longer exists in
+        Neptune because an ER merge or a normalization delete bypassed the
+        write hook — and (b) SKIP re-upserting unchanged docs (the
+        ``skipped_unchanged_hash`` counter). Doc granularity is what makes
+        both cheap: ``content_hash`` is the sha256 of the canonicalized FULL
+        doc, identical across every chunk of the doc **by construction** (see
+        :class:`SemanticChunk`), so the doc-level triple is complete
+        change-detection currency without shipping chunk rows or text.
+
+        Scoping is identical to :meth:`search` / :meth:`clear`: ``tenant_id``
+        is mandatory (a listing MUST NEVER cross tenants), ``kg_name`` narrows
+        to one KG (``None`` = every KG in the tenant). The result is ordered
+        deterministically (sorted by the full tuple) so reconciler runs and
+        parity tests are reproducible across backends.
+
+        HISTORY: this started as an OPTIONAL duck-typed seam because the
+        Protocol was frozen while ONTA-181 was built. It is now part of the
+        Protocol — both first-party backends implement it — but the reconciler
+        still looks it up with ``getattr`` and degrades gracefully (ghost
+        repair skipped, loudly logged) for third-party backends compiled
+        against the pre-``list_docs`` Protocol.
+        """
+        ...
+
     # -- embed-fill sweep seam (ONTA-181's reconciler drives these) ----------
 
     async def fetch_pending(

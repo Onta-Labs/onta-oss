@@ -172,6 +172,26 @@ class InMemorySemanticIndex:
                 )
             }
 
+    # -- doc enumeration (ONTA-181's reconciler ghost diff) --------------------
+
+    async def list_docs(
+        self, tenant_id: str, *, kg_name: Optional[str] = None
+    ) -> list[tuple[str, str, str]]:
+        """One ``(entity_uri, attr, content_hash)`` row per (entity, attr) doc
+        (the Protocol's doc-granularity contract). Chunk rows collapse through
+        a set — every chunk of a doc carries the same doc-level hash by
+        construction — which is deliberately the same semantics as the durable
+        backend's ``SELECT DISTINCT``, so the two listings can never disagree.
+        Sorted for the deterministic ordering the contract requires."""
+        async with self._lock:
+            docs = {
+                (c.entity_uri, c.attr, c.content_hash)
+                for c in self._chunks.values()
+                if c.tenant_id == tenant_id  # tenant isolation: never cross tenants
+                and (kg_name is None or c.kg_name == kg_name)
+            }
+        return sorted(docs)
+
     # -- search ---------------------------------------------------------------
 
     def _candidates(

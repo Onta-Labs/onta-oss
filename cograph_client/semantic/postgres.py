@@ -537,6 +537,35 @@ class PostgresSemanticIndex:
         async with pool.acquire() as conn:
             await conn.execute(sql, *params)
 
+    # --------------------------- doc enumeration (reconciler ghost diff)
+    async def list_docs(
+        self, tenant_id: str, *, kg_name: Optional[str] = None
+    ) -> list[tuple[str, str, str]]:
+        """One ``(entity_uri, attr, content_hash)`` row per (entity, attr) doc
+        (the Protocol's doc-granularity contract), via ``SELECT DISTINCT``.
+
+        DISTINCT is safe at doc granularity because ``content_hash`` is the
+        sha256 of the canonicalized FULL doc — identical across every chunk of
+        a doc by construction (see :class:`~cograph_client.semantic.protocol.SemanticChunk`)
+        — and :meth:`upsert_chunks` keeps that invariant durable: a doc's
+        chunk-row rewrites AND its stale-tail delete commit in ONE transaction,
+        so no committed state ever holds two hashes for one (entity, attr).
+        DISTINCT therefore collapses a doc's chunk rows to exactly one triple;
+        ``ORDER BY`` the full tuple keeps the listing deterministic (the same
+        ordering the InMemory backend produces by sorting).
+        """
+        pool = await self._ensure_pool()
+        sql = f"""
+            SELECT DISTINCT entity_uri, attr, content_hash
+            FROM {self._TABLE}
+            WHERE tenant_id = $1
+              AND ($2::text IS NULL OR kg_name = $2::text)
+            ORDER BY entity_uri, attr, content_hash
+        """
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(sql, tenant_id, kg_name)
+        return [(r["entity_uri"], r["attr"], r["content_hash"]) for r in rows]
+
     # ----------------------------------------------------------------- search
     @staticmethod
     def _leg_filter_sql() -> str:
