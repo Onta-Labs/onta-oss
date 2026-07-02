@@ -1,0 +1,460 @@
+"""Semantic index protocol conformance, registry wiring, and the InMemory
+backend end-to-end (ONTA-175): replace-per-doc upsert semantics, hybrid
+lexical+vector search with RRF fusion and the ``degraded`` signal, tenant/KG
+isolation, and the embed-fill sweep seam (fetch_pending / fill_embeddings /
+mark_embed_failed with the content_hash concurrency guard).
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from cograph_client.semantic import (
+    InMemorySemanticIndex,
+    SemanticChunk,
+    SemanticIndex,
+    SemanticSearchResult,
+    content_hash,
+    get_semantic_index,
+    make_semantic_index,
+    register_semantic_index,
+    reset_semantic_index,
+)
+
+TENANT = "demo-tenant"
+OTHER_TENANT = "spider-bench"
+KG = "kg1"
+OTHER_KG = "kg2"
+
+
+def _chunk(
+    uri: str,
+    text: str,
+    *,
+    ix: int = 0,
+    attr: str = "description",
+    tenant: str = TENANT,
+    kg: str = KG,
+    doc_text: str | None = None,
+    embedding: list[float] | None = None,
+    attrs: dict | None = None,
+) -> SemanticChunk:
+    """A chunk row; ``doc_text`` overrides the hashed doc for multi-chunk docs
+    (all chunks of one doc share the doc-level hash)."""
+    return SemanticChunk(
+        tenant_id=tenant,
+        kg_name=kg,
+        entity_uri=uri,
+        attr=attr,
+        chunk_ix=ix,
+        chunk_text=text,
+        content_hash=content_hash(doc_text if doc_text is not None else text),
+        embedding=embedding,
+        attrs=attrs if attrs is not None else {"label": uri},
+    )
+
+
+@pytest.fixture
+def idx() -> InMemorySemanticIndex:
+    return InMemorySemanticIndex()
+
+
+@pytest.fixture(autouse=True)
+def _reset_registry():
+    reset_semantic_index()
+    yield
+    reset_semantic_index()
+
+
+def _uris(result: SemanticSearchResult) -> set[str]:
+    return {h.entity_uri for h in result.hits}
+
+
+# ---------------------------------------------------------------------------
+# Protocol + registry
+# ---------------------------------------------------------------------------
+
+
+def test_protocol_conformance(idx):
+    assert isinstance(idx, SemanticIndex)
+
+
+def test_factory_returns_inmemory(monkeypatch):
+    # Unconditional for now — the pgvector branch is the ONTA-176 seam.
+    from cograph_client import config
+
+    monkeypatch.setattr(config.settings, "database_url", "", raising=False)
+    assert isinstance(make_semantic_index(), InMemorySemanticIndex)
+
+
+def test_register_and_get_roundtrip(idx):
+    register_semantic_index(idx)
+    assert get_semantic_index() is idx
+    register_semantic_index(None)
+    # Falls back to a lazily-built (cached) default.
+    default = get_semantic_index()
+    assert isinstance(default, InMemorySemanticIndex)
+    assert get_semantic_index() is default  # cached
+
+
+def test_reset_clears_cached_default():
+    default = get_semantic_index()
+    reset_semantic_index()
+    assert get_semantic_index() is not default
+
+
+# ---------------------------------------------------------------------------
+# upsert semantics (replace-per-doc)
+# ---------------------------------------------------------------------------
+
+
+async def test_upsert_idempotent_by_pk(idx):
+    await idx.upsert_chunks([_chunk("e:1", "solar panels for homes")])
+    await idx.upsert_chunks([_chunk("e:1", "solar panels for homes")])
+    res = await idx.search(TENANT, "solar panels")
+    assert len(res.hits) == 1
+
+
+async def test_upsert_unchanged_hash_preserves_filled_embedding(idx):
+    """Replaying an unchanged doc must NOT reset a filled embedding to NULL
+    (that would re-queue embed work on every replay)."""
+    await idx.upsert_chunks([_chunk("e:1", "some text")])
+    [pending] = await idx.fetch_pending()
+    assert await idx.fill_embeddings([pending], [[1.0, 0.0]], embed_model="m1") == 1
+    # Replay the identical chunk (fresh extract → embedding=None on the input).
+    await idx.upsert_chunks([_chunk("e:1", "some text")])
+    assert await idx.fetch_pending() == []  # still embedded, nothing re-queued
+
+
+async def test_upsert_changed_hash_replaces_and_requeues(idx):
+    await idx.upsert_chunks([_chunk("e:1", "old text")])
+    [pending] = await idx.fetch_pending()
+    await idx.fill_embeddings([pending], [[1.0, 0.0]], embed_model="m1")
+    await idx.upsert_chunks([_chunk("e:1", "new text")])
+    requeued = await idx.fetch_pending()
+    assert [c.chunk_text for c in requeued] == ["new text"]
+    assert requeued[0].embedding is None
+
+
+async def test_upsert_shrunken_doc_deletes_stale_tail(idx):
+    """A doc that re-chunks to fewer pieces must not leave ghost tail chunks
+    (the ONTA-181 fewer-chunks-than-before case)."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:1", "part one about quasars", ix=0, doc_text="v1"),
+            _chunk("e:1", "part two about pulsars", ix=1, doc_text="v1"),
+            _chunk("e:1", "part three about nebulae", ix=2, doc_text="v1"),
+        ]
+    )
+    await idx.upsert_chunks([_chunk("e:1", "just quasars now", ix=0, doc_text="v2")])
+    res = await idx.search(TENANT, "pulsars nebulae")
+    assert res.hits == []  # tail chunks are gone
+    res = await idx.search(TENANT, "quasars")
+    assert _uris(res) == {"e:1"}
+
+
+async def test_upsert_tail_delete_is_scoped_to_the_doc(idx):
+    """Shrinking one (entity, attr) doc must not touch a sibling attr's chunks
+    or another entity's."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:1", "description part one", ix=0, doc_text="d1"),
+            _chunk("e:1", "description part two", ix=1, doc_text="d1"),
+            _chunk("e:1", "the notes text", ix=1, attr="notes", doc_text="n1"),
+            _chunk("e:2", "other entity text", ix=1, doc_text="o1"),
+        ]
+    )
+    await idx.upsert_chunks([_chunk("e:1", "short description", ix=0, doc_text="d2")])
+    assert _uris(await idx.search(TENANT, "notes")) == {"e:1"}
+    assert _uris(await idx.search(TENANT, "other entity")) == {"e:2"}
+    assert (await idx.search(TENANT, "part two")).hits == []
+
+
+# ---------------------------------------------------------------------------
+# search — lexical, hybrid, degraded
+# ---------------------------------------------------------------------------
+
+
+async def test_lexical_search_finds_and_ranks(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:solar", "installation of solar panels on residential roofs"),
+            _chunk("e:wind", "wind turbine maintenance schedule"),
+            _chunk("e:misc", "quarterly financial report"),
+        ]
+    )
+    res = await idx.search(TENANT, "solar panels")
+    assert res.hits[0].entity_uri == "e:solar"
+    assert "e:misc" not in _uris(res)
+
+
+async def test_search_without_embedding_is_degraded(idx):
+    await idx.upsert_chunks([_chunk("e:1", "anything at all")])
+    res = await idx.search(TENANT, "anything")
+    assert res.degraded is True
+    res = await idx.search(TENANT, "anything", query_embedding=[1.0, 0.0])
+    assert res.degraded is False
+
+
+async def test_hybrid_vector_leg_finds_lexical_misses(idx):
+    """A chunk with zero token overlap but a near-identical embedding must be
+    reachable through the vector leg (the whole point of hybrid)."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:vec", "cardiac arrhythmia treatment", embedding=[1.0, 0.0, 0.0]),
+            _chunk("e:lex", "heart rhythm disorder care"),
+        ]
+    )
+    res = await idx.search(
+        TENANT, "heart rhythm disorder", query_embedding=[0.99, 0.1, 0.0]
+    )
+    assert _uris(res) == {"e:vec", "e:lex"}
+
+
+async def test_hybrid_rrf_prefers_dual_leg_matches(idx):
+    """An entity ranked in BOTH legs outscores one ranked in a single leg
+    (RRF sums 1/(k+rank) across legs)."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:both", "solar panels efficiency", embedding=[1.0, 0.0]),
+            _chunk("e:lexonly", "solar panels efficiency"),  # no embedding
+        ]
+    )
+    res = await idx.search(TENANT, "solar panels", query_embedding=[1.0, 0.0])
+    assert res.hits[0].entity_uri == "e:both"
+    assert res.hits[0].score > res.hits[1].score
+
+
+async def test_hit_carries_attrs_snippet_and_attr(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk(
+                "e:1",
+                "A long description about solar panel efficiency in cold climates.",
+                attrs={"label": "Solar Report", "type": "Report"},
+            )
+        ]
+    )
+    res = await idx.search(TENANT, "solar efficiency")
+    hit = res.hits[0]
+    assert hit.attrs == {"label": "Solar Report", "type": "Report"}
+    assert hit.attr == "description"
+    assert hit.snippet.startswith("A long description")
+
+
+async def test_snippet_is_truncated_for_long_chunks(idx):
+    long_text = "solar " + "filler words appear here " * 40
+    await idx.upsert_chunks([_chunk("e:1", long_text)])
+    res = await idx.search(TENANT, "solar")
+    assert len(res.hits[0].snippet) < len(long_text)
+    assert res.hits[0].snippet.endswith("…")
+
+
+async def test_chunks_group_into_one_entity_hit(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:1", "solar panels part one", ix=0, doc_text="d"),
+            _chunk("e:1", "solar panels part two", ix=1, doc_text="d"),
+        ]
+    )
+    res = await idx.search(TENANT, "solar panels")
+    assert len(res.hits) == 1
+    assert res.hits[0].entity_uri == "e:1"
+
+
+async def test_top_k_limits_entities(idx):
+    await idx.upsert_chunks(
+        [_chunk(f"e:{i}", f"solar panels variant {i}") for i in range(10)]
+    )
+    res = await idx.search(TENANT, "solar panels", top_k=3)
+    assert len(res.hits) == 3
+
+
+async def test_no_match_returns_empty(idx):
+    await idx.upsert_chunks([_chunk("e:1", "wind turbines")])
+    res = await idx.search(TENANT, "quantum entanglement")
+    assert res.hits == []
+
+
+# ---------------------------------------------------------------------------
+# isolation: tenant, KG, type filter
+# ---------------------------------------------------------------------------
+
+
+async def test_tenant_isolation(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:a", "shared query text", tenant=TENANT),
+            _chunk("e:b", "shared query text", tenant=OTHER_TENANT),
+        ]
+    )
+    assert _uris(await idx.search(TENANT, "shared query")) == {"e:a"}
+    assert _uris(await idx.search(OTHER_TENANT, "shared query")) == {"e:b"}
+
+
+async def test_kg_narrowing_on_search(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:a", "common topic text", kg=KG),
+            _chunk("e:b", "common topic text", kg=OTHER_KG),
+        ]
+    )
+    # No kg_name → every KG in the tenant.
+    assert _uris(await idx.search(TENANT, "common topic")) == {"e:a", "e:b"}
+    assert _uris(await idx.search(TENANT, "common topic", kg_name=KG)) == {"e:a"}
+
+
+async def test_type_filter_matches_denormalized_type(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:ev", "annual gathering", attrs={"type": "Event"}),
+            _chunk("e:org", "annual gathering", attrs={"type": "Organization"}),
+        ]
+    )
+    res = await idx.search(TENANT, "annual gathering", type_filter="Event")
+    assert _uris(res) == {"e:ev"}
+
+
+async def test_delete_entity_and_attr_scoping(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:1", "delete me description"),
+            _chunk("e:1", "delete me notes", attr="notes"),
+            _chunk("e:2", "delete me too"),
+        ]
+    )
+    # attr-scoped delete: the reconciler's ghost-deletion primitive.
+    await idx.delete("e:1", TENANT, attr="notes")
+    assert _uris(await idx.search(TENANT, "delete")) == {"e:1", "e:2"}
+    # entity-wide delete removes remaining docs.
+    await idx.delete("e:1", TENANT)
+    assert _uris(await idx.search(TENANT, "delete")) == {"e:2"}
+
+
+async def test_delete_scoped_to_kg(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:shared", "same entity two kgs", kg=KG),
+            _chunk("e:shared", "same entity two kgs", kg=OTHER_KG),
+        ]
+    )
+    await idx.delete("e:shared", TENANT, kg_name=KG)
+    assert _uris(await idx.search(TENANT, "same entity", kg_name=OTHER_KG)) == {
+        "e:shared"
+    }
+    assert (await idx.search(TENANT, "same entity", kg_name=KG)).hits == []
+
+
+async def test_clear_one_kg_leaves_sibling(idx):
+    """The crux of the kg_name dimension (KG delete): dropping one KG must not
+    wipe a sibling KG's chunks."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:a", "alpha content", kg=KG),
+            _chunk("e:b", "alpha content", kg=OTHER_KG),
+        ]
+    )
+    await idx.clear(TENANT, kg_name=KG)
+    assert _uris(await idx.search(TENANT, "alpha content")) == {"e:b"}
+    await idx.clear(TENANT)  # tenant-wide clear removes the rest
+    assert (await idx.search(TENANT, "alpha content")).hits == []
+
+
+async def test_clear_per_tenant(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:a", "text here", tenant=TENANT),
+            _chunk("e:b", "text here", tenant=OTHER_TENANT),
+        ]
+    )
+    await idx.clear(TENANT)
+    assert (await idx.search(TENANT, "text here")).hits == []
+    assert _uris(await idx.search(OTHER_TENANT, "text here")) == {"e:b"}
+
+
+# ---------------------------------------------------------------------------
+# embed-fill sweep seam (the NULL embedding IS the queue)
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_pending_returns_null_embedding_rows_in_order(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:2", "beta text"),
+            _chunk("e:1", "alpha text"),
+            _chunk("e:3", "gamma text", embedding=[0.5, 0.5]),  # already embedded
+        ]
+    )
+    pending = await idx.fetch_pending()
+    assert [c.entity_uri for c in pending] == ["e:1", "e:2"]  # deterministic (PK order)
+    assert all(c.embedding is None for c in pending)
+
+
+async def test_fetch_pending_respects_limit_and_scoping(idx):
+    await idx.upsert_chunks(
+        [
+            _chunk("e:1", "t1", tenant=TENANT, kg=KG),
+            _chunk("e:2", "t2", tenant=TENANT, kg=OTHER_KG),
+            _chunk("e:3", "t3", tenant=OTHER_TENANT),
+        ]
+    )
+    assert len(await idx.fetch_pending(limit=2)) == 2
+    assert len(await idx.fetch_pending()) == 3  # maintenance: all tenants
+    assert {c.entity_uri for c in await idx.fetch_pending(tenant_id=TENANT)} == {
+        "e:1",
+        "e:2",
+    }
+    assert [c.entity_uri for c in await idx.fetch_pending(tenant_id=TENANT, kg_name=OTHER_KG)] == ["e:2"]
+
+
+async def test_fill_embeddings_stamps_model_and_drains_queue(idx):
+    await idx.upsert_chunks([_chunk("e:1", "embed me")])
+    pending = await idx.fetch_pending()
+    assert await idx.fill_embeddings(pending, [[0.1, 0.2]], embed_model="text-embedding-3-small") == 1
+    assert await idx.fetch_pending() == []
+    # The filled vector is live for the vector leg.
+    res = await idx.search(TENANT, "zzz nolexicalmatch", query_embedding=[0.1, 0.2])
+    assert _uris(res) == {"e:1"}
+
+
+async def test_fill_embeddings_stale_hash_does_not_apply(idx):
+    """The content_hash concurrency guard: if the doc changed between fetch and
+    fill, the stale vector must NOT land on the new text."""
+    await idx.upsert_chunks([_chunk("e:1", "version one")])
+    [stale] = await idx.fetch_pending()
+    await idx.upsert_chunks([_chunk("e:1", "version two")])  # replaced mid-flight
+    assert await idx.fill_embeddings([stale], [[1.0, 0.0]], embed_model="m") == 0
+    [still_pending] = await idx.fetch_pending()
+    assert still_pending.chunk_text == "version two"
+    assert still_pending.embedding is None
+
+
+async def test_fill_embeddings_length_mismatch_raises(idx):
+    await idx.upsert_chunks([_chunk("e:1", "text")])
+    pending = await idx.fetch_pending()
+    with pytest.raises(ValueError):
+        await idx.fill_embeddings(pending, [], embed_model="m")
+
+
+async def test_mark_embed_failed_tracks_attempts_and_dead_letters(idx):
+    await idx.upsert_chunks([_chunk("e:1", "flaky text")])
+    [pending] = await idx.fetch_pending()
+    assert await idx.mark_embed_failed([pending], error="429 rate limited") == 1
+    [row] = await idx.fetch_pending()
+    assert row.attempt_count == 1
+    assert row.last_error == "429 rate limited"
+    # A max_attempts cutoff dead-letters the row (skipped, not deleted).
+    assert await idx.fetch_pending(max_attempts=1) == []
+    assert len(await idx.fetch_pending(max_attempts=2)) == 1
+    # A successful fill clears the error.
+    assert await idx.fill_embeddings([row], [[0.3, 0.4]], embed_model="m") == 1
+    assert await idx.fetch_pending() == []
+
+
+async def test_mark_embed_failed_stale_hash_is_ignored(idx):
+    await idx.upsert_chunks([_chunk("e:1", "v1")])
+    [stale] = await idx.fetch_pending()
+    await idx.upsert_chunks([_chunk("e:1", "v2")])
+    assert await idx.mark_embed_failed([stale], error="boom") == 0
+    [row] = await idx.fetch_pending()
+    assert row.attempt_count == 0 and row.last_error is None
