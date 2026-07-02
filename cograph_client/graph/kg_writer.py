@@ -258,6 +258,18 @@ async def refresh_after_write(
     except Exception:  # noqa: BLE001 — never fail a write on a cache hiccup
         logger.warning("ontology_cache_invalidate_failed", exc_info=True)
 
+    # 1b. Free-text marker map (ONTA-177): a schema pass may have written
+    #     `<attr> <onto/textKind> "free_text"` markers with this write, so drop
+    #     the tenant's cached {predicate -> is_free_text} map — query-side
+    #     consumers (semantic-index routing, ONTA-176) must see fresh verdicts
+    #     immediately, not after the TTL (which remains the multi-task backstop).
+    try:
+        from cograph_client.graph.text_markers import invalidate as invalidate_text_markers
+
+        invalidate_text_markers(tenant_id)
+    except Exception:  # noqa: BLE001 — never fail a write on a cache hiccup
+        logger.warning("text_marker_cache_invalidate_failed", exc_info=True)
+
     # 2. Re-embed affected types (dedup, order-preserving).
     types = list(dict.fromkeys(t for t in affected_types if t))
     if types:
