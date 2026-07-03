@@ -7,6 +7,14 @@ confirm→execute to survive a process restart — or, on multi-task deployments
 (e.g. ECS Fargate), to hit a different task than the one that planned — the
 proposed plan must live in a durable, shared store, not in process memory.
 
+The store is also the substrate of the ONE-SHOT execution guard: a confirm
+claims the plan via an atomic ``claim_for_execution`` status transition
+(``proposed`` → ``executing``; a stale ``executing`` claim is recoverable), and
+the finished plan persists its ``result`` payload so a duplicate confirm — a
+client retry after a gateway timeout, the Explorer auto-confirm double-firing —
+replays the SAME acks/job ids instead of re-running (and re-billing /
+re-ingesting) the steps. See :func:`cograph_client.agent.planner.execute_plan`.
+
 This mirrors :mod:`cograph_client.enrichment.job_store` exactly:
 
 - ``PlanStore`` — an async Protocol so the backend is swappable.
@@ -41,6 +49,13 @@ class StoredPlan:
     Carries the tenant + KG scope it was proposed in, the originating
     ``session_id`` (when the caller supplied one), and a ``created_at`` so a
     durable store can scope listing and expire stale plans.
+
+    ``status`` is the one-shot execution guard's state machine: a plan is born
+    ``proposed``, is atomically claimed to ``executing`` by exactly ONE confirm
+    (see :meth:`InMemoryPlanStore.claim_for_execution`), and ends ``done`` (with
+    the returned ``result`` payload persisted for idempotent replay) or
+    ``failed``. ``executed_at`` stamps when the claim was taken so a claim
+    orphaned by a mid-run crash can be detected as stale and re-claimed.
     """
 
     plan_id: str
@@ -52,12 +67,23 @@ class StoredPlan:
     status: str = "proposed"  # proposed | executing | done | failed
     session_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    # When the executing claim was taken (None until first confirm) — the
+    # staleness reference for crash recovery.
+    executed_at: datetime | None = None
+    # The exact {kind:"result", steps:[...]} payload returned to the confirmer,
+    # persisted on completion so a duplicate confirm replays the SAME acks/job
+    # ids instead of re-running (and re-billing) the steps.
+    result: dict | None = None
 
     def to_json(self) -> str:
         """Serialize to a JSON string for the jsonb payload column.
 
         ``PlanStep`` is a dataclass (not pydantic), so we round-trip it through
         its own ``to_dict``/``from_dict`` rather than ``model_dump_json``.
+        ``default=str`` because ``result`` embeds capability acks verbatim — a
+        downstream capability that slips a datetime (or similar) into its ack
+        must not make the post-execution save throw and strand the plan
+        ``executing``.
         """
         return json.dumps(
             {
@@ -70,7 +96,12 @@ class StoredPlan:
                 "status": self.status,
                 "session_id": self.session_id,
                 "created_at": self.created_at.isoformat() if self.created_at else None,
-            }
+                "executed_at": (
+                    self.executed_at.isoformat() if self.executed_at else None
+                ),
+                "result": self.result,
+            },
+            default=str,
         )
 
     @classmethod
@@ -88,6 +119,7 @@ class StoredPlan:
             if created_raw
             else datetime.now(timezone.utc)
         )
+        executed_raw = data.get("executed_at")
         return cls(
             plan_id=data["plan_id"],
             tenant_id=data["tenant_id"],
@@ -98,6 +130,10 @@ class StoredPlan:
             status=data.get("status", "proposed"),
             session_id=data.get("session_id"),
             created_at=created,
+            executed_at=(
+                datetime.fromisoformat(executed_raw) if executed_raw else None
+            ),
+            result=data.get("result"),
         )
 
 
@@ -107,6 +143,31 @@ class PlanStore(Protocol):
     async def delete(self, plan_id: str, tenant_id: str) -> None: ...
     async def list_for_tenant(self, tenant_id: str) -> list[StoredPlan]: ...
     async def list_for_session(self, session_id: str) -> list[StoredPlan]: ...
+    async def claim_for_execution(
+        self,
+        plan_id: str,
+        tenant_id: str,
+        *,
+        stale_before: Optional[datetime] = None,
+    ) -> tuple[Optional[StoredPlan], bool]: ...
+
+
+def _claim_allowed(plan: StoredPlan, stale_before: Optional[datetime]) -> bool:
+    """Whether a claim-for-execution may take this plan.
+
+    ``proposed`` is always claimable — the normal first confirm. ``executing``
+    is claimable ONLY when its claim is older than ``stale_before`` (the prior
+    executor is presumed dead — crashed / redeployed mid-run — so the plan is
+    not stranded un-runnable forever). Terminal states (``done`` / ``failed``)
+    are never claimable: that is the one-shot guard.
+    """
+    if plan.status == "proposed":
+        return True
+    if plan.status == "executing" and stale_before is not None:
+        started = plan.executed_at or plan.created_at
+        # No usable timestamp at all (malformed row) → can't be proven fresh.
+        return started is None or started < stale_before
+    return False
 
 
 class InMemoryPlanStore:
@@ -148,6 +209,32 @@ class InMemoryPlanStore:
         async with self._lock:
             plans = [p for p in self._plans.values() if p.session_id == session_id]
         return _sorted_newest_first([_copy_plan(p) for p in plans])
+
+    async def claim_for_execution(
+        self,
+        plan_id: str,
+        tenant_id: str,
+        *,
+        stale_before: Optional[datetime] = None,
+    ) -> tuple[Optional[StoredPlan], bool]:
+        """Atomically transition a claimable plan to ``executing``.
+
+        Returns ``(plan, claimed)``: the stored plan (a copy, post-transition
+        when claimed) and whether THIS caller won the transition; ``(None,
+        False)`` when no such plan exists for the tenant. Check-and-set runs
+        under the store lock with no interleaved await, so two concurrent
+        confirms of the same plan (the Explorer auto-confirm double-firing, a
+        retried request racing the original) can never both claim it.
+        """
+        async with self._lock:
+            p = self._plans.get(plan_id)
+            if p is None or p.tenant_id != tenant_id:
+                return None, False
+            if not _claim_allowed(p, stale_before):
+                return _copy_plan(p), False
+            p.status = "executing"
+            p.executed_at = datetime.now(timezone.utc)
+            return _copy_plan(p), True
 
 
 class PostgresPlanStore:
@@ -282,6 +369,78 @@ class PostgresPlanStore:
             )
         return [StoredPlan.from_payload(r["payload"]) for r in rows]
 
+    async def claim_for_execution(
+        self,
+        plan_id: str,
+        tenant_id: str,
+        *,
+        stale_before: Optional[datetime] = None,
+    ) -> tuple[Optional[StoredPlan], bool]:
+        """Atomically transition a claimable plan to ``executing``.
+
+        Same contract as :meth:`InMemoryPlanStore.claim_for_execution`, made
+        atomic across processes with ``SELECT … FOR UPDATE``: two confirms
+        racing from different ECS tasks serialize on the row, so exactly one
+        sees a claimable status and flips it — the loser observes the
+        post-claim row and backs off.
+        """
+        pool = await self._ensure_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    f"SELECT payload FROM {self._TABLE} "
+                    f"WHERE plan_id = $1 AND tenant_id = $2 FOR UPDATE",
+                    plan_id,
+                    tenant_id,
+                )
+                if row is None:
+                    return None, False
+                plan = StoredPlan.from_payload(row["payload"])
+                if not _claim_allowed(plan, stale_before):
+                    return plan, False
+                plan.status = "executing"
+                plan.executed_at = datetime.now(timezone.utc)
+                await conn.execute(
+                    f"UPDATE {self._TABLE} SET status = $3, updated_at = $4, "
+                    f"payload = $5::jsonb "
+                    f"WHERE plan_id = $1 AND tenant_id = $2",
+                    plan_id,
+                    tenant_id,
+                    plan.status,
+                    datetime.now(timezone.utc),
+                    plan.to_json(),
+                )
+                return plan, True
+
+
+async def claim_plan_for_execution(
+    store: PlanStore,
+    plan_id: str,
+    tenant_id: str,
+    *,
+    stale_before: Optional[datetime] = None,
+) -> tuple[Optional[StoredPlan], bool]:
+    """Claim ``plan_id`` for execution through whatever store is configured.
+
+    Dispatches to the store's atomic ``claim_for_execution`` (both bundled
+    backends implement it). A third-party ``PlanStore`` that predates the
+    method degrades to a non-atomic get→check→save — still a correct one-shot
+    guard against the sequential duplicate confirm (the retry-after-timeout
+    case), just not race-proof against two truly concurrent confirms.
+    """
+    native = getattr(store, "claim_for_execution", None)
+    if native is not None:
+        return await native(plan_id, tenant_id, stale_before=stale_before)
+    plan = await store.get(plan_id, tenant_id)
+    if plan is None:
+        return None, False
+    if not _claim_allowed(plan, stale_before):
+        return plan, False
+    plan.status = "executing"
+    plan.executed_at = datetime.now(timezone.utc)
+    await store.save(plan)
+    return plan, True
+
 
 def _copy_plan(plan: StoredPlan) -> StoredPlan:
     """Deep-ish copy so in-memory callers can't mutate stored state by ref."""
@@ -336,6 +495,7 @@ __all__ = [
     "PlanStore",
     "PostgresPlanStore",
     "StoredPlan",
+    "claim_plan_for_execution",
     "get_plan_store",
     "make_plan_store",
     "reset_plan_store",
