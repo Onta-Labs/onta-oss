@@ -188,20 +188,27 @@ class WebIngestCapability:
 
         # Query-kind routing (ONTA-190): PREFER a provider specializing in the
         # spec's generic query_kind (e.g. "place" for a location/business-finding
-        # query) when one is registered; otherwise use the general default. In a
-        # place-only deployment `general` is None, so a place query is served by the
-        # specialized provider and a NON-place query has no provider — refused
-        # gracefully below (not a crash). URL mode always uses the URL extractor
-        # (`general`) selected above; kind routing never applies to it.
+        # query) when one is registered — ADDITIVELY, not exclusively: a kind match
+        # builds an ENSEMBLE of [specialized, general] consulted in that order at
+        # execute time, because neither source is complete alone (Places lists the
+        # mappable businesses; the general web finds directory/roster pages Places
+        # misses). The cross-batch key dedupe makes the overlap free. In a
+        # place-only deployment `general` is None → the ensemble is just the
+        # specialized provider; a NON-matching query there has no provider —
+        # refused gracefully below (not a crash). URL mode always uses the URL
+        # extractor (`general`) selected above; kind routing never applies to it.
         if urls:
-            provider = general
+            ensemble = [general] if general else []
         else:
             query_kind = spec.get("query_kind")
             specialized = (
                 get_web_source_for_kind(query_kind) if query_kind else None
             )
-            provider = specialized or general
-            if provider is None:
+            ensemble = []
+            for p in (specialized, general):
+                if p is not None and all(p is not q for q in ensemble):
+                    ensemble.append(p)
+            if not ensemble:
                 # A general query in a kind-only deployment (e.g. place-only): the
                 # only registered provider can't serve this query's kind. Refuse
                 # gracefully instead of proceeding with no provider.
@@ -213,6 +220,12 @@ class WebIngestCapability:
                         "can add a general web-source provider for other requests."
                     )
                 ]
+        # Primary provider: drives the plan-time sample, naming, and legacy params.
+        provider = ensemble[0] if ensemble else None
+        if provider is None:
+            # URL mode with no URL-capable provider was already refused above;
+            # defensive guard for any future path.
+            return []
 
         type_name = spec.get("entity_type") or "WebRecord"
         query = (spec.get("query") or "").strip() or _clean_query(instruction)
@@ -267,7 +280,9 @@ class WebIngestCapability:
         #     same figure the client's auto-confirm reads) — not the raw per-call
         #     price, which under-counts paginating providers.
         cap = _DEFAULT_PLAN_CAP
-        lean_cost = _estimate_cost(provider, cap, cap, subqueries=len(subqueries))
+        lean_cost = _estimate_cost_multi(
+            ensemble, cap, cap, subqueries=len(subqueries)
+        )
         if lean_cost["estimated_usd"] <= _PREVIEW_GATE_USD:
             return [
                 PlanStep(
@@ -281,7 +296,10 @@ class WebIngestCapability:
                         "hint_columns": hint_columns,
                         "max_rows": cap,
                         "kg_name": ctx.kg_name,
+                        # Primary provider (legacy key) + the full ensemble the
+                        # execute-time fan-out consults, specialized first.
                         "provider": provider.name,
+                        "providers": [pr.name for pr in ensemble],
                         "urls": urls,
                     },
                     rationale=(
@@ -367,7 +385,9 @@ class WebIngestCapability:
             else 0
         )
         # cap was set before the lean fast path above (_DEFAULT_PLAN_CAP).
-        cost = _estimate_cost(provider, est_total, cap, subqueries=len(subqueries))
+        cost = _estimate_cost_multi(
+            ensemble, est_total, cap, subqueries=len(subqueries)
+        )
         shape = None
         if sample_rows:
             resolver = _build_resolver(ctx)
@@ -408,6 +428,9 @@ class WebIngestCapability:
                 "subqueries": subqueries,
                 "proposed_type": type_name,
                 "attributes": attributes,
+                # Full ensemble for the execute-time fan-out (primary kept in
+                # "provider" for older persisted steps).
+                "providers": [pr.name for pr in ensemble],
                 # The COMPREHENSIVE fetch hint (key ∪ confirmed ∪ suggested) —
                 # persisted so the full fetch in execute() uses the SAME rich
                 # projection the sample did. The FETCH is the part that's stable
@@ -444,14 +467,29 @@ class WebIngestCapability:
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         p = step.params
         # URLs persisted at plan time (empty for plain query discovery). Provider
-        # selection mirrors plan(): by the persisted name, falling back to the
-        # mode-appropriate default (for_urls=bool(urls)) so the same provider runs.
+        # selection mirrors plan(): the persisted ENSEMBLE (specialized first,
+        # then general — both are consulted because neither is complete alone),
+        # falling back to the legacy single "provider" name, then to the
+        # mode-appropriate default (for_urls=bool(urls)) for steps persisted
+        # before either key existed. Names that no longer resolve are skipped.
         urls = list(p.get("urls") or [])
-        provider = get_web_source(p.get("provider")) or get_web_source(
-            for_urls=bool(urls)
-        )
-        if provider is None:
+        ensemble = [
+            prov
+            for prov in (
+                get_web_source(n)
+                for n in (p.get("providers") or [])
+                if isinstance(n, str) and n
+            )
+            if prov is not None
+        ]
+        if not ensemble:
+            single = get_web_source(p.get("provider")) or get_web_source(
+                for_urls=bool(urls)
+            )
+            ensemble = [single] if single is not None else []
+        if not ensemble:
             raise RuntimeError("web-source provider not available at execute time")
+        provider = ensemble[0]  # primary — naming + default error attribution
 
         query = p["query"]
         # Enumeration fan-out (ONTA-192): the plan may carry self-contained
@@ -473,7 +511,6 @@ class WebIngestCapability:
         kg_name = p.get("kg_name") or ctx.kg_name
         instance_graph = kg_graph_uri(ctx.tenant_id, kg_name) if kg_name else None
         resolver = _build_resolver(ctx)
-        source = f"web:{provider.name}:{query}"
         pctx = _provider_context(ctx)
 
         # Track the discovery as a real job so the client polls a LIVE status
@@ -518,116 +555,140 @@ class WebIngestCapability:
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
                 await job_store.update(job)
-            # Per-provider activity log for "which provider we used" + its outcome,
-            # surfaced in the run-detail view alongside the platforms list. One
-            # provider drives the whole run (every sub-query), so this stays one
-            # entry accumulating attempts/matches/errors across the fan-out.
-            plog = ProviderLog(provider=provider.name)
+            # Per-provider activity log for "which providers we used" + their
+            # outcomes, surfaced in the run-detail view alongside the platforms
+            # list — one entry PER ENSEMBLE MEMBER, each accumulating its own
+            # attempts/matches/errors across every sub-query.
+            plogs: dict[str, ProviderLog] = {
+                prov.name: ProviderLog(provider=prov.name) for prov in ensemble
+            }
             any_discover_ok = False
-            processed = 0  # unique rows ingested across all sub-queries
+            processed = 0  # unique rows ingested across all sub-queries/providers
             entities_total = 0
             affected_types: set[str] = set()
             platforms: list[str] = []
-            # Cross-sub-query dedupe on the KEY attribute (the record identifier):
-            # partitions overlap ("…in Tustin" and a directory row listed under
-            # both cities), and re-ingesting the same key would double-write.
+            # Cross-batch dedupe on the KEY attribute (the record identifier):
+            # sub-query partitions overlap ("…in Tustin" and a directory row
+            # listed under both cities) and so do ENSEMBLE members (the same
+            # physician on Places AND a directory page) — re-ingesting the same
+            # key would double-write. Specialized runs first, so its (more
+            # structured) row wins; the general provider only contributes NEW keys.
             seen_keys: set[str] = set()
             key_attr = (attributes[0] if attributes else "name") or "name"
             last_provider_err: Optional[str] = None
+            last_err_provider: Optional[str] = None
             try:
                 for sub_i, sub_query in enumerate(subqueries):
-                    remaining = cap - processed
-                    if remaining <= 0:
+                    if cap - processed <= 0:
                         break
-                    try:
-                        full = await provider.discover(
-                            sub_query,
-                            sample=False,
-                            max_rows=remaining,
-                            hint_columns=hint_columns,
-                            context=pctx,
-                            urls=urls or None,
-                        )
-                    except Exception as exc:  # noqa: BLE001 — one sub-query failing
-                        # must not sink the run: partial coverage beats nothing.
-                        last_provider_err = str(exc)
+                    for prov in ensemble:
+                        remaining = cap - processed
+                        if remaining <= 0:
+                            break
+                        plog = plogs[prov.name]
+                        try:
+                            full = await prov.discover(
+                                sub_query,
+                                sample=False,
+                                max_rows=remaining,
+                                hint_columns=hint_columns,
+                                context=pctx,
+                                urls=urls or None,
+                            )
+                        except Exception as exc:  # noqa: BLE001 — one provider
+                            # failing one sub-query must not sink the run: partial
+                            # coverage beats nothing.
+                            last_provider_err = str(exc)
+                            last_err_provider = prov.name
+                            plog.attempts += 1
+                            plog.errors += 1
+                            plog.last_error = last_provider_err[:300]
+                            logger.warning(
+                                "web_ingest_subquery_failed",
+                                query=sub_query,
+                                provider=prov.name,
+                                exc_info=True,
+                            )
+                            continue
+                        any_discover_ok = True
                         plog.attempts += 1
-                        plog.errors += 1
-                        plog.last_error = last_provider_err[:300]
-                        logger.warning(
-                            "web_ingest_subquery_failed",
-                            query=sub_query,
-                            exc_info=True,
+                        batch = _dedupe_rows(
+                            full.rows[:remaining], key_attr, seen_keys
                         )
-                        continue
-                    any_discover_ok = True
-                    plog.attempts += 1
-                    batch = _dedupe_rows(full.rows[:remaining], key_attr, seen_keys)
-                    plog.matches += len(batch)
-                    if not batch:
-                        plog.no_match += 1
-                        continue
-                    # Per-record source-URL provenance (ONTA-151): stamp each row
-                    # with the page it was drawn from (DiscoverResult.provenance)
-                    # BEFORE serialization, so it rides through the SAME extract →
-                    # ingest → insert_facts path as the rest of the row's data (no
-                    # bespoke write path) and lands as a `source_url` citation on
-                    # the entity.
-                    _attach_source_urls(
-                        batch, getattr(full, "provenance", None) or {}
-                    )
-                    platforms = list(
-                        dict.fromkeys(
-                            [
-                                *platforms,
-                                *_platforms(getattr(full, "sources", None), provider),
-                            ]
+                        plog.matches += len(batch)
+                        if not batch:
+                            plog.no_match += 1
+                            continue
+                        # Per-record source-URL provenance (ONTA-151): stamp each
+                        # row with the page it was drawn from
+                        # (DiscoverResult.provenance) BEFORE serialization, so it
+                        # rides through the SAME extract → ingest → insert_facts
+                        # path as the rest of the row's data (no bespoke write
+                        # path) and lands as a `source_url` citation on the entity.
+                        _attach_source_urls(
+                            batch, getattr(full, "provenance", None) or {}
                         )
-                    )
-                    # BATCHED ingest — one commit per sub-query, so the job card
-                    # streams ("N of ~M records added") instead of jumping 0 → all.
-                    content = json.dumps(batch, default=str, ensure_ascii=False)
-                    result = await resolver.ingest(
-                        content,
-                        ctx.tenant_id,
-                        content_type="json",
-                        source=source,
-                        instance_graph=instance_graph,
-                    )
-                    processed += len(batch)
-                    entities_total += int(
-                        getattr(result, "entities_resolved", 0) or 0
-                    )
-                    affected_types |= set(result.types_created)
-                    for attr_added in result.attributes_added:
-                        affected_types.add(attr_added.split(".")[0])
-                    if job is not None and job_store is not None:
-                        # Rolling, honest total: what landed + the average batch
-                        # yield extrapolated over the sub-queries still to run,
-                        # never above the cap. Settles to == processed at the end.
-                        subs_done = sub_i + 1
-                        subs_left = len(subqueries) - subs_done
-                        avg = math.ceil(processed / subs_done)
-                        job.progress.processed = processed
-                        job.progress.total = min(cap, processed + subs_left * avg)
-                        job.platforms = platforms
-                        job.provider_logs = [plog]
-                        await job_store.update(job)
+                        platforms = list(
+                            dict.fromkeys(
+                                [
+                                    *platforms,
+                                    *_platforms(
+                                        getattr(full, "sources", None), prov
+                                    ),
+                                ]
+                            )
+                        )
+                        # BATCHED ingest — one commit per (sub-query, provider)
+                        # batch, so the job card streams ("N of ~M records added")
+                        # instead of jumping 0 → all. Source names the provider
+                        # that actually produced the batch.
+                        content = json.dumps(batch, default=str, ensure_ascii=False)
+                        result = await resolver.ingest(
+                            content,
+                            ctx.tenant_id,
+                            content_type="json",
+                            source=f"web:{prov.name}:{query}",
+                            instance_graph=instance_graph,
+                        )
+                        processed += len(batch)
+                        entities_total += int(
+                            getattr(result, "entities_resolved", 0) or 0
+                        )
+                        affected_types |= set(result.types_created)
+                        for attr_added in result.attributes_added:
+                            affected_types.add(attr_added.split(".")[0])
+                        if job is not None and job_store is not None:
+                            # Rolling, honest total: what landed + the average
+                            # per-sub-query yield extrapolated over the sub-queries
+                            # still to run, never above the cap. Settles to ==
+                            # processed at the end.
+                            subs_done = sub_i + 1
+                            subs_left = len(subqueries) - subs_done
+                            avg = math.ceil(processed / subs_done)
+                            job.progress.processed = processed
+                            job.progress.total = min(
+                                cap, processed + subs_left * avg
+                            )
+                            job.platforms = platforms
+                            job.provider_logs = list(plogs.values())
+                            await job_store.update(job)
 
-                plog.status = (
-                    "ok"
-                    if processed
-                    else ("error" if plog.errors and not any_discover_ok else "no_match")
-                )
+                for plog in plogs.values():
+                    plog.status = (
+                        "ok"
+                        if plog.matches
+                        else ("error" if plog.errors else "no_match")
+                    )
                 if processed == 0:
                     if not any_discover_ok and last_provider_err is not None:
-                        # EVERY sub-query died at the provider → a failed job with
-                        # the provider-attributed error, not a silent empty result.
+                        # EVERY provider died on EVERY sub-query → a failed job
+                        # with the provider-attributed error, not a silent empty
+                        # result.
                         if job is not None:
-                            job.provider_logs = [plog]
+                            job.provider_logs = list(plogs.values())
                             job.error_summary = [
                                 JobErrorItem(
-                                    provider=provider.name,
+                                    provider=last_err_provider or provider.name,
                                     kind="error",
                                     message=last_provider_err[:300],
                                 )
@@ -636,7 +697,7 @@ class WebIngestCapability:
                         return
                     logger.info("web_ingest_no_rows", query=query)
                     if job is not None and job_store is not None:
-                        job.provider_logs = [plog]
+                        job.provider_logs = list(plogs.values())
                     await _finish_job(
                         job, job_store, processed=0, entities=0,
                         platforms=platforms,
@@ -646,6 +707,7 @@ class WebIngestCapability:
                     "web_ingest_complete",
                     query=query,
                     subqueries=len(subqueries),
+                    providers=[pr.name for pr in ensemble],
                     rows=processed,
                     entities=entities_total,
                     types=sorted(affected_types) or None,
@@ -677,17 +739,18 @@ class WebIngestCapability:
             except Exception as exc:  # noqa: BLE001 — background job self-contains errors
                 logger.error("web_ingest_failed", query=query, exc_info=True)
                 msg = str(exc)
-                # Per-sub-query provider errors are handled in the loop, so a crash
-                # HERE is past discovery (ingest/refresh/bookkeeping) — a job-level
-                # failure — unless no discover ever returned (setup crash), which
-                # stays provider-attributed. Matches the enrichment executor's
-                # fatal-path classification.
+                # Per-(sub-query, provider) errors are handled in the loop, so a
+                # crash HERE is past discovery (ingest/refresh/bookkeeping) — a
+                # job-level failure — unless no discover ever returned (setup
+                # crash), which stays provider-attributed. Matches the enrichment
+                # executor's fatal-path classification.
                 if not any_discover_ok:
-                    plog.errors += 1
-                    plog.status = "error"
-                    plog.last_error = msg[:300]
+                    primary_plog = plogs[provider.name]
+                    primary_plog.errors += 1
+                    primary_plog.status = "error"
+                    primary_plog.last_error = msg[:300]
                 if job is not None:
-                    job.provider_logs = [plog]
+                    job.provider_logs = list(plogs.values())
                     job.error_summary = [
                         JobErrorItem(
                             provider=provider.name if not any_discover_ok else None,
@@ -1186,6 +1249,43 @@ def _estimate_cost(
             f"Paid web discovery via '{provider.name}': ≈ ${estimated_usd:.2f} "
             f"to fetch up to {rows} record(s){split}{fanout} (estimate; provider "
             f"may fan out across sub-queries)."
+        ),
+    }
+
+
+def _estimate_cost_multi(
+    providers: list, estimated_total: int, cap: int, *, subqueries: int = 0,
+) -> dict:
+    """Whole-run estimate for a provider ENSEMBLE (kind-specialized + general
+    consulted together): the sum of each provider's own run estimate, with one
+    merged note naming every source generically. A single-provider ensemble is
+    exactly :func:`_estimate_cost` — no behavior change for the classic path."""
+    if len(providers) == 1:
+        return _estimate_cost(
+            providers[0], estimated_total, cap, subqueries=subqueries
+        )
+    parts = [
+        _estimate_cost(p, estimated_total, cap, subqueries=subqueries)
+        for p in providers
+    ]
+    paid_calls = sum(part["paid_calls"] for part in parts)
+    estimated_usd = round(sum(part["estimated_usd"] for part in parts), 4)
+    if paid_calls == 0:
+        return {
+            "paid_calls": 0,
+            "estimated_usd": 0.0,
+            "note": "No paid calls (the configured web sources are free).",
+        }
+    rows = min(estimated_total or 0, cap) if cap else (estimated_total or 0)
+    names = " + ".join(f"'{p.name}'" for p in providers)
+    return {
+        "paid_calls": paid_calls,
+        "paid_calls_estimated": True,
+        "estimated_usd": estimated_usd,
+        "note": (
+            f"Paid web discovery via {names}: ≈ ${estimated_usd:.2f} to fetch "
+            f"up to {rows} record(s) across {len(providers)} sources (estimate; "
+            f"providers may fan out across sub-queries)."
         ),
     }
 
