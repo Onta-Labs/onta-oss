@@ -1319,6 +1319,13 @@ class EnrichmentExecutor:
         # Wikidata ignores it harmlessly. Empty by default → unchanged call shape.
         if job.source_urls:
             ctx["target_urls"] = list(job.source_urls)
+        # Entity TYPE gating: hand the job's (canonical) type label to the adapter
+        # so a type-aware adapter can self-exclude on entities it can't serve
+        # (e.g. Google Places skipping a Person/Book). Free adapters ignore it
+        # harmlessly. Only set when present so the call shape is unchanged when
+        # absent (mirrors _lookup_chain).
+        if job.type_name:
+            ctx["entity_type"] = job.type_name
         verdicts = await self._wikidata.lookup(entity_label, attribute, ctx)
         await self._cache.put(
             entity_label, attribute, source, verdicts, job.type_name, strategy_version
@@ -1388,6 +1395,13 @@ class EnrichmentExecutor:
                 # it harmlessly; empty by default → unchanged call shape.
                 if job.source_urls:
                     ctx["target_urls"] = list(job.source_urls)
+                # Entity TYPE gating: hand the job's (canonical) type label to the
+                # adapter via ``entity_type`` so a type-aware adapter can
+                # self-exclude on entities it can't serve (e.g. Google Places
+                # skipping a Person/Book). Free adapters ignore it harmlessly;
+                # only set when present → unchanged call shape when absent.
+                if job.type_name:
+                    ctx["entity_type"] = job.type_name
                 try:
                     # Bound every adapter call so one stalled lookup (e.g. a
                     # hung network call whose own client lacks a total-operation

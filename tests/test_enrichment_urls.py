@@ -44,12 +44,14 @@ TIMEOUT = 5.0
 # ---------------------------------------------------------------------------
 
 
-def _make_job(*, source_urls: list[str] | None = None) -> EnrichJob:
+def _make_job(
+    *, source_urls: list[str] | None = None, type_name: str = "Product"
+) -> EnrichJob:
     return EnrichJob(
         id="job-urls-1",
         tenant_id="test-tenant",
         kg_name="kg",
-        type_name="Product",
+        type_name=type_name,
         attributes=["manufacturer"],
         tier=EnrichmentTier.lite,
         status=JobStatus.queued,
@@ -215,6 +217,63 @@ def test_executor_source_urls_flow_into_wikidata_lookup_context():
         assert wikidata.calls[0][2].get("target_urls") == [
             "https://example.com/page"
         ]
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# 2b. Executor threads job.type_name -> adapter context["entity_type"] (ONTA-191)
+# ---------------------------------------------------------------------------
+
+
+def test_executor_type_name_flows_into_chain_lookup_context():
+    """job.type_name is threaded into the chain adapter lookup context as
+    ``entity_type`` — a bare canonical type label, not a URI. The key is present
+    because every job carries a type_name (unchanged call shape otherwise)."""
+
+    async def run():
+        from cograph_client.enrichment.sources.base import register_adapter
+
+        neptune = _single_product_neptune()
+        store = InMemoryJobStore()
+        executor = EnrichmentExecutor(
+            neptune, store, EnrichmentCache(), _FakeWikidata()
+        )
+        adapter = _RecordingAdapter("typesrc", value="Robert Bosch GmbH")
+        register_adapter(adapter)
+
+        job = _make_job(type_name="Restaurant")
+        job.sources = ["typesrc"]
+        await store.create(job)
+        await asyncio.wait_for(executor.run(job, "test-tenant"), timeout=TIMEOUT)
+
+        assert adapter.calls
+        ctx = adapter.calls[0][2]
+        # Bare canonical type label (ontology casing), NOT a URI, NOT lowercased.
+        assert ctx.get("entity_type") == "Restaurant"
+
+    asyncio.run(run())
+
+
+def test_executor_type_name_flows_into_wikidata_lookup_context():
+    """The single-adapter ``_lookup`` path also threads job.type_name into the
+    context as ``entity_type`` (covers the wikidata/default code path)."""
+
+    async def run():
+        neptune = _single_product_neptune()
+        store = InMemoryJobStore()
+        wikidata = _FakeWikidata()
+        executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), wikidata)
+
+        job = _make_job(type_name="Person")
+        await store.create(job)
+        verdicts = await asyncio.wait_for(
+            executor._lookup("Ada Lovelace", "manufacturer", job, cache_hit_inc=False),
+            timeout=TIMEOUT,
+        )
+        assert verdicts == []
+        assert wikidata.calls
+        assert wikidata.calls[0][2].get("entity_type") == "Person"
 
     asyncio.run(run())
 

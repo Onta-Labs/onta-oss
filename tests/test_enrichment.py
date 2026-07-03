@@ -1443,8 +1443,9 @@ def test_executor_sources_unknown_provider_falls_back_to_tier_chain():
 
 
 def test_executor_instructions_flow_into_lookup_context():
-    """job.instructions is threaded into the adapter lookup context dict; when
-    absent the context stays empty (unchanged call shape)."""
+    """job.instructions is threaded into the adapter lookup context dict; the
+    job's entity type always rides along as ``entity_type`` (ONTA-191). When
+    instructions are absent the context carries only ``entity_type``."""
 
     async def run():
         from cograph_client.enrichment.sources.base import register_adapter
@@ -1464,11 +1465,16 @@ def test_executor_instructions_flow_into_lookup_context():
         await executor.run(job, "test-tenant")
 
         assert adapter.calls
+        # entity_type ("Product", the job's type_name) always rides in the ctx
+        # (ONTA-191) alongside the optional instructions.
         assert adapter.calls[0][2] == {
-            "instructions": "Prefer the official legal entity name."
+            "instructions": "Prefer the official legal entity name.",
+            "entity_type": "Product",
         }
 
-        # Without instructions → empty context.
+        # Without instructions → context carries only entity_type (no
+        # instructions key). The call shape is unchanged aside from the always-on
+        # entity_type contract.
         neptune2 = _single_product_neptune()
         store2 = InMemoryJobStore()
         executor2 = EnrichmentExecutor(
@@ -1480,7 +1486,7 @@ def test_executor_instructions_flow_into_lookup_context():
         job2.sources = ["instr_src2"]
         await store2.create(job2)
         await executor2.run(job2, "test-tenant")
-        assert adapter2.calls and adapter2.calls[0][2] == {}
+        assert adapter2.calls and adapter2.calls[0][2] == {"entity_type": "Product"}
 
     asyncio.run(run())
 
