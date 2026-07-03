@@ -245,3 +245,51 @@ def test_registry_is_shared_across_shim_and_substrate():
     assert "render" in {f.name for f in retrieval.get_page_fetchers()}
     retrieval.reset_page_fetchers()
     assert research_fetch.get_page_fetchers() == []
+
+
+# --- ONE cost seam (P2): source_cost + the three rail aliases delegate to it --- #
+class _Src:
+    def __init__(self, is_paid=False, cost_per_call=0.0, rows_per_call=0):
+        self.is_paid = is_paid
+        self.cost_per_call = cost_per_call
+        self.rows_per_call = rows_per_call
+
+
+def test_source_cost_reads_generically_and_never_raises():
+    from cograph_client.retrieval import rows_per_call, source_cost
+
+    assert source_cost(_Src()) == (False, 0.0)
+    assert source_cost(_Src(is_paid=True, cost_per_call=0.02)) == (True, 0.02)
+    # positive cost implies paid even if the flag is unset; negatives clamp to 0.
+    assert source_cost(_Src(cost_per_call=0.01)) == (True, 0.01)
+    assert source_cost(_Src(cost_per_call=-5)) == (False, 0.0)
+    # malformed cost never raises → free.
+    assert source_cost(_Src(cost_per_call="bad")) == (False, 0.0)
+    assert rows_per_call(_Src(rows_per_call=20)) == 20
+    assert rows_per_call(_Src(rows_per_call="x")) == 0
+
+
+def test_provider_adapter_fetcher_cost_delegate_to_source_cost():
+    # The three per-rail cost reducers must be behavioural aliases of the one seam.
+    from cograph_client.enrichment.sources.base import adapter_cost
+    from cograph_client.retrieval import fetcher_cost, source_cost
+    from cograph_client.web_sources.base import provider_cost
+
+    for src in (_Src(), _Src(is_paid=True, cost_per_call=0.017), _Src(cost_per_call=0.5)):
+        want = source_cost(src)
+        assert provider_cost(src) == want
+        assert adapter_cost(src) == want
+        assert fetcher_cost(src) == want
+
+
+# --- per-request error policy (P1-rest) --------------------------------------- #
+def test_fetch_error_policy_semantics_and_hierarchy():
+    from cograph_client.retrieval import FetchError, FetchErrorPolicy, RetrievalError
+
+    assert FetchErrorPolicy.RAISE.raises is True
+    assert FetchErrorPolicy.DEGRADE.raises is False
+    assert FetchErrorPolicy.from_raise_on_error(True) is FetchErrorPolicy.RAISE
+    assert FetchErrorPolicy.from_raise_on_error(False) is FetchErrorPolicy.DEGRADE
+    # A rail that opts into RAISE catches ONE substrate type regardless of provider.
+    assert issubclass(FetchError, RetrievalError)
+    assert isinstance(FetchError("x"), RetrievalError)
