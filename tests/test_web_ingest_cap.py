@@ -1309,7 +1309,10 @@ TUSTIN_ROWS = [
 ]
 SANTA_ANA_ROWS = [
     {"name": "Marcus Chen, MD", "specialty": "Internal Medicine", "city": "Santa Ana", "phone": "4"},
-    {"name": "DR OVERLAP", "specialty": "Internal Medicine", "city": "Santa Ana", "phone": "5"},
+    # The SAME Tustin record (same identity signals, shouty casing) listed under
+    # both city searches — the true duplicate the cross-batch merge must drop.
+    # (Same NAME with different city/phone would be a DISTINCT record and kept.)
+    {"name": "DR OVERLAP", "specialty": "Internal Medicine", "city": "Tustin", "phone": "3"},
     {"name": "Samuel Ortiz, MD", "specialty": "Geriatrics", "city": "Santa Ana", "phone": "6"},
 ]
 
@@ -1447,9 +1450,14 @@ async def test_execute_fans_out_dedupes_and_streams(monkeypatch):
     ack = await cap.execute(_ctx_with_store(store), step)
     await spawned["task"]
 
-    # One full (sample=False) discovery per sub-query, in order.
+    # One full (sample=False) discovery per sub-query, in order — each bounded
+    # to the per-sub-query row share the plan priced (cap / n_sub), so actual
+    # paid pagination can never exceed the quoted estimate.
     full_calls = [c for c in provider.calls if c[1] is False]
     assert [c[0] for c in full_calls] == FAN_SPEC["subqueries"]
+    import math as _math
+    per_sub = _math.ceil(200 / len(FAN_SPEC["subqueries"]))
+    assert all(c[2] <= per_sub for c in full_calls)
 
     # Two batches ingested as they landed: 3 from Tustin, then 2 from Santa Ana
     # ("DR OVERLAP" deduped against "Dr. Overlap" across batches).
@@ -1462,10 +1470,12 @@ async def test_execute_fans_out_dedupes_and_streams(monkeypatch):
     assert done.result_count == 5
     assert done.progress.processed == 5
     assert done.progress.total == 5
-    # The provider log accumulated the whole fan-out: 2 attempts, 5 unique rows.
+    # The provider log accumulated the whole fan-out: 2 attempts; matches counts
+    # what the provider FOUND (pre-dedupe: 3+3), not the post-merge uniques.
     (plog,) = done.provider_logs
     assert plog.attempts == 2
-    assert plog.matches == 5
+    assert plog.matches == 6
+    assert plog.no_match == 0
     assert plog.status == "ok"
     # Platforms = distinct HOSTS consulted — both sub-query pages live on the
     # same directory host, so the cross-batch merge dedupes them to one entry.
@@ -1650,14 +1660,16 @@ async def test_execute_ensemble_merges_and_dedupes_across_providers(monkeypatch)
     assert done.result_count == 5
     assert done.progress.processed == 5
 
-    # One provider log PER ensemble member, each with its own tally.
+    # One provider log PER ensemble member, each with its own tally. matches
+    # counts what each provider FOUND (pre-dedupe); a batch that dedupes to
+    # nothing is NOT "no_match" (the provider did find rows) — only a genuinely
+    # EMPTY result is (place_src's Santa Ana call returned zero rows).
     logs = {pl.provider: pl for pl in done.provider_logs}
     assert set(logs) == {"place_src", "fake"}
     assert logs["place_src"].matches == 3 and logs["place_src"].status == "ok"
-    # General contributed 2 NEW rows; its Tustin batch fully deduped (no_match),
-    # and its Santa Ana dupe vanished into the cross-provider merge.
-    assert logs["fake"].matches == 2 and logs["fake"].status == "ok"
-    assert logs["fake"].no_match == 1
+    assert logs["place_src"].no_match == 1  # its Santa Ana search found nothing
+    assert logs["fake"].matches == 4 and logs["fake"].status == "ok"
+    assert logs["fake"].no_match == 0
     # Both hosts consulted.
     assert set(done.platforms or []) == {"places.example", "directory.example"}
 
@@ -1711,3 +1723,127 @@ async def test_execute_ensemble_survives_specialized_provider_outage(monkeypatch
     assert logs["place_src"].status == "error"
     assert "quota exhausted" in (logs["place_src"].last_error or "")
     assert logs["fake"].status == "ok"
+
+
+# --- adversarial-review hardening (F1/F2/F4/F6/F7) ---------------------------- #
+
+
+def test_row_key_same_name_different_signals_are_distinct():
+    """F1: a bare-name key collapsed every 'Starbucks' branch to one record.
+    The composite key keeps same-NAME rows apart when an identity signal
+    (address/city/phone) differs, and dedupes only true duplicates."""
+    seen: set[str] = set()
+    rows = [
+        {"name": "Starbucks", "address": "14642 Newport Ave", "city": "Tustin"},
+        {"name": "Starbucks", "address": "1125 E 17th St", "city": "Santa Ana"},
+        {"name": "STARBUCKS", "address": "14642 Newport Ave.", "city": "Tustin"},
+    ]
+    kept = web_ingest_cap._dedupe_rows(rows, "name", seen)
+    # Two branches kept; the shouty re-listing of the first branch deduped.
+    assert len(kept) == 2
+    assert {r["city"] for r in kept} == {"Tustin", "Santa Ana"}
+
+    # No identity signal at all → name-only key still dedupes exact re-finds…
+    seen2: set[str] = set()
+    bare = [{"name": "Dr. Alina Reyes"}, {"name": "dr alina reyes"}]
+    assert len(web_ingest_cap._dedupe_rows(bare, "name", seen2)) == 1
+    # …and a row with no key value is always kept (nothing to match on).
+    assert web_ingest_cap._dedupe_rows([{"x": 1}], "name", set()) == [{"x": 1}]
+
+
+async def test_url_mode_never_fans_out():
+    """F6: URL-targeted extraction reads FIXED pages — partitioned sub-queries
+    would just re-scrape (and re-bill) the same URLs. plan() drops the spec's
+    partition in URL mode."""
+    from tests.test_web_ingest_urls import UrlProvider
+
+    register_web_source(UrlProvider())
+    spec = dict(FAN_SPEC)  # spec LLM proposed a partition anyway
+    ctx = _ctx()
+    ctx.urls = ["https://directory.example/all"]
+    steps = await WebIngestCapability().plan(
+        ctx, "pull all physicians from this page", parsed=spec
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.params["subqueries"] == []
+    assert step.params["urls"] == ["https://directory.example/all"]
+
+
+async def test_lean_plan_carries_server_owned_auto_confirm_flag():
+    """F7: the ≤gate decision is SERVER-owned — the lean plan says
+    auto_confirm=true so clients obey it instead of re-deriving the gate from a
+    twin constant that can drift. Above-gate (rich) plans carry no flag."""
+    register_web_source(FakeProvider(is_paid=True, cost_per_call=0.03))
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    assert steps[0].cost.get("auto_confirm") is True
+
+
+async def test_rich_plan_has_no_auto_confirm_flag(monkeypatch):
+    register_web_source(FakeProvider(**RICH))
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    assert steps[0].action == "discover_ingest"
+    assert steps[0].cost.get("auto_confirm") is None
+
+
+async def test_never_consulted_ensemble_member_is_skipped(monkeypatch):
+    """F4: an ensemble member never reached (cap filled before its turn) rolls
+    up as status='skipped' — the ProviderLog contract's 'named but never
+    consulted' — not 'no_match' (which claims it ran and found nothing)."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+    from cograph_client.agent.registry import PlanStep
+
+    place = KindFakeProvider(name="place_src", rows=TUSTIN_ROWS)
+    general = FakeProvider(rows=SANTA_ANA_ROWS)
+    register_web_source(general)
+    register_web_source(place)
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    # Hand-built step: cap=3 → the specialized provider alone fills it and the
+    # general member is never consulted.
+    step = PlanStep(
+        capability="web_ingest",
+        action="discover_ingest",
+        params={
+            "query": "physicians in Tustin",
+            "subqueries": [],
+            "proposed_type": "Physician",
+            "attributes": ["name", "specialty", "city"],
+            "hint_columns": ["name", "specialty", "city", "phone"],
+            "max_rows": 3,
+            "kg_name": "models",
+            "provider": "place_src",
+            "providers": ["place_src", "fake"],
+            "urls": [],
+        },
+        rationale="test",
+        confidence=1.0,
+    )
+    store = InMemoryJobStore()
+    cap_obj = WebIngestCapability()
+    ack = await cap_obj.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    assert done.result_count == 3
+    logs = {pl.provider: pl for pl in done.provider_logs}
+    assert logs["place_src"].status == "ok"
+    assert logs["fake"].status == "skipped"
+    assert logs["fake"].attempts == 0
