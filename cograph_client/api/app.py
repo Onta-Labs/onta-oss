@@ -120,6 +120,31 @@ def _load_web_source_plugin() -> None:
         logger.error("web_source_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_api_registry_plugin() -> None:
+    """Import and invoke the configured API-source-registry plugin, if any.
+
+    Format: "module.path:callable". The callable is invoked with no arguments
+    and is expected to contribute the premium "global_enhanced" catalog overlay
+    via cograph_client.api_registry.register_api_source_layer. Failures are
+    logged but do not prevent startup — without it only the OSS "global_public"
+    seed catalog is loaded (ONTA-194).
+    """
+    spec = settings.api_registry_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("api_registry_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("api_registry_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("api_registry_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 def _load_router_plugins(app: FastAPI) -> None:
     """Import and invoke the configured router plugins, if any.
 
@@ -213,6 +238,7 @@ def create_app() -> FastAPI:
     _load_enrichment_plugin()
     _load_governance_plugin()
     _load_web_source_plugin()
+    _load_api_registry_plugin()
     app = FastAPI(
         title="Omnix",
         description="Living Knowledge Graph Platform",

@@ -64,6 +64,22 @@ class Settings(BaseSettings):
     # this at its paid provider (Exa/Perplexity fan-out) with no OSS change.
     web_source_plugin: str = ""
 
+    # Optional API-source-registry plugin (ONTA-194): a dotted
+    # "module.path:callable" imported at app startup. The callable is invoked
+    # with no arguments and is expected to contribute the premium
+    # "global_enhanced" catalog overlay via
+    # cograph_client.api_registry.register_api_source_layer. Without it, only
+    # the OSS "global_public" seed catalog is loaded. Keeps cograph-oss
+    # vendor-neutral while letting a downstream deployment ship curated premium
+    # (paid/licensed) API entries with no OSS change.
+    api_registry_plugin: str = ""
+
+    # Feature flag (ONTA-194) for query-time API-registry routing. Phase 1 ships
+    # the catalog + generic executor but does NOT route on it; when routing lands
+    # (phase 2+), this gates consulting the registry before a retrieval-bearing
+    # request hits the web. Off => zero behavior change from today.
+    api_registry_enabled: bool = False
+
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 
