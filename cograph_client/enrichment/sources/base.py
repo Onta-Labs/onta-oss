@@ -41,7 +41,29 @@ class SourceAdapter(Protocol):
 
     async def lookup(
         self, entity_label: str, attribute: str, context: dict
-    ) -> list[Verdict]: ...
+    ) -> list[Verdict]:
+        """Resolve ``attribute`` for ``entity_label`` into zero or more verdicts.
+
+        ``context`` is a lookup-time dict the executor populates with optional
+        hints. Every key is OPTIONAL — the executor only sets a key when the job
+        carries the corresponding value, so an adapter MUST treat a missing key
+        as "not provided" (``context.get(key)``) and MUST NOT change behavior
+        just because a key is absent. Free/legacy adapters (e.g. Wikidata) ignore
+        the whole dict harmlessly. Current keys:
+
+        - ``instructions`` (str): free-text user guidance for agentic/premium
+          adapters. Absent when the job supplied none.
+        - ``target_urls`` (list[str]): explicit page(s) to read values FROM, for
+          URL-aware adapters (e.g. Firecrawl). Absent when the job supplied none.
+        - ``entity_type`` (str): the job's canonical entity TYPE label — a bare
+          declared type name in the tenant's ontology casing (e.g. ``"Restaurant"``,
+          ``"Person"``, ``"Product"``), NOT a URI and NOT lowercased. Lets a
+          type-aware adapter self-exclude on entities it can't serve (e.g. a
+          place source skipping a Person). Absent when the job carries no type;
+          adapters MUST fall back to their type-agnostic behavior when it's
+          missing rather than over-excluding.
+        """
+        ...
 
 
 _adapters: dict[str, SourceAdapter] = {}
