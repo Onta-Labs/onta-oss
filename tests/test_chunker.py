@@ -156,12 +156,78 @@ class TestTokenBudgetBatchSize:
         assert token_budget_batch_size(8192, tokens_per_record=bad) == 1
         assert token_budget_batch_size(8192, target_frac=bad) == 1
 
+    @pytest.mark.parametrize("bad", [float("inf"), float("nan"), float("-inf")])
+    def test_non_finite_frac_clamps_not_crashes(self, bad):
+        """ONTA-197 item 4: a non-finite ``target_frac`` (an inf/nan env value for
+        OMNIX_EXTRACT_BATCH_TARGET_FRAC) slips past the ``<= 0`` guards —
+        ``nan <= 0`` and ``inf <= 0`` are both False — and ``int(inf/nan)`` would
+        raise. The math.isfinite guard must make it clamp to the ≥1 floor
+        instead of crashing."""
+        # Must not raise, and must return the safe floor.
+        assert token_budget_batch_size(8192, target_frac=bad) == 1
+
+    @pytest.mark.parametrize("bad", [float("inf"), float("nan"), float("-inf")])
+    def test_non_finite_tokens_per_record_clamps_not_crashes(self, bad):
+        """A non-finite ``tokens_per_record`` is likewise clamped, not crashed."""
+        assert token_budget_batch_size(8192, tokens_per_record=bad) == 1
+
     def test_env_overrides_are_read(self, monkeypatch):
         """The module constants are env-overridable so ops can retune the sizing
         without a deploy (patched here to emulate the env being set at import)."""
         monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 180)
         monkeypatch.setattr(chunker, "EXTRACT_BATCH_TARGET_FRAC", 0.55)
         assert token_budget_batch_size(8192) == 25  # 8192 * 0.55 / 180 ≈ 25
+
+
+class TestCalibrationHelpers:
+    """ONTA-197 item 2: first-batch calibration primitives."""
+
+    def test_estimate_output_tokens_from_length(self):
+        from cograph_client.resolver.chunker import estimate_output_tokens
+
+        assert estimate_output_tokens("") == 0
+        # ~4 chars/token → 400 chars ≈ 100 tokens.
+        assert estimate_output_tokens("x" * 400) == 100
+        # Never zero for non-empty text.
+        assert estimate_output_tokens("x") >= 1
+
+    def test_calibrated_ratio_rounds_up_and_floors(self):
+        from cograph_client.resolver.chunker import (
+            calibrated_tokens_per_record,
+            EXTRACT_MIN_TOKENS_PER_RECORD,
+        )
+
+        # 1000 output tokens over 6 records → ceil(166.7) = 167, above the floor.
+        assert calibrated_tokens_per_record(1000, 6) == 167
+        # A light batch (below the floor) clamps UP to the floor so a fluke-light
+        # first batch cannot oversize a denser remainder.
+        assert calibrated_tokens_per_record(60, 6) == EXTRACT_MIN_TOKENS_PER_RECORD
+        # An explicit floor overrides.
+        assert calibrated_tokens_per_record(60, 6, floor=200) == 200
+
+    def test_calibrated_ratio_empty_batch_returns_floor(self):
+        from cograph_client.resolver.chunker import (
+            calibrated_tokens_per_record,
+            EXTRACT_MIN_TOKENS_PER_RECORD,
+        )
+
+        assert calibrated_tokens_per_record(0, 0) == EXTRACT_MIN_TOKENS_PER_RECORD
+        assert calibrated_tokens_per_record(1000, 0) == EXTRACT_MIN_TOKENS_PER_RECORD
+        assert calibrated_tokens_per_record(0, 10) == EXTRACT_MIN_TOKENS_PER_RECORD
+
+    def test_chunk_json_array_honors_tokens_per_record_override(self):
+        """A CALIBRATED tokens_per_record widens/narrows the derived batch size."""
+        data = [{"id": i} for i in range(200)]
+        content = json.dumps(data)
+        # Light density (small tpr) → bigger batches → fewer chunks than the
+        # conservative default.
+        light = chunk_json_array(content, max_tokens=8192, tokens_per_record=100)
+        heavy = chunk_json_array(content, max_tokens=8192, tokens_per_record=700)
+        assert len(light) < len(heavy)
+        # Records conserved either way.
+        for chunks in (light, heavy):
+            total = sum(len(json.loads(c)) for c in chunks)
+            assert total == 200
 
 
 class TestSplitJsonArrayChunk:

@@ -257,6 +257,12 @@ class SchemaResolver:
     # relationships, so a chunk's JSON can blow past 4096 tokens, get truncated,
     # fail to parse, and silently drop the whole batch. Env-overridable.
     EXTRACT_MAX_TOKENS = int(os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "8192"))
+    # Bounded concurrency for the JSON/text chunk-extraction fan-out (ONTA-197
+    # item 3). Independent chunks each take ~70s sequentially; running them under
+    # a semaphore overlaps the independent LLM calls while capping how many are
+    # in flight at once (avoid hammering the provider / exhausting rate limits).
+    # Env-overridable so ops can widen/narrow without a deploy.
+    EXTRACT_CONCURRENCY = int(os.environ.get("OMNIX_EXTRACT_CONCURRENCY", "5"))
 
     def __init__(
         self,
@@ -370,21 +376,37 @@ class SchemaResolver:
                 rows_dropped += dropped
             else:
                 extraction = await self._extract(content, content_type, existing_types)
+        elif is_json:
+            # Multiple JSON chunks: first-batch CALIBRATION (ONTA-197 item 2) +
+            # bounded CONCURRENCY (item 3), composed. The two features compose
+            # naturally because calibration NEEDS chunk 1's result before it can
+            # re-size the rest:
+            #   1. Extract chunk 1 sequentially (with recovery).
+            #   2. Measure its REAL output-tokens-per-record and RE-CHUNK the
+            #      not-yet-processed remainder ONCE with the observed ratio — the
+            #      conservative ONTA-196 default only ever sized the FIRST batch,
+            #      so sparse records get ~4-7x bigger (still cap-safe) batches now.
+            #   3. Extract the re-chunked remainder CONCURRENTLY under a semaphore,
+            #      preserving order and per-chunk recovery + drop accounting.
+            extraction, chunk_rows_in, chunk_dropped = (
+                await self._extract_json_chunks_calibrated(chunks, content, existing_types)
+            )
+            rows_in += chunk_rows_in
+            rows_dropped += chunk_dropped
         else:
-            # Multiple chunks — extract each, deduplicate entities
+            # Multiple TEXT chunks — independent, no token-budget calibration
+            # (calibration is a JSON-record concept). Extract concurrently under
+            # the same semaphore, then merge in deterministic chunk order.
+            results = await self._extract_chunks_concurrently(
+                [
+                    lambda c=chunk: self._extract(c, content_type, existing_types)
+                    for chunk in chunks
+                ]
+            )
             merged_entities = []
             merged_relationships = []
             seen_ids: set[str] = set()
-            for chunk in chunks:
-                if is_json:
-                    chunk_rows = json_array_len(chunk)
-                    rows_in += chunk_rows
-                    extraction, dropped = await self._extract_json_chunk_with_recovery(
-                        chunk, existing_types,
-                    )
-                    rows_dropped += dropped
-                else:
-                    extraction = await self._extract(chunk, content_type, existing_types)
+            for extraction in results:
                 for e in extraction.entities:
                     if e.id not in seen_ids:
                         merged_entities.append(e)
@@ -1120,6 +1142,166 @@ class SchemaResolver:
             ),
             total_dropped,
         )
+
+    async def _extract_chunks_concurrently(
+        self, extract_calls: list,
+    ) -> list[ExtractionResult]:
+        """Run per-chunk extraction coroutine-factories under a bounded semaphore.
+
+        ONTA-197 item 3: independent chunks each take ~70s sequentially; running
+        them concurrently under an :class:`asyncio.Semaphore` (size
+        :attr:`EXTRACT_CONCURRENCY`) overlaps the LLM calls while capping how many
+        are in flight. ``extract_calls`` is a list of zero-arg callables each
+        returning the extraction coroutine for one chunk; results are returned in
+        the SAME order as ``extract_calls`` (``asyncio.gather`` preserves input
+        order regardless of completion order), so downstream merge/dedup stays
+        deterministic. A tuple-returning factory (recovery: ``(result, dropped)``)
+        is passed straight through unchanged.
+        """
+        sem = asyncio.Semaphore(max(1, self.EXTRACT_CONCURRENCY))
+
+        async def _guarded(make_call):
+            async with sem:
+                return await make_call()
+
+        return await asyncio.gather(*(_guarded(mk) for mk in extract_calls))
+
+    async def _extract_json_chunks_calibrated(
+        self, chunks: list[str], content: str, existing_types: dict[str, str],
+    ) -> tuple[ExtractionResult, int, int]:
+        """Extract multiple JSON chunks with first-batch calibration + concurrency.
+
+        Composes ONTA-197 items 2 and 3 (see :meth:`ingest`):
+
+          1. Extract chunk 1 SEQUENTIALLY (with recovery) — we need its result
+             before we can learn the real per-record output size.
+          2. CALIBRATE: estimate chunk 1's real output tokens from its serialized
+             extraction, derive observed tokens-per-record (clamped to a floor so
+             a fluke-light first batch can't oversize the rest), and RE-CHUNK the
+             not-yet-processed remainder ONCE against that ratio. Sparse records
+             (which the conservative ONTA-196 default over-shrinks) get larger,
+             still cap-safe batches; dense records keep small batches, never
+             reintroducing truncation.
+          3. Extract the re-chunked remainder CONCURRENTLY under the semaphore,
+             preserving order, per-chunk recovery, and dropped-record accounting.
+
+        Returns ``(merged_extraction, rows_in, rows_dropped)``.
+        """
+        from cograph_client.resolver.chunker import (
+            json_array_len,
+            chunk_json_array,
+            estimate_output_tokens,
+            calibrated_tokens_per_record,
+        )
+
+        merged_entities: list[ExtractedEntity] = []
+        merged_relationships: list[ExtractedRelationship] = []
+        seen_ids: set[str] = set()
+        rows_in = 0
+        rows_dropped = 0
+
+        def _merge(ex: ExtractionResult) -> None:
+            for e in ex.entities:
+                if e.id not in seen_ids:
+                    merged_entities.append(e)
+                    seen_ids.add(e.id)
+            merged_relationships.extend(ex.relationships)
+
+        # --- Step 1: chunk 1, sequential, with recovery ------------------------
+        first_chunk = chunks[0]
+        first_records = json_array_len(first_chunk)
+        rows_in += first_records
+        first_ex, first_dropped = await self._extract_json_chunk_with_recovery(
+            first_chunk, existing_types,
+        )
+        rows_dropped += first_dropped
+        _merge(first_ex)
+
+        # --- Step 2: calibrate + re-chunk the remainder ------------------------
+        # The records NOT covered by chunk 1 (chunk_json_array splits in order, so
+        # the remainder is exactly the tail of the original array past chunk 1).
+        remainder_chunks = chunks[1:]
+        observed_tokens = estimate_output_tokens(
+            self._serialize_extraction_for_sizing(first_ex)
+        )
+        # Only re-chunk when chunk 1 actually produced something to learn from.
+        # A fluke-empty/dropped first batch → keep the conservative sizing.
+        if first_records > 0 and observed_tokens > 0:
+            tpr = calibrated_tokens_per_record(observed_tokens, first_records)
+            try:
+                remainder_records = json.loads(content)[first_records:]
+            except (json.JSONDecodeError, TypeError):
+                remainder_records = None
+            if remainder_records:
+                rechunked = chunk_json_array(
+                    json.dumps(remainder_records, default=str),
+                    max_tokens=self.EXTRACT_MAX_TOKENS,
+                    tokens_per_record=tpr,
+                )
+                remainder_chunks = rechunked
+                logger.info(
+                    "extract_calibrated_rechunk",
+                    first_records=first_records,
+                    observed_tokens=observed_tokens,
+                    tokens_per_record=tpr,
+                    remainder_records=len(remainder_records),
+                    remainder_chunks=len(remainder_chunks),
+                )
+
+        if not remainder_chunks:
+            return (
+                ExtractionResult(
+                    entities=merged_entities,
+                    relationships=merged_relationships,
+                    source_text=content[:500],
+                ),
+                rows_in,
+                rows_dropped,
+            )
+
+        # --- Step 3: extract the remainder concurrently, preserving order ------
+        for chunk in remainder_chunks:
+            rows_in += json_array_len(chunk)
+        results = await self._extract_chunks_concurrently(
+            [
+                lambda c=chunk: self._extract_json_chunk_with_recovery(c, existing_types)
+                for chunk in remainder_chunks
+            ]
+        )
+        for sub_ex, sub_dropped in results:
+            rows_dropped += sub_dropped
+            _merge(sub_ex)
+
+        return (
+            ExtractionResult(
+                entities=merged_entities,
+                relationships=merged_relationships,
+                source_text=content[:500],
+            ),
+            rows_in,
+            rows_dropped,
+        )
+
+    @staticmethod
+    def _serialize_extraction_for_sizing(ex: ExtractionResult) -> str:
+        """Serialize an extraction back to the model's JSON shape for size sizing.
+
+        Calibration needs chunk 1's real OUTPUT size, but the extraction call
+        site does not surface provider ``usage`` counts. Re-serializing the parsed
+        entities + relationships to the same ``{"entities":[...],
+        "relationships":[...]}`` document the model emitted is a faithful proxy
+        for that output's length (the driver of :func:`estimate_output_tokens`).
+        """
+        try:
+            return json.dumps(
+                {
+                    "entities": [e.model_dump() for e in ex.entities],
+                    "relationships": [r.model_dump() for r in ex.relationships],
+                },
+                default=str,
+            )
+        except Exception:
+            return ""
 
     async def _fetch_ontology(
         self, graph_uri: str

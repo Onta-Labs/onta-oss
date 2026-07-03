@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 
@@ -33,6 +34,60 @@ EXTRACT_TOKENS_PER_RECORD = int(os.environ.get("OMNIX_EXTRACT_TOKENS_PER_RECORD"
 #: Env: ``OMNIX_EXTRACT_BATCH_TARGET_FRAC``.
 EXTRACT_BATCH_TARGET_FRAC = float(os.environ.get("OMNIX_EXTRACT_BATCH_TARGET_FRAC", "0.55"))
 
+#: Floor on the CALIBRATED tokens-per-record (ONTA-197 item 2). After the first
+#: budgeted batch extracts, we measure the REAL output-tokens-per-record and
+#: re-size the remaining batches with it. An anomalously light first batch (near
+#: empty, or one whose records happen to reify very little) could otherwise
+#: produce an absurdly small ratio → an oversized batch that overflows the cap on
+#: a denser remainder. Clamp the observed ratio to at least this floor so a fluke
+#: first batch can only ever SHRINK the win, never blow the budget.
+#: Env: ``OMNIX_EXTRACT_MIN_TOKENS_PER_RECORD``.
+EXTRACT_MIN_TOKENS_PER_RECORD = int(
+    os.environ.get("OMNIX_EXTRACT_MIN_TOKENS_PER_RECORD", "80")
+)
+
+#: Chars-per-token divisor for the cheap output-size → tokens estimate used by
+#: calibration. ~4 chars/token is the standard rough heuristic for English/JSON;
+#: it need only be in the right ballpark because the target fraction (0.55) leaves
+#: ample headroom and the split-and-retry recovery remains the hard safety net.
+_CHARS_PER_TOKEN = 4.0
+
+
+def estimate_output_tokens(text: str) -> int:
+    """Cheap output-token estimate from a serialized model reply's length.
+
+    Calibration (ONTA-197 item 2) needs the REAL output size of the first batch
+    to derive an observed tokens-per-record, but the extraction call site does
+    not surface provider ``usage`` counts. The serialized reply length / ~4 is a
+    good-enough proxy: we only use it to pick a batch SIZE, and the 0.55 target
+    fraction plus the recovery path absorb the estimate's slack. Returns 0 for
+    empty text.
+    """
+    if not text:
+        return 0
+    return max(1, int(len(text) / _CHARS_PER_TOKEN))
+
+
+def calibrated_tokens_per_record(
+    observed_output_tokens: int,
+    records_in_batch: int,
+    *,
+    floor: int | None = None,
+) -> int:
+    """Observed output-tokens-per-record from the first batch, clamped to a floor.
+
+    ``ceil(observed_output_tokens / records_in_batch)`` — ROUND UP so we never
+    under-budget the remaining batches — then clamped up to ``floor`` (default
+    :data:`EXTRACT_MIN_TOKENS_PER_RECORD`) so a fluke-light first batch cannot
+    yield a tiny ratio that would oversize a denser remainder. Returns the floor
+    when the batch is empty or the count is non-positive (nothing to learn from).
+    """
+    fl = floor if floor is not None else EXTRACT_MIN_TOKENS_PER_RECORD
+    if records_in_batch <= 0 or observed_output_tokens <= 0:
+        return max(1, fl)
+    per_record = math.ceil(observed_output_tokens / records_in_batch)
+    return max(fl, per_record)
+
 
 def token_budget_batch_size(
     max_tokens: int,
@@ -53,6 +108,14 @@ def token_budget_batch_size(
     """
     tpr = tokens_per_record if tokens_per_record is not None else EXTRACT_TOKENS_PER_RECORD
     frac = target_frac if target_frac is not None else EXTRACT_BATCH_TARGET_FRAC
+    # A non-finite tpr/frac (an ``inf``/``nan`` env value for
+    # OMNIX_EXTRACT_BATCH_TARGET_FRAC or OMNIX_EXTRACT_TOKENS_PER_RECORD) slips
+    # past the ``<= 0`` guards — ``nan <= 0`` and ``inf <= 0`` are both False —
+    # and would make ``int(max_tokens * frac / tpr)`` raise on ``inf``/``nan``.
+    # Treat any non-finite knob as a pathological config and clamp to 1, the same
+    # safe floor the ``<= 0`` cases take.
+    if not (math.isfinite(tpr) and math.isfinite(frac) and math.isfinite(max_tokens)):
+        return 1
     if tpr <= 0 or frac <= 0 or max_tokens <= 0:
         return 1
     return max(1, int((max_tokens * frac) / tpr))
@@ -105,6 +168,7 @@ def chunk_json_array(
     batch_size: int | None = None,
     *,
     max_tokens: int | None = None,
+    tokens_per_record: int | None = None,
 ) -> list[str]:
     """Split a JSON array into batches of objects.
 
@@ -123,6 +187,11 @@ def chunk_json_array(
         max_tokens: The extraction ``max_tokens`` cap the derived batch size is
             budgeted against. Only consulted when ``batch_size`` is None; falls
             back to the assumed cap the module constants encode when omitted.
+        tokens_per_record: Override the assumed OUTPUT tokens/record used to
+            derive the budgeted batch size. Only consulted when ``batch_size`` is
+            None. The resolver passes a CALIBRATED value here after measuring the
+            first batch (ONTA-197 item 2) so the remaining batches track the
+            data's REAL density instead of the conservative default.
 
     Returns:
         List of JSON string chunks.
@@ -134,7 +203,7 @@ def chunk_json_array(
         cap = max_tokens if max_tokens is not None else int(
             os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "8192")
         )
-        batch_size = token_budget_batch_size(cap)
+        batch_size = token_budget_batch_size(cap, tokens_per_record=tokens_per_record)
 
     try:
         data = json.loads(content)
