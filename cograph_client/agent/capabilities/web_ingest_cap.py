@@ -11,10 +11,11 @@ accurately and the user doesn't have to run a separate enrichment afterward:
 
 1. ``plan`` resolves the target ENTITY type and the ATTRIBUTES to collect. If the
    user only named the entity ("a list of models"), it proposes a sensible
-   attribute set and returns a CLARIFY turn ("I'll collect Model with name —
-   also want provider, open_source, context_length, pricing?"). The user's reply
-   (a clicked option carrying the list, or free text) enters the accumulated
-   instruction so the next turn converges.
+   attribute set and returns a CLARIFY turn ("I'll collect Model records, always
+   including name — pick the ones to collect"), pre-selecting a SHORT recommended
+   set (the few most-important attributes) while keeping a comprehensive fetch hint
+   behind the scenes. The user's reply (a clicked option carrying the list, or free
+   text) enters the accumulated instruction so the next turn converges.
 2. Once attributes are confirmed, ``plan`` fetches a cheap SAMPLE constrained to
    those attributes and runs the SAME multi-type + relationship extractor the
    commit uses against it — so the plan card shows an ESTIMATE of the ontology
@@ -30,7 +31,11 @@ accurately and the user doesn't have to run a separate enrichment afterward:
    it through :meth:`SchemaResolver.ingest` (``content_type="json"``) — the
    identical extract→resolve→insert path document ingest commits through, which
    infers MULTIPLE types and registers relationships as object-properties — as a
-   background job. Returns an ack.
+   background job. Returns an ack. For an ENUMERATION ask ("all X in Y and Z"),
+   the spec partitions the scope into self-contained ``subqueries``; execute runs
+   one discovery per sub-query, dedupes on the key attribute across batches, and
+   ingests each batch as it lands (one merged job, streaming progress) — one page
+   never caps a population query (ONTA-192).
 
 OSS ships with NO web-source provider registered, so the capability degrades
 gracefully: ``plan`` returns a plain "not enabled" answer until a downstream
@@ -101,6 +106,16 @@ _DEFAULT_PLAN_CAP = 200
 # bigger variable, so it gets the larger share.
 _SAMPLE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SAMPLE_BUDGET_S", "22"))
 _SHAPE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SHAPE_BUDGET_S", "15"))
+
+# Auto-confirm gate. Discovery plans whose provider cost is at or under this are
+# treated as CHEAP: clients start the job straight from the attribute confirm
+# (no human spend gate), so the expensive plan-time preview — a paid sample
+# fetch (~22s) plus an extraction LLM call (~15s) — would be pure latency
+# building a card nobody sees. plan() skips it and returns a lean, immediately-
+# confirmable step; the full sample+shape preview is reserved for providers
+# ABOVE the gate, where a human reviews real money and the estimate earns its
+# cost. The web client auto-confirms plans up to this same figure.
+_PREVIEW_GATE_USD = float(os.environ.get("COGRAPH_WEB_PREVIEW_GATE_USD", "0.50"))
 
 
 def _spawn(coro) -> None:
@@ -173,20 +188,27 @@ class WebIngestCapability:
 
         # Query-kind routing (ONTA-190): PREFER a provider specializing in the
         # spec's generic query_kind (e.g. "place" for a location/business-finding
-        # query) when one is registered; otherwise use the general default. In a
-        # place-only deployment `general` is None, so a place query is served by the
-        # specialized provider and a NON-place query has no provider — refused
-        # gracefully below (not a crash). URL mode always uses the URL extractor
-        # (`general`) selected above; kind routing never applies to it.
+        # query) when one is registered — ADDITIVELY, not exclusively: a kind match
+        # builds an ENSEMBLE of [specialized, general] consulted in that order at
+        # execute time, because neither source is complete alone (Places lists the
+        # mappable businesses; the general web finds directory/roster pages Places
+        # misses). The cross-batch key dedupe makes the overlap free. In a
+        # place-only deployment `general` is None → the ensemble is just the
+        # specialized provider; a NON-matching query there has no provider —
+        # refused gracefully below (not a crash). URL mode always uses the URL
+        # extractor (`general`) selected above; kind routing never applies to it.
         if urls:
-            provider = general
+            ensemble = [general] if general else []
         else:
             query_kind = spec.get("query_kind")
             specialized = (
                 get_web_source_for_kind(query_kind) if query_kind else None
             )
-            provider = specialized or general
-            if provider is None:
+            ensemble = []
+            for p in (specialized, general):
+                if p is not None and all(p is not q for q in ensemble):
+                    ensemble.append(p)
+            if not ensemble:
                 # A general query in a kind-only deployment (e.g. place-only): the
                 # only registered provider can't serve this query's kind. Refuse
                 # gracefully instead of proceeding with no provider.
@@ -198,6 +220,12 @@ class WebIngestCapability:
                         "can add a general web-source provider for other requests."
                     )
                 ]
+        # Primary provider: drives the plan-time sample, naming, and legacy params.
+        provider = ensemble[0] if ensemble else None
+        if provider is None:
+            # URL mode with no URL-capable provider was already refused above;
+            # defensive guard for any future path.
+            return []
 
         type_name = spec.get("entity_type") or "WebRecord"
         query = (spec.get("query") or "").strip() or _clean_query(instruction)
@@ -210,9 +238,11 @@ class WebIngestCapability:
         already_asked = int(ctx.extras.get("prior_clarify_count", 0)) >= 1
         if len(confirmed) <= 1 and not already_asked:
             # Only the key is "confirmed" (i.e. the user just named the entity).
-            # Ask which attributes to collect — clickable options carry the list
-            # so the next turn converges without new UI.
-            return [_clarify_step(type_name, key_attr, suggested)]
+            # Ask which attributes to collect — clickable options carry a SHORT
+            # recommended set (the most-important few), pre-selected, so the next
+            # turn converges without confronting the user with every column.
+            core = _core_attrs(key_attr, spec.get("core_attributes", []), suggested)
+            return [_clarify_step(type_name, key_attr, core)]
 
         # Commit: use the confirmed set, or fall back to the suggested set if we
         # already asked once (don't loop). These drive entity naming + the
@@ -229,6 +259,72 @@ class WebIngestCapability:
         # normalize into Model/Organization/Score/etc. The confirmed set still
         # drives naming + preview above.
         hint_columns = _dedupe([key_attr, *confirmed, *suggested])
+
+        # Enumeration partition (fan-out, ONTA-192): for an "all X in Y and Z"
+        # ask the spec splits the scope into self-contained sub-queries; execute()
+        # runs one discovery per sub-query and merges (deduped) into ONE job.
+        # Empty → classic single-query discovery. Priced below as n sub-runs.
+        # NEVER in URL mode: the pages are fixed, so partitioned queries would
+        # just re-scrape (and re-bill) the same URLs for fully-deduped batches.
+        subqueries = [] if urls else _norm_subqueries(spec.get("subqueries"))
+
+        # 2a. LEAN fast path — cheap providers skip the plan-time preview.
+        #     At or under the auto-confirm gate the client starts the job straight
+        #     from the attribute confirm, so the rich preview (paid sample fetch +
+        #     extraction LLM call, 20-35s of "Thinking…") would build a card that
+        #     is never rendered — and double-fetch the same source the job reads
+        #     seconds later. Return a lean, immediately-confirmable step instead;
+        #     "found nothing" / "source unreachable" surface honestly on the JOB
+        #     card (execute()'s _run finishes 0-record or failed). Providers above
+        #     the gate keep the full sample+shape preview below: there a human is
+        #     about to approve real spend, and the estimate earns its cost.
+        #     Gate on the WHOLE-RUN estimate (cost_per_call × paginated requests,
+        #     same figure the client's auto-confirm reads) — not the raw per-call
+        #     price, which under-counts paginating providers.
+        cap = _DEFAULT_PLAN_CAP
+        lean_cost = _estimate_cost_multi(
+            ensemble, cap, cap, subqueries=len(subqueries)
+        )
+        if lean_cost["estimated_usd"] <= _PREVIEW_GATE_USD:
+            # SERVER-owned auto-confirm contract: this plan was built lean
+            # BECAUSE it is at/under the gate — say so explicitly, so clients
+            # obey the server's judgment instead of re-deriving it from a
+            # hardcoded twin constant (interface-drift risk: a client whose
+            # threshold skews from COGRAPH_WEB_PREVIEW_GATE_USD would either
+            # show a preview-less spend card or auto-run an ungated plan).
+            lean_cost["auto_confirm"] = True
+            return [
+                PlanStep(
+                    capability=self.name,
+                    action="discover_ingest",
+                    params={
+                        "query": query,
+                        "subqueries": subqueries,
+                        "proposed_type": type_name,
+                        "attributes": attributes,
+                        "hint_columns": hint_columns,
+                        "max_rows": cap,
+                        "kg_name": ctx.kg_name,
+                        # Primary provider (legacy key) + the full ensemble the
+                        # execute-time fan-out consults, specialized first.
+                        "provider": provider.name,
+                        "providers": [pr.name for pr in ensemble],
+                        "urls": urls,
+                    },
+                    rationale=(
+                        f"Find {query} on the web and add them to this graph as "
+                        f"{type_name} records."
+                    ),
+                    confidence=0.7,
+                    preview={
+                        "summary": (
+                            f"Search the web for {query} and add the results as "
+                            f"{type_name} records (up to {cap})."
+                        ),
+                    },
+                    cost=lean_cost,
+                )
+            ]
 
         # 2. Cheap SAMPLE fetched with the COMPREHENSIVE hint so the preview sees
         #    the same rich table the commit will. In URL mode the provider extracts
@@ -297,8 +393,10 @@ class WebIngestCapability:
             if sample is not None
             else 0
         )
-        cap = _DEFAULT_PLAN_CAP
-        cost = _estimate_cost(provider, est_total, cap)
+        # cap was set before the lean fast path above (_DEFAULT_PLAN_CAP).
+        cost = _estimate_cost_multi(
+            ensemble, est_total, cap, subqueries=len(subqueries)
+        )
         shape = None
         if sample_rows:
             resolver = _build_resolver(ctx)
@@ -336,8 +434,12 @@ class WebIngestCapability:
             action="discover_ingest",
             params={
                 "query": query,
+                "subqueries": subqueries,
                 "proposed_type": type_name,
                 "attributes": attributes,
+                # Full ensemble for the execute-time fan-out (primary kept in
+                # "provider" for older persisted steps).
+                "providers": [pr.name for pr in ensemble],
                 # The COMPREHENSIVE fetch hint (key ∪ confirmed ∪ suggested) —
                 # persisted so the full fetch in execute() uses the SAME rich
                 # projection the sample did. The FETCH is the part that's stable
@@ -374,16 +476,45 @@ class WebIngestCapability:
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         p = step.params
         # URLs persisted at plan time (empty for plain query discovery). Provider
-        # selection mirrors plan(): by the persisted name, falling back to the
-        # mode-appropriate default (for_urls=bool(urls)) so the same provider runs.
+        # selection mirrors plan(): the persisted ENSEMBLE (specialized first,
+        # then general — both are consulted because neither is complete alone),
+        # falling back to the legacy single "provider" name, then to the
+        # mode-appropriate default (for_urls=bool(urls)) for steps persisted
+        # before either key existed. Names that no longer resolve are skipped.
         urls = list(p.get("urls") or [])
-        provider = get_web_source(p.get("provider")) or get_web_source(
-            for_urls=bool(urls)
-        )
-        if provider is None:
+        ensemble = [
+            prov
+            for prov in (
+                get_web_source(n)
+                for n in (p.get("providers") or [])
+                if isinstance(n, str) and n
+            )
+            if prov is not None
+        ]
+        if not ensemble:
+            single = get_web_source(p.get("provider")) or get_web_source(
+                for_urls=bool(urls)
+            )
+            ensemble = [single] if single is not None else []
+        if not ensemble:
             raise RuntimeError("web-source provider not available at execute time")
+        provider = ensemble[0]  # primary — naming + default error attribution
 
         query = p["query"]
+        # Enumeration fan-out (ONTA-192): the plan may carry self-contained
+        # sub-queries partitioning an "all X in Y and Z" ask. One discovery runs
+        # per sub-query, all merged (deduped on the key attribute) into THIS one
+        # job. Absent/empty → the single primary query, the classic path.
+        subqueries = (
+            [query]
+            if urls
+            else [
+                q
+                for q in (p.get("subqueries") or [])
+                if isinstance(q, str) and q.strip()
+            ]
+            or [query]
+        )
         attributes = p.get("attributes") or []
         # COMPREHENSIVE fetch hint persisted at plan time so the full pull uses the
         # SAME rich projection the sample did — the column projection is the stable
@@ -396,7 +527,6 @@ class WebIngestCapability:
         kg_name = p.get("kg_name") or ctx.kg_name
         instance_graph = kg_graph_uri(ctx.tenant_id, kg_name) if kg_name else None
         resolver = _build_resolver(ctx)
-        source = f"web:{provider.name}:{query}"
         pctx = _provider_context(ctx)
 
         # Track the discovery as a real job so the client polls a LIVE status
@@ -441,83 +571,218 @@ class WebIngestCapability:
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
                 await job_store.update(job)
-            # Per-provider activity log for "which provider we used" + its outcome,
-            # surfaced in the run-detail view alongside the platforms list. A
-            # single provider drives one discovery run, so this is one entry.
-            plog = ProviderLog(provider=provider.name)
-            discover_ok = False
+            # Per-provider activity log for "which providers we used" + their
+            # outcomes, surfaced in the run-detail view alongside the platforms
+            # list — one entry PER ENSEMBLE MEMBER, each accumulating its own
+            # attempts/matches/errors across every sub-query.
+            plogs: dict[str, ProviderLog] = {
+                prov.name: ProviderLog(provider=prov.name) for prov in ensemble
+            }
+            any_discover_ok = False
+            processed = 0  # unique rows ingested across all sub-queries/providers
+            entities_total = 0
+            affected_types: set[str] = set()
+            platforms: list[str] = []
+            # Cross-batch dedupe on the KEY attribute (the record identifier):
+            # sub-query partitions overlap ("…in Tustin" and a directory row
+            # listed under both cities) and so do ENSEMBLE members (the same
+            # physician on Places AND a directory page) — re-ingesting the same
+            # key would double-write. Specialized runs first, so its (more
+            # structured) row wins; the general provider only contributes NEW keys.
+            seen_keys: set[str] = set()
+            key_attr = (attributes[0] if attributes else "name") or "name"
+            last_provider_err: Optional[str] = None
+            last_err_provider: Optional[str] = None
+            errors_total = 0
+            # Each (sub-query, provider) call is bounded to the per-sub-query row
+            # share the plan PRICED (cost = n_sub × pages(cap / n_sub)). Passing
+            # the whole remaining cap instead let overlapping sub-queries spend up
+            # to n_sub× the quoted estimate — the figure the ≤gate auto-confirm
+            # trusted (adversarial-review F2).
+            per_sub_budget = math.ceil(cap / max(1, len(subqueries)))
             try:
-                full = await provider.discover(
-                    query,
-                    sample=False,
-                    max_rows=cap,
-                    hint_columns=hint_columns,
-                    context=pctx,
-                    urls=urls or None,
-                )
-                discover_ok = True
-                rows = full.rows[:cap]
-                # Per-record source-URL provenance (ONTA-151): stamp each row with
-                # the page it was drawn from (DiscoverResult.provenance) BEFORE
-                # serialization, so it rides through the SAME extract → ingest →
-                # insert_facts path as the rest of the row's data (no bespoke write
-                # path) and lands as a `source_url` citation on the entity. See
-                # SOURCE_URL_ATTR on the best-effort (LLM-carried) reliability.
-                source_urls = _attach_source_urls(
-                    rows, getattr(full, "provenance", None) or {}
-                )
-                platforms = _platforms(getattr(full, "sources", None), provider)
-                # The provider ran: record one attempt with the discovered-record
-                # count as its "matches", or a no_match when it came back empty.
-                plog.attempts = 1
-                plog.matches = len(rows)
-                if rows:
-                    plog.status = "ok"
-                else:
-                    plog.no_match = 1
-                    plog.status = "no_match"
-                # Surface the row count + platforms + provider log as soon as
-                # discovery returns, before the (slower) ingest — so a poll
-                # mid-run already shows progress and which provider was consulted.
-                if job is not None and job_store is not None:
-                    job.progress.total = len(rows)
-                    job.platforms = platforms
-                    job.provider_logs = [plog]
-                    await job_store.update(job)
-                if not rows:
+                for sub_i, sub_query in enumerate(subqueries):
+                    if cap - processed <= 0:
+                        break
+                    for prov in ensemble:
+                        remaining = cap - processed
+                        if remaining <= 0:
+                            break
+                        plog = plogs[prov.name]
+                        # The WHOLE batch (discover → dedupe → ingest) is guarded:
+                        # one provider returning garbage, or one batch failing to
+                        # ingest, must not sink batches already landed — partial
+                        # coverage beats nothing (adversarial-review F3).
+                        plog.attempts += 1
+                        phase = "discover"
+                        try:
+                            full = await prov.discover(
+                                sub_query,
+                                sample=False,
+                                max_rows=min(per_sub_budget, remaining),
+                                hint_columns=hint_columns,
+                                context=pctx,
+                                urls=urls or None,
+                            )
+                            any_discover_ok = True
+                            phase = "ingest"
+                            rows_found = list(getattr(full, "rows", None) or [])[
+                                : min(per_sub_budget, remaining)
+                            ]
+                            # matches = rows the provider FOUND (pre-dedupe): a
+                            # provider whose 50 finds were all already contributed
+                            # by an earlier member still shows matches=50, not the
+                            # "ran but found nothing" no_match the model reserves
+                            # for genuinely empty results (adversarial-review F4).
+                            plog.matches += len(rows_found)
+                            if not rows_found:
+                                plog.no_match += 1
+                                continue
+                            batch = _dedupe_rows(rows_found, key_attr, seen_keys)
+                            if not batch:
+                                continue  # found rows; all already contributed
+                            # Per-record source-URL provenance (ONTA-151): stamp
+                            # each row with the page it was drawn from BEFORE
+                            # serialization, so it rides through the SAME extract →
+                            # ingest → insert_facts path as the rest of the row's
+                            # data and lands as a `source_url` citation.
+                            _attach_source_urls(
+                                batch, getattr(full, "provenance", None) or {}
+                            )
+                            platforms = list(
+                                dict.fromkeys(
+                                    [
+                                        *platforms,
+                                        *_platforms(
+                                            getattr(full, "sources", None), prov
+                                        ),
+                                    ]
+                                )
+                            )
+                            # Live status BEFORE the (slower) LLM-extraction
+                            # ingest, so a poll mid-batch already shows which
+                            # providers were consulted + what they found — the
+                            # single-batch classic path otherwise sits at 0/0 for
+                            # the whole extraction (adversarial-review F5).
+                            if job is not None and job_store is not None:
+                                job.platforms = platforms
+                                job.provider_logs = list(plogs.values())
+                                await job_store.update(job)
+                            # BATCHED ingest — one commit per (sub-query, provider)
+                            # batch, so the job card streams ("N of ~M records
+                            # added") instead of jumping 0 → all. Source names the
+                            # provider that actually produced the batch.
+                            content = json.dumps(
+                                batch, default=str, ensure_ascii=False
+                            )
+                            result = await resolver.ingest(
+                                content,
+                                ctx.tenant_id,
+                                content_type="json",
+                                source=f"web:{prov.name}:{query}",
+                                instance_graph=instance_graph,
+                            )
+                            processed += len(batch)
+                            entities_total += int(
+                                getattr(result, "entities_resolved", 0) or 0
+                            )
+                            affected_types |= set(result.types_created)
+                            for attr_added in result.attributes_added:
+                                affected_types.add(attr_added.split(".")[0])
+                            if job is not None and job_store is not None:
+                                # Rolling, honest total: what landed + the average
+                                # per-sub-query yield extrapolated over the
+                                # sub-queries still to run, never above the cap.
+                                # Settles to == processed at the end.
+                                subs_done = sub_i + 1
+                                subs_left = len(subqueries) - subs_done
+                                avg = math.ceil(processed / subs_done)
+                                job.progress.processed = processed
+                                job.progress.total = min(
+                                    cap, processed + subs_left * avg
+                                )
+                                job.platforms = platforms
+                                job.provider_logs = list(plogs.values())
+                                await job_store.update(job)
+                        except Exception as exc:  # noqa: BLE001 — one batch
+                            # failing must not sink the run. Attribution follows
+                            # the phase: a discover crash is the PROVIDER's; an
+                            # ingest/bookkeeping crash after a clean discover is
+                            # a JOB-side error — the provider log is never
+                            # mis-blamed for it.
+                            last_provider_err = str(exc)
+                            errors_total += 1
+                            if phase == "discover":
+                                last_err_provider = prov.name
+                                plog.errors += 1
+                                plog.last_error = last_provider_err[:300]
+                            else:
+                                last_err_provider = None
+                            logger.warning(
+                                "web_ingest_subquery_failed",
+                                query=sub_query,
+                                provider=prov.name,
+                                phase=phase,
+                                exc_info=True,
+                            )
+                            continue
+
+                for plog in plogs.values():
+                    # Roll-up per the ProviderLog contract: "skipped" = named but
+                    # never consulted (cap filled before its turn), NOT no_match.
+                    if plog.attempts == 0:
+                        plog.status = "skipped"
+                    elif plog.matches:
+                        plog.status = "ok"
+                    elif plog.errors:
+                        plog.status = "error"
+                    else:
+                        plog.status = "no_match"
+                if processed == 0:
+                    if errors_total and last_provider_err is not None:
+                        # Nothing landed AND something errored (every discover
+                        # died, or the found rows could not be ingested) → a
+                        # failed job carrying the attributed error, not a silent
+                        # empty success.
+                        if job is not None:
+                            job.provider_logs = list(plogs.values())
+                            job.error_summary = [
+                                JobErrorItem(
+                                    # provider set only when a DISCOVER died;
+                                    # a job-side (ingest) failure carries
+                                    # kind="job" with no provider blamed.
+                                    provider=last_err_provider,
+                                    kind="error" if last_err_provider else "job",
+                                    message=last_provider_err[:300],
+                                )
+                            ]
+                        await _fail_job(job, job_store, last_provider_err)
+                        return
                     logger.info("web_ingest_no_rows", query=query)
+                    if job is not None and job_store is not None:
+                        job.provider_logs = list(plogs.values())
                     await _finish_job(
                         job, job_store, processed=0, entities=0,
                         platforms=platforms,
                     )
                     return
-                content = json.dumps(rows, default=str, ensure_ascii=False)
-                result = await resolver.ingest(
-                    content,
-                    ctx.tenant_id,
-                    content_type="json",
-                    source=source,
-                    instance_graph=instance_graph,
-                )
-                entities = int(getattr(result, "entities_resolved", 0) or 0)
                 logger.info(
                     "web_ingest_complete",
                     query=query,
-                    rows=len(rows),
-                    entities=entities,
-                    types=getattr(result, "types_created", None),
-                    source_urls=source_urls,
+                    subqueries=len(subqueries),
+                    providers=[pr.name for pr in ensemble],
+                    rows=processed,
+                    entities=entities_total,
+                    types=sorted(affected_types) or None,
                 )
                 # Single shared post-write housekeeping path (graph/kg_writer.py) —
                 # the SAME refresh ingestion + enrichment run: invalidate the
                 # NL-planning ontology cache, re-embed affected types (new types +
                 # types that gained an attribute), and recompute Explorer type-stats.
-                # Without this the web-discovery ontology expansion stays invisible to
-                # query planning + Explorer. Best-effort: a refresh hiccup must NOT
-                # present as a failed ingest — the data + ontology already landed.
-                affected_types = set(result.types_created)
-                for attr_added in result.attributes_added:
-                    affected_types.add(attr_added.split(".")[0])
+                # ONE refresh for the whole fan-out (not per batch): the union of
+                # affected types is what downstream caches care about. Best-effort:
+                # a refresh hiccup must NOT present as a failed ingest — the data +
+                # ontology already landed.
                 try:
                     await refresh_after_write(
                         ctx.neptune,
@@ -527,31 +792,32 @@ class WebIngestCapability:
                     )
                 except Exception:  # noqa: BLE001 — refresh failure must not fail a landed ingest
                     logger.warning("web_ingest_refresh_failed", exc_info=True)
+                if job is not None:
+                    # Settle the rolling estimate to the exact final count.
+                    job.progress.total = processed
                 await _finish_job(
-                    job, job_store, processed=len(rows), entities=entities,
+                    job, job_store, processed=processed, entities=entities_total,
                     platforms=platforms,
                 )
             except Exception as exc:  # noqa: BLE001 — background job self-contains errors
                 logger.error("web_ingest_failed", query=query, exc_info=True)
                 msg = str(exc)
-                # Attribute the failure: a crash BEFORE discovery returned is the
-                # provider's; a later crash (ingest/refresh) is a job-level error
-                # while the provider log stays whatever it recorded as "ok".
-                if not discover_ok:
-                    plog.attempts = 1
-                    plog.errors = 1
-                    plog.status = "error"
-                    plog.last_error = msg[:300]
+                # Per-(sub-query, provider) errors are handled in the loop, so a
+                # crash HERE is past discovery (ingest/refresh/bookkeeping) — a
+                # job-level failure — unless no discover ever returned (setup
+                # crash), which stays provider-attributed. Matches the enrichment
+                # executor's fatal-path classification.
+                if not any_discover_ok:
+                    primary_plog = plogs[provider.name]
+                    primary_plog.errors += 1
+                    primary_plog.status = "error"
+                    primary_plog.last_error = msg[:300]
                 if job is not None:
-                    job.provider_logs = [plog]
+                    job.provider_logs = list(plogs.values())
                     job.error_summary = [
                         JobErrorItem(
-                            # A crash before discovery returned is the provider's
-                            # ("error"); a later crash (ingest/refresh) is a
-                            # job-level failure ("job"), matching the enrichment
-                            # executor's fatal-path classification.
-                            provider=provider.name if not discover_ok else None,
-                            kind="error" if not discover_ok else "job",
+                            provider=provider.name if not any_discover_ok else None,
+                            kind="error" if not any_discover_ok else "job",
                             message=msg[:300],
                         )
                     ]
@@ -562,6 +828,9 @@ class WebIngestCapability:
             "kind": "ack",
             "capability": self.name,
             "action": step.action,
+            # Clean, distilled job title for client job cards — the search subject
+            # the spec LLM extracted, NOT the user's raw conversational sentence.
+            "title": query,
             "message": (
                 f"Searching the web for “{query}” and ingesting the results "
                 f"as {proposed_type} ({', '.join(attributes)}) in the background."
@@ -586,7 +855,9 @@ STRICT JSON only (no markdown):
   "key_attribute": "<the natural identifier, usually 'name', snake_case>",
   "query": "<a clean, concise SEARCH SUBJECT — the thing to find on the web, with all conversational framing removed>",
   "query_kind": "<'place' when the records are physical places / businesses / real-world locations to find; otherwise null>",
+  "subqueries": ["<2-6 SELF-CONTAINED sub-queries that PARTITION an enumeration ask; [] for a single-list ask>"],
   "confirmed_attributes": ["<attributes the user EXPLICITLY named; [] if they only named the entity>"],
+  "core_attributes": ["<the 2-4 MOST IMPORTANT attributes for this entity — a strict subset of suggested_attributes, snake_case, excluding the key; these are PRE-SELECTED and shown to the user>"],
   "suggested_attributes": ["<a COMPREHENSIVE set (6-12) of web-discoverable columns for this entity, snake_case, excluding the key>"]
 }
 RULES:
@@ -606,11 +877,29 @@ Boston"). Otherwise set it to null. NON-place examples (null): "top LLMs", "S&P 
 500 companies", "Nobel laureates", "npm packages", "movies from 2020" — these are \
 not physical locations even when they mention an organization. When unsure, use \
 null.
+- subqueries: ONLY for an ENUMERATION ask — the user wants ALL/every instance \
+across a scope that no single search covers well (multiple cities/regions, several \
+named categories). Partition it into 2-6 SELF-CONTAINED queries, each complete on \
+its own and together covering the whole ask without overlap. "all primary care \
+physicians in Tustin and Santa Ana" -> ["primary care physicians in Tustin, CA", \
+"primary care physicians in Santa Ana, CA"]. "coffee shops and bakeries in SF" -> \
+["coffee shops in San Francisco", "bakeries in San Francisco"]. A single-list ask \
+("OpenRouter models", "S&P 500 companies", "coffee shops in SF") needs NO \
+partitioning -> []. Never split a scope the source already returns whole; when \
+unsure, use [].
 - key_attribute: the human-readable identifier (name/title), snake_case.
 - confirmed_attributes: ONLY what the user actually asked for. "models with their \
 names and pricing" -> ["name","pricing"]; "a list of models" -> []. When the user \
 replies with a list (e.g. "Use these: name, provider, pricing" or "just the name") \
 treat THOSE as confirmed. snake_case; exclude nothing they named.
+- core_attributes: a SHORT list (aim for 2-4) of the few attributes that matter \
+MOST for this entity — the ones a user almost always wants and that best identify \
+or differentiate a record. MUST be a subset of suggested_attributes. These are the \
+ones we PRE-SELECT and show as chips; the rest of suggested_attributes stays a \
+behind-the-scenes fetch hint, NOT shown pre-checked. For Model: \
+["provider","context_length","input_price"]. For a Physician: \
+["specialty","city","phone"]. Keep it minimal — do NOT just repeat all of \
+suggested_attributes.
 - suggested_attributes: a COMPREHENSIVE set (aim for 6-12) of the columns this \
 entity is typically described by ON THE WEB — every web-discoverable property a \
 rich source table (leaderboard, catalog, listing) would carry, snake_case, \
@@ -655,6 +944,7 @@ async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:
         "key_attribute": "name",
         "query_kind": None,
         "confirmed_attributes": [],
+        "core_attributes": ["description"],
         "suggested_attributes": ["name", "description", "url"],
     }
 
@@ -663,6 +953,7 @@ def _normalize_spec(parsed: dict) -> dict:
     et = str(parsed.get("entity_type") or "WebRecord").strip() or "WebRecord"
     key = _slug(parsed.get("key_attribute") or "name") or "name"
     confirmed = [_slug(a) for a in _as_list(parsed.get("confirmed_attributes"))]
+    core = [_slug(a) for a in _as_list(parsed.get("core_attributes"))]
     suggested = [_slug(a) for a in _as_list(parsed.get("suggested_attributes"))]
     return {
         "entity_type": _pascal(et),
@@ -673,9 +964,88 @@ def _normalize_spec(parsed: dict) -> dict:
         # lowercase slug so "Place"/"PLACE" all match a provider's query_kinds; a
         # missing / null / literal-"null" value collapses to None → no routing.
         "query_kind": _norm_query_kind(parsed.get("query_kind")),
+        # Enumeration partition (free-text prose like `query`, NOT slugged).
+        # Non-empty → execute() fans the discovery out across these instead of
+        # the single query. Deduped, capped at the fan-out limit.
+        "subqueries": _norm_subqueries(parsed.get("subqueries")),
         "confirmed_attributes": [a for a in confirmed if a],
+        "core_attributes": [a for a in core if a],
         "suggested_attributes": [a for a in suggested if a],
     }
+
+
+# Hard ceiling on the enumeration fan-out — the LLM is asked for 2-6 sub-queries;
+# this guards against an over-eager reply multiplying paid calls.
+_MAX_SUBQUERIES = 6
+
+
+# Secondary identity signals (checked in order) that distinguish same-NAME rows:
+# "Starbucks" per branch, "Dr. John Smith" per city. A bare-name dedupe key would
+# collapse all of them to one record (adversarial-review F1).
+_DEDUPE_SIGNAL_COLS = (
+    "address", "street_address", "city", "location", "phone", "phone_number",
+)
+
+
+def _norm_key_part(v) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(v).lower()).strip() if v else ""
+
+
+def _row_key(row: dict, key_attr: str) -> str:
+    """Composite dedupe key: normalized KEY attribute + the first present
+    identity signal (address/city/phone). Same name + same signal → duplicate;
+    same name + DIFFERENT signal → distinct records (two branches, two cities) —
+    both kept, with downstream entity resolution as the deeper merge net. A row
+    with no key value returns "" (never deduped)."""
+    name = _norm_key_part(row.get(key_attr))
+    if not name:
+        return ""
+    for col in _DEDUPE_SIGNAL_COLS:
+        sig = _norm_key_part(row.get(col))
+        if sig:
+            return f"{name}|{sig}"
+    return name
+
+
+def _dedupe_rows(
+    rows: list[dict], key_attr: str, seen: set[str]
+) -> list[dict]:
+    """Drop rows whose composite key (see :func:`_row_key`) was already seen
+    (mutating ``seen``) — the cross-batch merge for the fan-out/ensemble. Keys
+    are normalized (lowercased, punctuation collapsed) so "Dr. Alina Reyes" and
+    "dr alina reyes" dedupe; rows with NO key value are kept (nothing to match
+    on)."""
+    out: list[dict] = []
+    for r in rows:
+        key = _row_key(r, key_attr)
+        if key:
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(r)
+    return out
+
+
+def _norm_subqueries(v) -> list[str]:
+    """Sanitize the LLM's enumeration partition: non-empty strings, stripped,
+    case-insensitively deduped, capped at ``_MAX_SUBQUERIES``. Anything malformed
+    (not a list, numbers, nulls) degrades to [] — single-query behavior."""
+    if not isinstance(v, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in v:
+        if not isinstance(item, str):
+            continue
+        q = item.strip()
+        key = q.lower()
+        if not q or key in seen:
+            continue
+        seen.add(key)
+        out.append(q)
+        if len(out) >= _MAX_SUBQUERIES:
+            break
+    return out
 
 
 def _norm_query_kind(v) -> Optional[str]:
@@ -691,35 +1061,42 @@ def _norm_query_kind(v) -> Optional[str]:
     return s
 
 
-def _and_join(items: list[str], limit: int = 6) -> str:
-    """Human-readable list: 'a, b and c'; '+N more' beyond ``limit``."""
-    items = [i for i in items if i]
-    if not items:
-        return "their details"
-    extra = len(items) - limit
-    shown = items[:limit]
-    head = ", ".join(shown[:-1])
-    tail = shown[-1]
-    joined = f"{head} and {tail}" if head else tail
-    return f"{joined} (+{extra} more)" if extra > 0 else joined
+# The clarify PRE-SELECTS at most this many attributes — a short, most-important
+# recommendation, NOT the comprehensive fetch set (that stays server-side in
+# hint_columns). Keeps the chip list lean so the user isn't confronted with a dozen
+# pre-checked columns.
+_DEFAULT_CORE_CAP = 4
 
 
-def _clarify_step(type_name: str, key_attr: str, suggested: list[str]) -> PlanStep:
-    """Ask which attributes to collect. Both clickable options carry the concrete
-    attribute list, so whichever the user clicks lands in the accumulated
-    instruction and the next turn converges. The user can also type their own."""
-    full = _dedupe([key_attr, *suggested])
-    extras = [a for a in full if a != key_attr]
+def _core_attrs(key_attr: str, core: list[str], suggested: list[str]) -> list[str]:
+    """The SHORT, most-important attribute set to pre-select + show as chips —
+    distinct from the comprehensive ``suggested`` FETCH hint. Prefer the LLM's
+    ``core_attributes`` (kept to real, non-key members that are also suggested);
+    when it gave none (older specs / the no-LLM fallback), degrade to the first few
+    suggested extras. Always a small set — never the whole comprehensive list — so
+    the UI recommends a minimum, not everything."""
+    sugg_extras = [a for a in suggested if a and a != key_attr]
+    picked = _dedupe([a for a in core if a and a != key_attr and a in sugg_extras])
+    if not picked:
+        picked = sugg_extras[:_DEFAULT_CORE_CAP]
+    return picked[:_DEFAULT_CORE_CAP]
+
+
+def _clarify_step(type_name: str, key_attr: str, core: list[str]) -> PlanStep:
+    """Ask which attributes to collect. Shows a SHORT recommended set (``core`` —
+    the few most-important attributes), pre-selected, as clickable chips; the user
+    can drop some, add their own, or keep just the name. The concrete list rides in
+    ``options`` so whichever the user picks lands in the accumulated instruction and
+    the next turn converges. The question stays terse and does NOT re-list the
+    attributes — they're already the chips below it. The comprehensive fetch
+    projection is chosen server-side (``hint_columns``), independent of this minimal
+    recommendation, so a lean chip list never narrows what actually gets pulled."""
+    shown = _dedupe([key_attr, *core])
     question = (
         f"I'll collect **{type_name}** records and always include **{key_attr}**. "
-        + (
-            f"Want these attributes too: {', '.join(extras)}? "
-            if extras
-            else ""
-        )
-        + "Pick a set below, or type the attributes you want."
+        "Pick the ones to collect below, add your own, or keep just the name."
     )
-    options = [f"Use these: {', '.join(full)}", f"Just the {key_attr}"]
+    options = [f"Use these: {', '.join(shown)}", f"Just the {key_attr}"]
     return PlanStep(
         capability=WebIngestCapability.name,
         action="clarify",
@@ -915,7 +1292,8 @@ def _clean_query(instruction: str) -> str:
 
 
 def _estimate_cost(
-    provider: WebSourceProvider, estimated_total: int, cap: int
+    provider: WebSourceProvider, estimated_total: int, cap: int,
+    *, subqueries: int = 0,
 ) -> dict:
     """Plan-time cost estimate, using the SAME contract keys the plan card reads
     (``estimated_usd`` / ``paid_calls`` / ``note``).
@@ -925,7 +1303,12 @@ def _estimate_cost(
     we then price the whole run as ``cost_per_call × ceil(rows / rows_per_call)``
     instead of a single call — so a multi-page pull isn't under-quoted. Unset /
     ``0`` ``rows_per_call`` means "one paid call per run" (the default), so a
-    single-call provider is unchanged."""
+    single-call provider is unchanged.
+
+    ``subqueries`` (0/1 = single-query run) prices an ENUMERATION fan-out: the row
+    cap splits across the sub-queries, each priced as its own run — a paginating
+    provider costs ≈ the same total pages, a single-call-per-run provider costs one
+    call per sub-query."""
     is_paid, cost_per_call = provider_cost(provider)
     rows = min(estimated_total or 0, cap) if cap else (estimated_total or 0)
     if not is_paid:
@@ -935,13 +1318,18 @@ def _estimate_cost(
             "note": "No paid calls (the configured web source is free).",
         }
     # How many paid REQUESTS the run fans out into: one per rows_per_call records
-    # (rounded up), min 1. A provider that doesn't paginate (rows_per_call unset/0)
-    # is one billed call for the whole run — the previous behavior.
-    paid_calls = _paid_call_count(provider, rows)
+    # (rounded up), min 1 — per SUB-QUERY when the run is an enumeration fan-out
+    # (each sub-query gets an equal share of the row cap and is billed as its own
+    # run). A provider that doesn't paginate (rows_per_call unset/0) is one billed
+    # call per run — the previous behavior.
+    n_sub = max(1, int(subqueries or 0))
+    per_sub_rows = math.ceil(rows / n_sub) if rows else rows
+    paid_calls = n_sub * _paid_call_count(provider, per_sub_rows)
     estimated_usd = round(cost_per_call * paid_calls, 4)
     fanout = (
-        f" across ~{paid_calls} paginated request(s)" if paid_calls > 1 else ""
+        f" across ~{paid_calls} paginated request(s)" if paid_calls > n_sub else ""
     )
+    split = f" across {n_sub} sub-queries" if n_sub > 1 else ""
     return {
         "paid_calls": paid_calls,
         "paid_calls_estimated": True,
@@ -949,8 +1337,45 @@ def _estimate_cost(
         "per_call_cost_usd": round(cost_per_call, 4),
         "note": (
             f"Paid web discovery via '{provider.name}': ≈ ${estimated_usd:.2f} "
-            f"to fetch up to {rows} record(s){fanout} (estimate; provider may fan "
-            f"out across sub-queries)."
+            f"to fetch up to {rows} record(s){split}{fanout} (estimate; provider "
+            f"may fan out across sub-queries)."
+        ),
+    }
+
+
+def _estimate_cost_multi(
+    providers: list, estimated_total: int, cap: int, *, subqueries: int = 0,
+) -> dict:
+    """Whole-run estimate for a provider ENSEMBLE (kind-specialized + general
+    consulted together): the sum of each provider's own run estimate, with one
+    merged note naming every source generically. A single-provider ensemble is
+    exactly :func:`_estimate_cost` — no behavior change for the classic path."""
+    if len(providers) == 1:
+        return _estimate_cost(
+            providers[0], estimated_total, cap, subqueries=subqueries
+        )
+    parts = [
+        _estimate_cost(p, estimated_total, cap, subqueries=subqueries)
+        for p in providers
+    ]
+    paid_calls = sum(part["paid_calls"] for part in parts)
+    estimated_usd = round(sum(part["estimated_usd"] for part in parts), 4)
+    if paid_calls == 0:
+        return {
+            "paid_calls": 0,
+            "estimated_usd": 0.0,
+            "note": "No paid calls (the configured web sources are free).",
+        }
+    rows = min(estimated_total or 0, cap) if cap else (estimated_total or 0)
+    names = " + ".join(f"'{p.name}'" for p in providers)
+    return {
+        "paid_calls": paid_calls,
+        "paid_calls_estimated": True,
+        "estimated_usd": estimated_usd,
+        "note": (
+            f"Paid web discovery via {names}: ≈ ${estimated_usd:.2f} to fetch "
+            f"up to {rows} record(s) across {len(providers)} sources (estimate; "
+            f"providers may fan out across sub-queries)."
         ),
     }
 

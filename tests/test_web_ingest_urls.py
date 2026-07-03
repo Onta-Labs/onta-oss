@@ -151,7 +151,9 @@ def _clean_registry():
 
 
 async def test_urls_in_message_route_through_for_urls_provider():
-    provider = UrlProvider(url_only=True)
+    # Above the auto-confirm gate so plan() runs the full sample preview (the
+    # plan-time provider call these assertions read).
+    provider = UrlProvider(url_only=True, is_paid=True, cost_per_call=0.75)
     register_web_source(provider)
 
     steps = await WebIngestCapability().plan(
@@ -176,7 +178,7 @@ async def test_urls_in_message_route_through_for_urls_provider():
 
 
 async def test_urls_from_ctx_route_through_for_urls_provider():
-    provider = UrlProvider()
+    provider = UrlProvider(is_paid=True, cost_per_call=0.75)
     register_web_source(provider)
 
     # No URLs in the message; they arrive via structured ctx.urls.
@@ -288,7 +290,8 @@ async def test_execute_repasses_urls_to_provider(monkeypatch):
 async def test_query_path_unchanged_when_no_urls():
     """No URLs anywhere → plain query discovery, urls param empty, provider called
     in query mode (urls=[])."""
-    provider = UrlProvider()  # supports urls, but none are supplied
+    # Above the gate → plan-time sample runs (what this test inspects).
+    provider = UrlProvider(is_paid=True, cost_per_call=0.75)  # urls supported, none supplied
     register_web_source(provider)
 
     steps = await WebIngestCapability().plan(
