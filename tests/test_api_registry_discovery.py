@@ -111,3 +111,36 @@ def test_build_registry_sources_skips_missing_and_disabled():
 def test_build_registry_sources_empty_for_web_only():
     cat = make_api_source_catalog()
     assert build_registry_sources(cat, RoutingDecision()) == []
+
+
+def test_rows_per_call_reflects_pagination_page_size():
+    # A paginating source declares records-per-request so the cost estimator
+    # prices its pages (not one call for the whole run).
+    cat = make_api_source_catalog()
+    src = build_registry_sources(
+        cat, RoutingDecision(mode=MODE_API_PLUS_WEB,
+                             picks=[RoutingPick(slug="nppes", endpoint="search", bindings={})]),
+    )[0]
+    assert src.rows_per_call == cat.get("nppes").endpoint("search").pagination.page_size
+
+
+def test_build_registry_sources_skips_dormant_key_gated(monkeypatch):
+    # A key-gated entry with its env unset is dormant -> excluded from the
+    # ensemble (so api_only doesn't drop web in favor of a source that can't run).
+    monkeypatch.delenv("SOME_REGISTRY_KEY", raising=False)
+    from cograph_client.api_registry import ApiSourceSpec, register_api_source_layer
+    paid = ApiSourceSpec.from_dict({
+        "slug": "paid_dir", "title": "Paid Directory", "base_url": "https://api.paid.test",
+        "auth": {"mode": "api_key_query", "key_env": "SOME_REGISTRY_KEY", "query_key": "token"},
+        "entitlement": "paid",
+        "endpoints": [{"name": "s", "path": "/s", "result_path": "results",
+                       "field_mappings": {"id": "id"}, "params": [{"name": "q", "target": "q"}],
+                       "pagination": {"style": "none"}}],
+    })
+    register_api_source_layer("global_enhanced", [paid])
+    cat = make_api_source_catalog()
+    dec = RoutingDecision(mode=MODE_API_ONLY, picks=[RoutingPick(slug="paid_dir", bindings={"q": "x"})])
+    assert build_registry_sources(cat, dec) == []  # dormant -> skipped
+
+    monkeypatch.setenv("SOME_REGISTRY_KEY", "present")
+    assert [s.name for s in build_registry_sources(cat, dec)] == ["api:paid_dir"]

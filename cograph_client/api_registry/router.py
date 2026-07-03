@@ -286,8 +286,11 @@ def _validate_decision(obj: dict, candidates: list[ApiSourceSpec]) -> RoutingDec
     if mode not in _MODES:
         mode = MODE_WEB_ONLY
 
+    raw_picks = obj.get("picks")
+    if not isinstance(raw_picks, list):
+        raw_picks = []
     picks: list[RoutingPick] = []
-    for raw in (obj.get("picks") or [])[:_MAX_PICKS]:
+    for raw in raw_picks[:_MAX_PICKS]:
         if not isinstance(raw, dict):
             continue
         pick = RoutingPick.from_dict(raw)

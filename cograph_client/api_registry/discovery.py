@@ -15,6 +15,7 @@ providers to splice (ahead of web) into the discovery ensemble.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from ..web_sources.base import DiscoverResult
@@ -47,7 +48,13 @@ class RegistryDiscoverySource:
         self.title = spec.title or spec.slug
         self.is_paid = spec.is_paid
         self.cost_per_call = spec.cost_per_call
-        self.rows_per_call = 0
+        # Declare records-per-paid-request so the cost estimator prices a
+        # PAGINATING paid source across its pages (cost_per_call × ceil(rows /
+        # page_size)) instead of billing one call for the whole run — otherwise a
+        # paid registry source could slip under the auto-confirm gate.
+        _ep = spec.endpoint(endpoint)
+        _pg = _ep.pagination if _ep else None
+        self.rows_per_call = _pg.page_size if (_pg and _pg.page_size > 0) else 0
         self.supports_urls = False
         self.url_only = False
         self.query_kinds = frozenset()
@@ -106,6 +113,13 @@ def build_registry_sources(
     for pick in decision.picks:
         spec = catalog.get(pick.slug)
         if spec is None or not spec.enabled:
+            continue
+        # Skip a key-gated entry whose key is absent: it's dormant, so splicing it
+        # in (and, in api_only mode, dropping web) would yield an empty run instead
+        # of falling back to web. Same dormancy contract as every premium adapter.
+        auth = spec.auth
+        if auth.requires_key and not os.environ.get(auth.key_env, "").strip():
+            logger.info("api_registry: skipping dormant entry %s (env %s unset)", spec.slug, auth.key_env)
             continue
         out.append(
             RegistryDiscoverySource(
