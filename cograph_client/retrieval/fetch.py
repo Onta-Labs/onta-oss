@@ -33,6 +33,7 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
+from cograph_client.retrieval.cost import source_cost
 from cograph_client.retrieval.safety import (
     host_dns_blocked,
     html_to_text,
@@ -118,19 +119,12 @@ def default_ladder() -> list[PageFetcher]:
 
 
 def fetcher_cost(fetcher: PageFetcher) -> tuple[bool, float]:
-    """Read a fetcher's cost signal generically (mirrors ``provider_cost``).
+    """Read a fetcher's cost signal → ``(is_paid, cost_per_call)``.
 
-    Returns ``(is_paid, cost_per_call)``. Defensive ``getattr`` with free
-    defaults; never raises on a malformed ``cost_per_call``.
+    Thin back-compat alias over the one shared :func:`source_cost` seam (ONTA-193);
+    every rail's cost reducer now delegates there.
     """
-    try:
-        cost = float(getattr(fetcher, "cost_per_call", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        cost = 0.0
-    if cost < 0.0:
-        cost = 0.0
-    is_paid = bool(getattr(fetcher, "is_paid", False)) or cost > 0.0
-    return is_paid, cost
+    return source_cost(fetcher)
 
 
 class StaticHttpFetcher:
