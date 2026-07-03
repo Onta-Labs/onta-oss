@@ -47,7 +47,10 @@ class DiscoverResult:
     distinct set of sources consulted (for the plan preview). ``is_partial`` is
     True when the provider truncated at ``max_rows``; ``estimated_total`` is the
     provider's best guess at the full result size (used only to label the
-    plan-time cost estimate, never to drive writes).
+    plan-time cost estimate, never to drive writes). It may be an UPPER bound —
+    e.g. a source-first provider counts the located catalogue before projecting
+    it to the query — and providers with no total signal should leave it None
+    (unknown) rather than echo a sample-capped row count.
 
     ``error`` is set when the provider FAILED to reach or read a source (timeout,
     non-200, blocked page) as opposed to reaching it and finding no records. Zero

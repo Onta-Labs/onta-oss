@@ -264,7 +264,9 @@ class WebIngestCapability:
         # ask the spec splits the scope into self-contained sub-queries; execute()
         # runs one discovery per sub-query and merges (deduped) into ONE job.
         # Empty → classic single-query discovery. Priced below as n sub-runs.
-        subqueries = _norm_subqueries(spec.get("subqueries"))
+        # NEVER in URL mode: the pages are fixed, so partitioned queries would
+        # just re-scrape (and re-bill) the same URLs for fully-deduped batches.
+        subqueries = [] if urls else _norm_subqueries(spec.get("subqueries"))
 
         # 2a. LEAN fast path — cheap providers skip the plan-time preview.
         #     At or under the auto-confirm gate the client starts the job straight
@@ -284,6 +286,13 @@ class WebIngestCapability:
             ensemble, cap, cap, subqueries=len(subqueries)
         )
         if lean_cost["estimated_usd"] <= _PREVIEW_GATE_USD:
+            # SERVER-owned auto-confirm contract: this plan was built lean
+            # BECAUSE it is at/under the gate — say so explicitly, so clients
+            # obey the server's judgment instead of re-deriving it from a
+            # hardcoded twin constant (interface-drift risk: a client whose
+            # threshold skews from COGRAPH_WEB_PREVIEW_GATE_USD would either
+            # show a preview-less spend card or auto-run an ungated plan).
+            lean_cost["auto_confirm"] = True
             return [
                 PlanStep(
                     capability=self.name,
@@ -496,9 +505,16 @@ class WebIngestCapability:
         # sub-queries partitioning an "all X in Y and Z" ask. One discovery runs
         # per sub-query, all merged (deduped on the key attribute) into THIS one
         # job. Absent/empty → the single primary query, the classic path.
-        subqueries = [
-            q for q in (p.get("subqueries") or []) if isinstance(q, str) and q.strip()
-        ] or [query]
+        subqueries = (
+            [query]
+            if urls
+            else [
+                q
+                for q in (p.get("subqueries") or [])
+                if isinstance(q, str) and q.strip()
+            ]
+            or [query]
+        )
         attributes = p.get("attributes") or []
         # COMPREHENSIVE fetch hint persisted at plan time so the full pull uses the
         # SAME rich projection the sample did — the column projection is the stable
@@ -577,6 +593,13 @@ class WebIngestCapability:
             key_attr = (attributes[0] if attributes else "name") or "name"
             last_provider_err: Optional[str] = None
             last_err_provider: Optional[str] = None
+            errors_total = 0
+            # Each (sub-query, provider) call is bounded to the per-sub-query row
+            # share the plan PRICED (cost = n_sub × pages(cap / n_sub)). Passing
+            # the whole remaining cap instead let overlapping sub-queries spend up
+            # to n_sub× the quoted estimate — the figure the ≤gate auto-confirm
+            # trusted (adversarial-review F2).
+            per_sub_budget = math.ceil(cap / max(1, len(subqueries)))
             try:
                 for sub_i, sub_query in enumerate(subqueries):
                     if cap - processed <= 0:
@@ -586,110 +609,150 @@ class WebIngestCapability:
                         if remaining <= 0:
                             break
                         plog = plogs[prov.name]
+                        # The WHOLE batch (discover → dedupe → ingest) is guarded:
+                        # one provider returning garbage, or one batch failing to
+                        # ingest, must not sink batches already landed — partial
+                        # coverage beats nothing (adversarial-review F3).
+                        plog.attempts += 1
+                        phase = "discover"
                         try:
                             full = await prov.discover(
                                 sub_query,
                                 sample=False,
-                                max_rows=remaining,
+                                max_rows=min(per_sub_budget, remaining),
                                 hint_columns=hint_columns,
                                 context=pctx,
                                 urls=urls or None,
                             )
-                        except Exception as exc:  # noqa: BLE001 — one provider
-                            # failing one sub-query must not sink the run: partial
-                            # coverage beats nothing.
+                            any_discover_ok = True
+                            phase = "ingest"
+                            rows_found = list(getattr(full, "rows", None) or [])[
+                                : min(per_sub_budget, remaining)
+                            ]
+                            # matches = rows the provider FOUND (pre-dedupe): a
+                            # provider whose 50 finds were all already contributed
+                            # by an earlier member still shows matches=50, not the
+                            # "ran but found nothing" no_match the model reserves
+                            # for genuinely empty results (adversarial-review F4).
+                            plog.matches += len(rows_found)
+                            if not rows_found:
+                                plog.no_match += 1
+                                continue
+                            batch = _dedupe_rows(rows_found, key_attr, seen_keys)
+                            if not batch:
+                                continue  # found rows; all already contributed
+                            # Per-record source-URL provenance (ONTA-151): stamp
+                            # each row with the page it was drawn from BEFORE
+                            # serialization, so it rides through the SAME extract →
+                            # ingest → insert_facts path as the rest of the row's
+                            # data and lands as a `source_url` citation.
+                            _attach_source_urls(
+                                batch, getattr(full, "provenance", None) or {}
+                            )
+                            platforms = list(
+                                dict.fromkeys(
+                                    [
+                                        *platforms,
+                                        *_platforms(
+                                            getattr(full, "sources", None), prov
+                                        ),
+                                    ]
+                                )
+                            )
+                            # Live status BEFORE the (slower) LLM-extraction
+                            # ingest, so a poll mid-batch already shows which
+                            # providers were consulted + what they found — the
+                            # single-batch classic path otherwise sits at 0/0 for
+                            # the whole extraction (adversarial-review F5).
+                            if job is not None and job_store is not None:
+                                job.platforms = platforms
+                                job.provider_logs = list(plogs.values())
+                                await job_store.update(job)
+                            # BATCHED ingest — one commit per (sub-query, provider)
+                            # batch, so the job card streams ("N of ~M records
+                            # added") instead of jumping 0 → all. Source names the
+                            # provider that actually produced the batch.
+                            content = json.dumps(
+                                batch, default=str, ensure_ascii=False
+                            )
+                            result = await resolver.ingest(
+                                content,
+                                ctx.tenant_id,
+                                content_type="json",
+                                source=f"web:{prov.name}:{query}",
+                                instance_graph=instance_graph,
+                            )
+                            processed += len(batch)
+                            entities_total += int(
+                                getattr(result, "entities_resolved", 0) or 0
+                            )
+                            affected_types |= set(result.types_created)
+                            for attr_added in result.attributes_added:
+                                affected_types.add(attr_added.split(".")[0])
+                            if job is not None and job_store is not None:
+                                # Rolling, honest total: what landed + the average
+                                # per-sub-query yield extrapolated over the
+                                # sub-queries still to run, never above the cap.
+                                # Settles to == processed at the end.
+                                subs_done = sub_i + 1
+                                subs_left = len(subqueries) - subs_done
+                                avg = math.ceil(processed / subs_done)
+                                job.progress.processed = processed
+                                job.progress.total = min(
+                                    cap, processed + subs_left * avg
+                                )
+                                job.platforms = platforms
+                                job.provider_logs = list(plogs.values())
+                                await job_store.update(job)
+                        except Exception as exc:  # noqa: BLE001 — one batch
+                            # failing must not sink the run. Attribution follows
+                            # the phase: a discover crash is the PROVIDER's; an
+                            # ingest/bookkeeping crash after a clean discover is
+                            # a JOB-side error — the provider log is never
+                            # mis-blamed for it.
                             last_provider_err = str(exc)
-                            last_err_provider = prov.name
-                            plog.attempts += 1
-                            plog.errors += 1
-                            plog.last_error = last_provider_err[:300]
+                            errors_total += 1
+                            if phase == "discover":
+                                last_err_provider = prov.name
+                                plog.errors += 1
+                                plog.last_error = last_provider_err[:300]
+                            else:
+                                last_err_provider = None
                             logger.warning(
                                 "web_ingest_subquery_failed",
                                 query=sub_query,
                                 provider=prov.name,
+                                phase=phase,
                                 exc_info=True,
                             )
                             continue
-                        any_discover_ok = True
-                        plog.attempts += 1
-                        batch = _dedupe_rows(
-                            full.rows[:remaining], key_attr, seen_keys
-                        )
-                        plog.matches += len(batch)
-                        if not batch:
-                            plog.no_match += 1
-                            continue
-                        # Per-record source-URL provenance (ONTA-151): stamp each
-                        # row with the page it was drawn from
-                        # (DiscoverResult.provenance) BEFORE serialization, so it
-                        # rides through the SAME extract → ingest → insert_facts
-                        # path as the rest of the row's data (no bespoke write
-                        # path) and lands as a `source_url` citation on the entity.
-                        _attach_source_urls(
-                            batch, getattr(full, "provenance", None) or {}
-                        )
-                        platforms = list(
-                            dict.fromkeys(
-                                [
-                                    *platforms,
-                                    *_platforms(
-                                        getattr(full, "sources", None), prov
-                                    ),
-                                ]
-                            )
-                        )
-                        # BATCHED ingest — one commit per (sub-query, provider)
-                        # batch, so the job card streams ("N of ~M records added")
-                        # instead of jumping 0 → all. Source names the provider
-                        # that actually produced the batch.
-                        content = json.dumps(batch, default=str, ensure_ascii=False)
-                        result = await resolver.ingest(
-                            content,
-                            ctx.tenant_id,
-                            content_type="json",
-                            source=f"web:{prov.name}:{query}",
-                            instance_graph=instance_graph,
-                        )
-                        processed += len(batch)
-                        entities_total += int(
-                            getattr(result, "entities_resolved", 0) or 0
-                        )
-                        affected_types |= set(result.types_created)
-                        for attr_added in result.attributes_added:
-                            affected_types.add(attr_added.split(".")[0])
-                        if job is not None and job_store is not None:
-                            # Rolling, honest total: what landed + the average
-                            # per-sub-query yield extrapolated over the sub-queries
-                            # still to run, never above the cap. Settles to ==
-                            # processed at the end.
-                            subs_done = sub_i + 1
-                            subs_left = len(subqueries) - subs_done
-                            avg = math.ceil(processed / subs_done)
-                            job.progress.processed = processed
-                            job.progress.total = min(
-                                cap, processed + subs_left * avg
-                            )
-                            job.platforms = platforms
-                            job.provider_logs = list(plogs.values())
-                            await job_store.update(job)
 
                 for plog in plogs.values():
-                    plog.status = (
-                        "ok"
-                        if plog.matches
-                        else ("error" if plog.errors else "no_match")
-                    )
+                    # Roll-up per the ProviderLog contract: "skipped" = named but
+                    # never consulted (cap filled before its turn), NOT no_match.
+                    if plog.attempts == 0:
+                        plog.status = "skipped"
+                    elif plog.matches:
+                        plog.status = "ok"
+                    elif plog.errors:
+                        plog.status = "error"
+                    else:
+                        plog.status = "no_match"
                 if processed == 0:
-                    if not any_discover_ok and last_provider_err is not None:
-                        # EVERY provider died on EVERY sub-query → a failed job
-                        # with the provider-attributed error, not a silent empty
-                        # result.
+                    if errors_total and last_provider_err is not None:
+                        # Nothing landed AND something errored (every discover
+                        # died, or the found rows could not be ingested) → a
+                        # failed job carrying the attributed error, not a silent
+                        # empty success.
                         if job is not None:
                             job.provider_logs = list(plogs.values())
                             job.error_summary = [
                                 JobErrorItem(
-                                    provider=last_err_provider or provider.name,
-                                    kind="error",
+                                    # provider set only when a DISCOVER died;
+                                    # a job-side (ingest) failure carries
+                                    # kind="job" with no provider blamed.
+                                    provider=last_err_provider,
+                                    kind="error" if last_err_provider else "job",
                                     message=last_provider_err[:300],
                                 )
                             ]
@@ -916,18 +979,45 @@ def _normalize_spec(parsed: dict) -> dict:
 _MAX_SUBQUERIES = 6
 
 
+# Secondary identity signals (checked in order) that distinguish same-NAME rows:
+# "Starbucks" per branch, "Dr. John Smith" per city. A bare-name dedupe key would
+# collapse all of them to one record (adversarial-review F1).
+_DEDUPE_SIGNAL_COLS = (
+    "address", "street_address", "city", "location", "phone", "phone_number",
+)
+
+
+def _norm_key_part(v) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(v).lower()).strip() if v else ""
+
+
+def _row_key(row: dict, key_attr: str) -> str:
+    """Composite dedupe key: normalized KEY attribute + the first present
+    identity signal (address/city/phone). Same name + same signal → duplicate;
+    same name + DIFFERENT signal → distinct records (two branches, two cities) —
+    both kept, with downstream entity resolution as the deeper merge net. A row
+    with no key value returns "" (never deduped)."""
+    name = _norm_key_part(row.get(key_attr))
+    if not name:
+        return ""
+    for col in _DEDUPE_SIGNAL_COLS:
+        sig = _norm_key_part(row.get(col))
+        if sig:
+            return f"{name}|{sig}"
+    return name
+
+
 def _dedupe_rows(
     rows: list[dict], key_attr: str, seen: set[str]
 ) -> list[dict]:
-    """Drop rows whose KEY attribute was already seen (mutating ``seen``) — the
-    cross-sub-query merge for an enumeration fan-out. The key is normalized
-    (lowercased, punctuation collapsed) so "Dr. Alina Reyes" and "dr alina reyes"
-    dedupe; a row with NO key value is kept (nothing to match on — the resolver's
-    entity resolution is the deeper net downstream)."""
+    """Drop rows whose composite key (see :func:`_row_key`) was already seen
+    (mutating ``seen``) — the cross-batch merge for the fan-out/ensemble. Keys
+    are normalized (lowercased, punctuation collapsed) so "Dr. Alina Reyes" and
+    "dr alina reyes" dedupe; rows with NO key value are kept (nothing to match
+    on)."""
     out: list[dict] = []
     for r in rows:
-        v = r.get(key_attr)
-        key = re.sub(r"[^a-z0-9]+", " ", str(v).lower()).strip() if v else ""
+        key = _row_key(r, key_attr)
         if key:
             if key in seen:
                 continue
