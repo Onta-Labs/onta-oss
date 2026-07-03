@@ -167,7 +167,15 @@ explaining what it is / what it measures. The description becomes the new type's
 definition in the ontology. Set subtype_description ONLY for a new specialized \
 type you are minting — leave it null otherwise.
 
-Respond with valid JSON only. No markdown."""
+Output format — JSONL (one JSON object per line):
+Emit ONE self-contained JSON object PER LINE. Do NOT emit one big document with \
+"entities"/"relationships" arrays. Each line is a COMPLETE record and MUST be \
+valid JSON on its own — never split a record across lines, never wrap the output \
+in an array, and never pretty-print (no line breaks inside a record).
+- An entity line: {"kind":"entity","type_name":"MostSpecificTypeName","id":"identifier","same_as":<existing type name or null>,"parent_type":<existing type name or null>,"parent_chain":["<immediate parent>","..."],"also_types":["<independent co-type, rare>"],"subtype_description":<brief definition when minting a NEW subtype, else null>,"attributes":[{"name":"attr_name","value":"attr_value","datatype":"string"}]}
+- A relationship line: {"kind":"relationship","source_id":"entity_id","predicate":"relationship_name","target_id":"entity_id"}
+Emit all entity lines, then all relationship lines. No markdown, no code fences, \
+no prose — only JSONL lines."""
 
 EXTRACTION_USER_TEMPLATE = """\
 Existing ontology types:
@@ -179,30 +187,10 @@ Extract entities, attributes, and relationships from this content:
 {content}
 ---
 
-Return JSON:
-{{
-  "entities": [
-    {{
-      "type_name": "MostSpecificTypeName",
-      "id": "identifier",
-      "same_as": "<existing type name if this is the same concept, else null>",
-      "parent_type": "<existing type name if this is a subtype, else null>",
-      "parent_chain": ["<immediate parent>", "<grandparent>", "..."],
-      "also_types": ["<independent co-type, rare>"],
-      "subtype_description": "<brief definition when minting a NEW specialized subtype, else null>",
-      "attributes": [
-        {{"name": "attr_name", "value": "attr_value", "datatype": "string"}}
-      ]
-    }}
-  ],
-  "relationships": [
-    {{
-      "source_id": "entity_id",
-      "predicate": "relationship_name",
-      "target_id": "entity_id"
-    }}
-  ]
-}}"""
+Return JSONL — one complete JSON object per line, each with a "kind" of \
+"entity" or "relationship". Example (your values will differ):
+{{"kind":"entity","type_name":"MostSpecificTypeName","id":"identifier","same_as":null,"parent_type":null,"parent_chain":[],"also_types":[],"subtype_description":null,"attributes":[{{"name":"attr_name","value":"attr_value","datatype":"string"}}]}}
+{{"kind":"relationship","source_id":"entity_id","predicate":"relationship_name","target_id":"entity_id"}}"""
 
 
 # --- ONTA-177: free-text candidacy adjudication (the REASON layer) ----------
@@ -1001,32 +989,104 @@ class SchemaResolver:
             if getattr(msg, "stop_reason", None) == "max_tokens":
                 truncated = True
 
-        try:
-            # Strip code fences if present
-            stripped = text.strip()
-            if stripped.startswith("```"):
-                lines = [l for l in stripped.split("\n") if not l.strip().startswith("```")]
-                stripped = "\n".join(lines)
-            data = json.loads(stripped)
-            entities = [ExtractedEntity(**e) for e in data.get("entities", [])]
-            relationships = [ExtractedRelationship(**r) for r in data.get("relationships", [])]
-            return ExtractionResult(
-                entities=entities,
-                relationships=relationships,
-                source_text=content,
-            )
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            # A parse failure on a TRUNCATED response is the expected symptom of
-            # the output exceeding max_tokens (the recovery loop will split +
-            # retry); log it distinctly so it isn't mistaken for a malformed
-            # model reply.
+        # JSONL parse: one complete JSON object per line. Parsing line-by-line and
+        # DROPPING the last partial/garbage line means a response truncated
+        # mid-last-line still salvages the N-1 complete records above it, instead
+        # of the old single-document parse returning ZERO for the whole batch. A
+        # malformed MIDDLE line is skipped (logged) without sinking the batch.
+        entities, relationships, bad_lines, dropped_last = self._parse_extraction_jsonl(text)
+        if bad_lines or dropped_last:
+            # A dropped trailing line on a truncated reply is the expected salvage
+            # (N-1 records recovered); skipped middle lines are malformed records.
+            # Log distinctly so neither is mistaken for a healthy full parse.
             logger.warning(
-                "extraction_parse_error",
-                error=str(e),
+                "extraction_jsonl_partial",
                 truncated=truncated,
+                bad_middle_lines=bad_lines,
+                dropped_last_line=dropped_last,
+                entities=len(entities),
+                relationships=len(relationships),
                 raw=text[:500],
             )
-            return ExtractionResult(source_text=content)
+        return ExtractionResult(
+            entities=entities,
+            relationships=relationships,
+            source_text=content,
+        )
+
+    @staticmethod
+    def _parse_extraction_jsonl(
+        text: str,
+    ) -> tuple[list[ExtractedEntity], list[ExtractedRelationship], int, bool]:
+        """Parse a JSONL extraction reply, salvaging past a truncated last line.
+
+        Each non-blank line should be one complete JSON object carrying a
+        ``kind`` of ``"entity"`` or ``"relationship"``. Returns
+        ``(entities, relationships, bad_middle_lines, dropped_last_line)`` where:
+
+          * the LAST non-blank line that fails to parse is DROPPED (the truncated
+            partial record) — the whole point: a reply cut mid-last-line yields
+            the N-1 complete records above it instead of zero;
+          * a MIDDLE line that fails to parse (or is missing/❔ on its kind) is
+            SKIPPED and counted in ``bad_middle_lines`` — one malformed record
+            never sinks the batch;
+          * code fences / stray prose lines are tolerated (skipped as bad lines).
+
+        A record with no explicit ``kind`` is inferred from its shape (has
+        ``source_id`` + ``target_id`` → relationship; else entity) so a model that
+        forgets the discriminator still parses.
+        """
+        # Drop code-fence lines if the model wrapped the JSONL despite the prompt.
+        raw_lines = [
+            ln for ln in text.splitlines() if not ln.strip().startswith("```")
+        ]
+        # Consider only non-blank lines; the LAST non-blank one is the truncation
+        # candidate.
+        idx_nonblank = [i for i, ln in enumerate(raw_lines) if ln.strip()]
+
+        entities: list[ExtractedEntity] = []
+        relationships: list[ExtractedRelationship] = []
+        bad_middle = 0
+        dropped_last = False
+
+        for pos, i in enumerate(idx_nonblank):
+            is_last = pos == len(idx_nonblank) - 1
+            line = raw_lines[i].strip()
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                if is_last:
+                    # Truncated partial trailing record — drop it and salvage the rest.
+                    dropped_last = True
+                else:
+                    bad_middle += 1
+                continue
+            if not isinstance(obj, dict):
+                bad_middle += 1
+                continue
+            kind = obj.get("kind")
+            if kind is None:
+                # Infer from shape when the discriminator is absent.
+                kind = (
+                    "relationship"
+                    if ("source_id" in obj and "target_id" in obj)
+                    else "entity"
+                )
+            payload = {k: v for k, v in obj.items() if k != "kind"}
+            try:
+                if kind == "relationship":
+                    relationships.append(ExtractedRelationship(**payload))
+                else:
+                    entities.append(ExtractedEntity(**payload))
+            except (TypeError, ValueError):
+                # A well-formed JSON object that doesn't fit the model schema is a
+                # malformed record: drop-if-last (partial), else count + skip.
+                if is_last:
+                    dropped_last = True
+                else:
+                    bad_middle += 1
+
+        return entities, relationships, bad_middle, dropped_last
 
     async def _extract_via_openrouter(self, user_content: str) -> tuple[str, str | None]:
         """Extract entities via OpenRouter, with primary→fallback routing.

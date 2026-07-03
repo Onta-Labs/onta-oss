@@ -279,15 +279,19 @@ async def test_token_budget_batching_avoids_truncation_first_try(
 
 def _capture_parse_error_truncated(monkeypatch) -> dict:
     """Spy on the resolver logger so a test can read the ``truncated`` kwarg the
-    ``extraction_parse_error`` warning carries — robust to structlog's rendering
-    (caplog doesn't reliably capture structlog kwargs)."""
+    JSONL partial-parse warning carries — robust to structlog's rendering
+    (caplog doesn't reliably capture structlog kwargs).
+
+    ONTA-197 JSONL: the event is now ``extraction_jsonl_partial`` (a truncated
+    reply salvages N-1 records + drops the partial last line, rather than the old
+    single-document parse returning zero), and it still carries ``truncated``."""
     from cograph_client.resolver import schema_resolver as sr
 
     captured: dict = {}
     orig = sr.logger.warning
 
     def spy(event, *args, **kwargs):
-        if event == "extraction_parse_error":
+        if event == "extraction_jsonl_partial":
             captured.update(kwargs)
         return orig(event, *args, **kwargs)
 
@@ -299,47 +303,60 @@ def _capture_parse_error_truncated(monkeypatch) -> dict:
 async def test_extract_marks_truncated_on_openrouter_length_finish(
     mock_neptune, mock_cache, monkeypatch
 ):
-    """ONTA-196 item 3: on the OpenRouter path, a ``finish_reason == "length"``
-    marks the reply TRUNCATED (mirroring the Anthropic ``stop_reason`` check), so
-    a parse failure is logged as a truncation to recover — not a malformed reply.
-    We force the OpenRouter path and return a length-truncated, unparseable body,
-    then assert the parse-error log carries ``truncated=True``."""
+    """ONTA-196 item 3 + ONTA-197 JSONL: on the OpenRouter path a
+    ``finish_reason == "length"`` marks the reply TRUNCATED, and with JSONL the
+    truncated last line is DROPPED while the complete lines above it are
+    SALVAGED. We return two complete entity lines + a truncated third, and assert
+    the two complete records survive AND the partial-parse log carries
+    ``truncated=True`` / ``dropped_last_line=True``."""
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     # Force the OpenRouter branch of _extract regardless of environment.
     monkeypatch.setattr(resolver, "EXTRACT_PROVIDER", "openrouter")
     monkeypatch.setattr(resolver, "_openrouter_key", "or-key")
 
     async def fake_or(user_content):
-        # Truncated (length) + unparseable JSON → the truncation-signal path.
-        return '{"entities": [{"type_name": "Model", "id": "m0"', "length"
+        # Two complete entity lines, then a truncated (cut mid-line) third.
+        body = (
+            '{"kind":"entity","type_name":"Model","id":"m0"}\n'
+            '{"kind":"entity","type_name":"Model","id":"m1"}\n'
+            '{"kind":"entity","type_name":"Model","id":"m2"'  # truncated
+        )
+        return body, "length"
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
     captured = _capture_parse_error_truncated(monkeypatch)
 
     result = await resolver._extract("[{}]", "json", {})
 
-    assert result.entities == []  # truncated reply → empty, recovery handles upstream
+    # N-1 salvaged: the two complete records survive, the partial is dropped.
+    assert [e.id for e in result.entities] == ["m0", "m1"]
     assert captured.get("truncated") is True
+    assert captured.get("dropped_last_line") is True
 
 
 @pytest.mark.asyncio
 async def test_extract_not_truncated_on_openrouter_clean_finish(
     mock_neptune, mock_cache, monkeypatch
 ):
-    """A clean OpenRouter finish (``finish_reason == "stop"``) that still fails to
-    parse is NOT flagged truncated — it's a genuinely malformed reply, and the
-    truncation flag must not cry wolf."""
+    """A clean OpenRouter finish (``finish_reason == "stop"``) whose LAST line is
+    still garbage drops that line but is NOT flagged truncated — the truncation
+    flag must not cry wolf on a clean finish. The complete lines still parse."""
     resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
     monkeypatch.setattr(resolver, "EXTRACT_PROVIDER", "openrouter")
     monkeypatch.setattr(resolver, "_openrouter_key", "or-key")
 
     async def fake_or(user_content):
-        return "not json at all", "stop"
+        body = (
+            '{"kind":"entity","type_name":"Model","id":"m0"}\n'
+            "not json at all"
+        )
+        return body, "stop"
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
     captured = _capture_parse_error_truncated(monkeypatch)
 
     result = await resolver._extract("[{}]", "json", {})
 
-    assert result.entities == []
+    assert [e.id for e in result.entities] == ["m0"]
     assert captured.get("truncated") is False
+    assert captured.get("dropped_last_line") is True
