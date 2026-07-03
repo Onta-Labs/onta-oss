@@ -647,7 +647,12 @@ export class Client {
    * (`POST /graphs/{tenant}/agent`, COG-118). Mirrors the HTTP contract exactly:
    *
    *  - `confirmPlanId` set → the server runs `execute_plan` (the only mutating
-   *    path) and returns `{kind:"result", steps}`.
+   *    path) and returns `{kind:"result", steps}`. Confirms are ONE-SHOT
+   *    server-side: a plan executes exactly once, so a duplicate confirm (a
+   *    retry after a gateway timeout, an auto-confirm double-fire) never
+   *    re-runs the steps — it replays the same result marked `replayed: true`
+   *    once finished, or errors with `code:"plan_already_executing"` while the
+   *    first confirm is still in flight.
    *  - otherwise → the server runs `planner.handle(message)` and returns one of
    *    `{kind:"answer"}` / `{kind:"clarify"}` / `{kind:"plan"}`.
    *
@@ -1402,8 +1407,13 @@ export interface AgentTurnOptions {
  *  - `clarify` — the agent needs more detail; ask the user `question`.
  *  - `plan`    — a proposed (un-executed) plan with `plan_id` + `steps`; confirm
  *                by calling `agent({ confirmPlanId: plan_id })`.
- *  - `result`  — the outcome of executing a confirmed plan, per-step.
- *  - `error`   — e.g. an unknown/expired plan_id on confirm.
+ *  - `result`  — the outcome of executing a confirmed plan, per-step. A
+ *                duplicate confirm of a finished plan returns the SAME result
+ *                with `replayed: true` (the plan is never run twice).
+ *  - `error`   — e.g. an unknown/expired plan_id on confirm, or a duplicate
+ *                confirm that can't replay yet: `code:"plan_already_executing"`
+ *                (first confirm still in flight) / `"plan_already_executed"`
+ *                (finished with no replayable result).
  * Extra fields vary by kind (answer/sparql/rows; question; plan_id/steps;
  * steps), so this is intentionally open beyond the discriminant.
  */
