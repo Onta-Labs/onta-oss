@@ -37,6 +37,7 @@ Boundary: OSS. Every module here imports only stdlib / ``cograph_client.*`` /
 
 from __future__ import annotations
 
+from cograph_client.retrieval.coerce import parse_json_array, parse_json_object
 from cograph_client.retrieval.cost import rows_per_call, source_cost
 from cograph_client.retrieval.errors import (
     FetchError,
@@ -73,6 +74,8 @@ __all__ = [
     "host_dns_blocked",
     "html_to_text",
     "is_fetchable_url",
+    "parse_json_array",
+    "parse_json_object",
     "register_default_fetchers",
     "register_page_fetcher",
     "reset_page_fetchers",
