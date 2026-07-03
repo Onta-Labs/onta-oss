@@ -1,0 +1,58 @@
+{
+  "slug": "open_food_facts_search",
+  "title": "Open Food Facts",
+  "publisher": "Open Food Facts (open data project)",
+  "description": "A free, open, collaborative database of food products from around the world, keyed by barcode (EAN/UPC/GTIN). Authoritative for a packaged food product's identity: product name, brands, categories, quantity, country of sale, and Nutri-Score grade. Prefer this over generic web search for identifying a grocery/food product or listing products by brand or category. No API key required.",
+  "docs_url": "https://openfoodfacts.github.io/openfoodfacts-server/api/",
+  "coverage": {
+    "entity_kinds": ["food_product", "grocery_product", "packaged_food"],
+    "attributes": ["barcode", "product_name", "brands", "categories", "quantity", "countries", "nutriscore"],
+    "geo": "worldwide",
+    "temporal": "current, community-maintained",
+    "example_asks": [
+      "products made by Nestle",
+      "look up the product with barcode 3017620422003",
+      "breakfast cereals in the database",
+      "what brand and Nutri-Score is this chocolate bar"
+    ]
+  },
+  "authority_level": "authoritative",
+  "base_url": "https://world.openfoodfacts.org",
+  "auth": { "mode": "none" },
+  "cost_per_call": 0.0,
+  "rate_limit_per_min": 0,
+  "persist_ok": true,
+  "tos_note": "Open data under the Open Database License (ODbL). Attribution to Open Food Facts required when persisting.",
+  "enabled": true,
+  "entitlement": "free",
+  "endpoints": [
+    {
+      "name": "search",
+      "method": "GET",
+      "path": "/cgi/search.pl",
+      "query": { "json": "1", "action": "process" },
+      "params": [
+        { "name": "query", "target": "search_terms", "description": "Free-text product search, e.g. 'chocolate' or a brand name." }
+      ],
+      "result_path": "products",
+      "field_mappings": {
+        "barcode": "code",
+        "product_name": "product_name",
+        "brands": "brands",
+        "categories": "categories",
+        "quantity": "quantity",
+        "countries": "countries",
+        "nutriscore": "nutriscore_grade"
+      },
+      "pagination": {
+        "style": "page",
+        "limit_param": "page_size",
+        "page_size": 20,
+        "page_param": "page",
+        "start_page": 1,
+        "total_path": "count",
+        "max_pages": 5
+      }
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "slug": "nppes",
+  "title": "NPPES NPI Registry",
+  "publisher": "Centers for Medicare & Medicaid Services (CMS)",
+  "description": "The official U.S. government registry of every healthcare provider and organization issued a National Provider Identifier (NPI). Authoritative for a clinician's or health organization's NPI number, provider taxonomy (specialty, e.g. cardiology, pediatrics), practice and mailing addresses, and phone number. Prefer this over generic web search for any question about who a U.S. doctor, nurse, hospital, clinic, pharmacy, or other healthcare provider is, where they practice, or what their specialty is. Search by taxonomy/specialty description, city, state, name, or NPI number.",
+  "docs_url": "https://npiregistry.cms.hhs.gov/api-page",
+  "coverage": {
+    "entity_kinds": ["healthcare_provider", "physician", "health_organization", "clinic", "hospital", "pharmacy"],
+    "attributes": ["npi", "taxonomy", "specialty", "address", "city", "state", "postal_code", "phone", "credential"],
+    "geo": "United States (all 50 states + territories)",
+    "temporal": "current registry snapshot",
+    "example_asks": [
+      "all cardiologists in San Francisco, CA",
+      "pediatricians in Austin, Texas",
+      "look up the NPI and specialty for Dr. Jane Smith in Boston",
+      "hospitals in ZIP code 94110",
+      "what is the taxonomy for NPI 1234567890"
+    ]
+  },
+  "authority_level": "source_of_truth",
+  "base_url": "https://npiregistry.cms.hhs.gov",
+  "auth": { "mode": "none" },
+  "cost_per_call": 0.0,
+  "rate_limit_per_min": 0,
+  "persist_ok": true,
+  "tos_note": "Public U.S. government data (CMS). No API key required. Registry is updated weekly; a query reaches at most ~1200 records (limit 200 x skip 1000), so broad asks need sub-query fan-out by city/taxonomy.",
+  "enabled": true,
+  "entitlement": "free",
+  "endpoints": [
+    {
+      "name": "search",
+      "method": "GET",
+      "path": "/api/",
+      "query": { "version": "2.1" },
+      "params": [
+        { "name": "taxonomy_description", "target": "taxonomy_description", "description": "Provider specialty/taxonomy text, e.g. 'cardiology' or 'pediatrics'." },
+        { "name": "city", "target": "city", "description": "Practice city." },
+        { "name": "state", "target": "state", "description": "Two-letter state code, e.g. 'CA'." },
+        { "name": "first_name", "target": "first_name", "description": "Individual provider first name." },
+        { "name": "last_name", "target": "last_name", "description": "Individual provider last name." },
+        { "name": "organization_name", "target": "organization_name", "description": "Organization/facility name." },
+        { "name": "postal_code", "target": "postal_code", "description": "ZIP code." },
+        { "name": "number", "target": "number", "description": "A specific 10-digit NPI number." }
+      ],
+      "result_path": "results",
+      "field_mappings": {
+        "npi": "number",
+        "enumeration_type": "enumeration_type",
+        "organization_name": "basic.organization_name",
+        "first_name": "basic.first_name",
+        "last_name": "basic.last_name",
+        "credential": "basic.credential",
+        "status": "basic.status",
+        "primary_taxonomy": "taxonomies[0].desc",
+        "taxonomy_code": "taxonomies[0].code",
+        "address_line": "addresses[0].address_1",
+        "address_city": "addresses[0].city",
+        "address_state": "addresses[0].state",
+        "address_postal_code": "addresses[0].postal_code",
+        "phone": "addresses[0].telephone_number"
+      },
+      "pagination": {
+        "style": "offset",
+        "limit_param": "limit",
+        "page_size": 200,
+        "offset_param": "skip",
+        "total_path": "",
+        "max_pages": 5
+      }
+    }
+  ]
+}
