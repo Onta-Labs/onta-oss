@@ -57,6 +57,15 @@ from urllib.parse import urlparse
 import structlog
 
 from cograph_client.agent.registry import AgentContext, PlanStep
+from cograph_client.api_registry import (
+    MODE_API_ONLY,
+    RoutingDecision,
+    RoutingPick,
+    build_registry_sources,
+    get_api_source_catalog,
+    route_query,
+)
+from cograph_client.config import settings
 from cograph_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
@@ -132,6 +141,75 @@ def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
+
+
+# --------------------------------------------------------------------------- #
+# API source registry routing (ONTA-194 phase 2)
+# --------------------------------------------------------------------------- #
+async def _registry_route(
+    ctx: AgentContext, query: str, spec: dict, urls: list
+) -> RoutingDecision:
+    """Consult the API source registry. Flag-gated; never raises.
+
+    Off (``OMNIX_API_REGISTRY_ENABLED`` unset) or in URL mode → a ``web_only``
+    decision, i.e. discovery behaves exactly as it does today (zero change).
+    """
+    if urls or not settings.api_registry_enabled:
+        return RoutingDecision()
+    try:
+        catalog = get_api_source_catalog()
+        if not catalog.enabled():
+            return RoutingDecision()
+        return await route_query(
+            query,
+            catalog,
+            openrouter_key=getattr(ctx, "openrouter_key", "") or "",
+            entity_type=spec.get("entity_type") or "",
+            query_kind=spec.get("query_kind") or "",
+        )
+    except Exception:  # noqa: BLE001 — routing must never break discovery
+        logger.warning("registry_route_failed", exc_info=True)
+        return RoutingDecision()
+
+
+def _merge_registry_ensemble(web_ensemble: list, registry_sources: list, mode: str) -> list:
+    """Splice registry sources into the discovery ensemble ahead of web.
+
+    ``api_only`` → the registry alone (no web spend), falling back to web only if
+    the registry yielded no usable source. Otherwise registry-first then web (the
+    cross-provider key dedupe makes the overlap free; the source-of-truth rows win).
+    """
+    if not registry_sources:
+        return web_ensemble
+    if mode == MODE_API_ONLY:
+        return list(registry_sources) or list(web_ensemble)
+    merged = list(registry_sources)
+    for p in web_ensemble:
+        if all(p is not q for q in merged):
+            merged.append(p)
+    return merged
+
+
+def _rebuild_registry_sources(params: dict) -> tuple[list, str]:
+    """Rebuild registry providers from the picks persisted at plan time."""
+    raw = params.get("registry_picks") or []
+    picks = [RoutingPick.from_dict(x) for x in raw if isinstance(x, dict)]
+    if not picks:
+        return [], MODE_API_ONLY
+    mode = str(params.get("registry_mode") or "api_plus_web")
+    decision = RoutingDecision(mode=mode, picks=picks)
+    return build_registry_sources(get_api_source_catalog(), decision), mode
+
+
+def _registry_card(registry_sources: list) -> str:
+    """Human plan-card line naming the registered API(s) consulted."""
+    if not registry_sources:
+        return ""
+    names = []
+    for s in registry_sources:
+        tag = " (registered source of truth)" if getattr(s, "is_source_of_truth", False) else ""
+        names.append(f"{getattr(s, 'title', None) or s.name}{tag}")
+    return "Using " + ", ".join(names)
 
 
 class WebIngestCapability:
@@ -278,6 +356,33 @@ class WebIngestCapability:
         # just re-scrape (and re-bill) the same URLs for fully-deduped batches.
         subqueries = [] if urls else _norm_subqueries(spec.get("subqueries"))
 
+        # ONTA-194 phase 2: consult the API source registry. If a registered
+        # authoritative API covers the ask, run it BEFORE web search (source-of-
+        # truth = registry Tier -1) — alone (api_only) or alongside web
+        # (api_plus_web). Flag-gated (OMNIX_API_REGISTRY_ENABLED); off ⇒ web_only
+        # ⇒ zero behavior change. The picks persist on the step so execute()
+        # rebuilds the same registry providers without a second LLM call.
+        registry_decision = await _registry_route(ctx, query, spec, urls)
+        registry_sources = (
+            build_registry_sources(get_api_source_catalog(), registry_decision)
+            if registry_decision.uses_api
+            else []
+        )
+        registry_card = _registry_card(registry_sources)
+        registry_params = (
+            {
+                "registry_picks": [pk.to_dict() for pk in registry_decision.picks],
+                "registry_mode": registry_decision.mode,
+            }
+            if registry_sources
+            else {}
+        )
+        if registry_sources:
+            ensemble = _merge_registry_ensemble(
+                ensemble, registry_sources, registry_decision.mode
+            )
+            provider = ensemble[0]
+
         # 2a. LEAN fast path — cheap providers skip the plan-time preview.
         #     At or under the auto-confirm gate the client starts the job straight
         #     from the attribute confirm, so the rich preview (paid sample fetch +
@@ -320,15 +425,18 @@ class WebIngestCapability:
                         "provider": provider.name,
                         "providers": [pr.name for pr in ensemble],
                         "urls": urls,
+                        **registry_params,
                     },
                     rationale=(
-                        f"Find {query} on the web and add them to this graph as "
+                        (f"{registry_card}. " if registry_card else "")
+                        + f"Find {query} on the web and add them to this graph as "
                         f"{type_name} records."
                     ),
                     confidence=0.7,
                     preview={
                         "summary": (
-                            f"Search the web for {query} and add the results as "
+                            (f"{registry_card}. " if registry_card else "")
+                            + f"Search the web for {query} and add the results as "
                             f"{type_name} records (up to {cap})."
                         ),
                     },
@@ -462,15 +570,20 @@ class WebIngestCapability:
                 # Persist the explicit URLs so execute() re-passes them (the same
                 # pages are fetched at commit). Empty in plain query-discovery mode.
                 "urls": urls,
+                **registry_params,
             },
             rationale=(
-                f"Find {query} on the web and add them to this graph as "
+                (f"{registry_card}. " if registry_card else "")
+                + f"Find {query} on the web and add them to this graph as "
                 f"{type_name} records."
             ),
             confidence=0.7,
             preview={
-                "summary": _preview_summary(
-                    discovered_types, relationships, cap, degraded=preview_degraded
+                "summary": (
+                    (f"{registry_card}. " if registry_card else "")
+                    + _preview_summary(
+                        discovered_types, relationships, cap, degraded=preview_degraded
+                    )
                 ),
                 "discovered_types": discovered_types,
                 "relationships": relationships,
@@ -492,7 +605,7 @@ class WebIngestCapability:
         # mode-appropriate default (for_urls=bool(urls)) for steps persisted
         # before either key existed. Names that no longer resolve are skipped.
         urls = list(p.get("urls") or [])
-        ensemble = [
+        web_ensemble = [
             prov
             for prov in (
                 get_web_source(n)
@@ -501,11 +614,21 @@ class WebIngestCapability:
             )
             if prov is not None
         ]
-        if not ensemble:
+        if not web_ensemble:
             single = get_web_source(p.get("provider")) or get_web_source(
                 for_urls=bool(urls)
             )
-            ensemble = [single] if single is not None else []
+            web_ensemble = [single] if single is not None else []
+        # ONTA-194 phase 2: rebuild the registry providers from the picks the plan
+        # persisted (no second LLM call) and splice them ahead of web, honoring the
+        # persisted mode. A registry-only run (api_only, or a registry-only
+        # deployment) proceeds even when no web provider is available.
+        registry_sources, registry_mode = _rebuild_registry_sources(p)
+        ensemble = (
+            _merge_registry_ensemble(web_ensemble, registry_sources, registry_mode)
+            if registry_sources
+            else web_ensemble
+        )
         if not ensemble:
             raise RuntimeError("web-source provider not available at execute time")
         provider = ensemble[0]  # primary — naming + default error attribution
