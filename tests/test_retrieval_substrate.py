@@ -209,11 +209,14 @@ def test_shim_reexports_are_substrate_objects():
         assert getattr(research_fetch, name) is getattr(rfetch, name), name
     for name in ("is_fetchable_url", "host_dns_blocked", "html_to_text"):
         assert getattr(research_fetch, name) is getattr(rsafety, name), name
-    # The private sync DNS guard reached by older tests stays re-exported too.
-    # (``_resolve_ips`` is also re-exported for read-compat, but it is the stub
-    # tests monkeypatch — patch it on ``retrieval.safety``, not the shim — so an
-    # identity assertion on it is intentionally omitted.)
-    assert research_fetch._host_dns_blocked is rsafety._host_dns_blocked
+    # Private SSRF internals reached by older tests / reserved for compat stay
+    # re-exported as the same objects too, so a future re-fork that drops one from
+    # the shim trips here. (``_resolve_ips`` is also re-exported for read-compat,
+    # but it is the stub tests monkeypatch — patch it on ``retrieval.safety``, not
+    # the shim — so an identity assertion on it is intentionally omitted.)
+    for name in ("_host_dns_blocked", "_is_blocked_host", "_host_to_ip",
+                 "_BLOCKED_HOST_RE", "_TextExtractor"):
+        assert getattr(research_fetch, name) is getattr(rsafety, name), name
 
 
 def test_fetchedpage_home_is_substrate_and_reexported():
