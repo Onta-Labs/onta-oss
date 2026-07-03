@@ -14,6 +14,9 @@ Contract (the single conversational surface):
     {kind:"plan",    plan_id, steps:[...]}         # actions, awaiting confirm
   execute_plan(plan_id) →
     {kind:"result",  steps:[summaries]}           # the only mutating path
+    # ONE-SHOT: a duplicate confirm never re-runs the steps — it replays the
+    # persisted result ({kind:"result", ..., replayed:true}) once finished, or
+    # errors with code:"plan_already_executing" while the first is in flight.
 
 Plan persistence (A2, COG-124): a swappable, tenant-scoped store keyed by
 plan_id, mirroring the dual-backend :class:`JobStore` pattern. ``make_plan_store``
@@ -27,7 +30,9 @@ restart or a different task than the one that planned), else an
 from __future__ import annotations
 
 import json
+import os
 import re
+from datetime import datetime, timedelta, timezone
 
 import structlog
 
@@ -48,6 +53,7 @@ from cograph_client.agent.plan_store import (  # noqa: F401  (re-exported for ba
     PlanStore,
     PostgresPlanStore,
     StoredPlan,
+    claim_plan_for_execution,
     get_plan_store,
     make_plan_store,
     reset_plan_store,
@@ -98,6 +104,13 @@ _MAX_CLARIFY_ROUNDS = 1
 # the classifier prompt + accumulate for capability extraction. The store keeps
 # a longer tail for the history UI; the prompt only needs the recent context.
 _PROMPT_HISTORY_TURNS = 16
+
+# One-shot confirm guard: how long an ``executing`` claim on a plan stays
+# exclusive before a re-confirm may assume the executor died mid-run (crash,
+# redeploy) and claim it again. execute_plan itself finishes in seconds (long
+# work is spawned as background jobs), so anything past this is a dead claim,
+# not a slow one. Env-overridable so ops can retune without a deploy.
+_EXECUTING_STALE_S = float(os.environ.get("COGRAPH_PLAN_EXECUTING_STALE_S", "600"))
 
 
 _CLASSIFY_SYSTEM = """\
@@ -687,54 +700,129 @@ async def _record_turn(
 async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     """Run a persisted plan's steps in dependency order. The ONLY mutating path.
 
+    ONE-SHOT: a plan is executable exactly once. The confirm claims the plan
+    via an atomic status transition (``proposed`` → ``executing``) in the plan
+    store, so a duplicate confirm — the Explorer auto-confirm firing twice, a
+    client retry after a gateway timeout whose first request DID spawn the
+    work — can never run the steps again (a re-run re-issues the paid provider
+    fan-out and re-ingests every row; discovery/enrich executes are not
+    idempotent). A re-confirm of a finished plan replays the persisted
+    acks/job ids verbatim, marked ``"replayed": True``, so a retried confirm
+    converges to the same response; a confirm that races a still-running
+    execution gets ``{kind:"error", code:"plan_already_executing"}``. A claim
+    older than ``COGRAPH_PLAN_EXECUTING_STALE_S`` (default 600s — the executor
+    presumably died mid-run) is claimable again so a crash cannot strand the
+    plan un-runnable forever.
+
     Each step runs via its capability's ``execute`` (long work is spawned as a
-    background job inside the capability). Records per-step status; idempotent-ish
-    (re-running a done plan re-issues the acks — the underlying applies are
-    themselves idempotent / staged).
+    background job inside the capability). Records per-step status; the result
+    payload is persisted on the plan for the duplicate-confirm replay above.
     """
     store = make_plan_store()
-    plan = await store.get(plan_id, ctx.tenant_id)
+    stale_before = datetime.now(timezone.utc) - timedelta(
+        seconds=_EXECUTING_STALE_S
+    )
+    plan, claimed = await claim_plan_for_execution(
+        store, plan_id, ctx.tenant_id, stale_before=stale_before
+    )
     if plan is None:
         return {"kind": "error", "error": "plan not found", "plan_id": plan_id}
+    if not claimed:
+        logger.info(
+            "agent_plan_duplicate_confirm", plan_id=plan_id, status=plan.status
+        )
+        return _already_confirmed_response(plan)
 
-    plan.status = "executing"
-    await store.save(plan)
-    ordered = order_steps(plan.steps)
     summaries: list[dict] = []
-    for step in ordered:
-        cap = get_capability(step.capability)
-        if cap is None:
-            summaries.append(
-                {
-                    "step_id": step.id,
-                    "capability": step.capability,
-                    "status": "skipped",
-                    "error": "capability not registered",
-                }
-            )
-            continue
+    try:
+        ordered = order_steps(plan.steps)
+        for step in ordered:
+            cap = get_capability(step.capability)
+            if cap is None:
+                summaries.append(
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "status": "skipped",
+                        "error": "capability not registered",
+                    }
+                )
+                continue
+            try:
+                result = await cap.execute(ctx, step)
+                # Spread the capability ack first, then stamp the orchestration
+                # status LAST so a capability's own "status" field (e.g. a job's
+                # "queued") can't clobber the step-level success marker.
+                summaries.append({"step_id": step.id, **result, "status": "ok"})
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "agent_step_failed",
+                    step_id=step.id,
+                    capability=step.capability,
+                    exc_info=True,
+                )
+                summaries.append(
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "status": "failed",
+                        "error": str(exc),
+                    }
+                )
+    except Exception:
+        # Catastrophic (non-step) failure. Persist the terminal status so the
+        # one-shot guard still refuses a re-confirm — steps that DID run may
+        # have spawned paid work, so a retry could double-bill. Best-effort: if
+        # even this save fails, the stale-claim cutoff above is the backstop.
+        plan.status = "failed"
         try:
-            result = await cap.execute(ctx, step)
-            # Spread the capability ack first, then stamp the orchestration
-            # status LAST so a capability's own "status" field (e.g. a job's
-            # "queued") can't clobber the step-level success marker.
-            summaries.append({"step_id": step.id, **result, "status": "ok"})
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "agent_step_failed", step_id=step.id, capability=step.capability,
-                exc_info=True,
+            await store.save(plan)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "agent_plan_fail_persist_failed", plan_id=plan_id, exc_info=True
             )
-            summaries.append(
-                {
-                    "step_id": step.id,
-                    "capability": step.capability,
-                    "status": "failed",
-                    "error": str(exc),
-                }
-            )
+        raise
+    result = {"kind": "result", "plan_id": plan_id, "steps": summaries}
     plan.status = "done"
+    plan.result = result
     await store.save(plan)
-    return {"kind": "result", "plan_id": plan_id, "steps": summaries}
+    return result
+
+
+def _already_confirmed_response(plan: StoredPlan) -> dict:
+    """The duplicate-confirm response for a plan another confirm already claimed.
+
+    Finished with a persisted result → replay the SAME acks/job ids (marked
+    ``replayed`` so clients/telemetry can tell) — a retried confirm converges
+    instead of erroring. Still executing → a typed error; the work is already
+    in flight and its jobs are visible on the jobs feed. Finished without a
+    persisted result (a catastrophic failure, or a plan finished by a build
+    predating result persistence) → a typed error. Nothing re-runs in any case.
+    """
+    if plan.result is not None:
+        return {**plan.result, "replayed": True}
+    if plan.status == "executing":
+        return {
+            "kind": "error",
+            "code": "plan_already_executing",
+            "error": (
+                "This plan is already being executed — the first confirm is "
+                "still in flight, and confirming again will not run it twice. "
+                "Check the running jobs for progress."
+            ),
+            "plan_id": plan.plan_id,
+            "status": plan.status,
+        }
+    return {
+        "kind": "error",
+        "code": "plan_already_executed",
+        "error": (
+            f"This plan already ran (status: {plan.status}) and cannot run "
+            "again. Ask again to get a fresh plan if you want to repeat it."
+        ),
+        "plan_id": plan.plan_id,
+        "status": plan.status,
+    }
 
 
 def _new_plan_id() -> str:

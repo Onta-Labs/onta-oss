@@ -3,14 +3,16 @@
 Mirrors ``tests/test_jobs_actions.py``'s store tests: an in-memory round-trip,
 the ``make_plan_store`` selection logic, the ``reset_plan_store`` helper, and the
 ``PostgresPlanStore`` lazy-pool/DDL/upsert path with ``asyncpg.create_pool``
-monkeypatched (no live DB). A final end-to-end test confirms a confirm→execute
-resolves the persisted plan by id through the store.
+monkeypatched (no live DB). Also covers ``claim_for_execution`` — the atomic
+status transition backing the one-shot confirm guard — on both backends. A
+final end-to-end test confirms a confirm→execute resolves the persisted plan by
+id through the store.
 """
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -18,6 +20,7 @@ from cograph_client.agent.plan_store import (
     InMemoryPlanStore,
     PostgresPlanStore,
     StoredPlan,
+    claim_plan_for_execution,
     get_plan_store,
     make_plan_store,
     reset_plan_store,
@@ -140,6 +143,138 @@ def test_inmemory_list_for_session():
 
 
 # ---------------------------------------------------------------------------
+# claim_for_execution — the atomic transition behind the one-shot confirm guard
+# ---------------------------------------------------------------------------
+
+
+def test_inmemory_claim_transitions_exactly_once():
+    store = InMemoryPlanStore()
+
+    async def run():
+        await store.save(_make_plan())
+        plan, claimed = await store.claim_for_execution("plan-1", "test-tenant")
+        assert claimed is True
+        assert plan.status == "executing"
+        assert plan.executed_at is not None
+        # The transition persisted (not just on the returned copy).
+        assert (await store.get("plan-1", "test-tenant")).status == "executing"
+        # A second claim loses and observes the post-claim state.
+        again, claimed2 = await store.claim_for_execution("plan-1", "test-tenant")
+        assert claimed2 is False
+        assert again.status == "executing"
+        # Unknown id / wrong tenant → (None, False), mirroring get()'s scoping.
+        assert await store.claim_for_execution("nope", "test-tenant") == (
+            None,
+            False,
+        )
+        assert await store.claim_for_execution("plan-1", "other-tenant") == (
+            None,
+            False,
+        )
+
+    asyncio.run(run())
+
+
+def test_inmemory_claim_concurrent_confirms_single_winner():
+    """Eight simultaneous claims (the Explorer auto-confirm double-fire, a retry
+    racing the original) → exactly ONE wins; the rest back off."""
+    store = InMemoryPlanStore()
+
+    async def run():
+        await store.save(_make_plan())
+        outcomes = await asyncio.gather(
+            *[
+                store.claim_for_execution("plan-1", "test-tenant")
+                for _ in range(8)
+            ]
+        )
+        assert sum(1 for _, won in outcomes if won) == 1
+
+    asyncio.run(run())
+
+
+def test_inmemory_claim_staleness_rules():
+    """Terminal plans are NEVER claimable; a fresh ``executing`` claim stays
+    exclusive; only a claim older than the cutoff is recoverable (crashed
+    executor); with no cutoff an executing plan is never claimable."""
+    store = InMemoryPlanStore()
+    now = datetime.now(timezone.utc)
+
+    async def run():
+        done = _make_plan("done-plan")
+        done.status = "done"
+        await store.save(done)
+        # Even a cutoff in the FUTURE cannot claim a terminal plan.
+        _, won = await store.claim_for_execution(
+            "done-plan", "test-tenant", stale_before=now + timedelta(days=1)
+        )
+        assert won is False
+
+        stuck = _make_plan("stuck")
+        stuck.status = "executing"
+        stuck.executed_at = now - timedelta(hours=1)
+        await store.save(stuck)
+        # Claim newer than the cutoff → still exclusive.
+        _, won = await store.claim_for_execution(
+            "stuck", "test-tenant", stale_before=now - timedelta(hours=2)
+        )
+        assert won is False
+        # Claim older than the cutoff → recoverable.
+        plan, won = await store.claim_for_execution(
+            "stuck", "test-tenant", stale_before=now - timedelta(minutes=30)
+        )
+        assert won is True
+        assert plan.status == "executing"
+
+        other = _make_plan("stuck2")
+        other.status = "executing"
+        other.executed_at = now - timedelta(hours=1)
+        await store.save(other)
+        # No cutoff supplied → an executing plan is never claimable.
+        _, won = await store.claim_for_execution("stuck2", "test-tenant")
+        assert won is False
+
+    asyncio.run(run())
+
+
+def test_claim_plan_for_execution_falls_back_for_minimal_stores():
+    """A third-party ``PlanStore`` predating ``claim_for_execution`` still gets
+    the one-shot guard via the non-atomic get→check→save fallback."""
+
+    class _MinimalStore:
+        def __init__(self):
+            self.plans: dict[str, StoredPlan] = {}
+
+        async def save(self, plan):
+            self.plans[plan.plan_id] = plan
+
+        async def get(self, plan_id, tenant_id):
+            p = self.plans.get(plan_id)
+            return p if p is not None and p.tenant_id == tenant_id else None
+
+    store = _MinimalStore()
+
+    async def run():
+        await store.save(_make_plan())
+        plan, claimed = await claim_plan_for_execution(
+            store, "plan-1", "test-tenant"
+        )
+        assert claimed is True
+        assert plan.status == "executing"
+        again, claimed2 = await claim_plan_for_execution(
+            store, "plan-1", "test-tenant"
+        )
+        assert claimed2 is False
+        assert again.status == "executing"
+        assert await claim_plan_for_execution(store, "nope", "test-tenant") == (
+            None,
+            False,
+        )
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
 # StoredPlan serialization round-trip (payload jsonb)
 # ---------------------------------------------------------------------------
 
@@ -163,6 +298,40 @@ def test_storedplan_json_roundtrip_preserves_steps_and_meta():
 
     rebuilt2 = StoredPlan.from_payload(_json.loads(plan.to_json()))
     assert rebuilt2.plan_id == plan.plan_id
+
+
+def test_storedplan_roundtrip_preserves_result_and_executed_at():
+    """The one-shot guard's fields survive the payload round-trip, and legacy
+    payloads (written before the guard) default them instead of failing."""
+    import json as _json
+
+    plan = _make_plan()
+    plan.status = "done"
+    plan.executed_at = datetime(2026, 7, 3, 12, 0, tzinfo=timezone.utc)
+    plan.result = {
+        "kind": "result",
+        "plan_id": plan.plan_id,
+        "steps": [{"step_id": "s1", "job_id": "j-9", "status": "ok"}],
+    }
+    rebuilt = StoredPlan.from_payload(plan.to_json())
+    assert rebuilt.executed_at == plan.executed_at
+    assert rebuilt.result == plan.result
+
+    # Capability acks are embedded verbatim in ``result``; an exotic value (a
+    # datetime, say) must coerce (default=str) rather than make the
+    # post-execution save throw and strand the plan ``executing``.
+    plan.result["steps"][0]["completed_at"] = datetime(
+        2026, 7, 3, tzinfo=timezone.utc
+    )
+    hardened = StoredPlan.from_payload(plan.to_json())
+    assert isinstance(hardened.result["steps"][0]["completed_at"], str)
+
+    legacy = _json.loads(_make_plan().to_json())
+    legacy.pop("executed_at")
+    legacy.pop("result")
+    old = StoredPlan.from_payload(_json.dumps(legacy))
+    assert old.executed_at is None
+    assert old.result is None
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +400,14 @@ def test_reset_plan_store_clears_singleton(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+class _FakeTx:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
 class _FakeConn:
     """Records SQL + params; returns canned rows for fetch/fetchrow."""
 
@@ -250,6 +427,10 @@ class _FakeConn:
     async def fetch(self, sql, *params):
         self._rec.append(("fetch", sql, params))
         return self.rows
+
+    def transaction(self):
+        self._rec.append(("transaction", "", ()))
+        return _FakeTx()
 
 
 class _AcquireCtx:
@@ -353,6 +534,63 @@ def test_postgres_store_list_for_tenant(monkeypatch):
     assert "WHERE tenant_id = $1" in fetch[1]
     assert "ORDER BY created_at DESC" in fetch[1]
     assert fetch[2] == ("test-tenant",)
+
+
+def test_postgres_claim_locks_row_and_flips_status(monkeypatch):
+    """The winner's claim runs inside a transaction: the row is read with
+    ``FOR UPDATE`` (so racing confirms across ECS tasks serialize) and both the
+    mirrored status column and the payload flip to ``executing``."""
+    rec: list[tuple] = []
+    conn = _FakeConn(rec)
+    conn.row = {"payload": _make_plan().to_json()}
+    _patch_asyncpg(monkeypatch, conn)
+
+    async def run():
+        store = PostgresPlanStore(dsn="postgresql://fake/db")
+        plan, claimed = await store.claim_for_execution("plan-1", "test-tenant")
+        assert claimed is True
+        assert plan.status == "executing"
+        assert plan.executed_at is not None
+
+    asyncio.run(run())
+
+    assert any(r[0] == "transaction" for r in rec)
+    fetch = next(r for r in rec if r[0] == "fetchrow")
+    assert "FOR UPDATE" in fetch[1]
+    assert fetch[2] == ("plan-1", "test-tenant")
+    update = next(
+        r for r in rec if r[0] == "execute" and "UPDATE cograph_plans" in r[1]
+    )
+    assert update[2][2] == "executing"  # mirrored status column
+    assert '"status":"executing"' in update[2][4].replace(" ", "")  # payload
+
+
+def test_postgres_claim_loser_backs_off_without_update(monkeypatch):
+    """A claim that observes a fresh ``executing`` row (someone else won) backs
+    off: no UPDATE is issued and the post-claim plan is returned."""
+    rec: list[tuple] = []
+    conn = _FakeConn(rec)
+    won = _make_plan()
+    won.status = "executing"
+    won.executed_at = datetime.now(timezone.utc)
+    conn.row = {"payload": won.to_json()}
+    _patch_asyncpg(monkeypatch, conn)
+
+    async def run():
+        store = PostgresPlanStore(dsn="postgresql://fake/db")
+        plan, claimed = await store.claim_for_execution(
+            "plan-1",
+            "test-tenant",
+            stale_before=datetime.now(timezone.utc) - timedelta(minutes=10),
+        )
+        assert claimed is False
+        assert plan.status == "executing"
+
+    asyncio.run(run())
+
+    assert not [
+        r for r in rec if r[0] == "execute" and "UPDATE cograph_plans" in r[1]
+    ]
 
 
 def test_postgres_store_delete(monkeypatch):
@@ -463,9 +701,12 @@ def test_confirm_execute_resolves_plan_via_store(monkeypatch):
         result = await planner_mod.execute_plan(ctx, plan_id)
         assert result["kind"] == "result"
         assert all(s["status"] == "ok" for s in result["steps"])
-        # The plan's terminal status was persisted back.
+        # The plan's terminal status was persisted back, along with the claim
+        # timestamp and the result payload the one-shot guard replays.
         done = await make_plan_store().get(plan_id, "t1")
         assert done.status == "done"
+        assert done.executed_at is not None
+        assert done.result is not None and done.result["kind"] == "result"
         # A wrong-tenant confirm cannot resolve another tenant's plan.
         other = AgentContext(
             tenant_id="t2", kg_name="kg1", neptune=_FakeNeptune()

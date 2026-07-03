@@ -9,6 +9,7 @@ in ``asyncio.wait_for`` to fail loudly rather than hang.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -18,8 +19,10 @@ from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
 from cograph_client.agent.capabilities.query import QueryCapability
 from cograph_client.agent.conversation_store import reset_conversation_store
 from cograph_client.agent.planner import (
+    StoredPlan,
     execute_plan,
     handle,
+    make_plan_store,
     register_default_capabilities,
     reset_plan_store,
 )
@@ -825,6 +828,181 @@ async def test_execute_plan_unknown_id_errors():
 
 
 # --------------------------------------------------------------------------- #
+# 4b. One-shot confirm guard: a duplicate confirm can never re-run the steps.
+#
+# DELIBERATE contract change (2026-07-03): execute_plan used to be "idempotent-
+# ish — re-running a done plan re-issues the acks", i.e. it re-executed every
+# step. But capability executes are NOT idempotent (web discovery spawns a
+# fresh background job + a full paid provider fan-out and re-ingests every row
+# per run), so a retried confirm — the Explorer auto-confirm double-firing, a
+# client retry after a gateway timeout whose first request DID spawn the work —
+# double-billed and double-wrote silently. The plan is now claimed atomically
+# and executed exactly once; a duplicate confirm replays the persisted result
+# (finished) or is refused (still in flight / no result persisted).
+# --------------------------------------------------------------------------- #
+
+
+class _RecordingCap:
+    """A registrable capability that records executions and returns a job ack.
+
+    ``gate`` (optional) makes execute() block until the event is set, so a test
+    can observe a plan mid-execution deterministically.
+    """
+
+    name = "once_cap"
+
+    def __init__(self, gate: asyncio.Event | None = None):
+        self.calls: list[str] = []
+        self.gate = gate
+
+    def describe(self):
+        return "records executions (test)"
+
+    async def plan(self, ctx, instruction):
+        return []
+
+    async def execute(self, ctx, step):
+        self.calls.append(step.id)
+        if self.gate is not None:
+            await self.gate.wait()
+        return {"kind": "ack", "job_id": f"job-{len(self.calls)}", "job_status": "queued"}
+
+
+async def _save_plan(plan_id: str = "p-once", **overrides) -> StoredPlan:
+    """Persist a minimal single-step plan for the one-shot tests."""
+    plan = StoredPlan(
+        plan_id=plan_id,
+        tenant_id="t1",
+        kg_name="kg1",
+        type_name="Mentor",
+        message="test plan",
+        steps=[PlanStep(capability="once_cap", action="go")],
+        **overrides,
+    )
+    await make_plan_store().save(plan)
+    return plan
+
+
+@pytest.mark.asyncio
+async def test_duplicate_confirm_replays_result_without_rerunning():
+    """A re-confirm of a finished plan returns the SAME acks/job ids (marked
+    ``replayed``) and does not execute anything a second time."""
+    cap = _RecordingCap()
+    register_capability(cap)
+    await _save_plan("p-once")
+    ctx = _ctx()
+
+    first = await asyncio.wait_for(execute_plan(ctx, "p-once"), TIMEOUT)
+    assert first["kind"] == "result"
+    assert first["steps"][0]["job_id"] == "job-1"
+    assert "replayed" not in first
+
+    second = await asyncio.wait_for(execute_plan(ctx, "p-once"), TIMEOUT)
+    assert second["kind"] == "result"
+    assert second["replayed"] is True
+    assert second["steps"] == first["steps"]  # identical acks + job ids
+    assert len(cap.calls) == 1  # the steps ran exactly once
+
+    stored = await make_plan_store().get("p-once", "t1")
+    assert stored.status == "done"
+    assert stored.result["steps"] == first["steps"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_racing_inflight_execution_is_refused():
+    """A confirm arriving while the first is still executing is refused with a
+    typed error — and once the first finishes, a later confirm replays."""
+    gate = asyncio.Event()
+    cap = _RecordingCap(gate=gate)
+    register_capability(cap)
+    await _save_plan("p-flight")
+
+    first = asyncio.ensure_future(execute_plan(_ctx(), "p-flight"))
+    for _ in range(50):  # let the first confirm claim + enter execute()
+        if cap.calls:
+            break
+        await asyncio.sleep(0)
+    assert cap.calls, "first confirm never reached execute()"
+
+    dup = await asyncio.wait_for(execute_plan(_ctx(), "p-flight"), TIMEOUT)
+    assert dup["kind"] == "error"
+    assert dup["code"] == "plan_already_executing"
+
+    gate.set()
+    result = await asyncio.wait_for(first, TIMEOUT)
+    assert result["kind"] == "result"
+    assert len(cap.calls) == 1  # the duplicate never ran the step
+
+    replay = await asyncio.wait_for(execute_plan(_ctx(), "p-flight"), TIMEOUT)
+    assert replay.get("replayed") is True
+
+
+@pytest.mark.asyncio
+async def test_stale_executing_claim_is_recoverable():
+    """An ``executing`` claim orphaned by a mid-run crash (older than the
+    staleness cutoff) is claimable again; a FRESH claim stays exclusive."""
+    cap = _RecordingCap()
+    register_capability(cap)
+    now = datetime.now(timezone.utc)
+
+    # Fresh claim (just taken) → still exclusive, refused.
+    await _save_plan("p-stuck", status="executing", executed_at=now)
+    fresh = await asyncio.wait_for(execute_plan(_ctx(), "p-stuck"), TIMEOUT)
+    assert fresh["kind"] == "error" and fresh["code"] == "plan_already_executing"
+    assert cap.calls == []
+
+    # Same plan, claim now older than the cutoff → the executor is presumed
+    # dead; the re-confirm claims and actually runs it.
+    stuck = await make_plan_store().get("p-stuck", "t1")
+    stuck.executed_at = now - timedelta(hours=1)
+    await make_plan_store().save(stuck)
+    recovered = await asyncio.wait_for(execute_plan(_ctx(), "p-stuck"), TIMEOUT)
+    assert recovered["kind"] == "result"
+    assert len(cap.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_finished_plan_without_persisted_result_is_refused():
+    """A done plan with NO persisted result (finished by a build predating the
+    guard, or a catastrophic failure) refuses rather than re-running."""
+    cap = _RecordingCap()
+    register_capability(cap)
+    await _save_plan("p-legacy", status="done")
+
+    out = await asyncio.wait_for(execute_plan(_ctx(), "p-legacy"), TIMEOUT)
+    assert out["kind"] == "error"
+    assert out["code"] == "plan_already_executed"
+    assert cap.calls == []
+
+
+@pytest.mark.asyncio
+async def test_catastrophic_failure_marks_plan_failed_and_stays_one_shot(
+    monkeypatch,
+):
+    """A non-step crash persists status=failed, and a re-confirm is refused —
+    steps that DID run may have spawned paid work, so a retry could re-bill."""
+    cap = _RecordingCap()
+    register_capability(cap)
+    await _save_plan("p-boom")
+
+    def exploding_order(steps):
+        raise RuntimeError("orchestration blew up")
+
+    monkeypatch.setattr(planner_mod, "order_steps", exploding_order)
+    with pytest.raises(RuntimeError, match="orchestration blew up"):
+        await asyncio.wait_for(execute_plan(_ctx(), "p-boom"), TIMEOUT)
+    monkeypatch.undo()
+
+    stored = await make_plan_store().get("p-boom", "t1")
+    assert stored.status == "failed"
+
+    again = await asyncio.wait_for(execute_plan(_ctx(), "p-boom"), TIMEOUT)
+    assert again["kind"] == "error"
+    assert again["code"] == "plan_already_executed"
+    assert cap.calls == []
+
+
+# --------------------------------------------------------------------------- #
 # 5. Route-level: confirm:{plan_id} runs the persisted plan
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
@@ -910,6 +1088,24 @@ async def test_route_confirm_executes_plan(monkeypatch):
     result = r2.json()
     assert result["kind"] == "result"
     assert all(s["status"] == "ok" for s in result["steps"])
+
+    # A RETRIED confirm (the client re-sending after a gateway timeout, or the
+    # Explorer auto-confirm firing twice) replays the same result instead of
+    # re-running the plan — no second job, no second bill.
+    r3 = client.post(
+        "/graphs/test-tenant/agent",
+        json={
+            "message": "",
+            "context": {"kg_name": "kg1", "type_name": "Mentor"},
+            "confirm": {"plan_id": plan_id},
+        },
+        headers=headers,
+    )
+    assert r3.status_code == 200, r3.text
+    retried = r3.json()
+    assert retried["kind"] == "result"
+    assert retried["replayed"] is True
+    assert retried["steps"] == result["steps"]
 
 
 # --------------------------------------------------------------------------- #
