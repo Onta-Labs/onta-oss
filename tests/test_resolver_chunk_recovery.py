@@ -205,6 +205,27 @@ async def test_healthy_chunks_do_not_split(mock_neptune, mock_cache, pin_batch_2
     assert calls == [25, 25], calls
 
 
+def _padded_entity_for(record: dict, tokens_per_record: int) -> ExtractedEntity:
+    """A Model entity whose SERIALIZED size ≈ ``tokens_per_record`` output tokens.
+
+    ONTA-197 calibration measures the first batch's REAL output size to re-size
+    the rest, so a truncation mock must EMIT output consistent with the density it
+    claims — a stub entity that truncates at 700 tok/record but serializes to ~50
+    chars would let calibration (correctly) conclude the data is light and grow
+    the batches. We pad a ``blob`` attribute so ``model_dump`` serializes to about
+    ``tokens_per_record * 4`` chars (the ~4 chars/token the estimator assumes),
+    making the mock's emitted size track its declared density."""
+    approx_chars = max(1, tokens_per_record * 4)
+    return ExtractedEntity(
+        type_name="Model",
+        id=str(record["id"]),
+        attributes=[
+            ExtractedAttribute(name="name", value=record["name"], datatype="string"),
+            ExtractedAttribute(name="blob", value="x" * approx_chars, datatype="string"),
+        ],
+    )
+
+
 def _token_scaling_extract_factory(
     max_tokens: int, tokens_per_record: int, calls: list[int]
 ):
@@ -212,7 +233,9 @@ def _token_scaling_extract_factory(
     to ``tokens_per_record`` OUTPUT tokens, and the reply is truncated (returns
     EMPTY) whenever a chunk's predicted output ``n * tokens_per_record`` exceeds
     ``max_tokens``. This is the exact failure ONTA-196 batching prevents — a
-    chunk sized past the cap silently drops."""
+    chunk sized past the cap silently drops. Successful replies EMIT output sized
+    to ``tokens_per_record`` (via :func:`_padded_entity_for`) so ONTA-197
+    calibration observes the true density rather than a stub."""
 
     async def fake_extract(content, content_type, existing_types=None):
         try:
@@ -222,7 +245,10 @@ def _token_scaling_extract_factory(
         n = len(data) if isinstance(data, list) else 0
         calls.append(n)
         if 0 < n and n * tokens_per_record <= max_tokens:
-            return ExtractionResult(entities=[_entity_for(r) for r in data], relationships=[])
+            return ExtractionResult(
+                entities=[_padded_entity_for(r, tokens_per_record) for r in data],
+                relationships=[],
+            )
         return ExtractionResult(entities=[], relationships=[])  # overflow → truncated
 
     return fake_extract
