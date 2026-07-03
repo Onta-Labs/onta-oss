@@ -124,12 +124,14 @@ def register_api_source_layer(name: str, specs: Iterable[ApiSourceSpec]) -> None
             continue
         validated.append(s)
     _layers[name] = validated
+    reset_api_source_catalog()  # a new layer must show up on the next catalog build
     logger.info("api_registry: registered layer %s (%d entries)", name, len(validated))
 
 
 def reset_api_source_layers() -> None:
     """Drop all registered overlay layers (tests)."""
     _layers.clear()
+    reset_api_source_catalog()
 
 
 def registered_layers() -> dict[str, list[ApiSourceSpec]]:
@@ -163,10 +165,38 @@ def make_api_source_catalog(*, seed_dir: Optional[Path] = None) -> ApiSourceCata
     return catalog
 
 
+# --------------------------------------------------------------------------- #
+# Process-wide cached catalog (built once, after startup plugin registration)
+# --------------------------------------------------------------------------- #
+_catalog_singleton: Optional[ApiSourceCatalog] = None
+
+
+def get_api_source_catalog() -> ApiSourceCatalog:
+    """Return the process-wide catalog, building it on first use.
+
+    Built lazily so premium overlays registered at startup
+    (``_load_api_registry_plugin``) are present by the time the first request
+    consults the registry. Call ``reset_api_source_catalog()`` after registering
+    a new layer (tests) to rebuild.
+    """
+    global _catalog_singleton
+    if _catalog_singleton is None:
+        _catalog_singleton = make_api_source_catalog()
+    return _catalog_singleton
+
+
+def reset_api_source_catalog() -> None:
+    """Drop the cached catalog so the next access rebuilds it (tests / startup)."""
+    global _catalog_singleton
+    _catalog_singleton = None
+
+
 __all__ = [
     "ApiSourceCatalog",
     "load_catalog_dir",
     "make_api_source_catalog",
+    "get_api_source_catalog",
+    "reset_api_source_catalog",
     "register_api_source_layer",
     "reset_api_source_layers",
     "registered_layers",
