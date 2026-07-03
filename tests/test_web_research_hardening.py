@@ -13,7 +13,13 @@ import httpx
 import pytest
 
 from cograph_client.research import extract as extract_mod
-from cograph_client.research import fetch as fetch_mod
+
+# The fetch ladder + SSRF guards moved to the shared retrieval substrate
+# (ONTA-193): StaticHttpFetcher + httpx live in ``retrieval.fetch``; the DNS stub
+# ``_resolve_ips`` lives in ``retrieval.safety``. Monkeypatch those on their real
+# home — ``cograph_client.research.fetch`` is now only a compat re-export shim.
+from cograph_client.retrieval import fetch as fetch_mod
+from cograph_client.retrieval import safety as safety_mod
 from cograph_client.research.fetch import (
     StaticHttpFetcher,
     is_fetchable_url,
@@ -55,7 +61,7 @@ def _offline_dns(monkeypatch):
     # Keep StaticHttpFetcher.fetch offline + deterministic: resolve every host to
     # a fixed PUBLIC ip by default (the fetch-time SSRF guard now does DNS). Tests
     # that exercise the DNS guard override this locally.
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
 
 
 def _schema() -> TargetSchema:
@@ -158,7 +164,7 @@ async def test_static_fetch_bounds_redirect_loops(monkeypatch):
 async def test_static_fetch_refuses_host_resolving_to_internal(monkeypatch):
     # A public-looking name whose A record points at cloud metadata — invisible to
     # the string guard, caught by the resolve-and-check guard before connecting.
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
     page = await StaticHttpFetcher().fetch(
         "http://imds.attacker.example/latest/meta-data/"
     )
@@ -174,7 +180,7 @@ async def test_static_fetch_refuses_redirect_resolving_to_internal(monkeypatch):
     def _resolve(host):
         return ["10.0.0.5"] if host == "evil.example" else ["93.184.216.34"]
 
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", _resolve)
+    monkeypatch.setattr(safety_mod, "_resolve_ips", _resolve)
     monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", _mock_client_factory(handler))
     page = await StaticHttpFetcher().fetch("http://public.example.org/x")
     assert not page.ok
@@ -185,13 +191,13 @@ def test_host_dns_blocked_is_false_for_ip_literals_and_unresolvable(monkeypatch)
     from cograph_client.research.fetch import _host_dns_blocked
 
     # IP literals are the string guard's job — no redundant lookup here.
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
     assert _host_dns_blocked("127.0.0.1") is False
     # A name that doesn't resolve is not "blocked" (it just can't connect).
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: [])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: [])
     assert _host_dns_blocked("nope.invalid") is False
     # A name resolving to a public IP is allowed.
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
     assert _host_dns_blocked("example.com") is False
 
 

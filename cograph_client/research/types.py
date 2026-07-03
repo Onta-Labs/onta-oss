@@ -22,6 +22,11 @@ from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urlparse
 
+# FetchedPage moved to the shared retrieval substrate (ONTA-193) — the fetch
+# ladder is no longer research-only. Re-exported here so existing importers of
+# ``cograph_client.research.types.FetchedPage`` keep working unchanged.
+from cograph_client.retrieval.types import FetchedPage
+
 # Recognized field types for a target-schema column. The extractor returns bare
 # string values; these are advisory hints for the extraction prompt + downstream
 # formatting, never a hard validation gate (a research answer is best-effort).
@@ -378,39 +383,6 @@ class ResearchRow:
             "values": dict(self.values),
             "citations": list(self.citations),
             "confidence": self.confidence,
-        }
-
-
-@dataclass
-class FetchedPage:
-    """The result of fetching one URL through some rung of the fetch ladder.
-
-    ``tier`` records which rung produced it (``static`` / ``render`` /
-    ``structured``) for observability + escalation decisions. ``ok=False`` with an
-    ``error`` means the fetch failed (timeout, non-200, blocked) as distinct from
-    fetching successfully but finding little text.
-    """
-
-    url: str
-    text: str = ""
-    title: str = ""
-    tier: str = ""
-    ok: bool = True
-    error: Optional[str] = None
-    truncated: bool = False
-
-    def has_content(self) -> bool:
-        return self.ok and bool(self.text and self.text.strip())
-
-    def to_dict(self) -> dict:
-        return {
-            "url": self.url,
-            "title": self.title,
-            "tier": self.tier,
-            "ok": self.ok,
-            "error": self.error,
-            "truncated": self.truncated,
-            "chars": len(self.text or ""),
         }
 
 

@@ -32,7 +32,7 @@ from typing import Awaitable, Callable, Optional
 
 import structlog
 
-from cograph_client.research.fetch import (
+from cograph_client.retrieval import (
     FetchedPage,
     PageFetcher,
     default_ladder,
