@@ -1918,3 +1918,55 @@ class TestWideTableInference:
         )
         passes = [c for c, _ in calls]
         assert passes == ["reason", "refute", "complete"]
+
+
+class TestSchemaInferenceModel:
+    """Schema inference must default to a FAST model, decoupled from the
+    heavyweight reasoning primary.
+
+    Its cost is fixed per file (three sequential passes; row ingest is LLM-free),
+    so it dominates a small upload's latency. A regression once let it inherit
+    PRIMARY_MODEL (Opus) via ``OMNIX_EXTRACT_MODEL``'s default, so a 24-row CSV
+    paid ~3× an Opus round-trip stuck at "0 of ~24". These lock the fast default
+    and the decoupling in.
+    """
+
+    def test_defaults_to_fast_model(self):
+        # No env override in CI → the class attr computed at import is the fast
+        # default (the same model research/enrichment extraction default to).
+        assert CSVResolver.SCHEMA_MODEL_DEFAULT == "google/gemini-2.5-flash"
+        assert CSVResolver.EXTRACT_MODEL == "google/gemini-2.5-flash"
+
+    def test_decoupled_from_reasoning_primary(self):
+        # The bug: schema inference tracking PRIMARY_MODEL (Opus). It must not.
+        from cograph_client.resolver.llm_router import PRIMARY_MODEL
+
+        assert CSVResolver.EXTRACT_MODEL != PRIMARY_MODEL
+        assert "opus" not in CSVResolver.EXTRACT_MODEL.lower()
+
+    @pytest.mark.asyncio
+    async def test_openrouter_pass_routes_to_the_schema_model(self, monkeypatch):
+        # Every v2 pass ships through _chat_openrouter → openrouter_chat; assert
+        # the model it sends is the (fast) schema model, not the primary.
+        captured: dict[str, object] = {}
+
+        async def fake_openrouter_chat(api_key, system, user, *, model=None, **kw):
+            captured["model"] = model
+            return "{}"
+
+        monkeypatch.setattr(csv_resolver, "openrouter_chat", fake_openrouter_chat)
+        resolver = CSVResolver(client=None, openrouter_key="sk-test")
+        await resolver._chat_openrouter(REASON_SYSTEM, "hi", temperature=0.0)
+        assert captured["model"] == CSVResolver.EXTRACT_MODEL == "google/gemini-2.5-flash"
+
+    def test_env_override_respected(self, monkeypatch):
+        # Ops can still pin the model via the dedicated knob (re-read at import).
+        import importlib
+
+        monkeypatch.setenv("OMNIX_CSV_SCHEMA_MODEL", "test/custom-schema-model")
+        reloaded = importlib.reload(csv_resolver)
+        try:
+            assert reloaded.CSVResolver.EXTRACT_MODEL == "test/custom-schema-model"
+        finally:
+            monkeypatch.delenv("OMNIX_CSV_SCHEMA_MODEL", raising=False)
+            importlib.reload(csv_resolver)

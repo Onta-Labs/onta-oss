@@ -48,7 +48,7 @@ from cograph_client.graph.ontology_queries import (
     TEXT_KIND_FREE_TEXT,
     TEXT_KIND_NOT_TEXT,
 )
-from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from cograph_client.resolver.llm_router import openrouter_chat
 from cograph_client.resolver.profiler import profile_table
 
 logger = structlog.stdlib.get_logger("cograph.resolver.csv")
@@ -502,9 +502,24 @@ columns JSON now."""
 
 
 class CSVResolver:
-    # Primary schema-inference model, routed through OpenRouter with the
-    # configured fallback. Defaults to the shared primary.
-    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", PRIMARY_MODEL)
+    # Schema inference is a STRUCTURED tagging task (map columns → ontology
+    # roles), run as up to THREE sequential passes — REASON → adversarial
+    # REFUTE → COMPLETE (ADR 0003) — whose whole design is to make a fast, cheap
+    # model reliable, not to lean on a heavyweight reasoner. Its cost is FIXED
+    # per file (LLM-free row ingest follows), so it dominates a small upload's
+    # latency: a 24-row CSV pays the full 3-pass cost before the first record
+    # lands. Inheriting PRIMARY_MODEL (→ Opus) therefore made even a tiny file
+    # feel stuck at "0 of ~24" for ~3× an Opus round-trip. Default to a fast
+    # model instead — the SAME choice the research and enrichment extractors
+    # already make (google/gemini-2.5-flash; _build_mapping below even carries
+    # a Flash-specific quirk workaround). This restores the pre-OpenRouter-
+    # convergence default (a fast model) but behind its OWN env knob, so it is
+    # decoupled from BOTH the reasoning primary (OMNIX_LLM_MODEL) and the
+    # entity-extraction knob (OMNIX_EXTRACT_MODEL) — bumping either can never
+    # again silently drag schema inference back onto a slow model. Ops override
+    # via OMNIX_CSV_SCHEMA_MODEL; the OpenRouter fallback chain still applies.
+    SCHEMA_MODEL_DEFAULT = "google/gemini-2.5-flash"
+    EXTRACT_MODEL = os.environ.get("OMNIX_CSV_SCHEMA_MODEL", SCHEMA_MODEL_DEFAULT)
     EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
     # Anthropic-SDK offline fallback (used only when no OpenRouter key is set) —
     # must be a NATIVE Anthropic model id. Env-overridable.
