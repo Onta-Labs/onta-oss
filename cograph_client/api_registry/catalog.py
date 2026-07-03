@@ -112,11 +112,19 @@ def register_api_source_layer(name: str, specs: Iterable[ApiSourceSpec]) -> None
     the ``global_enhanced`` overlay — no ``cograph.*`` import crosses into OSS.
     Idempotent: re-registering the same layer name replaces it.
     """
-    specs = list(specs)
+    validated: list[ApiSourceSpec] = []
     for s in specs:
         s.layer = name
-    _layers[name] = specs
-    logger.info("api_registry: registered layer %s (%d entries)", name, len(specs))
+        errors = validate_spec(s)
+        if errors:
+            logger.warning(
+                "api_registry: dropping invalid layer entry %s/%s: %s",
+                name, s.slug or "?", "; ".join(errors),
+            )
+            continue
+        validated.append(s)
+    _layers[name] = validated
+    logger.info("api_registry: registered layer %s (%d entries)", name, len(validated))
 
 
 def reset_api_source_layers() -> None:

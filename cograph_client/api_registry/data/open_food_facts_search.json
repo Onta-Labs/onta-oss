@@ -30,7 +30,7 @@
       "name": "search",
       "method": "GET",
       "path": "/cgi/search.pl",
-      "query": { "json": "1", "action": "process" },
+      "query": { "json": "1", "action": "process", "search_simple": "1" },
       "params": [
         { "name": "query", "target": "search_terms", "description": "Free-text product search, e.g. 'chocolate' or a brand name." }
       ],

@@ -31,6 +31,8 @@ from enum import Enum
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+from .jsonpath import is_valid_path
+
 
 # --------------------------------------------------------------------------- #
 # Enumerations
@@ -82,7 +84,7 @@ ENTITLEMENTS = frozenset(e.value for e in Entitlement)
 _MAX_DESCRIPTION = 2000
 _MAX_TEXT = 400
 _MAX_LIST = 40
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]{1,63}$")
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
 
 
 class SpecError(ValueError):
@@ -567,6 +569,11 @@ def validate_spec(spec: ApiSourceSpec) -> list[str]:
             errs.append(f"{prefix}.path must start with '/' (got {ep.path!r})")
         if not ep.field_mappings:
             errs.append(f"{prefix}.field_mappings is required (at least one output column)")
+        if ep.result_path and not is_valid_path(ep.result_path):
+            errs.append(f"{prefix}.result_path {ep.result_path!r} is not a valid dotted path")
+        for col, src in ep.field_mappings.items():
+            if not is_valid_path(src):
+                errs.append(f"{prefix}.field_mappings[{col!r}] path {src!r} is not a valid dotted path")
         errs.extend(_validate_endpoint_params(ep, prefix))
         errs.extend(_validate_pagination(ep.pagination, prefix))
 
@@ -608,6 +615,10 @@ def _validate_pagination(pg: PaginationSpec, prefix: str) -> list[str]:
         errs.append(f"{pp}.page_param required for style=page")
     if pg.style is PaginationStyle.offset and not pg.offset_param:
         errs.append(f"{pp}.offset_param required for style=offset")
+    if pg.style is PaginationStyle.offset and not pg.limit_param:
+        # The offset stride is next_index * page_size; without telling the server
+        # the page size, real page size can diverge -> skipped/overlapping rows.
+        errs.append(f"{pp}.limit_param required for style=offset (offset stride assumes page_size)")
     if pg.style is PaginationStyle.cursor and not (pg.cursor_param and pg.cursor_path):
         errs.append(f"{pp}.cursor_param and cursor_path required for style=cursor")
     if pg.style is PaginationStyle.next_link and not pg.next_link_path:

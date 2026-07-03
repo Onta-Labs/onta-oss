@@ -36,9 +36,18 @@ from cograph_client.api_registry.catalog import (
     reset_api_source_layers,
 )
 
-# Load the shipped OSS seed once for parametrization. This is the exact data the
-# package ships (no overlay registered), so the OSS CI validates the OSS seed.
-_SEED = load_catalog_dir(_DATA_DIR, layer="global_public")
+# Load the shipped OSS seed by parsing the RAW files directly (NOT through
+# load_catalog_dir, which is tolerant and silently skips invalid entries). This
+# makes the validation tests a real gate: a malformed/unsafe file that ships will
+# fail here, instead of being silently dropped by the loader.
+_SEED_FILES = sorted(_DATA_DIR.glob("*.json"))
+
+
+def _load_raw(path) -> ApiSourceSpec:
+    return ApiSourceSpec.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+_SEED = [_load_raw(p) for p in _SEED_FILES]
 _SEED_IDS = [s.slug for s in _SEED]
 
 # Secret-shaped strings must never appear in a catalog value (defense in depth;
@@ -62,6 +71,18 @@ def _no_overlays():
 # --------------------------------------------------------------------------- #
 def test_seed_catalog_is_non_empty():
     assert _SEED, "OSS seed catalog is empty"
+
+
+def test_loader_drops_no_shipped_entry():
+    # The tolerant loader silently skips invalid entries; if a shipped file were
+    # invalid, the loader count would be < the raw file count. This asserts every
+    # shipped file survives the loader (i.e. is valid), independent of the
+    # parametrized validation below.
+    loaded = load_catalog_dir(_DATA_DIR, layer="global_public")
+    assert len(loaded) == len(_SEED_FILES), (
+        "loader dropped a shipped seed entry (invalid?) — "
+        f"{len(loaded)} loaded vs {len(_SEED_FILES)} files"
+    )
 
 
 def test_seed_contains_flagship_nppes():
@@ -144,6 +165,25 @@ def _good_entry() -> dict:
 
 def test_guard_accepts_a_good_entry():
     assert validate_spec(ApiSourceSpec.from_dict(_good_entry())) == []
+
+
+def test_loader_silently_skips_a_bad_file_but_raw_validation_catches_it(tmp_path):
+    # Proves the gate has teeth: an unsafe entry (http base_url, private host, no
+    # field_mappings) is SILENTLY dropped by the tolerant loader (why the
+    # raw-file validation above is necessary), and raw validation flags it.
+    bad = {
+        "slug": "evilapi", "title": "Evil",
+        "base_url": "http://169.254.169.254",
+        "endpoints": [{"name": "s", "path": "/s", "field_mappings": {}}],
+    }
+    (tmp_path / "good.json").write_text(json.dumps(_good_entry()))
+    (tmp_path / "evilapi.json").write_text(json.dumps(bad))
+
+    loaded = load_catalog_dir(tmp_path, layer="global_public")
+    assert {s.slug for s in loaded} == {"example_ok"}, "loader should drop evilapi silently"
+
+    raw_errors = validate_spec(ApiSourceSpec.from_dict(bad))
+    assert raw_errors, "raw validation must catch the bad entry the loader hid"
 
 
 def test_guard_rejects_missing_slug():

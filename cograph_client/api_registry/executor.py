@@ -25,7 +25,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
@@ -47,6 +47,7 @@ _DEFAULT_TIMEOUT = 20.0
 _MAX_BYTES = 2_000_000
 _MAX_REDIRECTS = 5
 _UA = "Mozilla/5.0 (compatible; OntaApiRegistry/1.0; +https://onta.sh/bot)"
+_BASE_HEADERS = {"User-Agent": _UA, "Accept": "application/json, */*"}
 
 
 # --------------------------------------------------------------------------- #
@@ -131,11 +132,16 @@ class RegistryApiSource:
             return result
 
         # Auth: resolve the secret by env-var name. Missing key => dormant.
-        headers, auth_query, auth_err = self._resolve_auth(spec)
+        # Auth material is kept SEPARATE from the stored request URL (so a
+        # query-key secret never lands in provenance/citations) and is applied at
+        # fetch time only to the registered base_url host (so a redirect or a
+        # body-supplied next_link to another host never receives the credential).
+        auth_headers, auth_query, auth_err = self._resolve_auth(spec)
         if auth_err is not None:
             result.dormant = True
             result.error = auth_err
             return result
+        base_host = (urlparse(spec.base_url).hostname or "").lower()
 
         # Build the base path + static/bound query params.
         try:
@@ -146,8 +152,6 @@ class RegistryApiSource:
         if missing:
             result.error = f"missing required params: {', '.join(missing)}"
             return result
-
-        base_query.update(auth_query)
 
         # Budget: reuse the research Budget so fetches are counted the same way
         # everywhere. Size the default to the declared page budget.
@@ -170,11 +174,15 @@ class RegistryApiSource:
                 break
 
             url = self._page_url(spec.base_url, path, base_query, state)
-            outcome = await self._fetch_json(url, headers)
+            outcome = await self._fetch_json(
+                url, base_host=base_host, auth_headers=auth_headers, auth_query=auth_query
+            )
             budget.note_fetch(1)
             result.pages_fetched += 1
-            if url not in sources:
-                sources.append(url)
+            # Store the final (post-redirect) URL, which never carries the auth
+            # secret — safe to surface as provenance / citations.
+            if outcome.url and outcome.url not in sources:
+                sources.append(outcome.url)
 
             if not outcome.ok:
                 # First page failing is a hard error; a later page failing just
@@ -189,7 +197,6 @@ class RegistryApiSource:
                 estimated_total = declared_total(pg, outcome.payload)
 
             records = extract_records(outcome.payload, ep.result_path)
-            page_rows = 0
             for rec in records:
                 mapped = map_record(rec, ep.field_mappings)
                 if not mapped:
@@ -199,9 +206,8 @@ class RegistryApiSource:
                     continue
                 seen.add(key)
                 prov_key = str(rec.get("name", len(rows)))
-                result.provenance.setdefault(prov_key, url)
+                result.provenance.setdefault(prov_key, outcome.url)
                 rows.append(mapped)
-                page_rows += 1
                 if max_rows > 0 and len(rows) >= max_rows:
                     break
 
@@ -215,11 +221,14 @@ class RegistryApiSource:
                     result.is_partial = True
                 break
 
+            # Pass the RAW record count (not net-new-unique) so an all-duplicate
+            # or all-unmappable page is not misread as the natural end of the
+            # feed — which would halt pagination early and mislabel it complete.
             state = next_page(
                 pg,
                 state,
                 outcome.payload,
-                rows_on_page=page_rows,
+                rows_on_page=len(records),
                 rows_so_far=len(rows),
                 max_rows=max_rows,
             )
@@ -231,23 +240,24 @@ class RegistryApiSource:
     def _resolve_auth(
         self, spec: ApiSourceSpec
     ) -> tuple[dict[str, str], dict[str, str], Optional[str]]:
-        """Return (headers, query-additions, dormancy-error-or-None)."""
-        headers: dict[str, str] = {"User-Agent": _UA, "Accept": "application/json, */*"}
+        """Return (auth-headers, auth-query, dormancy-error-or-None).
+
+        Returns ONLY the auth material (never the base UA/Accept headers), so the
+        caller attaches it per-host. Missing key => dormant (no network).
+        """
         auth = spec.auth
         if auth.mode is AuthMode.none:
-            return headers, {}, None
+            return {}, {}, None
         secret = os.environ.get(auth.key_env, "").strip()
         if not secret:
-            return headers, {}, f"dormant: env {auth.key_env} not set"
+            return {}, {}, f"dormant: env {auth.key_env} not set"
         if auth.mode is AuthMode.api_key_header:
-            headers[auth.header_name] = secret
-            return headers, {}, None
+            return {auth.header_name: secret}, {}, None
         if auth.mode is AuthMode.bearer:
-            headers["Authorization"] = f"Bearer {secret}"
-            return headers, {}, None
+            return {"Authorization": f"Bearer {secret}"}, {}, None
         if auth.mode is AuthMode.api_key_query:
-            return headers, {auth.query_key: secret}, None
-        return headers, {}, f"unsupported auth mode {auth.mode.value}"
+            return {}, {auth.query_key: secret}, None
+        return {}, {}, f"unsupported auth mode {auth.mode.value}"
 
     def _build_request(
         self, ep: EndpointSpec, bindings: dict[str, str]
@@ -297,18 +307,38 @@ class RegistryApiSource:
         return f"{root}?{query_str}" if query_str else root
 
     # -- SSRF-guarded fetch (manual redirects, byte-capped, never raises) ---- #
-    async def _fetch_json(self, url: str, headers: dict[str, str]) -> _FetchOutcome:
-        if not is_fetchable_url(url):
-            return _FetchOutcome(url=url, error="blocked or non-http(s) URL")
-        host = urlparse(url).hostname or ""
-        if await host_dns_blocked(host):
-            return _FetchOutcome(url=url, error="host resolves to a blocked address")
+    async def _fetch_json(
+        self,
+        display_url: str,
+        *,
+        base_host: str,
+        auth_headers: dict[str, str],
+        auth_query: dict[str, str],
+    ) -> _FetchOutcome:
+        """Fetch + parse JSON with SSRF guards on every hop.
 
-        current = url
+        Auth is attached ONLY when the current host matches the registered
+        base_url host, so a redirect or a body-supplied next_link to another host
+        never receives the credential. The returned ``url`` is the auth-free
+        display URL, safe to store as provenance.
+        """
+        if not is_fetchable_url(display_url):
+            return _FetchOutcome(url=display_url, error="blocked or non-http(s) URL")
+        if await host_dns_blocked(urlparse(display_url).hostname or ""):
+            return _FetchOutcome(url=display_url, error="host resolves to a blocked address")
+
+        current = display_url
         try:
             async with self._new_client() as client:
                 for _hop in range(_MAX_REDIRECTS + 1):
-                    body, status, is_redirect, location = await self._get(client, current, headers)
+                    same_host = (urlparse(current).hostname or "").lower() == base_host
+                    req_headers = dict(_BASE_HEADERS)
+                    if same_host:
+                        req_headers.update(auth_headers)
+                    req_url = _with_query(current, auth_query) if same_host else current
+                    body, status, is_redirect, location = await self._get(
+                        client, req_url, req_headers
+                    )
                     if is_redirect:
                         nxt = urljoin(current, location or "")
                         if not is_fetchable_url(nxt):
@@ -384,11 +414,24 @@ def _parse_json(body: bytes) -> Any:
 
 
 def _encode_query(params: dict[str, str]) -> str:
-    from urllib.parse import urlencode
-
     # Preserve insertion order; skip empty values.
     clean = {k: v for k, v in params.items() if v is not None and v != ""}
     return urlencode(clean, doseq=False)
+
+
+def _with_query(url: str, extra: dict[str, str]) -> str:
+    """Return ``url`` with ``extra`` query params merged in (auth injection).
+
+    Used only for the live fetch URL when the host matches the registered
+    base_url — never for the stored/display URL — so the secret stays out of
+    provenance.
+    """
+    if not extra:
+        return url
+    parsed = urlparse(url)
+    merged = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    merged.update(extra)
+    return urlunparse(parsed._replace(query=urlencode(merged, doseq=False)))
 
 
 def _safe_path_segment(value: str) -> str:

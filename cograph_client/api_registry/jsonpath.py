@@ -59,6 +59,15 @@ def _parse_path(path: str) -> Optional[list[Any]]:
     return steps
 
 
+def is_valid_path(path: str) -> bool:
+    """True if ``path`` is a syntactically valid dotted path (empty == valid).
+
+    Used by catalog validation so a malformed ``result_path`` / field-mapping
+    source path fails CI instead of silently yielding zero rows at runtime.
+    """
+    return _parse_path(path) is not None
+
+
 def extract_path(obj: Any, path: str) -> Any:
     """Return the value at ``path`` within ``obj``, or ``None`` if absent."""
     steps = _parse_path(path)
@@ -132,4 +141,4 @@ def map_record(record: dict[str, Any], field_mappings: dict[str, str]) -> dict[s
     return out
 
 
-__all__ = ["extract_path", "extract_records", "map_record"]
+__all__ = ["extract_path", "extract_records", "map_record", "is_valid_path"]

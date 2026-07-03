@@ -491,3 +491,164 @@ async def test_result_to_dict_is_serializable():
     res = await _src(lambda r: httpx.Response(200, json={"results": [{"id": "1", "name": "a"}]})).execute(spec, {"q": "x"})
     payload = json.dumps(res.to_dict())  # must not raise
     assert '"api:demo"' in payload
+
+
+@pytest.mark.asyncio
+async def test_never_raises_on_transport_exception():
+    spec = _spec()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("kaboom")
+
+    res = await _src(handler).execute(spec, {"q": "x"})  # must NOT raise
+    assert res.rows == []
+    assert res.error is not None
+    assert "kaboom" in res.error
+
+
+# --------------------------------------------------------------------------- #
+# Credential safety (auth must not leak — regression guards for the review)
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_api_key_query_secret_absent_from_result(monkeypatch):
+    monkeypatch.setenv("DEMO_KEY", "SUPERSECRET")
+    spec = _spec(auth={"mode": "api_key_query", "key_env": "DEMO_KEY", "query_key": "apikey"})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert _params(request)["apikey"] == "SUPERSECRET"  # secret DID reach the server
+        return httpx.Response(200, json={"results": [{"id": "1"}]})
+
+    res = await _src(handler).execute(spec, {"q": "x"})
+    blob = json.dumps(res.to_dict())
+    assert "SUPERSECRET" not in blob, "secret leaked into the returned result"
+    assert all("SUPERSECRET" not in u for u in res.sources)
+    assert all("SUPERSECRET" not in u for u in res.provenance.values())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "auth,leak_header",
+    [
+        ({"mode": "bearer", "key_env": "DEMO_KEY"}, "Authorization"),
+        ({"mode": "api_key_header", "key_env": "DEMO_KEY", "header_name": "X-Api-Key"}, "X-Api-Key"),
+    ],
+)
+async def test_auth_header_not_sent_to_cross_host_redirect(monkeypatch, auth, leak_header):
+    monkeypatch.setenv("DEMO_KEY", "SECRETTOKEN")
+    spec = _spec(auth=auth)
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        host = urlparse(str(request.url)).hostname or ""
+        seen.append((host, request.headers.get(leak_header, "")))
+        if host == "api.demo.test":
+            return httpx.Response(302, headers={"location": "https://evil.attacker.test/collect"})
+        return httpx.Response(200, json={"results": [{"id": "ok"}]})
+
+    res = await _src(handler).execute(spec, {"q": "x"})
+    assert [r["id"] for r in res.rows] == ["ok"]
+    by_host = dict(seen)
+    assert "SECRETTOKEN" in by_host["api.demo.test"]      # sent to the registered host
+    assert "SECRETTOKEN" not in by_host["evil.attacker.test"]  # NOT sent to the redirected host
+
+
+@pytest.mark.asyncio
+async def test_api_key_query_reinjected_on_same_host_next_link(monkeypatch):
+    monkeypatch.setenv("DEMO_KEY", "qsecret")
+    spec = _spec(auth={"mode": "api_key_query", "key_env": "DEMO_KEY", "query_key": "apikey"},
+                 endpoints=[{
+                     "name": "s", "path": "/s", "result_path": "results",
+                     "field_mappings": {"id": "id"},
+                     "pagination": {"style": "next_link", "next_link_path": "meta.next", "max_pages": 5},
+                 }])
+    seen_keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_keys.append(_params(request).get("apikey", ""))
+        path = urlparse(str(request.url)).path
+        if path == "/s":
+            return httpx.Response(200, json={"results": [{"id": "1"}], "meta": {"next": "https://api.demo.test/s2"}})
+        return httpx.Response(200, json={"results": [{"id": "2"}]})
+
+    res = await _src(handler).execute(spec, {"q": "x"})
+    assert [r["id"] for r in res.rows] == ["1", "2"]
+    assert seen_keys == ["qsecret", "qsecret"]  # same-host next_link still authenticated
+
+
+# --------------------------------------------------------------------------- #
+# SSRF via untrusted response body / DNS
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_next_link_to_internal_host_is_blocked():
+    spec = _spec(endpoints=[{
+        "name": "s", "path": "/s", "result_path": "results", "field_mappings": {"id": "id"},
+        "pagination": {"style": "next_link", "next_link_path": "meta.next", "max_pages": 5},
+    }])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if urlparse(str(request.url)).path == "/s":
+            return httpx.Response(200, json={"results": [{"id": "1"}], "meta": {"next": "http://169.254.169.254/latest/meta-data"}})
+        raise AssertionError("must not fetch the internal next_link")
+
+    res = await _src(handler).execute(spec, {"q": "x"})
+    assert [r["id"] for r in res.rows] == ["1"]
+    assert res.is_partial  # stopped at the blocked link, honestly partial
+
+
+@pytest.mark.asyncio
+async def test_refuses_redirect_that_dns_resolves_to_internal(monkeypatch):
+    # First host is public; the redirect target is a public NAME that resolves internal.
+    def resolve(host):
+        return ["169.254.169.254"] if host == "public.evil.test" else ["93.184.216.34"]
+
+    monkeypatch.setattr(fetch_mod, "_resolve_ips", resolve)
+    spec = _spec()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if urlparse(str(request.url)).hostname == "api.demo.test":
+            return httpx.Response(302, headers={"location": "https://public.evil.test/x"})
+        raise AssertionError("must not fetch the internally-resolving host")
+
+    res = await _src(handler).execute(spec, {"q": "x"})
+    assert res.error is not None
+    assert "blocked" in res.error.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Major-3 regression: an all-duplicate middle page must not halt pagination
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_all_duplicate_middle_page_does_not_stop_pagination():
+    spec = _spec(endpoints=[{
+        "name": "s", "path": "/s", "result_path": "results", "field_mappings": {"id": "id"},
+        "pagination": {"style": "offset", "limit_param": "limit", "page_size": 2, "offset_param": "skip", "max_pages": 5},
+    }])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        skip = int(_params(request).get("skip", "0"))
+        # page @0: 1,2 ; page @2: all dups (1,1) ; page @4: fresh 3,4 ; page @6: empty
+        rows = {0: [{"id": "1"}, {"id": "2"}], 2: [{"id": "1"}, {"id": "1"}],
+                4: [{"id": "3"}, {"id": "4"}]}.get(skip, [])
+        return httpx.Response(200, json={"results": rows})
+
+    res = await _src(handler).execute(spec, max_rows=100)
+    # Without the fix, the all-dup page @2 (net-new=0) halts pagination and 3,4
+    # are lost. With len(records) passed to next_page, page @4 is reached.
+    assert [r["id"] for r in res.rows] == ["1", "2", "3", "4"]
+
+
+@pytest.mark.asyncio
+async def test_nppes_fixture_omits_absent_mapped_fields():
+    cat = make_api_source_catalog()
+    nppes = cat.get("nppes")
+    page0 = json.loads((FIXTURES / "search_cardiology_sf_skip0.json").read_text())
+    empty = json.loads((FIXTURES / "search_cardiology_sf_empty.json").read_text())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        skip = _params(request).get("skip", "0")
+        return httpx.Response(200, json=page0 if skip == "0" else empty)
+
+    res = await _src(handler).execute(nppes, {"taxonomy_description": "cardiology"}, max_rows=50)
+    # rows[1] (CHEN) has no organization_name in the fixture -> column omitted, no filler.
+    assert "organization_name" not in res.rows[1]
+    assert res.rows[1]["last_name"] == "CHEN"
