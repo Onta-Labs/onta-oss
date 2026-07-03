@@ -45,11 +45,19 @@ async def openrouter_chat(
     max_tokens: int = 4096,
     response_format: dict | None = None,
     timeout: float = 120.0,
-) -> str:
+    return_finish_reason: bool = False,
+) -> str | tuple[str, str | None]:
     """One OpenRouter chat completion with primary→fallback model routing.
 
     Returns the raw message content (callers parse). Raises on HTTP error after
     the fallback chain is exhausted.
+
+    When ``return_finish_reason`` is True, returns ``(content, finish_reason)``
+    instead — where ``finish_reason`` is the provider's stop signal (``"length"``
+    when the model hit ``max_tokens`` mid-output, ``"stop"`` for a clean finish,
+    or ``None`` if the provider omitted it). This lets a caller distinguish a
+    TRUNCATED reply (recover by splitting + retrying) from a genuinely malformed
+    one. Default False keeps the plain-string contract for every existing caller.
     """
     chain = model_chain(model)
     body: dict = {
@@ -74,4 +82,8 @@ async def openrouter_chat(
             json=body,
         )
         res.raise_for_status()
-        return res.json()["choices"][0]["message"]["content"]
+        choice = res.json()["choices"][0]
+        content = choice["message"]["content"]
+        if return_finish_reason:
+            return content, choice.get("finish_reason")
+        return content

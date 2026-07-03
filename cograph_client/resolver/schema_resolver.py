@@ -339,7 +339,12 @@ class SchemaResolver:
         )
         is_json = content_type in ("json", "jsonl")
         if is_json:
-            chunks = chunk_json_array(content)
+            # Token-budget batching (ONTA-196): size each batch so its predicted
+            # reified output stays under a fraction of THIS resolver's extraction
+            # cap, so the common dense-record case extracts first-try instead of
+            # overflowing max_tokens and dropping into the slow split-and-retry
+            # recovery (which remains the safety net below).
+            chunks = chunk_json_array(content, max_tokens=self.EXTRACT_MAX_TOKENS)
         else:
             chunks = chunk_text(content)
 
@@ -972,7 +977,15 @@ class SchemaResolver:
 
         truncated = False
         if self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key:
-            text = await self._extract_via_openrouter(user_content)
+            text, finish_reason = await self._extract_via_openrouter(user_content)
+            # Honest truncation signal on the OpenRouter path, mirroring the
+            # Anthropic ``stop_reason == "max_tokens"`` check below: OpenRouter
+            # reports ``finish_reason == "length"`` when the model hit the token
+            # ceiling mid-output, so the JSON is almost certainly incomplete.
+            # Surfacing it lets a JSON chunk be split + retried instead of the
+            # whole batch being silently dropped on the parse failure below.
+            if finish_reason == "length":
+                truncated = True
         else:
             msg = await self._anthropic.messages.create(
                 model=self.INFER_MODEL,
@@ -984,9 +997,7 @@ class SchemaResolver:
             # Explicit truncation signal from the Anthropic SDK: the model hit
             # the token ceiling mid-output, so the JSON is almost certainly
             # incomplete. Surface it so a JSON chunk can be split + retried
-            # instead of silently dropping the whole batch. (openrouter_chat
-            # doesn't expose finish_reason; there the json-parse-failure path
-            # below is the truncation signal.)
+            # instead of silently dropping the whole batch.
             if getattr(msg, "stop_reason", None) == "max_tokens":
                 truncated = True
 
@@ -1017,8 +1028,13 @@ class SchemaResolver:
             )
             return ExtractionResult(source_text=content)
 
-    async def _extract_via_openrouter(self, user_content: str) -> str:
-        """Extract entities via OpenRouter, with primary→fallback routing."""
+    async def _extract_via_openrouter(self, user_content: str) -> tuple[str, str | None]:
+        """Extract entities via OpenRouter, with primary→fallback routing.
+
+        Returns ``(content, finish_reason)`` so the caller can detect a
+        length-truncated reply (``finish_reason == "length"``) and route the
+        chunk into the split-and-retry recovery instead of dropping it.
+        """
         return await openrouter_chat(
             self._openrouter_key,
             EXTRACTION_SYSTEM,
@@ -1027,6 +1043,7 @@ class SchemaResolver:
             temperature=0,
             max_tokens=self.EXTRACT_MAX_TOKENS,
             timeout=60,
+            return_finish_reason=True,
         )
 
     # Floor below which a JSON chunk is no longer worth splitting: a handful of

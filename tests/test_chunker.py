@@ -2,11 +2,15 @@
 
 import json
 
+import pytest
+
+from cograph_client.resolver import chunker
 from cograph_client.resolver.chunker import (
     chunk_text,
     chunk_json_array,
     split_json_array_chunk,
     json_array_len,
+    token_budget_batch_size,
 )
 
 
@@ -79,17 +83,85 @@ class TestChunkJsonArray:
         chunks = chunk_json_array("[]")
         assert len(chunks) == 1
 
-    def test_default_batch_size_is_25(self):
-        """FIX 1: the default batch was lowered 50 → 25 so a denser reified
-        chunk's JSON output stays under the LLM token cap."""
+    def test_default_batch_size_is_token_budgeted(self):
+        """ONTA-196: with no explicit batch_size the array is split by the TOKEN
+        BUDGET (records-per-batch derived from the extraction cap), NOT a flat
+        count. With the module defaults each batch is small enough that its
+        predicted reified output stays under the cap — many batches, no overflow.
+        Every record is conserved regardless of the exact size."""
         data = [{"id": i} for i in range(60)]
         content = json.dumps(data)
-        chunks = chunk_json_array(content)  # default batch_size
-        assert len(chunks) == 3  # 25 + 25 + 10
+        chunks = chunk_json_array(content)  # token-budgeted default
+        expected = token_budget_batch_size(
+            int(chunker.os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "8192"))
+        )
+        # Batches never exceed the budgeted size (the last may be smaller).
+        for c in chunks[:-1]:
+            assert json_array_len(c) == expected
         all_items = []
         for c in chunks:
             all_items.extend(json.loads(c))
         assert len(all_items) == 60
+
+    def test_explicit_batch_size_overrides_budget(self):
+        """An explicit batch_size still wins — used by callers/tests that want a
+        fixed size independent of the token budget."""
+        data = [{"id": i} for i in range(60)]
+        chunks = chunk_json_array(json.dumps(data), batch_size=50)
+        assert len(chunks) == 2  # 50 + 10
+
+    def test_max_tokens_widens_batches(self):
+        """A larger extraction cap budgets LARGER batches (fewer, denser chunks)
+        — the sizing tracks the real cap the caller passes."""
+        data = [{"id": i} for i in range(200)]
+        content = json.dumps(data)
+        small = chunk_json_array(content, max_tokens=4096)
+        large = chunk_json_array(content, max_tokens=32768)
+        # A bigger cap → bigger batches → fewer chunks.
+        assert len(large) < len(small)
+
+
+class TestTokenBudgetBatchSize:
+    """ONTA-196: records-per-batch derived from the extraction token budget."""
+
+    def test_default_keeps_predicted_output_under_target_fraction(self):
+        """With the module defaults, a batch's PREDICTED output (size ×
+        tokens_per_record) stays under target_frac × max_tokens — the whole point
+        of the fix (the old flat 25 predicted ~17500 tokens against an 8192 cap
+        and truncated)."""
+        size = token_budget_batch_size(8192)
+        assert size >= 1
+        predicted = size * chunker.EXTRACT_TOKENS_PER_RECORD
+        assert predicted <= 8192 * chunker.EXTRACT_BATCH_TARGET_FRAC
+        # And it's the LARGEST size that still fits (adding one more record would
+        # exceed the budget) — not needlessly tiny.
+        assert (size + 1) * chunker.EXTRACT_TOKENS_PER_RECORD > 8192 * chunker.EXTRACT_BATCH_TARGET_FRAC
+
+    def test_scales_with_cap(self):
+        """Doubling the cap (at fixed ratio/frac) roughly doubles the batch."""
+        small = token_budget_batch_size(8192)
+        large = token_budget_batch_size(16384)
+        assert large > small
+
+    def test_per_call_overrides(self):
+        """Explicit tokens_per_record / target_frac override the module defaults."""
+        # 1000 * 0.5 / 100 = 5
+        assert token_budget_batch_size(1000, tokens_per_record=100, target_frac=0.5) == 5
+
+    @pytest.mark.parametrize("bad", [0, -1])
+    def test_never_returns_zero(self, bad):
+        """A pathological cap / ratio / fraction clamps to 1, never 0 (which would
+        be an infinite-loop batch)."""
+        assert token_budget_batch_size(bad) == 1
+        assert token_budget_batch_size(8192, tokens_per_record=bad) == 1
+        assert token_budget_batch_size(8192, target_frac=bad) == 1
+
+    def test_env_overrides_are_read(self, monkeypatch):
+        """The module constants are env-overridable so ops can retune the sizing
+        without a deploy (patched here to emulate the env being set at import)."""
+        monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 180)
+        monkeypatch.setattr(chunker, "EXTRACT_BATCH_TARGET_FRAC", 0.55)
+        assert token_budget_batch_size(8192) == 25  # 8192 * 0.55 / 180 ≈ 25
 
 
 class TestSplitJsonArrayChunk:

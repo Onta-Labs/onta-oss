@@ -107,6 +107,16 @@ _DEFAULT_PLAN_CAP = 200
 _SAMPLE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SAMPLE_BUDGET_S", "22"))
 _SHAPE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SHAPE_BUDGET_S", "15"))
 
+# Hard wall-clock budget for the WHOLE background discovery run (all sub-queries,
+# providers, and the LLM-extraction ingest of every batch). Without it a run
+# whose extraction pathologically stalls — e.g. a dense chunk that overflows the
+# token cap and falls into the recursive split-and-retry recovery, ~30-40
+# sequential ~70s LLM calls — sits on ``running`` for 45+ minutes with no way to
+# flip to a terminal state (ONTA-196). On timeout we route to _fail_job so the
+# job honestly shows ``failed``, never a stuck ``running``. Generous default so a
+# legitimately large pull isn't cut short; env-overridable for ops tuning.
+_RUN_TIMEOUT_S = float(os.environ.get("OMNIX_DISCOVERY_RUN_TIMEOUT_S", "600"))
+
 # Auto-confirm gate. Discovery plans whose provider cost is at or under this are
 # treated as CHEAP: clients start the job straight from the attribute confirm
 # (no human spend gate), so the expensive plan-time preview — a paid sample
@@ -566,7 +576,7 @@ class WebIngestCapability:
         if job is not None:
             pctx = {**pctx, "job_id": job.id}
 
-        async def _run() -> None:
+        async def _run_inner() -> None:
             if job is not None and job_store is not None:
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
@@ -822,6 +832,27 @@ class WebIngestCapability:
                         )
                     ]
                 await _fail_job(job, job_store, msg)
+
+        async def _run() -> None:
+            # Per-run wall-clock guard (ONTA-196): bound the WHOLE discovery so a
+            # pathologically slow extraction can never leave the job stuck on
+            # ``running`` indefinitely. On timeout we cancel the inner run and
+            # flip the job to ``failed`` with a clear message — the same terminal
+            # signal the client polls for, instead of an eternal spinner.
+            try:
+                await asyncio.wait_for(_run_inner(), timeout=_RUN_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "web_ingest_run_timeout",
+                    query=query,
+                    timeout_s=_RUN_TIMEOUT_S,
+                )
+                await _fail_job(
+                    job,
+                    job_store,
+                    f"Discovery timed out after {int(_RUN_TIMEOUT_S)}s "
+                    "(the web fetch or extraction took too long).",
+                )
 
         _spawn(_run())
         ack = {
