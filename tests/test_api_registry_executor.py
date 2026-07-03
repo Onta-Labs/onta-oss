@@ -21,7 +21,8 @@ from cograph_client.api_registry import (
     make_api_source_catalog,
 )
 from cograph_client.api_registry.catalog import reset_api_source_layers
-from cograph_client.research import fetch as fetch_mod
+# SSRF DNS stub now lives in the shared retrieval substrate (ONTA-193).
+from cograph_client.retrieval import safety as safety_mod
 from cograph_client.research.types import Budget
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nppes"
@@ -30,7 +31,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "nppes"
 @pytest.fixture(autouse=True)
 def _offline_dns(monkeypatch):
     # Treat every hostname as resolving to a public IP — deterministic + offline.
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["93.184.216.34"])
 
 
 @pytest.fixture(autouse=True)
@@ -393,7 +394,7 @@ async def test_refuses_redirect_to_internal_host():
 
 @pytest.mark.asyncio
 async def test_refuses_host_resolving_to_internal(monkeypatch):
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
+    monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
     spec = _spec()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -601,7 +602,7 @@ async def test_refuses_redirect_that_dns_resolves_to_internal(monkeypatch):
     def resolve(host):
         return ["169.254.169.254"] if host == "public.evil.test" else ["93.184.216.34"]
 
-    monkeypatch.setattr(fetch_mod, "_resolve_ips", resolve)
+    monkeypatch.setattr(safety_mod, "_resolve_ips", resolve)
     spec = _spec()
 
     def handler(request: httpx.Request) -> httpx.Response:

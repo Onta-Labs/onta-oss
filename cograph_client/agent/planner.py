@@ -867,7 +867,7 @@ def register_default_capabilities() -> None:
     # user-supplied URLs via the default static fetcher; open-web search lights up
     # when a web-source provider is registered. Register the default fetch ladder
     # (the OSS static fetcher) so a plain deployment can read pages out of the box.
-    from cograph_client.research.fetch import register_default_fetchers
+    from cograph_client.retrieval import register_default_fetchers
 
     register_default_fetchers()
     register_capability(WebResearchCapability())
