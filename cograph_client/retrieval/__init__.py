@@ -37,6 +37,12 @@ Boundary: OSS. Every module here imports only stdlib / ``cograph_client.*`` /
 
 from __future__ import annotations
 
+from cograph_client.retrieval.cost import rows_per_call, source_cost
+from cograph_client.retrieval.errors import (
+    FetchError,
+    FetchErrorPolicy,
+    RetrievalError,
+)
 from cograph_client.retrieval.fetch import (
     PageFetcher,
     StaticHttpFetcher,
@@ -55,8 +61,11 @@ from cograph_client.retrieval.safety import (
 from cograph_client.retrieval.types import FetchedPage
 
 __all__ = [
+    "FetchError",
+    "FetchErrorPolicy",
     "FetchedPage",
     "PageFetcher",
+    "RetrievalError",
     "StaticHttpFetcher",
     "default_ladder",
     "fetcher_cost",
@@ -67,4 +76,6 @@ __all__ = [
     "register_default_fetchers",
     "register_page_fetcher",
     "reset_page_fetchers",
+    "rows_per_call",
+    "source_cost",
 ]

@@ -29,6 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, runtime_checkable
 
+from cograph_client.retrieval.cost import source_cost
+
 
 @dataclass
 class DiscoverResult:
@@ -276,21 +278,13 @@ def reset_web_sources() -> None:
 
 
 def provider_cost(provider: WebSourceProvider) -> tuple[bool, float]:
-    """Read a provider's declared cost signal generically (COG-123).
+    """Read a provider's declared cost signal → ``(is_paid, cost_per_call)`` (COG-123).
 
-    Returns ``(is_paid, cost_per_call)``. Defensive ``getattr`` with free
-    defaults, so a provider that declares neither attribute is treated as free.
-    Paid if it sets ``is_paid = True`` OR a positive ``cost_per_call``. Never
-    raises on a malformed/non-numeric ``cost_per_call``; coerces to 0.0.
+    Thin back-compat alias over the one shared :func:`source_cost` seam (ONTA-193
+    P2); discovery, enrichment, and the fetch ladder now all delegate there so the
+    cost model never forks by rail.
     """
-    try:
-        cost = float(getattr(provider, "cost_per_call", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        cost = 0.0
-    if cost < 0.0:
-        cost = 0.0
-    is_paid = bool(getattr(provider, "is_paid", False)) or cost > 0.0
-    return is_paid, cost
+    return source_cost(provider)
 
 
 __all__ = [
