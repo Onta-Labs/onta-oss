@@ -976,6 +976,36 @@ async def test_finished_plan_without_persisted_result_is_refused():
 
 
 @pytest.mark.asyncio
+async def test_done_save_failure_still_returns_result(monkeypatch):
+    """A store blip on the FINAL done-save must not discard the acks — the
+    steps ran (paid work may be in flight), so the caller gets the result and
+    the plan simply stays claimed (no replay) until the stale cutoff."""
+    cap = _RecordingCap()
+    register_capability(cap)
+    await _save_plan("p-blip")
+    store = make_plan_store()
+    real_save = store.save
+
+    async def flaky_save(plan):
+        if plan.status == "done":
+            raise RuntimeError("pool blip")
+        return await real_save(plan)
+
+    monkeypatch.setattr(store, "save", flaky_save)
+
+    out = await asyncio.wait_for(execute_plan(_ctx(), "p-blip"), TIMEOUT)
+    assert out["kind"] == "result"
+    assert out["steps"][0]["job_id"] == "job-1"
+    assert len(cap.calls) == 1
+
+    # Still claimed: a duplicate confirm within the cutoff cannot re-run it.
+    dup = await asyncio.wait_for(execute_plan(_ctx(), "p-blip"), TIMEOUT)
+    assert dup["kind"] == "error"
+    assert dup["code"] == "plan_already_executing"
+    assert len(cap.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_catastrophic_failure_marks_plan_failed_and_stays_one_shot(
     monkeypatch,
 ):

@@ -785,7 +785,18 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     result = {"kind": "result", "plan_id": plan_id, "steps": summaries}
     plan.status = "done"
     plan.result = result
-    await store.save(plan)
+    try:
+        await store.save(plan)
+    except Exception:  # noqa: BLE001
+        # The steps RAN — a store blip on this save must not turn a successful
+        # execution into a 500 that discards the acks/job ids (the client would
+        # treat the confirm as failed and retry; past the stale cutoff that
+        # retry would re-run paid work). Return the result anyway: the caller
+        # converges, and the plan merely stays `executing` (no replay) until
+        # the stale cutoff — the documented backstop for a lost terminal save.
+        logger.warning(
+            "agent_plan_done_persist_failed", plan_id=plan_id, exc_info=True
+        )
     return result
 
 
