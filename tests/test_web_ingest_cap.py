@@ -66,6 +66,33 @@ PLACE_SPEC = {
     "confirmed_attributes": ["address"],
     "suggested_attributes": ["address", "phone", "rating"],
 }
+# Entity-only, but the resolver picked an explicit SHORT core set out of a broader
+# comprehensive suggested list — exercises "pre-select the few most-important, not
+# every column".
+CORE_SPEC = {
+    "entity_type": "Physician",
+    "key_attribute": "name",
+    "query": "primary care physicians in Tustin",
+    "confirmed_attributes": [],
+    "core_attributes": ["specialty", "city", "phone"],
+    "suggested_attributes": [
+        "specialty",
+        "practice_name",
+        "address",
+        "city",
+        "phone",
+        "accepted_insurance",
+        "board_certification",
+        "npi_number",
+    ],
+}
+
+
+# Above the auto-confirm gate (_PREVIEW_GATE_USD, default $0.50) → plan() runs
+# the FULL sample+shape preview. Tests that exercise the preview machinery
+# register their provider with this; cheap/free providers take the lean fast
+# path (no plan-time provider call) covered by the fast-path tests below.
+RICH = {"is_paid": True, "cost_per_call": 0.75}
 
 
 class FakeProvider:
@@ -191,8 +218,35 @@ async def test_entity_only_asks_to_confirm_attributes():
     assert opts[1] == "Just the name"
 
 
+async def test_clarify_pre_selects_only_core_attributes():
+    """The clarify recommends a SHORT set (core_attributes), not the whole
+    comprehensive suggested list, and its question stays terse — it does NOT
+    re-list the attributes (they're already the chips the client renders)."""
+    register_web_source(FakeProvider())
+    steps = await WebIngestCapability().plan(
+        _ctx(), "primary care physicians in Tustin", parsed=CORE_SPEC
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.action == "clarify"
+
+    opts = step.params["options"]
+    # Pre-selected option carries the key + ONLY the core few, in order.
+    assert opts[0] == "Use these: name, specialty, city, phone"
+    assert opts[1] == "Just the name"
+    # Comprehensive-but-not-core columns are NOT pushed as pre-selected chips.
+    assert "npi_number" not in opts[0]
+    assert "board_certification" not in opts[0]
+
+    # Terse question: entity + key are bolded, but the attribute list is NOT
+    # repeated in prose (that was the "question repeats the options" bug).
+    q = step.params["question"]
+    assert "**Physician**" in q and "**name**" in q
+    assert "specialty" not in q and "practice_name" not in q
+
+
 async def test_confirmed_attributes_builds_discovery_plan(monkeypatch):
-    provider = FakeProvider()
+    provider = FakeProvider(**RICH)
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
@@ -243,16 +297,19 @@ async def test_place_kind_routes_to_specialized_provider(monkeypatch):
     place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
     register_web_source(general)
     register_web_source(place)
-    _patch_preview(monkeypatch, entities=_single_type_entities())
 
     steps = await WebIngestCapability().plan(
         _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
     )
     step = steps[0]
     assert step.action == "discover_ingest"
-    # The specialized provider ran the sample + is persisted for execute().
+    # The specialized provider is persisted as the PRIMARY, and the ensemble
+    # carries BOTH (specialized first, general breadth second — neither source is
+    # complete alone). Cheap providers take the lean fast path — NO plan-time
+    # sample call on either provider.
     assert step.params["provider"] == "place_src"
-    assert place.calls and not general.calls
+    assert step.params["providers"] == ["place_src", "fake"]
+    assert not place.calls and not general.calls
 
 
 async def test_place_kind_falls_back_to_default_when_unregistered(monkeypatch):
@@ -261,16 +318,15 @@ async def test_place_kind_falls_back_to_default_when_unregistered(monkeypatch):
     no-op, so the general path still handles everything."""
     general = FakeProvider()  # only the general default is registered
     register_web_source(general)
-    _patch_preview(monkeypatch, entities=_single_type_entities())
 
     steps = await WebIngestCapability().plan(
         _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
     )
     step = steps[0]
     assert step.action == "discover_ingest"
-    # No specialized provider → the general default ran and is persisted.
+    # No specialized provider → the general default is persisted (fast path:
+    # selection only, no plan-time sample).
     assert step.params["provider"] == general.name
-    assert general.calls
 
 
 async def test_non_place_kind_ignores_specialized_provider(monkeypatch):
@@ -281,14 +337,18 @@ async def test_non_place_kind_ignores_specialized_provider(monkeypatch):
     place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
     register_web_source(general)
     register_web_source(place)
-    _patch_preview(monkeypatch, entities=_single_type_entities())
 
     steps = await WebIngestCapability().plan(
         _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
     )
     step = steps[0]
     assert step.params["provider"] == general.name
-    assert general.calls and not place.calls
+    # No kind match → the ensemble is the general provider ALONE (the place
+    # source must not join queries outside its kind).
+    assert step.params["providers"] == [general.name]
+    # Fast path: neither provider is touched at plan time; the place source in
+    # particular is never invoked for a query outside its kind.
+    assert not place.calls
 
 
 async def test_place_only_deployment_serves_place_query(monkeypatch):
@@ -299,7 +359,6 @@ async def test_place_only_deployment_serves_place_query(monkeypatch):
     "not enabled" dead end)."""
     place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
     register_web_source(place)  # NO general provider registered
-    _patch_preview(monkeypatch, entities=_single_type_entities())
 
     steps = await WebIngestCapability().plan(
         _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
@@ -307,7 +366,8 @@ async def test_place_only_deployment_serves_place_query(monkeypatch):
     step = steps[0]
     assert step.action == "discover_ingest"
     assert step.params["provider"] == "place_src"
-    assert place.calls
+    # Place-only deployment → the ensemble is just the specialized provider.
+    assert step.params["providers"] == ["place_src"]
 
 
 async def test_place_only_deployment_gracefully_refuses_general_query(monkeypatch):
@@ -340,7 +400,7 @@ async def test_no_provider_at_all_still_refuses(monkeypatch):
 async def test_preview_surfaces_multiple_types_and_relationships(monkeypatch):
     """The plan card previews the multi-type ontology + the relationship the
     extractor inferred between two distinct entity types."""
-    provider = FakeProvider()
+    provider = FakeProvider(**RICH)
     register_web_source(provider)
     entities = [
         ExtractedEntity(
@@ -379,7 +439,7 @@ async def test_preview_summary_frames_shape_as_estimate(monkeypatch):
     """FIX 5: the discovered TYPES/relationships are an ESTIMATE from the small
     sample, not a guarantee — the user-facing summary must say so (only the
     column projection is stable preview→commit). Wording-only assertion."""
-    provider = FakeProvider()
+    provider = FakeProvider(**RICH)
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
@@ -397,7 +457,7 @@ async def test_preview_summary_frames_shape_as_estimate(monkeypatch):
 async def test_preview_degrades_to_flat_when_extract_fails(monkeypatch):
     """If the plan-time extractor raises, plan() still returns a confirmable plan
     card (degraded flat single-type preview) — no exception propagates."""
-    provider = FakeProvider()
+    provider = FakeProvider(**RICH)
     register_web_source(provider)
 
     async def fake_fetch_ontology(self, graph_uri):
@@ -441,7 +501,7 @@ async def test_slow_sample_degrades_to_confirmable_plan(monkeypatch):
                 hint_columns=hint_columns, context=context, urls=urls,
             )
 
-    register_web_source(SlowSampleProvider())
+    register_web_source(SlowSampleProvider(**RICH))
 
     steps = await asyncio.wait_for(
         WebIngestCapability().plan(
@@ -473,7 +533,7 @@ async def test_slow_shape_estimate_degrades_to_flat_preview(monkeypatch):
     shape budget → plan() bounds it (_SHAPE_BUDGET_S) and degrades to a flat
     preview, still a confirmable plan, no timeout propagated to the request."""
     monkeypatch.setattr(web_ingest_cap, "_SHAPE_BUDGET_S", 0.05)
-    register_web_source(FakeProvider())
+    register_web_source(FakeProvider(**RICH))
 
     async def fast_fetch_ontology(self, graph_uri):
         return {}, {}
@@ -585,8 +645,52 @@ def test_paid_call_count_helper():
     assert web_ingest_cap._paid_call_count(_Bad(), 100) == 1  # malformed → 1
 
 
+async def test_cheap_provider_skips_plan_time_preview():
+    """At/under the auto-confirm gate the client starts the job straight from the
+    attribute confirm, so plan() skips the expensive sample+shape preview: NO
+    plan-time provider call, no extraction LLM — a lean, immediately-confirmable
+    step carrying everything execute() needs (same params contract as the rich
+    path), with the cost still quoted so clients can gate on it."""
+    provider = FakeProvider(is_paid=True, cost_per_call=0.03)
+    register_web_source(provider)
+    steps = await WebIngestCapability().plan(
+        _ctx(), "can we ingest the models OpenRouter currently offers?",
+        parsed=CONFIRMED_SPEC,
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert provider.calls == []  # the fast path never touches the provider
+    # Same persisted contract as the rich path — execute() runs unchanged.
+    assert step.params["query"] == "OpenRouter models"
+    assert step.params["attributes"] == ["name", "context_length"]
+    assert set(step.params["hint_columns"]) == {"name", "context_length", "provider"}
+    assert step.params["max_rows"] == web_ingest_cap._DEFAULT_PLAN_CAP
+    assert step.params["provider"] == "fake"
+    # Cost quoted for the client-side auto-confirm gate.
+    assert step.cost["paid_calls"] == 1
+    assert step.cost["estimated_usd"] == pytest.approx(0.03)
+    # Lean preview: a summary line only — no sampled rows / discovered shape.
+    assert step.preview["summary"]
+    assert "sample_rows" not in step.preview
+    assert "discovered_types" not in step.preview
+
+
+async def test_free_provider_also_skips_plan_time_preview():
+    """Free providers ride the same fast path (they were always auto-confirmed;
+    the plan-time sample was pure latency for them too)."""
+    provider = FakeProvider()
+    register_web_source(provider)
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    assert steps[0].action == "discover_ingest"
+    assert provider.calls == []
+    assert steps[0].cost["paid_calls"] == 0
+
+
 async def test_empty_sample_returns_message():
-    register_web_source(FakeProvider(rows=[]))
+    register_web_source(FakeProvider(rows=[], **RICH))
     steps = await WebIngestCapability().plan(
         _ctx(), "find a list of nonsense xyzzy", parsed=CONFIRMED_SPEC
     )
@@ -657,6 +761,9 @@ async def test_execute_runs_full_discover_and_ingests(monkeypatch):
     step = (await cap.plan(_ctx(), "find a list of OpenRouter models", parsed=CONFIRMED_SPEC))[0]
     ack = await cap.execute(_ctx(), step)
     assert ack["kind"] == "ack" and "background" in ack["message"]
+    # Distilled job title for client job cards — the clean search subject, not
+    # the user's raw sentence.
+    assert ack["title"] == "OpenRouter models"
 
     await spawned["task"]
 
@@ -879,7 +986,7 @@ async def test_execute_threads_per_record_source_url(monkeypatch):
     """Each discovered entity carries its own source_url drawn from the provider's
     provenance map, committed through the SAME ingest path (content_type="json")
     — and the plan preview already shows the citation column (preview == commit)."""
-    provider = FakeProvider(provenance=True)
+    provider = FakeProvider(provenance=True, **RICH)
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
@@ -1177,3 +1284,566 @@ def test_norm_query_kind_lowercases_and_slugs():
     assert web_ingest_cap._norm_query_kind("null") is None
     assert web_ingest_cap._norm_query_kind("none") is None
     assert web_ingest_cap._norm_query_kind("") is None
+
+
+# --- enumeration fan-out (ONTA-192) ------------------------------------------ #
+
+# An "all X in Y and Z" ask the spec PARTITIONED into self-contained sub-queries.
+FAN_SPEC = {
+    "entity_type": "Physician",
+    "key_attribute": "name",
+    "query": "primary care physicians in Tustin and Santa Ana, California",
+    "query_kind": "place",
+    "subqueries": [
+        "primary care physicians in Tustin, CA",
+        "primary care physicians in Santa Ana, CA",
+    ],
+    "confirmed_attributes": ["specialty", "city"],
+    "suggested_attributes": ["specialty", "city", "phone"],
+}
+
+TUSTIN_ROWS = [
+    {"name": "Alina Reyes, MD", "specialty": "Family Medicine", "city": "Tustin", "phone": "1"},
+    {"name": "Priya Nair, DO", "specialty": "Family Medicine", "city": "Tustin", "phone": "2"},
+    {"name": "Dr. Overlap", "specialty": "Internal Medicine", "city": "Tustin", "phone": "3"},
+]
+SANTA_ANA_ROWS = [
+    {"name": "Marcus Chen, MD", "specialty": "Internal Medicine", "city": "Santa Ana", "phone": "4"},
+    # The SAME Tustin record (same identity signals, shouty casing) listed under
+    # both city searches — the true duplicate the cross-batch merge must drop.
+    # (Same NAME with different city/phone would be a DISTINCT record and kept.)
+    {"name": "DR OVERLAP", "specialty": "Internal Medicine", "city": "Tustin", "phone": "3"},
+    {"name": "Samuel Ortiz, MD", "specialty": "Geriatrics", "city": "Santa Ana", "phone": "6"},
+]
+
+
+class PerQueryProvider(FakeProvider):
+    """Rows keyed BY QUERY — each sub-query yields its own batch. "Dr. Overlap"
+    appears under both cities (with different casing/punctuation) so the
+    cross-batch key dedupe is observable."""
+
+    def __init__(self, rows_by_query: dict, *, fail_queries=frozenset(), **kw):
+        super().__init__(**kw)
+        self._by_query = rows_by_query
+        self._fail = set(fail_queries)
+
+    async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
+        self.calls.append((query, sample, max_rows, tuple(hint_columns or ())))
+        if query in self._fail:
+            raise RuntimeError(f"provider down for {query!r}")
+        rows = list(self._by_query.get(query, []))[:max_rows]
+        if hint_columns:
+            rows = [{c: r.get(c, "unknown") for c in hint_columns} for r in rows]
+        return DiscoverResult(
+            rows=rows,
+            sources=[f"https://directory.example/{query.rsplit(' ', 1)[-1]}"],
+            estimated_total=len(rows),
+            is_partial=False,
+        )
+
+
+def test_norm_subqueries_sanitizes():
+    """Strings only, stripped, case-insensitively deduped, capped at the fan-out
+    ceiling; malformed input degrades to [] (single-query behavior)."""
+    f = web_ingest_cap._norm_subqueries
+    assert f(["a", "  b ", "A", "", None, 3, "c"]) == ["a", "b", "c"]
+    assert f([f"q{i}" for i in range(10)]) == [f"q{i}" for i in range(6)]
+    assert f("not a list") == []
+    assert f(None) == []
+
+
+def test_estimate_cost_prices_subquery_fanout():
+    """A single-call-per-run provider bills one call PER SUB-QUERY; a paginating
+    provider splits the row cap across sub-queries so the total page count (and
+    price) stays ≈ the single-run figure."""
+
+    class _WholeRun:
+        name = "wholerun"
+        is_paid = True
+        cost_per_call = 0.03
+
+    cost = web_ingest_cap._estimate_cost(_WholeRun(), 200, 200, subqueries=3)
+    assert cost["paid_calls"] == 3
+    assert cost["estimated_usd"] == pytest.approx(0.09)
+    assert "across 3 sub-queries" in cost["note"]
+
+    class _Paginating:
+        name = "paginating"
+        is_paid = True
+        cost_per_call = 0.017
+        rows_per_call = 20
+
+    # 200 rows / 2 sub-queries = 100 each = 5 pages each = 10 total — the same
+    # 10 pages a single 200-row run would bill.
+    cost2 = web_ingest_cap._estimate_cost(_Paginating(), 200, 200, subqueries=2)
+    assert cost2["paid_calls"] == 10
+    assert cost2["estimated_usd"] == pytest.approx(0.17)
+
+
+async def test_plan_persists_subqueries_on_fast_path():
+    """The lean fast path persists the enumeration partition for execute() and
+    prices the plan as one run per sub-query."""
+    provider = FakeProvider(is_paid=True, cost_per_call=0.03)
+    register_web_source(provider)
+    steps = await WebIngestCapability().plan(
+        _ctx(), "all primary care physicians in Tustin and Santa Ana", parsed=FAN_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.params["subqueries"] == FAN_SPEC["subqueries"]
+    assert step.cost["paid_calls"] == 2
+    assert step.cost["estimated_usd"] == pytest.approx(0.06)
+
+
+async def test_execute_fans_out_dedupes_and_streams(monkeypatch):
+    """The fan-out run: one discovery per sub-query (sample=False), batches
+    deduped on the normalized key attribute across sub-queries, each batch
+    ingested as it lands (streaming progress), one merged job driven to applied
+    with the exact unique count."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    provider = PerQueryProvider(
+        {
+            FAN_SPEC["subqueries"][0]: TUSTIN_ROWS,
+            FAN_SPEC["subqueries"][1]: SANTA_ANA_ROWS,
+        },
+        is_paid=True,
+        cost_per_call=0.03,
+    )
+    register_web_source(provider)
+
+    batches: list[int] = []
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        batches.append(len(rows))
+        return IngestResult(
+            entities_extracted=len(rows), entities_resolved=len(rows),
+            types_created=["Physician"],
+        )
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+
+    refreshes: list = []
+
+    async def fake_refresh(neptune, *, tenant_id, kg_name, affected_types):
+        refreshes.append(set(affected_types))
+
+    monkeypatch.setattr(web_ingest_cap, "refresh_after_write", fake_refresh)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(
+            _ctx_with_store(store),
+            "all primary care physicians in Tustin and Santa Ana",
+            parsed=FAN_SPEC,
+        )
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    # One full (sample=False) discovery per sub-query, in order — each bounded
+    # to the per-sub-query row share the plan priced (cap / n_sub), so actual
+    # paid pagination can never exceed the quoted estimate.
+    full_calls = [c for c in provider.calls if c[1] is False]
+    assert [c[0] for c in full_calls] == FAN_SPEC["subqueries"]
+    import math as _math
+    per_sub = _math.ceil(200 / len(FAN_SPEC["subqueries"]))
+    assert all(c[2] <= per_sub for c in full_calls)
+
+    # Two batches ingested as they landed: 3 from Tustin, then 2 from Santa Ana
+    # ("DR OVERLAP" deduped against "Dr. Overlap" across batches).
+    assert batches == [3, 2]
+    # ONE refresh for the whole fan-out, with the union of affected types.
+    assert refreshes == [{"Physician"}]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    assert done.result_count == 5
+    assert done.progress.processed == 5
+    assert done.progress.total == 5
+    # The provider log accumulated the whole fan-out: 2 attempts; matches counts
+    # what the provider FOUND (pre-dedupe: 3+3), not the post-merge uniques.
+    (plog,) = done.provider_logs
+    assert plog.attempts == 2
+    assert plog.matches == 6
+    assert plog.no_match == 0
+    assert plog.status == "ok"
+    # Platforms = distinct HOSTS consulted — both sub-query pages live on the
+    # same directory host, so the cross-batch merge dedupes them to one entry.
+    assert done.platforms == ["directory.example"]
+
+
+async def test_execute_subquery_failure_is_partial(monkeypatch):
+    """One sub-query dying at the provider must not sink the run: the others still
+    land, the job completes with what was found, and the provider log records the
+    error alongside the successes."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    provider = PerQueryProvider(
+        {FAN_SPEC["subqueries"][1]: SANTA_ANA_ROWS},
+        fail_queries={FAN_SPEC["subqueries"][0]},
+        is_paid=True,
+        cost_per_call=0.03,
+    )
+    register_web_source(provider)
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "physicians in two cities", parsed=FAN_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied  # partial coverage, not a failure
+    assert done.result_count == len(SANTA_ANA_ROWS)
+    (plog,) = done.provider_logs
+    assert plog.errors == 1 and "provider down" in (plog.last_error or "")
+    assert plog.matches == len(SANTA_ANA_ROWS)
+
+
+async def test_execute_all_subqueries_failing_fails_job(monkeypatch):
+    """EVERY sub-query dying at the provider → a failed job with the provider-
+    attributed error (not a silent empty success)."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    provider = PerQueryProvider(
+        {}, fail_queries=set(FAN_SPEC["subqueries"]),
+        is_paid=True, cost_per_call=0.03,
+    )
+    register_web_source(provider)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "physicians in two cities", parsed=FAN_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.failed
+    assert "provider down" in (done.error or "")
+    assert done.error_summary and done.error_summary[0].provider == provider.name
+
+
+# --- provider ensemble (kind-specialized + general together) ------------------ #
+
+
+async def test_plan_prices_ensemble_sum():
+    """A kind-matched query with BOTH providers registered prices the plan as the
+    SUM of each provider's run — the ensemble consults both at execute time."""
+    general = FakeProvider(is_paid=True, cost_per_call=0.03)
+    place = KindFakeProvider(
+        name="place_src", is_paid=True, cost_per_call=0.05,
+    )
+    register_web_source(general)
+    register_web_source(place)
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
+    )
+    step = steps[0]
+    assert step.params["providers"] == ["place_src", "fake"]
+    # One call each (no rows_per_call, no subqueries): 0.05 + 0.03.
+    assert step.cost["paid_calls"] == 2
+    assert step.cost["estimated_usd"] == pytest.approx(0.08)
+    assert "'place_src' + 'fake'" in step.cost["note"]
+
+
+async def test_execute_ensemble_merges_and_dedupes_across_providers(monkeypatch):
+    """The ensemble run consults the specialized provider FIRST, then the general
+    one, per sub-query — merged through the same key dedupe (a record found by
+    both sources lands once, the specialized row winning) — with one provider
+    log per ensemble member."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    sq1, sq2 = FAN_SPEC["subqueries"]
+    place = KindFakeProvider(
+        name="place_src",
+        is_paid=True,
+        cost_per_call=0.05,
+    )
+    # The place source only knows Tustin rows (keyed per query).
+    place_rows = {sq1: TUSTIN_ROWS, sq2: []}
+    general_rows = {
+        # General web re-finds one Tustin doc (dupe) + finds Santa Ana docs.
+        sq1: [TUSTIN_ROWS[0]],
+        sq2: SANTA_ANA_ROWS,
+    }
+
+    class KindPerQuery(KindFakeProvider):
+        def __init__(self, table, **kw):
+            super().__init__(**kw)
+            self._table = table
+
+        async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
+            self.calls.append((query, sample, max_rows))
+            rows = list(self._table.get(query, []))[:max_rows]
+            if hint_columns:
+                rows = [{c: r.get(c, "unknown") for c in hint_columns} for r in rows]
+            return DiscoverResult(
+                rows=rows, sources=["https://places.example/x"],
+                estimated_total=len(rows), is_partial=False,
+            )
+
+    place = KindPerQuery(place_rows, name="place_src", is_paid=True, cost_per_call=0.05)
+    general = PerQueryProvider(general_rows, is_paid=True, cost_per_call=0.03)
+    register_web_source(general)
+    register_web_source(place)
+
+    batches: list[int] = []
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        batches.append(len(rows))
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(
+            _ctx_with_store(store), "all physicians in two cities", parsed=FAN_SPEC
+        )
+    )[0]
+    assert step.params["providers"] == ["place_src", "fake"]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    # Per sub-query: specialized first, then general — for both sub-queries.
+    assert [c[0] for c in place.calls] == [sq1, sq2]
+    assert [c[0] for c in general.calls if c[1] is False] == [sq1, sq2]
+
+    # Batches: place/Tustin=3, general/Tustin=0 (its 1 row deduped — no batch),
+    # place/SantaAna=0 (no batch), general/SantaAna=2 ("DR OVERLAP" deduped
+    # against place's "Dr. Overlap" ACROSS providers AND cities). Unique = 5.
+    assert batches == [3, 2]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    assert done.result_count == 5
+    assert done.progress.processed == 5
+
+    # One provider log PER ensemble member, each with its own tally. matches
+    # counts what each provider FOUND (pre-dedupe); a batch that dedupes to
+    # nothing is NOT "no_match" (the provider did find rows) — only a genuinely
+    # EMPTY result is (place_src's Santa Ana call returned zero rows).
+    logs = {pl.provider: pl for pl in done.provider_logs}
+    assert set(logs) == {"place_src", "fake"}
+    assert logs["place_src"].matches == 3 and logs["place_src"].status == "ok"
+    assert logs["place_src"].no_match == 1  # its Santa Ana search found nothing
+    assert logs["fake"].matches == 4 and logs["fake"].status == "ok"
+    assert logs["fake"].no_match == 0
+    # Both hosts consulted.
+    assert set(done.platforms or []) == {"places.example", "directory.example"}
+
+
+async def test_execute_ensemble_survives_specialized_provider_outage(monkeypatch):
+    """The specialized provider erroring on EVERY sub-query must not sink the run —
+    the general provider still lands its rows and the job completes (partial
+    coverage), with the outage recorded on the specialized provider's log."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    sq1, sq2 = FAN_SPEC["subqueries"]
+
+    class DownKindProvider(KindFakeProvider):
+        async def discover(self, query, **kw):
+            raise RuntimeError("places quota exhausted")
+
+    place = DownKindProvider(name="place_src", is_paid=True, cost_per_call=0.05)
+    general = PerQueryProvider(
+        {sq1: TUSTIN_ROWS, sq2: SANTA_ANA_ROWS}, is_paid=True, cost_per_call=0.03
+    )
+    register_web_source(general)
+    register_web_source(place)
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(
+            _ctx_with_store(store), "all physicians in two cities", parsed=FAN_SPEC
+        )
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied  # general coverage still landed
+    assert done.result_count == 5  # TUSTIN(3) + SANTA_ANA(3) − 1 cross-city dupe
+    logs = {pl.provider: pl for pl in done.provider_logs}
+    assert logs["place_src"].errors == 2
+    assert logs["place_src"].status == "error"
+    assert "quota exhausted" in (logs["place_src"].last_error or "")
+    assert logs["fake"].status == "ok"
+
+
+# --- adversarial-review hardening (F1/F2/F4/F6/F7) ---------------------------- #
+
+
+def test_row_key_same_name_different_signals_are_distinct():
+    """F1: a bare-name key collapsed every 'Starbucks' branch to one record.
+    The composite key keeps same-NAME rows apart when an identity signal
+    (address/city/phone) differs, and dedupes only true duplicates."""
+    seen: set[str] = set()
+    rows = [
+        {"name": "Starbucks", "address": "14642 Newport Ave", "city": "Tustin"},
+        {"name": "Starbucks", "address": "1125 E 17th St", "city": "Santa Ana"},
+        {"name": "STARBUCKS", "address": "14642 Newport Ave.", "city": "Tustin"},
+    ]
+    kept = web_ingest_cap._dedupe_rows(rows, "name", seen)
+    # Two branches kept; the shouty re-listing of the first branch deduped.
+    assert len(kept) == 2
+    assert {r["city"] for r in kept} == {"Tustin", "Santa Ana"}
+
+    # No identity signal at all → name-only key still dedupes exact re-finds…
+    seen2: set[str] = set()
+    bare = [{"name": "Dr. Alina Reyes"}, {"name": "dr alina reyes"}]
+    assert len(web_ingest_cap._dedupe_rows(bare, "name", seen2)) == 1
+    # …and a row with no key value is always kept (nothing to match on).
+    assert web_ingest_cap._dedupe_rows([{"x": 1}], "name", set()) == [{"x": 1}]
+
+
+async def test_url_mode_never_fans_out():
+    """F6: URL-targeted extraction reads FIXED pages — partitioned sub-queries
+    would just re-scrape (and re-bill) the same URLs. plan() drops the spec's
+    partition in URL mode."""
+    from tests.test_web_ingest_urls import UrlProvider
+
+    register_web_source(UrlProvider())
+    spec = dict(FAN_SPEC)  # spec LLM proposed a partition anyway
+    ctx = _ctx()
+    ctx.urls = ["https://directory.example/all"]
+    steps = await WebIngestCapability().plan(
+        ctx, "pull all physicians from this page", parsed=spec
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.params["subqueries"] == []
+    assert step.params["urls"] == ["https://directory.example/all"]
+
+
+async def test_lean_plan_carries_server_owned_auto_confirm_flag():
+    """F7: the ≤gate decision is SERVER-owned — the lean plan says
+    auto_confirm=true so clients obey it instead of re-deriving the gate from a
+    twin constant that can drift. Above-gate (rich) plans carry no flag."""
+    register_web_source(FakeProvider(is_paid=True, cost_per_call=0.03))
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    assert steps[0].cost.get("auto_confirm") is True
+
+
+async def test_rich_plan_has_no_auto_confirm_flag(monkeypatch):
+    register_web_source(FakeProvider(**RICH))
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    assert steps[0].action == "discover_ingest"
+    assert steps[0].cost.get("auto_confirm") is None
+
+
+async def test_never_consulted_ensemble_member_is_skipped(monkeypatch):
+    """F4: an ensemble member never reached (cap filled before its turn) rolls
+    up as status='skipped' — the ProviderLog contract's 'named but never
+    consulted' — not 'no_match' (which claims it ran and found nothing)."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+    from cograph_client.agent.registry import PlanStep
+
+    place = KindFakeProvider(name="place_src", rows=TUSTIN_ROWS)
+    general = FakeProvider(rows=SANTA_ANA_ROWS)
+    register_web_source(general)
+    register_web_source(place)
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    # Hand-built step: cap=3 → the specialized provider alone fills it and the
+    # general member is never consulted.
+    step = PlanStep(
+        capability="web_ingest",
+        action="discover_ingest",
+        params={
+            "query": "physicians in Tustin",
+            "subqueries": [],
+            "proposed_type": "Physician",
+            "attributes": ["name", "specialty", "city"],
+            "hint_columns": ["name", "specialty", "city", "phone"],
+            "max_rows": 3,
+            "kg_name": "models",
+            "provider": "place_src",
+            "providers": ["place_src", "fake"],
+            "urls": [],
+        },
+        rationale="test",
+        confidence=1.0,
+    )
+    store = InMemoryJobStore()
+    cap_obj = WebIngestCapability()
+    ack = await cap_obj.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    assert done.result_count == 3
+    logs = {pl.provider: pl for pl in done.provider_logs}
+    assert logs["place_src"].status == "ok"
+    assert logs["fake"].status == "skipped"
+    assert logs["fake"].attempts == 0
