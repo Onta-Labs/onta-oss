@@ -1,0 +1,63 @@
+{
+  "slug": "clinicaltrials_gov",
+  "title": "ClinicalTrials.gov",
+  "publisher": "U.S. National Library of Medicine (NIH)",
+  "description": "The official U.S. registry and results database of privately and publicly funded clinical studies conducted around the world. Authoritative for a clinical trial's status (recruiting, completed, terminated), phase, study type, lead sponsor, and the conditions/diseases it studies. Prefer this over generic web search for any question about clinical trials, study sponsors, or trial recruitment status. Search by condition, free-text term, sponsor, or NCT identifier.",
+  "docs_url": "https://clinicaltrials.gov/data-api/api",
+  "coverage": {
+    "entity_kinds": ["clinical_trial", "study", "trial_sponsor"],
+    "attributes": ["nct_id", "status", "phase", "study_type", "lead_sponsor", "conditions", "title"],
+    "geo": "worldwide (registered with NIH)",
+    "temporal": "current + historical trials",
+    "example_asks": [
+      "recruiting phase 3 trials for pancreatic cancer",
+      "clinical trials sponsored by Pfizer for Alzheimer's disease",
+      "status and phase of trial NCT04368728",
+      "diabetes trials that are currently recruiting"
+    ]
+  },
+  "authority_level": "source_of_truth",
+  "base_url": "https://clinicaltrials.gov",
+  "auth": { "mode": "none" },
+  "cost_per_call": 0.0,
+  "rate_limit_per_min": 0,
+  "persist_ok": true,
+  "tos_note": "Public U.S. government data (NIH/NLM). No API key required.",
+  "enabled": true,
+  "entitlement": "free",
+  "endpoints": [
+    {
+      "name": "studies",
+      "method": "GET",
+      "path": "/api/v2/studies",
+      "query": { "countTotal": "true" },
+      "params": [
+        { "name": "condition", "target": "query.cond", "description": "Condition or disease, e.g. 'pancreatic cancer'." },
+        { "name": "term", "target": "query.term", "description": "Free-text search over the study record." },
+        { "name": "sponsor", "target": "query.spons", "description": "Lead sponsor / collaborator name." },
+        { "name": "status", "target": "filter.overallStatus", "description": "Recruitment status filter, e.g. 'RECRUITING'." },
+        { "name": "id", "target": "query.id", "description": "A specific NCT identifier, e.g. 'NCT04368728'." }
+      ],
+      "result_path": "studies",
+      "field_mappings": {
+        "nct_id": "protocolSection.identificationModule.nctId",
+        "title": "protocolSection.identificationModule.briefTitle",
+        "status": "protocolSection.statusModule.overallStatus",
+        "phase": "protocolSection.designModule.phases[0]",
+        "study_type": "protocolSection.designModule.studyType",
+        "lead_sponsor": "protocolSection.sponsorCollaboratorsModule.leadSponsor.name",
+        "lead_sponsor_class": "protocolSection.sponsorCollaboratorsModule.leadSponsor.class",
+        "conditions": "protocolSection.conditionsModule.conditions"
+      },
+      "pagination": {
+        "style": "cursor",
+        "limit_param": "pageSize",
+        "page_size": 50,
+        "cursor_param": "pageToken",
+        "cursor_path": "nextPageToken",
+        "total_path": "totalCount",
+        "max_pages": 5
+      }
+    }
+  ]
+}

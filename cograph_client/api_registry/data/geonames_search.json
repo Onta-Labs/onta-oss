@@ -1,0 +1,63 @@
+{
+  "slug": "geonames_search",
+  "title": "GeoNames",
+  "publisher": "GeoNames.org",
+  "description": "A geographical database covering all countries with over eleven million placenames. Authoritative for resolving a place name to its coordinates (latitude/longitude), country code, administrative region, population, and feature class (populated place, mountain, lake, etc.). Prefer this over generic web search for geocoding a city, town, or landmark and for looking up a place's population or administrative hierarchy. Requires a free GeoNames username.",
+  "docs_url": "https://www.geonames.org/export/geonames-search.html",
+  "coverage": {
+    "entity_kinds": ["place", "city", "town", "administrative_region", "landmark"],
+    "attributes": ["latitude", "longitude", "country_code", "admin_name", "population", "feature_class", "feature_code"],
+    "geo": "worldwide",
+    "temporal": "current",
+    "example_asks": [
+      "coordinates of Springfield, Illinois",
+      "population of Nairobi",
+      "what country is the city of Bruges in",
+      "geocode 'Mount Kilimanjaro'"
+    ]
+  },
+  "authority_level": "authoritative",
+  "base_url": "https://secure.geonames.org",
+  "auth": { "mode": "api_key_query", "key_env": "GEONAMES_USERNAME", "query_key": "username" },
+  "cost_per_call": 0.0,
+  "rate_limit_per_min": 0,
+  "persist_ok": true,
+  "tos_note": "Free with a registered GeoNames username (CC BY 4.0). Credits/rate limits apply per account.",
+  "enabled": true,
+  "entitlement": "free",
+  "endpoints": [
+    {
+      "name": "search",
+      "method": "GET",
+      "path": "/searchJSON",
+      "query": { "style": "FULL" },
+      "params": [
+        { "name": "q", "target": "q", "description": "Free-text place query over all attributes." },
+        { "name": "name", "target": "name", "description": "Exact place name to match." },
+        { "name": "country", "target": "country", "description": "ISO-3166 country code filter, e.g. 'US'." },
+        { "name": "feature_class", "target": "featureClass", "description": "Feature class filter: P (place), A (admin), H (water), T (mountain), etc." }
+      ],
+      "result_path": "geonames",
+      "field_mappings": {
+        "geoname_id": "geonameId",
+        "name": "name",
+        "country_code": "countryCode",
+        "country_name": "countryName",
+        "admin_name": "adminName1",
+        "latitude": "lat",
+        "longitude": "lng",
+        "population": "population",
+        "feature_class": "fcl",
+        "feature_code": "fcode"
+      },
+      "pagination": {
+        "style": "offset",
+        "limit_param": "maxRows",
+        "page_size": 50,
+        "offset_param": "startRow",
+        "total_path": "totalResultsCount",
+        "max_pages": 5
+      }
+    }
+  ]
+}
