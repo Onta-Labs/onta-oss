@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import re
 import uuid
@@ -66,6 +67,8 @@ from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.web_sources.base import (
     WebSourceProvider,
     get_web_source,
+    get_web_source_for_kind,
+    has_kind_specialized_provider,
     provider_cost,
 )
 from cograph_client.web_sources.url_extract import extract_urls
@@ -130,11 +133,17 @@ class WebIngestCapability:
         # pull records FROM those pages instead of web-searching for a query.
         urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
 
-        # URL mode needs a URL-capable provider; query mode the default one. When
-        # the required provider isn't registered, degrade gracefully the same way.
-        provider = get_web_source(for_urls=bool(urls))
-        if provider is None:
-            if urls:
+        # AVAILABILITY GATE (runs BEFORE _resolve_spec, so the query_kind isn't
+        # known yet). URL mode needs a URL-capable provider. Query mode is available
+        # if EITHER a general query provider OR at least one kind-specialized
+        # provider is registered — a place-only deployment (kind provider registered
+        # but no general default, e.g. only GOOGLE_PLACES_API_KEY set) can still
+        # serve place queries, so we must NOT refuse before checking the kind
+        # routing. We bail early only when NEITHER exists; the exact provider is
+        # picked after the spec resolves the query_kind.
+        general = get_web_source(for_urls=bool(urls))
+        if urls:
+            if general is None:
                 return [
                     _answer_step(
                         "I can see the link(s) you shared, but URL extraction isn't "
@@ -143,6 +152,10 @@ class WebIngestCapability:
                         "into ingested data."
                     )
                 ]
+        elif general is None and not has_kind_specialized_provider():
+            # No general provider AND no kind-specialized provider → nothing can
+            # serve ANY query. (With a kind provider present we press on; a query
+            # that doesn't match its kind is refused gracefully after the spec.)
             return [
                 _answer_step(
                     "Web discovery isn't enabled in this deployment. An admin can "
@@ -151,12 +164,41 @@ class WebIngestCapability:
                 )
             ]
 
-        # 1. Resolve the entity type, the attributes to collect, and a CLEAN search
-        #    subject — so we search for "OpenRouter TTS models", NOT the user's raw
-        #    conversational sentence ("can we ingest open-router's TTS models that
-        #    it currently offers"). If the user only named the entity, propose a set
-        #    and confirm before spending anything.
+        # 1. Resolve the entity type, the attributes to collect, a CLEAN search
+        #    subject, and a generic query_kind — so we search for "OpenRouter TTS
+        #    models", NOT the user's raw conversational sentence ("can we ingest
+        #    open-router's TTS models that it currently offers"). If the user only
+        #    named the entity, propose a set and confirm before spending anything.
         spec = parsed or await _resolve_spec(ctx, instruction)
+
+        # Query-kind routing (ONTA-190): PREFER a provider specializing in the
+        # spec's generic query_kind (e.g. "place" for a location/business-finding
+        # query) when one is registered; otherwise use the general default. In a
+        # place-only deployment `general` is None, so a place query is served by the
+        # specialized provider and a NON-place query has no provider — refused
+        # gracefully below (not a crash). URL mode always uses the URL extractor
+        # (`general`) selected above; kind routing never applies to it.
+        if urls:
+            provider = general
+        else:
+            query_kind = spec.get("query_kind")
+            specialized = (
+                get_web_source_for_kind(query_kind) if query_kind else None
+            )
+            provider = specialized or general
+            if provider is None:
+                # A general query in a kind-only deployment (e.g. place-only): the
+                # only registered provider can't serve this query's kind. Refuse
+                # gracefully instead of proceeding with no provider.
+                return [
+                    _answer_step(
+                        "Web discovery for this kind of request isn't enabled in "
+                        "this deployment. The configured web source only handles "
+                        "certain queries (e.g. finding physical places); an admin "
+                        "can add a general web-source provider for other requests."
+                    )
+                ]
+
         type_name = spec.get("entity_type") or "WebRecord"
         query = (spec.get("query") or "").strip() or _clean_query(instruction)
         if not query:
@@ -543,6 +585,7 @@ STRICT JSON only (no markdown):
   "entity_type": "<PascalCase singular type for the records, e.g. Model, Company, Drug>",
   "key_attribute": "<the natural identifier, usually 'name', snake_case>",
   "query": "<a clean, concise SEARCH SUBJECT — the thing to find on the web, with all conversational framing removed>",
+  "query_kind": "<'place' when the records are physical places / businesses / real-world locations to find; otherwise null>",
   "confirmed_attributes": ["<attributes the user EXPLICITLY named; [] if they only named the entity>"],
   "suggested_attributes": ["<a COMPREHENSIVE set (6-12) of web-discoverable columns for this entity, snake_case, excluding the key>"]
 }
@@ -555,6 +598,14 @@ Keep it short and specific; do NOT include words like "ingest", "add", "list of"
 "can we", "I'm looking for".
 - entity_type: specific but clean — "a list of models offered by OpenRouter" -> \
 "Model" (prefer the domain term the user used; singular).
+- query_kind: set to "place" ONLY when the records are physical places, \
+businesses, venues, or real-world locations you would find on a map — restaurants, \
+coffee shops, hotels, stores, clinics, gyms, parks, landmarks, offices \
+("coffee shops in SF", "hardware stores near Austin", "urgent care clinics in \
+Boston"). Otherwise set it to null. NON-place examples (null): "top LLMs", "S&P \
+500 companies", "Nobel laureates", "npm packages", "movies from 2020" — these are \
+not physical locations even when they mention an organization. When unsure, use \
+null.
 - key_attribute: the human-readable identifier (name/title), snake_case.
 - confirmed_attributes: ONLY what the user actually asked for. "models with their \
 names and pricing" -> ["name","pricing"]; "a list of models" -> []. When the user \
@@ -597,10 +648,12 @@ async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:
                 return _normalize_spec(parsed)
         except Exception:  # noqa: BLE001
             logger.warning("web_ingest_spec_failed", exc_info=True)
-    # No-LLM fallback: name the records generically and ask.
+    # No-LLM fallback: name the records generically and ask. No kind classification
+    # without the LLM → query_kind stays None (general default provider).
     return {
         "entity_type": "WebRecord",
         "key_attribute": "name",
+        "query_kind": None,
         "confirmed_attributes": [],
         "suggested_attributes": ["name", "description", "url"],
     }
@@ -616,9 +669,26 @@ def _normalize_spec(parsed: dict) -> dict:
         "key_attribute": key,
         # Free-text search subject (NOT slugged — it's prose for the provider/card).
         "query": str(parsed.get("query") or "").strip(),
+        # Generic query category for kind-routing (ONTA-190). Normalized to a
+        # lowercase slug so "Place"/"PLACE" all match a provider's query_kinds; a
+        # missing / null / literal-"null" value collapses to None → no routing.
+        "query_kind": _norm_query_kind(parsed.get("query_kind")),
         "confirmed_attributes": [a for a in confirmed if a],
         "suggested_attributes": [a for a in suggested if a],
     }
+
+
+def _norm_query_kind(v) -> Optional[str]:
+    """Normalize the LLM's ``query_kind`` to a lowercase slug, or ``None``.
+
+    The prompt asks for ``null`` on a non-specialized query, but LLMs sometimes
+    emit the string ``"null"``/``"none"`` or an empty value — all collapse to
+    ``None`` (no routing). A real kind is lowercased + slugged so it matches a
+    provider's generic ``query_kinds`` regardless of casing/punctuation."""
+    s = _slug(v)
+    if not s or s in {"null", "none"}:
+        return None
+    return s
 
 
 def _and_join(items: list[str], limit: int = 6) -> str:
@@ -848,7 +918,14 @@ def _estimate_cost(
     provider: WebSourceProvider, estimated_total: int, cap: int
 ) -> dict:
     """Plan-time cost estimate, using the SAME contract keys the plan card reads
-    (``estimated_usd`` / ``paid_calls`` / ``note``)."""
+    (``estimated_usd`` / ``paid_calls`` / ``note``).
+
+    ``cost_per_call`` is the cost of ONE paid REQUEST. A provider that FANS OUT a
+    run across paginated requests declares ``rows_per_call`` (records per request);
+    we then price the whole run as ``cost_per_call × ceil(rows / rows_per_call)``
+    instead of a single call — so a multi-page pull isn't under-quoted. Unset /
+    ``0`` ``rows_per_call`` means "one paid call per run" (the default), so a
+    single-call provider is unchanged."""
     is_paid, cost_per_call = provider_cost(provider)
     rows = min(estimated_total or 0, cap) if cap else (estimated_total or 0)
     if not is_paid:
@@ -857,18 +934,42 @@ def _estimate_cost(
             "estimated_usd": 0.0,
             "note": "No paid calls (the configured web source is free).",
         }
-    estimated_usd = round(cost_per_call, 4)
+    # How many paid REQUESTS the run fans out into: one per rows_per_call records
+    # (rounded up), min 1. A provider that doesn't paginate (rows_per_call unset/0)
+    # is one billed call for the whole run — the previous behavior.
+    paid_calls = _paid_call_count(provider, rows)
+    estimated_usd = round(cost_per_call * paid_calls, 4)
+    fanout = (
+        f" across ~{paid_calls} paginated request(s)" if paid_calls > 1 else ""
+    )
     return {
-        "paid_calls": 1,
+        "paid_calls": paid_calls,
         "paid_calls_estimated": True,
         "estimated_usd": estimated_usd,
         "per_call_cost_usd": round(cost_per_call, 4),
         "note": (
             f"Paid web discovery via '{provider.name}': ≈ ${estimated_usd:.2f} "
-            f"to fetch up to {rows} record(s) (estimate; provider may fan out "
-            f"across sub-queries)."
+            f"to fetch up to {rows} record(s){fanout} (estimate; provider may fan "
+            f"out across sub-queries)."
         ),
     }
+
+
+def _paid_call_count(provider: WebSourceProvider, rows: int) -> int:
+    """Number of paid REQUESTS a run of ``rows`` records fans out into.
+
+    Generic pagination pricing: a provider that yields ``rows_per_call`` records
+    per paid request bills ``ceil(rows / rows_per_call)`` requests (min 1). Read
+    ``rows_per_call`` defensively (default 0 → one billed call for the whole run,
+    the backward-compatible behavior for a non-paginating provider). Never raises
+    on a malformed value; coerces to the single-call default."""
+    try:
+        per = int(getattr(provider, "rows_per_call", 0) or 0)
+    except (TypeError, ValueError):
+        per = 0
+    if per <= 0 or rows <= 0:
+        return 1
+    return max(1, math.ceil(rows / per))
 
 
 # --- per-record source-URL provenance (ONTA-151) ----------------------------- #

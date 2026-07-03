@@ -57,6 +57,15 @@ ENTITY_ONLY_SPEC = {
     "confirmed_attributes": [],
     "suggested_attributes": ["provider", "context_length", "pricing"],
 }
+# A place-shaped query the spec classified into the generic "place" kind (ONTA-190).
+PLACE_SPEC = {
+    "entity_type": "CoffeeShop",
+    "key_attribute": "name",
+    "query": "coffee shops in the Mission",
+    "query_kind": "place",
+    "confirmed_attributes": ["address"],
+    "suggested_attributes": ["address", "phone", "rating"],
+}
 
 
 class FakeProvider:
@@ -98,6 +107,17 @@ class FakeProvider:
             estimated_total=len(self._rows),
             is_partial=sample,
         )
+
+
+class KindFakeProvider(FakeProvider):
+    """A FakeProvider that specializes in a generic query kind (ONTA-190). Named
+    distinctly so a test can assert which provider plan() selected. A non-empty
+    query_kinds also keeps it out of the general no-name query default."""
+
+    def __init__(self, *, name: str = "kind_fake", kinds=frozenset({"place"}), **kw):
+        super().__init__(**kw)
+        self.name = name
+        self.query_kinds = kinds
 
 
 def _ctx(prior_clarify: int = 0) -> AgentContext:
@@ -208,6 +228,113 @@ async def test_confirmed_attributes_builds_discovery_plan(monkeypatch):
     # fetch union, persisted so execute() fetches the same rich projection.
     assert step.params["attributes"] == ["name", "context_length"]
     assert set(step.params["hint_columns"]) == {"name", "context_length", "provider"}
+
+
+# --- query-kind routing (ONTA-190) ------------------------------------------
+
+
+async def test_place_kind_routes_to_specialized_provider(monkeypatch):
+    """When the spec classifies the query as kind="place" AND a provider
+    specializing in that kind is registered, plan() PREFERS the specialized
+    provider over the general default — persisting its name so execute() re-selects
+    the same one. Generic: the capability routes by the kind, never by a provider
+    name."""
+    general = FakeProvider()  # the general default (no query_kinds)
+    place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
+    register_web_source(general)
+    register_web_source(place)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    # The specialized provider ran the sample + is persisted for execute().
+    assert step.params["provider"] == "place_src"
+    assert place.calls and not general.calls
+
+
+async def test_place_kind_falls_back_to_default_when_unregistered(monkeypatch):
+    """DORMANT without the specialized provider: the SAME place-kind spec, but no
+    kind provider registered, uses the general default — kind routing is a pure
+    no-op, so the general path still handles everything."""
+    general = FakeProvider()  # only the general default is registered
+    register_web_source(general)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    # No specialized provider → the general default ran and is persisted.
+    assert step.params["provider"] == general.name
+    assert general.calls
+
+
+async def test_non_place_kind_ignores_specialized_provider(monkeypatch):
+    """A general (non-place) query never routes to the place provider even when one
+    is registered: query_kind is None on CONFIRMED_SPEC, so the general default is
+    used and the place source is left untouched."""
+    general = FakeProvider()
+    place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
+    register_web_source(general)
+    register_web_source(place)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.params["provider"] == general.name
+    assert general.calls and not place.calls
+
+
+async def test_place_only_deployment_serves_place_query(monkeypatch):
+    """PLACE-ONLY DEPLOYMENT (the blocker): ONLY a kind-specialized provider is
+    registered (no general default — e.g. GOOGLE_PLACES_API_KEY set but no
+    OpenRouter/Gemini/Perplexity key). The availability gate must NOT refuse a
+    place query — it routes it to the specialized provider (a plan, not the
+    "not enabled" dead end)."""
+    place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
+    register_web_source(place)  # NO general provider registered
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.params["provider"] == "place_src"
+    assert place.calls
+
+
+async def test_place_only_deployment_gracefully_refuses_general_query(monkeypatch):
+    """PLACE-ONLY DEPLOYMENT, GENERAL query: the only provider can't serve this
+    query's kind (query_kind is None on CONFIRMED_SPEC). Gracefully refuse with an
+    answer step — NOT a crash, and NOT proceeding with no provider."""
+    place = KindFakeProvider(name="place_src", kinds=frozenset({"place"}))
+    register_web_source(place)  # NO general provider registered
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+    )
+    assert len(steps) == 1 and steps[0].action == "answer"
+    assert "isn't enabled" in steps[0].params["answer_payload"]["answer"]
+    # The place provider was never invoked for a query outside its kind.
+    assert not place.calls
+
+
+async def test_no_provider_at_all_still_refuses(monkeypatch):
+    """Empty registry (no general AND no kind provider) → the gate still refuses
+    every query, unchanged from before."""
+    steps = await WebIngestCapability().plan(
+        _ctx(), "coffee shops in the Mission", parsed=PLACE_SPEC
+    )
+    assert len(steps) == 1 and steps[0].action == "answer"
+    assert "isn't enabled" in steps[0].params["answer_payload"]["answer"]
 
 
 async def test_preview_surfaces_multiple_types_and_relationships(monkeypatch):
@@ -396,6 +523,66 @@ async def test_paid_provider_quotes_cost(monkeypatch):
     assert cost["paid_calls"] == 1
     assert cost["estimated_usd"] == pytest.approx(0.01)
     assert "Paid web discovery" in cost["note"]
+
+
+def test_estimate_cost_prices_pagination_fanout():
+    """A paginating paid provider (rows_per_call set) is priced as cost_per_call ×
+    ceil(rows / rows_per_call), NOT a single call — so a multi-page pull isn't
+    under-quoted (the nit-2 fix)."""
+
+    class _Paginating:
+        name = "paginating"
+        is_paid = True
+        cost_per_call = 0.017
+        rows_per_call = 20
+
+    # 100 rows / 20 per request = 5 paid requests.
+    cost = web_ingest_cap._estimate_cost(_Paginating(), estimated_total=100, cap=200)
+    assert cost["paid_calls"] == 5
+    assert cost["estimated_usd"] == pytest.approx(0.085)  # 0.017 × 5
+    assert cost["per_call_cost_usd"] == pytest.approx(0.017)
+    assert "paginated request" in cost["note"]
+
+    # A partial final page still counts (21 rows → 2 requests).
+    cost2 = web_ingest_cap._estimate_cost(_Paginating(), estimated_total=21, cap=200)
+    assert cost2["paid_calls"] == 2
+    assert cost2["estimated_usd"] == pytest.approx(0.034)
+
+
+def test_estimate_cost_single_call_when_no_rows_per_call():
+    """A paid provider WITHOUT rows_per_call bills one call for the whole run (the
+    backward-compatible default) — unchanged from before the fanout fix."""
+
+    class _WholeRun:
+        name = "wholerun"
+        is_paid = True
+        cost_per_call = 0.05
+        # no rows_per_call
+
+    cost = web_ingest_cap._estimate_cost(_WholeRun(), estimated_total=500, cap=1000)
+    assert cost["paid_calls"] == 1
+    assert cost["estimated_usd"] == pytest.approx(0.05)
+    assert "paginated request" not in cost["note"]
+
+
+def test_paid_call_count_helper():
+    """_paid_call_count: ceil(rows / rows_per_call), min 1; default 1 when
+    rows_per_call is unset/0 or rows is 0; robust to a malformed value."""
+
+    class _P:
+        rows_per_call = 20
+
+    class _NoPer:
+        pass
+
+    class _Bad:
+        rows_per_call = "oops"
+
+    assert web_ingest_cap._paid_call_count(_P(), 100) == 5
+    assert web_ingest_cap._paid_call_count(_P(), 1) == 1
+    assert web_ingest_cap._paid_call_count(_P(), 0) == 1  # no rows → 1
+    assert web_ingest_cap._paid_call_count(_NoPer(), 100) == 1  # unset → whole run
+    assert web_ingest_cap._paid_call_count(_Bad(), 100) == 1  # malformed → 1
 
 
 async def test_empty_sample_returns_message():
@@ -905,3 +1092,88 @@ async def test_execute_does_not_blame_provider_when_ingest_fails(monkeypatch):
     assert failed.error_summary and failed.error_summary[0].kind == "job"
     assert failed.error_summary[0].provider is None
     assert "ingest exploded" in (failed.error or "")
+
+
+# --- _resolve_spec query_kind classification (ONTA-190) ---------------------
+
+
+async def _run_resolve_spec(monkeypatch, spec_json: str, instruction: str) -> dict:
+    """Drive _resolve_spec with a mocked LLM returning ``spec_json``."""
+    async def fake_chat(*_a, **_k):
+        return spec_json
+
+    monkeypatch.setattr(web_ingest_cap, "openrouter_chat", fake_chat)
+    ctx = AgentContext(
+        tenant_id="demo-tenant", kg_name="places", neptune=MagicMock(),
+        anthropic_key="sk-ant-test", openrouter_key="k",
+    )
+    return await web_ingest_cap._resolve_spec(ctx, instruction)
+
+
+async def test_resolve_spec_classifies_place_query(monkeypatch):
+    """A place-shaped query → the LLM emits query_kind="place", carried through
+    _normalize_spec so plan() can route it to a place-specialized provider."""
+    spec = json.dumps({
+        "entity_type": "CoffeeShop",
+        "key_attribute": "name",
+        "query": "coffee shops in the Mission",
+        "query_kind": "place",
+        "confirmed_attributes": ["address"],
+        "suggested_attributes": ["address", "phone", "rating"],
+    })
+    out = await _run_resolve_spec(monkeypatch, spec, "coffee shops in the Mission SF")
+    assert out["query_kind"] == "place"
+    assert out["entity_type"] == "CoffeeShop"
+
+
+async def test_resolve_spec_general_query_has_no_kind(monkeypatch):
+    """A non-place query → query_kind is None (the LLM returned null), so plan()
+    keeps the general default provider — kind routing stays dormant."""
+    spec = json.dumps({
+        "entity_type": "Model",
+        "key_attribute": "name",
+        "query": "OpenRouter models",
+        "query_kind": None,
+        "confirmed_attributes": [],
+        "suggested_attributes": ["provider", "context_length"],
+    })
+    out = await _run_resolve_spec(monkeypatch, spec, "list of OpenRouter models")
+    assert out["query_kind"] is None
+
+
+async def test_resolve_spec_normalizes_literal_null_kind(monkeypatch):
+    """LLMs sometimes emit the STRING "null" (or omit the key) for a non-specialized
+    query — both collapse to None so no spurious routing happens."""
+    spec = json.dumps({
+        "entity_type": "Model",
+        "key_attribute": "name",
+        "query": "OpenRouter models",
+        "query_kind": "null",  # literal string, not JSON null
+        "confirmed_attributes": [],
+        "suggested_attributes": ["provider"],
+    })
+    out = await _run_resolve_spec(monkeypatch, spec, "list of OpenRouter models")
+    assert out["query_kind"] is None
+
+    # Key entirely absent → also None (defensive .get on the normalized spec).
+    spec2 = json.dumps({
+        "entity_type": "Model",
+        "key_attribute": "name",
+        "query": "OpenRouter models",
+        "confirmed_attributes": [],
+        "suggested_attributes": ["provider"],
+    })
+    out2 = await _run_resolve_spec(monkeypatch, spec2, "list of OpenRouter models")
+    assert out2["query_kind"] is None
+
+
+def test_norm_query_kind_lowercases_and_slugs():
+    """A real kind is lowercased + slugged so casing/punctuation from the LLM still
+    matches a provider's query_kinds; empty/null-ish collapse to None."""
+    assert web_ingest_cap._norm_query_kind("Place") == "place"
+    assert web_ingest_cap._norm_query_kind("PLACE") == "place"
+    assert web_ingest_cap._norm_query_kind("  place  ") == "place"
+    assert web_ingest_cap._norm_query_kind(None) is None
+    assert web_ingest_cap._norm_query_kind("null") is None
+    assert web_ingest_cap._norm_query_kind("none") is None
+    assert web_ingest_cap._norm_query_kind("") is None
