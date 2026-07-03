@@ -25,7 +25,9 @@ Boundary: OSS. Every module here imports only stdlib / ``cograph_client.*`` /
 
 from __future__ import annotations
 
-from cograph_client.research.fetch import (
+# Fetch layer now lives in the shared retrieval substrate (ONTA-193); imported
+# here from its canonical home and still re-exported for published-package compat.
+from cograph_client.retrieval import (
     FetchedPage,
     PageFetcher,
     StaticHttpFetcher,
