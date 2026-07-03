@@ -27,7 +27,7 @@ from __future__ import annotations
 import structlog
 
 from cograph_client.agent.registry import AgentContext, PlanStep
-from cograph_client.research.fetch import fetcher_cost, get_page_fetchers
+from cograph_client.retrieval import fetcher_cost, get_page_fetchers
 from cograph_client.research.harness import WebResearchHarness
 from cograph_client.research.types import (
     Budget,

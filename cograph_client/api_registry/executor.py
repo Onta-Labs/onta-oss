@@ -14,7 +14,7 @@ row→URL provenance + cost + partiality), so phases 2–3 can wrap it behind th
 
 Safety: every fetched URL — the first page, every synthesized pagination URL,
 and every redirect hop — goes through ``is_fetchable_url`` + ``host_dns_blocked``
-(reused verbatim from the research fetch ladder), because the web-source probe
+(the shared retrieval-substrate SSRF guard, ONTA-193), because the web-source probe
 path does *not* apply those guards today. The executor never raises; failures
 surface as ``ApiCallResult.error``.
 """
@@ -29,7 +29,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
-from ..research.fetch import host_dns_blocked, is_fetchable_url
+from ..retrieval import host_dns_blocked, is_fetchable_url
 from ..research.types import Budget, redact_url
 from .jsonpath import extract_records, map_record
 from .paginate import PageState, declared_total, first_page, next_page
