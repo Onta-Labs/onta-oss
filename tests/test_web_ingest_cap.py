@@ -924,6 +924,50 @@ async def test_execute_marks_job_failed_on_error(monkeypatch):
     assert "ingest exploded" in (failed.error or "")
 
 
+async def test_run_times_out_and_marks_job_failed(monkeypatch):
+    """ONTA-196: a discovery whose ingest STALLS past the per-run wall-clock
+    budget must flip the job to ``failed`` (with a timeout message), NEVER leave
+    it stuck on ``running``. We patch the budget to a hair, make ingest sleep well
+    past it, and assert the terminal state + message — no eternal spinner."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    # Tiny per-run budget: the ingest below far exceeds it.
+    monkeypatch.setattr(web_ingest_cap, "_RUN_TIMEOUT_S", 0.05)
+
+    register_web_source(FakeProvider())
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def slow_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        await asyncio.sleep(5)  # far exceeds the (patched) run budget
+        return IngestResult(entities_extracted=0, entities_resolved=0)
+
+    monkeypatch.setattr(SchemaResolver, "ingest", slow_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+
+    # The wrapper bounds the run to ~0.05s; a hang here IS the regression.
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    failed = await store.get(ack["job_id"])
+    # Terminal FAILED — not stuck on running.
+    assert failed.status == JobStatus.failed
+    assert failed.status != JobStatus.running
+    assert failed.completed_at is not None
+    assert "timed out" in (failed.error or "").lower()
+
+
 def test_capability_registered_by_default():
     from cograph_client.agent.planner import register_default_capabilities
     from cograph_client.agent.registry import get_capability
