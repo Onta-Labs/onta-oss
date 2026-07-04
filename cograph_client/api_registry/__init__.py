@@ -27,6 +27,11 @@ from .catalog import (
     reset_api_source_layers,
 )
 from .discovery import RegistryDiscoverySource, build_registry_sources
+from .enrichment import (
+    RegistrySourceAdapter,
+    register_registry_enrichment,
+    reset_registry_enrichment,
+)
 from .executor import ApiCallResult, RegistryApiSource
 from .router import (
     MODE_API_ONLY,
@@ -78,4 +83,8 @@ __all__ = [
     "MODE_WEB_ONLY",
     "RegistryDiscoverySource",
     "build_registry_sources",
+    # enrichment rail (phase 3)
+    "RegistrySourceAdapter",
+    "register_registry_enrichment",
+    "reset_registry_enrichment",
 ]

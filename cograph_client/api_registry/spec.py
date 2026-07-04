@@ -75,6 +75,15 @@ class ParamLocation(str, Enum):
     path = "path"
 
 
+# Enrichment-rail binding recipes (ParamSpec.enrich_from): how to derive a param
+# value from an existing entity's label when filling one of its attributes.
+ENRICH_FROM_VALUES = frozenset({
+    "",                    # not auto-bound during enrichment
+    "entity_name",         # the whole entity label
+    "entity_name_first",   # first whitespace token (e.g. a person's first name)
+    "entity_name_last",    # last whitespace token (e.g. a person's surname)
+})
+
 AUTHORITY_LEVELS = frozenset(a.value for a in AuthorityLevel)
 AUTH_MODES = frozenset(a.value for a in AuthMode)
 PAGINATION_STYLES = frozenset(p.value for p in PaginationStyle)
@@ -184,7 +193,14 @@ class AuthSpec:
 
 @dataclass
 class ParamSpec:
-    """A router-bindable request parameter (e.g. ``city`` -> query key ``city``)."""
+    """A router-bindable request parameter (e.g. ``city`` -> query key ``city``).
+
+    ``enrich_from`` is the enrichment-rail binding recipe (ONTA-194 phase 3): when
+    filling an attribute on an existing entity, how to derive this param's value
+    from the entity's label. Empty ⇒ the param is not auto-bound during
+    enrichment (it may still be bound by the discovery-rail router). Allowed
+    values are in ``ENRICH_FROM_VALUES``.
+    """
 
     name: str                                   # binding key the router emits
     location: ParamLocation = ParamLocation.query
@@ -192,6 +208,7 @@ class ParamSpec:
     required: bool = False
     default: Optional[str] = None
     description: str = ""
+    enrich_from: str = ""                        # "" | entity_name | entity_name_first | entity_name_last
 
     def __post_init__(self) -> None:
         if not self.target:
@@ -207,6 +224,8 @@ class ParamSpec:
         }
         if self.default is not None:
             out["default"] = self.default
+        if self.enrich_from:
+            out["enrich_from"] = self.enrich_from
         return out
 
     @classmethod
@@ -224,6 +243,7 @@ class ParamSpec:
             required=bool(d.get("required", False)),
             default=None if default is None else _as_str(default),
             description=_as_str(d.get("description")).strip(),
+            enrich_from=_as_str(d.get("enrich_from")).strip(),
         )
 
 
@@ -595,6 +615,10 @@ def _validate_endpoint_params(ep: EndpointSpec, prefix: str) -> list[str]:
         if p.location is ParamLocation.path and p.target not in placeholders:
             errs.append(
                 f"{pp} is a path param but {{{p.target}}} is not in path {ep.path!r}"
+            )
+        if p.enrich_from not in ENRICH_FROM_VALUES:
+            errs.append(
+                f"{pp}.enrich_from {p.enrich_from!r} not in {sorted(ENRICH_FROM_VALUES)}"
             )
     # Every path placeholder must be filled by a declared path param.
     declared_targets = {p.target for p in ep.params if p.location is ParamLocation.path}

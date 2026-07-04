@@ -1,0 +1,219 @@
+"""Registry-backed enrichment source adapter (ONTA-194, phase 3).
+
+The parallel of the phase-2 discovery projection: where ``RegistryDiscoverySource``
+adapts the declarative executor to the ``WebSourceProvider`` seam, this adapts it
+to the enrichment ``SourceAdapter`` seam so a registered authoritative API can
+**fill an attribute on an existing entity** — with **authority precedence**.
+
+Given ``lookup(entity_label, attribute, context)`` it:
+
+1. self-gates — the entry must be able to *produce* the requested ``attribute``
+   (it's one of the entry's field-mapping columns) and cover the entity's type
+   (``context["entity_type"]`` matches the entry's coverage); otherwise ``[]`` so
+   the chain falls through to wikidata / web adapters,
+2. derives request bindings **deterministically** from the entity label via each
+   param's catalog-authored ``enrich_from`` recipe (no per-lookup LLM),
+3. runs ``RegistryApiSource.execute`` and builds a ``Verdict`` **directly** from
+   the top row (like the wikidata adapter — no LLM extraction needed for a
+   structured value), with a calibrated confidence set by the entry's
+   ``authority_level``.
+
+**Authority** is expressed purely by chain ORDER + confidence (never by importing
+the proprietary ``WIKIDATA_BETTER_ATTRIBUTES`` set): ``register_registry_enrichment``
+registers a chain-prefix provider (``tiers.register_chain_prefix_provider``) so
+the registry adapters LEAD every tier chain, and a ``source_of_truth`` entry
+returns a high-confidence verdict that the executor's first-sufficient-verdict
+short-circuit lets win over wikidata and every web adapter.
+
+Boundary: OSS. Imports only ``cograph_client.*`` — no ``from cograph.*``.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from typing import Optional
+
+from ..enrichment.models import Verdict
+from ..enrichment.sources.base import register_adapter
+from ..enrichment.tiers import register_chain_prefix_provider
+from .catalog import ApiSourceCatalog, get_api_source_catalog
+from .executor import RegistryApiSource
+from .spec import ApiSourceSpec, AuthorityLevel, EndpointSpec
+
+logger = logging.getLogger(__name__)
+
+# Calibrated confidences by authority level (compared against confidence_min,
+# default 0.85). source_of_truth + authoritative clear the bar (and, running
+# first, outrank downstream adapters); supplementary only augments a gap.
+_AUTHORITY_CONFIDENCE = {
+    AuthorityLevel.source_of_truth: 0.95,
+    AuthorityLevel.authoritative: 0.85,
+    AuthorityLevel.supplementary: 0.6,
+}
+# Chain-lead ordering: source-of-truth entries lead authoritative ones.
+_AUTHORITY_RANK = {
+    AuthorityLevel.source_of_truth: 0,
+    AuthorityLevel.authoritative: 1,
+    AuthorityLevel.supplementary: 2,
+}
+_MAX_ROWS = 5
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _norm(s: str) -> str:
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def _tokens(s: str) -> set[str]:
+    return set(_TOKEN_RE.findall((s or "").lower()))
+
+
+def _has_enrich_params(spec: ApiSourceSpec) -> bool:
+    return any(p.enrich_from for ep in spec.endpoints for p in ep.params)
+
+
+class RegistrySourceAdapter:
+    """A ``SourceAdapter`` backed by one declarative catalog entry."""
+
+    def __init__(self, spec: ApiSourceSpec, *, executor: Optional[RegistryApiSource] = None) -> None:
+        self._spec = spec
+        self._executor = executor or RegistryApiSource()
+        self.name = f"api:{spec.slug}"
+        self.is_paid = spec.is_paid
+        self.cost_per_call = spec.cost_per_call
+        # normalized(field-mapping column) -> canonical column name, across endpoints
+        self._columns: dict[str, str] = {}
+        for ep in spec.endpoints:
+            for col in ep.field_mappings:
+                self._columns.setdefault(_norm(col), col)
+
+    @property
+    def authority_level(self) -> AuthorityLevel:
+        return self._spec.authority_level
+
+    def _confidence(self) -> float:
+        return _AUTHORITY_CONFIDENCE.get(self._spec.authority_level, 0.6)
+
+    def _fillable_column(self, attribute: str) -> Optional[str]:
+        return self._columns.get(_norm(attribute))
+
+    def _type_matches(self, entity_type: str) -> bool:
+        # Missing type -> don't over-exclude (ONTA-191): rely on the attribute +
+        # binding gates. Present type -> require a token overlap with coverage.
+        if not entity_type:
+            return True
+        want = _tokens(entity_type)
+        if not want:
+            return True
+        return any(_tokens(kind) & want for kind in self._spec.coverage.entity_kinds)
+
+    def _build_bindings(self, ep: EndpointSpec, entity_label: str) -> dict[str, str]:
+        label = (entity_label or "").strip()
+        parts = label.split()
+        bindings: dict[str, str] = {}
+        for p in ep.params:
+            ef = p.enrich_from
+            if not ef:
+                continue
+            if ef == "entity_name":
+                val = label
+            elif ef == "entity_name_first":
+                val = parts[0] if parts else ""
+            elif ef == "entity_name_last":
+                val = parts[-1] if parts else ""
+            else:
+                val = ""
+            if val:
+                bindings[p.name] = val
+        return bindings
+
+    def _source_url(self, res) -> Optional[str]:
+        if res.sources:
+            return res.sources[0]
+        if res.provenance:
+            return next(iter(res.provenance.values()), None)
+        return None
+
+    async def lookup(self, entity_label: str, attribute: str, context: dict) -> list[Verdict]:
+        try:
+            entity_type = (context or {}).get("entity_type") or ""
+            col = self._fillable_column(attribute)
+            if col is None or not self._type_matches(entity_type):
+                return []  # this entry can't answer -> fall through to the next adapter
+            ep = self._spec.endpoint()
+            if ep is None:
+                return []
+            bindings = self._build_bindings(ep, entity_label)
+            if not bindings:
+                return []  # not enrichment-configured (no enrich_from) or empty label
+            res = await self._executor.execute(
+                self._spec, bindings, endpoint_name=ep.name, max_rows=_MAX_ROWS, sample=True,
+            )
+            if res.dormant or res.error or not res.rows:
+                return []
+            for row in res.rows:
+                value = row.get(col)
+                if value:
+                    return [Verdict(
+                        value=str(value),
+                        confidence=self._confidence(),
+                        source=self.name,
+                        source_url=self._source_url(res),
+                    )]
+            return []
+        except Exception:  # noqa: BLE001 - an adapter must never break the chain
+            logger.debug(
+                "api_registry enrichment lookup failed slug=%s attr=%s",
+                self._spec.slug, attribute, exc_info=True,
+            )
+            return []
+
+
+# --------------------------------------------------------------------------- #
+# Registration + authority chain-prefix
+# --------------------------------------------------------------------------- #
+_registry_lead_names: list[str] = []
+
+
+def _registry_prefix_provider(_tier) -> list[str]:
+    return list(_registry_lead_names)
+
+
+def register_registry_enrichment(
+    catalog: Optional[ApiSourceCatalog] = None,
+    *,
+    executor: Optional[RegistryApiSource] = None,
+) -> list[str]:
+    """Register a ``RegistrySourceAdapter`` per enrichment-ready catalog entry and
+    make them LEAD every tier chain (source-of-truth first). Idempotent — safe to
+    call again to refresh after the catalog/overlay changes. Returns the ordered
+    adapter names.
+    """
+    global _registry_lead_names
+    cat = catalog or get_api_source_catalog()
+    shared = executor or RegistryApiSource()
+    specs = [s for s in cat.enabled() if s.endpoints and _has_enrich_params(s)]
+    specs.sort(key=lambda s: (_AUTHORITY_RANK.get(s.authority_level, 9), s.slug))
+    names: list[str] = []
+    for spec in specs:
+        register_adapter(RegistrySourceAdapter(spec, executor=shared))
+        names.append(f"api:{spec.slug}")
+    _registry_lead_names = names
+    register_chain_prefix_provider(_registry_prefix_provider)
+    logger.info("api_registry: enrichment adapters registered: %s", names)
+    return names
+
+
+def reset_registry_enrichment() -> None:
+    """Clear the registry lead-names (tests). The chain-prefix provider stays
+    registered but returns an empty list, so it's a no-op."""
+    global _registry_lead_names
+    _registry_lead_names = []
+
+
+__all__ = [
+    "RegistrySourceAdapter",
+    "register_registry_enrichment",
+    "reset_registry_enrichment",
+]
