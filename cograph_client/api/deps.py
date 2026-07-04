@@ -26,6 +26,18 @@ def _ensure_enrichment_state(state) -> None:
             cache=state.enrichment_cache,
             wikidata_adapter=state.enrichment_wikidata,
         )
+        # ONTA-194 phase 3: register the API source registry as authoritative
+        # enrichment adapters that LEAD the chain (source-of-truth verdicts
+        # outrank wikidata / web adapters). Each entry self-gates on
+        # (entity_type, attribute), so this is inert for anything it can't answer.
+        try:
+            from cograph_client.api_registry.enrichment import (
+                register_registry_enrichment,
+            )
+
+            register_registry_enrichment()
+        except Exception:  # noqa: BLE001 - never block enrichment startup
+            pass
 
 
 def get_executor(request: Request) -> EnrichmentExecutor:
