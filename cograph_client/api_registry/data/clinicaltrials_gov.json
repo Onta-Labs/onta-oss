@@ -25,6 +25,7 @@
   "tos_note": "Public U.S. government data (NIH/NLM). No API key required.",
   "enabled": true,
   "entitlement": "free",
+  "verified_at": "2026-07-04",
   "endpoints": [
     {
       "name": "studies",
@@ -57,6 +58,9 @@
         "cursor_path": "nextPageToken",
         "total_path": "totalCount",
         "max_pages": 5
+      },
+      "smoke_bindings": {
+        "condition": "cancer"
       }
     }
   ]

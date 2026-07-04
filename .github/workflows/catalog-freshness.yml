@@ -1,0 +1,122 @@
+name: API catalog freshness
+
+# ONTA-194 phase 4 — scheduled freshness audit of the API-source registry's
+# seed catalog (cograph_client/api_registry/data/*.json). The audit
+# (cograph_client/api_registry/catalog_audit.py) flags every entry whose
+# `verified_at` is empty (UNVERIFIED) or older than the threshold (STALE) and
+# exits non-zero so this job can open/refresh a tracking issue.
+#
+# The gate is deliberately OFFLINE (verified_at freshness only), so it is
+# deterministic and never flakes on a transient upstream outage. The optional
+# `--live-smoke` path (run each entry's smoke_bindings through the real
+# executor) is a human diagnostic, not part of this automated gate.
+#
+# FUTURE ENHANCEMENT (out of scope for v1): a step that live-smokes each entry
+# and, on a persistent EMPTY/UNREACHABLE, auto-drafts a PR proposing a fix or
+# disabling the entry. v1 only flags freshness; a human re-confirms the entry
+# against its docs_url and bumps `verified_at`.
+
+on:
+  schedule:
+    # Mondays at 09:15 UTC — a weekly nudge to re-confirm/refresh entries.
+    - cron: "15 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: "Flag a verified entry STALE when older than this many days"
+        required: false
+        default: "180"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Create venv and install the OSS package
+        # The audit imports cograph_client.api_registry (which pulls in the
+        # package's runtime deps: pydantic, httpx, structlog, …).
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -e .
+
+      - name: Run catalog freshness audit
+        id: audit
+        # The audit exits 1 when any enabled entry is UNVERIFIED or STALE; we
+        # don't want that to abort the job (we still want to open the issue), so
+        # capture the exit code instead of failing the step.
+        run: |
+          source .venv/bin/activate
+          set +e
+          MAX_AGE="${{ github.event.inputs.max_age_days || '180' }}"
+          python -m cograph_client.api_registry.catalog_audit \
+            --max-age-days "$MAX_AGE" > catalog_report.md
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          echo "----- report -----"
+          cat catalog_report.md
+
+      - name: Open or update tracking issue
+        if: steps.audit.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('catalog_report.md', 'utf8');
+            const title = 'API catalog freshness: entries need review';
+            const marker = '<!-- onta194-catalog-freshness -->';
+            const issueBody =
+              `${marker}\n\n` +
+              `_Automated by [\`catalog-freshness.yml\`](../blob/main/.github/workflows/catalog-freshness.yml) ` +
+              `(ONTA-194 phase 4). One or more catalog entries are unverified ` +
+              `(\`verified_at\` empty) or stale. Re-confirm each against its ` +
+              `\`docs_url\` and bump \`verified_at\` in the entry's data file._\n\n` +
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\n` +
+              `---\n\n${body}`;
+
+            // Find an existing open issue we previously opened (match by marker).
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'catalog-freshness',
+              per_page: 100,
+            });
+            const match = existing.find(i => (i.body || '').includes(marker));
+
+            if (match) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                title,
+                body: issueBody,
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                body: `Refreshed by run ${context.runId} — see updated report above.`,
+              });
+              core.info(`Updated existing issue #${match.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: issueBody,
+                labels: ['catalog-freshness'],
+              });
+              core.info(`Opened issue #${created.data.number}`);
+            }
