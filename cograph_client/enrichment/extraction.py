@@ -30,12 +30,12 @@ Boundary: OSS file. Imports only stdlib / ``cograph_client.*``.
 
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timezone
 from typing import Optional, Protocol
 
 from cograph_client.enrichment.models import Verdict
+from cograph_client.retrieval.coerce import parse_json_object
 
 EXTRACTION_METHOD = "single_pass_json"
 CALIBRATION_METHOD = "single_pass_linear_shrink"
@@ -128,20 +128,16 @@ def default_extractor(
 
 
 def _try_parse_json(text: str) -> Optional[dict]:
-    """Best-effort parse of the first ``{...}`` object in ``text``."""
-    text = text.strip()
-    candidate = text
-    if not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return None
-        candidate = text[start : end + 1]
-    try:
-        parsed = json.loads(candidate)
-    except (ValueError, TypeError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    """Best-effort parse of the first ``{...}`` object in ``text``.
+
+    Thin delegate to the shared substrate parser
+    :func:`cograph_client.retrieval.coerce.parse_json_object` (ONTA-193 P4) — the
+    ONE tolerant object-JSON seam, so this rail and web discovery no longer keep
+    two divergent coercion helpers. Kept as a named function because several
+    modules import it (``llm_extractor``, ``research.plan``, ``research.extract``);
+    the behaviour is unchanged.
+    """
+    return parse_json_object(text)
 
 
 async def extract_value(
