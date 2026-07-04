@@ -78,6 +78,7 @@ from cograph_client.enrichment.models import (
 from cograph_client.graph.kg_writer import refresh_after_write
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+from cograph_client.retrieval.errors import LLMError
 from cograph_client.web_sources.base import (
     WebSourceProvider,
     get_web_source,
@@ -770,6 +771,12 @@ class WebIngestCapability:
             last_provider_err: Optional[str] = None
             last_err_provider: Optional[str] = None
             errors_total = 0
+            # Set when a FATAL billing/auth error (402/401) aborts the run mid-way
+            # (ONTA-201). Carries the clear, user-facing message out of the nested
+            # sub-query/provider loops so we can fail the WHOLE job honestly —
+            # rows-landed vs rows-lost — instead of swallowing it as one failed
+            # batch and reporting "complete".
+            fatal_llm_err: Optional[LLMError] = None
             # Each (sub-query, provider) call is bounded to the per-sub-query row
             # share the plan PRICED (cost = n_sub × pages(cap / n_sub)). Passing
             # the whole remaining cap instead let overlapping sub-queries spend up
@@ -880,6 +887,26 @@ class WebIngestCapability:
                                 job.platforms = platforms
                                 job.provider_logs = list(plogs.values())
                                 await job_store.update(job)
+                        except LLMError as exc:
+                            # FATAL, SYSTEMIC LLM-backend failure (402 billing /
+                            # 401 auth) surfaced by the extraction call inside
+                            # resolver.ingest (ONTA-201). It WILL recur on every
+                            # remaining chunk/sub-query, so aborting the whole run
+                            # now is the honest, cheap answer — NOT swallowing it
+                            # as one failed batch (`web_ingest_subquery_failed`)
+                            # and letting the run report "complete". Record it and
+                            # break out of BOTH loops; the terminal state below
+                            # reflects rows-landed vs rows-lost.
+                            fatal_llm_err = exc
+                            logger.error(
+                                "web_ingest_llm_backend_fatal",
+                                query=sub_query,
+                                provider=prov.name,
+                                phase=phase,
+                                processed=processed,
+                                error=str(exc),
+                            )
+                            break
                         except Exception as exc:  # noqa: BLE001 — one batch
                             # failing must not sink the run. Attribution follows
                             # the phase: a discover crash is the PROVIDER's; an
@@ -902,6 +929,30 @@ class WebIngestCapability:
                                 exc_info=True,
                             )
                             continue
+                    # A fatal billing/auth error (402/401) broke the inner
+                    # provider loop — abort the whole sub-query fan-out too; every
+                    # remaining call would fail identically (ONTA-201). The
+                    # terminal FAILED state (with honest partials) is set below.
+                    if fatal_llm_err is not None:
+                        break
+
+                # FATAL billing/auth failure: fail the WHOLE job with the clear,
+                # user-facing message, recording rows-landed vs rows-lost so the
+                # run is NEVER presented as complete when a batch was dropped to a
+                # systemic backend error (ONTA-201). This precedes the normal
+                # roll-up because it is a run-level abort, not a per-provider
+                # outcome.
+                if fatal_llm_err is not None:
+                    for plog in plogs.values():
+                        plog.status = (
+                            "error" if plog.attempts and not plog.matches
+                            else ("ok" if plog.matches else "skipped")
+                        )
+                    await _fail_billing_job(
+                        job, job_store, list(plogs.values()), fatal_llm_err,
+                        processed=processed, platforms=platforms,
+                    )
+                    return
 
                 for plog in plogs.values():
                     # Roll-up per the ProviderLog contract: "skipped" = named but
@@ -1754,6 +1805,58 @@ async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
     now = datetime.now(timezone.utc)
     job.status = JobStatus.failed
     job.error = (error or "discovery failed")[:500]
+    job.completed_at = now
+    job.last_run = now
+    await job_store.update(job)
+
+
+async def _fail_billing_job(
+    job: Optional[EnrichJob],
+    job_store,
+    provider_logs: list[ProviderLog],
+    error: LLMError,
+    *,
+    processed: int,
+    platforms: list[str],
+) -> None:
+    """Fail a discovery job on a FATAL LLM billing/auth error (402/401), recording
+    HONEST PARTIALS (ONTA-201).
+
+    Unlike :func:`_fail_job`, this fires when the run ABORTED mid-way because the
+    shared LLM backend went unbillable/unauthorized. Some batches may already have
+    landed, so the terminal state must reflect rows-LANDED vs rows-LOST — never a
+    silent "complete". We stamp:
+
+    * the clear, user-facing ``error`` message (top up / rotate the key);
+    * the per-provider logs so the run detail still shows what each source did;
+    * an ``error_summary`` ``JobErrorItem`` (``kind="job"`` — a run-level backend
+      failure, not any one provider's fault) whose message names the rows that DID
+      land, so the partial is explicit;
+    * ``progress`` settled to what actually landed (processed == filled).
+    """
+    if job is None or job_store is None:
+        return
+    now = datetime.now(timezone.utc)
+    landed = (
+        f" {processed} record(s) were ingested before the failure; "
+        "the remaining batches were not processed."
+        if processed
+        else " No records were ingested."
+    )
+    message = f"{error}{landed}"
+    job.status = JobStatus.failed
+    job.error = message[:500]
+    job.provider_logs = list(provider_logs)
+    job.error_summary = [
+        JobErrorItem(provider=None, kind="job", message=message[:300])
+    ]
+    # Settle the rolling estimate to the exact partial count — the run is NOT
+    # complete, but the count of what survived must be honest.
+    job.progress.processed = processed
+    job.progress.filled = processed
+    job.result_count = processed
+    if platforms:
+        job.platforms = platforms
     job.completed_at = now
     job.last_run = now
     await job_store.update(job)
