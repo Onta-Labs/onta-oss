@@ -136,6 +136,33 @@ def test_apply_constraint_keeps_identifying_attribute_even_if_not_listed():
     assert kept == {"name", "specialty"}
 
 
+def test_apply_constraint_strips_lineage_that_would_mint_extra_types():
+    # A surviving on-type entity that STILL carries also_types / parent_chain /
+    # parent_type / subtype_description would mint exactly the extra types
+    # ONTA-199 prevents during the resolve step — the guard clears them.
+    c = ExtractionConstraint(types=["Physician"], attributes={"Physician": ["name"]})
+    result = ExtractionResult(
+        entities=[
+            ExtractedEntity(
+                type_name="Physician",
+                id="p1",
+                also_types=["HealthcareOrganization"],
+                parent_type="Provider",
+                parent_chain=["Provider", "Agent"],
+                subtype_description="a doctor who...",
+                attributes=[ExtractedAttribute(name="name", value="Jane")],
+            )
+        ]
+    )
+    guarded = _apply_extraction_constraint(result, c)
+    e = guarded.entities[0]
+    assert e.type_name == "Physician"  # own type preserved
+    assert e.also_types == []
+    assert e.parent_chain == []
+    assert e.parent_type is None
+    assert e.subtype_description is None
+
+
 def test_apply_constraint_none_or_inactive_is_identity():
     result = ExtractionResult(
         entities=[ExtractedEntity(type_name="Anything", id="x")],

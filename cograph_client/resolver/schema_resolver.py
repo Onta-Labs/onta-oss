@@ -233,6 +233,9 @@ target type + its confirmed attributes are the whole schema.
 - Do NOT emit attributes that are not in the confirmed list for that type \
 (besides the entity's key/identifier). Ignore extra fields the source happens \
 to carry.
+- Leave "also_types", "parent_type", "parent_chain", and "subtype_description" \
+EMPTY/null — the target type is confirmed and already exists, so do not classify \
+records into additional or ancestor types.
 - Emit an empty "relationships" list — this mode collects flat records of one \
 type, not a relationship graph.
 Everything else (id rules, snake_case attribute names, datatypes, JSON-only \
@@ -287,10 +290,12 @@ def _apply_extraction_constraint(result, constraint):
     kept_ids: set[str] = set()
     dropped_off_type = 0
     dropped_attrs = 0
+    stripped_lineage = 0
     for e in result.entities:
         if e.type_name not in allowed_types:
             dropped_off_type += 1
             continue
+        update: dict = {}
         allowed_attrs = constraint.allowed_attributes(e.type_name)
         if allowed_attrs is not None:
             # Always keep an identifying attribute (name/label/id-like) so a
@@ -299,7 +304,23 @@ def _apply_extraction_constraint(result, constraint):
             filtered = [a for a in e.attributes if a.name in allowed_attrs]
             dropped_attrs += len(e.attributes) - len(filtered)
             if len(filtered) != len(e.attributes):
-                e = e.model_copy(update={"attributes": filtered})
+                update["attributes"] = filtered
+        # Strip lineage fields that could STILL mint extra types during the
+        # resolve step even though the entity's own type_name is allowed: a
+        # constrained record that carries also_types=["Organization"] or a
+        # parent_chain into off-list ancestors would create exactly the sub-types
+        # ONTA-199 is trying to prevent. The confirmed target type already exists,
+        # so a constrained record needs no new subclass/co-type edge.
+        if e.also_types or e.parent_chain or e.parent_type or e.subtype_description:
+            update.update(
+                also_types=[],
+                parent_chain=[],
+                parent_type=None,
+                subtype_description=None,
+            )
+            stripped_lineage += 1
+        if update:
+            e = e.model_copy(update=update)
         kept_entities.append(e)
         kept_ids.add(e.id)
     kept_rels = [
@@ -307,12 +328,18 @@ def _apply_extraction_constraint(result, constraint):
         for r in result.relationships
         if r.source_id in kept_ids and r.target_id in kept_ids
     ]
-    if dropped_off_type or dropped_attrs or len(kept_rels) != len(result.relationships):
+    if (
+        dropped_off_type
+        or dropped_attrs
+        or stripped_lineage
+        or len(kept_rels) != len(result.relationships)
+    ):
         logger.info(
             "extraction_constraint_applied",
             allowed_types=sorted(allowed_types),
             dropped_off_type=dropped_off_type,
             dropped_attributes=dropped_attrs,
+            stripped_lineage=stripped_lineage,
             dropped_relationships=len(result.relationships) - len(kept_rels),
             kept_entities=len(kept_entities),
         )
