@@ -864,6 +864,14 @@ class WebIngestCapability:
                                 content_type="json",
                                 source=f"web:{prov.name}:{query}",
                                 instance_graph=instance_graph,
+                                # Discovery has already CONFIRMED the single target
+                                # type + attribute set with the user (ONTA-199), so
+                                # constrain extraction to it instead of re-running
+                                # the open-ended multi-type reifier (which minted
+                                # ~20 unwanted sub-types + ~3x output tokens and
+                                # blew the extraction watchdog).
+                                constrain_types=[proposed_type],
+                                constrain_attributes={proposed_type: list(attributes)},
                             )
                             processed += len(batch)
                             entities_total += int(
