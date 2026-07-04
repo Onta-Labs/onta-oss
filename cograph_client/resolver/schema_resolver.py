@@ -1018,9 +1018,27 @@ class SchemaResolver:
             existing_types=types_str,
         )
 
+        # ONTA-200: count the records in the chunk being extracted so the
+        # per-call log below can be read against output-token size — a slow run
+        # with bloated completions is diagnosable directly (records → tokens).
+        # Only JSON chunks are a records array; free text has no record count.
+        from cograph_client.resolver.chunker import json_array_len
+
+        records_in_chunk = json_array_len(content) if content_type == "json" else None
+
         truncated = False
-        if self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key:
-            text, finish_reason = await self._extract_via_openrouter(user_content)
+        finish_reason: str | None = None
+        prompt_tokens: int | None = None
+        completion_tokens: int | None = None
+        provider = self.EXTRACT_PROVIDER if (
+            self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key
+        ) else "anthropic"
+
+        # Time ONLY the LLM round-trip (not the JSON parse below) so duration_ms
+        # attributes the latency to the model call itself.
+        _t0 = time.perf_counter()
+        if provider == "openrouter":
+            text, finish_reason, usage = await self._extract_via_openrouter(user_content)
             # Honest truncation signal on the OpenRouter path, mirroring the
             # Anthropic ``stop_reason == "max_tokens"`` check below: OpenRouter
             # reports ``finish_reason == "length"`` when the model hit the token
@@ -1029,6 +1047,9 @@ class SchemaResolver:
             # whole batch being silently dropped on the parse failure below.
             if finish_reason == "length":
                 truncated = True
+            if usage:
+                prompt_tokens = usage.get("prompt_tokens")
+                completion_tokens = usage.get("completion_tokens")
         else:
             msg = await self._anthropic.messages.create(
                 model=self.INFER_MODEL,
@@ -1037,12 +1058,32 @@ class SchemaResolver:
                 messages=[{"role": "user", "content": user_content}],
             )
             text = msg.content[0].text
+            finish_reason = getattr(msg, "stop_reason", None)
             # Explicit truncation signal from the Anthropic SDK: the model hit
             # the token ceiling mid-output, so the JSON is almost certainly
             # incomplete. Surface it so a JSON chunk can be split + retried
             # instead of silently dropping the whole batch.
-            if getattr(msg, "stop_reason", None) == "max_tokens":
+            if finish_reason == "max_tokens":
                 truncated = True
+            msg_usage = getattr(msg, "usage", None)
+            if msg_usage is not None:
+                prompt_tokens = getattr(msg_usage, "input_tokens", None)
+                completion_tokens = getattr(msg_usage, "output_tokens", None)
+        duration_ms = (time.perf_counter() - _t0) * 1000.0
+
+        # ONTA-200: ONE structured log per extraction LLM call. Pure
+        # observability — no control-flow effect. Lets a slow discovery run
+        # reveal output-token bloat directly (completion_tokens vs
+        # records_in_chunk) instead of reconstructing it from request gaps.
+        logger.info(
+            "extract_call",
+            provider=provider,
+            completion_tokens=completion_tokens,
+            prompt_tokens=prompt_tokens,
+            finish_reason=finish_reason,
+            records_in_chunk=records_in_chunk,
+            duration_ms=duration_ms,
+        )
 
         try:
             # Strip code fences if present
@@ -1071,12 +1112,16 @@ class SchemaResolver:
             )
             return ExtractionResult(source_text=content)
 
-    async def _extract_via_openrouter(self, user_content: str) -> tuple[str, str | None]:
+    async def _extract_via_openrouter(
+        self, user_content: str,
+    ) -> tuple[str, str | None, dict | None]:
         """Extract entities via OpenRouter, with primary→fallback routing.
 
-        Returns ``(content, finish_reason)`` so the caller can detect a
-        length-truncated reply (``finish_reason == "length"``) and route the
-        chunk into the split-and-retry recovery instead of dropping it.
+        Returns ``(content, finish_reason, usage)``: ``finish_reason`` lets the
+        caller detect a length-truncated reply (``"length"``) and route the chunk
+        into split-and-retry instead of dropping it; ``usage`` (the OpenRouter
+        ``prompt_tokens`` / ``completion_tokens`` object, or ``None``) is threaded
+        back for per-call token accounting (ONTA-200) — previously discarded.
         """
         return await openrouter_chat(
             self._openrouter_key,
@@ -1087,6 +1132,7 @@ class SchemaResolver:
             max_tokens=self.EXTRACT_MAX_TOKENS,
             timeout=60,
             return_finish_reason=True,
+            return_usage=True,
         )
 
     # Floor below which a JSON chunk is no longer worth splitting: a handful of
