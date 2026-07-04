@@ -337,7 +337,8 @@ async def test_extract_marks_truncated_on_openrouter_length_finish(
 
     async def fake_or(user_content):
         # Truncated (length) + unparseable JSON → the truncation-signal path.
-        return '{"entities": [{"type_name": "Model", "id": "m0"', "length"
+        # (content, finish_reason, usage) — the ONTA-200 3-tuple contract.
+        return '{"entities": [{"type_name": "Model", "id": "m0"', "length", None
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
     captured = _capture_parse_error_truncated(monkeypatch)
@@ -360,7 +361,8 @@ async def test_extract_not_truncated_on_openrouter_clean_finish(
     monkeypatch.setattr(resolver, "_openrouter_key", "or-key")
 
     async def fake_or(user_content):
-        return "not json at all", "stop"
+        # (content, finish_reason, usage) — the ONTA-200 3-tuple contract.
+        return "not json at all", "stop", None
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
     captured = _capture_parse_error_truncated(monkeypatch)

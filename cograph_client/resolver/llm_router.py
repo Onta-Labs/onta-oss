@@ -46,7 +46,8 @@ async def openrouter_chat(
     response_format: dict | None = None,
     timeout: float = 120.0,
     return_finish_reason: bool = False,
-) -> str | tuple[str, str | None]:
+    return_usage: bool = False,
+) -> str | tuple[str, str | None] | tuple[str, dict | None] | tuple[str, str | None, dict | None]:
     """One OpenRouter chat completion with primary→fallback model routing.
 
     Returns the raw message content (callers parse). Raises on HTTP error after
@@ -58,6 +59,23 @@ async def openrouter_chat(
     or ``None`` if the provider omitted it). This lets a caller distinguish a
     TRUNCATED reply (recover by splitting + retrying) from a genuinely malformed
     one. Default False keeps the plain-string contract for every existing caller.
+
+    When ``return_usage`` is True, the provider's ``usage`` object (the dict with
+    ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens``, or ``None`` if
+    the provider omitted it) is appended as the LAST tuple element — for
+    per-call token accounting (ONTA-200). The two flags compose:
+
+    ======================  ===================  ================================
+    return_finish_reason    return_usage         return type
+    ======================  ===================  ================================
+    False (default)         False (default)      ``content`` (bare str)
+    True                    False                ``(content, finish_reason)``
+    False                   True                 ``(content, usage)``
+    True                    True                 ``(content, finish_reason, usage)``
+    ======================  ===================  ================================
+
+    Every existing caller (both bare-string and ``return_finish_reason``-only)
+    keeps its current return shape untouched.
     """
     chain = model_chain(model)
     body: dict = {
@@ -82,8 +100,13 @@ async def openrouter_chat(
             json=body,
         )
         res.raise_for_status()
-        choice = res.json()["choices"][0]
+        payload = res.json()
+        choice = payload["choices"][0]
         content = choice["message"]["content"]
+        if return_finish_reason and return_usage:
+            return content, choice.get("finish_reason"), payload.get("usage")
         if return_finish_reason:
             return content, choice.get("finish_reason")
+        if return_usage:
+            return content, payload.get("usage")
         return content
