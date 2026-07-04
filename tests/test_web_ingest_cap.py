@@ -689,6 +689,25 @@ async def test_free_provider_also_skips_plan_time_preview():
     assert steps[0].cost["paid_calls"] == 0
 
 
+async def test_plan_emits_registry_route_stage_timing():
+    """Observability (ONTA-198 follow-up): the plan path times its LLM stages.
+    Every query-mode plan consults the registry, so a `stage_timing` span for
+    `registry_route` is emitted (it fires even when the router self-degrades)."""
+    import structlog
+
+    register_web_source(FakeProvider())
+    with structlog.testing.capture_logs() as logs:
+        await WebIngestCapability().plan(
+            _ctx(), "models OpenRouter offers", parsed=CONFIRMED_SPEC
+        )
+    routes = [
+        e for e in logs
+        if e.get("event") == "stage_timing" and e.get("stage") == "registry_route"
+    ]
+    assert routes, "plan must time the registry-route stage"
+    assert isinstance(routes[0]["duration_ms"], (int, float))
+
+
 async def test_empty_sample_returns_message():
     register_web_source(FakeProvider(rows=[], **RICH))
     steps = await WebIngestCapability().plan(
