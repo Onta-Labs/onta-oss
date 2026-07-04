@@ -1162,6 +1162,13 @@ class SchemaResolver:
         """
         from cograph_client.resolver.chunker import split_json_array_chunk, json_array_len
 
+        # A fatal billing/auth error (402/401) raised by the extraction LLM call
+        # is SYSTEMIC — the next call fails identically — so it must NOT be
+        # treated as a truncation to recover from. It is neither caught by
+        # `_extract` (which only swallows JSON/parse errors) nor here, so it
+        # propagates straight out of the recovery recursion and aborts the whole
+        # ingest, instead of splitting the chunk and burning more doomed calls
+        # (ONTA-201). Every other empty extraction still splits + retries below.
         extraction = await self._extract(chunk, "json", existing_types)
         n_records = json_array_len(chunk)
         # Success, or a genuinely empty chunk (no records to lose) → nothing to recover.
