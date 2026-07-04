@@ -65,7 +65,6 @@ from cograph_client.api_registry import (
     get_api_source_catalog,
     route_query,
 )
-from cograph_client.config import settings
 from cograph_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
@@ -149,12 +148,14 @@ def _spawn(coro) -> None:
 async def _registry_route(
     ctx: AgentContext, query: str, spec: dict, urls: list
 ) -> RoutingDecision:
-    """Consult the API source registry. Flag-gated; never raises.
+    """Consult the API source registry on every query-mode discovery. Never raises.
 
-    Off (``OMNIX_API_REGISTRY_ENABLED`` unset) or in URL mode → a ``web_only``
-    decision, i.e. discovery behaves exactly as it does today (zero change).
+    URL-targeted extraction skips it (the pages are fixed). Otherwise the router
+    self-degrades to ``web_only`` — no OpenRouter key, an empty catalog, or no
+    entry that genuinely covers the ask all leave discovery exactly as it was —
+    so "consult the registry" is safe to run unconditionally.
     """
-    if urls or not settings.api_registry_enabled:
+    if urls:
         return RoutingDecision()
     try:
         catalog = get_api_source_catalog()
@@ -359,9 +360,10 @@ class WebIngestCapability:
         # ONTA-194 phase 2: consult the API source registry. If a registered
         # authoritative API covers the ask, run it BEFORE web search (source-of-
         # truth = registry Tier -1) — alone (api_only) or alongside web
-        # (api_plus_web). Flag-gated (OMNIX_API_REGISTRY_ENABLED); off ⇒ web_only
-        # ⇒ zero behavior change. The picks persist on the step so execute()
-        # rebuilds the same registry providers without a second LLM call.
+        # (api_plus_web). Runs on every query-mode discovery; the router
+        # self-degrades to web_only (no key / no match) so a non-covered ask is
+        # unchanged. The picks persist on the step so execute() rebuilds the same
+        # registry providers without a second LLM call.
         registry_decision = await _registry_route(ctx, query, spec, urls)
         registry_sources = (
             build_registry_sources(get_api_source_catalog(), registry_decision)

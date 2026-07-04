@@ -74,12 +74,6 @@ class Settings(BaseSettings):
     # (paid/licensed) API entries with no OSS change.
     api_registry_plugin: str = ""
 
-    # Feature flag (ONTA-194) for query-time API-registry routing. Phase 1 ships
-    # the catalog + generic executor but does NOT route on it; when routing lands
-    # (phase 2+), this gates consulting the registry before a retrieval-bearing
-    # request hits the web. Off => zero behavior change from today.
-    api_registry_enabled: bool = False
-
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 
