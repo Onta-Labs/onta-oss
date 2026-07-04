@@ -1,9 +1,10 @@
 """API-registry routing on the discovery rail (ONTA-194, phase 2).
 
-Verifies the ``web_ingest`` capability consults the registry before web search
-when ``OMNIX_API_REGISTRY_ENABLED`` is on, persists the picks so execute() reruns
-them without a second LLM call, and — critically — that with the flag OFF the
-discovery path is completely unchanged (the router is never consulted).
+Verifies the ``web_ingest`` capability consults the registry before web search on
+every query-mode discovery, prepends a matched source-of-truth ahead of web, and
+persists the picks so execute() reruns them without a second LLM call — and,
+critically, that a ``web_only`` decision (no match / no LLM key) leaves the
+discovery path completely unchanged.
 """
 
 from __future__ import annotations
@@ -115,8 +116,8 @@ def test_rebuild_registry_sources_empty_when_absent():
 # plan()
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
-async def test_plan_consults_registry_when_enabled(monkeypatch):
-    monkeypatch.setattr(web_ingest_cap.settings, "api_registry_enabled", True)
+async def test_plan_consults_registry_and_prepends_match(monkeypatch):
+    # Registry routing runs on every query-mode discovery (no feature flag).
     register_web_source(FakeWeb())
 
     async def fake_route(query, catalog, **kw):
@@ -141,22 +142,18 @@ async def test_plan_consults_registry_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_plan_flag_off_never_consults_registry(monkeypatch):
-    # Default flag is off. The router must NOT be consulted and the step must be
-    # identical to today (no registry_picks).
-    monkeypatch.setattr(web_ingest_cap.settings, "api_registry_enabled", False)
+async def test_plan_web_only_decision_leaves_step_unchanged(monkeypatch):
+    # The router IS consulted on every query, but a web_only decision (no entry
+    # covers the ask, or no LLM key) leaves the plan step identical to today:
+    # no registry_picks, the web ensemble untouched, no registry card.
     register_web_source(FakeWeb())
 
-    called = {"n": 0}
+    async def web_only_route(query, catalog, **kw):
+        return RoutingDecision()  # web_only
 
-    async def spy_route(*a, **k):
-        called["n"] += 1
-        return _canned_decision()
-
-    monkeypatch.setattr(web_ingest_cap, "route_query", spy_route)
+    monkeypatch.setattr(web_ingest_cap, "route_query", web_only_route)
 
     step = (await WebIngestCapability().plan(_ctx(), "add all cardiologists in San Francisco", parsed=CONFIRMED_SPEC))[0]
-    assert called["n"] == 0  # router never consulted with the flag off
     assert "registry_picks" not in step.params
     assert step.params["providers"] == ["fake"]
     assert "NPPES" not in step.rationale
