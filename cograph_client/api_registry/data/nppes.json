@@ -26,6 +26,7 @@
   "tos_note": "Public U.S. government data (CMS). No API key required. Registry is updated weekly; a query reaches at most ~1200 records (limit 200 x skip 1000), so broad asks need sub-query fan-out by city/taxonomy.",
   "enabled": true,
   "entitlement": "free",
+  "verified_at": "2026-07-04",
   "endpoints": [
     {
       "name": "search",
@@ -66,6 +67,10 @@
         "offset_param": "skip",
         "total_path": "",
         "max_pages": 5
+      },
+      "smoke_bindings": {
+        "state": "CA",
+        "taxonomy_description": "cardiology"
       }
     }
   ]

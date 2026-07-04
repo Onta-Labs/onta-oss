@@ -27,6 +27,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -313,6 +314,10 @@ class EndpointSpec:
     result_path: str = ""                                   # dotted path to the record array
     field_mappings: dict[str, str] = field(default_factory=dict)  # out_col -> dotted source path
     pagination: PaginationSpec = field(default_factory=PaginationSpec)
+    # Example bindings for the freshness/live smoke audit (phase 4): a minimal
+    # query that should return at least one row. Empty ⇒ the entry is not
+    # live-smoke-tested.
+    smoke_bindings: dict[str, str] = field(default_factory=dict)
 
     def param(self, name: str) -> Optional[ParamSpec]:
         for p in self.params:
@@ -321,7 +326,7 @@ class EndpointSpec:
         return None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "name": self.name,
             "method": self.method,
             "path": self.path,
@@ -331,6 +336,9 @@ class EndpointSpec:
             "field_mappings": dict(self.field_mappings),
             "pagination": self.pagination.to_dict(),
         }
+        if self.smoke_bindings:
+            out["smoke_bindings"] = dict(self.smoke_bindings)
+        return out
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "EndpointSpec":
@@ -342,6 +350,10 @@ class EndpointSpec:
             _as_str(k): _as_str(v)
             for k, v in (d.get("field_mappings") or {}).items()
         }
+        smoke = {
+            _as_str(k): _as_str(v)
+            for k, v in (d.get("smoke_bindings") or {}).items()
+        }
         return cls(
             name=_as_str(d.get("name"), "default").strip() or "default",
             method=_as_str(d.get("method"), "GET").strip().upper() or "GET",
@@ -351,6 +363,7 @@ class EndpointSpec:
             result_path=_as_str(d.get("result_path")).strip(),
             field_mappings=mappings,
             pagination=PaginationSpec.from_dict(d.get("pagination")),
+            smoke_bindings=smoke,
         )
 
 
@@ -381,6 +394,11 @@ class ApiSourceSpec:
     tos_note: str = ""
     enabled: bool = True
     entitlement: Entitlement = Entitlement.free
+    # Freshness audit (phase 4): ISO date (YYYY-MM-DD) the entry's call spec was
+    # last hand-verified against the live API. Empty ⇒ never verified. The
+    # catalog-freshness audit flags an empty/stale stamp so an entry that has
+    # silently rotted (endpoint moved, auth changed) is surfaced, not trusted.
+    verified_at: str = ""
     # Provenance layer this entry came from (set by the loader; not authored).
     layer: str = "global_public"
 
@@ -418,6 +436,7 @@ class ApiSourceSpec:
             "tos_note": self.tos_note,
             "enabled": self.enabled,
             "entitlement": self.entitlement.value,
+            "verified_at": self.verified_at,
             "layer": self.layer,
         }
 
@@ -462,6 +481,7 @@ class ApiSourceSpec:
             tos_note=_as_str(d.get("tos_note")).strip(),
             enabled=bool(d.get("enabled", True)),
             entitlement=entitlement,
+            verified_at=_as_str(d.get("verified_at")).strip(),
             layer=_as_str(d.get("layer"), "global_public").strip() or "global_public",
         )
 
@@ -558,6 +578,13 @@ def validate_spec(spec: ApiSourceSpec) -> list[str]:
     if spec.cost_per_call < 0:
         errs.append("cost_per_call must be >= 0")
 
+    # verified_at, if present, must be an ISO calendar date (YYYY-MM-DD).
+    if spec.verified_at:
+        try:
+            date.fromisoformat(spec.verified_at)
+        except ValueError:
+            errs.append(f"verified_at {spec.verified_at!r} is not an ISO date (YYYY-MM-DD)")
+
     # Auth
     mode = spec.auth.mode
     if mode is not AuthMode.none and not spec.auth.key_env:
@@ -625,6 +652,12 @@ def _validate_endpoint_params(ep: EndpointSpec, prefix: str) -> list[str]:
     for ph in placeholders:
         if ph not in declared_targets:
             errs.append(f"{prefix}.path placeholder {{{ph}}} has no matching path param")
+    # Smoke bindings (phase 4) are passed to execute() keyed by param NAME, so
+    # every key must reference a declared param — a typo would silently no-op.
+    param_names = {p.name for p in ep.params if p.name}
+    for key in ep.smoke_bindings:
+        if key not in param_names:
+            errs.append(f"{prefix}.smoke_bindings key {key!r} is not a declared param name")
     return errs
 
 
