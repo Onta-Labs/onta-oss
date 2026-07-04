@@ -364,7 +364,7 @@ async def test_billing_error_fails_whole_run_with_clear_message(monkeypatch):
     rec = MagicMock()
     monkeypatch.setattr(web_ingest_cap, "logger", rec)
 
-    async def billing_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def billing_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         raise LLMBillingError(
             "LLM extraction backend returned 402 Payment Required — check the "
             "OpenRouter balance."
@@ -449,7 +449,7 @@ async def test_billing_error_records_honest_partials(monkeypatch):
     calls = {"n": 0}
     LANDED = 2  # the first sub-query ingests 2 rows before the 402 hits
 
-    async def landing_then_billing(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def landing_then_billing(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         calls["n"] += 1
         if calls["n"] == 1:
             rows = json.loads(content)
@@ -509,7 +509,7 @@ async def test_non_billing_error_still_degrades_per_batch(monkeypatch):
     rec = MagicMock()
     monkeypatch.setattr(web_ingest_cap, "logger", rec)
 
-    async def boom(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def boom(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         raise RuntimeError("ingest exploded")
 
     monkeypatch.setattr(SchemaResolver, "ingest", boom)
