@@ -143,17 +143,27 @@ async def audit_catalog(
             finding["age_days"] = None
             finding["unverified"] = True
             finding["stale"] = False
+            finding["future"] = False
             flags.append("UNVERIFIED")
         else:
             age = (ref - vd).days
             finding["age_days"] = age
             finding["unverified"] = False
+            # A future stamp is a typo (e.g. "2027-…"): it must not read as
+            # eternally-fresh, so flag it distinctly and let it gate.
+            future = age < 0
             stale = age > max_age_days
+            finding["future"] = future
             finding["stale"] = stale
-            if stale:
+            if future:
+                flags.append("FUTURE")
+            elif stale:
                 flags.append("STALE")
 
-        if live_smoke and ex is not None:
+        # Live smoke only makes sense for a served (enabled) entry — a disabled
+        # entry short-circuits the executor to error="disabled", which would
+        # otherwise read as a spurious UNREACHABLE.
+        if live_smoke and ex is not None and spec.enabled:
             status = await _smoke_entry(spec, ex, smoke_max_rows)
             finding["smoke"] = status
             if status in ("EMPTY", "UNREACHABLE"):
@@ -169,15 +179,20 @@ def _needs_review(findings: list[dict]) -> bool:
     """Whether the offline freshness gate should fail (enabled entries only).
 
     A disabled entry that's unverified/stale is reported but does not fail CI —
-    it isn't being served, so its freshness is not load-bearing.
+    it isn't being served, so its freshness is not load-bearing. Live-smoke
+    flags (EMPTY / UNREACHABLE) never gate — the gate is offline + deterministic.
     """
-    return any(f.get("enabled") and (f.get("unverified") or f.get("stale")) for f in findings)
+    return any(
+        f.get("enabled") and (f.get("unverified") or f.get("stale") or f.get("future"))
+        for f in findings
+    )
 
 
 def format_markdown(findings: list[dict], *, max_age_days: int = _DEFAULT_MAX_AGE_DAYS) -> str:
     """Render a readable Markdown report grouped by layer."""
     n_unverified = sum(1 for f in findings if f.get("unverified"))
     n_stale = sum(1 for f in findings if f.get("stale"))
+    n_future = sum(1 for f in findings if f.get("future"))
     n_empty = sum(1 for f in findings if "EMPTY" in f.get("flags", []))
     n_unreachable = sum(1 for f in findings if "UNREACHABLE" in f.get("flags", []))
     has_smoke = any("smoke" in f for f in findings)
@@ -188,12 +203,14 @@ def format_markdown(findings: list[dict], *, max_age_days: int = _DEFAULT_MAX_AG
     lines.append(f"- Entries audited: **{len(findings)}**")
     lines.append(f"- UNVERIFIED (`verified_at` empty): **{n_unverified}**")
     lines.append(f"- STALE (older than {max_age_days} days): **{n_stale}**")
+    if n_future:
+        lines.append(f"- FUTURE (`verified_at` in the future — likely a typo): **{n_future}**")
     if has_smoke:
         lines.append(f"- EMPTY (live smoke returned no rows): **{n_empty}**")
         lines.append(f"- UNREACHABLE (live smoke errored): **{n_unreachable}**")
     lines.append("")
 
-    if not (n_unverified or n_stale or n_empty or n_unreachable):
+    if not (n_unverified or n_stale or n_future or n_empty or n_unreachable):
         lines.append("All entries are fresh and verified. No action needed.")
         lines.append("")
 

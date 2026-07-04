@@ -125,6 +125,15 @@ async def test_boundary_exactly_at_threshold_is_not_stale():
     assert over[0]["age_days"] == 11 and over[0]["stale"] is True
 
 
+async def test_future_dated_verified_at_is_flagged_and_gates():
+    # A future stamp (a typo) must not read as eternally-fresh.
+    [f] = await audit_catalog(today=TODAY, catalog=_cat(_mk("a", verified_at="2027-01-01")))
+    assert f["future"] is True and "FUTURE" in f["flags"]
+    assert f["stale"] is False  # future is distinct from stale
+    assert f["age_days"] < 0
+    assert _needs_review([f]) is True
+
+
 # --------------------------------------------------------------------------- #
 # The enabled-only exit gate
 # --------------------------------------------------------------------------- #
@@ -209,6 +218,29 @@ async def test_offline_audit_never_touches_the_network():
         today=TODAY, catalog=_cat(_mk("a", verified_at="2026-07-01", smoke={"q": "x"}))
     )
     assert "smoke" not in f
+
+
+async def test_disabled_entry_is_not_smoke_tested(_pub_dns):
+    # A disabled entry short-circuits the executor to error="disabled"; it must
+    # NOT be run under live smoke (which would read as a spurious UNREACHABLE).
+    ex = _executor(lambda r: httpx.Response(200, json={"results": [{"id": "1"}]}))
+    [f] = await audit_catalog(
+        today=TODAY,
+        catalog=_cat(_mk("a", verified_at="2026-07-01", smoke={"q": "x"}, enabled=False)),
+        live_smoke=True, executor=ex,
+    )
+    assert "smoke" not in f
+    assert "UNREACHABLE" not in f["flags"]
+
+
+def test_live_smoke_flags_never_flip_the_gate():
+    # A fresh entry that live-smokes EMPTY/UNREACHABLE must not fail the gate —
+    # the exit gate is offline (freshness) only.
+    fresh_but_empty = {"enabled": True, "unverified": False, "stale": False,
+                       "future": False, "flags": ["EMPTY"]}
+    fresh_but_unreachable = {"enabled": True, "unverified": False, "stale": False,
+                             "future": False, "flags": ["UNREACHABLE"]}
+    assert _needs_review([fresh_but_empty, fresh_but_unreachable]) is False
 
 
 # --------------------------------------------------------------------------- #
