@@ -5,6 +5,12 @@
 `SchemaResolver.ingest` emits `stage_timing` for its two heavy halves —
 `extract` (LLM) and `resolve_insert` (type-resolution + insert) — so a slow run
 self-profiles instead of being reconstructed from CloudWatch request gaps.
+
+The assertions record against a mock logger rather than
+``structlog.testing.capture_logs()`` on purpose: under the full suite the
+``cograph.resolver`` module logger is cached by earlier tests, so ``capture_logs``
+would silently intercept nothing. A mock swapped in for the module logger is
+order-independent.
 """
 
 from __future__ import annotations
@@ -12,8 +18,7 @@ from __future__ import annotations
 import json
 
 import pytest
-import structlog
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from cograph_client.obs import timed
 from cograph_client.resolver.schema_resolver import SchemaResolver
@@ -24,32 +29,37 @@ from cograph_client.resolver.models import (
 )
 from cograph_client.resolver.verdict_cache import JsonVerdictCache
 
-logger = structlog.stdlib.get_logger("test.stage_timing")
+
+def _stage_calls(mock_logger):
+    """The (stage → kwargs) of every `stage_timing` info() call on a mock logger."""
+    out = {}
+    for c in mock_logger.info.call_args_list:
+        if c.args and c.args[0] == "stage_timing":
+            out[c.kwargs.get("stage")] = c.kwargs
+    return out
 
 
 async def test_timed_logs_duration_on_success():
-    with structlog.testing.capture_logs() as logs:
-        async with timed(logger, "demo", n=3):
-            pass
-    ev = [e for e in logs if e.get("event") == "stage_timing"]
-    assert len(ev) == 1
-    assert ev[0]["stage"] == "demo"
-    assert ev[0]["n"] == 3  # extra fields pass through
-    assert isinstance(ev[0]["duration_ms"], (int, float))
-    assert ev[0]["duration_ms"] >= 0
+    log = MagicMock()
+    async with timed(log, "demo", n=3):
+        pass
+    calls = _stage_calls(log)
+    assert set(calls) == {"demo"}
+    assert calls["demo"]["n"] == 3  # extra fields pass through
+    assert isinstance(calls["demo"]["duration_ms"], (int, float))
+    assert calls["demo"]["duration_ms"] >= 0
 
 
 async def test_timed_logs_and_reraises_on_exception():
     """The `finally` still emits the span even when the block raises — a stage
     that dies mid-call must not vanish from the timing breakdown."""
-    with structlog.testing.capture_logs() as logs:
-        with pytest.raises(ValueError):
-            async with timed(logger, "boom"):
-                raise ValueError("x")
-    ev = [e for e in logs if e.get("event") == "stage_timing"]
-    assert len(ev) == 1
-    assert ev[0]["stage"] == "boom"
-    assert "duration_ms" in ev[0]
+    log = MagicMock()
+    with pytest.raises(ValueError):
+        async with timed(log, "boom"):
+            raise ValueError("x")
+    calls = _stage_calls(log)
+    assert set(calls) == {"boom"}
+    assert "duration_ms" in calls["boom"]
 
 
 @pytest.fixture
@@ -61,7 +71,12 @@ def mock_neptune():
     return c
 
 
-async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path):
+async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path, monkeypatch):
+    import cograph_client.resolver.schema_resolver as sr
+
+    rec = MagicMock()
+    monkeypatch.setattr(sr, "logger", rec)
+
     resolver = SchemaResolver(
         mock_neptune, "fake-key", JsonVerdictCache(tmp_path / "c.json")
     )
@@ -86,17 +101,14 @@ async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path):
             relationships=[],
         )
 
-    with structlog.testing.capture_logs() as logs:
-        with patch.object(resolver, "_extract", side_effect=fake_extract):
-            with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
-                await resolver.ingest(content, "test-tenant", content_type="json")
+    with patch.object(resolver, "_extract", side_effect=fake_extract):
+        with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
+            await resolver.ingest(content, "test-tenant", content_type="json")
 
-    timings = {
-        e["stage"]: e for e in logs if e.get("event") == "stage_timing"
-    }
+    calls = _stage_calls(rec)
     # Both heavy halves of the ingest are timed.
-    assert "extract" in timings
-    assert "resolve_insert" in timings
-    for e in timings.values():
-        assert isinstance(e["duration_ms"], (int, float))
-        assert e["duration_ms"] >= 0
+    assert "extract" in calls
+    assert "resolve_insert" in calls
+    for kw in calls.values():
+        assert isinstance(kw["duration_ms"], (int, float))
+        assert kw["duration_ms"] >= 0
