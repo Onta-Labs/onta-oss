@@ -892,6 +892,107 @@ async def test_execute_tracks_job_with_results_and_platforms(monkeypatch):
     assert done.completed_at is not None
 
 
+async def test_run_logs_resolved_write_target(monkeypatch):
+    """Observability (ONTA-198): a discovery run records the EXACT graph it writes
+    into — ``web_ingest_run_start`` up front and ``web_ingest_complete`` at the end
+    both carry ``kg_name`` + ``instance_graph``. Without this a run that reports
+    "N filled" but whose rows never appear in the Explorer is undiagnosable: you
+    cannot tell which graph the resolver actually wrote to."""
+    import structlog
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+
+    provider = FakeProvider()
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    with structlog.testing.capture_logs() as logs:
+        await cap.execute(_ctx_with_store(store), step)
+        await spawned["task"]
+
+    want_graph = "https://cograph.tech/graphs/demo-tenant/kg/models"
+    start = [e for e in logs if e.get("event") == "web_ingest_run_start"]
+    assert start, "run must log its write target up front"
+    assert start[0]["kg_name"] == "models"
+    assert start[0]["instance_graph"] == want_graph
+
+    complete = [e for e in logs if e.get("event") == "web_ingest_complete"]
+    assert complete, "a successful run must log completion"
+    assert complete[0]["kg_name"] == "models"
+    assert complete[0]["instance_graph"] == want_graph
+    # A resolvable KG never trips the base-graph misroute warning.
+    assert not [e for e in logs if e.get("event") == "web_ingest_no_target_kg"]
+
+
+async def test_run_warns_when_write_target_missing(monkeypatch):
+    """When kg_name is empty the run has no per-KG target, so instance data would
+    land in the tenant BASE graph (invisible to the Explorer). The run still
+    proceeds (behavior unchanged) but logs ``web_ingest_no_target_kg`` loudly and
+    records ``instance_graph=None`` in ``web_ingest_run_start`` so the misroute is
+    obvious instead of a silent black hole."""
+    import structlog
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+
+    provider = FakeProvider()
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+
+    def _ctx_no_kg() -> AgentContext:
+        return AgentContext(
+            tenant_id="demo-tenant",
+            kg_name="",  # no KG context resolved upstream
+            neptune=MagicMock(),
+            anthropic_key="sk-ant-test",
+            openrouter_key="",
+            extras={"prior_clarify_count": 0, "enrichment_job_store": store},
+        )
+
+    cap = WebIngestCapability()
+    step = (await cap.plan(_ctx_no_kg(), "list of OpenRouter models", parsed=CONFIRMED_SPEC))[0]
+    # Ensure the persisted step carries no target either, so kg_name truly resolves empty.
+    step.params.pop("kg_name", None)
+    with structlog.testing.capture_logs() as logs:
+        await cap.execute(_ctx_no_kg(), step)
+        await spawned["task"]
+
+    start = [e for e in logs if e.get("event") == "web_ingest_run_start"]
+    assert start and start[0]["instance_graph"] is None
+    assert start[0]["kg_name"] is None
+    assert [e for e in logs if e.get("event") == "web_ingest_no_target_kg"], (
+        "an empty kg_name must raise the base-graph misroute warning"
+    )
+
+
 async def test_execute_marks_job_failed_on_error(monkeypatch):
     """A discovery that raises mid-ingest leaves the job failed with an error, not
     silently dropped — so the live status can show the failure."""
