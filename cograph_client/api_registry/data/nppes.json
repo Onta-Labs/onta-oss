@@ -5,7 +5,7 @@
   "description": "The official U.S. government registry of every healthcare provider and organization issued a National Provider Identifier (NPI). Authoritative for a clinician's or health organization's NPI number, provider taxonomy (specialty, e.g. cardiology, pediatrics), practice and mailing addresses, and phone number. Prefer this over generic web search for any question about who a U.S. doctor, nurse, hospital, clinic, pharmacy, or other healthcare provider is, where they practice, or what their specialty is. Search by taxonomy/specialty description, city, state, name, or NPI number.",
   "docs_url": "https://npiregistry.cms.hhs.gov/api-page",
   "coverage": {
-    "entity_kinds": ["healthcare_provider", "physician", "health_organization", "clinic", "hospital", "pharmacy"],
+    "entity_kinds": ["healthcare_provider", "physician", "doctor", "clinician", "nurse", "dentist", "provider", "health_organization", "clinic", "hospital", "pharmacy"],
     "attributes": ["npi", "taxonomy", "specialty", "address", "city", "state", "postal_code", "phone", "credential"],
     "geo": "United States (all 50 states + territories)",
     "temporal": "current registry snapshot",
@@ -36,8 +36,8 @@
         { "name": "taxonomy_description", "target": "taxonomy_description", "description": "Provider specialty/taxonomy text, e.g. 'cardiology' or 'pediatrics'." },
         { "name": "city", "target": "city", "description": "Practice city." },
         { "name": "state", "target": "state", "description": "Two-letter state code, e.g. 'CA'." },
-        { "name": "first_name", "target": "first_name", "description": "Individual provider first name." },
-        { "name": "last_name", "target": "last_name", "description": "Individual provider last name." },
+        { "name": "first_name", "target": "first_name", "enrich_from": "entity_name_first", "description": "Individual provider first name." },
+        { "name": "last_name", "target": "last_name", "enrich_from": "entity_name_last", "description": "Individual provider last name." },
         { "name": "organization_name", "target": "organization_name", "description": "Organization/facility name." },
         { "name": "postal_code", "target": "postal_code", "description": "ZIP code." },
         { "name": "number", "target": "number", "description": "A specific 10-digit NPI number." }

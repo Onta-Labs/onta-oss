@@ -2979,12 +2979,17 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
 def _reset_singletons():
     from cograph_client.enrichment.cache import reset_enrichment_cache
     from cograph_client.enrichment.job_store import reset_job_store
+    from cograph_client.enrichment.tiers import reset_tiers
 
     reset_job_store()
     reset_enrichment_cache()
+    # Clean chain/tier state (also clears any chain-prefix provider a prior
+    # app-fixture test registered via deps → api_registry enrichment, ONTA-194).
+    reset_tiers()
     yield
     reset_job_store()
     reset_enrichment_cache()
+    reset_tiers()
 
 
 def test_post_jobs_returns_job_id(client, auth_headers, mock_neptune):
