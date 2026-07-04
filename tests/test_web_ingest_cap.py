@@ -766,7 +766,7 @@ async def test_execute_runs_full_discover_and_ingests(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         captured.update(
             content=content, tenant_id=tenant_id,
             content_type=content_type, source=source,
@@ -819,7 +819,7 @@ async def test_run_routes_multi_type_and_refreshes(monkeypatch):
 
     ingest_calls: dict = {}
 
-    async def spy_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def spy_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         ingest_calls.update(content=content, content_type=content_type)
         return IngestResult(
             types_created=["Model", "Provider"],
@@ -875,7 +875,7 @@ async def test_execute_tracks_job_with_results_and_platforms(monkeypatch):
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
@@ -930,7 +930,7 @@ async def test_run_logs_resolved_write_target(monkeypatch):
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
@@ -978,7 +978,7 @@ async def test_run_warns_when_write_target_missing(monkeypatch):
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
@@ -1064,7 +1064,7 @@ async def test_run_times_out_and_marks_job_failed(monkeypatch):
     register_web_source(FakeProvider())
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
-    async def slow_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def slow_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         await asyncio.sleep(5)  # far exceeds the (patched) run budget
         return IngestResult(entities_extracted=0, entities_resolved=0)
 
@@ -1162,7 +1162,7 @@ async def test_execute_threads_per_record_source_url(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         captured.update(content=content, content_type=content_type)
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
@@ -1203,7 +1203,7 @@ async def test_execute_no_provenance_adds_no_source_url(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         captured.update(content=content)
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
@@ -1264,7 +1264,7 @@ async def test_execute_records_provider_log_on_success(monkeypatch):
     register_web_source(FakeProvider())
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
@@ -1585,7 +1585,7 @@ async def test_execute_fans_out_dedupes_and_streams(monkeypatch):
 
     batches: list[int] = []
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         batches.append(len(rows))
         return IngestResult(
@@ -1667,7 +1667,7 @@ async def test_execute_subquery_failure_is_partial(monkeypatch):
     )
     register_web_source(provider)
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
@@ -1793,7 +1793,7 @@ async def test_execute_ensemble_merges_and_dedupes_across_providers(monkeypatch)
 
     batches: list[int] = []
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         batches.append(len(rows))
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
@@ -1864,7 +1864,7 @@ async def test_execute_ensemble_survives_specialized_provider_outage(monkeypatch
     register_web_source(general)
     register_web_source(place)
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
@@ -1974,7 +1974,7 @@ async def test_never_consulted_ensemble_member_is_skipped(monkeypatch):
     register_web_source(general)
     register_web_source(place)
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
