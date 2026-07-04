@@ -77,6 +77,48 @@ class ExtractionResult(BaseModel):
     source_text: str = ""
 
 
+class ExtractionConstraint(BaseModel):
+    """Opt-in constraint that narrows extraction to a confirmed type + attributes.
+
+    Default document / CSV / text ingestion passes ``None`` and stays fully
+    open-ended (discovering every type the source justifies — that is its job).
+    WEB DISCOVERY (ONTA-199), by contrast, has already CONFIRMED the single
+    target type and the exact attribute set with the user, so re-running the
+    open-ended multi-type reifier over a rich source payload just mints ~20
+    unwanted sub-entities (Address, Taxonomy, Organization, …) and ~3x output
+    tokens, which is what blew the extraction-time watchdog. When present, this
+    constraint tells the extractor to emit ONLY records of ``types`` with ONLY
+    the listed attributes (the key attribute always allowed), and drives a light
+    post-extraction guard that drops off-type entities / unrequested attributes.
+
+    A single-type constraint (the discovery case) is the common shape:
+    ``types=["Physician"]`` +
+    ``attributes={"Physician": ["name", "specialty", "city", "phone"]}``.
+    """
+
+    types: list[str] = Field(
+        default_factory=list,
+        description="The confirmed target type(s) the extractor may emit.",
+    )
+    attributes: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-type allowed attribute names (snake_case). A type absent from "
+            "this map has no attribute restriction (all attributes allowed)."
+        ),
+    )
+
+    @property
+    def is_active(self) -> bool:
+        """True only when the constraint actually restricts something."""
+        return bool(self.types)
+
+    def allowed_attributes(self, type_name: str) -> set[str] | None:
+        """Allowed attribute names for ``type_name``, or ``None`` = unrestricted."""
+        attrs = self.attributes.get(type_name)
+        return set(attrs) if attrs else None
+
+
 # ---------------------------------------------------------------------------
 # Type matching
 # ---------------------------------------------------------------------------

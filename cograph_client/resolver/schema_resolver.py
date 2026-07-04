@@ -60,6 +60,7 @@ from cograph_client.resolver.models import (
     AttrAction,
     ColumnRole,
     CSVSchemaMapping,
+    ExtractionConstraint,
     ExtractionResult,
     ExtractedAttribute,
     ExtractedEntity,
@@ -206,6 +207,122 @@ Return JSON:
 }}"""
 
 
+# --- ONTA-199: DISCOVERY-ONLY extraction constraint -------------------------
+# Web discovery has already CONFIRMED the single target type + exact attribute
+# set with the user, so it must NOT re-run the open-ended multi-type reifier
+# (which mints Address/Taxonomy/Organization/… sub-entities and ~3x the output
+# tokens, blowing the extraction watchdog). When an ExtractionConstraint is
+# present, this block is APPENDED to the system + user prompt to pin extraction
+# to that one type + those attributes. Absent (None) → the prompt is byte-for-
+# byte the open-ended default, so document/CSV/text ingestion is unchanged.
+
+EXTRACTION_CONSTRAINT_SYSTEM = """\
+
+CONSTRAINED EXTRACTION MODE (overrides the type-placement and reification rules \
+above):
+This source has a SINGLE confirmed target. Extract ONLY entities of the \
+type(s) listed below, each carrying ONLY the confirmed attributes for that type \
+(plus its key/identifier attribute). Specifically:
+- Do NOT create any entity whose type is not in the allowed list — do NOT lift \
+Address, Taxonomy, Organization, HealthcareOrganization, or any other \
+sub-entity out of the record. Fold what would have been a sub-entity into a \
+plain literal attribute of the target entity when (and only when) it is one of \
+the confirmed attributes; otherwise omit it.
+- Do NOT reify measurements/scores/prices into their own entities here — the \
+target type + its confirmed attributes are the whole schema.
+- Do NOT emit attributes that are not in the confirmed list for that type \
+(besides the entity's key/identifier). Ignore extra fields the source happens \
+to carry.
+- Emit an empty "relationships" list — this mode collects flat records of one \
+type, not a relationship graph.
+Everything else (id rules, snake_case attribute names, datatypes, JSON-only \
+output) still applies."""
+
+EXTRACTION_CONSTRAINT_USER_TEMPLATE = """\
+
+CONSTRAINT — extract ONLY these type(s), with ONLY these attributes (plus each \
+type's key/identifier):
+{constraint_lines}
+Emit no other entity types, no sub-entities, and no other attributes."""
+
+
+def _build_constraint_user_block(constraint) -> str:
+    """Render the per-type allowed-attribute lines appended to the user prompt.
+
+    ``constraint`` is an :class:`ExtractionConstraint`. Returns an empty string
+    when the constraint is inactive so the caller can no-op cleanly.
+    """
+    if constraint is None or not getattr(constraint, "is_active", False):
+        return ""
+    lines = []
+    for t in constraint.types:
+        attrs = constraint.attributes.get(t) or []
+        if attrs:
+            lines.append(f"- {t}: {', '.join(attrs)}")
+        else:
+            lines.append(f"- {t}: (all confirmed attributes)")
+    return EXTRACTION_CONSTRAINT_USER_TEMPLATE.format(
+        constraint_lines="\n".join(lines)
+    )
+
+
+def _apply_extraction_constraint(result, constraint):
+    """Light post-extraction guard for constrained (discovery) extraction.
+
+    Prompt-level constraints are the primary mechanism; this is a cheap,
+    deterministic backstop that drops:
+      * entities whose ``type_name`` is not among the allowed types, and
+      * attributes not in a type's confirmed set (the entity's key/name-like
+        attribute is always kept so the record stays identifiable).
+    Relationships between surviving entities are preserved. A ``None`` /
+    inactive constraint returns ``result`` unchanged (document path no-op).
+
+    ``result`` is an :class:`ExtractionResult`; ``constraint`` an
+    :class:`ExtractionConstraint`.
+    """
+    if constraint is None or not getattr(constraint, "is_active", False):
+        return result
+    allowed_types = set(constraint.types)
+    kept_entities = []
+    kept_ids: set[str] = set()
+    dropped_off_type = 0
+    dropped_attrs = 0
+    for e in result.entities:
+        if e.type_name not in allowed_types:
+            dropped_off_type += 1
+            continue
+        allowed_attrs = constraint.allowed_attributes(e.type_name)
+        if allowed_attrs is not None:
+            # Always keep an identifying attribute (name/label/id-like) so a
+            # record the guard trims can still be resolved/displayed.
+            allowed_attrs = allowed_attrs | {"name", "label", "title"}
+            filtered = [a for a in e.attributes if a.name in allowed_attrs]
+            dropped_attrs += len(e.attributes) - len(filtered)
+            if len(filtered) != len(e.attributes):
+                e = e.model_copy(update={"attributes": filtered})
+        kept_entities.append(e)
+        kept_ids.add(e.id)
+    kept_rels = [
+        r
+        for r in result.relationships
+        if r.source_id in kept_ids and r.target_id in kept_ids
+    ]
+    if dropped_off_type or dropped_attrs or len(kept_rels) != len(result.relationships):
+        logger.info(
+            "extraction_constraint_applied",
+            allowed_types=sorted(allowed_types),
+            dropped_off_type=dropped_off_type,
+            dropped_attributes=dropped_attrs,
+            dropped_relationships=len(result.relationships) - len(kept_rels),
+            kept_entities=len(kept_entities),
+        )
+    return ExtractionResult(
+        entities=kept_entities,
+        relationships=kept_rels,
+        source_text=result.source_text,
+    )
+
+
 # --- ONTA-177: free-text candidacy adjudication (the REASON layer) ----------
 # The name-blind classifier (graph/text_markers.classify_text_candidacy —
 # profiler ValueShape.TEXT proposes, ADR 0003 litmus) hands the AMBIGUOUS band
@@ -312,6 +429,8 @@ class SchemaResolver:
         content_type: str = "text",
         source: str = "",
         instance_graph: str | None = None,
+        constrain_types: list[str] | None = None,
+        constrain_attributes: dict[str, list[str]] | None = None,
     ) -> IngestResult:
         """Full ingestion pipeline: extract → resolve → validate → insert.
 
@@ -319,7 +438,25 @@ class SchemaResolver:
             instance_graph: If set, instance data goes into this graph while
                 ontology updates go into the tenant's base graph. This enables
                 multiple KGs sharing one ontology.
+            constrain_types: OPT-IN, DISCOVERY-ONLY (ONTA-199). When set, extraction
+                is constrained to emit ONLY entities of these confirmed type(s).
+                ``None`` (the default, and every document/CSV/text caller) keeps
+                the fully open-ended multi-type extractor unchanged.
+            constrain_attributes: OPT-IN, DISCOVERY-ONLY. Per-type allowed
+                attribute names (snake_case) paired with ``constrain_types``. A
+                type absent from this map is unrestricted on attributes. ``None``
+                = no attribute restriction. Only meaningful alongside
+                ``constrain_types``.
         """
+        # Build the opt-in extraction constraint (ONTA-199). None / empty types →
+        # inactive → every _extract prompt is byte-for-byte the open-ended default,
+        # so document/CSV/text ingestion is provably unchanged.
+        constraint: ExtractionConstraint | None = None
+        if constrain_types:
+            constraint = ExtractionConstraint(
+                types=list(constrain_types),
+                attributes={k: list(v) for k, v in (constrain_attributes or {}).items()},
+            )
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph
         # Instance data goes to instance_graph if specified, otherwise base graph
@@ -367,6 +504,15 @@ class SchemaResolver:
         rows_in = 0
         rows_dropped = 0
 
+        # ONTA-199: forward the constraint kwarg to ``_extract`` ONLY when it's
+        # active. The default document path then calls ``_extract`` with the EXACT
+        # argument shape it had before this change, so existing tests that patch
+        # ``_extract`` with a mock lacking a ``constraint`` parameter still pass
+        # (the no-op path never sends the kwarg). Real methods below
+        # (``_extract_json_chunk_with_recovery`` / ``_extract_json_chunks_calibrated``)
+        # always accept ``constraint`` so they take it directly.
+        _extract_c = {"constraint": constraint} if constraint is not None else {}
+
         if len(chunks) <= 1:
             # Small content — single extraction. JSON STILL routes through the
             # truncation-recovery helper (FIX 1): even one chunk's reified output
@@ -377,11 +523,13 @@ class SchemaResolver:
             if is_json:
                 rows_in = json_array_len(content)
                 extraction, dropped = await self._extract_json_chunk_with_recovery(
-                    content, existing_types,
+                    content, existing_types, constraint=constraint,
                 )
                 rows_dropped += dropped
             else:
-                extraction = await self._extract(content, content_type, existing_types)
+                extraction = await self._extract(
+                    content, content_type, existing_types, **_extract_c,
+                )
         elif is_json:
             # Multiple JSON chunks: first-batch CALIBRATION (ONTA-197 item 2) +
             # bounded CONCURRENCY (item 3), composed. The two features compose
@@ -395,7 +543,9 @@ class SchemaResolver:
             #   3. Extract the re-chunked remainder CONCURRENTLY under a semaphore,
             #      preserving order and per-chunk recovery + drop accounting.
             extraction, chunk_rows_in, chunk_dropped = (
-                await self._extract_json_chunks_calibrated(chunks, content, existing_types)
+                await self._extract_json_chunks_calibrated(
+                    chunks, content, existing_types, constraint=constraint,
+                )
             )
             rows_in += chunk_rows_in
             rows_dropped += chunk_dropped
@@ -405,7 +555,9 @@ class SchemaResolver:
             # the same semaphore, then merge in deterministic chunk order.
             results = await self._extract_chunks_concurrently(
                 [
-                    lambda c=chunk: self._extract(c, content_type, existing_types)
+                    lambda c=chunk: self._extract(
+                        c, content_type, existing_types, **_extract_c,
+                    )
                     for chunk in chunks
                 ]
             )
@@ -1005,9 +1157,21 @@ class SchemaResolver:
             raise
 
     async def _extract(
-        self, content: str, content_type: str, existing_types: dict[str, str] | None = None,
+        self,
+        content: str,
+        content_type: str,
+        existing_types: dict[str, str] | None = None,
+        constraint: ExtractionConstraint | None = None,
     ) -> ExtractionResult:
-        """Extract entities and relationships from raw content."""
+        """Extract entities and relationships from raw content.
+
+        ``constraint`` (ONTA-199) is OPT-IN and defaults to ``None``: with no
+        constraint the system/user prompt is byte-for-byte the open-ended
+        default and the result is returned untouched (the document/CSV/text
+        path). An active constraint appends a type/attribute restriction to both
+        prompts and drops any off-type entities / unrequested attributes the
+        model still emits (the web-discovery path).
+        """
         if existing_types:
             types_str = "\n".join(f"- {name}" for name in existing_types)
         else:
@@ -1017,6 +1181,18 @@ class SchemaResolver:
             content=content,
             existing_types=types_str,
         )
+        # Discovery-only prompt narrowing. Inactive constraint → no change: the
+        # system/user prompt AND the ``_extract_via_openrouter`` call are byte-for-
+        # byte the pre-ONTA-199 default, so existing tests that patch
+        # ``_extract_via_openrouter`` with a mock lacking a ``system_prompt``
+        # parameter still pass (the no-op path never sends the kwarg).
+        system_prompt = EXTRACTION_SYSTEM
+        constraint_block = _build_constraint_user_block(constraint)
+        _sys_kw: dict = {}
+        if constraint_block:
+            system_prompt = EXTRACTION_SYSTEM + EXTRACTION_CONSTRAINT_SYSTEM
+            user_content = user_content + constraint_block
+            _sys_kw = {"system_prompt": system_prompt}
 
         # ONTA-200: count the records in the chunk being extracted so the
         # per-call log below can be read against output-token size — a slow run
@@ -1038,7 +1214,11 @@ class SchemaResolver:
         # attributes the latency to the model call itself.
         _t0 = time.perf_counter()
         if provider == "openrouter":
-            text, finish_reason, usage = await self._extract_via_openrouter(user_content)
+            # ``**_sys_kw`` carries the constraint-narrowed system prompt on a
+            # discovery run (ONTA-199); empty on the open-ended document path.
+            text, finish_reason, usage = await self._extract_via_openrouter(
+                user_content, **_sys_kw,
+            )
             # Honest truncation signal on the OpenRouter path, mirroring the
             # Anthropic ``stop_reason == "max_tokens"`` check below: OpenRouter
             # reports ``finish_reason == "length"`` when the model hit the token
@@ -1054,7 +1234,7 @@ class SchemaResolver:
             msg = await self._anthropic.messages.create(
                 model=self.INFER_MODEL,
                 max_tokens=self.EXTRACT_MAX_TOKENS,
-                system=EXTRACTION_SYSTEM,
+                system=system_prompt,
                 messages=[{"role": "user", "content": user_content}],
             )
             text = msg.content[0].text
@@ -1094,11 +1274,13 @@ class SchemaResolver:
             data = json.loads(stripped)
             entities = [ExtractedEntity(**e) for e in data.get("entities", [])]
             relationships = [ExtractedRelationship(**r) for r in data.get("relationships", [])]
-            return ExtractionResult(
+            result = ExtractionResult(
                 entities=entities,
                 relationships=relationships,
                 source_text=content,
             )
+            # Discovery-only post-guard: inactive constraint returns unchanged.
+            return _apply_extraction_constraint(result, constraint)
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             # A parse failure on a TRUNCATED response is the expected symptom of
             # the output exceeding max_tokens (the recovery loop will split +
@@ -1113,7 +1295,7 @@ class SchemaResolver:
             return ExtractionResult(source_text=content)
 
     async def _extract_via_openrouter(
-        self, user_content: str,
+        self, user_content: str, system_prompt: str = EXTRACTION_SYSTEM,
     ) -> tuple[str, str | None, dict | None]:
         """Extract entities via OpenRouter, with primary→fallback routing.
 
@@ -1122,10 +1304,14 @@ class SchemaResolver:
         into split-and-retry instead of dropping it; ``usage`` (the OpenRouter
         ``prompt_tokens`` / ``completion_tokens`` object, or ``None``) is threaded
         back for per-call token accounting (ONTA-200) — previously discarded.
+
+        ``system_prompt`` defaults to the open-ended :data:`EXTRACTION_SYSTEM`;
+        a constrained (discovery) extraction passes the type/attribute-narrowed
+        system prompt (ONTA-199).
         """
         return await openrouter_chat(
             self._openrouter_key,
-            EXTRACTION_SYSTEM,
+            system_prompt,
             user_content,
             model=self.EXTRACT_MODEL,
             temperature=0,
@@ -1141,7 +1327,10 @@ class SchemaResolver:
     _RECOVERY_MIN_RECORDS = 3
 
     async def _extract_json_chunk_with_recovery(
-        self, chunk: str, existing_types: dict[str, str],
+        self,
+        chunk: str,
+        existing_types: dict[str, str],
+        constraint: ExtractionConstraint | None = None,
     ) -> tuple[ExtractionResult, int]:
         """Extract one JSON-array chunk, RECOVERING from a silent batch loss.
 
@@ -1169,7 +1358,13 @@ class SchemaResolver:
         # propagates straight out of the recovery recursion and aborts the whole
         # ingest, instead of splitting the chunk and burning more doomed calls
         # (ONTA-201). Every other empty extraction still splits + retries below.
-        extraction = await self._extract(chunk, "json", existing_types)
+        #
+        # Only forward ``constraint`` when it's active, so the default document
+        # path calls ``_extract`` with the EXACT same argument shape as before
+        # ONTA-199 (existing tests patch ``_extract`` with a mock that has no
+        # ``constraint`` parameter — the no-op path must not pass the kwarg).
+        _c = {"constraint": constraint} if constraint is not None else {}
+        extraction = await self._extract(chunk, "json", existing_types, **_c)
         n_records = json_array_len(chunk)
         # Success, or a genuinely empty chunk (no records to lose) → nothing to recover.
         if extraction.entities or n_records == 0:
@@ -1200,7 +1395,7 @@ class SchemaResolver:
         total_dropped = 0
         for half in halves:
             sub_extraction, sub_dropped = await self._extract_json_chunk_with_recovery(
-                half, existing_types,
+                half, existing_types, **_c,
             )
             total_dropped += sub_dropped
             for e in sub_extraction.entities:
@@ -1241,7 +1436,11 @@ class SchemaResolver:
         return await asyncio.gather(*(_guarded(mk) for mk in extract_calls))
 
     async def _extract_json_chunks_calibrated(
-        self, chunks: list[str], content: str, existing_types: dict[str, str],
+        self,
+        chunks: list[str],
+        content: str,
+        existing_types: dict[str, str],
+        constraint: ExtractionConstraint | None = None,
     ) -> tuple[ExtractionResult, int, int]:
         """Extract multiple JSON chunks with first-batch calibration + concurrency.
 
@@ -1286,7 +1485,7 @@ class SchemaResolver:
         first_records = json_array_len(first_chunk)
         rows_in += first_records
         first_ex, first_dropped = await self._extract_json_chunk_with_recovery(
-            first_chunk, existing_types,
+            first_chunk, existing_types, constraint=constraint,
         )
         rows_dropped += first_dropped
         _merge(first_ex)
@@ -1338,7 +1537,9 @@ class SchemaResolver:
             rows_in += json_array_len(chunk)
         results = await self._extract_chunks_concurrently(
             [
-                lambda c=chunk: self._extract_json_chunk_with_recovery(c, existing_types)
+                lambda c=chunk: self._extract_json_chunk_with_recovery(
+                    c, existing_types, constraint=constraint,
+                )
                 for chunk in remainder_chunks
             ]
         )

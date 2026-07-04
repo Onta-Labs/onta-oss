@@ -255,7 +255,7 @@ async def test_execute_repasses_urls_to_provider(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None):
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         captured.update(content=content, content_type=content_type, source=source)
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
