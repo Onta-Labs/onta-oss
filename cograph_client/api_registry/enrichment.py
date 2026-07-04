@@ -59,6 +59,13 @@ _AUTHORITY_RANK = {
 }
 _MAX_ROWS = 5
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Generic tokens that must not, ALONE, make an entity type match an entry's
+# coverage — otherwise a bare "Organization" would match "health_organization"
+# on the shared "organization" token and fire a spurious API call.
+_GENERIC_TYPE_TOKENS = frozenset({
+    "organization", "org", "provider", "company", "business", "entity",
+    "person", "record", "item", "thing", "group", "service",
+})
 
 
 def _norm(s: str) -> str:
@@ -100,15 +107,26 @@ class RegistrySourceAdapter:
 
     def _type_matches(self, entity_type: str) -> bool:
         # Missing type -> don't over-exclude (ONTA-191): rely on the attribute +
-        # binding gates. Present type -> require a token overlap with coverage.
+        # binding gates. Present type -> require a token overlap with coverage on
+        # a NON-generic token, so a bare "Organization" doesn't match
+        # "health_organization" (and fire a spurious API call) on the shared
+        # generic "organization" token alone.
         if not entity_type:
             return True
         want = _tokens(entity_type)
         if not want:
             return True
-        return any(_tokens(kind) & want for kind in self._spec.coverage.entity_kinds)
+        for kind in self._spec.coverage.entity_kinds:
+            overlap = _tokens(kind) & want
+            if overlap and (overlap - _GENERIC_TYPE_TOKENS):
+                return True
+        return False
 
     def _build_bindings(self, ep: EndpointSpec, entity_label: str) -> dict[str, str]:
+        # Deterministic, no-LLM derivation. Naive token split: a label carrying a
+        # title/suffix ("Dr. Jane Smith MD") yields imperfect first/last tokens;
+        # it degrades gracefully (the API returns nothing → the chain falls
+        # through), and richer parsing is a tracked follow-up.
         label = (entity_label or "").strip()
         parts = label.split()
         bindings: dict[str, str] = {}

@@ -122,6 +122,21 @@ async def test_adapter_self_gates_on_wrong_entity_type():
 
 
 @pytest.mark.asyncio
+async def test_generic_organization_type_does_not_match_via_stopword():
+    # "Organization" shares only the generic "organization" token with
+    # "health_organization" — it must NOT match (no spurious API call).
+    calls = {"n": 0}
+
+    def handler(req):
+        calls["n"] += 1
+        return httpx.Response(200, json=_NPPES_REC)
+
+    v = await _nppes_adapter(handler).lookup("Acme Corporation", "phone", {"entity_type": "Organization"})
+    assert v == []
+    assert calls["n"] == 0
+
+
+@pytest.mark.asyncio
 async def test_adapter_missing_entity_type_still_answers_covered_attribute():
     # ONTA-191: don't over-exclude when the type is absent.
     v = await _nppes_adapter().lookup("Jane Smith", "npi", {})
