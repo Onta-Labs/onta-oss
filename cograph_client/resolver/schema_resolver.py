@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -333,6 +334,11 @@ class SchemaResolver:
         # in-place as new subtypes are created during this ingest.
         self._parent_of = await self._fetch_parent_map(graph_uri)
 
+        # Stage timing (ONTA-198 follow-up): time the two heavy halves of an
+        # ingest — LLM EXTRACTION vs type-RESOLUTION+insert — so a slow run reveals
+        # which half dominates without hand-reconstructing it from request gaps.
+        _t_extract = time.monotonic()
+
         # CSV: use schema-inference pipeline (1 LLM call for schema, deterministic for rows)
         if content_type == "csv":
             return await self._ingest_csv(content, graph_uri, existing_types, existing_attrs, source)
@@ -425,6 +431,13 @@ class SchemaResolver:
             rows_in=rows_in,
             rows_dropped=rows_dropped,
         )
+        logger.info(
+            "stage_timing",
+            stage="extract",
+            duration_ms=round((time.monotonic() - _t_extract) * 1000, 1),
+            entities=len(extraction.entities),
+            rows_in=rows_in,
+        )
 
         if not extraction.entities:
             return IngestResult(
@@ -442,6 +455,7 @@ class SchemaResolver:
         entity_uri_map: dict[str, str] = {}  # entity id → URI
         entity_type_map: dict[str, str] = {}  # entity id → resolved type name
 
+        _t_resolve = time.monotonic()
         try:
             final = await self._resolve_and_insert(
                 extraction, graph_uri, existing_types, existing_attrs,
@@ -450,6 +464,13 @@ class SchemaResolver:
                 # for these modalities (extract + apply happen in one call),
                 # so free-text candidacy is decided here.
                 decide_text_candidacy=True,
+            )
+            logger.info(
+                "stage_timing",
+                stage="resolve_insert",
+                duration_ms=round((time.monotonic() - _t_resolve) * 1000, 1),
+                entities=final.entities_resolved,
+                types_created=len(final.types_created),
             )
             # Never present a run as complete while a whole chunk was lost to
             # truncation (FIX 1): a non-zero drop count after recovery is an

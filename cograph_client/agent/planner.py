@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 
 import structlog
 
+from cograph_client.obs import timed
 from cograph_client.agent.capabilities.dedup_cap import DedupCapability
 from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
 from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
@@ -323,15 +324,16 @@ async def _classify(
     if not ctx.openrouter_key:
         return _ambiguous()
     try:
-        text = await openrouter_chat(
-            ctx.openrouter_key,
-            _CLASSIFY_SYSTEM,
-            user,
-            model=PRIMARY_MODEL,
-            temperature=0,
-            max_tokens=200,
-            timeout=30,
-        )
+        async with timed(logger, "classify"):
+            text = await openrouter_chat(
+                ctx.openrouter_key,
+                _CLASSIFY_SYSTEM,
+                user,
+                model=PRIMARY_MODEL,
+                temperature=0,
+                max_tokens=200,
+                timeout=30,
+            )
     except Exception:
         logger.warning("agent_classify_failed", exc_info=True)
         return _ambiguous()
