@@ -663,7 +663,11 @@ def _result_summary(result: dict) -> tuple[str, str | None]:
     if kind == "clarify":
         return result.get("question", ""), None
     if kind == "answer":
-        return result.get("answer") or result.get("narrative") or "", "question"
+        # Store the human summary, not the raw bindings dump: `narrative` is the
+        # rephrased 2-3 sentence answer; `answer` is the formatted-table fallback
+        # (only stored when the rephrase failed open to ""). Clients re-render
+        # this text verbatim on thread reload, so the precedence matters.
+        return result.get("narrative") or result.get("answer") or "", "question"
     if kind == "plan":
         caps = ", ".join(
             dict.fromkeys(s.get("capability", "") for s in result.get("steps", []))

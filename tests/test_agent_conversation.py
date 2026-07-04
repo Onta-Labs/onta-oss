@@ -178,6 +178,33 @@ def _stub_history_aware_classifier(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# 0. Transcript text derivation
+# --------------------------------------------------------------------------- #
+def test_result_summary_prefers_narrative_over_raw_answer():
+    """The stored assistant turn is what clients re-render on thread reload, so
+    an answer turn must persist the human ``narrative``, not the raw bindings
+    dump in ``answer`` (the onta-web #72 bug class, backend side)."""
+    text, intent = planner_mod._result_summary(
+        {
+            "kind": "answer",
+            "answer": "entity: a, label: b\n... and 106 more results",
+            "narrative": "There are 38 nurse practitioners.",
+        }
+    )
+    assert text == "There are 38 nurse practitioners."
+    assert intent == "question"
+
+
+def test_result_summary_falls_back_to_raw_answer_when_no_narrative():
+    """The rephrase step fails open to "" — the dump is better than nothing."""
+    text, intent = planner_mod._result_summary(
+        {"kind": "answer", "answer": "42", "narrative": ""}
+    )
+    assert text == "42"
+    assert intent == "question"
+
+
+# --------------------------------------------------------------------------- #
 # 1. Conversation store
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
