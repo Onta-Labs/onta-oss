@@ -14,6 +14,8 @@ import os
 
 import httpx
 
+from cograph_client.retrieval.errors import classify_llm_status_error
+
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
 # Primary model for all LLM calls, and the automatic fallback applied via
@@ -99,7 +101,22 @@ async def openrouter_chat(
             },
             json=body,
         )
-        res.raise_for_status()
+        try:
+            res.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # A 402 (prepaid balance exhausted) or 401 (bad/revoked key) is
+            # SYSTEMIC — the next call will fail identically. Re-raise it as a
+            # distinct, typed FATAL error (ONTA-201) so a caller in a
+            # split-and-retry / per-batch loop can short-circuit the whole run
+            # instead of burning more doomed calls and reporting "complete".
+            # Every OTHER status (429, 5xx, …) keeps propagating as the raw
+            # HTTPStatusError, so existing transient handling is unchanged.
+            fatal = classify_llm_status_error(
+                exc.response.status_code, detail=_error_detail(exc.response)
+            )
+            if fatal is not None:
+                raise fatal from exc
+            raise
         payload = res.json()
         choice = payload["choices"][0]
         content = choice["message"]["content"]
@@ -110,3 +127,23 @@ async def openrouter_chat(
         if return_usage:
             return content, payload.get("usage")
         return content
+
+
+def _error_detail(response: httpx.Response) -> str:
+    """Best-effort short reason from an error response body for the fatal-error
+    message. OpenRouter returns ``{"error": {"message": "..."}}``; fall back to a
+    trimmed raw body. Never raises — a detail is purely additive context."""
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            err = data.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                return str(err["message"])[:200]
+            if isinstance(err, str) and err:
+                return err[:200]
+    except Exception:  # noqa: BLE001 — a malformed body must not mask the error
+        pass
+    try:
+        return (response.text or "").strip()[:200]
+    except Exception:  # noqa: BLE001
+        return ""
