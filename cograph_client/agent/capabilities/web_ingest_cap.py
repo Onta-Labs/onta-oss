@@ -706,6 +706,41 @@ class WebIngestCapability:
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
                 await job_store.update(job)
+            # Observability for the WRITE TARGET (ONTA-198): record the exact graph
+            # this run writes into. Without it a run that reports "N filled" but whose
+            # rows never appear in the Explorer is undiagnosable — you cannot tell
+            # WHICH graph the resolver wrote to (the kg_name the plan/agent resolved
+            # is invisible in the logs, so a write to the wrong / an unregistered KG
+            # looks identical to a write that landed). Emitted once per run, up front.
+            logger.info(
+                "web_ingest_run_start",
+                tenant=ctx.tenant_id,
+                kg_name=kg_name or None,
+                instance_graph=instance_graph,
+                providers=[pr.name for pr in ensemble],
+                subqueries=len(subqueries),
+                cap=cap,
+                proposed_type=proposed_type,
+                job_id=job.id if job is not None else None,
+            )
+            # A discovery run with no resolvable target KG (empty kg_name) falls
+            # through to instance_graph=None, and resolver.ingest then writes the
+            # INSTANCE data into the tenant BASE graph (schema_resolver: instance_graph
+            # or tenant_graph_uri) — where the Explorer's per-KG views never read it,
+            # so the rows are silently invisible. Flag it loudly; the run still
+            # proceeds (behavior unchanged) so nothing that relied on it breaks, but
+            # the warning makes the misroute obvious instead of a silent black hole.
+            if instance_graph is None:
+                logger.warning(
+                    "web_ingest_no_target_kg",
+                    tenant=ctx.tenant_id,
+                    detail=(
+                        "kg_name is empty; instance data will land in the tenant "
+                        "base graph and will NOT be visible in any per-KG Explorer "
+                        "view. The run likely lost its KG context upstream."
+                    ),
+                    job_id=job.id if job is not None else None,
+                )
             # Per-provider activity log for "which providers we used" + their
             # outcomes, surfaced in the run-detail view alongside the platforms
             # list — one entry PER ENSEMBLE MEMBER, each accumulating its own
@@ -893,7 +928,10 @@ class WebIngestCapability:
                             ]
                         await _fail_job(job, job_store, last_provider_err)
                         return
-                    logger.info("web_ingest_no_rows", query=query)
+                    logger.info(
+                        "web_ingest_no_rows", query=query,
+                        kg_name=kg_name or None, instance_graph=instance_graph,
+                    )
                     if job is not None and job_store is not None:
                         job.provider_logs = list(plogs.values())
                     await _finish_job(
@@ -909,6 +947,10 @@ class WebIngestCapability:
                     rows=processed,
                     entities=entities_total,
                     types=sorted(affected_types) or None,
+                    # The graph the rows actually landed in — pair this with the row
+                    # count so "N filled" is always attributable to a concrete graph.
+                    kg_name=kg_name or None,
+                    instance_graph=instance_graph,
                 )
                 # Single shared post-write housekeeping path (graph/kg_writer.py) —
                 # the SAME refresh ingestion + enrichment run: invalidate the
@@ -935,7 +977,11 @@ class WebIngestCapability:
                     platforms=platforms,
                 )
             except Exception as exc:  # noqa: BLE001 — background job self-contains errors
-                logger.error("web_ingest_failed", query=query, exc_info=True)
+                logger.error(
+                    "web_ingest_failed", query=query,
+                    kg_name=kg_name or None, instance_graph=instance_graph,
+                    exc_info=True,
+                )
                 msg = str(exc)
                 # Per-(sub-query, provider) errors are handled in the loop, so a
                 # crash HERE is past discovery (ingest/refresh/bookkeeping) — a
