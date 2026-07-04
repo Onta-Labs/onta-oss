@@ -26,6 +26,7 @@ from .catalog import (
     reset_api_source_catalog,
     reset_api_source_layers,
 )
+from .catalog_audit import audit_catalog, format_markdown
 from .discovery import RegistryDiscoverySource, build_registry_sources
 from .enrichment import (
     RegistrySourceAdapter,
@@ -87,4 +88,7 @@ __all__ = [
     "RegistrySourceAdapter",
     "register_registry_enrichment",
     "reset_registry_enrichment",
+    # catalog freshness audit (phase 4)
+    "audit_catalog",
+    "format_markdown",
 ]

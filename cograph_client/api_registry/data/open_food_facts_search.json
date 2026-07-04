@@ -25,6 +25,7 @@
   "tos_note": "Open data under the Open Database License (ODbL). Attribution to Open Food Facts required when persisting.",
   "enabled": true,
   "entitlement": "free",
+  "verified_at": "2026-07-04",
   "endpoints": [
     {
       "name": "search",
@@ -52,6 +53,9 @@
         "start_page": 1,
         "total_path": "count",
         "max_pages": 5
+      },
+      "smoke_bindings": {
+        "query": "water"
       }
     }
   ]

@@ -25,6 +25,7 @@
   "tos_note": "Free with a registered GeoNames username (CC BY 4.0). Credits/rate limits apply per account.",
   "enabled": true,
   "entitlement": "free",
+  "verified_at": "2026-07-04",
   "endpoints": [
     {
       "name": "search",
@@ -57,6 +58,9 @@
         "offset_param": "startRow",
         "total_path": "totalResultsCount",
         "max_pages": 5
+      },
+      "smoke_bindings": {
+        "q": "London"
       }
     }
   ]
