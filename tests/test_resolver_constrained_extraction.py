@@ -318,7 +318,7 @@ async def test_ingest_constraint_prompt_pins_type_and_drops_off_type(
             ],
             "relationships": [],
         }
-        return json.dumps(body), "stop"
+        return json.dumps(body), "stop", None
 
     monkeypatch.setattr(sr, "openrouter_chat", fake_or)
 
@@ -363,7 +363,7 @@ async def _capture_prompt_no_constraint(resolver, monkeypatch, content):
         captured["system"] = system
         captured["user"] = user
         captured["kwargs"] = kwargs
-        return json.dumps({"entities": [], "relationships": []}), "stop"
+        return json.dumps({"entities": [], "relationships": []}), "stop", None
 
     monkeypatch.setattr(sr, "openrouter_chat", fake_or)
     with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
