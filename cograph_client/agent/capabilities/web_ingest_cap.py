@@ -57,6 +57,7 @@ from urllib.parse import urlparse
 import structlog
 
 from cograph_client.agent.registry import AgentContext, PlanStep
+from cograph_client.obs import timed
 from cograph_client.api_registry import (
     MODE_API_ONLY,
     RoutingDecision,
@@ -273,7 +274,11 @@ class WebIngestCapability:
         #    models", NOT the user's raw conversational sentence ("can we ingest
         #    open-router's TTS models that it currently offers"). If the user only
         #    named the entity, propose a set and confirm before spending anything.
-        spec = parsed or await _resolve_spec(ctx, instruction)
+        if parsed:
+            spec = parsed
+        else:
+            async with timed(logger, "spec_resolve"):
+                spec = await _resolve_spec(ctx, instruction)
 
         # Query-kind routing (ONTA-190): PREFER a provider specializing in the
         # spec's generic query_kind (e.g. "place" for a location/business-finding
@@ -364,7 +369,8 @@ class WebIngestCapability:
         # self-degrades to web_only (no key / no match) so a non-covered ask is
         # unchanged. The picks persist on the step so execute() rebuilds the same
         # registry providers without a second LLM call.
-        registry_decision = await _registry_route(ctx, query, spec, urls)
+        async with timed(logger, "registry_route"):
+            registry_decision = await _registry_route(ctx, query, spec, urls)
         registry_sources = (
             build_registry_sources(get_api_source_catalog(), registry_decision)
             if registry_decision.uses_api
