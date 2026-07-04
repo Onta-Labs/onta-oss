@@ -41,6 +41,7 @@ from cograph_client.resolver.schema_resolver import (
 from cograph_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
+    ExtractedRelationship,
     ExtractionConstraint,
     ExtractionResult,
 )
@@ -144,6 +145,29 @@ def test_apply_constraint_none_or_inactive_is_identity():
     assert _apply_extraction_constraint(result, ExtractionConstraint()) is result
 
 
+def test_apply_constraint_keeps_relationships_between_survivors_drops_dangling():
+    # A relationship whose endpoints both survive is KEPT; one pointing at a
+    # dropped off-type entity is removed (no dangling edges).
+    c = ExtractionConstraint(types=["Physician"], attributes={"Physician": ["name"]})
+    result = ExtractionResult(
+        entities=[
+            ExtractedEntity(type_name="Physician", id="p1"),
+            ExtractedEntity(type_name="Physician", id="p2"),
+            ExtractedEntity(type_name="Address", id="addr-1"),  # dropped
+        ],
+        relationships=[
+            ExtractedRelationship(source_id="p1", predicate="colleague_of", target_id="p2"),
+            ExtractedRelationship(source_id="p1", predicate="located_at", target_id="addr-1"),
+        ],
+    )
+    guarded = _apply_extraction_constraint(result, c)
+    assert {e.id for e in guarded.entities} == {"p1", "p2"}
+    # Only the p1->p2 edge survives; the p1->addr-1 edge (dangling) is dropped.
+    assert len(guarded.relationships) == 1
+    r = guarded.relationships[0]
+    assert (r.source_id, r.predicate, r.target_id) == ("p1", "colleague_of", "p2")
+
+
 # --- (1) constraint works end-to-end through ingest(...) ---------------------
 
 
@@ -180,6 +204,56 @@ async def test_ingest_threads_constraint_into_extract(mock_neptune, mock_cache):
     assert isinstance(c, ExtractionConstraint)
     assert c.types == ["Physician"]
     assert c.allowed_attributes("Physician") == {"name", "specialty", "city", "phone"}
+
+
+@pytest.mark.asyncio
+async def test_ingest_threads_constraint_through_multi_chunk_json(
+    mock_neptune, mock_cache, monkeypatch
+):
+    """The MULTI-CHUNK calibrated JSON path forwards the active constraint to
+    EVERY ``_extract`` call (first-batch + concurrent remainder), not just the
+    single-chunk path — so a large discovery pull stays constrained throughout.
+    """
+    from cograph_client.resolver import chunker
+
+    # Force the multi-chunk path: small conservative batches over 60 records.
+    monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 700)
+    monkeypatch.setattr(chunker, "EXTRACT_BATCH_TARGET_FRAC", 0.55)
+    monkeypatch.setattr(SchemaResolver, "EXTRACT_CONCURRENCY", 8)
+
+    resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
+    seen_constraints: list = []
+
+    async def fake_extract(content, content_type, existing_types=None, constraint=None):
+        seen_constraints.append(constraint)
+        rows = json.loads(content)
+        return ExtractionResult(
+            entities=[
+                ExtractedEntity(
+                    type_name="Physician",
+                    id=str(r["id"]),
+                    attributes=[ExtractedAttribute(name="name", value=r["name"])],
+                )
+                for r in rows
+            ]
+        )
+
+    records = json.dumps([{"id": i, "name": f"dr_{i}"} for i in range(60)])
+    with patch.object(resolver, "_extract", side_effect=fake_extract):
+        with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
+            result = await resolver.ingest(
+                records,
+                "test-tenant",
+                content_type="json",
+                constrain_types=PHYSICIAN_CONSTRAINT_TYPES,
+                constrain_attributes=PHYSICIAN_CONSTRAINT_ATTRS,
+            )
+
+    # More than one chunk actually ran (multi-chunk path exercised)...
+    assert len(seen_constraints) > 1, seen_constraints
+    # ...and EVERY chunk received the active constraint (none silently dropped).
+    assert all(isinstance(c, ExtractionConstraint) and c.is_active for c in seen_constraints)
+    assert result.entities_resolved == 60
 
 
 @pytest.mark.asyncio
