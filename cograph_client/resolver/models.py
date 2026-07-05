@@ -107,6 +107,20 @@ class ExtractionConstraint(BaseModel):
             "this map has no attribute restriction (all attributes allowed)."
         ),
     )
+    soft: bool = Field(
+        default=False,
+        description=(
+            "SEED vs CAGE. False (default, ONTA-199): a HARD constraint — extract "
+            "ONLY the flat focus type + listed attributes, drop off-type entities, "
+            "strip lineage, emit no relationships. True: a SOFT prior — the focus "
+            "type + attributes are a hint, but the extractor decomposes faithfully "
+            "(most-specific subtypes, real-world values as nodes, multi-valued "
+            "splits, reuse-first) and the post-extraction guard is a no-op. Soft "
+            "restores correct ontology shape on discovery while the prior keeps "
+            "extraction focused + compact (measurements stay literal, no per-column "
+            "type explosion)."
+        ),
+    )
 
     @property
     def is_active(self) -> bool:

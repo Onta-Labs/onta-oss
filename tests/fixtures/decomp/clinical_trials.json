@@ -1,0 +1,152 @@
+[
+  {
+    "nct_id": "NCT04100001",
+    "title": "A Phase 3 Study of Glucomodulin in Adults With Type 2 Diabetes",
+    "condition": "Type 2 Diabetes",
+    "sponsor": "Helix Pharmaceuticals",
+    "phase": "Phase 3",
+    "status": "Recruiting",
+    "enrollment": 480,
+    "start_year": 2024
+  },
+  {
+    "nct_id": "NCT04100002",
+    "title": "Cardioprotective Effects of Ateronol Following Myocardial Infarction",
+    "condition": "Myocardial Infarction",
+    "sponsor": "Crestwood Biologics",
+    "phase": "Phase 2",
+    "status": "Active, not recruiting",
+    "enrollment": 220,
+    "start_year": 2023
+  },
+  {
+    "nct_id": "NCT04100003",
+    "title": "Long-Term Safety of Neuraxil in Early Alzheimer Disease",
+    "condition": "Alzheimer Disease",
+    "sponsor": "Helix Pharmaceuticals",
+    "phase": "Phase 2",
+    "status": "Recruiting",
+    "enrollment": 310,
+    "start_year": 2024
+  },
+  {
+    "nct_id": "NCT04100004",
+    "title": "Inhaled Pulmodex for Moderate Chronic Obstructive Pulmonary Disease",
+    "condition": "Chronic Obstructive Pulmonary Disease",
+    "sponsor": "Meridian Respiratory Institute",
+    "phase": "Phase 3",
+    "status": "Recruiting",
+    "enrollment": 640,
+    "start_year": 2025
+  },
+  {
+    "nct_id": "NCT04100005",
+    "title": "Dose-Ranging Trial of Immunovex in Metastatic Melanoma",
+    "condition": "Melanoma",
+    "sponsor": "Crestwood Biologics",
+    "phase": "Phase 1",
+    "status": "Recruiting",
+    "enrollment": 90,
+    "start_year": 2025
+  },
+  {
+    "nct_id": "NCT04100006",
+    "title": "Glucomodulin Versus Standard Care in Newly Diagnosed Type 2 Diabetes",
+    "condition": "Type 2 Diabetes",
+    "sponsor": "Helix Pharmaceuticals",
+    "phase": "Phase 3",
+    "status": "Not yet recruiting",
+    "enrollment": 520,
+    "start_year": 2025
+  },
+  {
+    "nct_id": "NCT04100007",
+    "title": "Renastat for Progression of Chronic Kidney Disease",
+    "condition": "Chronic Kidney Disease",
+    "sponsor": "Tidewater Therapeutics",
+    "phase": "Phase 2",
+    "status": "Recruiting",
+    "enrollment": 275,
+    "start_year": 2024
+  },
+  {
+    "nct_id": "NCT04100008",
+    "title": "Dermalux Monoclonal Antibody for Moderate-to-Severe Psoriasis",
+    "condition": "Psoriasis",
+    "sponsor": "Crestwood Biologics",
+    "phase": "Phase 3",
+    "status": "Active, not recruiting",
+    "enrollment": 400,
+    "start_year": 2023
+  },
+  {
+    "nct_id": "NCT04100009",
+    "title": "Neuraxil Extension Study in Mild Cognitive Impairment Due to Alzheimer Disease",
+    "condition": "Alzheimer Disease",
+    "sponsor": "Helix Pharmaceuticals",
+    "phase": "Phase 2",
+    "status": "Enrolling by invitation",
+    "enrollment": 150,
+    "start_year": 2025
+  },
+  {
+    "nct_id": "NCT04100010",
+    "title": "Ateronol Add-On Therapy for Recurrent Myocardial Infarction",
+    "condition": "Myocardial Infarction",
+    "sponsor": "Meridian Respiratory Institute",
+    "phase": "Phase 2",
+    "status": "Recruiting",
+    "enrollment": 260,
+    "start_year": 2024
+  },
+  {
+    "nct_id": "NCT04100011",
+    "title": "Pulmodex Real-World Outcomes in Severe Chronic Obstructive Pulmonary Disease",
+    "condition": "Chronic Obstructive Pulmonary Disease",
+    "sponsor": "Meridian Respiratory Institute",
+    "phase": "Phase 4",
+    "status": "Recruiting",
+    "enrollment": 820,
+    "start_year": 2025
+  },
+  {
+    "nct_id": "NCT04100012",
+    "title": "Immunovex Combination Regimen for Advanced Melanoma",
+    "condition": "Melanoma",
+    "sponsor": "Crestwood Biologics",
+    "phase": "Phase 2",
+    "status": "Not yet recruiting",
+    "enrollment": 180,
+    "start_year": 2026
+  },
+  {
+    "nct_id": "NCT04100013",
+    "title": "Renastat Pediatric Study in Chronic Kidney Disease",
+    "condition": "Chronic Kidney Disease",
+    "sponsor": "Tidewater Therapeutics",
+    "phase": "Phase 1",
+    "status": "Recruiting",
+    "enrollment": 60,
+    "start_year": 2025
+  },
+  {
+    "nct_id": "NCT04100014",
+    "title": "Glucomodulin Cardiovascular Outcomes Trial in Type 2 Diabetes",
+    "condition": "Type 2 Diabetes",
+    "sponsor": "Tidewater Therapeutics",
+    "phase": "Phase 3",
+    "status": "Recruiting",
+    "enrollment": 900,
+    "start_year": 2026
+  },
+  {
+    "nct_id": "NCT04100015",
+    "title": "Dermalux Long-Term Registry for Plaque Psoriasis",
+    "condition": "Psoriasis",
+    "sponsor": "Helix Pharmaceuticals",
+    "phase": "Phase 4",
+    "status": "Recruiting",
+    "enrollment": 1200,
+    "start_year": 2024
+  }
+]
