@@ -1,0 +1,152 @@
+[
+  {
+    "model_id": "aurora-large-v2",
+    "display_name": "Aurora Large v2",
+    "organization": "Nimbus AI",
+    "modality": "text, image",
+    "context_length": 200000,
+    "input_price": 3.0,
+    "output_price": 15.0,
+    "open_source": false
+  },
+  {
+    "model_id": "aurora-mini-v2",
+    "display_name": "Aurora Mini v2",
+    "organization": "Nimbus AI",
+    "modality": "text",
+    "context_length": 128000,
+    "input_price": 0.25,
+    "output_price": 1.25,
+    "open_source": false
+  },
+  {
+    "model_id": "aurora-vision",
+    "display_name": "Aurora Vision",
+    "organization": "Nimbus AI",
+    "modality": "text, image, audio",
+    "context_length": 128000,
+    "input_price": 2.5,
+    "output_price": 10.0,
+    "open_source": false
+  },
+  {
+    "model_id": "meridian-70b",
+    "display_name": "Meridian 70B",
+    "organization": "Vantage Labs",
+    "modality": "text",
+    "context_length": 32000,
+    "input_price": 0.9,
+    "output_price": 0.9,
+    "open_source": true
+  },
+  {
+    "model_id": "meridian-8b",
+    "display_name": "Meridian 8B",
+    "organization": "Vantage Labs",
+    "modality": "text",
+    "context_length": 32000,
+    "input_price": 0.2,
+    "output_price": 0.2,
+    "open_source": true
+  },
+  {
+    "model_id": "meridian-vision-34b",
+    "display_name": "Meridian Vision 34B",
+    "organization": "Vantage Labs",
+    "modality": "text, image",
+    "context_length": 16000,
+    "input_price": 0.5,
+    "output_price": 0.5,
+    "open_source": true
+  },
+  {
+    "model_id": "solstice-pro",
+    "display_name": "Solstice Pro",
+    "organization": "Helios Systems",
+    "modality": "text, image, audio, video",
+    "context_length": 1000000,
+    "input_price": 7.0,
+    "output_price": 21.0,
+    "open_source": false
+  },
+  {
+    "model_id": "solstice-flash",
+    "display_name": "Solstice Flash",
+    "organization": "Helios Systems",
+    "modality": "text, image",
+    "context_length": 1000000,
+    "input_price": 0.15,
+    "output_price": 0.6,
+    "open_source": false
+  },
+  {
+    "model_id": "cinder-coder-15b",
+    "display_name": "Cinder Coder 15B",
+    "organization": "Emberform Research",
+    "modality": "text",
+    "context_length": 64000,
+    "input_price": 0.3,
+    "output_price": 0.4,
+    "open_source": true
+  },
+  {
+    "model_id": "cinder-base-15b",
+    "display_name": "Cinder Base 15B",
+    "organization": "Emberform Research",
+    "modality": "text",
+    "context_length": 64000,
+    "input_price": 0.3,
+    "output_price": 0.4,
+    "open_source": true
+  },
+  {
+    "model_id": "quillstar-opus",
+    "display_name": "Quillstar Opus",
+    "organization": "Lantern Intelligence",
+    "modality": "text, image",
+    "context_length": 256000,
+    "input_price": 5.0,
+    "output_price": 25.0,
+    "open_source": false
+  },
+  {
+    "model_id": "quillstar-sonnet",
+    "display_name": "Quillstar Sonnet",
+    "organization": "Lantern Intelligence",
+    "modality": "text, image",
+    "context_length": 256000,
+    "input_price": 1.0,
+    "output_price": 5.0,
+    "open_source": false
+  },
+  {
+    "model_id": "driftwood-7b",
+    "display_name": "Driftwood 7B",
+    "organization": "Emberform Research",
+    "modality": "text",
+    "context_length": 8192,
+    "input_price": 0.1,
+    "output_price": 0.1,
+    "open_source": true
+  },
+  {
+    "model_id": "halcyon-audio",
+    "display_name": "Halcyon Audio",
+    "organization": "Helios Systems",
+    "modality": "text, audio",
+    "context_length": 32000,
+    "input_price": 1.2,
+    "output_price": 2.4,
+    "open_source": false
+  },
+  {
+    "model_id": "tessellate-mini",
+    "display_name": "Tessellate Mini",
+    "organization": "Nimbus AI",
+    "modality": "text",
+    "context_length": 16000,
+    "input_price": 0.05,
+    "output_price": 0.15,
+    "open_source": false
+  }
+]

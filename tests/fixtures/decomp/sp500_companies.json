@@ -1,0 +1,152 @@
+[
+  {
+    "ticker": "NMBS",
+    "company_name": "Nimbus Aerospace Corporation",
+    "sector": "Industrials",
+    "industry": "Aerospace & Defense",
+    "headquarters": "Wichita, Kansas",
+    "ceo": "Adelaide Fenwick",
+    "market_cap": 84200000000,
+    "employees": 61000
+  },
+  {
+    "ticker": "VLDR",
+    "company_name": "Valdera Motors Inc",
+    "sector": "Consumer Discretionary",
+    "industry": "Automobiles",
+    "headquarters": "Dearborn, Michigan",
+    "ceo": "Cornelius Ashby",
+    "market_cap": 51900000000,
+    "employees": 88000
+  },
+  {
+    "ticker": "HLXP",
+    "company_name": "Helix Pharmaceuticals",
+    "sector": "Health Care",
+    "industry": "Pharmaceuticals",
+    "headquarters": "Cambridge, Massachusetts",
+    "ceo": "Beatrix Sandoval",
+    "market_cap": 132500000000,
+    "employees": 42000
+  },
+  {
+    "ticker": "CRSD",
+    "company_name": "Crestwood Biologics",
+    "sector": "Health Care",
+    "industry": "Biotechnology",
+    "headquarters": "South San Francisco, California",
+    "ceo": "Desmond Larkspur",
+    "market_cap": 47800000000,
+    "employees": 15000
+  },
+  {
+    "ticker": "TDWT",
+    "company_name": "Tidewater Energy Holdings",
+    "sector": "Energy",
+    "industry": "Oil & Gas Exploration",
+    "headquarters": "Houston, Texas",
+    "ceo": "Marguerite Ollivander",
+    "market_cap": 76300000000,
+    "employees": 27000
+  },
+  {
+    "ticker": "PTNC",
+    "company_name": "Pinnacle Refining Company",
+    "sector": "Energy",
+    "industry": "Oil & Gas Refining",
+    "headquarters": "Houston, Texas",
+    "ceo": " Signature withheld",
+    "market_cap": 39400000000,
+    "employees": 12500
+  },
+  {
+    "ticker": "ARGX",
+    "company_name": "Argent Exchange Group",
+    "sector": "Financials",
+    "industry": "Financial Exchanges",
+    "headquarters": "Chicago, Illinois",
+    "ceo": "Thaddeus Grimwald",
+    "market_cap": 68100000000,
+    "employees": 8900
+  },
+  {
+    "ticker": "MRDN",
+    "company_name": "Meridian Trust Bancorp",
+    "sector": "Financials",
+    "industry": "Regional Banks",
+    "headquarters": "Charlotte, North Carolina",
+    "ceo": "Cassia Wetherby",
+    "market_cap": 55700000000,
+    "employees": 34000
+  },
+  {
+    "ticker": "SLST",
+    "company_name": "Solstice Semiconductor",
+    "sector": "Information Technology",
+    "industry": "Semiconductors",
+    "headquarters": "Santa Clara, California",
+    "ceo": "Ignatius Vandermeer",
+    "market_cap": 210800000000,
+    "employees": 29000
+  },
+  {
+    "ticker": "LMNX",
+    "company_name": "Lumenix Software",
+    "sector": "Information Technology",
+    "industry": "Application Software",
+    "headquarters": "Santa Clara, California",
+    "ceo": "Persephone Callahan",
+    "market_cap": 98600000000,
+    "employees": 17000
+  },
+  {
+    "ticker": "GRNF",
+    "company_name": "Greenfield Grocers Corp",
+    "sector": "Consumer Staples",
+    "industry": "Food Retail",
+    "headquarters": "Boise, Idaho",
+    "ceo": "Ambrose Tillingham",
+    "market_cap": 33200000000,
+    "employees": 145000
+  },
+  {
+    "ticker": "HRVM",
+    "company_name": "Harvest Mills Foods",
+    "sector": "Consumer Staples",
+    "industry": "Packaged Foods",
+    "headquarters": "Battle Creek, Michigan",
+    "ceo": "Lucinda Farnsworth",
+    "market_cap": 29800000000,
+    "employees": 22000
+  },
+  {
+    "ticker": "CBLT",
+    "company_name": "Cobalt Grid Utilities",
+    "sector": "Utilities",
+    "industry": "Electric Utilities",
+    "headquarters": "Columbus, Ohio",
+    "ceo": "Reginald Hawksworth",
+    "market_cap": 44100000000,
+    "employees": 18500
+  },
+  {
+    "ticker": "STNH",
+    "company_name": "Stonehaven Realty Trust",
+    "sector": "Real Estate",
+    "industry": "Retail REITs",
+    "headquarters": "Indianapolis, Indiana",
+    "ceo": "Ophelia Brambleton",
+    "market_cap": 26700000000,
+    "employees": 3200
+  },
+  {
+    "ticker": "SLSC",
+    "company_name": "Solstice Semiconductor Materials",
+    "sector": "Information Technology",
+    "industry": "Semiconductors",
+    "headquarters": "Santa Clara, California",
+    "ceo": "Ignatius Vandermeer",
+    "market_cap": 18900000000,
+    "employees": 6100
+  }
+]
