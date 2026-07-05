@@ -20,6 +20,10 @@ POLICIES
 Requires a local SPARQL store (scripts/local_sparql.py) on --endpoint and
 OPENROUTER_API_KEY in the env (source the repo .env).
 
+WARNING: each run issues ``DROP ALL`` to isolate its ontology, so point
+``--endpoint`` at a LOCAL, DISPOSABLE store only — NEVER a shared or production
+SPARQL endpoint.
+
     python scripts/decomp_harness.py --domain healthcare_providers --policy A,B
     python scripts/decomp_harness.py --all --policy A,B
 """
@@ -311,8 +315,11 @@ def score(spec: DomainSpec, shape: Shape) -> list[Check]:
         checks.append(Check(f"subtype:{t}", present,
                              "present" if present else "folded away / missing"))
 
-    # 3. multi-valued: at least one synonym predicate is an EDGE (OR semantics —
-    #    the README accepts a synonym set); flag when it repeats past 1-per-instance.
+    # 3. multi-valued SPLIT: the best-matching synonym predicate (OR semantics —
+    #    the README accepts a synonym set) must be an EDGE that REPEATS past
+    #    1-per-instance, i.e. more edges than primary instances — the honest signal
+    #    that comma-joined values were split, not that a single edge exists. Any
+    #    edge already beats the flat "glued literal" cage; > prim is the strict bar.
     prim = shape.instances_by_type.get(spec.proposed_type, 0)
     if spec.expect_multivalued_edges:
         best_pred, best_n = "", 0
@@ -320,11 +327,10 @@ def score(spec: DomainSpec, shape: Shape) -> list[Check]:
             n = shape.obj_predicates.get(pred, 0)
             if n > best_n:
                 best_pred, best_n = pred, n
-        ok = best_n > 0
-        note = f"{best_pred or '(none)'}={best_n} vs {prim} primary instances"
-        if ok and prim and best_n > prim:
-            note += "  (multi-valued split confirmed)"
-        checks.append(Check("multivalued", ok, note if ok else "no edge — kept as glued literal"))
+        ok = best_n > prim if prim else best_n > 0
+        note = f"{best_pred or '(none)'}={best_n} edges vs {prim} primary instances"
+        checks.append(Check("multivalued_split", ok,
+                            note if ok else "not split into >1-per-instance edges"))
 
     # 4. literal attrs stayed literals (not promoted to a node type)
     for a in spec.expect_literal_attrs:
