@@ -1,0 +1,77 @@
+{
+  "description": "A SMALL pre-existing ontology to seed BEFORE ingesting clinical_trials.json. Its purpose is to prove reconcile-don't-duplicate: after ingest, the harness asserts the trial rows' `condition` and `sponsor` values attach to THESE existing types (Condition, Organization) rather than minting new near-synonym types (MedicalCondition, Sponsor, Disease, Company, ...). The fixture deliberately uses field names (`condition`, `sponsor`) that differ from these type names so a correct reconcile must match on meaning, not on string identity. Attributes below are the pre-existing schema shape the harness can also check survive the ingest.",
+  "types": [
+    {
+      "type_name": "Condition",
+      "label": "Medical Condition",
+      "gloss": "A disease, disorder, syndrome, or clinical condition that a study investigates or a patient is diagnosed with.",
+      "attributes": [
+        {
+          "name": "icd10_code",
+          "datatype": "string",
+          "gloss": "ICD-10-CM diagnosis code for the condition, e.g. E11 for type 2 diabetes."
+        },
+        {
+          "name": "body_system",
+          "datatype": "string",
+          "gloss": "Primary body system affected, e.g. Endocrine, Cardiovascular, Nervous."
+        }
+      ],
+      "seed_instances": [
+        {
+          "name": "Type 2 Diabetes",
+          "icd10_code": "E11",
+          "body_system": "Endocrine"
+        },
+        {
+          "name": "Myocardial Infarction",
+          "icd10_code": "I21",
+          "body_system": "Cardiovascular"
+        }
+      ]
+    },
+    {
+      "type_name": "Organization",
+      "label": "Organization",
+      "gloss": "A company, institution, foundation, or other formal organization. Trial sponsors are organizations.",
+      "attributes": [
+        {
+          "name": "headquarters_city",
+          "datatype": "string",
+          "gloss": "City where the organization is headquartered."
+        },
+        {
+          "name": "org_kind",
+          "datatype": "string",
+          "gloss": "Coarse kind, e.g. Pharmaceutical, Academic, Government, Nonprofit."
+        }
+      ],
+      "seed_instances": [
+        {
+          "name": "Helix Pharmaceuticals",
+          "headquarters_city": "Cambridge",
+          "org_kind": "Pharmaceutical"
+        },
+        {
+          "name": "Crestwood Biologics",
+          "headquarters_city": "South San Francisco",
+          "org_kind": "Pharmaceutical"
+        }
+      ]
+    }
+  ],
+  "reconcile_expectations": {
+    "must_reuse_types": ["Condition", "Organization"],
+    "must_not_mint_types": [
+      "MedicalCondition",
+      "Disease",
+      "Diagnosis",
+      "Indication",
+      "Sponsor",
+      "Company",
+      "Institution",
+      "TrialSponsor"
+    ],
+    "notes": "`condition` values must attach to the existing Condition type; `sponsor` values must attach to the existing Organization type. Seed instances (Type 2 Diabetes, Myocardial Infarction, Helix Pharmaceuticals, Crestwood Biologics) must be REUSED as the same nodes the rows reference — not duplicated. New condition/org values in the rows (e.g. Alzheimer Disease, Tidewater Therapeutics) may be minted as new INSTANCES of the existing types, but must NOT trigger a new TYPE."
+  }
+}

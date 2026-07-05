@@ -137,6 +137,19 @@ _RUN_TIMEOUT_S = float(os.environ.get("OMNIX_DISCOVERY_RUN_TIMEOUT_S", "600"))
 # cost. The web client auto-confirms plans up to this same figure.
 _PREVIEW_GATE_USD = float(os.environ.get("COGRAPH_WEB_PREVIEW_GATE_USD", "0.50"))
 
+# ONTA-199 follow-up (the decomposition fix). Discovery extraction defaults to
+# SOFT (seed) mode: the user-confirmed target type + attributes are passed as a
+# PRIOR that keeps extraction focused and compact (the cost/fragmentation win the
+# HARD constraint chased) WHILE letting the extractor decompose faithfully —
+# most-specific subtypes (a nurse practitioner stays a NursePractitioner, not a
+# Physician), real-world values lifted to nodes (city -> City, specialty ->
+# Specialty), multi-valued fields split, measurements kept literal. The old HARD
+# cage (flat single literal-only type) is retained behind this flag purely as a
+# kill-switch: set COGRAPH_DISCOVERY_SOFT_EXTRACT=0 to revert without a deploy.
+_DISCOVERY_SOFT_EXTRACT = (
+    os.environ.get("COGRAPH_DISCOVERY_SOFT_EXTRACT", "1") != "0"
+)
+
 
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
@@ -864,14 +877,18 @@ class WebIngestCapability:
                                 content_type="json",
                                 source=f"web:{prov.name}:{query}",
                                 instance_graph=instance_graph,
-                                # Discovery has already CONFIRMED the single target
-                                # type + attribute set with the user (ONTA-199), so
-                                # constrain extraction to it instead of re-running
-                                # the open-ended multi-type reifier (which minted
-                                # ~20 unwanted sub-types + ~3x output tokens and
-                                # blew the extraction watchdog).
+                                # Discovery CONFIRMED the target type + attribute set
+                                # with the user, so it passes them to extraction as a
+                                # focus. SOFT (default): a PRIOR that keeps extraction
+                                # compact yet still decomposes faithfully (subtypes,
+                                # real-world nodes, multi-valued splits) — the ONTA-199
+                                # follow-up that fixed the flat single-type mis-modeling
+                                # (NPs typed as Physician, city/specialty as literals)
+                                # without the open-ended reifier's ~20-type blowup.
+                                # HARD (kill-switch): the original flat cage.
                                 constrain_types=[proposed_type],
                                 constrain_attributes={proposed_type: list(attributes)},
+                                constrain_soft=_DISCOVERY_SOFT_EXTRACT,
                             )
                             processed += len(batch)
                             entities_total += int(

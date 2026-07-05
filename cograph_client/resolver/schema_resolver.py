@@ -249,6 +249,59 @@ type's key/identifier):
 Emit no other entity types, no sub-entities, and no other attributes."""
 
 
+# --- SOFT / SEED extraction mode (the discovery fix) ------------------------
+# The HARD constraint above (ONTA-199) fixed speed + over-fragmentation by
+# FLATTENING discovery to one literal-only type — which mis-typed subtypes
+# (a nurse practitioner became a "Physician"), demoted real-world values
+# (city, specialty) to literals, and dropped relationships. The SOFT mode
+# fixes the ORIGINAL problem the right way: keep the confirmed focus type +
+# attributes as a PRIOR that orients extraction (so it stays focused and
+# compact — the cost/fragmentation win) while letting the extractor decompose
+# faithfully (subtypes, real-world nodes, multi-valued splits, reuse-first —
+# the correctness win). Appended in place of EXTRACTION_CONSTRAINT_SYSTEM when
+# ExtractionConstraint.soft is True; the post-extraction guard becomes a no-op.
+
+EXTRACTION_TARGET_SYSTEM = """\
+
+TARGET-SCHEMA MODE (a FOCUS HINT, not a restriction — it overrides nothing above):
+This source was gathered to collect records of a CONFIRMED focus type (named in \
+the user block), and those records usually carry a known set of attributes. Treat \
+that as a PRIOR that orients you — NOT a cage. Model the data faithfully, exactly \
+as you would for open ingestion:
+- TYPE TO THE TRUTH. Give each record its most specific correct type. When records \
+are specialized KINDS of the focus (e.g. a nurse practitioner or physician \
+assistant alongside physicians), mint them as distinct SUBTYPES under a shared \
+parent — never force every record into the single focus type, and never leave the \
+distinguishing role as a bare string attribute.
+- REAL-WORLD THINGS BECOME NODES. When an attribute value is itself a reusable \
+real-world entity — a place (city, state, country), an organization, a person, a \
+category / specialty / sector — model it as its OWN entity reached by a \
+relationship, so rows sharing that value share ONE node. Split a composite like \
+"City, State" into the two nodes it names.
+- KEEP MEASUREMENTS LITERAL. Pure identifiers, numbers, prices, counts, ratings, \
+dates, booleans, phone numbers, and street addresses stay LITERAL attributes with \
+the right datatype. Do NOT reify a measurement / score / price / rating into its \
+own entity.
+- SPLIT MULTI-VALUED FIELDS. A field holding several values (comma- or \
+pipe-separated) becomes SEVERAL assertions / edges — one per value — never one \
+glued string.
+- REUSE, DON'T FRAGMENT. Prefer an existing ontology type over minting a new one; \
+create a new type only for a genuinely new real-world KIND. Aim for a COMPACT, \
+reusable ontology — not a type per column or per value.
+The focus type + expected attributes below say what to look for; add exactly the \
+structure the data justifies and keep it tight."""
+
+EXTRACTION_TARGET_USER_TEMPLATE = """\
+
+FOCUS — you are collecting records of:
+{constraint_lines}
+Model each record with its most specific type (subtypes encouraged), lift \
+real-world values (places, orgs, people, categories) into their own nodes via \
+relationships, split multi-valued fields into separate assertions, and keep pure \
+measurements / identifiers as literals. The focus type + attributes are a guide, \
+not a limit — add the structure the data justifies, reuse types, stay compact."""
+
+
 def _build_constraint_user_block(constraint) -> str:
     """Render the per-type allowed-attribute lines appended to the user prompt.
 
@@ -264,9 +317,12 @@ def _build_constraint_user_block(constraint) -> str:
             lines.append(f"- {t}: {', '.join(attrs)}")
         else:
             lines.append(f"- {t}: (all confirmed attributes)")
-    return EXTRACTION_CONSTRAINT_USER_TEMPLATE.format(
-        constraint_lines="\n".join(lines)
+    template = (
+        EXTRACTION_TARGET_USER_TEMPLATE
+        if getattr(constraint, "soft", False)
+        else EXTRACTION_CONSTRAINT_USER_TEMPLATE
     )
+    return template.format(constraint_lines="\n".join(lines))
 
 
 def _apply_extraction_constraint(result, constraint):
@@ -284,6 +340,12 @@ def _apply_extraction_constraint(result, constraint):
     :class:`ExtractionConstraint`.
     """
     if constraint is None or not getattr(constraint, "is_active", False):
+        return result
+    if getattr(constraint, "soft", False):
+        # SOFT (seed) mode: the type/attributes were a PRIOR in the prompt, not a
+        # cage. The extractor's decomposition (subtypes, real-world nodes,
+        # multi-valued splits, relationships) is the desired output — never drop
+        # off-type entities, strip lineage, or delete edges here.
         return result
     allowed_types = set(constraint.types)
     kept_entities = []
@@ -458,6 +520,7 @@ class SchemaResolver:
         instance_graph: str | None = None,
         constrain_types: list[str] | None = None,
         constrain_attributes: dict[str, list[str]] | None = None,
+        constrain_soft: bool = False,
     ) -> IngestResult:
         """Full ingestion pipeline: extract → resolve → validate → insert.
 
@@ -483,6 +546,7 @@ class SchemaResolver:
             constraint = ExtractionConstraint(
                 types=list(constrain_types),
                 attributes={k: list(v) for k, v in (constrain_attributes or {}).items()},
+                soft=constrain_soft,
             )
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph
@@ -1217,7 +1281,15 @@ class SchemaResolver:
         constraint_block = _build_constraint_user_block(constraint)
         _sys_kw: dict = {}
         if constraint_block:
-            system_prompt = EXTRACTION_SYSTEM + EXTRACTION_CONSTRAINT_SYSTEM
+            # SOFT (seed) → the target-schema PRIOR (decompose faithfully);
+            # HARD (ONTA-199) → the flat single-type cage. Both narrow the prompt
+            # but only HARD flattens.
+            constraint_system = (
+                EXTRACTION_TARGET_SYSTEM
+                if getattr(constraint, "soft", False)
+                else EXTRACTION_CONSTRAINT_SYSTEM
+            )
+            system_prompt = EXTRACTION_SYSTEM + constraint_system
             user_content = user_content + constraint_block
             _sys_kw = {"system_prompt": system_prompt}
 
