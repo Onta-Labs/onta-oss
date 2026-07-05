@@ -1,0 +1,167 @@
+[
+  {
+    "shop_id": "CS-1001",
+    "name": "Fernwood Roasters",
+    "categories": "Coffee, Bakery, Breakfast",
+    "rating": 4.6,
+    "price_level": "$$",
+    "address": "812 Alder Street",
+    "city": "Portland",
+    "state": "OR",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1002",
+    "name": "The Copper Kettle",
+    "categories": "Coffee, Tea, Cafe",
+    "rating": 4.3,
+    "price_level": "$",
+    "address": "45 Marmot Lane",
+    "city": "Portland",
+    "state": "OR",
+    "outdoor_seating": false
+  },
+  {
+    "shop_id": "CS-1003",
+    "name": "Fernwood Roasters",
+    "categories": "Coffee, Espresso Bar",
+    "rating": 4.1,
+    "price_level": "$$",
+    "address": "2200 Chestnut Avenue",
+    "city": "Seattle",
+    "state": "WA",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1004",
+    "name": "Marlowe & Bean",
+    "categories": "Coffee, Bakery",
+    "rating": 4.8,
+    "price_level": "$$$",
+    "address": "17 Wharfside Court",
+    "city": "Seattle",
+    "state": "WA",
+    "outdoor_seating": false
+  },
+  {
+    "shop_id": "CS-1005",
+    "name": "Driftwood Coffee Co",
+    "categories": "Coffee, Breakfast, Brunch",
+    "rating": 4.5,
+    "price_level": "$$",
+    "address": "903 Seacliff Road",
+    "city": "Santa Cruz",
+    "state": "CA",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1006",
+    "name": "The Copper Kettle",
+    "categories": "Coffee, Tea",
+    "rating": 4.0,
+    "price_level": "$$",
+    "address": "560 Juniper Boulevard",
+    "city": "Denver",
+    "state": "CO",
+    "outdoor_seating": false
+  },
+  {
+    "shop_id": "CS-1007",
+    "name": "Gilded Portafilter",
+    "categories": "Coffee, Espresso Bar, Dessert",
+    "rating": 4.7,
+    "price_level": "$$$",
+    "address": "88 Lantern Way",
+    "city": "Denver",
+    "state": "CO",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1008",
+    "name": "Hollow Reed Cafe",
+    "categories": "Cafe, Breakfast, Lunch",
+    "rating": 3.9,
+    "price_level": "$",
+    "address": "1204 Sparrow Street",
+    "city": "Austin",
+    "state": "TX",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1009",
+    "name": "Driftwood Coffee Co",
+    "categories": "Coffee, Bakery, Vegan",
+    "rating": 4.4,
+    "price_level": "$$",
+    "address": "330 Bluebonnet Trail",
+    "city": "Austin",
+    "state": "TX",
+    "outdoor_seating": false
+  },
+  {
+    "shop_id": "CS-1010",
+    "name": "Thimbleweed Espresso",
+    "categories": "Coffee, Espresso Bar",
+    "rating": 4.2,
+    "price_level": "$$",
+    "address": "76 Foundry Street",
+    "city": "Portland",
+    "state": "OR",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1011",
+    "name": "Marlowe & Bean",
+    "categories": "Coffee, Tea, Bakery",
+    "rating": 4.6,
+    "price_level": "$$$",
+    "address": "410 Kingfisher Plaza",
+    "city": "Chicago",
+    "state": "IL",
+    "outdoor_seating": false
+  },
+  {
+    "shop_id": "CS-1012",
+    "name": "Ashen Mug Coffeehouse",
+    "categories": "Coffee, Breakfast",
+    "rating": 4.0,
+    "price_level": "$",
+    "address": "9 Tinderbox Alley",
+    "city": "Chicago",
+    "state": "IL",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1013",
+    "name": "The Wandering Bean",
+    "categories": "Coffee, Cafe, Brunch",
+    "rating": 4.5,
+    "price_level": "$$",
+    "address": "633 Meadowlark Drive",
+    "city": "Santa Cruz",
+    "state": "CA",
+    "outdoor_seating": true
+  },
+  {
+    "shop_id": "CS-1014",
+    "name": "Quillfeather Roastery",
+    "categories": "Coffee, Espresso Bar, Bakery, Dessert",
+    "rating": 4.9,
+    "price_level": "$$$",
+    "address": "1450 Harborview Terrace",
+    "city": "Seattle",
+    "state": "WA",
+    "outdoor_seating": false
+  },
+  {
+    "shop_id": "CS-1015",
+    "name": "Emberlight Cafe",
+    "categories": "Cafe, Lunch, Coffee",
+    "rating": 3.8,
+    "price_level": "$",
+    "address": "205 Cobbler Court",
+    "city": "Denver",
+    "state": "CO",
+    "outdoor_seating": true
+  }
+]
