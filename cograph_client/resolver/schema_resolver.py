@@ -2323,19 +2323,25 @@ class SchemaResolver:
 
             if resolved.datatype not in PRIMITIVE_TYPES and resolved.datatype in existing_types:
                 target_uri = _entity_uri(resolved.datatype, resolved.value)
-                pred_uri = attr_uri(resolved_type, resolved.name)
-                triples_to_insert.append((entity_uri, pred_uri, target_uri))
-                attr_facts.append((entity_uri, pred_uri, target_uri))
+                # Relationship INSTANCE edge → onto/<leaf>. That is the ONLY
+                # predicate the NL→SPARQL planner queries a type-ranged attribute on
+                # (nlp/ontology_embeddings publishes onto/<leaf> for relationships,
+                # with NO attrs/<leaf> fallback), so an edge on attrs/<leaf> is
+                # invisible to NL — the exact bug enrichment hit in #123 and fixed in
+                # #126. The attrs/<leaf> predicate is the ontology DECLARATION of the
+                # property (its range names the target type, via insert_attribute),
+                # NOT the instance edge. Matches enrichment
+                # (executor._instance_triples_for_value) and the sibling has_<ptype>
+                # promotion edge above — both on onto/<leaf>.
+                onto_pred = f"https://cograph.tech/onto/{resolved.name}"
+                triples_to_insert.append((entity_uri, onto_pred, target_uri))
+                attr_facts.append((entity_uri, onto_pred, target_uri))
                 # Materialize the target as a FIRST-CLASS node: emit its rdf:type +
                 # rdfs:label too. Without them the promoted node is bare — untyped,
                 # unlabelled, invisible to "list all <Type>" queries — even though
                 # the edge points at it. Mirrors enrichment's node-linking
                 # (executor._instance_triples_for_value) so discovery + enrichment
                 # mint the identical shared NODE for the same real-world thing.
-                # (The relationship EDGE predicate is a separate axis: enrichment
-                # moved its instance edge to onto/<leaf> for NL-visibility in #126;
-                # discovery's promotion edge stays on attrs/<leaf> here — this change
-                # converges the NODE minting, not the edge predicate.)
                 # NOT added to attr_facts: this is node materialization, not a fact
                 # ABOUT the subject — same as how the subject's own rdf:type/label
                 # are emitted untracked above.
