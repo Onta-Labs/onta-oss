@@ -253,6 +253,11 @@ export class Client {
   pJobs(query?: string): string {
     return `${this.base()}/jobs${query ?? ""}`;
   }
+  /** @internal Per-tenant API-usage report (requests / latency / cost,
+   *  day-aligned series + breakdowns). Optional `?days=` is baked into `query`. */
+  pUsage(query?: string): string {
+    return `${this.base()}/usage${query ?? ""}`;
+  }
   /** @internal Job-creating action endpoints (COG-99): find-merge-duplicates,
    *  enrich, suggest-relationships. Each creates a tracked job and returns
    *  `{job_id, status, poll_url}`. `name` is fixed by the calling raw method. */
@@ -851,6 +856,18 @@ export class Client {
     return Array.isArray(data) ? (data as JobSummary[]) : [];
   }
 
+  /**
+   * Per-tenant API-usage report (`GET /graphs/{tenant}/usage?days=`): the
+   * dashboard's usage panel data — day-aligned request / latency / cost
+   * series with per-KG and per-API-key breakdowns, window + previous-window
+   * totals for deltas, route-class counts and the month-to-date request
+   * count. `days` defaults server-side to 30 (max 90).
+   */
+  async usage(opts: { days?: number } = {}): Promise<UsageReport> {
+    const qs = opts.days ? `?days=${encodeURIComponent(String(opts.days))}` : "";
+    return this.request<UsageReport>("GET", this.pUsage(qs), undefined, 15_000);
+  }
+
   /** Fetch a single enrichment job (with truncated results). */
   async enrichJob(jobId: string): Promise<EnrichJob> {
     return this.request<EnrichJob>(
@@ -1274,6 +1291,44 @@ export interface RowResult {
   action: RowAction;
 }
 
+/** One day-aligned usage line: a breakdown member or the total. `total` is the
+ *  window aggregate (sum for requests/cost; weighted average for latency). */
+export interface UsageSeries {
+  label: string;
+  values: number[];
+  total: number;
+}
+
+/** A usage metric's total line plus its per-KG / per-API-key breakdowns. */
+export interface UsageMetricBlock {
+  total: UsageSeries;
+  by_kg: UsageSeries[];
+  by_key: UsageSeries[];
+}
+
+export interface UsageTotals {
+  requests: number;
+  errors: number;
+  avg_latency_ms: number;
+  cost_usd: number;
+}
+
+/** `GET /graphs/{tenant}/usage` — the dashboard usage panel's one payload:
+ *  day-aligned series for requests / latency / cost, current + previous
+ *  window totals (for deltas), route-class request counts, and the
+ *  month-to-date request count (quota "used"). */
+export interface UsageReport {
+  days: string[];
+  requests: UsageMetricBlock;
+  latency_ms: UsageMetricBlock;
+  cost_usd: UsageMetricBlock;
+  totals: UsageTotals;
+  prev_totals: UsageTotals;
+  route_class_requests: Record<string, number>;
+  has_queried: boolean;
+  month_requests: number;
+}
+
 export interface JobSummary {
   id: string;
   tenant_id: string;
@@ -1576,6 +1631,15 @@ export class RawApi {
       ? `?category=${encodeURIComponent(opts.category)}`
       : "";
     return this.client.requestRaw("GET", this.client.pJobs(qs), init);
+  }
+
+  /** `GET /graphs/{tenant}/usage?days` — per-tenant API-usage report
+   *  (day-aligned request/latency/cost series + breakdowns + totals). */
+  usage(opts: { days?: number } = {}, init?: RawInit): Promise<Response> {
+    const qs = opts.days
+      ? `?days=${encodeURIComponent(String(opts.days))}`
+      : "";
+    return this.client.requestRaw("GET", this.client.pUsage(qs), init);
   }
 
   /** `POST /graphs/{tenant}/actions/find-merge-duplicates` — start a dedupe
