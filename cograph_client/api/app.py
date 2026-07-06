@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage
+from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.logging import setup_logging
@@ -301,6 +301,9 @@ def create_app() -> FastAPI:
     # ONTA-178: the canonical semantic instance search (webapp/CLI/MCP all ride
     # this one route — interface-convergence rule).
     app.include_router(search.router, tags=["search"])
+    # ONTA-2xx: the per-tenant API source registry (webapp/CLI/MCP all ride these
+    # canonical routes via the shared SDK — interface-convergence rule).
+    app.include_router(api_sources.router, tags=["api_sources"])
     _register_agent_capabilities()
     _load_router_plugins(app)
     return app
