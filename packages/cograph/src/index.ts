@@ -30,6 +30,12 @@ export type {
   // ONTA-178 — canonical semantic instance search
   SemanticSearchHit,
   SemanticSearchResponse,
+  // ONTA-2xx — per-tenant API source registry
+  ApiSourceSummary,
+  ApiSourceValidationError,
+  ApiSourceValidateResult,
+  ApiSourceTestResult,
+  ApiSourceWrite,
   // ONTA-173 — schedules: user-schedulable vs system-managed action split
   Schedule,
   ScheduleAction,
