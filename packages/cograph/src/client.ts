@@ -315,6 +315,22 @@ export class Client {
   /** @internal */ pTenant(tenantId: string): string {
     return `${this.baseUrl}/v1/me/tenants/${encodeURIComponent(tenantId)}`;
   }
+  /** @internal Per-tenant API source registry collection (ONTA-2xx). */
+  pApiSources(): string {
+    return `${this.base()}/api-sources`;
+  }
+  /** @internal A single API source by slug. */
+  pApiSource(slug: string): string {
+    return `${this.base()}/api-sources/${encodeURIComponent(slug)}`;
+  }
+  /** @internal Validate a spec (collection-level, no write). */
+  pApiSourcesValidate(): string {
+    return `${this.base()}/api-sources/validate`;
+  }
+  /** @internal Smoke-test a source (collection-level; slug OR inline spec). */
+  pApiSourcesTest(): string {
+    return `${this.base()}/api-sources/test`;
+  }
 
   /**
    * Low-level passthrough request. Centralizes the absolute URL (already built
@@ -1109,6 +1125,63 @@ export class Client {
       60_000,
     );
   }
+
+  // --- API source registry (ONTA-2xx) ------------------------------------- #
+  // Typed convenience over the raw `api-sources` routes. The tenant is the
+  // client's configured tenant (`this.tenant`); the backend authorizes it and
+  // returns 403 for an unowned tenant / a global-slug edit. Secrets are
+  // write-only on create/update and never returned by list/get/test.
+
+  /** List global (read-only) + tenant-custom (editable) sources. */
+  async apiSourcesList(): Promise<ApiSourceSummary[]> {
+    const data = await this.request<unknown>("GET", this.pApiSources(), undefined, 15_000);
+    return Array.isArray(data) ? (data as ApiSourceSummary[]) : [];
+  }
+
+  /** Read one source's full spec (secrets redacted) + `has_secret` / `editable`. */
+  async apiSourcesGet(slug: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("GET", this.pApiSource(slug), undefined, 15_000);
+  }
+
+  /** Create a tenant-custom source. `body` is `{spec, secrets?, enabled?}`. */
+  async apiSourcesCreate(body: ApiSourceWrite): Promise<ApiSourceSummary> {
+    return this.request<ApiSourceSummary>("POST", this.pApiSources(), body, 15_000);
+  }
+
+  /** Edit a tenant-custom source (spec / enabled / secrets). Global slug => 403. */
+  async apiSourcesUpdate(slug: string, body: ApiSourceWrite): Promise<ApiSourceSummary> {
+    return this.request<ApiSourceSummary>("PATCH", this.pApiSource(slug), body, 15_000);
+  }
+
+  /** Convenience: enable/disable a tenant-custom source (folds into update). */
+  async apiSourcesSetEnabled(slug: string, enabled: boolean): Promise<ApiSourceSummary> {
+    return this.apiSourcesUpdate(slug, { enabled });
+  }
+
+  /** Delete a tenant-custom source (+ its secrets). Global slug => 403. */
+  async apiSourcesDelete(slug: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>("DELETE", this.pApiSource(slug), undefined, 15_000);
+  }
+
+  /** Validate a spec (no write). `body` is `{spec}`. */
+  async apiSourcesValidate(spec: Record<string, unknown>): Promise<ApiSourceValidateResult> {
+    return this.request<ApiSourceValidateResult>(
+      "POST",
+      this.pApiSourcesValidate(),
+      { spec },
+      15_000,
+    );
+  }
+
+  /** Run ONE smoke request (no write, no persist). Provide `slug` OR inline
+   *  `spec` (+ `sample_params`). A secret is never echoed. */
+  async apiSourcesTest(body: {
+    slug?: string;
+    spec?: Record<string, unknown>;
+    sample_params?: Record<string, string>;
+  }): Promise<ApiSourceTestResult> {
+    return this.request<ApiSourceTestResult>("POST", this.pApiSourcesTest(), body, 30_000);
+  }
 }
 
 /**
@@ -1525,6 +1598,54 @@ export interface NormalizationRule {
   [key: string]: unknown;
 }
 
+// --- API source registry (ONTA-2xx) ------------------------------------------- #
+
+/** The list/summary shape for a registered API source. Secret-free by
+ *  construction: only `has_secret` is exposed, never a value. `editable` is true
+ *  only for `tenant_custom` entries (global entries are read-only). */
+export interface ApiSourceSummary {
+  slug: string;
+  title: string;
+  publisher: string;
+  description: string;
+  layer: "global_public" | "global_enhanced" | "tenant_custom" | string;
+  authority_level: string;
+  entity_kinds: string[];
+  attributes: string[];
+  enabled: boolean;
+  editable: boolean;
+  has_secret: boolean;
+}
+
+/** One structured validation error from the validate route. */
+export interface ApiSourceValidationError {
+  path: string;
+  message: string;
+}
+
+/** Response of `POST /api-sources/validate`. */
+export interface ApiSourceValidateResult {
+  valid: boolean;
+  errors: ApiSourceValidationError[];
+}
+
+/** Response of `POST /api-sources/test` — the smoke-call result. A secret is
+ *  never echoed here; `rows` carry no auth material. */
+export interface ApiSourceTestResult {
+  ok: boolean;
+  rows: Record<string, string>[];
+  error?: string | null;
+}
+
+/** Create/update body. `spec` is an `ApiSourceSpec` JSON object; `secrets` is a
+ *  write-only logical-name→value map (never returned); `enabled` toggles the
+ *  row. On update, all fields are optional (e.g. flip `enabled` alone). */
+export interface ApiSourceWrite {
+  spec?: Record<string, unknown>;
+  secrets?: Record<string, string>;
+  enabled?: boolean;
+}
+
 // --- Semantic instance search (ONTA-178) -------------------------------------- #
 
 /** One entity-grouped hit from the canonical `/search` route: the entity that
@@ -1861,6 +1982,51 @@ export class RawApi {
   /** `GET /v1/me/tenants` — list tenants the authed user can access. */
   tenants(init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pTenants(), init);
+  }
+
+  // -- api sources (per-tenant registry, ONTA-2xx) ------------------------- #
+
+  /** `GET /graphs/{tenant}/api-sources` — list global (read-only) + tenant-custom
+   *  (editable) sources, each flagged by `layer` / `editable` / `has_secret`. */
+  apiSourcesList(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pApiSources(), init);
+  }
+
+  /** `GET /graphs/{tenant}/api-sources/{slug}` — read one full spec (secrets
+   *  redacted) + `has_secret`. */
+  apiSourcesGet(slug: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pApiSource(slug), init);
+  }
+
+  /** `POST /graphs/{tenant}/api-sources` — create a tenant-custom source. `body`
+   *  is `{spec, secrets?, enabled?}`; `secrets` is write-only, never returned. */
+  apiSourcesCreate(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pApiSources(), { body, ...init });
+  }
+
+  /** `PATCH /graphs/{tenant}/api-sources/{slug}` — edit a tenant-custom source
+   *  (spec / enabled / secrets). A global slug => 403. */
+  apiSourcesUpdate(slug: string, body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("PATCH", this.client.pApiSource(slug), { body, ...init });
+  }
+
+  /** `DELETE /graphs/{tenant}/api-sources/{slug}` — delete a tenant-custom source
+   *  (+ its stored secrets). A global slug => 403. */
+  apiSourcesDelete(slug: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("DELETE", this.client.pApiSource(slug), init);
+  }
+
+  /** `POST /graphs/{tenant}/api-sources/validate` — validate a spec (no write).
+   *  `body` is `{spec}`; returns `{valid, errors:[{path,message}]}`. */
+  apiSourcesValidate(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pApiSourcesValidate(), { body, ...init });
+  }
+
+  /** `POST /graphs/{tenant}/api-sources/test` — run ONE smoke request (no write,
+   *  no persist). `body` is `{slug?, spec?, sample_params}`; a secret is never
+   *  echoed. Returns `{ok, rows, error?}`. */
+  apiSourcesTest(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pApiSourcesTest(), { body, ...init });
   }
 }
 
