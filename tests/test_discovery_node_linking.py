@@ -19,7 +19,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 from cograph_client.enrichment.executor import EnrichmentExecutor
-from cograph_client.graph.ontology_queries import attr_uri, entity_uri, type_uri
+from cograph_client.graph.ontology_queries import entity_uri, type_uri
 from cograph_client.resolver.attribute_resolver import AttributeSchema
 from cograph_client.resolver.models import (
     ExtractedAttribute,
@@ -33,11 +33,11 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 
 PHYS_URI = entity_uri("Physician", "p1")
-# Discovery's promotion branch writes the relationship edge on the attrs/<leaf>
-# attribute predicate. (Enrichment moved its instance edge to onto/<leaf> for
-# NL-visibility in #126; that edge-predicate axis is separate from the NODE-minting
-# convergence this change is about — see test_discovery_and_enrichment_mint_… .)
-LOCATED_IN = attr_uri("Physician", "located_in")
+# Discovery's promotion branch writes the relationship INSTANCE edge on onto/<leaf>
+# — the only predicate the NL planner queries a type-ranged attribute on. (attrs/<leaf>
+# is the property DECLARATION; an instance edge written there is invisible to NL — the
+# #123 bug, fixed for enrichment in #126 and for discovery's promotion branch here.)
+LOCATED_IN = "https://cograph.tech/onto/located_in"
 
 
 async def _drive_promotion(tmp_path):
@@ -101,33 +101,29 @@ async def test_promotion_records_node_target_type_for_refresh(tmp_path):
     assert "City" in result.affected_types()
 
 
-async def test_discovery_and_enrichment_mint_the_identical_node(tmp_path):
-    """Cross-rail NODE convergence (the whole point of this change): for the SAME
-    fact — ``Physician.located_in = "San Francisco"`` with range ``City`` — discovery
-    and enrichment mint the SAME target node: the SAME URI (via the shared
-    ``entity_uri``), typed ``City``, labelled "San Francisco". So the real-world
-    thing is ONE shared node across both rails, never a duplicate.
-
-    Scope note: the relationship EDGE predicate is a SEPARATE axis — enrichment
-    writes its instance edge on ``onto/<leaf>`` (NL-visibility, #126), discovery's
-    promotion branch on ``attrs/<leaf>``. This change converges the NODE (identity +
-    type + label), not the edge predicate; hence we compare the node-materialization
-    triples (everything the enrichment rail asserts ABOUT the target), not the edge."""
+async def test_discovery_and_enrichment_emit_the_identical_fact(tmp_path):
+    """Cross-rail parity (the whole point): for the SAME fact —
+    ``Physician.located_in = "San Francisco"`` with range ``City`` — discovery and
+    enrichment now emit the IDENTICAL triples: the relationship edge on
+    ``onto/located_in`` PLUS the target node's rdf:type + rdfs:label, all minted
+    through the shared ``entity_uri``. Node identity AND the edge predicate converged
+    (the predicate via this fix — discovery previously wrote the edge on
+    ``attrs/<leaf>``, invisible to NL), so the fact is ONE shared, NL-queryable node
+    across both rails, never a duplicate and never an unreachable edge."""
     collected, _ = await _drive_promotion(tmp_path)
-    target = entity_uri("City", "San Francisco")
     enrichment = EnrichmentExecutor._instance_triples_for_value(
         PHYS_URI, "Physician", "located_in", "San Francisco", "City",
     )
-    # The triples enrichment asserts ABOUT the target node (its rdf:type + rdfs:label)
-    # — i.e. the node materialization, subject == the target URI.
-    node_triples = [t for t in enrichment if t[0] == target]
-    assert node_triples, "enrichment sanity: node-linking must materialize the target"
-    for triple in node_triples:
-        assert triple in collected, f"discovery is missing the node triple {triple}"
-    # Both rails also point an edge from the SAME subject at the SAME target node
-    # (predicate differs by rail — that's the separate edge axis, see the docstring).
-    assert any(s == PHYS_URI and o == target for (s, _p, o) in collected)
-    assert any(s == PHYS_URI and o == target for (s, _p, o) in enrichment)
+    # FULL parity now (not just the node materialization): every triple enrichment
+    # emits for this fact — the onto/<leaf> edge AND the node's rdf:type/rdfs:label —
+    # is emitted verbatim by discovery too.
+    assert enrichment, "enrichment sanity: node-linking must emit the fact"
+    for triple in enrichment:
+        assert triple in collected, f"discovery is missing enrichment's triple {triple}"
+    # And specifically the relationship edge is on onto/<leaf>, identical on both rails.
+    target = entity_uri("City", "San Francisco")
+    assert (PHYS_URI, LOCATED_IN, target) in collected
+    assert (PHYS_URI, LOCATED_IN, target) in enrichment
 
 
 def test_ingest_result_affected_types_unions_all_three_sources():

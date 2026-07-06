@@ -44,11 +44,16 @@ from cograph_client.normalization.rules import (
     make_rule_id,
 )
 
-# Rule types a user may author directly. Mirrors inference's
-# ``_SUPPORTED_RULE_TYPES`` (kept local so the create route doesn't depend on an
-# inference internal): the two normalizations the executor knows how to apply.
-_SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji"}
+# Rule types a user may author directly via POST /rules — a SUPERSET of inference's
+# ``_SUPPORTED_RULE_TYPES`` ({list_explode, strip_emoji}). The executor also applies
+# ``promote_to_node`` (reify a literal attribute into shared entity nodes — ADR 0009's
+# literal→node escape hatch), and a user may simply KNOW they want it; but inference
+# has no heuristic to SUGGEST a promotion yet, so it is create-only for now. Keep this
+# in sync with what ``normalization.execute.apply_rule`` can dispatch — NOT with
+# inference (the two intentionally diverge on promote_to_node).
+_SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji", "promote_to_node"}
 _VALID_LIST_EXPLODE_TARGETS = {"entity", "literal"}
+_VALID_PROMOTE_KEY_BY = {"value", "owner"}
 
 logger = structlog.stdlib.get_logger("cograph.normalization.routes")
 
@@ -124,6 +129,27 @@ def _validate_create_request(req: CreateRuleRequest) -> None:
                 detail=(
                     "list_explode requires params.target in "
                     f"{sorted(_VALID_LIST_EXPLODE_TARGETS)}"
+                ),
+            )
+    if req.rule_type == "promote_to_node":
+        # execute._promote_to_node REQUIRES params.target_type — there is NO default;
+        # the title-case-from-predicate fallback exists only on the list_explode→
+        # promotion adaptation path, not a directly-authored promote_to_node rule. It
+        # also rejects a key_by outside {value, owner} (key_by itself defaults to
+        # "value"). Enforce both here so a malformed rule fails fast with a 422 at
+        # create, rather than 500ing silently in the background apply task.
+        if not str(req.params.get("target_type") or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="promote_to_node requires params.target_type",
+            )
+        key_by = str(req.params.get("key_by") or "").strip().lower()
+        if key_by and key_by not in _VALID_PROMOTE_KEY_BY:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "promote_to_node params.key_by must be in "
+                    f"{sorted(_VALID_PROMOTE_KEY_BY)}"
                 ),
             )
     # strip_emoji: params may be empty — the executor defaults targets to

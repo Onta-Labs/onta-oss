@@ -287,7 +287,10 @@ async def test_flag_on_no_attributes_no_provenance_insert(mock_neptune):
 
 @pytest.mark.asyncio
 async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
-    """Entity-valued attributes (datatype = ontology type) are assertions too."""
+    """Entity-valued attributes (datatype = ontology type) are assertions too — and
+    their provenance is keyed on the ``onto/<leaf>`` INSTANCE edge (where the
+    relationship is actually written), NOT the ``attrs/<leaf>`` declaration
+    predicate."""
     resolver = _make_resolver(mock_neptune, provenance=True)
     entity = ExtractedEntity(
         type_name="Guest", id="g3",
@@ -308,8 +311,12 @@ async def test_flag_on_entity_reference_attribute_gets_provenance(mock_neptune):
     sparql = " || ".join(_update_sparql(mock_neptune))
     assert f"GRAPH <{provenance_graph_uri('g')}>" in sparql
     target = "https://cograph.tech/entities/Hotel/Hotel_Zed"
+    # The promotion branch writes the relationship instance edge on onto/<leaf> (the
+    # NL-queryable predicate); provenance describes that real edge, so the statement
+    # id hashes the onto/<leaf> predicate — not attr_uri (the ontology declaration).
     sid = statement_id(
-        "https://cograph.tech/entities/Guest/g3", attr_uri("Guest", "stays_at"), target,
+        "https://cograph.tech/entities/Guest/g3",
+        "https://cograph.tech/onto/stays_at", target,
     )
     assert sid in sparql
 
