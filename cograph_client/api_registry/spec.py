@@ -95,6 +95,10 @@ _MAX_DESCRIPTION = 2000
 _MAX_TEXT = 400
 _MAX_LIST = 40
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
+# Env-var name: UPPER_SNAKE, the ONTA-194 curated-catalog credential form.
+_KEY_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+# Per-tenant secret logical name: lowercase slug-ish, matches the store key.
+_SECRET_REF_RE = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
 
 
 class SpecError(ValueError):
@@ -157,10 +161,25 @@ class Coverage:
 
 @dataclass
 class AuthSpec:
-    """Declarative auth. The secret is referenced by env-var name, never stored."""
+    """Declarative auth. The secret is referenced — never stored in the spec.
+
+    A secret is named ONE of two ways (mutually exclusive):
+
+    * ``key_env`` — an environment-variable NAME (the ONTA-194 curated-catalog
+      form; the value is a deployment-level env / Secrets Manager entry). This is
+      the only form a *global* catalog entry may use.
+    * ``secret_ref`` — a LOGICAL name of a per-tenant secret stored
+      envelope-encrypted in the tenant secret store (ONTA-2xx, tenant_custom
+      entries only). Resolved + decrypted only at call time inside the executor.
+
+    Neither form ever holds the secret VALUE. ``secret_ref`` is the ``tenant_secret``
+    reference: the executor resolves it via an injected secret resolver, so the
+    spec — and every serialization, response, and log — stays secret-free.
+    """
 
     mode: AuthMode = AuthMode.none
     key_env: str = ""       # env var NAME holding the secret (value injected at call time)
+    secret_ref: str = ""    # LOGICAL name of a per-tenant encrypted secret (tenant_custom)
     header_name: str = ""   # for api_key_header (e.g. "X-Api-Key")
     query_key: str = ""     # for api_key_query (e.g. "api_token")
 
@@ -168,10 +187,16 @@ class AuthSpec:
     def requires_key(self) -> bool:
         return self.mode is not AuthMode.none
 
+    @property
+    def uses_tenant_secret(self) -> bool:
+        """True when auth resolves from the per-tenant encrypted store, not env."""
+        return bool(self.secret_ref)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "mode": self.mode.value,
             "key_env": self.key_env,
+            "secret_ref": self.secret_ref,
             "header_name": self.header_name,
             "query_key": self.query_key,
         }
@@ -187,6 +212,7 @@ class AuthSpec:
         return cls(
             mode=mode,
             key_env=_as_str(d.get("key_env")).strip(),
+            secret_ref=_as_str(d.get("secret_ref")).strip(),
             header_name=_as_str(d.get("header_name")).strip(),
             query_key=_as_str(d.get("query_key")).strip(),
         )
@@ -585,10 +611,32 @@ def validate_spec(spec: ApiSourceSpec) -> list[str]:
         except ValueError:
             errs.append(f"verified_at {spec.verified_at!r} is not an ISO date (YYYY-MM-DD)")
 
-    # Auth
+    # Auth — a keyed mode needs EXACTLY ONE secret reference: an env-var name
+    # (curated global form) OR a per-tenant secret_ref (tenant_custom form).
     mode = spec.auth.mode
-    if mode is not AuthMode.none and not spec.auth.key_env:
-        errs.append(f"auth.mode={mode.value} requires auth.key_env (env var name)")
+    has_env = bool(spec.auth.key_env)
+    has_ref = bool(spec.auth.secret_ref)
+    if mode is not AuthMode.none:
+        if not has_env and not has_ref:
+            errs.append(
+                f"auth.mode={mode.value} requires auth.key_env (env var name) "
+                f"or auth.secret_ref (per-tenant secret name)"
+            )
+        elif has_env and has_ref:
+            errs.append(
+                "auth may set only one of auth.key_env / auth.secret_ref, not both"
+            )
+    elif has_ref:
+        # secret_ref with mode=none is meaningless (nothing consumes it).
+        errs.append("auth.secret_ref set but auth.mode=none (no auth to apply it to)")
+    if spec.auth.key_env and not _KEY_ENV_RE.match(spec.auth.key_env):
+        errs.append(
+            f"auth.key_env {spec.auth.key_env!r} must be an UPPER_SNAKE env-var name"
+        )
+    if spec.auth.secret_ref and not _SECRET_REF_RE.match(spec.auth.secret_ref):
+        errs.append(
+            f"auth.secret_ref {spec.auth.secret_ref!r} must match {_SECRET_REF_RE.pattern}"
+        )
     if mode is AuthMode.api_key_header and not spec.auth.header_name:
         errs.append("auth.mode=api_key_header requires auth.header_name")
     if mode is AuthMode.api_key_query and not spec.auth.query_key:

@@ -37,11 +37,16 @@ class RegistryDiscoverySource:
         endpoint: Optional[str] = None,
         bindings: Optional[dict[str, str]] = None,
         executor: Optional[RegistryApiSource] = None,
+        tenant_id: str = "",
     ) -> None:
         self._spec = spec
         self._endpoint = endpoint
         self._bindings = dict(bindings or {})
         self._executor = executor or RegistryApiSource()
+        # For a tenant_custom source whose auth uses a secret_ref, the executor
+        # needs a per-tenant secret resolver (decrypts at call time). Built lazily
+        # in discover() so a source that never runs never touches the store.
+        self._tenant_id = tenant_id
         # WebSourceProvider surface. name carries the api:{slug} marker so the
         # run-level ingest source ("web:{name}:{query}") records the API used.
         self.name = f"api:{spec.slug}"
@@ -63,6 +68,16 @@ class RegistryDiscoverySource:
     def is_source_of_truth(self) -> bool:
         return self._spec.authority_level is AuthorityLevel.source_of_truth
 
+    def _secret_resolver(self):
+        """A per-tenant secret resolver iff this source's auth uses a secret_ref;
+        else ``None`` (env-var auth needs no resolver). Built here so the store /
+        cipher are only touched when a tenant_custom secret is actually needed."""
+        if not self._spec.auth.secret_ref or not self._tenant_id:
+            return None
+        from .secret_store import make_secret_resolver
+
+        return make_secret_resolver(self._tenant_id, self._spec.slug)
+
     async def discover(
         self,
         query: str,
@@ -79,6 +94,7 @@ class RegistryDiscoverySource:
         res = await self._executor.execute(
             self._spec, self._bindings, endpoint_name=self._endpoint,
             max_rows=max_rows, sample=sample,
+            secret_resolver=self._secret_resolver(),
         )
         if res.dormant:
             # No key -> behave as "nothing found here" so the ensemble falls back
@@ -100,11 +116,16 @@ def build_registry_sources(
     decision: RoutingDecision,
     *,
     executor: Optional[RegistryApiSource] = None,
+    tenant_id: str = "",
 ) -> list[RegistryDiscoverySource]:
     """Materialize the routing decision's picks into discovery providers.
 
     Skips picks whose slug is missing/disabled. Returns an empty list when the
     decision does not use an API (so the caller simply keeps today's web path).
+
+    ``tenant_id`` is threaded to each source so a tenant_custom entry whose auth
+    uses a ``secret_ref`` can build its per-tenant secret resolver (decrypt at call
+    time). Env-var-keyed entries ignore it.
     """
     if not decision.uses_api:
         return []
@@ -114,16 +135,21 @@ def build_registry_sources(
         spec = catalog.get(pick.slug)
         if spec is None or not spec.enabled:
             continue
-        # Skip a key-gated entry whose key is absent: it's dormant, so splicing it
-        # in (and, in api_only mode, dropping web) would yield an empty run instead
-        # of falling back to web. Same dormancy contract as every premium adapter.
+        # Skip a dormant entry: splicing it in (and, in api_only mode, dropping
+        # web) would yield an empty run instead of falling back to web. Same
+        # dormancy contract as every premium adapter. An env-keyed entry is
+        # dormant when its env var is unset; a secret_ref entry's presence is only
+        # known after a store hit, so it is NOT pre-skipped here — the executor
+        # surfaces it as dormant and discover() returns "nothing found", which the
+        # ensemble already handles by falling back to web.
         auth = spec.auth
-        if auth.requires_key and not os.environ.get(auth.key_env, "").strip():
+        if auth.requires_key and not auth.secret_ref and not os.environ.get(auth.key_env, "").strip():
             logger.info("api_registry: skipping dormant entry %s (env %s unset)", spec.slug, auth.key_env)
             continue
         out.append(
             RegistryDiscoverySource(
-                spec, endpoint=pick.endpoint, bindings=pick.bindings, executor=shared,
+                spec, endpoint=pick.endpoint, bindings=pick.bindings,
+                executor=shared, tenant_id=tenant_id,
             )
         )
     return out

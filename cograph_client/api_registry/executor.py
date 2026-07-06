@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
@@ -42,6 +42,13 @@ from .spec import (
 )
 
 logger = logging.getLogger(__name__)
+
+# A per-tenant secret resolver: logical secret name -> plaintext (or None if the
+# secret is absent). Supplied by the caller (routes / rails) which owns the
+# tenant scope + the cipher + the encrypted store; the executor calls it ONLY to
+# resolve an ``AuthSpec.secret_ref`` at fetch time. The plaintext returned here
+# is used to build the auth header/query and is never stored, logged, or echoed.
+SecretResolver = Callable[[str], Awaitable[Optional[str]]]
 
 _DEFAULT_TIMEOUT = 20.0
 _MAX_BYTES = 2_000_000
@@ -118,6 +125,7 @@ class RegistryApiSource:
         max_rows: int = 50,
         sample: bool = False,
         budget: Optional[Budget] = None,
+        secret_resolver: Optional[SecretResolver] = None,
     ) -> ApiCallResult:
         bindings = {k: str(v) for k, v in (bindings or {}).items() if v is not None}
         result = ApiCallResult(slug=spec.slug, source=f"api:{spec.slug}")
@@ -131,12 +139,16 @@ class RegistryApiSource:
             result.error = f"no endpoint {endpoint_name!r}" if endpoint_name else "no endpoints"
             return result
 
-        # Auth: resolve the secret by env-var name. Missing key => dormant.
-        # Auth material is kept SEPARATE from the stored request URL (so a
-        # query-key secret never lands in provenance/citations) and is applied at
-        # fetch time only to the registered base_url host (so a redirect or a
-        # body-supplied next_link to another host never receives the credential).
-        auth_headers, auth_query, auth_err = self._resolve_auth(spec)
+        # Auth: resolve the secret — from a per-tenant encrypted store (via
+        # ``secret_resolver`` when the spec uses ``secret_ref``) or from the named
+        # env var. Missing key => dormant. Auth material is kept SEPARATE from the
+        # stored request URL (so a query-key secret never lands in
+        # provenance/citations) and is applied at fetch time only to the
+        # registered base_url host (so a redirect or a body-supplied next_link to
+        # another host never receives the credential).
+        auth_headers, auth_query, auth_err = await self._resolve_auth(
+            spec, secret_resolver
+        )
         if auth_err is not None:
             result.dormant = True
             result.error = auth_err
@@ -237,20 +249,42 @@ class RegistryApiSource:
         return _finalize(result, rows, sources, estimated_total, spec)
 
     # -- request building --------------------------------------------------- #
-    def _resolve_auth(
-        self, spec: ApiSourceSpec
+    async def _resolve_auth(
+        self, spec: ApiSourceSpec, secret_resolver: Optional[SecretResolver]
     ) -> tuple[dict[str, str], dict[str, str], Optional[str]]:
         """Return (auth-headers, auth-query, dormancy-error-or-None).
 
         Returns ONLY the auth material (never the base UA/Accept headers), so the
         caller attaches it per-host. Missing key => dormant (no network).
+
+        The secret comes from ONE of two places, per the spec's ``AuthSpec``:
+        * ``secret_ref`` set → the per-tenant encrypted store, via
+          ``secret_resolver`` (decrypted at THIS call). Absent resolver or absent
+          secret ⇒ dormant, never a plaintext fallback.
+        * else → the named env var (curated-catalog form).
+        The resolved plaintext lives only inside this method + the request
+        headers/query it returns; it is never stored, logged, or echoed.
         """
         auth = spec.auth
         if auth.mode is AuthMode.none:
             return {}, {}, None
-        secret = os.environ.get(auth.key_env, "").strip()
-        if not secret:
-            return {}, {}, f"dormant: env {auth.key_env} not set"
+
+        if auth.secret_ref:
+            if secret_resolver is None:
+                return {}, {}, f"dormant: no secret resolver for secret_ref {auth.secret_ref}"
+            try:
+                secret = await secret_resolver(auth.secret_ref)
+            except Exception as exc:  # noqa: BLE001 — never raise out of the executor
+                logger.debug("api_registry secret resolve failed slug=%s", spec.slug)
+                return {}, {}, f"dormant: secret {auth.secret_ref} unresolved ({type(exc).__name__})"
+            secret = (secret or "").strip()
+            if not secret:
+                return {}, {}, f"dormant: secret {auth.secret_ref} not set"
+        else:
+            secret = os.environ.get(auth.key_env, "").strip()
+            if not secret:
+                return {}, {}, f"dormant: env {auth.key_env} not set"
+
         if auth.mode is AuthMode.api_key_header:
             return {auth.header_name: secret}, {}, None
         if auth.mode is AuthMode.bearer:
