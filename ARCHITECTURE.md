@@ -290,7 +290,8 @@ stats.
 **`promote_to_node` is user-authored, not inferred:** a user reaches the escape
 hatch by authoring the rule directly on the create route (`POST /normalize/rules` →
 `api/routes/normalize.py::_SUPPORTED_RULE_TYPES` + `_validate_create_request`, which
-fail-fast-validates `params.key_by ∈ {value, owner}`), then `confirm` → `apply`. The
+fail-fast-validates the required `params.target_type` and `params.key_by ∈ {value,
+owner}`), then `confirm` → `apply`. The
 LLM inference step (`normalization/inference.py::_SUPPORTED_RULE_TYPES`) deliberately
 does NOT propose promotions — there is no reliable heuristic for "this literal
 deserves to be a node" yet — so, unlike `list_explode` / `strip_emoji`, it is never

@@ -132,12 +132,17 @@ def _validate_create_request(req: CreateRuleRequest) -> None:
                 ),
             )
     if req.rule_type == "promote_to_node":
-        # target_type + key_by both have executor defaults (target_type falls back to
-        # the predicate's title-case; key_by defaults to "value"), so — like
-        # strip_emoji — no params are REQUIRED. But a supplied key_by must be one the
-        # executor can dispatch, else the rule would fail fast here with a 422 instead
-        # of 500ing silently in the background apply task (execute._promote_to_node
-        # raises on an unknown key_by).
+        # execute._promote_to_node REQUIRES params.target_type — there is NO default;
+        # the title-case-from-predicate fallback exists only on the list_explode→
+        # promotion adaptation path, not a directly-authored promote_to_node rule. It
+        # also rejects a key_by outside {value, owner} (key_by itself defaults to
+        # "value"). Enforce both here so a malformed rule fails fast with a 422 at
+        # create, rather than 500ing silently in the background apply task.
+        if not str(req.params.get("target_type") or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="promote_to_node requires params.target_type",
+            )
         key_by = str(req.params.get("key_by") or "").strip().lower()
         if key_by and key_by not in _VALID_PROMOTE_KEY_BY:
             raise HTTPException(

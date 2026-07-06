@@ -1590,23 +1590,44 @@ def test_route_create_promote_to_node_rule_persists(route_client):
     assert created["params"] == {"target_type": "Rating", "key_by": "owner"}
 
 
-def test_route_create_promote_to_node_defaults_ok(route_client):
-    """key_by + target_type both have executor defaults, so empty params is accepted
-    (like strip_emoji) — the escape hatch works with minimal input."""
+def test_route_create_promote_to_node_key_by_optional(route_client):
+    """key_by defaults to "value" in the executor, so it may be omitted — as long as
+    the REQUIRED target_type is present, a minimal promote_to_node rule is accepted."""
     client, _ = route_client
     h = {"X-API-Key": "test-key"}
     res = client.post(
         "/graphs/test-tenant/normalize/rules",
-        json=_create_body(predicate="rating", rule_type="promote_to_node", params={}),
+        json=_create_body(
+            predicate="rating", rule_type="promote_to_node",
+            params={"target_type": "Rating"},
+        ),
         headers=h,
     )
     assert res.status_code == 200
     assert res.json()["rule_type"] == "promote_to_node"
 
 
+def test_route_create_promote_to_node_missing_target_type_422(route_client):
+    """target_type is REQUIRED (execute._promote_to_node raises without it), so a rule
+    lacking it is rejected at create — not left to 500 silently in the background apply
+    task after a confirm."""
+    client, _ = route_client
+    h = {"X-API-Key": "test-key"}
+    res = client.post(
+        "/graphs/test-tenant/normalize/rules",
+        json=_create_body(
+            predicate="rating", rule_type="promote_to_node",
+            params={"key_by": "value"},  # target_type missing
+        ),
+        headers=h,
+    )
+    assert res.status_code == 422
+
+
 def test_route_create_promote_to_node_bad_key_by_422(route_client):
     """A key_by the executor can't dispatch is rejected at create (fail fast) rather
-    than 500ing silently in the background apply task."""
+    than 500ing silently in the background apply task. (target_type present, so this
+    isolates the key_by check.)"""
     client, _ = route_client
     h = {"X-API-Key": "test-key"}
     res = client.post(
@@ -1614,7 +1635,7 @@ def test_route_create_promote_to_node_bad_key_by_422(route_client):
         json=_create_body(
             predicate="rating",
             rule_type="promote_to_node",
-            params={"key_by": "onwer"},  # typo
+            params={"target_type": "Rating", "key_by": "onwer"},  # typo
         ),
         headers=h,
     )
