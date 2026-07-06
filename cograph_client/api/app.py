@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples
+from cograph_client.api.routes import actions, agent, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.logging import setup_logging
@@ -229,6 +229,10 @@ async def lifespan(app: FastAPI):
             await runner.stop()
         except Exception as exc:  # noqa: BLE001 - shutdown best-effort
             logger.warning("schedule_runner_stop_failed", error=str(exc))
+    # Drain any buffered usage-metering increments (flush() never raises).
+    from cograph_client.usage.recorder import get_usage_recorder
+
+    await get_usage_recorder().flush()
     await app.state.neptune_client.close()
     logger.info("shutdown")
 
@@ -266,6 +270,7 @@ def create_app() -> FastAPI:
     app.include_router(tenants.router, tags=["tenants"])
     app.include_router(agent.router, tags=["agent"])
     app.include_router(conversations.router, tags=["conversations"])
+    app.include_router(usage.router, tags=["usage"])
     # ONTA-178: the canonical semantic instance search (webapp/CLI/MCP all ride
     # this one route — interface-convergence rule).
     app.include_router(search.router, tags=["search"])

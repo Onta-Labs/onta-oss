@@ -34,4 +34,9 @@ export type {
   Schedule,
   ScheduleAction,
   UserSchedulableAction,
+  // Per-tenant API usage metering (dashboard usage panel)
+  UsageSeries,
+  UsageMetricBlock,
+  UsageTotals,
+  UsageReport,
 } from "./client.js";

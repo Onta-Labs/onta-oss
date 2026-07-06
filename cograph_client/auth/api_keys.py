@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, Union
 
-from fastapi import HTTPException, Security
+from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
 from cograph_client.config import settings
@@ -92,6 +92,7 @@ def _resolve_allowed(
 def get_tenant(
     tenant: Optional[str] = None,
     api_key: Optional[str] = Security(api_key_header),
+    request: Request = None,  # injected by FastAPI; None in direct calls/tests
 ) -> TenantContext:
     """Resolve the tenant for a request.
 
@@ -100,7 +101,20 @@ def get_tenant(
     today's behavior: they route to THEIR tenant regardless of the path.
     Multi-tenant keys (verifier returned a sequence) are authorized against
     the requested path tenant.
+
+    On success the AUTHENTICATED tenant id is stashed on ``request.state`` so
+    the usage-metering middleware attributes the request to the identity auth
+    actually resolved — never to the raw URL path (which unauthenticated
+    404/405 traffic could otherwise abuse). Failed auth raises before the
+    stash, so unauthenticated requests are never attributed to anyone.
     """
+    ctx = _resolve_tenant(tenant, api_key)
+    if request is not None:
+        request.state.usage_tenant = ctx.tenant_id
+    return ctx
+
+
+def _resolve_tenant(tenant: Optional[str], api_key: Optional[str]) -> TenantContext:
     keys_map = settings.get_api_keys_map()
     has_static_keys = bool(keys_map) and keys_map != {"": ""}
     has_external = _external_verifier is not None
