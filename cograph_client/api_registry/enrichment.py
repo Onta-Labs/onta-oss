@@ -153,6 +153,20 @@ class RegistrySourceAdapter:
             return next(iter(res.provenance.values()), None)
         return None
 
+    def _secret_resolver(self, context: dict):
+        """A per-tenant secret resolver iff this entry uses a secret_ref AND the
+        lookup context carries a tenant_id; else ``None`` (env-var auth needs no
+        resolver). The tenant flows in via the enrichment executor's ctx, so a
+        tenant_custom adapter decrypts only THIS tenant's secret for THIS source."""
+        if not self._spec.auth.secret_ref:
+            return None
+        tenant_id = (context or {}).get("tenant_id") or ""
+        if not tenant_id:
+            return None
+        from .secret_store import make_secret_resolver
+
+        return make_secret_resolver(tenant_id, self._spec.slug)
+
     async def lookup(self, entity_label: str, attribute: str, context: dict) -> list[Verdict]:
         try:
             entity_type = (context or {}).get("entity_type") or ""
@@ -166,7 +180,8 @@ class RegistrySourceAdapter:
             if not bindings:
                 return []  # not enrichment-configured (no enrich_from) or empty label
             res = await self._executor.execute(
-                self._spec, bindings, endpoint_name=ep.name, max_rows=_MAX_ROWS, sample=True,
+                self._spec, bindings, endpoint_name=ep.name, max_rows=_MAX_ROWS,
+                sample=True, secret_resolver=self._secret_resolver(context),
             )
             if res.dormant or res.error or not res.rows:
                 return []

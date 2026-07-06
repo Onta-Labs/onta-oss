@@ -74,6 +74,25 @@ class Settings(BaseSettings):
     # (paid/licensed) API entries with no OSS change.
     api_registry_plugin: str = ""
 
+    # Optional secret-cipher plugin (ONTA-2xx): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and is
+    # expected to register a SecretCipher via
+    # cograph_client.api_registry.register_secret_cipher — e.g. an AWS-KMS
+    # data-key cipher in our deploy. Without it, tenant-custom API credentials
+    # are encrypted with the OSS default LocalAesGcmCipher keyed by
+    # OMNIX_SECRETS_KEY (below). Keeps cograph-oss vendor-neutral: a self-hoster
+    # needs only OMNIX_SECRETS_KEY; a cloud deploy points this at its KMS cipher.
+    secrets_cipher_plugin: str = ""
+
+    # Optional local symmetric key for the OSS default secret cipher
+    # (LocalAesGcmCipher). When set (and no cipher plugin is registered),
+    # tenant-custom API credentials are envelope-encrypted at rest with AES-256-GCM
+    # under this key. Accepts base64/base64url (16/24/32 bytes) or a raw
+    # passphrase (stretched to 32 bytes via SHA-256). Empty ⇒ no default cipher,
+    # and the routes REFUSE to store a secret (fail closed) rather than store it
+    # in the clear. env: OMNIX_SECRETS_KEY.
+    secrets_key: str = ""
+
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 

@@ -1327,6 +1327,11 @@ class EnrichmentExecutor:
         # absent (mirrors _lookup_chain).
         if job.type_name:
             ctx["entity_type"] = job.type_name
+        # Tenant scope: a tenant_custom registry adapter needs the tenant to build
+        # its per-tenant secret resolver (decrypt a secret_ref at call time). Free
+        # adapters ignore it harmlessly.
+        if job.tenant_id:
+            ctx["tenant_id"] = job.tenant_id
         verdicts = await self._wikidata.lookup(entity_label, attribute, ctx)
         await self._cache.put(
             entity_label, attribute, source, verdicts, job.type_name, strategy_version
@@ -1403,6 +1408,11 @@ class EnrichmentExecutor:
                 # only set when present → unchanged call shape when absent.
                 if job.type_name:
                     ctx["entity_type"] = job.type_name
+                # Tenant scope for a tenant_custom registry adapter's per-tenant
+                # secret resolver (decrypt a secret_ref at call time). Free
+                # adapters ignore it harmlessly.
+                if job.tenant_id:
+                    ctx["tenant_id"] = job.tenant_id
                 try:
                     # Bound every adapter call so one stalled lookup (e.g. a
                     # hung network call whose own client lacks a total-operation

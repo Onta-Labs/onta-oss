@@ -236,7 +236,7 @@ async def _rebuild_registry_sources(params: dict, tenant_id: str) -> tuple[list,
     mode = str(params.get("registry_mode") or "api_plus_web")
     decision = RoutingDecision(mode=mode, picks=picks)
     catalog = await _tenant_catalog(tenant_id)
-    return build_registry_sources(catalog, decision), mode
+    return build_registry_sources(catalog, decision, tenant_id=tenant_id), mode
 
 
 def _registry_card(registry_sources: list) -> str:
@@ -409,7 +409,8 @@ class WebIngestCapability:
             registry_decision = await _registry_route(ctx, query, spec, urls)
         registry_sources = (
             build_registry_sources(
-                get_api_source_catalog(ctx.tenant_id), registry_decision
+                get_api_source_catalog(ctx.tenant_id), registry_decision,
+                tenant_id=ctx.tenant_id,
             )
             if registry_decision.uses_api
             else []
