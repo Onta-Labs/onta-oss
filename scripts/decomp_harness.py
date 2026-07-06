@@ -178,9 +178,8 @@ async def seed_ontology(neptune: NeptuneClient, tenant: str, spec: dict) -> None
     same URI helpers the resolver writes with, so TypeMatcher/_fetch_ontology see
     them as genuine existing types."""
     from cograph_client.graph.ontology_queries import (
-        attr_uri, insert_attribute, insert_type, type_uri,
+        attr_uri, entity_uri, insert_attribute, insert_type, type_uri,
     )
-    from cograph_client.resolver.schema_resolver import _safe_id
 
     g = tenant_graph_uri(tenant)
     for t in spec.get("types", []):
@@ -193,7 +192,7 @@ async def seed_ontology(neptune: NeptuneClient, tenant: str, spec: dict) -> None
             )
         triples: list[str] = []
         for inst in t.get("seed_instances", []):
-            euri = f"https://cograph.tech/entities/{tname}/{_safe_id(inst['name'])}"
+            euri = entity_uri(tname, inst['name'])
             triples.append(f"<{euri}> <{_RDF_TYPE}> <{type_uri(tname)}> .")
             triples.append(f"<{euri}> <{_RDFS_LABEL}> {_lit(inst['name'])} .")
             for k, v in inst.items():

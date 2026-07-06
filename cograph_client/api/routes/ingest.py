@@ -64,14 +64,11 @@ async def ingest(
     # re-embed affected types (new types + types that gained an attribute), and
     # recompute the Explorer's type-stats. Keeps ingestion and enrichment from
     # drifting on WHAT gets refreshed after a write.
-    affected_types = set(result.types_created)
-    for attr_added in result.attributes_added:
-        affected_types.add(attr_added.split(".")[0])
     await refresh_after_write(
         client,
         tenant_id=tenant.tenant_id,
         kg_name=body.kg_name,
-        affected_types=affected_types,
+        affected_types=result.affected_types(),
     )
     return result
 
@@ -331,15 +328,11 @@ async def ingest_csv_rows(
     # and the enrichment writer: cache-invalidate, re-embed affected types, and
     # recompute stats. (CSV-rows previously skipped the stats recompute; routing
     # through the shared path gives it the same refresh as every other writer.)
-    affected_types = set(result.types_created)
-    for attr_added in result.attributes_added:
-        if "." in attr_added:
-            affected_types.add(attr_added.split(".")[0])
     await refresh_after_write(
         client,
         tenant_id=tenant.tenant_id,
         kg_name=body.kg_name,
-        affected_types=affected_types,
+        affected_types=result.affected_types(),
     )
     return result
 

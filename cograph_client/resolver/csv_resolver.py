@@ -47,6 +47,7 @@ from cograph_client.graph.text_markers import TextCandidacy, classify_text_candi
 from cograph_client.graph.ontology_queries import (
     TEXT_KIND_FREE_TEXT,
     TEXT_KIND_NOT_TEXT,
+    _safe_id,
 )
 from cograph_client.resolver.llm_router import openrouter_chat
 from cograph_client.resolver.profiler import profile_table
@@ -2193,11 +2194,6 @@ def _rel_values(raw_value) -> list[str]:
         if all(len(p) < 30 for p in parts) and len(parts) >= 2:
             return parts
     return [raw_value.strip()] if raw_value.strip() else []
-
-
-def _safe_id(raw: str) -> str:
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", raw.strip())
-    return safe[:200] if safe else "unknown"
 
 
 def _cell(row: dict, column: str) -> str:
