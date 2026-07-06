@@ -11,8 +11,10 @@ everywhere else. The provider resolves key → user and operates on that user's
 tenants; no identity-provider admin secret is ever required client-side.
 """
 
+import structlog
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from cograph_client.auth.api_keys import api_key_header
 from cograph_client.auth.tenant_directory import (
@@ -22,6 +24,13 @@ from cograph_client.auth.tenant_directory import (
     get_tenant_provider,
     validate_new_tenant,
 )
+from cograph_client.auth.workspace_store import (
+    make_workspace_store,
+    ownership_enforced,
+    resolve_subject,
+)
+
+logger = structlog.stdlib.get_logger("cograph.tenants")
 
 router = APIRouter(prefix="/v1/me/tenants")
 
@@ -66,8 +75,67 @@ def list_tenants(api_key: str | None = Security(api_key_header)):
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
+async def _claim_or_check_ownership(api_key: str, tenant_id: str, label: str) -> None:
+    """Workspace-registry gate for create (ONTA-227) — closes the self-add hole.
+
+    Deliberate inversion of the accept/removal dual-write order: the registry
+    row goes FIRST (``INSERT .. ON CONFLICT DO NOTHING`` + returned-row check
+    is the concurrency guard, so it must come first), the provider second. If
+    the provider write then fails, a same-caller retry heals it (the caller is
+    now owner, so create passes and re-delegates).
+
+    Semantics:
+    - key carries no subject (static/anonymous) → skip entirely; behaves
+      exactly as today.
+    - id unregistered → lazy-claim (caller becomes owner + owner member row).
+    - caller already owner/member (re-adding after switcher removal) → allow,
+      no new row.
+    - registered to someone else → 403 "workspace id is taken", but ONLY when
+      enforcement is on (env flag + durable store — see ownership_enforced);
+      otherwise allow-and-log (rollout step 1: writes on, enforcement off).
+
+    Registry outages fail open when enforcement is off (create never needed a
+    DB before this feature) and fail closed when it is on (the registry IS the
+    security substrate then).
+    """
+    subject = resolve_subject(api_key)
+    if subject is None:
+        return
+    store = make_workspace_store()
+    try:
+        claimed = await store.claim_workspace(tenant_id, subject, label)
+        if claimed is not None:
+            return  # this call won the claim; caller is now the owner
+        ws = await store.get_workspace(tenant_id)
+        if ws is None:
+            return  # row vanished (manual cleanup); don't block
+        if ws.owner_subject == subject:
+            return
+        if await store.get_member(tenant_id, subject) is not None:
+            return
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — registry outage
+        if ownership_enforced(store):
+            raise
+        logger.warning(
+            "workspace_registry_unavailable", tenant=tenant_id, error=str(exc)
+        )
+        return
+    if ownership_enforced(store):
+        raise HTTPException(status_code=403, detail="workspace id is taken")
+    logger.warning(
+        "workspace_ownership_not_enforced_allow",
+        tenant=tenant_id,
+        hint="id is registered to another subject; allowed (enforcement off)",
+    )
+
+
 @router.post("", response_model=TenantOut, status_code=201)
-def add_tenant(body: TenantCreate, api_key: str | None = Security(api_key_header)):
+async def add_tenant(body: TenantCreate, api_key: str | None = Security(api_key_header)):
+    # async (unlike its sync siblings) because the workspace registry is
+    # asyncpg-backed; the sync provider calls are bridged via run_in_threadpool
+    # so they cannot block the event loop.
     provider = _require_provider()
     key = _require_key(api_key)
     try:
@@ -75,7 +143,9 @@ def add_tenant(body: TenantCreate, api_key: str | None = Security(api_key_header
         # the rules stay identical to the Explorer's (validate_new_tenant is the
         # shared source of truth; it raises TenantProviderError(400)).
         tenant_id, label = validate_new_tenant(body.id, body.label)
-        return _out(provider.add_tenant(key, tenant_id, label))
+        # Registry row first, provider second — see _claim_or_check_ownership.
+        await _claim_or_check_ownership(key, tenant_id, label)
+        return _out(await run_in_threadpool(provider.add_tenant, key, tenant_id, label))
     except TenantProviderError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
