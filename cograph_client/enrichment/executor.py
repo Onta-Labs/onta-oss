@@ -1668,10 +1668,14 @@ class EnrichmentExecutor:
         (resolver/schema_resolver.py around 1393–1410):
 
         - **relationship** — ``datatype`` is NOT a primitive (it is an entity-type
-          name, e.g. ``Manufacturer``), so the value is an entity IRI. Write it
-          directly as the object IRI; ``_escape_value`` wraps an ``http(s)`` object
-          as ``<…>``. We do NOT run ``validate_triple`` for relationships (the IRI
-          is already the right shape and isn't an XSD-typed literal).
+          name, e.g. ``City``). If the value is ALREADY an entity IRI (a premium
+          adapter that resolved it) write that edge directly. Otherwise the enriched
+          value is a plain LABEL (``"San Francisco"``): resolve it to the SAME
+          canonical ``entities/<Type>/<safe_id>`` URI ingestion mints and ALSO emit
+          the node's ``rdf:type`` + ``rdfs:label`` — so the fact becomes ONE shared
+          node across the discovery and enrichment rails, never a dangling string in
+          a node-valued slot (the cross-rail correctness fix). No ``validate_triple``
+          (an entity edge is not an XSD-typed literal).
         - **primitive** (string/integer/float/datetime/boolean/uri) — route the
           value through the SAME ``validate_triple`` ingestion uses so the stored
           literal is properly TYPED (``"92^^…#integer"`` → a typed literal via
@@ -1683,10 +1687,29 @@ class EnrichmentExecutor:
         Returns ``[]`` when a primitive value is rejected; otherwise the single
         instance triple."""
         attr_uri_str = _attr_uri(type_name, attribute)
-        # Relationship: a non-primitive datatype is an entity-type name → the value
-        # is the target entity IRI. Write the edge directly (no validate_triple).
+        # Relationship: a non-primitive datatype names an entity TYPE (a node range).
         if datatype not in PRIMITIVE_TYPES:
-            return [(entity_uri, attr_uri_str, value)]
+            # Already an entity IRI (e.g. a premium adapter that resolved it) → the
+            # edge is ready as-is (legacy behavior).
+            if value.startswith("http://") or value.startswith("https://"):
+                return [(entity_uri, attr_uri_str, value)]
+            # Otherwise the enriched value is a plain LABEL. Resolve it to the SAME
+            # canonical entity URI ingestion mints (entities/<Type>/<safe_id>) so the
+            # same real-world thing is ONE shared node across the discovery +
+            # enrichment rails, and create/type that node (idempotent INSERT) so the
+            # edge is never a dangling string — closing the cross-rail divergence
+            # where enrichment wrote a literal into a node-valued attribute the
+            # ontology declares as a relationship. Uses the SAME _safe_id primitive
+            # discovery keys its entity URIs with (schema_resolver ~L2318), so the
+            # URIs coincide exactly.
+            from cograph_client.graph.ontology_queries import type_uri
+            from cograph_client.resolver.schema_resolver import _safe_id
+            target_uri = f"https://cograph.tech/entities/{datatype}/{_safe_id(value)}"
+            return [
+                (entity_uri, attr_uri_str, target_uri),
+                (target_uri, RDF_TYPE, type_uri(datatype)),
+                (target_uri, RDFS_LABEL, value),
+            ]
         # Primitive: type the literal exactly as ingestion does. validate_triple
         # returns a ValidatedTriple (typed object) on conform/coerce, else a
         # RejectedValue (skip — never write a literal that mismatches the range).
