@@ -39,12 +39,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _observe_usage(request: Request, status: int, duration_ms: float) -> None:
-        # Per-tenant usage metering (dashboard "API usage" panel). observe()
-        # is sync, in-memory, and never raises — see usage/recorder.py.
+        # Per-tenant usage metering (dashboard "API usage" panel). Attribution
+        # comes from the AUTHENTICATED tenant that get_tenant stashed on
+        # request.state — absent (→ recorded as nothing) for 401s and for
+        # 404/405s that never reached the auth dependency, so unauthenticated
+        # traffic can't be attributed to a path-named tenant. observe() is
+        # sync, in-memory, and never raises — see usage/recorder.py.
         get_usage_recorder().observe(
             path=request.url.path,
             method=request.method,
             status=status,
             duration_ms=duration_ms,
             api_key=request.headers.get("x-api-key"),
+            tenant=getattr(request.state, "usage_tenant", None),
         )

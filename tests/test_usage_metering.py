@@ -20,6 +20,7 @@ from cograph_client.enrichment.models import (
     JobStatus,
 )
 from cograph_client.usage.recorder import (
+    FLUSH_INTERVAL_S,
     UsageRecorder,
     classify_request,
     key_hint,
@@ -99,24 +100,29 @@ async def test_store_query_range_filters_tenant_and_days():
     [
         ("/health", None),
         ("/v1/me/tenants", None),
-        ("/graphs/t1/ask", ("t1", "", "ask")),
-        ("/graphs/t1/agent", ("t1", "", "agent")),
-        ("/graphs/t1/query", ("t1", "", "query")),
-        ("/graphs/t1/search", ("t1", "", "search")),
-        ("/graphs/t1/jobs", ("t1", "", "jobs")),
-        ("/graphs/t1/usage", ("t1", "", "usage")),
-        ("/graphs/t1/kgs", ("t1", "", "kgs")),
-        ("/graphs/t1/kgs/imdb/type-counts", ("t1", "imdb", "kgs")),
+        ("/graphs/t1/ask", ("", "ask")),
+        ("/graphs/t1/agent", ("", "agent")),
+        ("/graphs/t1/query", ("", "query")),
+        ("/graphs/t1/search", ("", "search")),
+        ("/graphs/t1/jobs", ("", "jobs")),
+        ("/graphs/t1/usage", ("", "usage")),
+        ("/graphs/t1/kgs", ("", "kgs")),
+        ("/graphs/t1/kgs/imdb/type-counts", ("imdb", "kgs")),
         (
             "/graphs/t1/explore/kgs/imdb/types/Movie/summary",
-            ("t1", "imdb", "explore"),
+            ("imdb", "explore"),
         ),
-        ("/graphs/t1/normalize/rules", ("t1", "", "normalize")),
-        ("/graphs/t1/unknown-thing", ("t1", "", "other")),
+        ("/graphs/t1/normalize/rules", ("", "normalize")),
+        ("/graphs/t1/unknown-thing", ("", "other")),
     ],
 )
 def test_classify_request(path, expected):
     assert classify_request(path) == expected
+
+
+def test_classify_request_caps_kg_name_length():
+    kg, _ = classify_request(f"/graphs/t1/kgs/{'x' * 500}/type-counts")
+    assert len(kg) == 128
 
 
 def test_key_hint():
@@ -132,14 +138,14 @@ def test_key_hint():
 async def test_recorder_buffers_and_flushes():
     store = InMemoryUsageStore()
     rec = UsageRecorder(store=store)
-    rec.observe("/graphs/t1/ask", "POST", 200, 120.0, "key-abcd")
-    rec.observe("/graphs/t1/ask", "POST", 500, 80.0, "key-abcd")
-    rec.observe("/graphs/t1/kgs", "GET", 200, 10.0, "key-abcd")
-    # Skipped: unauthenticated + non-tenant + preflight.
-    rec.observe("/graphs/t1/ask", "POST", 401, 5.0, "bad-key")
-    rec.observe("/graphs/t1/ask", "POST", 403, 5.0, "bad-key")
-    rec.observe("/health", "GET", 200, 1.0, None)
-    rec.observe("/graphs/t1/ask", "OPTIONS", 200, 1.0, None)
+    rec.observe("/graphs/t1/ask", "POST", 200, 120.0, "key-abcd", tenant="t1")
+    rec.observe("/graphs/t1/ask", "POST", 500, 80.0, "key-abcd", tenant="t1")
+    rec.observe("/graphs/t1/kgs", "GET", 200, 10.0, "key-abcd", tenant="t1")
+    # Skipped: unauthenticated (no resolved tenant) + non-tenant + preflight.
+    rec.observe("/graphs/t1/ask", "POST", 401, 5.0, "bad-key", tenant=None)
+    rec.observe("/graphs/t1/ask", "POST", 404, 5.0, None, tenant=None)
+    rec.observe("/health", "GET", 200, 1.0, None, tenant=None)
+    rec.observe("/graphs/t1/ask", "OPTIONS", 200, 1.0, None, tenant="t1")
 
     await rec.flush()
     rows = await store.query_range("t1", TODAY, TODAY)
@@ -158,6 +164,37 @@ async def test_recorder_buffers_and_flushes():
 
 
 @pytest.mark.asyncio
+async def test_recorder_attributes_to_authenticated_tenant_not_path():
+    """The path's {tenant} segment must never drive attribution."""
+    store = InMemoryUsageStore()
+    rec = UsageRecorder(store=store)
+    # Legacy single-tenant key: served as its OWN tenant even on another
+    # tenant's path — the record must follow the authenticated identity.
+    rec.observe("/graphs/victim-tenant/jobs", "GET", 200, 10.0, "k", tenant="t1")
+    await rec.flush()
+    assert await store.query_range("victim-tenant", TODAY, TODAY) == []
+    rows = await store.query_range("t1", TODAY, TODAY)
+    assert len(rows) == 1 and rows[0].requests == 1
+
+
+@pytest.mark.asyncio
+async def test_recorder_schedules_flush_when_due():
+    """The opportunistic in-loop flush path actually writes to the store."""
+    import asyncio
+
+    store = InMemoryUsageStore()
+    rec = UsageRecorder(store=store)
+    rec._last_flush -= FLUSH_INTERVAL_S + 1  # force "due"
+    rec.observe("/graphs/t1/ask", "POST", 200, 5.0, None, tenant="t1")
+    for _ in range(5):  # let the created task run
+        await asyncio.sleep(0)
+        if await store.query_range("t1", TODAY, TODAY):
+            break
+    rows = await store.query_range("t1", TODAY, TODAY)
+    assert len(rows) == 1 and rows[0].requests == 1
+
+
+@pytest.mark.asyncio
 async def test_recorder_rebuffers_on_store_failure():
     class FailingStore(InMemoryUsageStore):
         def __init__(self) -> None:
@@ -171,7 +208,7 @@ async def test_recorder_rebuffers_on_store_failure():
 
     store = FailingStore()
     rec = UsageRecorder(store=store)
-    rec.observe("/graphs/t1/ask", "POST", 200, 50.0, None)
+    rec.observe("/graphs/t1/ask", "POST", 200, 50.0, None, tenant="t1")
     await rec.flush()  # swallowed; increments re-buffered
     assert await store.query_range("t1", TODAY, TODAY) == []
     store.fail = False
@@ -253,6 +290,63 @@ def test_usage_route_end_to_end(client, auth_headers, app):
 def test_usage_route_requires_auth(client):
     res = client.get("/graphs/test-tenant/usage")
     assert res.status_code == 401
+
+
+def test_unauthenticated_pre_auth_responses_record_nothing(client):
+    """404/405 responses never reach the auth dependency — they must not be
+    attributed to the path-named tenant (unauthenticated data corruption /
+    storage-amplification vector if they were)."""
+    import asyncio
+
+    from cograph_client.usage.recorder import get_usage_recorder
+    from cograph_client.usage.store import get_usage_store
+
+    # No key: 404 (no such route), 405 (wrong method), 401 (real route).
+    assert client.get("/graphs/victim-tenant/zzz-not-a-route").status_code == 404
+    assert client.get("/graphs/victim-tenant/ask").status_code == 405
+    assert client.post("/graphs/victim-tenant/query", json={}).status_code == 401
+    # Wrong key on a real route: 401.
+    assert (
+        client.get(
+            "/graphs/victim-tenant/jobs", headers={"X-API-Key": "wrong-key"}
+        ).status_code
+        == 401
+    )
+
+    asyncio.run(get_usage_recorder().flush())
+    rows = asyncio.run(
+        get_usage_store().query_range(
+            "victim-tenant", TODAY - timedelta(days=1), TODAY
+        )
+    )
+    assert rows == []
+
+
+def test_cross_tenant_path_records_under_key_tenant(client, auth_headers):
+    """A legacy single-tenant key on another tenant's path is SERVED as its
+    own tenant (documented get_tenant semantics) — the usage row must land
+    under that same authenticated tenant, never the path tenant."""
+    import asyncio
+
+    from cograph_client.usage.recorder import get_usage_recorder
+    from cograph_client.usage.store import get_usage_store
+
+    assert (
+        client.get("/graphs/other-tenant/jobs", headers=auth_headers).status_code
+        == 200
+    )
+    asyncio.run(get_usage_recorder().flush())
+    store = get_usage_store()
+    assert (
+        asyncio.run(
+            store.query_range("other-tenant", TODAY - timedelta(days=1), TODAY)
+        )
+        == []
+    )
+    own = asyncio.run(
+        store.query_range("test-tenant", TODAY - timedelta(days=1), TODAY)
+    )
+    assert sum(r.requests for r in own) >= 1
 
 
 def test_usage_route_tenant_isolation(client, auth_headers):

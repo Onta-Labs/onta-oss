@@ -1,20 +1,30 @@
 """In-process usage recorder fed by the request-logging middleware.
 
-Every tenant-scoped API request (``/graphs/{tenant}/…``) is classified into a
-daily :class:`~cograph_client.usage.store.UsageBucket` — tenant, UTC day, the
-KG when it appears in the path, a non-secret last-4 hint of the API key, and a
-coarse route class — and buffered in process. The buffer flushes to the
-configured :class:`UsageStore` opportunistically (every few seconds of
-traffic, or when it grows large) plus once on app shutdown, so the hot path
-never awaits the database.
+Every AUTHENTICATED tenant-scoped API request (``/graphs/{tenant}/…``) is
+classified into a daily :class:`~cograph_client.usage.store.UsageBucket` —
+tenant, UTC day, the KG when it appears in the path, a non-secret last-4 hint
+of the API key, and a coarse route class — and buffered in process. The buffer
+flushes to the configured :class:`UsageStore` opportunistically (every few
+seconds of traffic, or when it grows large) plus once on app shutdown, so the
+hot path never awaits the database.
 
 Recording is strictly best-effort: a metering failure must never fail or slow
 a request, so every entry point swallows and logs its own errors.
 
+Tenant attribution comes from the AUTH LAYER, never the URL path: ``observe``
+takes the tenant id that ``get_tenant`` resolved and stashed on
+``request.state`` — present only when auth succeeded. Unauthenticated traffic
+(401s, and 404/405s that never reach the auth dependency at all) therefore
+records nothing and can neither inflate a tenant's numbers nor write junk-key
+rows into the durable store. In open-access deployments (no keys configured)
+``get_tenant`` resolves the path tenant, so metering works there too — with
+no auth there is by definition no attribution boundary to defend.
+
 What counts: every authenticated tenant-scoped request, including the
 Explorer's own reads — the route-class breakdown is what keeps that
-inspectable. 401/403 responses are skipped so unauthenticated probes can't
-inflate (or attribute traffic to) a tenant they never authenticated for.
+inspectable. ``kg_name`` is taken from the path (length-capped): an
+authenticated caller inventing KG names can only add bounded, self-attributed
+rows to their own tenant's breakdown.
 """
 
 from __future__ import annotations
@@ -66,24 +76,31 @@ _ROUTE_CLASSES = {
 QUERY_ROUTE_CLASSES = frozenset({"ask", "agent", "query", "search"})
 
 
-def classify_request(path: str) -> Optional[tuple[str, str, str]]:
-    """Map a request path to ``(tenant, kg_name, route_class)``.
+# Bound on the stored kg_name: the path segment is caller-controlled, so cap
+# its length (breakdown labels never need more; junk stays cheap).
+MAX_KG_NAME_LEN = 128
+
+
+def classify_request(path: str) -> Optional[tuple[str, str]]:
+    """Map a request path to ``(kg_name, route_class)``.
 
     Returns ``None`` for paths that aren't tenant-scoped API traffic
     (``/health``, ``/v1/…``, docs). ``kg_name`` is ``''`` when the path isn't
-    scoped to one KG (e.g. ``/ask``, ``/jobs``).
+    scoped to one KG (e.g. ``/ask``, ``/jobs``). The path's ``{tenant}``
+    segment is deliberately NOT returned — attribution uses the authenticated
+    tenant from the auth layer, never the caller-controlled path.
     """
     m = _GRAPHS_RE.match(path)
     if not m:
         return None
-    tenant, rest = m.group(1), m.group(2) or ""
+    rest = m.group(2) or ""
     segment = rest.lstrip("/").split("/", 1)[0]
     route_class = _ROUTE_CLASSES.get(segment, "other")
     kg = ""
     kg_m = _KG_RE.match(rest)
     if kg_m:
-        kg = kg_m.group(1)
-    return tenant, kg, route_class
+        kg = kg_m.group(1)[:MAX_KG_NAME_LEN]
+    return kg, route_class
 
 
 def key_hint(api_key: Optional[str]) -> str:
@@ -111,15 +128,22 @@ class UsageRecorder:
         status: int,
         duration_ms: float,
         api_key: Optional[str],
+        tenant: Optional[str],
     ) -> None:
-        """Record one finished request. Sync + non-blocking; never raises."""
+        """Record one finished request. Sync + non-blocking; never raises.
+
+        ``tenant`` is the AUTHENTICATED tenant id (``request.state`` stash from
+        ``get_tenant``) — ``None`` means auth never succeeded for this request
+        (401, or a 404/405 that never reached the auth dependency), so nothing
+        is recorded.
+        """
         try:
-            if method == "OPTIONS" or status in (401, 403):
+            if not tenant or method == "OPTIONS":
                 return
             classified = classify_request(path)
             if classified is None:
                 return
-            tenant, kg, route_class = classified
+            kg, route_class = classified
             day = datetime.now(timezone.utc).date().isoformat()
             key = (tenant, day, kg, key_hint(api_key), route_class)
             counters = self._pending.setdefault(key, [0, 0, 0.0])
