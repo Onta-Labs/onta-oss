@@ -64,6 +64,8 @@ from cograph_client.api_registry import (
     RoutingPick,
     build_registry_sources,
     get_api_source_catalog,
+    load_tenant_custom_catalog,
+    make_tenant_api_source_store,
     route_query,
 )
 from cograph_client.enrichment.models import (
@@ -173,7 +175,7 @@ async def _registry_route(
     if urls:
         return RoutingDecision()
     try:
-        catalog = get_api_source_catalog()
+        catalog = await _tenant_catalog(ctx.tenant_id)
         if not catalog.enabled():
             return RoutingDecision()
         return await route_query(
@@ -186,6 +188,20 @@ async def _registry_route(
     except Exception:  # noqa: BLE001 — routing must never break discovery
         logger.warning("registry_route_failed", exc_info=True)
         return RoutingDecision()
+
+
+async def _tenant_catalog(tenant_id: str):
+    """The catalog scoped to ``tenant_id`` — global layers + that tenant's own
+    custom entries. Loads the tenant's custom layer from the durable store into
+    the per-tenant cache, then returns the merged catalog. Never raises: on any
+    store error it falls back to the global catalog so discovery is unchanged."""
+    try:
+        return await load_tenant_custom_catalog(
+            tenant_id, make_tenant_api_source_store()
+        )
+    except Exception:  # noqa: BLE001 — a store hiccup must not break discovery
+        logger.warning("tenant_custom_catalog_load_failed", exc_info=True)
+        return get_api_source_catalog()
 
 
 def _merge_registry_ensemble(web_ensemble: list, registry_sources: list, mode: str) -> list:
@@ -206,15 +222,21 @@ def _merge_registry_ensemble(web_ensemble: list, registry_sources: list, mode: s
     return merged
 
 
-def _rebuild_registry_sources(params: dict) -> tuple[list, str]:
-    """Rebuild registry providers from the picks persisted at plan time."""
+async def _rebuild_registry_sources(params: dict, tenant_id: str) -> tuple[list, str]:
+    """Rebuild registry providers from the picks persisted at plan time.
+
+    Uses the tenant-scoped catalog so a pick that named a tenant_custom source is
+    rebuilt against that tenant's own entry (the catalog is re-loaded here because
+    execute() may run in a different request than plan(), so the per-tenant cache
+    may be cold)."""
     raw = params.get("registry_picks") or []
     picks = [RoutingPick.from_dict(x) for x in raw if isinstance(x, dict)]
     if not picks:
         return [], MODE_API_ONLY
     mode = str(params.get("registry_mode") or "api_plus_web")
     decision = RoutingDecision(mode=mode, picks=picks)
-    return build_registry_sources(get_api_source_catalog(), decision), mode
+    catalog = await _tenant_catalog(tenant_id)
+    return build_registry_sources(catalog, decision), mode
 
 
 def _registry_card(registry_sources: list) -> str:
@@ -386,7 +408,9 @@ class WebIngestCapability:
         async with timed(logger, "registry_route"):
             registry_decision = await _registry_route(ctx, query, spec, urls)
         registry_sources = (
-            build_registry_sources(get_api_source_catalog(), registry_decision)
+            build_registry_sources(
+                get_api_source_catalog(ctx.tenant_id), registry_decision
+            )
             if registry_decision.uses_api
             else []
         )
@@ -645,7 +669,9 @@ class WebIngestCapability:
         # persisted (no second LLM call) and splice them ahead of web, honoring the
         # persisted mode. A registry-only run (api_only, or a registry-only
         # deployment) proceeds even when no web provider is available.
-        registry_sources, registry_mode = _rebuild_registry_sources(p)
+        registry_sources, registry_mode = await _rebuild_registry_sources(
+            p, ctx.tenant_id
+        )
         ensemble = (
             _merge_registry_ensemble(web_ensemble, registry_sources, registry_mode)
             if registry_sources
