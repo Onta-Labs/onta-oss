@@ -100,6 +100,12 @@ class LocalAesGcmCipher:
     exactly 32 bytes via SHA-256 so operators can paste an arbitrary passphrase.
     A random 12-byte nonce is generated per encryption and stored alongside the
     ciphertext; GCM authenticates both the ciphertext and the ``aad``.
+
+    **Operator note:** prefer a full-entropy 32-byte key supplied base64
+    (``python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"``)
+    over a human passphrase — the SHA-256 stretch is UNSALTED, so a weak
+    passphrase yields a weak key (its entropy is inherited, not increased). The
+    base64 path uses the bytes verbatim with no stretch.
     """
 
     scheme = _OSS_SCHEME

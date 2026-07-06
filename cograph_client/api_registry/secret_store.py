@@ -95,7 +95,10 @@ class InMemoryTenantSecretStore:
         self, tenant_id: str, slug: str, logical_name: str
     ) -> Optional[TenantApiSecret]:
         async with self._lock:
-            return self._rows.get((tenant_id, slug, logical_name))
+            row = self._rows.get((tenant_id, slug, logical_name))
+            # Return a copy so a caller mutating the returned record cannot mutate
+            # the stored ciphertext (defensive; mirrors the sources store).
+            return _copy_secret(row) if row else None
 
     async def list_names(self, tenant_id: str, slug: str) -> list[str]:
         async with self._lock:
@@ -114,6 +117,18 @@ class InMemoryTenantSecretStore:
     async def delete_one(self, tenant_id: str, slug: str, logical_name: str) -> bool:
         async with self._lock:
             return self._rows.pop((tenant_id, slug, logical_name), None) is not None
+
+
+def _copy_secret(r: TenantApiSecret) -> TenantApiSecret:
+    return TenantApiSecret(
+        tenant_id=r.tenant_id,
+        slug=r.slug,
+        logical_name=r.logical_name,
+        ciphertext=r.ciphertext,
+        scheme=r.scheme,
+        created_at=r.created_at,
+        updated_at=r.updated_at,
+    )
 
 
 # --------------------------------------------------------------------------- #
