@@ -16,8 +16,7 @@ from cograph_client.enrichment.executor import (
     RDFS_LABEL,
     EnrichmentExecutor,
 )
-from cograph_client.graph.ontology_queries import type_uri
-from cograph_client.resolver.schema_resolver import _safe_id
+from cograph_client.graph.ontology_queries import _safe_id, entity_uri, type_uri
 
 _ITV = EnrichmentExecutor._instance_triples_for_value
 PHYS = "https://cograph.tech/entities/Physician/p1"
@@ -38,7 +37,7 @@ def test_primitive_value_stays_a_typed_literal():
 
 def test_node_range_label_creates_and_links_a_node():
     out = _ITV(PHYS, "Physician", "located_in", "San Francisco", "City")
-    target = f"https://cograph.tech/entities/City/{_safe_id('San Francisco')}"
+    target = entity_uri("City", "San Francisco")
     assert (PHYS, ONTO_LOCATED_IN, target) in out            # edge -> node, on onto/<leaf>
     assert (target, RDF_TYPE, type_uri("City")) in out       # node typed City
     assert (target, RDFS_LABEL, "San Francisco") in out      # node keeps its label
@@ -51,9 +50,12 @@ def test_node_range_label_creates_and_links_a_node():
 def test_node_uri_matches_discovery_scheme():
     """The whole point: enrichment must mint the SAME URI discovery does, so the
     identical real-world thing is one SHARED node (idempotent), not a duplicate.
-    Discovery mints entities/<datatype>/<_safe_id(value)>."""
+    Both rails mint via the shared entity_uri (graph/ontology_queries), the SAME
+    primitive discovery keys its entity URIs with (schema_resolver promotion branch)."""
     out = _ITV(PHYS, "Physician", "located_in", "San Francisco", "City")
     edge = next(t for t in out if t[1] == ONTO_LOCATED_IN)
+    assert edge[2] == entity_uri("City", "San Francisco")
+    # …and that shared minter is exactly prefix + _safe_id(value).
     assert edge[2] == f"https://cograph.tech/entities/City/{_safe_id('San Francisco')}"
 
 

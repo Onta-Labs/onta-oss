@@ -674,6 +674,14 @@ class IngestResult(BaseModel):
     triples_inserted: int = 0
     types_created: list[str] = Field(default_factory=list)
     attributes_added: list[str] = Field(default_factory=list)
+    # Types of TARGET nodes minted for node-valued attributes this ingest — e.g.
+    # a `Physician.located_in -> City` fill mints a `City` node (schema_resolver's
+    # promotion branch). These are NOT in `types_created` (the target type already
+    # exists) nor recoverable from `attributes_added` (that carries the SUBJECT
+    # type), so they are tracked here purely so post-write housekeeping re-embeds /
+    # re-stats them too — see `affected_types()`. Default keeps older callers /
+    # serialized payloads compatible.
+    node_target_types: list[str] = Field(default_factory=list)
     rejections: list[RejectedValue] = Field(default_factory=list)
     flagged_types: list[str] = Field(default_factory=list, description="Types needing user review")
     chunks_processed: int = 0
@@ -708,3 +716,20 @@ class IngestResult(BaseModel):
             "candidacy, ONTA-177)"
         ),
     )
+
+    def affected_types(self) -> set[str]:
+        """Types whose embeddings + Explorer stats a post-write refresh must touch
+        after this ingest: every CREATED type, the (subject) type of each ADDED
+        attribute, AND the type of every TARGET node minted for a node-valued
+        attribute (`node_target_types`).
+
+        Single source of truth so the ``/ingest`` and ``/ingest/csv/rows`` routes
+        pass the SAME set to ``refresh_after_write`` — including the target-node
+        types, so a freshly-linked ``City`` node is re-embedded / re-stat'd now,
+        not only on ``City``'s next write."""
+        types = set(self.types_created)
+        for attr_added in self.attributes_added:
+            if "." in attr_added:
+                types.add(attr_added.split(".")[0])
+        types.update(self.node_target_types)
+        return types

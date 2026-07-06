@@ -82,7 +82,9 @@ from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_a
 from cograph_client.graph.ontology_queries import (
     RDF,
     RDFS,
+    _safe_id,
     attr_uri,
+    entity_uri,
     set_object_property_range,
     type_uri,
     upsert_type,
@@ -337,27 +339,18 @@ def _split(value: str, delimiters: list[str]) -> list[str]:
     return atoms
 
 
-def _slug(value: str) -> str:
-    """Canonical slug for an atomic value → its canonical atomic entity IRI tail.
-
-    Same character class as the resolver's ``_safe_id`` so atomic IRIs line up
-    with how the rest of the system mints entity IRIs. Deterministic, so the same
-    atomic value always maps to the same node (free dedup).
-    """
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", value.strip())
-    return safe[:200] if safe else "unknown"
-
-
 def _atom_uri(target_type: str, atom: str) -> str:
-    """Canonical atomic entity IRI for ``atom`` of ``target_type``.
+    """Canonical atomic entity IRI for ``atom`` of ``target_type``:
+    ``…/entities/<TargetType>/<slug>``.
 
-    Single source of truth for how atomic IRIs are minted: ``…/entities/
-    <TargetType>/<slug>``. Used both to RE-POINT an edge at the clean atomic node
-    and to decide idempotency — the skip check compares an atom's canonical IRI
-    to the composite's own IRI, so they MUST be minted the same way for the
-    equality to be exact (COG-118).
+    Minted through the ONE shared ``entity_uri`` (graph/ontology_queries) so an
+    atom's IRI is byte-identical to how ingestion/discovery mint the composite's
+    own IRI. Used both to RE-POINT an edge at the clean atomic node and to decide
+    idempotency — the skip check compares an atom's canonical IRI to the
+    composite's own IRI, so they MUST be minted the same way for the equality to
+    be exact (COG-118). Sharing the minter makes that guarantee structural.
     """
-    return f"{ENTITY_URI_PREFIX}{target_type}/{_slug(atom)}"
+    return entity_uri(target_type, atom)
 
 
 def _target_type_from_uri(composite_uri: str) -> str | None:
@@ -749,10 +742,11 @@ def _node_uri_value(target_type: str, value: str) -> str:
     """Value-keyed node IRI: ``…/entities/<TargetType>/<slug(value)>``.
 
     SHARED across every owner with the same value (free dedup) — the categorical
-    strategy. Uses the SAME ``_slug`` + ``ENTITY_URI_PREFIX`` primitives as
-    ``_atom_uri`` so a promoted categorical node coincides exactly with the node
-    ``list_explode`` would mint for the same value (cross-rail consistency)."""
-    return f"{ENTITY_URI_PREFIX}{target_type}/{_slug(value)}"
+    strategy. Minted through the ONE shared ``entity_uri`` (graph/ontology_queries),
+    the SAME minter ``_atom_uri`` / ``list_explode`` use, so a promoted categorical
+    node coincides exactly with the node ``list_explode`` would mint for the same
+    value (cross-rail consistency)."""
+    return entity_uri(target_type, value)
 
 
 def _node_uri_owner(target_type: str, subject_uri: str, pred_leaf: str) -> str:
@@ -761,9 +755,12 @@ def _node_uri_owner(target_type: str, subject_uri: str, pred_leaf: str) -> str:
     One node PER OWNER (two shops rated 4.6 are NOT the same Rating). The owner's
     local id disambiguates, and the ``-<leaf>`` suffix keeps two owner-keyed
     promotions on DIFFERENT predicates of the same owner from colliding (a shop's
-    ``rating`` node vs its ``price`` node)."""
-    owner = _slug(_subject_local_id(subject_uri))
-    return f"{ENTITY_URI_PREFIX}{target_type}/{owner}-{_slug(pred_leaf)}"
+    ``rating`` node vs its ``price`` node). The base ``…/entities/<TargetType>/
+    <slug(owner_id)>`` is the shared ``entity_uri`` (so it coincides with every
+    other rail's node for that owner id); the ``-<slug(leaf)>`` suffix is appended
+    exactly as before — byte-identical to the old ``ENTITY_URI_PREFIX`` + ``_slug``
+    form."""
+    return f"{entity_uri(target_type, _subject_local_id(subject_uri))}-{_safe_id(pred_leaf)}"
 
 
 async def _promote_to_node(

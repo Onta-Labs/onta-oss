@@ -49,6 +49,7 @@ from cograph_client.graph.kg_writer import insert_facts, refresh_after_write
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     XSD_STRING,
+    entity_uri as _entity_uri,
     get_attribute_range_query,
     upsert_attribute,
     xsd_to_datatype,
@@ -1266,7 +1267,7 @@ class EnrichmentExecutor:
                     self._neptune,
                     tenant_id=tenant_id,
                     kg_name=job.kg_name,
-                    affected_types={job.type_name},
+                    affected_types=self._affected_types(job.type_name, resolved_datatypes),
                 )
             # `stage` with at least one real conflict stays in `review` — those
             # conflicts are now the ONLY thing the review queue holds (the fills
@@ -1509,6 +1510,22 @@ class EnrichmentExecutor:
             return r.action == "filled"
         return False
 
+    @staticmethod
+    def _affected_types(type_name: str, resolved_datatypes: dict[str, str]) -> set[str]:
+        """Types whose embeddings + Explorer stats a post-write refresh must touch:
+        the SUBJECT type PLUS the type of every node-valued attribute.
+
+        A node-valued fill mints a target NODE
+        (:meth:`_instance_triples_for_value` — e.g. ``Physician.located_in`` →
+        a ``City`` node), so ``refresh_after_write`` must re-embed / re-stat that
+        target TYPE too. Passing only the subject type (the old behavior) left a
+        freshly-minted ``City`` node stale until ``City``'s own next write —
+        the enrichment mirror of discovery's Part-3 gap. Non-primitive
+        ``resolved_datatypes`` values are exactly the node-valued ranges."""
+        return {type_name} | {
+            dt for dt in resolved_datatypes.values() if dt not in PRIMITIVE_TYPES
+        }
+
     def _select_triples_for_policy(
         self,
         rows: list[RowResult],
@@ -1707,14 +1724,15 @@ class EnrichmentExecutor:
             # canonical entity URI ingestion mints (entities/<Type>/<safe_id>) so the
             # same real-world thing is ONE shared node across the discovery +
             # enrichment rails, and create/type that node (idempotent INSERT) so the
-            # edge is never a dangling string. Uses the SAME _safe_id primitive
-            # discovery keys its entity URIs with, so the URIs coincide exactly.
-            from cograph_client.graph.ontology_queries import type_uri
-            from cograph_client.resolver.schema_resolver import _safe_id
-            target_uri = f"https://cograph.tech/entities/{datatype}/{_safe_id(value)}"
+            # edge is never a dangling string — closing the cross-rail divergence
+            # where enrichment wrote a literal into a node-valued attribute the
+            # ontology declares as a relationship. Uses the SAME shared entity_uri
+            # minter discovery keys its entity URIs with (graph/ontology_queries), so
+            # the URIs coincide exactly — one shared node across both rails.
+            target_uri = _entity_uri(datatype, value)
             return [
                 (entity_uri, onto_pred, target_uri),
-                (target_uri, RDF_TYPE, type_uri(datatype)),
+                (target_uri, RDF_TYPE, _type_uri(datatype)),
                 (target_uri, RDFS_LABEL, value),
             ]
         # Primitive: type the literal exactly as ingestion does. validate_triple
@@ -1792,7 +1810,7 @@ class EnrichmentExecutor:
                 self._neptune,
                 tenant_id=job.tenant_id,
                 kg_name=job.kg_name,
-                affected_types={job.type_name},
+                affected_types=self._affected_types(job.type_name, resolved_datatypes),
             )
         job.status = JobStatus.applied
         job.completed_at = _now()
