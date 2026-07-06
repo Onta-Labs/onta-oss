@@ -1689,24 +1689,31 @@ class EnrichmentExecutor:
         attr_uri_str = _attr_uri(type_name, attribute)
         # Relationship: a non-primitive datatype names an entity TYPE (a node range).
         if datatype not in PRIMITIVE_TYPES:
+            # A relationship INSTANCE edge lives on the onto/<leaf> predicate — the
+            # form the NL query planner emits for a type-ranged attribute
+            # (nlp/prompts, ontology_embeddings) and the form discovery's PRIMARY
+            # relationship writes use (schema_resolver ~969/1192). Writing the edge
+            # on the attrs/<leaf> ATTRIBUTE predicate instead leaves it INVISIBLE to
+            # NL queries (they traverse onto/<leaf>, with no attrs/<leaf> fallback).
+            # The ontology DECLARATION stays the attrs/<leaf> property with a
+            # types/<T> range (the established dual convention: attrs declares,
+            # onto carries the instance); only the instance edge is onto/<leaf>.
+            onto_pred = f"https://cograph.tech/onto/{attribute}"
             # Already an entity IRI (e.g. a premium adapter that resolved it) → the
-            # edge is ready as-is (legacy behavior).
+            # edge is ready as-is.
             if value.startswith("http://") or value.startswith("https://"):
-                return [(entity_uri, attr_uri_str, value)]
+                return [(entity_uri, onto_pred, value)]
             # Otherwise the enriched value is a plain LABEL. Resolve it to the SAME
             # canonical entity URI ingestion mints (entities/<Type>/<safe_id>) so the
             # same real-world thing is ONE shared node across the discovery +
             # enrichment rails, and create/type that node (idempotent INSERT) so the
-            # edge is never a dangling string — closing the cross-rail divergence
-            # where enrichment wrote a literal into a node-valued attribute the
-            # ontology declares as a relationship. Uses the SAME _safe_id primitive
-            # discovery keys its entity URIs with (schema_resolver ~L2318), so the
-            # URIs coincide exactly.
+            # edge is never a dangling string. Uses the SAME _safe_id primitive
+            # discovery keys its entity URIs with, so the URIs coincide exactly.
             from cograph_client.graph.ontology_queries import type_uri
             from cograph_client.resolver.schema_resolver import _safe_id
             target_uri = f"https://cograph.tech/entities/{datatype}/{_safe_id(value)}"
             return [
-                (entity_uri, attr_uri_str, target_uri),
+                (entity_uri, onto_pred, target_uri),
                 (target_uri, RDF_TYPE, type_uri(datatype)),
                 (target_uri, RDFS_LABEL, value),
             ]
