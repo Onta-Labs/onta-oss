@@ -199,9 +199,10 @@ def get_secret_cipher() -> Optional[SecretCipher]:
     """Return the active cipher, or ``None`` if secret storage is not configured.
 
     Precedence: a registered cipher (premium KMS) wins; otherwise the OSS
-    ``LocalAesGcmCipher`` is built from ``OMNIX_SECRETS_KEY`` if that env var is
-    set. ``None`` means "no cipher available" — the routes must then REFUSE to
-    store a secret (fail closed) rather than store it in the clear.
+    ``LocalAesGcmCipher`` is built from the configured local key
+    (``settings.secrets_key`` ← ``OMNIX_SECRETS_KEY``) if it is set. ``None`` means
+    "no cipher available" — the routes must then REFUSE to store a secret (fail
+    closed) rather than store it in the clear.
     """
     global _cipher_singleton
     if _cipher_singleton is not None:
@@ -209,11 +210,27 @@ def get_secret_cipher() -> Optional[SecretCipher]:
     if _registered_cipher is not None:
         _cipher_singleton = _registered_cipher
         return _cipher_singleton
-    env_key = os.environ.get("OMNIX_SECRETS_KEY", "").strip()
-    if env_key:
-        _cipher_singleton = LocalAesGcmCipher.from_env(env_key)
+    key = _local_key()
+    if key:
+        _cipher_singleton = LocalAesGcmCipher.from_env(key)
         return _cipher_singleton
     return None
+
+
+def _local_key() -> str:
+    """The OSS local symmetric key, read through the settings object (which
+    sources ``OMNIX_SECRETS_KEY``), falling back to the raw env var so a key set
+    after ``Settings()`` was constructed (e.g. in a test via ``monkeypatch.setenv``)
+    is still picked up."""
+    try:
+        from cograph_client.config import settings
+
+        configured = (settings.secrets_key or "").strip()
+        if configured:
+            return configured
+    except Exception:  # noqa: BLE001 — never let config import break cipher selection
+        pass
+    return os.environ.get("OMNIX_SECRETS_KEY", "").strip()
 
 
 def reset_secret_cipher() -> None:
