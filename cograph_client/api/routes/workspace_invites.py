@@ -18,6 +18,11 @@ AUTH truth — goes first, the registry row second; both steps are idempotent so
 a 5xx mid-way is healed by retry. Member-removal deliberately tolerates a
 missing membership row (revoke the grant regardless, 200 either way) — that
 makes the owner's remove button the manual repair for accept limbo too.
+Known race (accepted, not a bug): grant + membership land BEFORE the
+``mark_accepted`` CAS, so an accept racing a concurrent revoke can leave an
+access-granted member visible in the members list while the invite reads
+revoked — the grant-first order is design-mandated, and owner-removal is the
+sanctioned repair.
 
 Degradation is per-provider, mirroring the ``tenant_directory`` 501 precedent:
 no ``TenantGrantProvider`` → accept/removal 501; no ``InviteDeliveryProvider``
@@ -63,6 +68,10 @@ logger = structlog.stdlib.get_logger("cograph.workspace_invites")
 router = APIRouter()
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+#: RFC 5321 forward-path limit — the store column is unbounded text, so the
+#: route is the length gate.
+_MAX_EMAIL_LEN = 254
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +293,10 @@ async def _accept(
             status_code=409, detail="This invite is no longer pending."
         )
     logger.info(
-        "workspace_invite_accepted", tenant=invite.tenant_id, invite_id=invite.id
+        "workspace_invite_accepted",
+        tenant=invite.tenant_id,
+        invite_id=invite.id,
+        subject=subject,
     )
     return AcceptOut(
         tenant_id=invite.tenant_id, label=label, role=invite.role, status="accepted"
@@ -311,7 +323,7 @@ async def create_invite(
     ws = await _require_owner(store, tenant_id, subject)
 
     email = body.email.strip().lower()
-    if not _EMAIL_RE.match(email):
+    if len(email) > _MAX_EMAIL_LEN or not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="Invalid email address.")
     role = (body.role or "member").strip().lower()
     if role != "member":
@@ -359,10 +371,25 @@ async def create_invite(
     delivery_mode = "link_only"
     accept_url = _accept_url(token)
     delivery = get_invite_delivery_provider()
+    existing_subject = None
     if delivery is not None:
-        existing_subject = await run_in_threadpool(
-            delivery.lookup_subject_by_email, email
-        )
+        # Wrapped like send_signup_invitation below: the invite row — and the
+        # only copy of the raw token (hash-only at rest) — already exists, so
+        # a delivery-provider outage here must degrade to link-only, not 500
+        # (a 500 would lose the token forever and the owner's retry would 409
+        # on the pending row).
+        try:
+            existing_subject = await run_in_threadpool(
+                delivery.lookup_subject_by_email, email
+            )
+        except Exception as exc:  # noqa: BLE001 — delivery is best-effort
+            logger.warning(
+                "workspace_invite_lookup_failed",
+                invite_id=invite.id,
+                error=str(exc),
+            )
+            delivery = None  # provider unhealthy — skip email delivery too
+    if delivery is not None:
         if existing_subject is not None:
             # Existing users are surfaced in-app (GET /v1/me/invites) — no
             # sign-up email for an account that already exists.
@@ -546,6 +573,8 @@ async def remove_member(
     logger.info(
         "workspace_member_removed",
         tenant=tenant_id,
+        subject=member_subject,
+        removed_by=subject,
         had_membership_row=removed_row,
     )
     return {"removed": member_subject}

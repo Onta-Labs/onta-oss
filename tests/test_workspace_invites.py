@@ -354,6 +354,38 @@ def test_pending_invite_cap(client, verifier):
     assert _create_invite(client, email="one-more@example.com").status_code == 429
 
 
+def test_pending_invite_cap_excludes_expired(client, verifier):
+    # 50 stale (expired-at-read) invites must NOT brick re-inviting: the cap
+    # counts genuinely pending rows only.
+    _seed_workspace()
+    for i in range(50):
+        _seed_invite(email=f"user{i}@example.com", token=f"t{i}", expires_delta_days=-1)
+    assert _create_invite(client, email="one-more@example.com").status_code == 201
+
+
+def test_create_invite_rejects_overlong_email(client, verifier):
+    _seed_workspace()
+    too_long = ("a" * 250) + "@example.com"  # > 254 chars (RFC 5321)
+    assert _create_invite(client, email=too_long).status_code == 400
+
+
+def test_create_invite_degrades_to_link_only_on_lookup_outage(client, verifier):
+    class OutageDeliveryProvider(FakeDeliveryProvider):
+        def lookup_subject_by_email(self, email):
+            raise RuntimeError("identity provider down")
+
+    delivery = OutageDeliveryProvider()
+    register_invite_delivery_provider(delivery)
+    _seed_workspace()
+    r = _create_invite(client)
+    # The row (and the only copy of the raw token) already exists — a provider
+    # outage degrades to link-only instead of 500ing the token away.
+    assert r.status_code == 201
+    assert r.json()["delivery"] == "link_only"
+    assert r.json()["accept_token"]
+    assert delivery.sent == []  # unhealthy provider is not asked to email
+
+
 def test_create_invite_email_sent_for_new_user(client, verifier, monkeypatch):
     monkeypatch.setattr(
         settings, "invite_accept_url_base", "https://app.example.test/invite"

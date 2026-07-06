@@ -231,7 +231,12 @@ class WorkspaceStore(Protocol):
         """Pending, unexpired invites addressed to any of ``emails``."""
         ...
 
-    async def count_pending(self, tenant_id: str) -> int: ...
+    async def count_pending(self, tenant_id: str) -> int:
+        """Stored-``pending`` rows that are still unexpired at read time.
+        Expired-at-read rows are excluded so the per-workspace invite cap
+        cannot be bricked by 50 stale invites (they still hold the
+        pending-uniqueness slot until :meth:`mark_expired` frees it)."""
+        ...
 
     async def mark_accepted(self, invite_id: str, subject: str) -> bool:
         """Single-use compare-and-set: pending + unexpired → accepted.
@@ -382,11 +387,14 @@ class InMemoryWorkspaceStore:
         return sorted(invites, key=lambda i: i.created_at, reverse=True)
 
     async def count_pending(self, tenant_id: str) -> int:
+        now = _utcnow()
         with self._lock:
             return sum(
                 1
                 for i in self._invites.values()
-                if i.tenant_id == tenant_id and i.status == "pending"
+                if i.tenant_id == tenant_id
+                and i.status == "pending"
+                and i.expires_at > now
             )
 
     async def mark_accepted(self, invite_id: str, subject: str) -> bool:
@@ -726,7 +734,8 @@ class PostgresWorkspaceStore:
         async with pool.acquire() as conn:
             n = await conn.fetchval(
                 f"SELECT count(*) FROM {self._INVITES} "
-                f"WHERE tenant_id = $1 AND status = 'pending'",
+                f"WHERE tenant_id = $1 AND status = 'pending' "
+                f"AND expires_at > now()",
                 tenant_id,
             )
         return int(n or 0)
