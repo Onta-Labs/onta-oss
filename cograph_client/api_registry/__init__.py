@@ -19,12 +19,15 @@ from __future__ import annotations
 from .catalog import (
     ApiSourceCatalog,
     get_api_source_catalog,
+    invalidate_tenant_catalog,
     load_catalog_dir,
+    load_tenant_custom_catalog,
     make_api_source_catalog,
     register_api_source_layer,
     registered_layers,
     reset_api_source_catalog,
     reset_api_source_layers,
+    set_tenant_custom_specs,
 )
 from .catalog_audit import audit_catalog, format_markdown
 from .discovery import RegistryDiscoverySource, build_registry_sources
@@ -34,6 +37,16 @@ from .enrichment import (
     reset_registry_enrichment,
 )
 from .executor import ApiCallResult, RegistryApiSource
+from .store import (
+    InMemoryTenantApiSourceStore,
+    LAYER_TENANT_CUSTOM,
+    PostgresTenantApiSourceStore,
+    TenantApiSource,
+    TenantApiSourceStore,
+    make_tenant_api_source_store,
+    reset_tenant_api_source_store,
+    validate_tenant_spec,
+)
 from .router import (
     MODE_API_ONLY,
     MODE_API_PLUS_WEB,
@@ -68,10 +81,22 @@ __all__ = [
     "load_catalog_dir",
     "make_api_source_catalog",
     "get_api_source_catalog",
+    "load_tenant_custom_catalog",
+    "set_tenant_custom_specs",
+    "invalidate_tenant_catalog",
     "reset_api_source_catalog",
     "register_api_source_layer",
     "registered_layers",
     "reset_api_source_layers",
+    # tenant-custom store (ONTA-2xx)
+    "TenantApiSource",
+    "TenantApiSourceStore",
+    "InMemoryTenantApiSourceStore",
+    "PostgresTenantApiSourceStore",
+    "make_tenant_api_source_store",
+    "reset_tenant_api_source_store",
+    "validate_tenant_spec",
+    "LAYER_TENANT_CUSTOM",
     # executor
     "RegistryApiSource",
     "ApiCallResult",

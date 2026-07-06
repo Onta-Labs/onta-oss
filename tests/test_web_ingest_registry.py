@@ -98,17 +98,19 @@ def test_merge_api_only_falls_back_to_web_when_no_registry():
     assert _merge_registry_ensemble(["WEB"], [], MODE_API_ONLY) == ["WEB"]
 
 
-def test_rebuild_registry_sources_from_params():
-    srcs, mode = _rebuild_registry_sources({
+@pytest.mark.asyncio
+async def test_rebuild_registry_sources_from_params():
+    srcs, mode = await _rebuild_registry_sources({
         "registry_picks": [{"slug": "nppes", "endpoint": "search", "bindings": {"state": "CA"}}],
         "registry_mode": "api_plus_web",
-    })
+    }, "test-tenant")
     assert mode == "api_plus_web"
     assert [s.name for s in srcs] == ["api:nppes"]
 
 
-def test_rebuild_registry_sources_empty_when_absent():
-    srcs, _ = _rebuild_registry_sources({})
+@pytest.mark.asyncio
+async def test_rebuild_registry_sources_empty_when_absent():
+    srcs, _ = await _rebuild_registry_sources({}, "test-tenant")
     assert srcs == []
 
 
