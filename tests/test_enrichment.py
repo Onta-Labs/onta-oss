@@ -1466,15 +1466,18 @@ def test_executor_instructions_flow_into_lookup_context():
 
         assert adapter.calls
         # entity_type ("Product", the job's type_name) always rides in the ctx
-        # (ONTA-191) alongside the optional instructions.
+        # (ONTA-191) alongside the optional instructions; tenant_id (the job's
+        # tenant) always rides too (ONTA-2xx — a tenant_custom registry adapter
+        # needs it to build its per-tenant secret resolver).
         assert adapter.calls[0][2] == {
             "instructions": "Prefer the official legal entity name.",
             "entity_type": "Product",
+            "tenant_id": "test-tenant",
         }
 
-        # Without instructions → context carries only entity_type (no
+        # Without instructions → context carries entity_type + tenant_id (no
         # instructions key). The call shape is unchanged aside from the always-on
-        # entity_type contract.
+        # entity_type + tenant_id contract.
         neptune2 = _single_product_neptune()
         store2 = InMemoryJobStore()
         executor2 = EnrichmentExecutor(
@@ -1486,7 +1489,10 @@ def test_executor_instructions_flow_into_lookup_context():
         job2.sources = ["instr_src2"]
         await store2.create(job2)
         await executor2.run(job2, "test-tenant")
-        assert adapter2.calls and adapter2.calls[0][2] == {"entity_type": "Product"}
+        assert adapter2.calls and adapter2.calls[0][2] == {
+            "entity_type": "Product",
+            "tenant_id": "test-tenant",
+        }
 
     asyncio.run(run())
 

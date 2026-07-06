@@ -145,6 +145,32 @@ def _load_api_registry_plugin() -> None:
         logger.error("api_registry_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_secrets_cipher_plugin() -> None:
+    """Import and invoke the configured secret-cipher plugin, if any (ONTA-2xx).
+
+    Format: "module.path:callable". The callable is invoked with no arguments and
+    is expected to register a SecretCipher via
+    cograph_client.api_registry.register_secret_cipher (e.g. an AWS-KMS data-key
+    cipher). Failures are logged but do not prevent startup — without it, the OSS
+    default LocalAesGcmCipher (keyed by OMNIX_SECRETS_KEY) is used, or, if that
+    key is also unset, secret storage is disabled (fail closed).
+    """
+    spec = settings.secrets_cipher_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("secrets_cipher_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("secrets_cipher_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("secrets_cipher_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 def _load_router_plugins(app: FastAPI) -> None:
     """Import and invoke the configured router plugins, if any.
 
@@ -243,6 +269,7 @@ def create_app() -> FastAPI:
     _load_governance_plugin()
     _load_web_source_plugin()
     _load_api_registry_plugin()
+    _load_secrets_cipher_plugin()
     app = FastAPI(
         title="Omnix",
         description="Living Knowledge Graph Platform",

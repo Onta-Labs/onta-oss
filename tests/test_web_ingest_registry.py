@@ -175,7 +175,7 @@ async def test_execute_runs_registry_and_ingests_with_api_provenance(monkeypatch
         sources=["https://npiregistry.cms.hhs.gov/api/?version=2.1&skip=0"],
     )
 
-    async def fake_execute(self, spec, bindings=None, *, endpoint_name=None, max_rows=50, sample=False, budget=None):
+    async def fake_execute(self, spec, bindings=None, *, endpoint_name=None, max_rows=50, sample=False, budget=None, secret_resolver=None):
         assert spec.slug == "nppes"
         assert bindings.get("taxonomy_description") == "cardiology"
         return canned

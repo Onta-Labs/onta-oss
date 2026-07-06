@@ -36,7 +36,26 @@ from .enrichment import (
     register_registry_enrichment,
     reset_registry_enrichment,
 )
-from .executor import ApiCallResult, RegistryApiSource
+from .crypto import (
+    LocalAesGcmCipher,
+    SecretCipher,
+    SecretCipherError,
+    get_secret_cipher,
+    register_secret_cipher,
+    reset_secret_cipher,
+)
+from .executor import ApiCallResult, RegistryApiSource, SecretResolver
+from .secret_store import (
+    InMemoryTenantSecretStore,
+    PostgresTenantSecretStore,
+    TenantApiSecret,
+    TenantSecretStore,
+    make_secret_resolver,
+    make_tenant_secret_store,
+    reset_tenant_secret_store,
+    resolve_secret,
+    store_secret,
+)
 from .store import (
     InMemoryTenantApiSourceStore,
     LAYER_TENANT_CUSTOM,
@@ -97,9 +116,26 @@ __all__ = [
     "reset_tenant_api_source_store",
     "validate_tenant_spec",
     "LAYER_TENANT_CUSTOM",
+    # secret cipher + encrypted secret store (ONTA-2xx Child 2)
+    "SecretCipher",
+    "SecretCipherError",
+    "LocalAesGcmCipher",
+    "register_secret_cipher",
+    "get_secret_cipher",
+    "reset_secret_cipher",
+    "TenantApiSecret",
+    "TenantSecretStore",
+    "InMemoryTenantSecretStore",
+    "PostgresTenantSecretStore",
+    "make_tenant_secret_store",
+    "reset_tenant_secret_store",
+    "store_secret",
+    "resolve_secret",
+    "make_secret_resolver",
     # executor
     "RegistryApiSource",
     "ApiCallResult",
+    "SecretResolver",
     # routing (phase 2)
     "route_query",
     "RoutingDecision",
