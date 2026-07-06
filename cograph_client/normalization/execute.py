@@ -1,6 +1,6 @@
 """Execute a confirmed normalization rule.
 
-:func:`apply_rule` rewrites a KG graph in place. Two rule types ship today.
+:func:`apply_rule` rewrites a KG graph in place. Three rule types ship today.
 
 ``list_explode`` splits collapsed multi-value cells into atomic ones. Two shapes:
 
@@ -34,10 +34,41 @@ re-run is a no-op). A literal that becomes empty after stripping (a pure-emoji
 value) is dropped. It operates per-literal, so it works whether ``skills`` is
 still one packed literal or already exploded into atomic literals.
 
+``promote_to_node`` PROMOTES a literal-valued attribute into entity NODES — the
+"escape hatch" that makes a literal-by-default modeling choice safe: a column
+first ingested as a plain literal (``specialty = "Cardiology"``,
+``rating = "4.6"``) can be turned into a first-class entity later, without
+re-ingesting. For every ``(?s, attrs/<leaf>, ?literal)`` triple we mint a node,
+add a RELATIONSHIP edge ``(?s, onto/<leaf>, node)``, clear the old literal
+(predicate-scoped, datatype-agnostic), and flip the attribute's declared
+``rdfs:range`` from the XSD primitive to the target entity type. The result is the
+SAME relationship shape ingest writes for a native relationship — ``onto/<leaf>``
+instance edges + an ``rdfs:range`` pointing at a ``types/`` URI + a first-class
+``rdfs:Class`` target — so a promoted attribute is indistinguishable from one that
+was node-valued from the start, and the NL planner (which queries ``onto/<leaf>``
+for a type-ranged attribute) traverses it correctly. Two node-identity strategies
+via ``params.key_by``:
+
+* **``"value"``** (categoricals — Specialty / Category / City): the node IRI is
+  ``…/entities/<TargetType>/<slug(value)>``, SHARED across every owner with the
+  same value — so two Doctors with ``specialty = "Cardiology"`` point at ONE
+  ``Cardiology`` node (free dedup, exactly like ``list_explode``'s atomic-entity
+  minting). The human value is also stored under ``attrs/name`` (Explorer Data
+  table). ``params.split`` may be set (reuses the ``list_explode`` delimiters) so
+  a multi-valued literal ``"A, B"`` becomes MULTIPLE value-keyed nodes/edges.
+* **``"owner"``** (measurements — Rating / Price / Score): the node IRI is
+  ``…/entities/<TargetType>/<slug(owner_local_id)>-<leaf>``, one node PER OWNER —
+  two shops rated ``4.6`` are NOT the same ``Rating``. The original literal is
+  PRESERVED losslessly as the node's ``value`` attribute
+  (``<node> <types/<TargetType>/attrs/value> "4.6"``) alongside ``rdfs:label``.
+  ``split`` is ignored (a measurement is one value).
+
 Idempotent: re-running finds nothing to change (values are already atomic /
-emoji-free) and is a no-op. ``list_explode`` returns
+emoji-free; a promoted object is a URI, not a literal, so the ``isLiteral(?o)``
+filter returns nothing) and is a no-op. ``list_explode`` returns
 ``{edges_rewritten, atomic_created, orphans_dropped}``; ``strip_emoji`` returns
-``{literals_cleaned, triples_rewritten}``.
+``{literals_cleaned, triples_rewritten}``; ``promote_to_node`` returns
+``{nodes_created, edges_added, literals_promoted}``.
 """
 
 from __future__ import annotations
@@ -48,7 +79,14 @@ import structlog
 
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
-from cograph_client.graph.ontology_queries import RDF, RDFS, attr_uri, type_uri
+from cograph_client.graph.ontology_queries import (
+    RDF,
+    RDFS,
+    attr_uri,
+    set_object_property_range,
+    type_uri,
+    upsert_type,
+)
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
     kg_graph_uri,
@@ -104,17 +142,17 @@ _WS_PATTERN = re.compile(r"\s+")
 
 
 async def apply_rule(neptune: NeptuneClient, tenant_id: str, rule) -> dict:
-    """Apply a confirmed rule (``list_explode`` or ``strip_emoji``). Returns a summary.
+    """Apply a confirmed rule (``list_explode`` / ``strip_emoji`` / ``promote_to_node``).
 
-    On any apply that actually mutates the graph, fire the same fire-and-forget
-    type-stats recompute enrichment uses (``schedule_recompute``) so the
-    Explorer's precomputed counts don't go stale (COG-118). A pure no-op
+    Returns a summary. On any apply that actually mutates the graph, fire the same
+    fire-and-forget type-stats recompute enrichment uses (``schedule_recompute``)
+    so the Explorer's precomputed counts don't go stale (COG-118). A pure no-op
     (idempotent re-run that changed nothing) skips it.
     """
-    if rule.rule_type not in ("list_explode", "strip_emoji"):
+    if rule.rule_type not in ("list_explode", "strip_emoji", "promote_to_node"):
         raise ValueError(
             f"unsupported rule_type {rule.rule_type!r} "
-            f"(supported: list_explode, strip_emoji)"
+            f"(supported: list_explode, strip_emoji, promote_to_node)"
         )
 
     kg_graph = kg_graph_uri(tenant_id, rule.kg_name)
@@ -124,20 +162,45 @@ async def apply_rule(neptune: NeptuneClient, tenant_id: str, rule) -> dict:
 
     if _summary_mutated(summary):
         # Shared post-write housekeeping (graph/kg_writer.py) — same path every
-        # KG writer uses. affected_types=() because normalization changes instance
-        # data + counts but NEVER the type SCHEMA (no new types/attributes), so no
-        # re-embed is needed; the shared refresh still invalidates the NL-planning
-        # cache and recomputes type-stats. deleted_subjects carries any orphan
-        # composites the sweep removed (ADR 0007) so the SAME refresh evicts them
-        # from the derived secondary indexes — no ghost rows left behind.
+        # KG writer uses. deleted_subjects carries any orphan composites the sweep
+        # removed (ADR 0007) so the SAME refresh evicts them from the derived
+        # secondary indexes — no ghost rows left behind.
+        #
+        # affected_types: list_explode / strip_emoji change instance data + counts
+        # but NEVER the type SCHEMA, so they pass () (no re-embed needed; the
+        # refresh still invalidates the NL-planning cache and recomputes stats).
+        # promote_to_node is the exception — it CHANGES THE SCHEMA (the attribute's
+        # range flips literal->TargetType, and TargetType is a brand-new node
+        # type), so both the owning type and the minted target type need
+        # re-embedding for semantic retrieval to see the new relationship. We pass
+        # both.
+        affected_types = _affected_types(rule)
         await refresh_after_write(
             neptune,
             tenant_id=tenant_id,
             kg_name=rule.kg_name,
-            affected_types=(),
+            affected_types=affected_types,
             deleted_subjects=deleted_subjects,
         )
     return summary
+
+
+def _affected_types(rule) -> tuple[str, ...]:
+    """Types whose SCHEMA this rule changed (for ``refresh_after_write`` re-embed).
+
+    Only ``promote_to_node`` alters the schema — it flips an attribute's
+    ``rdfs:range`` from a literal type to an entity type and introduces that
+    entity type as a new node type — so it returns ``(owning_type, target_type)``.
+    ``list_explode`` / ``strip_emoji`` touch only instance data, so they return
+    ``()`` (unchanged behavior — no re-embed).
+    """
+    if rule.rule_type != "promote_to_node":
+        return ()
+    target_type = str((rule.params or {}).get("target_type") or "").strip()
+    types = [rule.type_name]
+    if target_type:
+        types.append(target_type)
+    return tuple(t for t in types if t)
 
 
 async def _dispatch(
@@ -153,31 +216,78 @@ async def _dispatch(
     if rule.rule_type == "strip_emoji":
         return await _strip_emoji(neptune, kg_graph, rule)
 
+    if rule.rule_type == "promote_to_node":
+        return await _promote_to_node(neptune, kg_graph, onto_graph, rule)
+
     delimiters = _delimiters(rule)
     target = (rule.params or {}).get("target")
     pred_leaf = rule.predicate
 
     if rule.target_kind == "relationship" or target == "entity":
         if rule.target_kind == "attribute" and target == "entity":
-            # attribute -> atomic ENTITIES is noted as a follow-up; v1 focuses on
-            # the relationship+literal cases (see module docstring / PR notes).
-            logger.info(
-                "attribute_to_entity_unsupported",
-                predicate=pred_leaf,
-                note="promotion of attribute literals to atomic entities is a follow-up",
+            # attribute -> atomic ENTITIES: promote the literal to value-keyed
+            # nodes (the follow-up that was previously a no-op stub). A packed
+            # literal like "A, B" splits into MULTIPLE shared value-keyed nodes,
+            # matching what `list_explode target=entity` on a RELATIONSHIP does but
+            # for a literal-valued attribute. A list_explode rule carries no
+            # `target_type` (that param is new with promote_to_node), so
+            # _list_explode_as_promotion derives one from the predicate leaf
+            # (title-cased: specialty -> Specialty) when unset, and forces
+            # key_by="value" + split=True (the multi-value-cell semantics).
+            promote_rule = _list_explode_as_promotion(rule)
+            return await _promote_to_node(
+                neptune, kg_graph, onto_graph, promote_rule
             )
-            return {"edges_rewritten": 0, "atomic_created": 0, "orphans_dropped": 0}, []
         return await _explode_relationship(
             neptune, kg_graph, onto_graph, rule.type_name, pred_leaf, delimiters
         )
     return await _explode_literal(neptune, kg_graph, pred_leaf, delimiters)
 
 
+def _list_explode_as_promotion(rule):
+    """Adapt a ``list_explode`` (attribute, target=entity) rule to a
+    ``promote_to_node`` value-keyed, split promotion.
+
+    A ``list_explode`` rule's ``params`` has no ``target_type`` (that concept is
+    new with ``promote_to_node``), so we derive the node type name from the
+    predicate leaf (``specialty`` -> ``Specialty``) unless the caller already put
+    a ``target_type`` in params. ``key_by`` is forced to ``"value"`` and ``split``
+    to ``True`` — a multi-valued cell exploded into SHARED categorical nodes is
+    exactly the value-keyed-with-split shape.
+
+    Returns a shallow copy with ``rule_type="promote_to_node"`` and the derived
+    params, so the original rule object is left untouched.
+    """
+    params = dict(rule.params or {})
+    target_type = str(params.get("target_type") or "").strip() or _title_type(
+        rule.predicate
+    )
+    params["target_type"] = target_type
+    params["key_by"] = "value"
+    params["split"] = True
+    return rule.model_copy(update={"rule_type": "promote_to_node", "params": params})
+
+
+def _title_type(pred_leaf: str) -> str:
+    """Best-effort node TYPE name from a predicate leaf: ``specialty`` ->
+    ``Specialty``, ``home_city`` -> ``HomeCity``.
+
+    Only used for the ``list_explode target=entity`` back-compat path, where no
+    explicit ``target_type`` is supplied. Splits on non-alphanumeric runs and
+    title-cases each token; falls back to a capitalised leaf, then ``"Value"``.
+    """
+    tokens = [t for t in re.split(r"[^A-Za-z0-9]+", pred_leaf) if t]
+    if not tokens:
+        return "Value"
+    return "".join(t[:1].upper() + t[1:] for t in tokens)
+
+
 def _summary_mutated(summary: dict) -> bool:
     """True iff this apply actually changed the graph (so a recompute is worth it).
 
-    Covers both summary shapes: list_explode's counters and strip_emoji's. A
-    purely idempotent re-run reports all-zero and we skip the recompute.
+    Covers every summary shape: list_explode's counters, strip_emoji's, and
+    promote_to_node's. A purely idempotent re-run reports all-zero and we skip the
+    recompute (and, for promote_to_node, the schema re-embed).
     """
     return any(
         int(summary.get(k, 0))
@@ -187,6 +297,9 @@ def _summary_mutated(summary: dict) -> bool:
             "orphans_dropped",
             "triples_rewritten",
             "literals_cleaned",
+            "nodes_created",
+            "edges_added",
+            "literals_promoted",
         )
     )
 
@@ -618,6 +731,224 @@ async def _explode_literal(
         "orphans_dropped": 0,
     }
     logger.info("explode_literal_done", predicate=pred_leaf, **summary)
+    return summary, []
+
+
+def _subject_local_id(subject_uri: str) -> str:
+    """The part of a subject URI after the last ``/`` — the owner's local id.
+
+    Used only by the ``key_by="owner"`` node-identity strategy: the Rating node
+    for ``…/entities/CoffeeShop/shop-1`` keys on ``shop-1`` so each owner gets its
+    OWN measurement node. Trailing slashes are stripped first so a URI that ends
+    in ``/`` still yields its real last segment.
+    """
+    return subject_uri.rstrip("/").rsplit("/", 1)[-1]
+
+
+def _node_uri_value(target_type: str, value: str) -> str:
+    """Value-keyed node IRI: ``…/entities/<TargetType>/<slug(value)>``.
+
+    SHARED across every owner with the same value (free dedup) — the categorical
+    strategy. Uses the SAME ``_slug`` + ``ENTITY_URI_PREFIX`` primitives as
+    ``_atom_uri`` so a promoted categorical node coincides exactly with the node
+    ``list_explode`` would mint for the same value (cross-rail consistency)."""
+    return f"{ENTITY_URI_PREFIX}{target_type}/{_slug(value)}"
+
+
+def _node_uri_owner(target_type: str, subject_uri: str, pred_leaf: str) -> str:
+    """Owner-keyed node IRI: ``…/entities/<TargetType>/<slug(owner_id)>-<leaf>``.
+
+    One node PER OWNER (two shops rated 4.6 are NOT the same Rating). The owner's
+    local id disambiguates, and the ``-<leaf>`` suffix keeps two owner-keyed
+    promotions on DIFFERENT predicates of the same owner from colliding (a shop's
+    ``rating`` node vs its ``price`` node)."""
+    owner = _slug(_subject_local_id(subject_uri))
+    return f"{ENTITY_URI_PREFIX}{target_type}/{owner}-{_slug(pred_leaf)}"
+
+
+async def _promote_to_node(
+    neptune: NeptuneClient, kg_graph: str, onto_graph: str, rule
+) -> tuple[dict, list[str]]:
+    """Promote a literal-valued attribute into entity NODES (``promote_to_node``).
+
+    Mirrors :func:`_explode_relationship`'s structure — query → mint node triples
+    → add edges → ``delete_facts`` the old literals → ontology range flip → return
+    a summary — but the source is a LITERAL attribute (not a composite edge) and
+    the outcome is a node-valued attribute. Node identity is chosen by
+    ``params.key_by``:
+
+    * ``"value"`` (default) — one SHARED node per distinct value
+      (``…/entities/<TargetType>/<slug(value)>``); the value is stored as
+      ``rdfs:label`` AND ``attrs/name`` (the categorical / Explorer-Data shape).
+      With ``params.split`` a multi-valued literal explodes into several nodes.
+    * ``"owner"`` — one node PER OWNER
+      (``…/entities/<TargetType>/<slug(owner)>-<leaf>``); the original literal is
+      PRESERVED losslessly as the node's ``value`` attribute
+      (``<node> <attr_uri(TargetType,"value")> literal``) alongside ``rdfs:label``.
+
+    Returns ``(summary, [])`` — a promotion re-points an attribute on a SURVIVING
+    owner (the literal object is replaced by a node edge), so nothing here is a
+    deleted subject. Idempotency: the query filters ``isLiteral(?o)``, so once
+    promoted the object is a URI and the next run selects nothing → all-zero
+    summary → no mutation, no refresh, no schema re-embed.
+    """
+    params = rule.params or {}
+    type_name = rule.type_name
+    pred_leaf = rule.predicate
+    target_type = str(params.get("target_type") or "").strip()
+    if not target_type:
+        raise ValueError("promote_to_node requires params.target_type")
+    key_by = str(params.get("key_by") or "value").strip().lower()
+    if key_by not in ("value", "owner"):
+        raise ValueError(
+            f"promote_to_node key_by must be 'value' or 'owner', got {key_by!r}"
+        )
+    # split only makes sense for value-keyed categoricals; a measurement is one
+    # value, so owner-keyed ignores it.
+    split = bool(params.get("split", False)) and key_by == "value"
+    delimiters = _delimiters(rule) if split else []
+
+    prim_pred = attr_uri(type_name, pred_leaf)  # the TYPE-SCOPED attrs/<leaf> predicate
+
+    # 1) Every (?s, <types/<type>/attrs/<leaf>>, ?literal) for THIS type. The
+    #    predicate IRI already embeds the type name, so matching it EXACTLY keeps
+    #    the promotion scoped to type_name's own instances. That scoping is
+    #    load-bearing: a rule is per (type, predicate), and the ontology range flip
+    #    below only touches type_name — so a broader predicate match (onto/<leaf>,
+    #    or any OTHER type's …/attrs/<leaf>) would promote a different type's
+    #    literals to node edges while leaving that type's declared range a stale
+    #    literal. ``isLiteral`` is the idempotency guard: once promoted the object
+    #    is a URI, so a re-run selects nothing. No delimiter CONTAINS — promotion
+    #    applies to ALL literals. The marker comment self-identifies the query in
+    #    log traces.
+    q = (
+        f"SELECT ?s ?p ?o FROM <{kg_graph}> WHERE {{\n"
+        f"  # promote_to_node: literals of {pred_leaf} on {type_name}\n"
+        f"  ?s ?p ?o .\n"
+        f"  FILTER(?p = <{prim_pred}>)\n"
+        f"  FILTER(isLiteral(?o))\n"
+        f"}}"
+    )
+    _, rows = parse_sparql_results(await neptune.query(q))
+
+    onto_pred = ONTO_PRED_PREFIX + pred_leaf  # onto/<leaf> — the relationship edge form
+
+    node_triples: list[tuple[str, str, str]] = []
+    edges_to_add: list[tuple[str, str, str]] = []
+    subjects_to_clear: set[str] = set()
+    nodes_seen: set[str] = set()
+    edges_seen: set[tuple[str, str, str]] = set()
+    literals_promoted = 0
+
+    t_uri = type_uri(target_type)
+    value_attr = attr_uri(target_type, "value")  # owner-keyed lossless store
+    name_attr = attr_uri(target_type, "name")  # value-keyed Explorer-Data label
+
+    for r in rows:
+        s = r.get("s", "")
+        o = r.get("o", "")
+        if not s or o is None or o == "":
+            continue
+        # The atoms to promote: split a multi-value literal (value-keyed only) or
+        # take the whole literal as one value. _split trims + de-dupes; a value
+        # with no delimiter comes back as a single-element list (idempotent).
+        atoms = _split(o, delimiters) if split else [o.strip()]
+        atoms = [a for a in atoms if a]
+        if not atoms:
+            continue
+        for atom in atoms:
+            if key_by == "value":
+                node_uri = _node_uri_value(target_type, atom)
+                new_triples = [
+                    (node_uri, RDF_TYPE, t_uri),
+                    (node_uri, RDFS_LABEL, atom),
+                    # Mirror ingest / list_explode: store the value under attrs/name
+                    # so the Explorer Data table renders it.
+                    (node_uri, name_attr, atom),
+                ]
+            else:  # owner-keyed measurement
+                node_uri = _node_uri_owner(target_type, s, pred_leaf)
+                new_triples = [
+                    (node_uri, RDF_TYPE, t_uri),
+                    (node_uri, RDFS_LABEL, atom),
+                    # PRESERVE the original literal losslessly as the node's value.
+                    (node_uri, value_attr, atom),
+                ]
+            if node_uri not in nodes_seen:
+                nodes_seen.add(node_uri)
+                node_triples.extend(new_triples)
+            # Re-point the edge via the onto/<leaf> RELATIONSHIP predicate — the
+            # form the NL planner queries for a type-ranged attribute, and the form
+            # ingest (schema_resolver) + _explode_relationship use for relationship
+            # instances. An attrs/<leaf> edge would be invisible to NL queries once
+            # the range flips to an entity type. Keeping the edge on a DIFFERENT
+            # predicate than the old literal also lets the clear below be a clean
+            # predicate-scoped delete of attrs/<leaf> that never touches this edge.
+            edge = (s, onto_pred, node_uri)
+            if edge not in edges_seen:
+                edges_seen.add(edge)
+                edges_to_add.append(edge)
+        # Clear this subject's attrs/<leaf> with a PREDICATE-SCOPED delete (below):
+        # every literal object of it, DATATYPE-AGNOSTICALLY. Reconstructing the
+        # exact literal from the SELECT's lexical value would MISS a typed original
+        # ("4.6"^^xsd:float) — the delete would serialize a plain xsd:string that
+        # never matches the typed triple, leaving the old literal behind and
+        # breaking idempotency. A predicate-scoped clear removes it whatever its
+        # datatype.
+        subjects_to_clear.add(s)
+        literals_promoted += 1
+
+    # 2) Apply through the converged write path, INSERT-FIRST for crash safety:
+    #    nodes, then the onto/<leaf> edges, THEN clear the attrs/<leaf> literals. A
+    #    crash between the edge insert and the clear converges on re-run — the node
+    #    URIs are deterministic (re-mint the identical node/edge, idempotent INSERT)
+    #    and the surviving literal is re-selected and re-cleared. The clear is a
+    #    PREDICATE-SCOPED delete (o=None) of each subject's attrs/<leaf>: it removes
+    #    every literal object regardless of datatype and never hits the onto/<leaf>
+    #    edge (a different predicate), all through the shared delete_facts (batched,
+    #    provenance tombstone, ADR 0007).
+    if node_triples:
+        await insert_facts(neptune, kg_graph, node_triples)
+    if edges_to_add:
+        await insert_facts(neptune, kg_graph, edges_to_add)
+    if subjects_to_clear:
+        await delete_facts(
+            neptune,
+            kg_graph,
+            triples=[(s, prim_pred, None) for s in sorted(subjects_to_clear)],
+            reason="normalization:promote_to_node literal->node",
+        )
+
+    # 3) ONTOLOGY (only when something was promoted — a pure re-run stays a total
+    #    no-op, schema included). Two idempotent upserts:
+    #    (a) declare the target as a first-class rdfs:Class (upsert_type) — a bare
+    #        instance-level rdf:type is not enough: the type grid + embed_types key
+    #        on the Class declaration, so without it the new type is invisible +
+    #        the target-type re-embed is a no-op; and
+    #    (b) flip the attribute's rdfs:range xsd->types/<target> via
+    #        set_object_property_range — a RANGE-ONLY replace that preserves any
+    #        human-authored rdfs:comment (upsert_attribute with an empty description
+    #        would silently clear it). The attribute is now a proper
+    #        relationship-ranged property matching its onto/<leaf> instance edges.
+    if literals_promoted:
+        await neptune.update(upsert_type(onto_graph, target_type))
+        await neptune.update(
+            set_object_property_range(onto_graph, type_name, pred_leaf, target_type)
+        )
+
+    summary = {
+        "nodes_created": len(nodes_seen),
+        "edges_added": len(edges_to_add),
+        "literals_promoted": literals_promoted,
+    }
+    logger.info(
+        "promote_to_node_done",
+        predicate=pred_leaf,
+        target_type=target_type,
+        key_by=key_by,
+        split=split,
+        **summary,
+    )
     return summary, []
 
 
