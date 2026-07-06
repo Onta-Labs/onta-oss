@@ -39,13 +39,15 @@ still one packed literal or already exploded into atomic literals.
 first ingested as a plain literal (``specialty = "Cardiology"``,
 ``rating = "4.6"``) can be turned into a first-class entity later, without
 re-ingesting. For every ``(?s, attrs/<leaf>, ?literal)`` triple we mint a node,
-re-point the attribute at the node's IRI, delete the old literal, and flip the
-attribute's declared ``rdfs:range`` from the XSD primitive to the target entity
-type. The result is the SAME node-valued shape discovery / enrichment write for
-a relationship-valued attribute (``rdf:type`` + ``rdfs:label`` on the node, edge
-via the same ``attrs/<leaf>`` predicate), so a promoted attribute is
-indistinguishable from one that was node-valued from the start (cross-rail
-consistency). Two node-identity strategies via ``params.key_by``:
+add a RELATIONSHIP edge ``(?s, onto/<leaf>, node)``, clear the old literal
+(predicate-scoped, datatype-agnostic), and flip the attribute's declared
+``rdfs:range`` from the XSD primitive to the target entity type. The result is the
+SAME relationship shape ingest writes for a native relationship — ``onto/<leaf>``
+instance edges + an ``rdfs:range`` pointing at a ``types/`` URI + a first-class
+``rdfs:Class`` target — so a promoted attribute is indistinguishable from one that
+was node-valued from the start, and the NL planner (which queries ``onto/<leaf>``
+for a type-ranged attribute) traverses it correctly. Two node-identity strategies
+via ``params.key_by``:
 
 * **``"value"``** (categoricals — Specialty / Category / City): the node IRI is
   ``…/entities/<TargetType>/<slug(value)>``, SHARED across every owner with the
@@ -81,8 +83,9 @@ from cograph_client.graph.ontology_queries import (
     RDF,
     RDFS,
     attr_uri,
+    set_object_property_range,
     type_uri,
-    upsert_attribute,
+    upsert_type,
 )
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
@@ -828,9 +831,11 @@ async def _promote_to_node(
     )
     _, rows = parse_sparql_results(await neptune.query(q))
 
+    onto_pred = ONTO_PRED_PREFIX + pred_leaf  # onto/<leaf> — the relationship edge form
+
     node_triples: list[tuple[str, str, str]] = []
     edges_to_add: list[tuple[str, str, str]] = []
-    literals_to_delete: list[tuple[str, str, str]] = []
+    subjects_to_clear: set[str] = set()
     nodes_seen: set[str] = set()
     edges_seen: set[tuple[str, str, str]] = set()
     literals_promoted = 0
@@ -872,48 +877,63 @@ async def _promote_to_node(
             if node_uri not in nodes_seen:
                 nodes_seen.add(node_uri)
                 node_triples.extend(new_triples)
-            # Always re-point the edge via the PRIMARY attrs/<leaf> predicate (the
-            # canonical relationship form), regardless of the predicate as-used.
-            edge = (s, prim_pred, node_uri)
+            # Re-point the edge via the onto/<leaf> RELATIONSHIP predicate — the
+            # form the NL planner queries for a type-ranged attribute, and the form
+            # ingest (schema_resolver) + _explode_relationship use for relationship
+            # instances. An attrs/<leaf> edge would be invisible to NL queries once
+            # the range flips to an entity type. Keeping the edge on a DIFFERENT
+            # predicate than the old literal also lets the clear below be a clean
+            # predicate-scoped delete of attrs/<leaf> that never touches this edge.
+            edge = (s, onto_pred, node_uri)
             if edge not in edges_seen:
                 edges_seen.add(edge)
                 edges_to_add.append(edge)
-        # Delete the exact literal triple as-used (its own predicate form).
-        p = r.get("p", "")
-        if p:
-            literals_to_delete.append((s, p, o))
-            literals_promoted += 1
+        # Clear this subject's attrs/<leaf> with a PREDICATE-SCOPED delete (below):
+        # every literal object of it, DATATYPE-AGNOSTICALLY. Reconstructing the
+        # exact literal from the SELECT's lexical value would MISS a typed original
+        # ("4.6"^^xsd:float) — the delete would serialize a plain xsd:string that
+        # never matches the typed triple, leaving the old literal behind and
+        # breaking idempotency. A predicate-scoped clear removes it whatever its
+        # datatype.
+        subjects_to_clear.add(s)
+        literals_promoted += 1
 
-    # 2) Apply through the converged write path: node triples, then edges, then
-    #    delete the old literals (all batched by insert_facts / delete_facts).
+    # 2) Apply through the converged write path, INSERT-FIRST for crash safety:
+    #    nodes, then the onto/<leaf> edges, THEN clear the attrs/<leaf> literals. A
+    #    crash between the edge insert and the clear converges on re-run — the node
+    #    URIs are deterministic (re-mint the identical node/edge, idempotent INSERT)
+    #    and the surviving literal is re-selected and re-cleared. The clear is a
+    #    PREDICATE-SCOPED delete (o=None) of each subject's attrs/<leaf>: it removes
+    #    every literal object regardless of datatype and never hits the onto/<leaf>
+    #    edge (a different predicate), all through the shared delete_facts (batched,
+    #    provenance tombstone, ADR 0007).
     if node_triples:
         await insert_facts(neptune, kg_graph, node_triples)
     if edges_to_add:
         await insert_facts(neptune, kg_graph, edges_to_add)
-    if literals_to_delete:
+    if subjects_to_clear:
         await delete_facts(
             neptune,
             kg_graph,
-            triples=literals_to_delete,
+            triples=[(s, prim_pred, None) for s in sorted(subjects_to_clear)],
             reason="normalization:promote_to_node literal->node",
         )
 
-    # 3) ONTOLOGY: flip the attribute's declared range from the XSD literal type to
-    #    the target ENTITY type (datatype = a TYPE name → a relationship range).
-    #    upsert_attribute is an idempotent upsert — its range block is an
-    #    unconditional DELETE(old ?range)+INSERT(new), so no stale/duplicate
-    #    rdfs:range is left behind. Only when we actually promoted something (a
-    #    pure re-run selects no literals and must stay a total no-op, including the
-    #    schema).
+    # 3) ONTOLOGY (only when something was promoted — a pure re-run stays a total
+    #    no-op, schema included). Two idempotent upserts:
+    #    (a) declare the target as a first-class rdfs:Class (upsert_type) — a bare
+    #        instance-level rdf:type is not enough: the type grid + embed_types key
+    #        on the Class declaration, so without it the new type is invisible +
+    #        the target-type re-embed is a no-op; and
+    #    (b) flip the attribute's rdfs:range xsd->types/<target> via
+    #        set_object_property_range — a RANGE-ONLY replace that preserves any
+    #        human-authored rdfs:comment (upsert_attribute with an empty description
+    #        would silently clear it). The attribute is now a proper
+    #        relationship-ranged property matching its onto/<leaf> instance edges.
     if literals_promoted:
+        await neptune.update(upsert_type(onto_graph, target_type))
         await neptune.update(
-            upsert_attribute(
-                onto_graph,
-                type_name,
-                pred_leaf,
-                "",
-                datatype=target_type,
-            )
+            set_object_property_range(onto_graph, type_name, pred_leaf, target_type)
         )
 
     summary = {

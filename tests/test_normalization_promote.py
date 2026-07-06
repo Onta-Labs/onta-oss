@@ -218,10 +218,12 @@ async def test_promote_value_keyed_categorical_shares_nodes():
     assert (cardio, RDFS_LABEL, "Cardiology") in quads
     assert (cardio, TYPES + "Specialty/attrs/name", "Cardiology") in quads
 
-    # edges rewired to the shared nodes.
-    assert (ENTITY + "Doctor/d1", attr, cardio) in quads
-    assert (ENTITY + "Doctor/d2", attr, cardio) in quads
-    assert (ENTITY + "Doctor/d3", attr, onco) in quads
+    # edges rewired to the shared nodes on the onto/<leaf> RELATIONSHIP predicate
+    # (the form the NL planner queries for a type-ranged attribute).
+    onto = "https://cograph.tech/onto/specialty"
+    assert (ENTITY + "Doctor/d1", onto, cardio) in quads
+    assert (ENTITY + "Doctor/d2", onto, cardio) in quads
+    assert (ENTITY + "Doctor/d3", onto, onco) in quads
 
     # old literals gone.
     assert (ENTITY + "Doctor/d1", attr, "Cardiology") not in quads
@@ -263,9 +265,10 @@ async def test_promote_owner_keyed_measurement_distinct_and_lossless():
     # and carries the label.
     assert (n1, RDFS_LABEL, "4.6") in quads
 
-    # edges rewired, literals gone.
-    assert (ENTITY + "CoffeeShop/shop-1", attr, n1) in quads
-    assert (ENTITY + "CoffeeShop/shop-2", attr, n2) in quads
+    # edges rewired on onto/<leaf>; literals cleared from attrs/<leaf>.
+    onto = "https://cograph.tech/onto/rating"
+    assert (ENTITY + "CoffeeShop/shop-1", onto, n1) in quads
+    assert (ENTITY + "CoffeeShop/shop-2", onto, n2) in quads
     assert (ENTITY + "CoffeeShop/shop-1", attr, "4.6") not in quads
     assert (ENTITY + "CoffeeShop/shop-2", attr, "4.6") not in quads
 
@@ -330,9 +333,10 @@ async def test_promote_value_keyed_split_multivalue():
     # the single "A, B" literal split into TWO value-keyed nodes + two edges.
     assert (cardio, RDF_TYPE, TYPES + "Specialty") in quads
     assert (onco, RDF_TYPE, TYPES + "Specialty") in quads
-    assert (e, attr, cardio) in quads
-    assert (e, attr, onco) in quads
-    # packed literal gone.
+    onto = "https://cograph.tech/onto/specialty"
+    assert (e, onto, cardio) in quads
+    assert (e, onto, onco) in quads
+    # packed literal gone from attrs/<leaf>.
     assert (e, attr, "Cardiology, Oncology") not in quads
 
     assert summary["nodes_created"] == 2
@@ -378,8 +382,9 @@ async def test_list_explode_attribute_target_entity_promotes():
     onco = ENTITY + "Specialty/Oncology"
     assert (cardio, RDF_TYPE, TYPES + "Specialty") in quads
     assert (onco, RDF_TYPE, TYPES + "Specialty") in quads
-    assert (e, attr, cardio) in quads
-    assert (e, attr, onco) in quads
+    onto = "https://cograph.tech/onto/specialty"
+    assert (e, onto, cardio) in quads
+    assert (e, onto, onco) in quads
     assert (e, attr, "Cardiology; Oncology") not in quads
     # range upgraded to the derived Specialty type.
     assert _range_of(neptune, attr) == TYPES + "Specialty"
