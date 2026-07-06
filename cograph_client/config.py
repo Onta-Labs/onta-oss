@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     # Supabase, ...) — and intentionally carries no cloud-provider identifiers.
     database_url: str = ""
 
+    # Optional base URL for workspace-invite accept links (ONTA-227), e.g. the
+    # web app's "/invite" page (env OMNIX_INVITE_ACCEPT_URL_BASE). The one-time
+    # accept token is appended as a path segment: "<base>/<token>". When unset,
+    # invite creation still returns the raw token (accept_url is null) and no
+    # sign-up email redirect can be built — link-only delivery.
+    invite_accept_url_base: str = ""
+
     # Optional auth plugin: a dotted "module.path:callable" that will be
     # imported at app startup. The callable is invoked with no arguments
     # and is expected to register an external API key verifier via

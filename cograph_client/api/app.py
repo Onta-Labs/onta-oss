@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage
+from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage, workspace_invites
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.logging import setup_logging
@@ -295,6 +295,9 @@ def create_app() -> FastAPI:
     app.include_router(explore.router, tags=["explore"])
     app.include_router(normalize.router, tags=["normalize"])
     app.include_router(tenants.router, tags=["tenants"])
+    # ONTA-227: canonical workspace membership + invite routes (web/CLI/MCP all
+    # ride these — interface-convergence rule).
+    app.include_router(workspace_invites.router, tags=["workspace"])
     app.include_router(agent.router, tags=["agent"])
     app.include_router(conversations.router, tags=["conversations"])
     app.include_router(usage.router, tags=["usage"])
@@ -306,6 +309,12 @@ def create_app() -> FastAPI:
     app.include_router(api_sources.router, tags=["api_sources"])
     _register_agent_capabilities()
     _load_router_plugins(app)
+    # ONTA-227: make the workspace-registry operating mode visible at startup —
+    # the degraded modes (no durable store / enforcement flag off) are
+    # deliberate but must never be silent.
+    from cograph_client.auth.workspace_store import log_workspace_registry_mode
+
+    log_workspace_registry_mode()
     return app
 
 

@@ -64,6 +64,17 @@ def register_external_verifier(verifier: Optional[ExternalVerifier]) -> None:
     _external_verifier = verifier
 
 
+def get_external_verifier() -> Optional[ExternalVerifier]:
+    """The registered external verifier, if any.
+
+    Exposed for callers that need the raw verdict rather than a resolved
+    ``TenantContext`` — e.g. workspace-invite subject resolution, which must
+    work for a key whose user has ZERO tenants yet (``get_tenant`` would 401
+    on the empty grant list).
+    """
+    return _external_verifier
+
+
 def _resolve_allowed(
     allowed: Sequence[str],
     requested: Optional[str],
