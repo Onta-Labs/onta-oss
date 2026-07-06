@@ -35,10 +35,10 @@ def attr_uri(type_name: str, attr_name: str) -> str:
 
 def _safe_id(raw_id: str) -> str:
     """Sanitize a raw entity id into the URI-safe slug used for the
-    ``…/entities/<Type>/<slug>`` tail: non-``[A-Za-z0-9_-]`` runs collapse to
-    ``_``, the result is capped at 200 chars, and an empty result becomes
-    ``"unknown"``. Deterministic, so the same raw value always maps to the same
-    node (free dedup)."""
+    ``…/entities/<Type>/<slug>`` tail: each non-``[A-Za-z0-9_-]`` char becomes
+    ``_`` (per-char, not run-collapsed — ``"a  b"`` → ``"a__b"``), the result is
+    capped at 200 chars, and an empty result becomes ``"unknown"``. Deterministic,
+    so the same raw value always maps to the same node (free dedup)."""
     safe = re.sub(r"[^a-zA-Z0-9_-]", "_", raw_id.strip())
     return safe[:200] if safe else "unknown"
 

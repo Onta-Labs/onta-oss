@@ -114,6 +114,32 @@ Text is chunked (3000 chars, 200 overlap) via `omnix/resolver/chunker.py`. Each 
 gets one LLM extraction call. Results are deduplicated by entity ID across chunks, then
 follow the same resolution + insertion path.
 
+### Web-discovery extraction: SOFT/seed, not a hard cage (ONTA-199, ADR 0009)
+
+Web-discovery ingest confirms a single target type + attribute set with the user
+before pulling the full result set, then extracts against that confirmation via an
+opt-in `ExtractionConstraint` (`cograph_client/resolver/models.py`), passed as
+`SchemaResolver.ingest()`'s `constrain_types` / `constrain_attributes` /
+`constrain_soft` kwargs (`cograph_client/resolver/schema_resolver.py`). Two modes,
+selected by `ExtractionConstraint.soft`:
+
+- **Hard cage (`soft=False`)** — flattens extraction to exactly the confirmed type +
+  attributes: no sub-entities, no lineage, no relationships. Fast and compact, but
+  over-flattens structurally-distinct records into the one confirmed type and demotes
+  real-world attribute values to literals.
+- **Soft/seed (`soft=True`, the default)** — the confirmed type + attributes are
+  handed to the extractor as a reusable PRIOR, not a restriction. The engine
+  decomposes faithfully: most-specific subtypes, real-world attribute values (a city,
+  a specialty, an organization) lifted into their own nodes via relationships,
+  multi-valued fields split into separate assertions, reuse-first over minting new
+  types. The post-extraction guard (`_apply_extraction_constraint`) is a no-op in this
+  mode — the prompt-level prior is the only mechanism.
+
+Document/CSV/text ingestion never sets a constraint (`constrain_types=None`), so this
+mechanism is a discovery-only opt-in — every other ingestion path is unaffected. See
+`docs/adr/0009-faithful-decomposition-and-cross-rail-write-consistency.md` in the
+parent repo for the full rationale.
+
 ### Enrichment (optional pre-processing)
 
 `scripts/enrich_csv.py` — Two-phase LLM enrichment before ingestion:
@@ -185,6 +211,37 @@ Types and attributes live in the tenant graph and are shared across all KGs.
 Instance data lives in KG-specific graphs. This means a City type defined
 during Zillow ingestion is reusable when ingesting clinical trials.
 
+### Instance-edge predicate convention
+
+A relationship-valued attribute has TWO URIs, and they are not interchangeable:
+
+- **`.../types/{Type}/attrs/{leaf}`** — the ontology PROPERTY DECLARATION
+  (`rdf:Property`, `rdfs:domain`, `rdfs:range`) and every LITERAL attribute's
+  instance value.
+- **`.../onto/{leaf}`** — the INSTANCE EDGE for a type-ranged (relationship)
+  attribute. This is the only predicate the NL→SPARQL planner traverses for a
+  relationship — an edge written on `attrs/{leaf}` instead is invisible to
+  natural-language queries.
+
+Every writer that can produce a node-valued attribute (discovery's native
+relationships AND its attribute→node promotion, enrichment's node-linking, the
+`promote_to_node` normalization rule) writes the instance edge on `onto/{leaf}` and
+leaves the `attrs/{leaf}` declaration as the property's schema record (range =
+`types/{TargetType}`). This is a fixed convention shared across every writer, not a
+per-writer choice.
+
+### Cross-rail node minting
+
+Discovery (`resolver/schema_resolver.py`), enrichment (`enrichment/executor.py`), and
+`promote_to_node` (`normalization/execute.py`) all mint entity URIs with the
+IDENTICAL scheme: `https://cograph.tech/entities/{TypeName}/{_safe_id(value)}`
+(`_safe_id`: non-`[A-Za-z0-9_-]` characters → `_`, truncated to 200 chars). A value
+from any of the three rails resolves to the SAME shared node — enrichment filling a
+`city` attribute with `"Austin"` links to the exact `entities/City/Austin` node
+discovery would have minted for the same city, rather than a dangling string. This is
+what makes discovery / enrichment / normalization output mergeable instead of three
+disjoint copies of the same real-world thing.
+
 ### Datatype Handling
 
 - Strings: plain literals (`"Austin"`)
@@ -197,6 +254,48 @@ DateTime values are always normalized to full ISO-8601 with time component in
 `validator.py:_typed_value`. This is required for Neptune xsd:dateTime comparisons
 to work — storing `"2018-11-26"^^xsd:dateTime` (without time) causes silent comparison
 failures.
+
+## Data Normalization Subsystem
+
+`cograph_client/normalization/` — infer normalization rules from real data, confirm
+with a human, execute, and auto-apply to future inserts.
+
+**Lifecycle: infer → confirm → execute → auto-apply.**
+
+1. **Infer** — sample a predicate's values 2–3× and run an LLM to propose candidate
+   normalization rules, ranked by confidence (`normalization/inference.py`). The
+   inference step *only proposes* — it never writes.
+2. **Confirm** — proposals are presented for human confirmation via the
+   `/normalize/*` routes (`api/routes/normalize.py`): `suggest` → `confirm`/`reject` →
+   `apply`.
+3. **Execute** — the confirmed rule runs as a deterministic SPARQL transformation
+   (`normalization/execute.py::apply_rule`). Type-stats are recomputed after each
+   apply that actually mutated the graph.
+4. **Auto-apply** — confirmed rules persist as ordinary triples in the tenant
+   ontology graph (`normalization/rules.py::NormalizationRuleStore`) and can be
+   re-applied to matching values on future inserts.
+
+**Rule types implemented:**
+
+| Rule | What it does |
+|------|--------------|
+| `list_explode` | Splits a composite relationship target (e.g. `English__Persian`) into atomic entities with canonical slug IRIs, re-points the edges to the atomic entities, and sweeps the now-orphaned composite entities. Also splits delimited list **literals** into separate values. |
+| `strip_emoji` | Strips emoji from string values (e.g. names, titles, skills). |
+| `promote_to_node` | The literal→node "escape hatch": reifies a `types/{Type}/attrs/{leaf}` literal into a first-class entity node, writes the relationship edge on `onto/{leaf}` (the same instance-edge convention as a native relationship — see "Instance-edge predicate convention" above), clears the old literal (predicate-scoped, datatype-agnostic delete), and flips the attribute's declared `rdfs:range` to the target type. Two node-identity strategies via `params.key_by`: `"value"` (default) mints ONE shared node per distinct value — the categorical case (`specialty = "Cardiology"` → a shared `Cardiology` node every matching entity points at); `"owner"` mints one node PER OWNER, preserving the original literal losslessly as the node's `value` attribute — the measurement case (`rating = "4.6"`, where two different owners rated 4.6 must NOT collapse into one node). `params.split` (value-keyed only) explodes a packed multi-value literal into several nodes in one pass. Idempotent — a promoted attribute's object is a URI, so a re-run's literal-only filter selects nothing. `normalization/execute.py::_promote_to_node`. |
+
+The engine reuses the platform's existing entity/edge/stats primitives (the shared
+write path, `graph/kg_writer.py`) — it does not reimplement insertion, dedup, or
+stats.
+
+**`promote_to_node` is user-authored, not inferred:** a user reaches the escape
+hatch by authoring the rule directly on the create route (`POST /normalize/rules` →
+`api/routes/normalize.py::_SUPPORTED_RULE_TYPES` + `_validate_create_request`, which
+fail-fast-validates the required `params.target_type` and `params.key_by ∈ {value,
+owner}`), then `confirm` → `apply`. The
+LLM inference step (`normalization/inference.py::_SUPPORTED_RULE_TYPES`) deliberately
+does NOT propose promotions — there is no reliable heuristic for "this literal
+deserves to be a node" yet — so, unlike `list_explode` / `strip_emoji`, it is never
+auto-suggested; the human decides when a literal has earned nodehood.
 
 ## Query Pipeline
 
