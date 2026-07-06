@@ -1,0 +1,16 @@
+"""Deterministic KG quality-control checks — the un-gameable backbone of the
+continuous QC eval loop (docs/specs/continuous_kg_qc_eval_spec.md).
+
+Structural invariants any faithfully-produced KG must satisfy, expressed as SPARQL
+graph-pattern queries that RETURN violations (RDFUnit-style). No LLM, no golden
+output — properties, so they generalize across domains rather than overfitting to
+fixtures.
+"""
+from cograph_client.qc.invariants import (
+    INVARIANTS,
+    Invariant,
+    Violation,
+    check_invariants,
+)
+
+__all__ = ["INVARIANTS", "Invariant", "Violation", "check_invariants"]
