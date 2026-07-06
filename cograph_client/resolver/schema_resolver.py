@@ -28,6 +28,7 @@ from cograph_client.graph.ontology_queries import (
     TEXT_KIND_NOT_TEXT,
     batch_entity_exists_query,
     entity_exists_query,
+    entity_uri as _entity_uri,
     get_full_ontology_query,
     insert_attribute,
     insert_subtype,
@@ -806,7 +807,7 @@ class SchemaResolver:
                 )
                 if also:
                     entity_also_types[entity.id] = also
-                entity_uri = f"https://cograph.tech/entities/{resolved_type}/{_safe_id(entity.id)}"
+                entity_uri = _entity_uri(resolved_type, entity.id)
 
                 # Cross-file ER: see if this entity matches an existing one.
                 # Failures here MUST never block ingest — log and fall through.
@@ -1132,7 +1133,7 @@ class SchemaResolver:
                 if resolved_type:
                     resolved_types[entity.id] = resolved_type
                     resolved_by_decl_type.setdefault(entity.type_name, resolved_type)
-                    entity_uri = f"https://cograph.tech/entities/{resolved_type}/{_safe_id(entity.id)}"
+                    entity_uri = _entity_uri(resolved_type, entity.id)
                     entity_uri_map[entity.id] = entity_uri
                     entity_type_map[entity.id] = resolved_type
                     pending_uris.append(entity_uri)
@@ -2258,11 +2259,16 @@ class SchemaResolver:
             if promo_match and promo_match.promoted_type:
                 ptype = promo_match.promoted_type
                 if ptype not in promoted_entities:
-                    p_uri = f"https://cograph.tech/entities/{ptype}/{_safe_id(entity.id)}-{ptype.lower()}"
+                    p_uri = f"{_entity_uri(ptype, entity.id)}-{ptype.lower()}"
                     promoted_entities[ptype] = p_uri
                     triples_to_insert.append((p_uri, rdf_type, type_uri(ptype)))
                     rel_pred = f"https://cograph.tech/onto/has_{ptype.lower()}"
                     triples_to_insert.append((entity_uri, rel_pred, p_uri))
+                    # Post-write housekeeping must re-embed / re-stat the promoted
+                    # node's TYPE too (Part 3), not just the subject type — else a
+                    # pre-existing ptype that gains its first node this pass stays
+                    # stale until its next write. See IngestResult.affected_types().
+                    result.node_target_types.append(ptype)
 
                 p_uri = promoted_entities[ptype]
                 attr_name = promo_match.name
@@ -2316,10 +2322,28 @@ class SchemaResolver:
                 type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
             if resolved.datatype not in PRIMITIVE_TYPES and resolved.datatype in existing_types:
-                target_uri = f"https://cograph.tech/entities/{resolved.datatype}/{_safe_id(resolved.value)}"
+                target_uri = _entity_uri(resolved.datatype, resolved.value)
                 pred_uri = attr_uri(resolved_type, resolved.name)
                 triples_to_insert.append((entity_uri, pred_uri, target_uri))
                 attr_facts.append((entity_uri, pred_uri, target_uri))
+                # Materialize the target as a FIRST-CLASS node: emit its rdf:type +
+                # rdfs:label too. Without them the promoted node is bare — untyped,
+                # unlabelled, invisible to "list all <Type>" queries — even though
+                # the edge points at it. Mirrors enrichment's node-linking
+                # (executor._instance_triples_for_value) so discovery + enrichment
+                # mint the identical shared NODE for the same real-world thing.
+                # (The relationship EDGE predicate is a separate axis: enrichment
+                # moved its instance edge to onto/<leaf> for NL-visibility in #126;
+                # discovery's promotion edge stays on attrs/<leaf> here — this change
+                # converges the NODE minting, not the edge predicate.)
+                # NOT added to attr_facts: this is node materialization, not a fact
+                # ABOUT the subject — same as how the subject's own rdf:type/label
+                # are emitted untracked above.
+                triples_to_insert.append((target_uri, rdf_type, type_uri(resolved.datatype)))
+                triples_to_insert.append((target_uri, rdfs_label, resolved.value))
+                # refresh coverage (Part 3): the newly-minted node's TYPE must be
+                # re-embedded / re-stat'd now, not only on its next write.
+                result.node_target_types.append(resolved.datatype)
                 result.triples_inserted += 1
             else:
                 pred_uri = attr_uri(resolved_type, resolved.name)
@@ -2629,10 +2653,3 @@ class SchemaResolver:
                 )
         except Exception:
             logger.warning("free_text_mapping_markers_failed", exc_info=True)
-
-
-def _safe_id(raw_id: str) -> str:
-    """Sanitize an entity ID for use in a URI."""
-    import re
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", raw_id.strip())
-    return safe[:200] if safe else "unknown"

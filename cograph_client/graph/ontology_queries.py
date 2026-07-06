@@ -1,5 +1,7 @@
 """SPARQL query builders for ontology management."""
 
+import re
+
 OMNIX_ONTO = "https://cograph.tech/onto"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
@@ -17,6 +19,36 @@ def type_uri(type_name: str) -> str:
 
 def attr_uri(type_name: str, attr_name: str) -> str:
     return f"https://cograph.tech/types/{type_name}/attrs/{attr_name}"
+
+
+# --- Entity-node URI minting (the ONE place instance-node IRIs are built) -----
+# Discovery (resolver/schema_resolver), CSV/JSON ingestion (resolver/csv_resolver),
+# enrichment (enrichment/executor), and normalization (normalization/execute) all
+# mint the SAME ``…/entities/<Type>/<slug>`` IRI for the same real-world thing, so
+# a given (type, raw_id) always resolves to ONE shared node across every write rail
+# — never a duplicate, never a dangling string in a node-valued slot. This lives
+# here (not in a resolver module) because ontology_queries imports nothing from the
+# resolver, so every rail can depend on it with no import cycle. A drift guard
+# (tests/test_entity_uri_convergence.py) fails if any other module re-defines the
+# id sanitizer or hand-builds this IRI inline.
+
+
+def _safe_id(raw_id: str) -> str:
+    """Sanitize a raw entity id into the URI-safe slug used for the
+    ``…/entities/<Type>/<slug>`` tail: non-``[A-Za-z0-9_-]`` runs collapse to
+    ``_``, the result is capped at 200 chars, and an empty result becomes
+    ``"unknown"``. Deterministic, so the same raw value always maps to the same
+    node (free dedup)."""
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", raw_id.strip())
+    return safe[:200] if safe else "unknown"
+
+
+def entity_uri(type_name: str, raw_id: str) -> str:
+    """Canonical instance-node IRI for ``raw_id`` of ``type_name``:
+    ``https://cograph.tech/entities/<type_name>/<_safe_id(raw_id)>``. The single
+    source of truth every write rail mints entity nodes through — keep it byte-for-
+    byte stable, since the slug is the node's identity (changing it orphans data)."""
+    return f"https://cograph.tech/entities/{type_name}/{_safe_id(raw_id)}"
 
 
 def insert_type(graph_uri: str, name: str, description: str = "", parent_type: str | None = None) -> str:
