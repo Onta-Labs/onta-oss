@@ -73,6 +73,11 @@ class ApiCallResult:
     estimated_total: Optional[int] = None
     dormant: bool = False
     error: Optional[str] = None
+    # Per-request trace: one entry PER HTTP request issued (first page + every
+    # pagination page), each a plain dict {url, params, status, records, error}.
+    # Kept as dicts (not a typed model) so this executor stays decoupled from the
+    # enrichment models; the rail boundary projects them into ``ApiRequestTrace``.
+    calls: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -87,6 +92,7 @@ class ApiCallResult:
             "estimated_total": self.estimated_total,
             "dormant": self.dormant,
             "error": self.error,
+            "calls": [dict(c) for c in self.calls],
         }
 
 
@@ -96,6 +102,7 @@ class _FetchOutcome:
     payload: Any = None
     ok: bool = False
     error: Optional[str] = None
+    status: Optional[int] = None  # HTTP status of the (final) response, if any
 
 
 # --------------------------------------------------------------------------- #
@@ -197,6 +204,10 @@ class RegistryApiSource:
                 sources.append(outcome.url)
 
             if not outcome.ok:
+                # Trace the failed request (records=0) before bailing/truncating.
+                result.calls.append(
+                    _request_trace(outcome.url, outcome.status, 0, outcome.error)
+                )
                 # First page failing is a hard error; a later page failing just
                 # truncates what we already have.
                 if result.pages_fetched == 1:
@@ -209,6 +220,11 @@ class RegistryApiSource:
                 estimated_total = declared_total(pg, outcome.payload)
 
             records = extract_records(outcome.payload, ep.result_path)
+            # Trace the successful request with its raw (pre-dedupe) record count,
+            # so per-request yield is visible — not just the run total.
+            result.calls.append(
+                _request_trace(outcome.url, outcome.status, len(records), None)
+            )
             for rec in records:
                 mapped = map_record(rec, ep.field_mappings)
                 if not mapped:
@@ -382,11 +398,13 @@ class RegistryApiSource:
                         current = nxt
                         continue
                     if status >= 400:
-                        return _FetchOutcome(url=current, error=f"HTTP {status}")
+                        return _FetchOutcome(url=current, error=f"HTTP {status}", status=status)
                     payload = _parse_json(body)
                     if payload is None:
-                        return _FetchOutcome(url=current, error="response was not valid JSON")
-                    return _FetchOutcome(url=current, payload=payload, ok=True)
+                        return _FetchOutcome(
+                            url=current, error="response was not valid JSON", status=status
+                        )
+                    return _FetchOutcome(url=current, payload=payload, ok=True, status=status)
             return _FetchOutcome(url=current, error="too many redirects")
         except Exception as exc:  # never raise out of the executor
             logger.debug("api_registry fetch failed url=%s err=%s", redact_url(current), exc)
@@ -436,6 +454,16 @@ def _finalize(
     if estimated_total is not None:
         result.estimated_total = estimated_total
     return result
+
+
+def _request_trace(
+    url: str, status: Optional[int], records: int, error: Optional[str]
+) -> dict[str, Any]:
+    """A serializable per-request trace entry. ``params`` is parsed from ``url``
+    (the auth-free display URL) so it carries the GET "payload" without any auth
+    material — the executor never puts a query-key secret on the display URL."""
+    params = {k: v for k, v in parse_qsl(urlparse(url).query)}
+    return {"url": url, "params": params, "status": status, "records": records, "error": error}
 
 
 def _parse_json(body: bytes) -> Any:

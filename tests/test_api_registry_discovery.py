@@ -64,6 +64,32 @@ async def test_discover_projects_rows_and_provenance():
 
 
 @pytest.mark.asyncio
+async def test_discover_projects_request_trace():
+    """The executor's per-request trace rides through discover() onto
+    DiscoverResult.calls, so the web-ingest capability can persist it."""
+    page = {"result_count": 1, "results": [
+        {"number": "1", "basic": {"first_name": "A", "last_name": "B"},
+         "taxonomies": [{"desc": "Cardiovascular Disease"}],
+         "addresses": [{"city": "SF", "state": "CA", "telephone_number": "415"}]}]}
+    empty = {"result_count": 0, "results": []}
+
+    def handler(req):
+        from urllib.parse import parse_qs, urlparse
+        skip = parse_qs(urlparse(str(req.url)).query).get("skip", ["0"])[0]
+        return httpx.Response(200, json=page if skip == "0" else empty)
+
+    dr = await _nppes_source(handler).discover(
+        "cardiologists", sample=False, max_rows=50, hint_columns=None, context={}
+    )
+    assert dr.calls, "expected per-request traces to be projected"
+    first = dr.calls[0]
+    assert first["url"].startswith("https://npiregistry.cms.hhs.gov/api/")
+    assert first["status"] == 200
+    assert first["records"] == 1
+    assert first["params"]["taxonomy_description"] == "cardiology"
+
+
+@pytest.mark.asyncio
 async def test_discover_url_mode_returns_empty():
     src = _nppes_source(lambda r: httpx.Response(200, json={"results": []}))
     dr = await src.discover("x", sample=False, max_rows=10, hint_columns=None, context={},

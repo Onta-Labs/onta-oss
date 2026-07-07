@@ -68,6 +68,11 @@ class DiscoverResult:
     is_partial: bool = False
     estimated_total: Optional[int] = None
     error: Optional[str] = None
+    # Optional request-level trace: one dict per HTTP request the provider issued
+    # ({url, params, status, records, error}). Populated by structured API-source
+    # providers (the registry executor); web-search providers leave it empty. The
+    # web-ingest capability projects these into the run's per-provider ProviderLog.
+    calls: list[dict] = field(default_factory=list)
 
 
 @runtime_checkable
