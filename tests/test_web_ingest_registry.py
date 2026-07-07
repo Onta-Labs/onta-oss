@@ -145,6 +145,23 @@ def test_record_requests_accumulates_caps_and_skips_malformed():
     assert len(plog.requests) == _MAX_REQUEST_TRACES_PER_PROVIDER
 
 
+def test_old_job_without_requests_field_deserializes():
+    # Jobs whose provider_logs predate the `requests` field (and jobs with no
+    # provider_logs at all) must load unchanged, with requests defaulting to [].
+    from cograph_client.enrichment.models import EnrichJob
+
+    old = {
+        "id": "j0", "tenant_id": "t", "kg_name": "docs", "type_name": "Physician",
+        "attributes": ["name"], "tier": "auto", "status": "applied",
+        "created_at": "2026-01-01T00:00:00Z", "conflict_policy": "skip",
+        "provider_logs": [{"provider": "api:nppes", "matches": 5}],  # no "requests" key
+    }
+    job = EnrichJob.model_validate(old)
+    assert job.provider_logs[0].requests == []
+    job2 = EnrichJob.model_validate(dict(old, provider_logs=[]))
+    assert job2.provider_logs == []
+
+
 def test_provider_log_request_trace_survives_json_round_trip():
     # The persisted job serializes ProviderLog.requests to JSON and back
     # unchanged (the PostgresJobStore path), so the trace reaches the UI.

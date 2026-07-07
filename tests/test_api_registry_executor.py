@@ -218,6 +218,39 @@ async def test_request_trace_omits_query_key_secret():
 
 
 @pytest.mark.asyncio
+async def test_request_trace_scrubs_query_key_on_same_host_redirect():
+    """Defense-in-depth: a same-host redirect that echoes the api_key back in its
+    Location must NOT leak the secret into the persisted trace url/params."""
+    spec = _spec(
+        auth={"mode": "api_key_query", "query_key": "api_key", "key_env": "DEMO_KEY"},
+        endpoints=[{
+            "name": "s", "path": "/s", "result_path": "results", "field_mappings": {"id": "id"},
+            "params": [{"name": "q", "target": "q"}],
+            "pagination": {"style": "none"},
+        }],
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if urlparse(str(request.url)).path == "/s":
+            # The upstream reflects the secret back into a same-host redirect.
+            return httpx.Response(302, headers={"location": "https://api.demo.test/s2?api_key=SECRET123&q=x"})
+        return httpx.Response(200, json={"results": [{"id": "1"}]})
+
+    import os
+    os.environ["DEMO_KEY"] = "SECRET123"
+    try:
+        res = await _src(handler).execute(spec, {"q": "x"})
+    finally:
+        del os.environ["DEMO_KEY"]
+
+    assert res.rows == [{"id": "1"}]
+    assert len(res.calls) == 1
+    assert "SECRET123" not in res.calls[0]["url"]
+    assert "api_key" not in res.calls[0]["params"]
+    assert res.calls[0]["params"]["q"] == "x"  # the real payload is preserved
+
+
+@pytest.mark.asyncio
 async def test_cursor_pagination_follows_token_then_stops():
     spec = _spec(endpoints=[{
         "name": "s", "path": "/s", "result_path": "results", "field_mappings": {"id": "id"},

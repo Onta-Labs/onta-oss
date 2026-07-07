@@ -185,6 +185,10 @@ class RegistryApiSource:
         sources: list[str] = []
         estimated_total: Optional[int] = None
         page_max = 1 if sample else max(1, pg.max_pages)
+        # When auth is a query-key, scrub that param from the request trace (the
+        # display URL is secret-free on the direct path, but a same-host redirect
+        # could echo it back — keep it out of the persisted trace regardless).
+        redact_key = spec.auth.query_key if spec.auth.mode is AuthMode.api_key_query else None
 
         state: Optional[PageState] = first_page(pg)
         while state is not None:
@@ -206,7 +210,7 @@ class RegistryApiSource:
             if not outcome.ok:
                 # Trace the failed request (records=0) before bailing/truncating.
                 result.calls.append(
-                    _request_trace(outcome.url, outcome.status, 0, outcome.error)
+                    _request_trace(outcome.url, outcome.status, 0, outcome.error, redact_key=redact_key)
                 )
                 # First page failing is a hard error; a later page failing just
                 # truncates what we already have.
@@ -223,7 +227,7 @@ class RegistryApiSource:
             # Trace the successful request with its raw (pre-dedupe) record count,
             # so per-request yield is visible — not just the run total.
             result.calls.append(
-                _request_trace(outcome.url, outcome.status, len(records), None)
+                _request_trace(outcome.url, outcome.status, len(records), None, redact_key=redact_key)
             )
             for rec in records:
                 mapped = map_record(rec, ep.field_mappings)
@@ -457,12 +461,30 @@ def _finalize(
 
 
 def _request_trace(
-    url: str, status: Optional[int], records: int, error: Optional[str]
+    url: str,
+    status: Optional[int],
+    records: int,
+    error: Optional[str],
+    *,
+    redact_key: Optional[str] = None,
 ) -> dict[str, Any]:
-    """A serializable per-request trace entry. ``params`` is parsed from ``url``
-    (the auth-free display URL) so it carries the GET "payload" without any auth
-    material — the executor never puts a query-key secret on the display URL."""
-    params = {k: v for k, v in parse_qsl(urlparse(url).query)}
+    """A serializable per-request trace entry. ``params`` is the GET "payload"
+    parsed from ``url`` (the auth-free display URL).
+
+    The common (no-redirect) path never carries a secret on the display URL. As
+    defense-in-depth — honoring the repo's ``research.redact_url`` "keep secrets
+    out of the trace" convention — ``redact_key`` (the spec's auth query-param
+    name when it authenticates via a query key) is scrubbed from BOTH the ``url``
+    and the ``params``, so a same-host redirect that echoes the secret back in
+    its ``Location`` cannot leak it into the persisted trace."""
+    parsed = urlparse(url)
+    pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    if redact_key:
+        filtered = [(k, v) for (k, v) in pairs if k != redact_key]
+        if len(filtered) != len(pairs):
+            url = urlunparse(parsed._replace(query=urlencode(filtered, doseq=False)))
+            pairs = filtered
+    params = dict(pairs)
     return {"url": url, "params": params, "status": status, "records": records, "error": error}
 
 
