@@ -75,9 +75,18 @@ class JobCategory(str, Enum):
 class JobTrigger(str, Enum):
     """How a job was kicked off.
 
-    Today everything is ``manual`` (a user clicked an action). ``scheduled``
-    and ``webhook`` are reserved for future automation — populated by callers,
-    no scheduling logic lives here yet (TODO).
+    ``manual`` is a user-initiated action. ``scheduled`` is live (COG-135/136):
+    the scheduler in ``cograph_client/scheduling/`` (``ScheduleRunner`` in
+    ``runner.py``, cron + interval with missed-tick catch-up and a Postgres
+    ``SELECT ... FOR UPDATE SKIP LOCKED`` multi-replica claim) fires due
+    schedules via ``dispatch_scheduled_action``, which reuses the exact same
+    action worker as the manual path — so a scheduled enrichment runs behind the
+    identical confidence / conflict-policy / staging gate, only with
+    ``trigger=scheduled``. It is wired into ``api/app.py`` lifespan via
+    ``make_schedule_runner`` and enabled by default whenever a ``database_url``
+    is configured (prod demo-tenant runs Aurora, so it is on in prod). Only
+    ``webhook`` remains reserved for future automation — populated by callers,
+    with no firing logic yet.
     """
 
     manual = "manual"
