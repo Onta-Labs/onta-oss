@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client, CographError } from "cograph";
@@ -5,6 +6,17 @@ import type { AgentResult, ResolvedChange } from "cograph";
 import { z } from "zod";
 
 const VERSION = "0.1.0";
+
+// Stable conversation id for this MCP server process. The `agent` tool threads
+// this into every backend `/agent` call when the caller does not supply its own
+// `session_id`, so multi-turn context accumulates across tool invocations. The
+// OSS planner's clarify-convergence machinery is gated on a session id and
+// silently no-ops without one (cograph_client/agent/planner.py history load +
+// `_effective_instruction`; web_ingest_cap `already_asked`), so a missing id
+// means every turn is planned statelessly and a single stated intent gets
+// re-clarified indefinitely. Minting once per process keeps the whole session's
+// turns on one thread.
+const DEFAULT_SESSION_ID = randomUUID();
 
 const server = new McpServer(
   {
@@ -497,7 +509,11 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Optional conversation id to keep multi-turn context across calls.",
+          "Optional conversation id to keep multi-turn context across calls. " +
+            "When omitted, the server threads a stable per-process id so " +
+            "multi-turn context still accumulates and clarify-convergence " +
+            "activates; pass an explicit id only to segment separate " +
+            "conversations.",
         ),
       confirm_plan_id: z
         .string()
@@ -516,7 +532,10 @@ server.registerTool(
         kgName: kg_name,
         typeName: type_name,
         urls,
-        sessionId: session_id,
+        // Fall back to the per-process session id so turns stay on one thread
+        // and the planner's clarify-convergence machinery activates even when
+        // the caller does not supply its own conversation id.
+        sessionId: session_id ?? DEFAULT_SESSION_ID,
         confirmPlanId: confirm_plan_id,
       });
       return textResult(describeAgentResult(result));
