@@ -214,6 +214,20 @@ async def test_declared_relationship_edge_on_literal_is_caught(n):
 
 
 @pytest.mark.asyncio
+async def test_relationship_edge_on_literal_multiple_ranges_reports_once(n):
+    """A property with >1 declared node range whose instance edge points at a literal is
+    still ONE violation, not one per range (the SELECT DISTINCT dedup)."""
+    await _insert(n, _GOOD_PHYS + f'<{ENT}Physician/p1> <{ONTO}located_in> "SF" . ')
+    await _insert(
+        n,
+        f"<{TYPES}Physician/attrs/located_in> <{RDFS_RANGE}> <{TYPES}City> , <{TYPES}Place> . ",
+        graph=ONTO_G,
+    )
+    vs = await check_invariants(n, G, onto_graph_uri=ONTO_G)
+    assert [v.invariant for v in vs] == ["relationship_edge_points_at_literal"]
+
+
+@pytest.mark.asyncio
 async def test_cross_type_same_leaf_literal_attribute_not_flagged(n):
     """Type-scoping: a leaf that is a RELATIONSHIP on one type but a LITERAL attribute on
     another must not cross-contaminate. A Physician with onto/rating "4.6" is NOT flagged
@@ -341,6 +355,43 @@ async def test_edge_target_mismatch_skipped_without_onto_graph(n):
     await _insert(n, f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> . ", graph=ONTO_G)
     assert await check_invariants(n, G) == []  # skipped
     assert len(await check_invariants(n, G, onto_graph_uri=ONTO_G)) == 1  # runs
+
+
+@pytest.mark.asyncio
+async def test_edge_target_multiple_ranges_match_one_is_ok(n):
+    """Ranges are DISJUNCTIVE alternatives: works_at declared range Hospital OR Clinic, a
+    target typed Hospital is valid. Regression for the multi-range false-positive the
+    adversarial review caught (per-range testing flagged the unmatched Clinic range)."""
+    await _insert(
+        n,
+        _GOOD_PHYS
+        + f'<{ENT}Hospital/h1> <{RDF_TYPE}> <{TYPES}Hospital> ; <{RDFS_LABEL}> "H" . '
+        + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}Hospital/h1> . ",
+    )
+    await _insert(
+        n,
+        f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> , <{TYPES}Clinic> . ",
+        graph=ONTO_G,
+    )
+    assert await check_invariants(n, G, onto_graph_uri=ONTO_G) == []
+
+
+@pytest.mark.asyncio
+async def test_edge_target_multiple_ranges_match_none_is_caught(n):
+    """Multi-range but the target matches NEITHER — still a real mismatch, exactly ONE flag
+    (not one-per-range)."""
+    await _insert(
+        n,
+        _GOOD_PHYS + _GOOD_CITY
+        + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}City/SF> . ",
+    )
+    await _insert(
+        n,
+        f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> , <{TYPES}Clinic> . ",
+        graph=ONTO_G,
+    )
+    vs = await check_invariants(n, G, onto_graph_uri=ONTO_G)
+    assert [v.invariant for v in vs] == ["edge_target_type_mismatch"]
 
 
 @pytest.mark.asyncio
