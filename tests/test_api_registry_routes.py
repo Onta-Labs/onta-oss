@@ -120,15 +120,16 @@ def test_create_lists_and_reads_back(client):
     assert summary["editable"] is True
     assert summary["has_secret"] is False
 
-    # List includes it + the global seed entries (read-only).
+    # List includes the tenant's own custom entry. A regular (non-operator)
+    # caller — the static `test-key` is non-operator — sees ONLY its own
+    # tenant_custom sources; the global seed catalog is hidden (ONTA-234).
     listed = client.get(_BASE, headers=_HDR).json()
     by_slug = {s["slug"]: s for s in listed}
     assert "acme_internal" in by_slug
     assert by_slug["acme_internal"]["editable"] is True
-    # A global seed entry (nppes) is present and read-only.
-    assert "nppes" in by_slug
-    assert by_slug["nppes"]["editable"] is False
-    assert by_slug["nppes"]["layer"] == "global_public"
+    # No global seed entry (e.g. nppes) leaks to a regular caller.
+    assert "nppes" not in by_slug
+    assert all(s["layer"] == "tenant_custom" for s in listed)
 
     # Read one.
     got = client.get(f"{_BASE}/acme_internal", headers=_HDR)
@@ -178,6 +179,89 @@ def test_patch_global_slug_is_403(client):
 def test_delete_global_slug_is_403(client):
     resp = client.delete(f"{_BASE}/nppes", headers=_HDR)
     assert resp.status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# Operator gate (ONTA-234): global visibility is operator-only, server-side.
+#
+# The static `test-key` has no identity → non-operator. `operator-key` falls
+# through the static map to an external verifier returning an AuthVerdict with
+# is_operator=True (that is exactly how premium Clerk populates the seam — the
+# DETERMINATION stays premium; here we assert the OSS route honors the bit).
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def operator_key():
+    from cograph_client.auth.api_keys import AuthVerdict, register_external_verifier
+
+    def verifier(api_key: str):
+        if api_key == "operator-key":
+            return AuthVerdict(tenants=["test-tenant"], subject="op_1", is_operator=True)
+        if api_key == "regular-key":  # verified identity, but NOT an operator
+            return AuthVerdict(tenants=["test-tenant"], subject="usr_1", is_operator=False)
+        return None
+
+    register_external_verifier(verifier)
+    yield {"operator": {"X-API-Key": "operator-key"}, "regular": {"X-API-Key": "regular-key"}}
+    register_external_verifier(None)
+
+
+def test_non_operator_list_hides_global(client):
+    """A regular caller's list is tenant_custom-only — zero global entries."""
+    listed = client.get(_BASE, headers=_HDR).json()
+    assert all(s["layer"] == "tenant_custom" for s in listed)
+    assert not any(s["slug"] == "nppes" for s in listed)
+
+
+def test_operator_list_includes_global(client, operator_key):
+    """An operator additionally sees the global catalog, read-only."""
+    listed = client.get(_BASE, headers=operator_key["operator"]).json()
+    by_slug = {s["slug"]: s for s in listed}
+    assert "nppes" in by_slug  # a global_public seed entry is visible
+    assert by_slug["nppes"]["layer"] == "global_public"
+    assert by_slug["nppes"]["editable"] is False
+
+
+def test_verified_non_operator_still_hides_global(client, operator_key):
+    """A VERIFIED (Clerk) identity that is not an operator is treated like any
+    regular user — global stays hidden. Operator status, not merely being
+    verified, is the gate."""
+    listed = client.get(_BASE, headers=operator_key["regular"]).json()
+    assert not any(s["slug"] == "nppes" for s in listed)
+    assert all(s["layer"] == "tenant_custom" for s in listed)
+
+
+def test_non_operator_get_global_slug_is_404(client):
+    """GET of a global slug by a non-operator is 404 — never leaks existence."""
+    resp = client.get(f"{_BASE}/nppes", headers=_HDR)
+    assert resp.status_code == 404
+
+
+def test_operator_get_global_slug_is_200(client, operator_key):
+    """An operator can read a global source's spec (the authoring aid)."""
+    resp = client.get(f"{_BASE}/nppes", headers=operator_key["operator"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["slug"] == "nppes"
+    assert body["editable"] is False
+
+
+def test_non_operator_test_global_slug_is_404(client):
+    """Smoke-testing a global slug by a non-operator is 404, matching GET —
+    the test route never confirms a global slug exists to a regular caller."""
+    resp = client.post(f"{_BASE}/test", json={"slug": "nppes"}, headers=_HDR)
+    assert resp.status_code == 404
+
+
+def test_operator_cannot_mutate_global_slug(client, operator_key):
+    """Even an operator cannot WRITE a global slug through the tenant route —
+    globals stay file-based + PR-reviewed. Visibility ≠ write access."""
+    assert (
+        client.patch(f"{_BASE}/nppes", json={"enabled": False}, headers=operator_key["operator"]).status_code
+        == 403
+    )
+    assert (
+        client.delete(f"{_BASE}/nppes", headers=operator_key["operator"]).status_code == 403
+    )
 
 
 # --------------------------------------------------------------------------- #

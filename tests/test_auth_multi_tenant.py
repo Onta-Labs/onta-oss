@@ -121,3 +121,40 @@ def test_static_key_keeps_legacy_routing(monkeypatch):
     )
     ctx = get_tenant(tenant="another", api_key="static-key")
     assert ctx.tenant_id == "static-tenant"
+
+
+# --------------------------------------------------------------------------- #
+# Operator flag (ONTA-234): a generic bit the OSS seam only THREADS — the
+# determination is the provider's job. Static/legacy/sequence verdicts never
+# carry it, so those identities are non-operators by construction.
+# --------------------------------------------------------------------------- #
+def test_auth_verdict_carries_is_operator_to_context(open_access):
+    register_external_verifier(
+        lambda key: AuthVerdict(tenants=["alpha"], subject="u1", is_operator=True)
+    )
+    ctx = get_tenant(tenant="alpha", api_key="k")
+    assert ctx.is_operator is True
+
+
+def test_auth_verdict_operator_defaults_false(open_access):
+    register_external_verifier(lambda key: AuthVerdict(tenants=["alpha"], subject="u1"))
+    ctx = get_tenant(tenant="alpha", api_key="k")
+    assert ctx.is_operator is False
+
+
+def test_sequence_verdict_is_non_operator(open_access):
+    """A bare sequence verdict (legacy) can never be an operator."""
+    register_external_verifier(lambda key: ["alpha"])
+    ctx = get_tenant(tenant="alpha", api_key="k")
+    assert ctx.is_operator is False
+
+
+def test_static_key_is_non_operator(monkeypatch):
+    """A static key has no identity → non-operator (so dev-key-001 never sees
+    the operator-only view)."""
+    monkeypatch.setattr(
+        "cograph_client.auth.api_keys.settings.api_keys",
+        '{"static-key": "static-tenant"}',
+    )
+    ctx = get_tenant(tenant="static-tenant", api_key="static-key")
+    assert ctx.is_operator is False
