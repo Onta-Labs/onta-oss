@@ -251,6 +251,12 @@ class JobProgress(BaseModel):
     # black hole. Kept distinct from ``skipped`` (which is backward-compat).
     no_match: int = 0
     cache_hits: int = 0
+    # Coarse WHAT-is-happening-now label for a running job (ONTA-238), so a poll
+    # mid-run reads "ingesting" instead of a bare, uninformative status=running.
+    # Discovery sets it through the run ("searching" → "ingesting" → "done", or
+    # "failed" on a terminal error); enrichment/dedupe leave it "" (unchanged).
+    # Purely additive: an empty phase means "no phase reported", never a state.
+    phase: str = ""
 
 
 ProviderStatus = Literal["ok", "no_match", "error", "skipped"]

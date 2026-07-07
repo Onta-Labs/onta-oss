@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from cograph_client.api.deps import (
@@ -235,15 +235,53 @@ async def list_jobs(
     return await job_store.list_for_tenant(tenant.tenant_id)
 
 
+# Terminal job states — the poll-until-done long-poll returns as soon as a job
+# reaches any of these. Anything else (queued/running) keeps waiting.
+_TERMINAL_STATUSES = frozenset(
+    {JobStatus.applied, JobStatus.failed, JobStatus.cancelled}
+)
+# Hard ceiling on how long a single ``wait`` long-poll blocks the request, kept
+# comfortably under the proxy/request budget so the handler always returns before
+# the client's own timeout fires (the caller re-polls to keep waiting).
+_MAX_WAIT_S = 25.0
+# Re-read cadence while long-polling. Short enough that a job finishing mid-wait
+# is returned promptly, long enough that the loop is not a busy-spin.
+_WAIT_POLL_INTERVAL_S = 0.5
+
+
 @router.get("/jobs/{job_id}", response_model=EnrichJob)
 async def get_job(
     job_id: str,
     tenant: TenantContext = Depends(get_tenant),
     job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
+    wait: float = Query(
+        0.0,
+        ge=0.0,
+        description=(
+            "Seconds to LONG-POLL: block until the job reaches a terminal state "
+            "(applied/failed/cancelled) or this many seconds elapse, then return "
+            "the current job. 0 (default) returns immediately. Capped server-side "
+            "at 25s; poll again to keep waiting. Lets a caller await completion "
+            "without a tight status-polling loop (ONTA-238)."
+        ),
+    ),
 ):
     job = await job_store.get(job_id)
     if not job or job.tenant_id != tenant.tenant_id:
         raise HTTPException(status_code=404, detail="job not found")
+    # Long-poll: block (up to the cap) until the job is terminal, re-reading it
+    # from the store each interval. A job that is already terminal returns at once.
+    if wait > 0 and job.status not in _TERMINAL_STATUSES:
+        deadline = asyncio.get_event_loop().time() + min(wait, _MAX_WAIT_S)
+        while (
+            job.status not in _TERMINAL_STATUSES
+            and asyncio.get_event_loop().time() < deadline
+        ):
+            await asyncio.sleep(_WAIT_POLL_INTERVAL_S)
+            refreshed = await job_store.get(job_id)
+            if not refreshed or refreshed.tenant_id != tenant.tenant_id:
+                raise HTTPException(status_code=404, detail="job not found")
+            job = refreshed
     if job.results and len(job.results) > CONFLICT_RESULT_TRUNCATE:
         job.results = job.results[:CONFLICT_RESULT_TRUNCATE]
     return job
