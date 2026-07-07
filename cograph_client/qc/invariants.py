@@ -38,6 +38,7 @@ ATTRS_INFIX = "/attrs/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDFS_RANGE = "http://www.w3.org/2000/01/rdf-schema#range"
+RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,9 @@ INVARIANTS: list[Invariant] = [
             "ontology graph (onto_graph_uri)."
         ),
         sparql_fn=lambda g, og: (
-            "SELECT ?s ?p ?o WHERE { "
+            # DISTINCT: a property with >1 declared range would otherwise emit one identical
+            # (?s ?p ?o) row per range — dedupe to one violation per bad edge.
+            "SELECT DISTINCT ?s ?p ?o WHERE { "
             + _scoped(g, f"?s ?p ?o . ?s <{RDF_TYPE}> ?stype .")
             + f' FILTER(STRSTARTS(STR(?p), "{ONTO_PREFIX}") && isLiteral(?o)) '
             # the declaration URI for THIS subject's type: types/<Type>/attrs/<leaf>.
@@ -129,6 +132,55 @@ INVARIANTS: list[Invariant] = [
         detail_fn=lambda b: (
             f'{_val(b, "s")} --[{_val(b, "p")}]--> "{_val(b, "o")}" '
             "(a declared relationship's instance edge points at a literal, not a node)"
+        ),
+        needs_onto=True,
+    ),
+    Invariant(
+        name="edge_target_type_mismatch",
+        severity="error",
+        description=(
+            "A relationship edge (onto/<leaf>) points at an entity node whose rdf:type "
+            "satisfies NONE of the declared ranges (attrs/<leaf> rdfs:range <types/R>) — the "
+            "target is a real node but the WRONG kind of thing (e.g. works_at -> a City). The "
+            "next check after relationship_edge_points_at_literal: that one asks 'is the target "
+            "a node at all?', this asks 'is it the RIGHT node?'. TYPE-SCOPED on the SUBJECT's "
+            "own declaration; subclass-aware (rdfs:subClassOf+ plus the exact range as the "
+            "reflexive case, so it never depends on zero-length-path-in-graph semantics); "
+            "multi-type-tolerant (OK if ANY of the target's types is at/under a range); "
+            "multi-RANGE-tolerant (ranges are DISJUNCTIVE alternatives — matching ANY declared "
+            "range is valid, so it fires only when the target satisfies none); and it SKIPS "
+            "untyped targets — that is bare_entity_node_missing_type's job. Needs the ontology "
+            "graph (onto_graph_uri)."
+        ),
+        # DISJUNCTIVE over ranges: don't project ?range and test per-range (that flags a
+        # valid target against a range it happens not to match when a property has >1 range).
+        # Instead fire only when NO declared types/ range is satisfied by ANY of the target's
+        # types — the whole range-membership test lives inside the negative.
+        sparql_fn=lambda g, og: (
+            "SELECT DISTINCT ?s ?p ?o WHERE { "
+            + _scoped(g, f"?s ?p ?o . ?s <{RDF_TYPE}> ?stype .")
+            + f' FILTER(STRSTARTS(STR(?p), "{ONTO_PREFIX}") && isIRI(?o) '
+            + f' && STRSTARTS(STR(?o), "{ENTITY_PREFIX}")) '
+            + f' BIND(IRI(CONCAT(STR(?stype), "{ATTRS_INFIX}", STRAFTER(STR(?p), "{ONTO_PREFIX}"))) AS ?decl) '
+            # the property must be DECLARED a relationship: at least one types/ range.
+            + " FILTER EXISTS { " + _scoped(og, f"?decl <{RDFS_RANGE}> ?anyr .")
+            + f' FILTER(STRSTARTS(STR(?anyr), "{TYPES_PREFIX}")) ' + " } "
+            # target must be typed at all — an untyped target is the bare-node invariant's job.
+            + " FILTER EXISTS { " + _scoped(g, f"?o <{RDF_TYPE}> ?anytype .") + " } "
+            # ...and NO declared types/ range is satisfied — as the range itself (reflexive) or
+            # a proper subclass — by any of the target's types.
+            + " FILTER NOT EXISTS { "
+            + _scoped(og, f"?decl <{RDFS_RANGE}> ?range .")
+            + f' FILTER(STRSTARTS(STR(?range), "{TYPES_PREFIX}")) '
+            + "{ " + _scoped(g, f"?o <{RDF_TYPE}> ?range .") + " } UNION "
+            + "{ " + _scoped(g, f"?o <{RDF_TYPE}> ?ot .")
+            + _scoped(og, f"?ot <{RDFS_SUBCLASSOF}>+ ?range .") + " } "
+            + " } "
+            + "}"
+        ),
+        detail_fn=lambda b: (
+            f'{_val(b, "s")} --[{_val(b, "p")}]--> {_val(b, "o")} '
+            "(relationship target's type is not the declared range nor a subclass of it)"
         ),
         needs_onto=True,
     ),
