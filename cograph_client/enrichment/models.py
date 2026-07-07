@@ -247,6 +247,42 @@ class JobProgress(BaseModel):
 ProviderStatus = Literal["ok", "no_match", "error", "skipped"]
 
 
+class ApiRequestTrace(BaseModel):
+    """One HTTP request a provider issued during a run — the request-level detail
+    behind a ``ProviderLog``'s aggregate counters.
+
+    Populated for **API-source (registry) providers** (``api:{slug}``), where a
+    "request" is a single declarative GET the executor sent (the first page and
+    every synthesized pagination page). It answers "which requests went out, with
+    what payload, and how did each fare" without a log dive:
+
+    - ``url``      — the request URL, **auth-free** (the post-redirect display URL;
+      any query-key secret is applied only to the live fetch, never stored here),
+      so it is safe to surface as-is.
+    - ``params``   — the query parameters of that request (the GET "payload"):
+      the bound search params (e.g. ``city=San Francisco``) merged with the
+      pagination cursor (e.g. ``skip=200&limit=200``). Parsed from ``url`` so it
+      carries no auth material.
+    - ``status``   — the HTTP status code of the response (``200``, ``404`` …), or
+      ``None`` when the request never got a response (DNS/connect error, blocked
+      by the SSRF guard, non-JSON body).
+    - ``records``  — how many records this single request returned (raw count on
+      the page, pre-dedupe), so per-request yield is visible, not just the run total.
+    - ``error``    — a short reason when the request failed (``HTTP 404``, a
+      transport error), else ``None``.
+
+    All fields default so an empty/older ``ProviderLog`` is unaffected. Web-search
+    providers and enrichment adapters leave ``requests`` empty today; only the
+    registry executor emits these.
+    """
+
+    url: str = ""
+    params: dict[str, str] = Field(default_factory=dict)
+    status: Optional[int] = None
+    records: int = 0
+    error: Optional[str] = None
+
+
 class ProviderLog(BaseModel):
     """Per-provider activity record for ONE job run — what each provider we used
     (enrichment adapter or web-source) actually did, surfaced in the run-detail
@@ -284,6 +320,12 @@ class ProviderLog(BaseModel):
     timeouts: int = 0
     cache_hits: int = 0
     last_error: Optional[str] = None
+    # Request-level trace: the individual HTTP requests this provider issued
+    # during the run (URL, query-param payload, HTTP status, records fetched).
+    # Populated for API-source registry providers; empty for web-search providers
+    # and enrichment adapters. Capped at the accumulation site so the persisted
+    # job stays bounded; default empty so existing job construction is unchanged.
+    requests: list[ApiRequestTrace] = Field(default_factory=list)
 
 
 class JobErrorItem(BaseModel):
