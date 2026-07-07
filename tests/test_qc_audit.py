@@ -25,6 +25,7 @@ from cograph_client.qc import (
     run_audit,
 )
 from cograph_client.qc.audit import _BASE_GRAPH_LABEL, _list_kg_graphs
+from cograph_client.qc.__main__ import _parse_args, _resolve_include, _run
 from cograph_client.qc.invariants import RDF_TYPE, RDFS_LABEL, RDFS_RANGE
 
 TENANT = "demo"
@@ -203,6 +204,36 @@ async def test_run_audit_passes_include_through():
 
 
 # --------------------------------------------------------------------------- #
+# CI-safe: --include validation (a typo must NOT silently pass a gate)
+# --------------------------------------------------------------------------- #
+def test_resolve_include_none_for_empty():
+    assert _resolve_include(None) is None
+    assert _resolve_include("") is None
+
+
+def test_resolve_include_parses_and_trims_valid_names():
+    assert _resolve_include(" node_edge_on_attrs_predicate , bare_entity_node_missing_label ") == {
+        "node_edge_on_attrs_predicate",
+        "bare_entity_node_missing_label",
+    }
+
+
+def test_resolve_include_rejects_unknown_name():
+    with pytest.raises(ValueError, match="unknown invariant name"):
+        _resolve_include("node_edge_on_attrs_predicate,bogus")
+
+
+@pytest.mark.asyncio
+async def test_cli_typoed_include_exits_2_before_touching_store():
+    """A misspelled --include fails fast (exit 2) at validation, BEFORE the health check —
+    so it never reports a vacuous 'clean'/exit-0, even against an unreachable endpoint."""
+    args = _parse_args(
+        ["--tenant", TENANT, "--include", "bogus", "--endpoint", "http://127.0.0.1:1"]
+    )
+    assert await _run(args) == 2
+
+
+# --------------------------------------------------------------------------- #
 # pyoxigraph: real end-to-end audit
 # --------------------------------------------------------------------------- #
 class PyoxiNeptune:
@@ -285,6 +316,39 @@ async def test_e2e_leaked_instance_data_in_base_graph_is_caught(n):
     base_audit = next(a for a in report.audits if a.graph_uri == _BASE)
     assert "bare_entity_node_missing_type" in {v.invariant for v in base_audit.violations}
     assert report.exit_code() == 1
+
+
+@pytest.mark.asyncio
+async def test_e2e_base_graph_catches_node_edge_on_attrs(n):
+    """The base-graph pass also catches a node-valued edge on attrs/<leaf> leaked there —
+    not just the bare-node class."""
+    await _insert(
+        n,
+        _GOOD_PHYS + _GOOD_CITY
+        + f"<{ENT}Physician/p1> <{TYPES}Physician/attrs/located_in> <{ENT}City/SF> . ",
+        graph=_BASE,  # leaked into the base graph
+    )
+    report = await run_audit(n, tenant=TENANT)
+    base_audit = next(a for a in report.audits if a.graph_uri == _BASE)
+    assert "node_edge_on_attrs_predicate" in {v.invariant for v in base_audit.violations}
+
+
+@pytest.mark.asyncio
+async def test_e2e_base_graph_declared_relationship_on_literal_self_join(n):
+    """The needs_onto invariant on the base graph, where onto_graph_uri == graph_uri: a
+    declared relationship (located_in range City) whose leaked instance edge points at a
+    LITERAL is caught by the declaration join resolving against the base graph itself."""
+    await _insert(
+        n,
+        _GOOD_PHYS
+        + f'<{ENT}Physician/p1> <{ONTO}located_in> "somewhere" . '  # literal in a node slot
+        + f"<{TYPES}Physician/attrs/located_in> <{RDFS_RANGE}> <{TYPES}City> . ",  # declared a relationship
+        graph=_BASE,
+    )
+    report = await run_audit(n, tenant=TENANT)
+    base_audit = next(a for a in report.audits if a.graph_uri == _BASE)
+    assert base_audit.onto_graph_uri == _BASE  # base is its own onto graph (self-join)
+    assert "relationship_edge_points_at_literal" in {v.invariant for v in base_audit.violations}
 
 
 @pytest.mark.asyncio

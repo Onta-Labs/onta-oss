@@ -26,6 +26,7 @@ import structlog
 
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.qc.audit import format_report, run_audit
+from cograph_client.qc.invariants import INVARIANTS
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -70,16 +71,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+def _resolve_include(raw: str | None) -> set[str] | None:
+    """Parse ``--include`` into a validated set of invariant names, or ``None`` for all.
+
+    Fails fast on an unknown name (raising ``ValueError``) instead of silently selecting
+    zero invariants — a typo'd ``--include`` must NOT report a vacuous 'clean' and pass a
+    gate. That silent-green is the exact failure mode this audit exists to catch."""
+    if not raw:
+        return None
+    names = {name.strip() for name in raw.split(",") if name.strip()}
+    valid = {inv.name for inv in INVARIANTS}
+    unknown = names - valid
+    if unknown:
+        raise ValueError(
+            f"unknown invariant name(s): {', '.join(sorted(unknown))}. "
+            f"valid: {', '.join(sorted(valid))}"
+        )
+    return names
+
+
 async def _run(args: argparse.Namespace) -> int:
+    try:
+        include = _resolve_include(args.include)
+    except ValueError as e:
+        print(f"!! {e}", file=sys.stderr)
+        return 2
     neptune = NeptuneClient(endpoint=args.endpoint, backend=args.backend)
     if not await neptune.health():
         print(f"!! store not reachable at {args.endpoint}", file=sys.stderr)
         return 2
-    include = (
-        {name.strip() for name in args.include.split(",") if name.strip()}
-        if args.include
-        else None
-    )
     report = await run_audit(
         neptune, tenant=args.tenant, kg=args.kg, include=include
     )
