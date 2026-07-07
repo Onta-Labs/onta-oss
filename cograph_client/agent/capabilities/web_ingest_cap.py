@@ -69,6 +69,7 @@ from cograph_client.api_registry import (
     route_query,
 )
 from cograph_client.enrichment.models import (
+    ApiRequestTrace,
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
@@ -858,6 +859,13 @@ class WebIngestCapability:
                             # "ran but found nothing" no_match the model reserves
                             # for genuinely empty results (adversarial-review F4).
                             plog.matches += len(rows_found)
+                            # Request-level trace (API-source providers only):
+                            # record every HTTP request this discover() issued so
+                            # the run-detail view can show the requests + their
+                            # payloads/statuses/record-counts. A request that
+                            # returned zero rows is still worth showing, so this
+                            # runs BEFORE the no-match continue below.
+                            _record_requests(plog, getattr(full, "calls", None))
                             if not rows_found:
                                 plog.no_match += 1
                                 continue
@@ -1804,6 +1812,37 @@ def _host(url: str) -> str:
         netloc = ""
     host = (netloc or url or "").strip().lower()
     return host[4:] if host.startswith("www.") else host
+
+
+# Cap on request-level traces persisted PER PROVIDER per run, so a heavy
+# sub-query fan-out (many pages × many sub-queries) can't bloat the stored job.
+_MAX_REQUEST_TRACES_PER_PROVIDER = 200
+
+
+def _record_requests(plog: ProviderLog, calls) -> None:
+    """Accumulate the per-request traces a provider's ``discover()`` returned onto
+    its ``ProviderLog``, capped so the persisted job stays bounded. ``calls`` is
+    the list of plain dicts from ``DiscoverResult.calls`` — API-source (registry)
+    providers populate it; web-search providers pass ``None``/empty. Malformed
+    entries are skipped defensively; a bad trace never sinks the run."""
+    if not calls:
+        return
+    for c in calls:
+        if len(plog.requests) >= _MAX_REQUEST_TRACES_PER_PROVIDER:
+            logger.info(
+                "web_ingest_request_trace_truncated",
+                provider=plog.provider,
+                cap=_MAX_REQUEST_TRACES_PER_PROVIDER,
+            )
+            break
+        try:
+            plog.requests.append(
+                ApiRequestTrace(**c)
+                if isinstance(c, dict)
+                else ApiRequestTrace.model_validate(c)
+            )
+        except Exception:  # noqa: BLE001 — a malformed trace is not fatal
+            continue
 
 
 def _platforms(sources, provider) -> list[str]:

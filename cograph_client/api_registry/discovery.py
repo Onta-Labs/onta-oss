@@ -108,6 +108,7 @@ class RegistryDiscoverySource:
             is_partial=res.is_partial,
             estimated_total=res.estimated_total,
             error=res.error,
+            calls=res.calls,
         )
 
 
