@@ -114,6 +114,74 @@ async def test_rebuild_registry_sources_empty_when_absent():
     assert srcs == []
 
 
+def test_record_requests_accumulates_caps_and_skips_malformed():
+    from cograph_client.agent.capabilities.web_ingest_cap import (
+        _MAX_REQUEST_TRACES_PER_PROVIDER,
+        _record_requests,
+    )
+    from cograph_client.enrichment.models import ProviderLog
+
+    plog = ProviderLog(provider="api:nppes")
+    _record_requests(plog, [
+        {"url": "https://x/api/?skip=0", "params": {"skip": "0"}, "status": 200, "records": 2, "error": None},
+        {"url": "https://x/api/?skip=2", "params": {"skip": "2"}, "status": 500, "records": 0, "error": "HTTP 500"},
+    ])
+    assert len(plog.requests) == 2
+    assert plog.requests[0].status == 200 and plog.requests[0].records == 2
+    assert plog.requests[1].error == "HTTP 500"
+
+    # None/empty is a no-op — web-search providers pass no trace.
+    _record_requests(plog, None)
+    _record_requests(plog, [])
+    assert len(plog.requests) == 2
+
+    # Malformed entries are skipped; valid ones still land.
+    _record_requests(plog, ["not-a-dict", {"url": "https://x/api/?skip=4", "records": 1}])
+    assert len(plog.requests) == 3
+    assert plog.requests[2].url.endswith("skip=4")
+
+    # Cap: accumulation never exceeds the per-provider limit.
+    _record_requests(plog, [{"url": f"https://x/?p={i}"} for i in range(_MAX_REQUEST_TRACES_PER_PROVIDER + 50)])
+    assert len(plog.requests) == _MAX_REQUEST_TRACES_PER_PROVIDER
+
+
+def test_old_job_without_requests_field_deserializes():
+    # Jobs whose provider_logs predate the `requests` field (and jobs with no
+    # provider_logs at all) must load unchanged, with requests defaulting to [].
+    from cograph_client.enrichment.models import EnrichJob
+
+    old = {
+        "id": "j0", "tenant_id": "t", "kg_name": "docs", "type_name": "Physician",
+        "attributes": ["name"], "tier": "auto", "status": "applied",
+        "created_at": "2026-01-01T00:00:00Z", "conflict_policy": "skip",
+        "provider_logs": [{"provider": "api:nppes", "matches": 5}],  # no "requests" key
+    }
+    job = EnrichJob.model_validate(old)
+    assert job.provider_logs[0].requests == []
+    job2 = EnrichJob.model_validate(dict(old, provider_logs=[]))
+    assert job2.provider_logs == []
+
+
+def test_provider_log_request_trace_survives_json_round_trip():
+    # The persisted job serializes ProviderLog.requests to JSON and back
+    # unchanged (the PostgresJobStore path), so the trace reaches the UI.
+    from cograph_client.enrichment.models import ApiRequestTrace, EnrichJob, ProviderLog
+
+    job = EnrichJob.model_validate({
+        "id": "j1", "tenant_id": "t", "kg_name": "docs", "type_name": "Physician",
+        "attributes": ["name"], "tier": "auto", "status": "applied",
+        "created_at": "2026-07-06T00:00:00Z", "conflict_policy": "skip",
+        "provider_logs": [ProviderLog(provider="api:nppes", matches=2, requests=[
+            ApiRequestTrace(url="https://npiregistry.cms.hhs.gov/api/?skip=0",
+                            params={"skip": "0", "limit": "200"}, status=200, records=2),
+        ])],
+    })
+    back = EnrichJob.model_validate_json(job.model_dump_json())
+    req = back.provider_logs[0].requests[0]
+    assert req.status == 200 and req.records == 2
+    assert req.params["limit"] == "200"
+
+
 # --------------------------------------------------------------------------- #
 # plan()
 # --------------------------------------------------------------------------- #
