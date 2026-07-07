@@ -21,20 +21,35 @@ class TenantContext:
     # (e.g. Ask-AI conversation history, COG-131) without the OSS layer knowing
     # anything provider-specific: "subject" is a generic auth concept.
     subject: Optional[str] = None
+    # Whether the authenticated identity is an ONTA *operator* (a first-party
+    # staff/admin account), as decided by the auth PROVIDER — never by anything
+    # the client sends. Generic like ``subject``: the OSS layer only carries the
+    # bit; the *determination* (email domain / allowlist / provider role) lives in
+    # the premium provider that populates :class:`AuthVerdict.is_operator`
+    # (ONTA-234). Static/anonymous keys have no identity → ``False`` by default,
+    # so they can never see the operator-only view. Routes gate operator-only
+    # visibility (e.g. the global API-source catalog) on this flag.
+    is_operator: bool = False
 
 
 @dataclass
 class AuthVerdict:
     """A richer verifier result: the tenants a key may access plus the auth
-    subject (the user id behind the key, when the provider exposes one).
+    subject (the user id behind the key, when the provider exposes one) and
+    whether that identity is an ONTA operator.
 
-    Verifiers may keep returning a bare ``str``/``Sequence[str]`` (no subject);
-    returning an :class:`AuthVerdict` additionally carries the subject through
-    to :class:`TenantContext.subject`.
+    Verifiers may keep returning a bare ``str``/``Sequence[str]`` (no subject,
+    non-operator); returning an :class:`AuthVerdict` additionally carries the
+    subject through to :class:`TenantContext.subject` and the operator bit
+    through to :class:`TenantContext.is_operator`. The operator DETERMINATION is
+    the provider's job (premium Clerk: email domain / ``OMNIX_OPERATOR_EMAILS``
+    allowlist / ``public_metadata.is_operator``) — the OSS seam only threads the
+    resulting bit, so no provider-specific logic leaks into OSS (ONTA-234).
     """
 
     tenants: Sequence[str]
     subject: Optional[str] = None
+    is_operator: bool = False
 
 
 # A verifier takes a raw API key and returns either:
@@ -80,20 +95,32 @@ def _resolve_allowed(
     requested: Optional[str],
     api_key: str,
     subject: Optional[str] = None,
+    is_operator: bool = False,
 ) -> TenantContext:
     """Pick the tenant for a key that may access several.
 
     The requested tenant comes from the route path (/graphs/{tenant}/...).
     No request → the key's first tenant; a request outside the allowed set
     is a 403 (the key is valid, the tenant grant is not).
+
+    ``is_operator`` (from the provider's :class:`AuthVerdict`) rides through
+    onto the resolved :class:`TenantContext` unchanged — it describes the
+    identity, not the tenant, so it is the same for every tenant the key
+    grants.
     """
     allowed = [t for t in allowed if t]
     if not allowed:
         raise HTTPException(status_code=401, detail="Invalid API key")
     if requested is None or requested == "":
-        return TenantContext(tenant_id=allowed[0], api_key=api_key, subject=subject)
+        return TenantContext(
+            tenant_id=allowed[0], api_key=api_key, subject=subject,
+            is_operator=is_operator,
+        )
     if requested in allowed:
-        return TenantContext(tenant_id=requested, api_key=api_key, subject=subject)
+        return TenantContext(
+            tenant_id=requested, api_key=api_key, subject=subject,
+            is_operator=is_operator,
+        )
     raise HTTPException(
         status_code=403,
         detail=f"API key does not grant access to tenant '{requested}'",
@@ -152,7 +179,8 @@ def _resolve_tenant(tenant: Optional[str], api_key: Optional[str]) -> TenantCont
             verdict = None
         if isinstance(verdict, AuthVerdict):
             return _resolve_allowed(
-                verdict.tenants, tenant, api_key, subject=verdict.subject
+                verdict.tenants, tenant, api_key, subject=verdict.subject,
+                is_operator=verdict.is_operator,
             )
         if isinstance(verdict, str):
             return TenantContext(tenant_id=verdict, api_key=api_key)
