@@ -3264,6 +3264,82 @@ def test_cancel_job(client, auth_headers, mock_neptune):
     assert cancel.json()["status"] == "cancelled"
 
 
+def _seed_job(client, auth_headers, *, status: JobStatus, job_id: str) -> None:
+    """Insert a job straight into the app's (in-memory) job store so a route test
+    can exercise GET behavior without driving a full run. Writes the backing dict
+    directly — a TestClient runs the app in its own loop, so awaiting the store's
+    async ``create`` from the test thread would fight that loop."""
+    # Force the app's store to exist (the route's Depends lazily creates it).
+    r = client.get(
+        "/graphs/test-tenant/enrich/jobs/__warmup__", headers=auth_headers
+    )
+    assert r.status_code == 404  # store now instantiated
+    store = client.app.state.enrichment_job_store
+    job = EnrichJob(
+        id=job_id,
+        tenant_id="test-tenant",
+        kg_name="kg",
+        type_name="Product",
+        attributes=["manufacturer"],
+        tier=EnrichmentTier.lite,
+        status=status,
+        created_at=datetime.now(timezone.utc),
+        conflict_policy=ConflictPolicy.stage,
+    )
+    store._jobs[job_id] = job
+
+
+def test_get_job_wait_returns_immediately_when_already_terminal(client, auth_headers):
+    """The ``wait`` long-poll (ONTA-238) returns AT ONCE for an already-terminal job
+    — it must never block on a job that is already done."""
+    _seed_job(client, auth_headers, status=JobStatus.applied, job_id="done-job")
+    import time
+
+    t0 = time.monotonic()
+    r = client.get(
+        "/graphs/test-tenant/enrich/jobs/done-job?wait=10", headers=auth_headers
+    )
+    elapsed = time.monotonic() - t0
+    assert r.status_code == 200
+    assert r.json()["status"] == "applied"
+    # Returned effectively instantly (no blocking) despite a 10s wait budget.
+    assert elapsed < 2.0
+
+
+def test_get_job_wait_blocks_then_returns_running_job(client, auth_headers):
+    """For a still-running job the long-poll blocks up to the (short) wait budget,
+    then returns the current job — the caller re-polls to keep waiting. Proves the
+    handler actually waited rather than returning instantly."""
+    _seed_job(client, auth_headers, status=JobStatus.running, job_id="running-job")
+    import time
+
+    t0 = time.monotonic()
+    r = client.get(
+        "/graphs/test-tenant/enrich/jobs/running-job?wait=1", headers=auth_headers
+    )
+    elapsed = time.monotonic() - t0
+    assert r.status_code == 200
+    assert r.json()["status"] == "running"
+    # It blocked for roughly the wait budget (the poll interval is 0.5s, so it
+    # loops at least once) but returned near the 1s budget, not the 25s ceiling.
+    assert 0.4 <= elapsed < 5.0
+
+
+def test_get_job_wait_zero_does_not_block(client, auth_headers):
+    """wait=0 (the default) keeps the immediate, non-blocking behavior unchanged."""
+    _seed_job(client, auth_headers, status=JobStatus.running, job_id="poll-job")
+    import time
+
+    t0 = time.monotonic()
+    r = client.get(
+        "/graphs/test-tenant/enrich/jobs/poll-job", headers=auth_headers
+    )
+    elapsed = time.monotonic() - t0
+    assert r.status_code == 200
+    assert r.json()["status"] == "running"
+    assert elapsed < 1.0
+
+
 # ---------------------------------------------------------------------------
 # Tier registry
 # ---------------------------------------------------------------------------
