@@ -6,6 +6,13 @@ graph-pattern queries that RETURN violations (RDFUnit-style). No LLM, no golden
 output — properties, so they generalize across domains rather than overfitting to
 fixtures.
 """
+from cograph_client.qc.audit import (
+    AuditReport,
+    GraphAudit,
+    format_report,
+    report_to_dict,
+    run_audit,
+)
 from cograph_client.qc.invariants import (
     INVARIANTS,
     Invariant,
@@ -13,4 +20,14 @@ from cograph_client.qc.invariants import (
     check_invariants,
 )
 
-__all__ = ["INVARIANTS", "Invariant", "Violation", "check_invariants"]
+__all__ = [
+    "INVARIANTS",
+    "Invariant",
+    "Violation",
+    "check_invariants",
+    "AuditReport",
+    "GraphAudit",
+    "run_audit",
+    "format_report",
+    "report_to_dict",
+]
