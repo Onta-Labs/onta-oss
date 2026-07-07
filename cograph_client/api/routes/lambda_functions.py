@@ -275,6 +275,7 @@ async def invoke_function(
     output = result.output
 
     # --- Step 4: Materialize result as triples on the entity ---
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     new_triples: list[tuple[str, str, str]] = []
     replaced_preds: list[str] = []
     for key, value in output.items():
@@ -283,6 +284,18 @@ async def invoke_function(
         attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
         new_triples.append((body.entity_uri, attr_pred, str(value)))
         replaced_preds.append(attr_pred)
+
+        # Per-fact freshness stamp: a QUERYABLE `<key>_verified_at` literal on the
+        # `attrs/<leaf>` namespace, mirroring enrichment's _provenance_triples. This
+        # is per-FACT (each lambda-computed attribute gets its own stamp), unlike the
+        # per-ENTITY, system-hidden `onto/lambda_refreshed_at` below — so the query
+        # layer can filter "verified in the last N days" per attribute. Full value
+        # history is out of scope (a separate deferred ticket); just the freshness.
+        verified_at_pred = (
+            f"https://cograph.tech/types/{entity_type}/attrs/{key}_verified_at"
+        )
+        new_triples.append((body.entity_uri, verified_at_pred, now_iso))
+        replaced_preds.append(verified_at_pred)
 
         # Ensure the attribute exists in the ontology (schema graph — unrelated to
         # the instance-fact write below; left as-is).
@@ -301,8 +314,19 @@ async def invoke_function(
         except Exception:
             pass  # attribute may already exist
 
+        # Declare the freshness companion in the ontology too, so it is first-class
+        # queryable schema (dateTime range), consistent with the primary attribute.
+        verified_at_sparql = insert_attribute(
+            ontology_graph, entity_type, f"{key}_verified_at",
+            description=f"When {key} was last verified by {function_name}",
+            datatype="datetime",
+        )
+        try:
+            await client.update(verified_at_sparql)
+        except Exception:
+            pass  # attribute may already exist
+
     # Add provenance triple
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     lambda_ts_pred = "https://cograph.tech/onto/lambda_refreshed_at"
     new_triples.append((body.entity_uri, lambda_ts_pred, now_iso))
     replaced_preds.append(lambda_ts_pred)

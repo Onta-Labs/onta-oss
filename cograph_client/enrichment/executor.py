@@ -1493,9 +1493,18 @@ class EnrichmentExecutor:
         entity_uri: str, type_name: str, attribute: str, verdict
     ) -> list[tuple[str, str, str]]:
         """Persist where + when an enriched value came from, as queryable
-        attributes (`<attr>_source_url`, `<attr>_provenance`) on the entity — so
-        the citation is visible through /ask and the Explorer, not just in the
-        adapter. Audit-friendly: every enriched fact carries its source."""
+        attributes (`<attr>_source_url`, `<attr>_provenance`, `<attr>_verified_at`)
+        on the entity — so the citation is visible through /ask and the Explorer,
+        not just in the adapter. Audit-friendly: every enriched fact carries its
+        source AND a per-fact freshness stamp.
+
+        `<attr>_verified_at` is the ISO-8601 UTC instant this fact was written (a
+        PER-FACT freshness marker, unlike the per-ENTITY `onto/ingested_at` that is
+        stamped once at ingest and hidden as a system marker). It is a plain,
+        QUERYABLE literal on the `attrs/<leaf>` namespace — deliberately NOT added
+        to the internal-marker hide-lists — so the query layer can answer "verified
+        in the last N days" per attribute. Full price/value history is out of scope
+        here (a separate deferred ticket); this is only the freshness stamp."""
         out: list[tuple[str, str, str]] = []
         if getattr(verdict, "source_url", None):
             out.append((entity_uri, _attr_uri(type_name, f"{attribute}_source_url"), verdict.source_url))
@@ -1504,6 +1513,8 @@ class EnrichmentExecutor:
             prov = f"{prov} ({verdict.reasoning})" if prov else verdict.reasoning
         if prov:
             out.append((entity_uri, _attr_uri(type_name, f"{attribute}_provenance"), prov))
+        # Per-fact freshness stamp: when this enriched value was verified/written.
+        out.append((entity_uri, _attr_uri(type_name, f"{attribute}_verified_at"), _now().isoformat()))
         return out
 
     @staticmethod

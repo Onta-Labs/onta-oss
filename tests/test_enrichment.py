@@ -4186,8 +4186,52 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
         assert '"92"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
         # The source_url predicate is present (declared + written).
         assert f"<{src_pred}>" in joined
+        # And the per-fact freshness stamp landed on the queryable attrs/ namespace.
+        assert (
+            "https://cograph.tech/types/Product/attrs/humanness_score_verified_at"
+            in joined
+        )
 
     asyncio.run(run())
+
+
+def test_provenance_triples_stamps_per_fact_verified_at():
+    """Every enriched fact carries a per-fact ``<attr>_verified_at`` freshness
+    stamp (ONTA-241): an ISO-8601 instant on the QUERYABLE ``attrs/<leaf>``
+    namespace (NOT the hidden ``onto/`` system-marker namespace), emitted
+    unconditionally alongside ``_source_url`` — so the query layer can filter
+    "verified in the last N days" per attribute. Its ISO value infers ``datetime``
+    so it's declared with an ``xsd:dateTime`` range."""
+    from datetime import datetime as _dt
+
+    verdict = Verdict(
+        value="92",
+        confidence=0.95,
+        source="wikidata",
+        source_url="https://www.wikidata.org/wiki/Q234021",
+    )
+    triples = EnrichmentExecutor._provenance_triples(
+        "https://cograph.tech/entities/Product/p1", "Product", "humanness_score", verdict
+    )
+    verified = [
+        (s, p, o) for (s, p, o) in triples if p.endswith("_verified_at")
+    ]
+    # Exactly one freshness stamp, and it is always emitted (no source_url needed).
+    assert len(verified) == 1
+    _s, pred, val = verified[0]
+    # Queryable literal on attrs/<leaf>, never on the hidden onto/ marker namespace.
+    assert pred == "https://cograph.tech/types/Product/attrs/humanness_score_verified_at"
+    assert "/onto/" not in pred
+    # The value is a real ISO-8601 datetime (parseable → filterable, not free text).
+    assert _dt.fromisoformat(val).tzinfo is not None
+    # It infers a datetime range, so the ontology declaration is xsd:dateTime.
+    assert _infer_datatype_from_values([val]) == "datetime"
+    # Emitted even when the verdict has no source_url (freshness is unconditional).
+    bare = Verdict(value="7", confidence=0.9, source="wikidata")
+    bare_triples = EnrichmentExecutor._provenance_triples(
+        "https://cograph.tech/entities/Product/p2", "Product", "rating", bare
+    )
+    assert any(p.endswith("/rating_verified_at") for (_s, p, _o) in bare_triples)
 
 
 def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
