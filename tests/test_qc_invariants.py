@@ -22,6 +22,7 @@ from cograph_client.qc.invariants import (
     RDF_TYPE,
     RDFS_LABEL,
     RDFS_RANGE,
+    RDFS_SUBCLASSOF,
     _val,
 )
 
@@ -50,12 +51,13 @@ def test_invariant_catalogue_shape():
     assert [i.name for i in INVARIANTS] == [
         "node_edge_on_attrs_predicate",
         "relationship_edge_points_at_literal",
+        "edge_target_type_mismatch",
         "bare_entity_node_missing_type",
         "bare_entity_node_missing_label",
     ]
-    assert [i.severity for i in INVARIANTS] == ["error", "error", "error", "warn"]
-    # only the declaration-aware relationship check needs the ontology graph.
-    assert [i.needs_onto for i in INVARIANTS] == [False, True, False, False]
+    assert [i.severity for i in INVARIANTS] == ["error", "error", "error", "error", "warn"]
+    # the two declaration-aware relationship checks need the ontology graph.
+    assert [i.needs_onto for i in INVARIANTS] == [False, True, True, False, False]
     assert all(i.description for i in INVARIANTS)
 
 
@@ -72,6 +74,10 @@ def test_sparql_encodes_the_right_patterns():
     q2 = by["relationship_edge_points_at_literal"]
     assert ONTO in q2 and "isLiteral(?o)" in q2 and RDFS_RANGE in q2 and RDF_TYPE in q2
     assert "STRAFTER" in q2 and "CONCAT" in q2 and f"GRAPH <{ONTO_G}>" in q2
+    q_mismatch = by["edge_target_type_mismatch"]
+    assert ONTO in q_mismatch and ENT in q_mismatch and RDFS_RANGE in q_mismatch
+    assert "subClassOf" in q_mismatch and "FILTER NOT EXISTS" in q_mismatch
+    assert "FILTER EXISTS" in q_mismatch and f"GRAPH <{ONTO_G}>" in q_mismatch
     q3 = by["bare_entity_node_missing_type"]
     assert "FILTER NOT EXISTS" in q3 and RDF_TYPE in q3 and ENT in q3
     q4 = by["bare_entity_node_missing_label"]
@@ -91,7 +97,7 @@ async def test_runner_collects_one_violation_per_invariant_sorted_errors_first()
     vs = await check_invariants(_FixedNeptune([binding]), onto_graph_uri="x")
     assert len(vs) == len(INVARIANTS)
     assert all(isinstance(v, Violation) for v in vs)
-    assert [v.severity for v in vs] == ["error", "error", "error", "warn"]
+    assert [v.severity for v in vs] == ["error", "error", "error", "error", "warn"]
     assert vs[0].detail
 
 
@@ -245,6 +251,94 @@ async def test_relationship_check_skipped_without_onto_graph(n):
     which onto/<leaf> are relationships), so it never runs blind."""
     await _insert(n, _GOOD_PHYS + f'<{ENT}Physician/p1> <{ONTO}rating> "4.6" . ')
     await _insert(n, f"<{TYPES}Physician/attrs/rating> <{RDFS_RANGE}> <{TYPES}Rating> . ", graph=ONTO_G)
+    assert await check_invariants(n, G) == []  # skipped
+    assert len(await check_invariants(n, G, onto_graph_uri=ONTO_G)) == 1  # runs
+
+
+@pytest.mark.asyncio
+async def test_edge_target_type_mismatch_is_caught(n):
+    """works_at is declared range Hospital, but the target is typed City — a real node of
+    the WRONG kind. The check after relationship_edge_points_at_literal."""
+    await _insert(
+        n,
+        _GOOD_PHYS + _GOOD_CITY
+        + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}City/SF> . ",
+    )
+    await _insert(n, f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> . ", graph=ONTO_G)
+    vs = await check_invariants(n, G, onto_graph_uri=ONTO_G)
+    assert [v.invariant for v in vs] == ["edge_target_type_mismatch"]
+    assert vs[0].severity == "error"
+    assert f"{ENT}City/SF" in vs[0].detail
+
+
+@pytest.mark.asyncio
+async def test_edge_target_exact_type_is_ok(n):
+    """Target typed exactly the declared range — the reflexive case, no false positive."""
+    await _insert(
+        n,
+        _GOOD_PHYS
+        + f'<{ENT}Hospital/h1> <{RDF_TYPE}> <{TYPES}Hospital> ; <{RDFS_LABEL}> "Gen" . '
+        + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}Hospital/h1> . ",
+    )
+    await _insert(n, f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> . ", graph=ONTO_G)
+    assert await check_invariants(n, G, onto_graph_uri=ONTO_G) == []
+
+
+@pytest.mark.asyncio
+async def test_edge_target_subclass_is_ok(n):
+    """located_in range Place; target typed City; City rdfs:subClassOf Place — valid, the
+    subclass-aware branch (rdfs:subClassOf+) must not flag it."""
+    await _insert(
+        n,
+        _GOOD_PHYS + _GOOD_CITY
+        + f"<{ENT}Physician/p1> <{ONTO}located_in> <{ENT}City/SF> . ",
+    )
+    await _insert(
+        n,
+        f"<{TYPES}Physician/attrs/located_in> <{RDFS_RANGE}> <{TYPES}Place> . "
+        + f"<{TYPES}City> <{RDFS_SUBCLASSOF}> <{TYPES}Place> . ",
+        graph=ONTO_G,
+    )
+    assert await check_invariants(n, G, onto_graph_uri=ONTO_G) == []
+
+
+@pytest.mark.asyncio
+async def test_edge_target_multitype_one_valid_is_ok(n):
+    """Target typed BOTH Clinic and Hospital; range Hospital — OK because ANY matching type
+    satisfies (multi-type tolerance)."""
+    await _insert(
+        n,
+        _GOOD_PHYS
+        + f'<{ENT}Org/o1> <{RDF_TYPE}> <{TYPES}Clinic> , <{TYPES}Hospital> ; <{RDFS_LABEL}> "O" . '
+        + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}Org/o1> . ",
+    )
+    await _insert(n, f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> . ", graph=ONTO_G)
+    assert await check_invariants(n, G, onto_graph_uri=ONTO_G) == []
+
+
+@pytest.mark.asyncio
+async def test_edge_target_untyped_is_deferred_to_bare_node(n):
+    """An UNTYPED target is bare_entity_node_missing_type's job — edge_target_type_mismatch
+    must stay silent so the two never double-report the same node."""
+    await _insert(
+        n,
+        _GOOD_PHYS + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}Hospital/h1> . ",  # h1 untyped
+    )
+    await _insert(n, f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> . ", graph=ONTO_G)
+    names = {v.invariant for v in await check_invariants(n, G, onto_graph_uri=ONTO_G)}
+    assert "edge_target_type_mismatch" not in names
+    assert "bare_entity_node_missing_type" in names
+
+
+@pytest.mark.asyncio
+async def test_edge_target_mismatch_skipped_without_onto_graph(n):
+    """Without the ontology graph the range is unknown, so the check is SKIPPED, not blind."""
+    await _insert(
+        n,
+        _GOOD_PHYS + _GOOD_CITY
+        + f"<{ENT}Physician/p1> <{ONTO}works_at> <{ENT}City/SF> . ",
+    )
+    await _insert(n, f"<{TYPES}Physician/attrs/works_at> <{RDFS_RANGE}> <{TYPES}Hospital> . ", graph=ONTO_G)
     assert await check_invariants(n, G) == []  # skipped
     assert len(await check_invariants(n, G, onto_graph_uri=ONTO_G)) == 1  # runs
 
