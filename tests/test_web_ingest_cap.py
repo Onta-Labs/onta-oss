@@ -2017,3 +2017,297 @@ async def test_never_consulted_ensemble_member_is_skipped(monkeypatch):
     assert logs["place_src"].status == "ok"
     assert logs["fake"].status == "skipped"
     assert logs["fake"].attempts == 0
+
+
+# ---------------------------------------------------------------------------
+# ONTA-239 — honor user-specified fields + converge attribute names
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_user_fields_parses_a_use_these_chip():
+    """The server-generated ``Use these: …`` confirmation chip is harvested verbatim
+    (snake_cased), so a confirmed field list is an authoritative floor even if the
+    LLM spec resolver later drops or renames some of them."""
+    got = web_ingest_cap._explicit_user_fields(
+        "Use these: name, latency_ttfb_ms, word_error_rate, mos_score"
+    )
+    assert got == ["name", "latency_ttfb_ms", "word_error_rate", "mos_score"]
+
+
+def test_explicit_user_fields_parses_natural_list_and_stops_at_prose():
+    """A natural 'with fields a, b, c and d' list is harvested; a trailing prose
+    clause (a long >4-word run) is NOT swept in as a giant fake field."""
+    got = web_ingest_cap._explicit_user_fields(
+        "find TTS providers with fields latency, word error rate, "
+        "supports spanish, streaming and this is a long trailing note we ignore"
+    )
+    # 'and' → comma; multi-word tokens snake_cased; the trailing >4-word prose run
+    # is rejected (not a field-shaped token) and ends the harvest.
+    assert got == [
+        "latency",
+        "word_error_rate",
+        "supports_spanish",
+        "streaming",
+    ]
+
+
+def test_explicit_user_fields_empty_for_entity_only_ask():
+    """No explicit list marker → no floor (entity-only ask keeps today's behavior:
+    the clarify path proposes attributes)."""
+    assert web_ingest_cap._explicit_user_fields(
+        "I'm looking for a list of OpenRouter models"
+    ) == []
+
+
+def test_explicit_user_fields_does_not_false_positive_on_entity_phrases():
+    """Conservative-by-design: bare verbs ("collect"/"include") are NOT list
+    markers, so an entity phrase is never mistaken for a field list and cannot
+    pollute the attribute floor."""
+    assert web_ingest_cap._explicit_user_fields(
+        "collect the primary care physicians in Tustin"
+    ) == []
+    assert web_ingest_cap._explicit_user_fields(
+        "ingest models and include their pricing"
+    ) == []
+    assert web_ingest_cap._explicit_user_fields(
+        "add all the coffee shops in San Francisco"
+    ) == []
+
+
+def test_snap_to_declared_converges_on_existing_names():
+    """A confirmed name that matches an existing DECLARED attribute (case-insensitive)
+    snaps to the declared spelling; a genuinely new one passes through unchanged —
+    mirroring enrichment's _validate_enrich_request so the two rails converge."""
+    out = web_ingest_cap._snap_to_declared(
+        ["Realtime_Audio_Duration_Per_Minute", "brand_new_field"],
+        ["realtime_audio_duration_per_minute", "name"],
+    )
+    assert out == ["realtime_audio_duration_per_minute", "brand_new_field"]
+
+
+async def test_user_field_floor_survives_llm_dropping_fields(monkeypatch):
+    """RCA core (ONTA-239 Cluster 2a): even when the LLM spec resolver returns a
+    SHRUNKEN confirmed set, every field the user explicitly listed survives into the
+    plan's ``attributes``. The floor is parsed deterministically from the
+    instruction, independent of the (non-deterministic) resolver."""
+    provider = FakeProvider(**RICH)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    # The LLM DROPPED most of the user's fields (the observed failure), keeping a
+    # generic subset — but the user's instruction enumerated all of them.
+    lossy_spec = {
+        "entity_type": "VoiceProvider",
+        "key_attribute": "name",
+        "query": "voice AI providers",
+        "confirmed_attributes": ["pricing", "streaming"],  # LLM shrank the list
+        "suggested_attributes": ["pricing", "streaming", "provider"],
+    }
+    instruction = (
+        "Add voice AI providers. Use these: name, latency_ttfb_ms, "
+        "word_error_rate, mos_score, barge_in_support, supports_spanish, "
+        "hipaa_eligible, streaming"
+    )
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1), instruction, parsed=lossy_spec
+    )
+    assert len(steps) == 1 and steps[0].action == "discover_ingest"
+    attrs = steps[0].params["attributes"]
+    # Every user-named field is present, none dropped.
+    for f in [
+        "name",
+        "latency_ttfb_ms",
+        "word_error_rate",
+        "mos_score",
+        "barge_in_support",
+        "supports_spanish",
+        "hipaa_eligible",
+        "streaming",
+    ]:
+        assert f in attrs, f"user field {f!r} was dropped from the plan attributes"
+
+
+async def test_discovery_snaps_confirmed_to_declared_type_attrs(monkeypatch):
+    """RCA core (ONTA-239 Cluster 2b): web-ingest grounds the confirmed attribute
+    names against the target type's ALREADY-DECLARED attributes, so it converges on
+    the enrich rail's spelling instead of minting a divergent synonym."""
+    provider = FakeProvider(**RICH)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    # The type already declares this attribute (as the enrich rail would have named
+    # it). The user/LLM refer to the SAME concept with a different casing/spelling.
+    async def fake_schema(neptune, tenant_id, type_name):
+        return {
+            "attributes": ["realtime_audio_duration_per_minute", "name"],
+            "relationships": [],
+        }
+
+    monkeypatch.setattr(web_ingest_cap, "list_type_schema", fake_schema)
+
+    spec = {
+        "entity_type": "VoiceProvider",
+        "key_attribute": "name",
+        "query": "voice AI providers",
+        "confirmed_attributes": ["Realtime_Audio_Duration_Per_Minute"],
+        "suggested_attributes": ["Realtime_Audio_Duration_Per_Minute"],
+    }
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1), "voice AI providers", parsed=spec
+    )
+    assert steps[0].action == "discover_ingest"
+    # Snapped to the declared spelling, not the user's divergent casing.
+    assert "realtime_audio_duration_per_minute" in steps[0].params["attributes"]
+    assert "Realtime_Audio_Duration_Per_Minute" not in steps[0].params["attributes"]
+
+
+async def test_type_schema_read_failure_degrades_gracefully(monkeypatch):
+    """A failing ontology read must NOT 500 the plan — grounding is best-effort, so
+    the plan still builds with the confirmed names verbatim."""
+    provider = FakeProvider(**RICH)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def boom(neptune, tenant_id, type_name):
+        raise RuntimeError("neptune down")
+
+    monkeypatch.setattr(web_ingest_cap, "list_type_schema", boom)
+
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1), "OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    assert steps[0].action == "discover_ingest"
+    assert steps[0].params["attributes"] == ["name", "context_length"]
+
+
+# ---------------------------------------------------------------------------
+# ONTA-238 — discovery job progress observability + verifiable completion
+# ---------------------------------------------------------------------------
+
+
+async def test_running_job_shows_early_total_and_phase(monkeypatch):
+    """A discovery job seeds a non-zero ``total`` and a ``phase`` the moment it goes
+    running — BEFORE the first batch completes — so an early poll reads ~N/0 with a
+    'searching'/'ingesting' phase instead of a flat, stalled-looking 0/0. The
+    completion path settles the total to the exact count and phase 'done'."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    provider = FakeProvider(is_paid=True, cost_per_call=0.09)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    gate = asyncio.Event()
+    seen: dict = {}
+
+    async def gated_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        # Block the FIRST ingest so we can observe the mid-run job state: total is
+        # already seeded and the phase has advanced to 'ingesting'.
+        await gate.wait()
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", gated_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    job_id = ack["job_id"]
+
+    # Let the run start and reach the gated ingest.
+    for _ in range(50):
+        await asyncio.sleep(0)
+        mid = await store.get(job_id)
+        if mid.status == JobStatus.running and mid.progress.total > 0:
+            break
+    seen["mid"] = await store.get(job_id)
+    # Early total is seeded (the plan cap) — NOT 0 — while still running.
+    assert seen["mid"].status == JobStatus.running
+    assert seen["mid"].progress.total > 0
+    # The phase reports what is happening (searching or ingesting), never blank.
+    assert seen["mid"].progress.phase in {"searching", "ingesting"}
+
+    # Release the ingest and let the run finish.
+    gate.set()
+    await spawned["task"]
+
+    done = await store.get(job_id)
+    assert done.status == JobStatus.applied
+    # Terminal settle: exact count + phase 'done'.
+    assert done.progress.total == len(FULL_ROWS)
+    assert done.progress.processed == len(FULL_ROWS)
+    assert done.progress.phase == "done"
+
+
+async def test_empty_completed_job_is_distinguishable_from_running(monkeypatch):
+    """A discovery run that found NOTHING lands terminal (applied) with phase 'done'
+    and result_count 0 — distinguishable from a still-running job, closing the
+    'completed-empty looks like running' gap in the RCA."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    provider = FakeProvider(is_paid=True, cost_per_call=0.09, rows=[])  # nothing found
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied  # terminal, not running
+    assert done.result_count == 0
+    assert done.progress.phase == "done"
+
+
+async def test_failed_job_marks_phase_failed(monkeypatch):
+    """A failed discovery run stamps phase 'failed' so a phase-keyed client can
+    retire its spinner on the terminal signal."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    provider = FakeProvider(is_paid=True, cost_per_call=0.09)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    async def boom_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        raise RuntimeError("ingest exploded")
+
+    monkeypatch.setattr(SchemaResolver, "ingest", boom_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "list of OpenRouter models", parsed=CONFIRMED_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.failed
+    assert done.progress.phase == "failed"

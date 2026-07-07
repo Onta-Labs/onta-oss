@@ -80,6 +80,7 @@ from cograph_client.enrichment.models import (
 )
 from cograph_client.graph.kg_writer import refresh_after_write
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from cograph_client.normalization.inference import list_type_schema
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.retrieval.errors import LLMError
 from cograph_client.web_sources.base import (
@@ -363,15 +364,45 @@ class WebIngestCapability:
         if not query:
             return []
         key_attr = spec.get("key_attribute") or "name"
-        confirmed = _dedupe([key_attr, *spec.get("confirmed_attributes", [])])
+
+        # ONTA-239 (Cluster 2b) — ONTOLOGY GROUNDING. Fetch the target type's
+        # already-declared attribute names so this second rail converges on the
+        # first rail's names instead of minting a synonym for the same concept
+        # (``per_minute_pricing`` vs an existing ``realtime_audio_duration_per_minute``).
+        # Mirrors what the enrich rail does via ``_validate_enrich_request``. Best-
+        # effort: a brand-new type / read hiccup yields an empty schema → snapping
+        # is a no-op and nothing diverges from today's behavior.
+        declared_attrs: list[str] = []
+        try:
+            schema = await list_type_schema(ctx.neptune, ctx.tenant_id, type_name)
+            declared_attrs = [a for a in (schema.get("attributes") or []) if a]
+        except Exception:  # noqa: BLE001 — grounding is best-effort, never a 500
+            logger.warning("web_ingest_type_schema_failed", exc_info=True)
+
+        # ONTA-239 (Cluster 2a) — DETERMINISTIC FIELD FLOOR. When the user handed
+        # over an explicit field list, parse it straight from the accumulated
+        # instruction WITHOUT the LLM, so the plan can GUARANTEE none of their named
+        # fields is silently dropped or renamed by the non-deterministic spec
+        # resolver (the RCA: 18 named fields collapsed to a generic 9). The LLM's
+        # ``confirmed_attributes`` may EXTEND this floor but never shrink it.
+        user_floor = _snap_to_declared(
+            _explicit_user_fields(instruction), declared_attrs
+        )
+        llm_confirmed = _snap_to_declared(
+            _as_list(spec.get("confirmed_attributes")), declared_attrs
+        )
+        # Floor FIRST so the user's own names + order win over the LLM's rephrasing;
+        # the LLM set only contributes any ADDITIONAL fields it surfaced.
+        confirmed = _dedupe([key_attr, *user_floor, *llm_confirmed])
         suggested = _dedupe([key_attr, *spec.get("suggested_attributes", [])])
 
         already_asked = int(ctx.extras.get("prior_clarify_count", 0)) >= 1
         if len(confirmed) <= 1 and not already_asked:
-            # Only the key is "confirmed" (i.e. the user just named the entity).
-            # Ask which attributes to collect — clickable options carry a SHORT
-            # recommended set (the most-important few), pre-selected, so the next
-            # turn converges without confronting the user with every column.
+            # Only the key is "confirmed" (i.e. the user just named the entity and
+            # gave no explicit field list). Ask which attributes to collect —
+            # clickable options carry a SHORT recommended set (the most-important
+            # few), pre-selected, so the next turn converges without confronting the
+            # user with every column.
             core = _core_attrs(key_attr, spec.get("core_attributes", []), suggested)
             return [_clarify_step(type_name, key_attr, core)]
 
@@ -379,6 +410,22 @@ class WebIngestCapability:
         # already asked once (don't loop). These drive entity naming + the
         # preview card — NOT the fetch breadth.
         attributes = confirmed if len(confirmed) > 1 else suggested
+
+        # HARD FLOOR GUARANTEE (ONTA-239): every field the user explicitly named
+        # MUST survive into the plan's ``attributes`` — the whole point of the
+        # deterministic floor. If the fallback-to-suggested branch above (only the
+        # key was confirmed, but we'd already clarified once) would drop them, union
+        # them back in. This assertion-by-construction is what the "assert no user-
+        # named field is lost" fix requires; the log makes any future regression
+        # visible instead of silent.
+        missing_floor = [f for f in user_floor if f not in attributes]
+        if missing_floor:
+            attributes = _dedupe([*attributes, *missing_floor])
+            logger.info(
+                "web_ingest_user_floor_reinstated",
+                fields=missing_floor,
+                type=type_name,
+            )
 
         # Decouple the PROVIDER FETCH from the user's minimal named attributes
         # (Cause 1): every provider PROJECTS rows to hint_columns, so passing the
@@ -753,6 +800,19 @@ class WebIngestCapability:
             if job is not None and job_store is not None:
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
+                # EARLY total estimate (ONTA-238): a discovery run's total/processed
+                # otherwise stay 0/0 until the FIRST (sub-query × provider) batch
+                # completes — minutes into a working job — so a poller sees a flat
+                # 0/0 and concludes the job is stalled (the persona polled 81× and
+                # gave up on jobs that were in fact progressing). Seed ``total`` with
+                # the plan cap up front — the honest UPPER bound on rows this run
+                # will land — so the very first poll reads ~N/0, not 0/0. The rolling
+                # per-sub-query estimate below refines it downward and the terminal
+                # settle pins it to the exact count. Also stamp the first phase so a
+                # poll during the (slow) initial search reads "searching", not a bare
+                # status=running.
+                job.progress.total = cap
+                job.progress.phase = "searching"
                 await job_store.update(job)
             # Observability for the WRITE TARGET (ONTA-198): record the exact graph
             # this run writes into. Without it a run that reports "N filled" but whose
@@ -839,6 +899,13 @@ class WebIngestCapability:
                         # coverage beats nothing (adversarial-review F3).
                         plog.attempts += 1
                         phase = "discover"
+                        # User-facing progress phase (ONTA-238): each provider
+                        # iteration starts by SEARCHING the web (the phase flips to
+                        # "ingesting" once rows are found, above). Re-set per batch
+                        # so after an ingest the next batch's search reads honestly.
+                        if job is not None and job_store is not None:
+                            job.progress.phase = "searching"
+                            await job_store.update(job)
                         try:
                             full = await prov.discover(
                                 sub_query,
@@ -894,8 +961,12 @@ class WebIngestCapability:
                             # ingest, so a poll mid-batch already shows which
                             # providers were consulted + what they found — the
                             # single-batch classic path otherwise sits at 0/0 for
-                            # the whole extraction (adversarial-review F5).
+                            # the whole extraction (adversarial-review F5). Flip the
+                            # user-facing phase to "ingesting" (ONTA-238): we have
+                            # rows and are about to run the extract→insert path, the
+                            # slowest leg of the run.
                             if job is not None and job_store is not None:
+                                job.progress.phase = "ingesting"
                                 job.platforms = platforms
                                 job.provider_logs = list(plogs.values())
                                 await job_store.update(job)
@@ -1880,6 +1951,12 @@ async def _finish_job(
     now = datetime.now(timezone.utc)
     job.progress.processed = processed
     job.progress.filled = entities
+    # Terminal phase (ONTA-238): a completed job reads "done", so a client that
+    # keyed a spinner off the phase can retire it. Paired with the terminal
+    # ``applied`` status + ``result_count``, a completed-EMPTY run (0 records) is
+    # now fully distinguishable from a still-running one — same terminal status,
+    # phase "done", result_count 0 — instead of looking identical to "running".
+    job.progress.phase = "done"
     job.result_count = entities
     if platforms:
         job.platforms = platforms
@@ -1895,6 +1972,7 @@ async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
         return
     now = datetime.now(timezone.utc)
     job.status = JobStatus.failed
+    job.progress.phase = "failed"
     job.error = (error or "discovery failed")[:500]
     job.completed_at = now
     job.last_run = now
@@ -1936,6 +2014,7 @@ async def _fail_billing_job(
     )
     message = f"{error}{landed}"
     job.status = JobStatus.failed
+    job.progress.phase = "failed"
     job.error = message[:500]
     job.provider_logs = list(provider_logs)
     job.error_summary = [
@@ -1997,6 +2076,101 @@ def _slug(v) -> str:
 def _pascal(v: str) -> str:
     parts = re.split(r"[^0-9a-zA-Z]+", str(v or "").strip())
     return "".join(p[:1].upper() + p[1:] for p in parts if p) or "WebRecord"
+
+
+# A field token in an explicit list: a snake_case / hyphenated identifier, or a
+# short multi-word phrase ("word error rate"). We deliberately keep it tight — a
+# word made of letters/digits/_/- optionally followed by up to THREE more such
+# words (≤4 words total) — so a long trailing prose clause ("… if you can find
+# them") is rejected rather than swallowed as one giant field name.
+_FIELD_TOKEN = re.compile(
+    r"^[A-Za-z][A-Za-z0-9_\-]*(?: [A-Za-z0-9][A-Za-z0-9_\-]*){0,3}$"
+)
+
+# Markers that introduce an EXPLICIT user-supplied field list, so we only harvest
+# a comma/newline list when the user (or the server-generated "Use these:" chip)
+# actually enumerated fields — never from arbitrary prose. Deliberately CONSERVATIVE
+# (high precision over recall): a false positive would pollute the attribute floor
+# with an entity phrase ("collect the physicians in Tustin"), so we require an
+# unambiguous list-introducer — the "Use these:" chip, or a "fields/columns/
+# attributes" noun that is either introduced by a preposition (with/of/including)
+# or immediately followed by a colon. Bare verbs like "collect"/"include" are NOT
+# markers (too easily an entity phrase). Case-insensitive.
+_FIELD_LIST_MARKERS = re.compile(
+    r"(?:use\s+these"
+    r"|(?:with|of|including|these|the\s+following)\s+"
+    r"(?:the\s+)?(?:fields?|columns?|attributes?|properties)"
+    r"|(?:fields?|columns?|attributes?|properties)\s*:)"
+    r"\s*:?\s*",
+    re.IGNORECASE,
+)
+
+
+def _explicit_user_fields(instruction: str) -> list[str]:
+    """Deterministically extract the fields the user EXPLICITLY enumerated.
+
+    The persona-eval RCA (ONTA-239, Cluster 2): when the user hands over a concrete
+    field list, the LLM spec resolver may non-deterministically drop or rename some
+    of them (18 named fields collapsed to a generic 9). This parser is the
+    authoritative FLOOR: it reads the user's list straight from the accumulated
+    instruction WITHOUT an LLM, so the plan can guarantee no user-named field is
+    lost, regardless of what the resolver returned.
+
+    It fires only after an unambiguous list MARKER (the server-generated
+    ``Use these: …`` confirmation chip, or a "fields/columns/attributes" noun that
+    is preposition-introduced — "with fields …", "with the following columns:" — or
+    colon-terminated — "fields: …"), then harvests the comma/newline/semicolon-
+    separated tokens that follow on the SAME logical run. Deliberately conservative:
+    bare verbs like "collect"/"include" are NOT markers, since "collect the coffee
+    shops in SF" is an entity phrase, not a field list. Each token must look like a
+    field name (a short identifier or ≤4-word phrase) — a longer prose run breaks
+    the list. Returns snake_case, de-duped, order-preserving. Empty when the user
+    gave no explicit list (the entity-only / free-text ask — unchanged behavior).
+    """
+    if not instruction:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in _FIELD_LIST_MARKERS.finditer(instruction):
+        tail = instruction[m.end():]
+        # Stop the list at the first hard sentence break so a following sentence
+        # of prose is never harvested; split the remainder on list separators.
+        segment = re.split(r"[.\n?!]", tail, maxsplit=1)[0]
+        # "a, b, c and d" / "a; b" / "a, b, or c" — normalize the joiners to commas.
+        segment = re.sub(r"\b(?:and|or)\b", ",", segment, flags=re.IGNORECASE)
+        raw_tokens = re.split(r"[,;/]", segment)
+        matched_any = False
+        for tok in raw_tokens:
+            t = tok.strip().strip("\"'`*").strip()
+            if not t or not _FIELD_TOKEN.match(t):
+                # A non-field token ends this list run: stop harvesting past prose
+                # (e.g. "name, provider and the pricing if you can find it" keeps
+                # name/provider/pricing but not the trailing clause).
+                if matched_any:
+                    break
+                continue
+            slug = _slug(t)
+            if slug and slug not in seen:
+                seen.add(slug)
+                out.append(slug)
+                matched_any = True
+    return out
+
+
+def _snap_to_declared(names: list[str], declared: list[str]) -> list[str]:
+    """Snap each attribute name to the type's EXISTING declared attribute (matched
+    case-insensitively); keep it verbatim when the type has no such attribute.
+
+    Mirrors enrichment's ``_validate_enrich_request`` (``enrich_cap.py``): the
+    enrich rail is ontology-grounded and snaps to declared names, so web-discovery
+    minting a divergent synonym for the SAME concept (``per_minute_pricing`` vs the
+    already-declared ``realtime_audio_duration_per_minute``) forks the ontology
+    across the two rails (ONTA-239, Cluster 2). Grounding discovery the same way
+    converges the second rail onto the first's names. Order-preserving; a name with
+    no declared match is a legitimately NEW attribute and passes through unchanged
+    (soft-extraction still decides its final shape downstream)."""
+    lookup = {d.lower(): d for d in declared if d}
+    return [lookup.get(n.lower(), n) for n in names]
 
 
 def _dedupe(items: list[str]) -> list[str]:
