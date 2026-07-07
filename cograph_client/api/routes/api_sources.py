@@ -219,6 +219,13 @@ def _parse_spec(raw: dict[str, Any], slug_override: Optional[str] = None) -> Api
     return spec
 
 
+def _is_global(spec: ApiSourceSpec) -> bool:
+    """Whether a spec belongs to one of the read-only GLOBAL catalog layers
+    (``global_public`` / ``global_enhanced``). Global sources are operator-only
+    to VIEW (ONTA-234) and always read-only to mutate."""
+    return spec.layer in _GLOBAL_LAYERS
+
+
 def _guard_not_global(tenant_id: str, slug: str) -> None:
     """403 if ``slug`` names a GLOBAL (read-only) catalog entry. Global entries are
     operator-curated and may never be edited/deleted through the tenant routes."""
@@ -237,12 +244,25 @@ def _guard_not_global(tenant_id: str, slug: str) -> None:
 async def list_api_sources(
     tenant: TenantContext = Depends(get_tenant),
 ):
-    """List all sources visible to this tenant: global read-only entries +
-    the tenant's own custom (editable) entries, flagged by ``layer`` /
-    ``editable`` / ``has_secret``."""
+    """List the sources visible to this caller.
+
+    Visibility is operator-gated (ONTA-234):
+
+    * a **regular** caller sees ONLY their own ``tenant_custom`` (editable)
+      sources — the GLOBAL catalog (``global_public`` + ``global_enhanced``) is
+      never returned, so our vendor stack / coverage is not exposed to tenants.
+    * an **ONTA operator** (``tenant.is_operator``, decided server-side from the
+      verified identity) additionally sees the full global catalog, read-only —
+      the authoring aid for the operator-curated, PR-reviewed global sources.
+
+    The gate is on VISIBILITY only; the discovery / enrichment rails still
+    execute every enabled global source for every tenant (they consult the
+    catalog directly, not this route)."""
     catalog = await load_tenant_custom_catalog(tenant.tenant_id, _sources_store())
     out: list[ApiSourceSummary] = []
     for spec in sorted(catalog.all(), key=lambda s: s.slug):
+        if _is_global(spec) and not tenant.is_operator:
+            continue  # regular users never see the global catalog
         out.append(await _summary(spec, tenant.tenant_id))
     return out
 
@@ -252,10 +272,14 @@ async def get_api_source(
     slug: str,
     tenant: TenantContext = Depends(get_tenant),
 ):
-    """Read one source's full spec (secrets REDACTED/omitted) + ``has_secret``."""
+    """Read one source's full spec (secrets REDACTED/omitted) + ``has_secret``.
+
+    A GLOBAL slug is only visible to an operator: a regular caller requesting a
+    global slug gets a 404 — same as a slug that does not exist — so the route
+    never leaks that a global source exists (ONTA-234)."""
     catalog = await load_tenant_custom_catalog(tenant.tenant_id, _sources_store())
     spec = catalog.get(slug)
-    if spec is None:
+    if spec is None or (_is_global(spec) and not tenant.is_operator):
         raise HTTPException(status_code=404, detail=f"no api source '{slug}'")
     has_secret = (
         await _has_stored_secret(tenant.tenant_id, spec)
@@ -387,7 +411,9 @@ async def test_api_source(
     elif req.slug:
         catalog = await load_tenant_custom_catalog(tenant.tenant_id, _sources_store())
         spec = catalog.get(req.slug)
-        if spec is None:
+        # A regular caller may not smoke-test a GLOBAL source by slug — same 404
+        # as GET, so the route never confirms a global slug exists (ONTA-234).
+        if spec is None or (_is_global(spec) and not tenant.is_operator):
             raise HTTPException(status_code=404, detail=f"no api source '{req.slug}'")
     else:
         raise HTTPException(status_code=422, detail="provide either 'slug' or 'spec'")
