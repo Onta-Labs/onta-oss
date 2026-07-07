@@ -321,6 +321,11 @@ def _resolve_include(raw: Optional[str]) -> Optional[set[str]]:
         return None
     known = {i.name for i in INVARIANTS}
     requested = {name.strip() for name in raw.split(",") if name.strip()}
+    # An all-separator/whitespace string (e.g. "," or " , ") yields NO names. Fall back to
+    # run-all (None), never an empty set — an empty `include` would select ZERO invariants
+    # and report a vacuous pass on a genuinely bad graph (the #135 failure class).
+    if not requested:
+        return None
     unknown = requested - known
     if unknown:
         raise ValueError(

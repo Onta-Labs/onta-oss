@@ -234,9 +234,17 @@ async def test_catalog_no_reset_accumulates_in_a_shared_graph(n):
 # --------------------------------------------------------------------------- #
 def test_resolve_include_validates_names():
     assert _resolve_include(None) is None
+    assert _resolve_include("") is None
     assert _resolve_include("node_edge_on_attrs_predicate") == {"node_edge_on_attrs_predicate"}
     with pytest.raises(ValueError, match="unknown invariant"):
         _resolve_include("node_edge_on_attrs_predicate,typo_here")
+
+
+def test_resolve_include_all_separator_runs_all_not_zero():
+    # a pathological all-comma/whitespace string must fall back to run-all (None), never an
+    # empty set — an empty selection would run ZERO invariants and vacuously pass a bad graph.
+    assert _resolve_include(",") is None
+    assert _resolve_include("  ,  ,") is None
 
 
 def test_is_disposable():
