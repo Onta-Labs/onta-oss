@@ -8,7 +8,7 @@ import httpx
 import structlog
 
 from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.parser import parse_sparql_results
+from cograph_client.graph.parser import parse_sparql_results, unbound_projection_vars
 from cograph_client.graph.queries import parse_kg_graph_uri
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
@@ -46,6 +46,12 @@ _alias_cache: dict[str, tuple[dict[str, str], float]] = {}
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 DEFAULT_QUERY_MODEL = os.environ.get("OMNIX_QUERY_MODEL", "llama3.1-8b")
 DEFAULT_QUERY_PROVIDER = os.environ.get("OMNIX_QUERY_PROVIDER", "cerebras")  # cerebras, openrouter, or anthropic
+
+# Max rows rendered in the plain-text answer before truncating. The old
+# hard-coded 20 silently dropped most of a wide "list all ..." result; raise it
+# and make it tunable. Truncation is now stated prominently (not buried) AND
+# the slice is deterministic because generated SELECTs get a stable ORDER BY.
+ANSWER_ROW_CAP = int(os.environ.get("OMNIX_ANSWER_ROW_CAP", "100"))
 
 # Embedding service singleton
 _embedding_service = None
@@ -215,40 +221,61 @@ class NLQueryPipeline:
         functions_needed: list[str] = []
 
         for attempt in range(max_attempts):
-            t1 = time.time()
-            if attempt == 0:
-                llm_response = await self._generate_sparql(question, ontology, data_graph, examples_text=examples_text)
-            else:
-                llm_response = await self._generate_sparql(
-                    question, ontology, data_graph,
-                    error_feedback=f"The previous query failed with: {last_error}\nQuery was: {sparql}\nPlease fix the SPARQL syntax and try again.",
-                )
-            timing[f"sparql_gen_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t1) * 1000, 1)
-
-            sparql = normalize_sparql(llm_response.get("sparql", ""))
-            # Fix bare attribute URIs using ontology context
-            sparql = self._fix_attribute_uris(sparql, ontology)
-            # Fix cross-type attribute misuse and rdf:type shorthand
-            sparql = self._fix_common_sparql_issues(sparql, ontology, alias_map)
-            if layer_graph_uris:
-                # Layer-aware closure (COG-37): widen the graph scope so the
-                # subClassOf* walk sees edges in every visible layer graph.
-                from cograph_client.graph.ontology_queries import add_layer_from_clauses
-                sparql = add_layer_from_clauses(sparql, layer_graph_uris)
-            explanation = llm_response.get("explanation", "")
-            functions_needed = llm_response.get("functions_needed", [])
-
-            is_valid, error = validate_sparql(sparql)
-            if not is_valid:
-                last_error = error
-                continue
-
+            # The ENTIRE attempt — SPARQL generation, post-processing,
+            # validation, execution, and formatting — runs inside one
+            # try/except so a transient failure at ANY stage retries instead of
+            # escaping the loop. Generation in particular calls a provider whose
+            # `raise_for_status()` / `json.loads` are unguarded: a provider 5xx,
+            # timeout, or malformed-JSON response used to fly straight past all
+            # three attempts and out of `ask()` as a bare 500 (no error body).
+            # Now it's caught here, recorded as `last_error`, and retried; after
+            # max_attempts it falls through to the graceful NLResult below.
             try:
+                t1 = time.time()
+                if attempt == 0:
+                    llm_response = await self._generate_sparql(question, ontology, data_graph, examples_text=examples_text)
+                else:
+                    llm_response = await self._generate_sparql(
+                        question, ontology, data_graph,
+                        error_feedback=f"The previous query failed with: {last_error}\nQuery was: {sparql}\nPlease fix the SPARQL syntax and try again.",
+                    )
+                timing[f"sparql_gen_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t1) * 1000, 1)
+
+                sparql = normalize_sparql(llm_response.get("sparql", ""))
+                # Fix bare attribute URIs using ontology context
+                sparql = self._fix_attribute_uris(sparql, ontology)
+                # Fix cross-type attribute misuse and rdf:type shorthand
+                sparql = self._fix_common_sparql_issues(sparql, ontology, alias_map)
+                # Deterministic ordering so truncation cuts cleanly and results
+                # are stable across runs (COG / persona-eval: unordered results
+                # made the [:cap] slice arbitrary).
+                sparql = self._ensure_order_by(sparql)
+                if layer_graph_uris:
+                    # Layer-aware closure (COG-37): widen the graph scope so the
+                    # subClassOf* walk sees edges in every visible layer graph.
+                    from cograph_client.graph.ontology_queries import add_layer_from_clauses
+                    sparql = add_layer_from_clauses(sparql, layer_graph_uris)
+                explanation = llm_response.get("explanation", "")
+                functions_needed = llm_response.get("functions_needed", [])
+
+                is_valid, error = validate_sparql(sparql)
+                if not is_valid:
+                    last_error = error
+                    continue
+
                 t2 = time.time()
                 raw = await self.neptune.query(sparql)
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
-                _, bindings = parse_sparql_results(raw)
-                answer = await self._format_answer(bindings, explanation)
+                variables, bindings = parse_sparql_results(raw)
+                # Projected vars that bound in ZERO rows (e.g. an OPTIONAL
+                # attribute absent from every matching entity, or a drifted
+                # attribute URI). Reported honestly instead of silently omitted,
+                # so the answer signals "column missing" vs "column empty".
+                missing_vars = unbound_projection_vars(variables, bindings)
+                if missing_vars:
+                    timing["unbound_projection_vars"] = ", ".join(missing_vars)
+                    logger.info("unbound_projection_vars", vars=missing_vars, question=question)
+                answer = await self._format_answer(bindings, explanation, missing_vars=missing_vars)
                 t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
                 timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
@@ -265,6 +292,7 @@ class NLQueryPipeline:
                 )
             except Exception as e:
                 last_error = str(e)
+                logger.warning("ask_attempt_failed", attempt=attempt, error=last_error, question=question)
                 continue
 
         timing["total_ms"] = round((time.time() - t0) * 1000, 1)
@@ -596,6 +624,35 @@ class NLQueryPipeline:
                     types[tl]["functions"].add(row["funcName"])
 
             if not types:
+                # The schema query returned zero usable types. When querying a
+                # SPECIFIC KG (distinct instance graph), that can mean two very
+                # different things which look identical here:
+                #  (a) instances exist but the base-graph schema hasn't been
+                #      written yet (fresh ingest, schema-write lagging) — a basic
+                #      "list all X" ask SHOULD still work, so fall back to the
+                #      types present in the instance data and emit a distinct
+                #      diagnostic instead of the misleading "No ontology" text.
+                #  (b) the KG is genuinely empty — keep the original message.
+                # We already know `active_types` (the instance-graph types)
+                # from the probe above, so disambiguating adds NO extra query in
+                # the empty case. Only attempt this for a distinct instance
+                # graph; a bare tenant/ontology graph with no schema genuinely
+                # has no ontology.
+                if instance_graph and instance_graph != graph_uri and active_types:
+                    fallback = await self._instance_graph_ontology_fallback(
+                        graph_uri, instance_graph, active_types
+                    )
+                    if fallback is not None:
+                        summary, has_instances = fallback
+                        if has_instances:
+                            logger.info(
+                                "ontology_schema_missing_instances_present",
+                                graph_uri=graph_uri,
+                                instance_graph=instance_graph,
+                                instance_types=len(active_types),
+                            )
+                            _ontology_cache[cache_key] = (summary, time.time())
+                            return summary
                 return "No ontology defined yet."
 
             # Discover enumerated values for low-cardinality string attributes.
@@ -758,6 +815,94 @@ class NLQueryPipeline:
             logger.error("ontology_fetch_failed", exc_info=True)
             return "Could not fetch ontology. Graph may be empty."
 
+    async def _instance_graph_ontology_fallback(
+        self,
+        graph_uri: str,
+        instance_graph: str | None,
+        active_types: set[str] | None,
+    ) -> tuple[str, bool] | None:
+        """Build a minimal ontology summary from INSTANCE data when the schema is missing.
+
+        Called only when the base-graph schema query yields zero types. Probes
+        the instance graph directly for the types actually present and the
+        predicates used on them, so a freshly-ingested KG whose schema hasn't
+        been written yet can still answer a basic "list all X" query instead of
+        returning the misleading "No ontology defined yet."
+
+        Returns:
+          * ``(summary, True)``  — instances exist; `summary` is a minimal
+            ontology built from instance types/predicates, prefixed with a
+            diagnostic telling the caller the schema isn't available yet.
+          * ``(None-sentinel, False)`` i.e. ``("", False)`` — no instances found;
+            caller keeps the original "No ontology defined yet." message.
+          * ``None`` — probing failed; caller falls back to the default message.
+
+        Best-effort: any error returns ``None`` so /ask never breaks on it.
+        """
+        target_graph = instance_graph or graph_uri
+        TYPE_URI_PREFIX = "https://cograph.tech/types/"
+        from cograph_client.graph.ontology_queries import type_uri, attr_uri
+
+        try:
+            # Reuse types already discovered upstream when available; otherwise
+            # probe the instance graph now.
+            type_leaves: set[str] = set(active_types) if active_types else set()
+            if not type_leaves:
+                type_query = (
+                    f"SELECT DISTINCT ?type FROM <{target_graph}> "
+                    f"WHERE {{ ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?type }}"
+                )
+                _, type_bindings = parse_sparql_results(await self.neptune.query(type_query))
+                for row in type_bindings:
+                    t = row.get("type", "")
+                    if t.startswith(TYPE_URI_PREFIX):
+                        type_leaves.add(t[len(TYPE_URI_PREFIX):])
+
+            if not type_leaves:
+                # Genuinely empty — no instances either. Signal "no instances".
+                return "", False
+
+            # Collect the predicates actually used on each type's instances so
+            # the LLM has concrete URIs to query, even without a schema. Bounded
+            # per-type; failures per type are non-fatal.
+            lines = [
+                "NOTE: The ontology schema for this graph has not been written "
+                "yet, but instance data is present. The types and predicates "
+                "below were read directly from the instance data. For the full "
+                "curated ontology once available, use view_ontology.",
+                "",
+            ]
+            for leaf in sorted(type_leaves):
+                lines.append(f"Type: {leaf} — URI: <{type_uri(leaf)}>")
+                try:
+                    pred_query = (
+                        f"SELECT DISTINCT ?p FROM <{target_graph}> WHERE {{ "
+                        f"?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+                        f"<{type_uri(leaf)}> . ?s ?p ?o }} LIMIT 100"
+                    )
+                    _, pred_bindings = parse_sparql_results(await self.neptune.query(pred_query))
+                except Exception:
+                    pred_bindings = []
+                attrs: list[str] = []
+                rels: list[str] = []
+                for row in pred_bindings:
+                    p = row.get("p", "")
+                    if p.startswith(f"{TYPE_URI_PREFIX}{leaf}/attrs/"):
+                        a_name = p.rsplit("/", 1)[-1]
+                        attrs.append(f"{a_name} — URI: <{attr_uri(leaf, a_name)}>")
+                    elif p.startswith("https://cograph.tech/onto/"):
+                        r_name = p.rsplit("/", 1)[-1]
+                        rels.append(f"{r_name} — predicate URI: <{p}>")
+                if attrs:
+                    lines.append(f"  Attributes: {', '.join(sorted(set(attrs)))}")
+                if rels:
+                    lines.append(f"  Relationships: {', '.join(sorted(set(rels)))}")
+
+            return "\n".join(lines), True
+        except Exception:
+            logger.warning("instance_graph_ontology_fallback_failed", exc_info=True)
+            return None
+
     @staticmethod
     def _fix_attribute_uris(sparql: str, ontology_summary: str) -> str:
         """Fix incorrect URIs in generated SPARQL using the ontology as ground truth.
@@ -905,6 +1050,56 @@ class NLQueryPipeline:
 
         return sparql
 
+    @staticmethod
+    def _ensure_order_by(sparql: str) -> str:
+        """Add a deterministic ORDER BY to a plain SELECT so truncation is stable.
+
+        Result rows come back in arbitrary Neptune order, so slicing to a row
+        cap (``bindings[:cap]``) cut an essentially random subset — two runs of
+        the same question could truncate to different rows. Adding a stable
+        ORDER BY over the projected variables makes the cut deterministic
+        (same rows every run) and groups like-with-like (e.g. by type then
+        label) so a truncated page reads coherently.
+
+        Conservative — leaves the query untouched when ordering would be wrong
+        or risky:
+        - already has ORDER BY (respect the LLM's / template's intent),
+        - is an aggregate (GROUP BY / HAVING) — ordering by raw projected vars
+          would be invalid,
+        - isn't a SELECT, is a SELECT * (no named vars to order by), or has an
+          existing LIMIT/OFFSET (assume intentional shape).
+        Ordering is best-effort: any parse hiccup returns the original query.
+        """
+        import re
+
+        try:
+            upper = sparql.upper()
+            if "SELECT" not in upper:
+                return sparql
+            if "ORDER BY" in upper or "GROUP BY" in upper or "HAVING" in upper:
+                return sparql
+            if "LIMIT" in upper or "OFFSET" in upper:
+                return sparql
+
+            # Extract the projected variables from the SELECT clause. Bail on
+            # SELECT * (nothing named to order by) or aggregate projections.
+            m = re.search(r"SELECT\s+(DISTINCT\s+|REDUCED\s+)?(.*?)\s+WHERE", sparql, re.IGNORECASE | re.DOTALL)
+            if not m:
+                return sparql
+            proj = m.group(2)
+            if "*" in proj or "(" in proj:  # SELECT * or has an expression/aggregate/alias
+                return sparql
+            proj_vars = re.findall(r"\?(\w+)", proj)
+            if not proj_vars:
+                return sparql
+
+            order_expr = " ".join(f"?{v}" for v in proj_vars)
+            # Append ORDER BY at the very end (after the closing WHERE brace and
+            # any solution modifiers we already screened out above).
+            return f"{sparql.rstrip().rstrip('.')}\nORDER BY {order_expr}"
+        except Exception:
+            return sparql
+
     async def _fetch_alias_map(self, graph_uri: str) -> dict[str, str]:
         """Cached attribute-alias map for the tenant ontology graph (ADR 0002 §7).
 
@@ -936,14 +1131,25 @@ class NLQueryPipeline:
         if svc:
             svc.invalidate(graph_uri)
 
-    async def _rephrase_via_openrouter(self, question: str, bindings: list[dict], max_rows: int = 30) -> str:
+    async def _rephrase_via_openrouter(self, question: str, bindings: list[dict], max_rows: int | None = None) -> str:
         """Generate a 2-3 sentence narrative summary of SPARQL result bindings.
+
+        ``max_rows`` bounds how many rows are fed to the narrative LLM (a
+        deliberate sample, not the full answer — the plain-text answer in
+        ``_format_answer`` carries all rows up to ANSWER_ROW_CAP). Defaults to
+        OMNIX_REPHRASE_MAX_ROWS (30) so a wide result can't blow the summarizer's
+        context; the truncation is already stated to the model. Now that
+        generated SELECTs get a deterministic ORDER BY, this sample is stable
+        across runs instead of an arbitrary slice.
 
         Uses Llama 3.1 8B on Cerebras (via OpenRouter) for fast, cheap rephrase.
         Fails open: returns "" on any error so the main response is never broken.
         """
         if not self._openrouter_key:
             return ""
+
+        if max_rows is None:
+            max_rows = int(os.environ.get("OMNIX_REPHRASE_MAX_ROWS", "30"))
 
         try:
             # Build a compact tabular string from bindings
@@ -1218,9 +1424,29 @@ class NLQueryPipeline:
 
         return resolved
 
-    async def _format_answer(self, bindings: list[dict], explanation: str) -> str:
+    async def _format_answer(
+        self,
+        bindings: list[dict],
+        explanation: str,
+        missing_vars: list[str] | None = None,
+    ) -> str:
+        # `missing_vars` are projected columns that bound in zero rows — reported
+        # honestly (see `unbound_projection_vars`) so the caller can tell "column
+        # absent" from "column empty" rather than the value silently vanishing.
+        def _missing_note() -> str:
+            if not missing_vars:
+                return ""
+            cols = ", ".join(missing_vars)
+            return (
+                f"\n\nNote: requested {'column' if len(missing_vars) == 1 else 'columns'} "
+                f"[{cols}] not present on any matching entity — the attribute may be "
+                f"unpopulated or named differently."
+            )
+
         if not bindings:
-            return "No results found."
+            # Even with no rows, surface which requested columns are absent so a
+            # follow-up can re-resolve rather than assume "no data at all".
+            return "No results found." + _missing_note()
 
         # Resolve any entity/type URIs to human-readable labels
         uri_labels = await self._resolve_uri_labels(bindings)
@@ -1229,14 +1455,20 @@ class NLQueryPipeline:
             """Return the display form of a binding value, resolving URIs."""
             return uri_labels.get(value, value)
 
-        if len(bindings) == 1 and len(bindings[0]) == 1:
+        if len(bindings) == 1 and len(bindings[0]) == 1 and not missing_vars:
             value = list(bindings[0].values())[0]
             return _display(str(value))
+
+        total = len(bindings)
+        cap = ANSWER_ROW_CAP
         lines = []
-        for row in bindings[:20]:
+        if total > cap:
+            # State truncation PROMINENTLY up front, not buried after the rows.
+            lines.append(f"Showing first {cap} of {total} results (truncated):")
+        for row in bindings[:cap]:
             parts = [f"{k}: {_display(v)}" for k, v in row.items()]
             lines.append(", ".join(parts))
         result = "\n".join(lines)
-        if len(bindings) > 20:
-            result += f"\n... and {len(bindings) - 20} more results"
-        return result
+        if total > cap:
+            result += f"\n(… {total - cap} more results not shown — refine the question to narrow them.)"
+        return result + _missing_note()
