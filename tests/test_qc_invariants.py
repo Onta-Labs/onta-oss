@@ -70,8 +70,8 @@ def test_sparql_encodes_the_right_patterns():
     q1 = by["node_edge_on_attrs_predicate"]
     assert ENT in q1 and "/attrs/" in q1 and TYPES in q1 and "isIRI(?o)" in q1
     q2 = by["relationship_edge_points_at_literal"]
-    assert ONTO in q2 and "isLiteral(?o)" in q2 and RDFS_RANGE in q2
-    assert "STRENDS" in q2 and "STRAFTER" in q2 and f"GRAPH <{ONTO_G}>" in q2
+    assert ONTO in q2 and "isLiteral(?o)" in q2 and RDFS_RANGE in q2 and RDF_TYPE in q2
+    assert "STRAFTER" in q2 and "CONCAT" in q2 and f"GRAPH <{ONTO_G}>" in q2
     q3 = by["bare_entity_node_missing_type"]
     assert "FILTER NOT EXISTS" in q3 and RDF_TYPE in q3 and ENT in q3
     q4 = by["bare_entity_node_missing_label"]
@@ -205,6 +205,22 @@ async def test_declared_relationship_edge_on_literal_is_caught(n):
     vs = await check_invariants(n, G, onto_graph_uri=ONTO_G)
     assert [v.invariant for v in vs] == ["relationship_edge_points_at_literal"]
     assert vs[0].severity == "error"
+
+
+@pytest.mark.asyncio
+async def test_cross_type_same_leaf_literal_attribute_not_flagged(n):
+    """Type-scoping: a leaf that is a RELATIONSHIP on one type but a LITERAL attribute on
+    another must not cross-contaminate. A Physician with onto/rating "4.6" is NOT flagged
+    when Physician.rating is declared a literal (xsd:float), even though Movie.rating is a
+    relationship (types/Rating) — only the SUBJECT's own type declaration is consulted."""
+    await _insert(n, _GOOD_PHYS + f'<{ENT}Physician/p1> <{ONTO}rating> "4.6" . ')
+    await _insert(
+        n,
+        f"<{TYPES}Physician/attrs/rating> <{RDFS_RANGE}> <http://www.w3.org/2001/XMLSchema#float> . "
+        + f"<{TYPES}Movie/attrs/rating> <{RDFS_RANGE}> <{TYPES}Rating> . ",
+        graph=ONTO_G,
+    )
+    assert await check_invariants(n, G, onto_graph_uri=ONTO_G) == []
 
 
 @pytest.mark.asyncio

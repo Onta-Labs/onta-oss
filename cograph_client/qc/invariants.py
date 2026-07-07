@@ -109,18 +109,21 @@ INVARIANTS: list[Invariant] = [
         description=(
             "A property DECLARED a relationship (attrs/<leaf> rdfs:range <types/…>) has an "
             "instance edge (onto/<leaf>) pointing at a LITERAL instead of an entity node — "
-            "a dangling raw value in a node-valued slot. Declaration-aware, so system "
-            "predicates (onto/ingested_at, onto/source, …) that legitimately carry literals "
-            "are NOT flagged. Needs the ontology graph (onto_graph_uri)."
+            "a dangling raw value in a node-valued slot. TYPE-SCOPED + declaration-aware: "
+            "binds the SUBJECT's own rdf:type and checks THAT type's declaration "
+            "(types/<Type>/attrs/<leaf>), so (a) system predicates (onto/ingested_at, "
+            "onto/source, …) are never flagged, and (b) a leaf that is a relationship on one "
+            "type but a literal attribute on another does not cross-contaminate. Needs the "
+            "ontology graph (onto_graph_uri)."
         ),
         sparql_fn=lambda g, og: (
             "SELECT ?s ?p ?o WHERE { "
-            + _scoped(g, "?s ?p ?o .")
+            + _scoped(g, f"?s ?p ?o . ?s <{RDF_TYPE}> ?stype .")
             + f' FILTER(STRSTARTS(STR(?p), "{ONTO_PREFIX}") && isLiteral(?o)) '
-            + _scoped(og, "?decl <" + RDFS_RANGE + "> ?range .")
-            + f' FILTER(STRSTARTS(STR(?decl), "{TYPES_PREFIX}") && CONTAINS(STR(?decl), "{ATTRS_INFIX}")) '
+            # the declaration URI for THIS subject's type: types/<Type>/attrs/<leaf>.
+            + f' BIND(IRI(CONCAT(STR(?stype), "{ATTRS_INFIX}", STRAFTER(STR(?p), "{ONTO_PREFIX}"))) AS ?decl) '
+            + _scoped(og, f"?decl <{RDFS_RANGE}> ?range .")
             + f' FILTER(STRSTARTS(STR(?range), "{TYPES_PREFIX}")) '
-            + f' FILTER(STRENDS(STR(?decl), CONCAT("{ATTRS_INFIX}", STRAFTER(STR(?p), "{ONTO_PREFIX}")))) '
             + "}"
         ),
         detail_fn=lambda b: (
