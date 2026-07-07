@@ -1,4 +1,4 @@
-from cograph_client.graph.parser import parse_sparql_results
+from cograph_client.graph.parser import parse_sparql_results, unbound_projection_vars
 
 
 def test_parse_empty_results():
@@ -61,3 +61,27 @@ def test_parse_malformed_input():
     vars, bindings = parse_sparql_results({})
     assert vars == []
     assert bindings == []
+
+
+def test_unbound_projection_vars_detects_zero_bind_column():
+    # `desc` is projected but binds in no row → reported as unbound.
+    variables = ["name", "desc"]
+    bindings = [{"name": "A"}, {"name": "B"}]
+    assert unbound_projection_vars(variables, bindings) == ["desc"]
+
+
+def test_unbound_projection_vars_none_when_all_bound():
+    variables = ["name", "desc"]
+    bindings = [{"name": "A", "desc": "x"}, {"name": "B"}]  # desc binds in row 0
+    assert unbound_projection_vars(variables, bindings) == []
+
+
+def test_unbound_projection_vars_empty_result_is_no_signal():
+    # With zero rows we can't tell "unbound" from "empty result" → return [].
+    assert unbound_projection_vars(["name", "desc"], []) == []
+
+
+def test_unbound_projection_vars_preserves_projection_order():
+    variables = ["a", "b", "c"]
+    bindings = [{"b": "1"}]
+    assert unbound_projection_vars(variables, bindings) == ["a", "c"]
