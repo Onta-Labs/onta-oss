@@ -27,6 +27,7 @@ from cograph_client.graph.queries import (
     tenant_graph_uri,
 )
 from cograph_client.models.function import FunctionRef, FunctionTier
+from cograph_client.resolver.validator import _typed_value
 
 logger = structlog.stdlib.get_logger("cograph.lambda_functions")
 
@@ -289,12 +290,17 @@ async def invoke_function(
         # `attrs/<leaf>` namespace, mirroring enrichment's _provenance_triples. This
         # is per-FACT (each lambda-computed attribute gets its own stamp), unlike the
         # per-ENTITY, system-hidden `onto/lambda_refreshed_at` below — so the query
-        # layer can filter "verified in the last N days" per attribute. Full value
-        # history is out of scope (a separate deferred ticket); just the freshness.
+        # layer can filter "verified in the last N days" per attribute. Written as a
+        # TYPED xsd:dateTime literal (via _typed_value): the column is declared
+        # dateTime and the NL planner emits typed comparisons, so an untyped string
+        # would be type-incompatible and the row would be silently dropped. Full
+        # value history is out of scope (a separate deferred ticket); just freshness.
         verified_at_pred = (
             f"https://cograph.tech/types/{entity_type}/attrs/{key}_verified_at"
         )
-        new_triples.append((body.entity_uri, verified_at_pred, now_iso))
+        new_triples.append(
+            (body.entity_uri, verified_at_pred, _typed_value(now_iso, "datetime"))
+        )
         replaced_preds.append(verified_at_pred)
 
         # Ensure the attribute exists in the ontology (schema graph — unrelated to

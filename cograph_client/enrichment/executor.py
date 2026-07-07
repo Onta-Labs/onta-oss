@@ -60,7 +60,7 @@ from cograph_client.graph.queries import (
     tenant_graph_uri,
 )
 from cograph_client.resolver.models import ValidatedTriple
-from cograph_client.resolver.validator import _to_wkt_point, validate_triple
+from cograph_client.resolver.validator import _to_wkt_point, _typed_value, validate_triple
 
 logger = structlog.stdlib.get_logger("cograph.enrichment")
 
@@ -384,6 +384,13 @@ def _infer_datatype_from_values(values: list[str]) -> str:
     machine-minted forms, unlike free-text. Mirrors web_ingest_cap._infer_datatype
     for the primitive cases."""
     vals = [str(v).strip() for v in values if v not in (None, "")]
+    # A value may already carry an XSD type annotation (``<lexical>^^<xsd-uri>``,
+    # the `_typed_value` convention some callers pre-apply — e.g. the enriched
+    # `<attr>_verified_at` dateTime stamp). Infer from the LEXICAL form so a
+    # pre-typed value classifies the same as its bare form (otherwise the trailing
+    # `^^…` breaks `fromisoformat`/int/float and every typed value falls to
+    # `string`, mis-declaring the column's range).
+    vals = [v.rsplit("^^", 1)[0] if "^^" in v else v for v in vals]
     vals = [v for v in vals if v]
     if not vals:
         return "string"
@@ -1500,11 +1507,16 @@ class EnrichmentExecutor:
 
         `<attr>_verified_at` is the ISO-8601 UTC instant this fact was written (a
         PER-FACT freshness marker, unlike the per-ENTITY `onto/ingested_at` that is
-        stamped once at ingest and hidden as a system marker). It is a plain,
-        QUERYABLE literal on the `attrs/<leaf>` namespace — deliberately NOT added
-        to the internal-marker hide-lists — so the query layer can answer "verified
-        in the last N days" per attribute. Full price/value history is out of scope
-        here (a separate deferred ticket); this is only the freshness stamp."""
+        stamped once at ingest and hidden as a system marker). It is a QUERYABLE
+        literal on the `attrs/<leaf>` namespace — deliberately NOT added to the
+        internal-marker hide-lists — so the query layer can answer "verified in the
+        last N days" per attribute. It is written as a TYPED `xsd:dateTime` literal
+        (via `_typed_value`), NOT a plain string like the citation companions: the
+        column is declared `xsd:dateTime` and the NL planner emits typed comparisons
+        (`FILTER(?x >= "…"^^xsd:dateTime)`), so an untyped string here would be
+        type-incompatible and the row would be silently dropped. Full price/value
+        history is out of scope here (a separate deferred ticket); this is only the
+        freshness stamp."""
         out: list[tuple[str, str, str]] = []
         if getattr(verdict, "source_url", None):
             out.append((entity_uri, _attr_uri(type_name, f"{attribute}_source_url"), verdict.source_url))
@@ -1514,7 +1526,13 @@ class EnrichmentExecutor:
         if prov:
             out.append((entity_uri, _attr_uri(type_name, f"{attribute}_provenance"), prov))
         # Per-fact freshness stamp: when this enriched value was verified/written.
-        out.append((entity_uri, _attr_uri(type_name, f"{attribute}_verified_at"), _now().isoformat()))
+        # Typed as xsd:dateTime so the NL planner's typed FILTER comparisons match
+        # (an untyped string would be type-incompatible → silently dropped rows).
+        out.append((
+            entity_uri,
+            _attr_uri(type_name, f"{attribute}_verified_at"),
+            _typed_value(_now().isoformat(), "datetime"),
+        ))
         return out
 
     @staticmethod
@@ -1561,8 +1579,12 @@ class EnrichmentExecutor:
         with the SAME datatype its attribute is DECLARED with (P1 fix). The primary
         value goes through :meth:`_instance_triples_for_value` (relationship → IRI;
         primitive → ``validate_triple`` typed literal, skipped if non-conforming);
-        the provenance companions (``*_source_url`` / ``*_provenance``) stay plain
-        string literals exactly as before."""
+        the citation companions (``*_source_url`` / ``*_provenance``) stay plain
+        string literals exactly as before. The one typed exception is
+        ``*_verified_at`` — a timestamp, not a citation string — which
+        :meth:`_provenance_triples` emits as a typed ``xsd:dateTime`` literal so the
+        NL planner's typed date FILTERs match it (an untyped string would be
+        type-incompatible and silently drop the row)."""
         triples: list[tuple[str, str, str]] = []
         for r in rows:
             if not self._row_is_applied(r, policy):
@@ -1576,7 +1598,8 @@ class EnrichmentExecutor:
                 )
             )
             # Provenance companions are user-facing citations (URLs / free text) —
-            # always plain string literals, never typed.
+            # plain string literals — EXCEPT `<attr>_verified_at`, which
+            # _provenance_triples types as xsd:dateTime so typed date FILTERs match.
             triples.extend(self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict))
         return triples
 

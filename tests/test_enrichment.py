@@ -4186,23 +4186,36 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
         assert '"92"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
         # The source_url predicate is present (declared + written).
         assert f"<{src_pred}>" in joined
-        # And the per-fact freshness stamp landed on the queryable attrs/ namespace.
-        assert (
+        # And the per-fact freshness stamp landed on the queryable attrs/ namespace,
+        # written as a TYPED xsd:dateTime literal (so typed NL date FILTERs match it).
+        verified_pred = (
             "https://cograph.tech/types/Product/attrs/humanness_score_verified_at"
-            in joined
         )
+        assert verified_pred in joined
+        verified_lines = [ln for ln in joined.splitlines() if verified_pred in ln]
+        assert verified_lines and all(
+            "^^<http://www.w3.org/2001/XMLSchema#dateTime>" in ln
+            for ln in verified_lines
+        ), f"verified_at must render as a typed dateTime literal: {verified_lines}"
 
     asyncio.run(run())
 
 
 def test_provenance_triples_stamps_per_fact_verified_at():
     """Every enriched fact carries a per-fact ``<attr>_verified_at`` freshness
-    stamp (ONTA-241): an ISO-8601 instant on the QUERYABLE ``attrs/<leaf>``
-    namespace (NOT the hidden ``onto/`` system-marker namespace), emitted
-    unconditionally alongside ``_source_url`` — so the query layer can filter
-    "verified in the last N days" per attribute. Its ISO value infers ``datetime``
-    so it's declared with an ``xsd:dateTime`` range."""
+    stamp (ONTA-241): a TYPED ``xsd:dateTime`` literal on the QUERYABLE
+    ``attrs/<leaf>`` namespace (NOT the hidden ``onto/`` system-marker namespace),
+    emitted unconditionally alongside ``_source_url`` — so the query layer can
+    filter "verified in the last N days" per attribute.
+
+    The STORED object must be a typed dateTime, not a bare string: the column is
+    declared ``xsd:dateTime`` and the NL planner emits typed comparisons
+    (``FILTER(?x >= "…"^^xsd:dateTime)``); an untyped string would be
+    type-incompatible in SPARQL and the row would be SILENTLY DROPPED."""
     from datetime import datetime as _dt
+    from cograph_client.graph.queries import _escape_value
+
+    XSD_DT = "http://www.w3.org/2001/XMLSchema#dateTime"
 
     verdict = Verdict(
         value="92",
@@ -4222,16 +4235,27 @@ def test_provenance_triples_stamps_per_fact_verified_at():
     # Queryable literal on attrs/<leaf>, never on the hidden onto/ marker namespace.
     assert pred == "https://cograph.tech/types/Product/attrs/humanness_score_verified_at"
     assert "/onto/" not in pred
-    # The value is a real ISO-8601 datetime (parseable → filterable, not free text).
-    assert _dt.fromisoformat(val).tzinfo is not None
-    # It infers a datetime range, so the ontology declaration is xsd:dateTime.
+    # The STORED object carries the xsd:dateTime type annotation (the `^^`
+    # convention), so Neptune compares it as a dateTime — not an untyped string.
+    assert val.endswith(f"^^{XSD_DT}"), f"verified_at must be a typed dateTime: {val!r}"
+    # And it renders to a proper typed SPARQL literal, "…"^^<…#dateTime>.
+    rendered = _escape_value(val)
+    assert rendered.endswith(f'^^<{XSD_DT}>'), rendered
+    assert rendered.startswith('"'), rendered
+    # The lexical part is still a real, tz-aware ISO-8601 datetime (parseable).
+    lexical = val.rsplit("^^", 1)[0]
+    assert _dt.fromisoformat(lexical).tzinfo is not None
+    # Inference sees through the type annotation and still declares xsd:dateTime
+    # (so the DECLARED range matches the STORED literal — no string/dateTime skew).
     assert _infer_datatype_from_values([val]) == "datetime"
-    # Emitted even when the verdict has no source_url (freshness is unconditional).
+    # Emitted even when the verdict has no source_url (freshness is unconditional),
+    # and still typed.
     bare = Verdict(value="7", confidence=0.9, source="wikidata")
     bare_triples = EnrichmentExecutor._provenance_triples(
         "https://cograph.tech/entities/Product/p2", "Product", "rating", bare
     )
-    assert any(p.endswith("/rating_verified_at") for (_s, p, _o) in bare_triples)
+    bare_verified = [o for (_s, p, o) in bare_triples if p.endswith("/rating_verified_at")]
+    assert bare_verified and bare_verified[0].endswith(f"^^{XSD_DT}")
 
 
 def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
