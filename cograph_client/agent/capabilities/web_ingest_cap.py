@@ -411,12 +411,13 @@ class WebIngestCapability:
         # preview card — NOT the fetch breadth.
         attributes = confirmed if len(confirmed) > 1 else suggested
 
-        # HARD FLOOR GUARANTEE (ONTA-239): every field the user explicitly named
-        # MUST survive into the plan's ``attributes`` — the whole point of the
-        # deterministic floor. If the fallback-to-suggested branch above (only the
-        # key was confirmed, but we'd already clarified once) would drop them, union
-        # them back in. This assertion-by-construction is what the "assert no user-
-        # named field is lost" fix requires; the log makes any future regression
+        # FLOOR GUARANTEE (ONTA-239): every field the user explicitly named MUST
+        # survive into the plan's ``attributes``. The primary guarantee is already
+        # provided by the ``confirmed`` construction above (a non-empty ``user_floor``
+        # forces ``len(confirmed) > 1`` → ``attributes = confirmed`` ⊇ floor). This
+        # is a belt-and-suspenders reinstatement guarding the ``attributes =
+        # suggested`` fallback branch, so a future refactor of that selection can
+        # never silently drop a user field; the log makes any such regression
         # visible instead of silent.
         missing_floor = [f for f in user_floor if f not in attributes]
         if missing_floor:
@@ -1951,11 +1952,19 @@ async def _finish_job(
     now = datetime.now(timezone.utc)
     job.progress.processed = processed
     job.progress.filled = entities
+    # Settle the rolling ``total`` estimate to the exact processed count on EVERY
+    # terminal-applied path (ONTA-238). The non-empty happy path settles it just
+    # before calling this; the EMPTY (0-row) path does not, so without this a
+    # completed-empty job would keep the early ``total = cap`` seed and read as a
+    # misleading ``0/200`` (looks unfinished) instead of ``0/0``. Settling here
+    # makes the invariant caller-independent.
+    job.progress.total = processed
     # Terminal phase (ONTA-238): a completed job reads "done", so a client that
     # keyed a spinner off the phase can retire it. Paired with the terminal
     # ``applied`` status + ``result_count``, a completed-EMPTY run (0 records) is
     # now fully distinguishable from a still-running one — same terminal status,
-    # phase "done", result_count 0 — instead of looking identical to "running".
+    # phase "done", result_count 0, progress 0/0 — instead of looking identical
+    # to "running".
     job.progress.phase = "done"
     job.result_count = entities
     if platforms:
@@ -2129,6 +2138,13 @@ def _explicit_user_fields(instruction: str) -> list[str]:
     """
     if not instruction:
         return []
+    # Bound the work: this runs on the SYNCHRONOUS /agent request path (before the
+    # discovery is backgrounded) and the per-marker ``tail`` slice + regex make the
+    # scan O(n²) in the number of list markers. A real instruction is well under a
+    # few KB; cap the scanned prefix so a pathologically large ``message`` payload
+    # can never turn this into a request-path CPU sink. A field list a user cares
+    # about always appears early, so truncation never loses a legitimate floor.
+    instruction = instruction[:8000]
     out: list[str] = []
     seen: set[str] = set()
     for m in _FIELD_LIST_MARKERS.finditer(instruction):

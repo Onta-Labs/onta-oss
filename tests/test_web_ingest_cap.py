@@ -2277,6 +2277,11 @@ async def test_empty_completed_job_is_distinguishable_from_running(monkeypatch):
     assert done.status == JobStatus.applied  # terminal, not running
     assert done.result_count == 0
     assert done.progress.phase == "done"
+    # The rolling total is settled to the exact (zero) count — NOT left at the
+    # early ``cap`` seed — so a complete-and-empty job reads 0/0, not a misleading
+    # 0/200 that looks unfinished to a progress-ratio consumer.
+    assert done.progress.total == 0
+    assert done.progress.processed == 0
 
 
 async def test_failed_job_marks_phase_failed(monkeypatch):
