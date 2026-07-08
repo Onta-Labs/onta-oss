@@ -757,7 +757,18 @@ def get_full_ontology_query(graph_uri: str) -> str:
 
 
 def _esc(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    # Escape every char that is illegal or lexically fragile inside a SPARQL
+    # string literal. `\r`/`\t` matter now that CSV user values flow through
+    # here (entities_by_key_value_query, ONTA-250): an interior carriage return
+    # or tab would otherwise produce malformed SPARQL. Backslash first so the
+    # escape sequences we add aren't themselves re-escaped.
+    return (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
 
 PRIMITIVE_TYPES = {"string", "integer", "float", "boolean", "datetime", "uri", "geo"}
@@ -783,6 +794,40 @@ def batch_entity_exists_query(graph_uri: str, entity_uris: list[str]) -> str:
         f"SELECT DISTINCT ?entity FROM <{graph_uri}> WHERE {{\n"
         f"  VALUES (?entity) {{ {values} }}\n"
         f"  ?entity ?p ?o .\n"
+        f"}}"
+    )
+
+
+def entities_by_key_value_query(
+    graph_uri: str, type_name: str, key_attr: str, key_values: list[str],
+) -> str:
+    """Find existing entities of ``type_name`` whose ``key_attr`` equals one of
+    ``key_values`` — the lookup that powers **join-by-exact-key ingest** (ONTA-250:
+    merge a CSV row onto the EXISTING entity that already carries the same key
+    value, instead of minting a duplicate).
+
+    Matches on the LEXICAL string of the stored object (``STR(?o) = value``), so a
+    key stored as a typed literal (``"123"^^xsd:integer``), a plain string, or even
+    an entity IRI whose string form equals the value all join correctly — the same
+    datatype-agnostic comparison the promote/delete path learned it needs. Keyed
+    by the canonical ``attrs/<key_attr>`` predicate (the schema-declared attribute
+    URI every writer stores a literal attribute value on), so this is fully general
+    over any (type, key-attribute) pair — no per-domain assumptions.
+
+    Returns ``(?v ?entity)`` rows: the matched value and the existing entity URI.
+    A value matching several existing entities yields several rows (the caller
+    decides how to resolve an ambiguous key). ``VALUES`` batches up to a few
+    hundred values per query.
+    """
+    a_uri = attr_uri(type_name, key_attr)
+    t_uri = type_uri(type_name)
+    values = " ".join(f'("{_esc(v)}")' for v in key_values)
+    return (
+        f"SELECT DISTINCT ?v ?entity FROM <{graph_uri}> WHERE {{\n"
+        f"  VALUES (?v) {{ {values} }}\n"
+        f"  ?entity <{RDF}#type> <{t_uri}> .\n"
+        f"  ?entity <{a_uri}> ?o .\n"
+        f"  FILTER(STR(?o) = STR(?v))\n"
         f"}}"
     )
 
