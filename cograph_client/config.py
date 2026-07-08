@@ -81,6 +81,16 @@ class Settings(BaseSettings):
     # (paid/licensed) API entries with no OSS change.
     api_registry_plugin: str = ""
 
+    # Optional free-text geocoder plugin (ONTA-249): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and is
+    # expected to register a premium Geocoder via
+    # cograph_client.spatiotemporal.geocoder.register_geocoder — e.g. a Google
+    # Places / Mapbox / Nominatim adapter in our deploy. Without it, the OSS
+    # default (a deterministic offline gazetteer) is used, so a bare place-name
+    # radius anchor still resolves for common places with no OSS change. Keeps
+    # cograph-oss vendor-neutral: no paid geocoding API is baked into OSS.
+    geocoder_plugin: str = ""
+
     # Optional secret-cipher plugin (ONTA-2xx): a dotted "module.path:callable"
     # imported at app startup. The callable is invoked with no arguments and is
     # expected to register a SecretCipher via

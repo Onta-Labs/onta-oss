@@ -52,90 +52,19 @@ RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#"
 TYPE_URI_PREFIX = "https://cograph.tech/types/"
 ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
-# Instance relationship predicates are minted as `…/onto/<predName>` (see
-# nlp/pipeline.py); the matching ontology attr/core-slot marker lives at
-# `attr_uri(<sourceTypeLeaf>, <predName>)`. Strip this prefix to recover predName.
-ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
-# Entity-resolution internals (blockKey, erSignal_*) are written under this
-# namespace by resolver.er.blocking — never user-facing domain data.
-ER_NS = "https://cograph.tech/er/"
-# Normalization internals (canonical-value bookkeeping) live under …/onto/norm/.
-ONTO_NORM_PREFIX = ONTO_PRED_PREFIX + "norm/"
-SYSTEM_PREDICATES: frozenset[str] = frozenset({
-    f"{RDFS}#label",
-    "https://cograph.tech/onto/ingested_at",
-    "https://cograph.tech/onto/source",
-})
-
-# Internal / housekeeping predicates that must NOT surface in the Explorer's
-# user-facing Attributes / Relationships panel. Real domain attributes live at
-# `…/types/<T>/attrs/*` and real relationships are minted at `…/onto/<predName>`
-# (see ONTO_PRED_PREFIX) — so we can NOT blanket-exclude the whole `…/onto/`
-# namespace; legitimate relationships share it. Instead we exclude:
-#   * the RDF + RDFS system namespaces (rdf:type / rdfs:label are handled
-#     explicitly elsewhere; this keeps every OTHER rdf*/rdfs* term out too),
-#   * the entity-resolution namespace `…/er/` wholesale (blockKey, erSignal_*),
-#   * the normalization-bookkeeping namespace `…/onto/norm/` wholesale,
-#   * a curated set of housekeeping markers under `…/onto/` that ingest/lambda
-#     attach to every entity (batch_id, ingested_at, source, …) — these are the
-#     three the user reported plus the other system markers minted in the same
-#     namespace, but NOT real relationship predicates.
-# This is namespace/marker-based, not a copy of the three observed leaves, so a
-# newly added housekeeping marker in one of these namespaces is excluded too.
-_INTERNAL_ONTO_MARKERS: frozenset[str] = frozenset({
-    ONTO_PRED_PREFIX + "batch_id",
-    ONTO_PRED_PREFIX + "ingested_at",
-    ONTO_PRED_PREFIX + "source",
-    ONTO_PRED_PREFIX + "coreSlot",
-    ONTO_PRED_PREFIX + "aliasOf",
-    ONTO_PRED_PREFIX + "lambda_refreshed_at",
-})
-
-
-def _is_internal_predicate(p_uri: str, is_relationship: bool = False) -> bool:
-    """True if ``p_uri`` is an internal/housekeeping predicate, not a user-facing
-    domain attribute or relationship.
-
-    Used everywhere predicates are turned into the Explorer's Attributes /
-    Relationships panel (assembly + the scan/recompute) so internal triples
-    (`onto/batch_id`, `er/blockKey`, `er/erSignal_*`, rdf*/rdfs*) never appear
-    with a coverage %. Kept namespace-based on purpose — see
-    ``_INTERNAL_ONTO_MARKERS`` for why the whole `…/onto/` namespace can't be
-    excluded.
-
-    ``is_relationship``: the curated ``_INTERNAL_ONTO_MARKERS`` (onto/source,
-    onto/batch_id, …) are ALWAYS literal-valued housekeeping. A real RELATIONSHIP
-    predicate that happens to share one of those leaf names — e.g. a measurement
-    minted with predicate ``…/onto/source`` pointing at an Organization entity —
-    must NOT be hidden. So when the caller knows this predicate is a relationship
-    (its object is an entity IRI / the ontology declares an entity range), pass
-    ``is_relationship=True`` and the marker check is skipped. The namespace
-    exclusions (ER, onto/norm, rdf/rdfs) still apply to relationships, since those
-    are never legitimate domain edges.
-    """
-    if not p_uri:
-        return True
-    if p_uri == RDF_TYPE:
-        return True
-    # Whole-namespace exclusions: RDF/RDFS system vocab + ER + normalization.
-    # These are never legitimate domain data, attribute OR relationship.
-    if p_uri.startswith(RDF_NS) or p_uri.startswith(RDFS_NS):
-        return True
-    if p_uri.startswith(ER_NS) or p_uri.startswith(ONTO_NORM_PREFIX):
-        return True
-    # A relationship is exempt from the literal-only housekeeping checks below:
-    # SYSTEM_PREDICATES (rdfs:label, onto/ingested_at, onto/source) and
-    # _INTERNAL_ONTO_MARKERS are all literal-valued markers, so a same-named
-    # relationship is a real domain edge, not housekeeping.
-    if is_relationship:
-        return False
-    if p_uri in SYSTEM_PREDICATES:
-        return True
-    # Curated housekeeping markers under …/onto/ (the namespace also holds real
-    # relationship predicates, so we match the specific markers, not the prefix).
-    if p_uri in _INTERNAL_ONTO_MARKERS:
-        return True
-    return False
+# Predicate-hygiene: the ONE definition of "is this an internal/housekeeping
+# predicate?" lives in cograph_client.graph.predicates and is shared with the NL
+# `ask` render path (ER-internals-leak fix) so both surfaces apply the SAME rule.
+# Re-exported here (including the private aliases some tests import) for
+# back-compat with existing importers of `explore._is_internal_predicate`.
+from cograph_client.graph.predicates import (  # noqa: E402
+    ER_NS,
+    INTERNAL_ONTO_MARKERS as _INTERNAL_ONTO_MARKERS,
+    ONTO_NORM_PREFIX,
+    ONTO_PRED_PREFIX,
+    SYSTEM_PREDICATES,
+    is_internal_predicate as _is_internal_predicate,
+)
 
 # In-memory hot cache on top of the persistent stats graph. Read-heavy data
 # warmed on first read, busted whenever the underlying counts change.
