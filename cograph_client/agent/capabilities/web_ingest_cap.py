@@ -180,6 +180,46 @@ def _chunk_rows(rows: list, size: int) -> list[list]:
     return [rows[i : i + size] for i in range(0, len(rows), size)]
 
 
+def _group_rows_by_source_url(rows: list) -> list[list]:
+    """Partition a batch into consecutive groups that are HOMOGENEOUS in their
+    ``source_url`` (order preserved), so every row in a group cites the same page.
+
+    This is the deterministic half of the citation-binding fix. The ``source_url``
+    is stamped on each row BEFORE extraction (keyed by the provider's per-record
+    provenance), but the multi-type LLM extractor then re-decides which minted
+    entity each field lands on — so a batch mixing rows from page A and page B can
+    have A's URL copied onto an entity drawn from B (the observed mis-binding: one
+    page-level URL broadcast across every model on the page). By committing one
+    ``resolver.ingest`` call PER distinct source URL, an extraction can only ever
+    see rows that share ONE page, so the only URL available to stamp on any entity
+    it mints is that page's URL — the cross-record placement decision is taken away
+    from the LLM. Rows with no ``source_url`` (free/stub providers) form their own
+    group and are unaffected.
+
+    Groups are consecutive runs, not a global regroup, so row order within a batch
+    is preserved and a provider that already returns rows page-by-page pays no
+    reshuffle. Returns ``[]`` for an empty batch, ``[rows]`` when every row shares
+    one URL (or none carry one) — the previous single-partition behavior.
+    """
+    if not rows:
+        return []
+    groups: list[list] = []
+    current: list = []
+    current_key: object = object()  # sentinel: no group started yet
+    for row in rows:
+        key = row.get(SOURCE_URL_ATTR) if isinstance(row, dict) else None
+        if not current or key == current_key:
+            current.append(row)
+            current_key = key
+        else:
+            groups.append(current)
+            current = [row]
+            current_key = key
+    if current:
+        groups.append(current)
+    return groups
+
+
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     _bg_tasks.add(task)
@@ -1038,9 +1078,25 @@ class WebIngestCapability:
                             # job stalled (persona-eval RCA). Mirrors enrichment's
                             # per-record flush cadence. Source names the provider
                             # that actually produced the batch.
-                            for micro in _chunk_rows(
-                                batch, _DISCOVERY_INGEST_SUBBATCH
-                            ):
+                            #
+                            # CITATION BINDING (persona-eval RCA — citation
+                            # mis-binding): partition the batch by source_url FIRST,
+                            # then size-chunk within each group, so every micro-batch
+                            # handed to the extractor is homogeneous in its citation.
+                            # An extraction that sees rows from exactly one page can
+                            # only stamp THAT page's URL on any entity it mints — the
+                            # LLM can no longer copy page A's URL onto an entity drawn
+                            # from page B. Groups are consecutive, so order + counts
+                            # are unchanged; a batch that already shares one URL (or
+                            # none) is one group — identical to the prior behavior.
+                            micro_batches = [
+                                micro
+                                for group in _group_rows_by_source_url(batch)
+                                for micro in _chunk_rows(
+                                    group, _DISCOVERY_INGEST_SUBBATCH
+                                )
+                            ]
+                            for micro in micro_batches:
                                 content = json.dumps(
                                     micro, default=str, ensure_ascii=False
                                 )
@@ -1905,13 +1961,20 @@ def _paid_call_count(provider: WebSourceProvider, rows: int) -> int:
 # bespoke writer, no separate provenance graph. NOTE on the reliability contract:
 # unlike enrichment, which writes `<attr>_source_url` DETERMINISTICALLY onto the
 # entity URI (no LLM), discovery carries `source_url` as a row field THROUGH the
-# multi-type LLM extractor. So it is best-effort: exactly as reliable as the row's
-# OTHER discovered attributes (name, pricing, …) — the same extractor decides them
-# all — but not a hard guarantee, and on a multi-type row the extractor chooses
-# which entity it lands on. `uri` is a declared attribute datatype, so a field
-# named `source_url` is overwhelmingly kept as a literal at temperature 0. If
-# GUARANTEED per-record citations are ever required, stamp this deterministically
-# post-extraction keyed by entity id (a follow-up; would touch the shared resolver).
+# multi-type LLM extractor. `uri` is a declared attribute datatype, so a field
+# named `source_url` is overwhelmingly kept as a literal at temperature 0.
+#
+# CITATION MIS-BINDING FIX (persona-eval RCA): the previously-open risk was CROSS-
+# RECORD placement — when one ingest batch mixed rows from several pages, the
+# extractor could copy page A's `source_url` onto an entity minted from page B
+# (observed: one page-level URL broadcast across every model on the page). We now
+# commit one `resolver.ingest` call PER distinct source URL (see
+# ``_group_rows_by_source_url`` + the sub-batch loop), so an extraction only ever
+# sees rows that share ONE page — the only URL it can stamp on any entity it mints
+# is that page's URL. The citation is therefore bound deterministically to the
+# originating source record by the PARTITION, not by the LLM re-deciding placement.
+# (When a single page genuinely lists N distinct entities, they all correctly cite
+# that one page — which is the intended page-level citation, not a mis-bind.)
 SOURCE_URL_ATTR = "source_url"
 
 
