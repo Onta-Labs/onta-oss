@@ -86,5 +86,14 @@ jobs:
       - name: Build all packages
         run: npm run build --workspaces
 
+      # Typecheck the MCP package AFTER the build so its `cograph` dependency's
+      # emitted .d.ts (which exports `JobCategory`) is present. This is what makes
+      # the compile-time `JOB_CATEGORIES` exhaustiveness guard in
+      # packages/cograph-mcp/src/index.ts actually GUARD: tsup/esbuild strips types
+      # without checking them, so before this step nothing ran `tsc` on the MCP
+      # package and a dropped/added backend category would compile silently.
+      - name: Typecheck MCP package
+        run: npm run typecheck --workspace packages/cograph-mcp
+
       - name: Run TS tests
         run: npm test --workspaces --if-present
