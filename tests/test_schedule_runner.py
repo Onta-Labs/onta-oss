@@ -110,7 +110,7 @@ def test_advance_steps_past_now_for_interval():
 def test_tick_dispatches_due_and_advances(monkeypatch):
     captured: list[Schedule] = []
 
-    async def fake_dispatch(schedule, *, client, job_store, executor):  # noqa: ANN001
+    async def fake_dispatch(schedule, *, client, job_store, executor, **kw):  # noqa: ANN001
         captured.append(schedule)
 
     import cograph_client.api.routes.actions as actions_mod
