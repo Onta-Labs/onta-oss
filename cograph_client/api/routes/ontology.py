@@ -21,6 +21,9 @@ from cograph_client.graph.ontology_queries import (
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import tenant_graph_uri
 from cograph_client.models.ontology import (
+    ApplyBatchRequest,
+    ApplyBatchResult,
+    ApplyChangeResult,
     AttributeAdd,
     AttributeDefinition,
     ResolutionResult,
@@ -285,7 +288,10 @@ async def apply_ontology_change(
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Commit a single proposal previously returned by `/resolve` (stateless —
-    the caller passes the change object straight back). Idempotent."""
+    the caller passes the change object straight back). Idempotent.
+
+    Kept for back-compat; to apply several proposals at once use `/apply/batch`
+    (one round-trip instead of N)."""
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     operations = await _apply_change(body, graph_uri, client)
     return {
@@ -293,6 +299,57 @@ async def apply_ontology_change(
         "operations": len(operations),
         "summary": f"Applied {change_label(body)}",
     }
+
+
+@router.post("/apply/batch", response_model=ApplyBatchResult)
+async def apply_ontology_changes(
+    body: ApplyBatchRequest,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+) -> ApplyBatchResult:
+    """Commit MANY proposals from one `/resolve` call in a single round-trip.
+
+    The canonical batch-apply route: every client (SDK `ontologyApplyBatch`,
+    MCP `apply_ontology_changes`) rides THIS endpoint as a thin pass-through —
+    none reimplements the loop client-side (interface convergence, CLAUDE.md).
+
+    Semantics — identical, per change, to `/apply` (same `_apply_change`, same
+    idempotent upserts), so N-in-one is equivalent to N single calls. Changes
+    apply in the submitted order. Partial-failure is well defined: a change that
+    raises is reported with `ok=False` + its error and does NOT abort the rest
+    (each change's writes are independent + idempotent), so re-POSTing the whole
+    batch safely retries only what failed.
+    """
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    results: list[ApplyChangeResult] = []
+    applied_count = 0
+    failed_count = 0
+    total_ops = 0
+    for change in body.changes:
+        try:
+            operations = await _apply_change(change, graph_uri, client)
+        except Exception as exc:  # noqa: BLE001 — isolate one change's failure
+            failed_count += 1
+            results.append(
+                ApplyChangeResult(change=change, ok=False, operations=0, error=str(exc))
+            )
+            continue
+        applied_count += 1
+        total_ops += len(operations)
+        results.append(
+            ApplyChangeResult(change=change, ok=True, operations=len(operations))
+        )
+
+    summary = f"Applied {applied_count}/{len(body.changes)} change(s)"
+    if failed_count:
+        summary += f" ({failed_count} failed)"
+    return ApplyBatchResult(
+        results=results,
+        applied_count=applied_count,
+        failed_count=failed_count,
+        operations=total_ops,
+        summary=summary,
+    )
 
 
 def change_label(change: ResolvedChange) -> str:

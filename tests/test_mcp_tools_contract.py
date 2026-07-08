@@ -139,15 +139,68 @@ def test_search_tool_target_contract(monkeypatch, client, auth_headers):
         reset_semantic_index()
 
 
-def test_search_tool_disabled_deployment_503(monkeypatch, client, auth_headers):
-    """The MCP tool surfaces this 503 verbatim when the semantic index is off —
-    the detail must name the env gate so the operator knows the fix."""
+def test_search_tool_disabled_deployment_degrades_not_503(monkeypatch, client, auth_headers):
+    """With the semantic index gate off, the route degrades to lexical keyword
+    search (200 + degraded=true) instead of 503 — so the MCP `search` tool
+    still returns a usable, honestly-badged result instead of a hard failure.
+    The response keeps the canonical envelope the tool renders."""
     monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
     resp = client.post(
         f"/graphs/{TENANT}/search", json={"query": "anything"}, headers=auth_headers
     )
-    assert resp.status_code == 503
-    assert "COGRAPH_SEMANTIC_INDEX_ENABLED" in resp.json()["detail"]
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body) == {"hits", "count", "degraded", "top_k"}
+    assert body["degraded"] is True
+
+
+# --- batch ontology apply (persona-eval batch-ontology-apply bug) ------------ #
+
+
+def test_apply_ontology_changes_tool_target_batches_in_one_call(
+    client, mock_neptune, auth_headers
+):
+    """apply_ontology_changes → POST /ontology/apply/batch applies N changes in
+    ONE request (the canonical batch route the MCP tool + SDK ride). Assert the
+    route is mounted and returns the per-change envelope the tool renders."""
+    resp = client.post(
+        f"/graphs/{TENANT}/ontology/apply/batch",
+        headers=auth_headers,
+        json={
+            "changes": [
+                {"kind": "attribute", "subject_type": "Person", "name": "email",
+                 "datatype_or_target": "string", "action": "extend",
+                 "confidence": 0.9, "reason": "x"},
+                {"kind": "attribute", "subject_type": "Person", "name": "age",
+                 "datatype_or_target": "integer", "action": "extend",
+                 "confidence": 0.9, "reason": "y"},
+            ]
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body) == {"results", "applied_count", "failed_count", "operations", "summary"}
+    assert body["applied_count"] == 2 and body["failed_count"] == 0
+    assert [r["change"]["name"] for r in body["results"]] == ["email", "age"]
+
+
+def test_mcp_batch_apply_tool_rides_the_canonical_route_via_sdk():
+    """Interface convergence: the MCP `apply_ontology_changes` tool must reach the
+    backend through the SDK's `ontologyApplyBatch` (a thin pass-through over the
+    ONE canonical `/ontology/apply/batch` route) — not a hand-rolled fetch or a
+    client-side loop over the single-apply tool. Asserted from the TS source so
+    it holds with no npm build in CI."""
+    src = _MCP_INDEX.read_text()
+    assert 'registerTool(\n  "apply_ontology_changes"' in src, (
+        "the batch apply_ontology_changes tool must be registered"
+    )
+    assert "ontologyApplyBatch(" in src, (
+        "the batch tool must call the SDK's ontologyApplyBatch pass-through"
+    )
+    # It must NOT hand-roll its own endpoint path string.
+    assert "/ontology/apply/batch" not in src, (
+        "the MCP tool must not hard-code the route path — the SDK owns it"
+    )
 
 
 # --- list_jobs discovery category (ONTA-243) --------------------------------- #

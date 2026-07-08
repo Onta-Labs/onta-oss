@@ -248,6 +248,11 @@ export class Client {
   /** @internal */ pOntologyApply(): string {
     return `${this.base()}/ontology/apply`;
   }
+  /** @internal The canonical batch-apply route (apply N resolved changes in one
+   *  round-trip). Every client rides this exact path — no client-side loop. */
+  pOntologyApplyBatch(): string {
+    return `${this.base()}/ontology/apply/batch`;
+  }
   /** @internal Unified jobs list (dedupe + enrichment + reconciliation),
    *  newest first. Optional `?category=` filter is baked into `query`. */
   pJobs(query?: string): string {
@@ -806,6 +811,27 @@ export class Client {
   }
 
   /**
+   * Apply MANY resolved changes in a single round-trip — the canonical
+   * batch-apply route. Equivalent to calling {@link ontologyApply} once per
+   * change (same idempotent upserts, applied in order) but one HTTP call
+   * instead of N. Partial failure is well defined: the response reports each
+   * change with `ok`/`error`, and a failed change does not abort the rest.
+   *
+   * Thin pass-through — the loop lives server-side; the client never
+   * reimplements it (interface convergence).
+   */
+  async ontologyApplyBatch(
+    changes: ResolvedChange[],
+  ): Promise<OntologyApplyBatchResult> {
+    return this.request<OntologyApplyBatchResult>(
+      "POST",
+      `${this.base()}/ontology/apply/batch`,
+      { changes },
+      120_000,
+    );
+  }
+
+  /**
    * Second-pass entity resolution: re-run ER over an already-ingested KG to
    * collapse intra-batch fragments. Synchronous on the server; returns a
    * per-type before/after report. Generous timeout — it rewrites triples.
@@ -1207,6 +1233,24 @@ export interface OntologyResolveResult {
 
 export interface OntologyApplyResult {
   applied: ResolvedChange;
+  operations: number;
+  summary: string;
+}
+
+/** One change's outcome inside an {@link OntologyApplyBatchResult}. */
+export interface OntologyApplyChangeResult {
+  change: ResolvedChange;
+  /** false ⇒ this change raised; see `error`. The rest of the batch still ran. */
+  ok: boolean;
+  operations: number;
+  error: string;
+}
+
+/** Response of {@link Client.ontologyApplyBatch} — one entry per submitted change. */
+export interface OntologyApplyBatchResult {
+  results: OntologyApplyChangeResult[];
+  applied_count: number;
+  failed_count: number;
   operations: number;
   summary: string;
 }
@@ -1868,6 +1912,12 @@ export class RawApi {
   /** `POST /graphs/{tenant}/ontology/apply` — apply one resolved change. */
   ontologyApply(body: unknown, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("POST", this.client.pOntologyApply(), { body, ...init });
+  }
+
+  /** `POST /graphs/{tenant}/ontology/apply/batch` — apply many resolved changes
+   *  in one call. Body: `{ changes: ResolvedChange[] }`. */
+  ontologyApplyBatch(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pOntologyApplyBatch(), { body, ...init });
   }
 
   // -- knowledge graphs ---------------------------------------------------- #

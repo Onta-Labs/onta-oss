@@ -283,6 +283,12 @@ describe("canonical paths + methods for every covered op", () => {
       method: "POST",
       url: `${PREFIX}/ontology/apply`,
     },
+    {
+      name: "ontologyApplyBatch",
+      run: (c) => c.raw.ontologyApplyBatch({ changes: [] }),
+      method: "POST",
+      url: `${PREFIX}/ontology/apply/batch`,
+    },
     { name: "kgs", run: (c) => c.raw.kgs(), method: "GET", url: `${PREFIX}/kgs` },
     { name: "createKg", run: (c) => c.raw.createKg({}), method: "POST", url: `${PREFIX}/kgs` },
     {
@@ -558,5 +564,43 @@ describe("new typed parsed variants of the missing methods", () => {
       new Response('{"detail":"… COGRAPH_SEMANTIC_INDEX_ENABLED …"}', { status: 503 }),
     );
     await expect(makeClient().search("x")).rejects.toBeInstanceOf(CographError);
+  });
+
+  it("ontologyApplyBatch (typed) wraps changes in {changes}, hits the canonical batch path, and passes the envelope through", async () => {
+    // Locks the batch-apply contract the MCP `apply_ontology_changes` tool
+    // rides: N changes → ONE POST to /ontology/apply/batch, body {changes:[...]},
+    // per-change result envelope returned unreshaped.
+    const changes = [
+      { kind: "attribute", subject_type: "Person", name: "email", datatype_or_target: "string", action: "extend", confidence: 0.9, reason: "x" },
+      { kind: "relationship", subject_type: "Person", name: "works_at", datatype_or_target: "Company", action: "create", confidence: 0.9, reason: "y" },
+    ];
+    const envelope = {
+      results: [
+        { change: changes[0], ok: true, operations: 1, error: "" },
+        { change: changes[1], ok: true, operations: 3, error: "" },
+      ],
+      applied_count: 2,
+      failed_count: 0,
+      operations: 4,
+      summary: "Applied 2/2 change(s)",
+    };
+    const { calls } = installFetch(
+      new Response(JSON.stringify(envelope), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    // deliberately loosen the change type for the test literals
+    const got = await makeClient().ontologyApplyBatch(changes as never);
+    expect(got).toEqual(envelope);
+    expect(calls).toHaveLength(1); // ONE round-trip for N changes
+    expect(calls[0]!.url).toBe(`${PREFIX}/ontology/apply/batch`);
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ changes });
+  });
+
+  it("ontologyApplyBatch (typed) surfaces a non-2xx as CographError", async () => {
+    installFetch(new Response("boom", { status: 500 }));
+    await expect(makeClient().ontologyApplyBatch([] as never)).rejects.toBeInstanceOf(CographError);
   });
 });

@@ -11,8 +11,8 @@ contract end-to-end over the InMemory backend with fake embeddings:
 * validation — blank query → 400; non-integer top_k → 422; out-of-range
   top_k clamped to [1, 50] with the effective value echoed back;
 * unknown kg_name → 200 + empty hits (never a 404/500 — see the route docs);
-* 503 with the ``COGRAPH_SEMANTIC_INDEX_ENABLED`` hint when the master gate
-  is off (mirrors the reindex route);
+* semantic gate off → lexical DEGRADE (200 + ``degraded=true``), NOT a 503:
+  the keyword leg still answers, so we never dead-end the caller;
 * degraded shape — no embed key, or an embed failure, yields ``degraded=true``
   lexical-only results, never a 500;
 * happy path — the route embeds the query via the shared embed client and
@@ -151,11 +151,56 @@ def test_search_scopes_to_the_keys_tenant(client, auth_headers):
 # --- gate + validation ----------------------------------------------------------
 
 
-def test_search_503_when_semantic_index_disabled(monkeypatch, client, auth_headers):
+def test_search_gate_off_degrades_to_lexical_not_503(monkeypatch, client, auth_headers):
+    """Gate off → lexical keyword search with ``degraded=true`` and a 200,
+    never a 503. The FTS leg still matches, so the caller gets a usable (if
+    reduced-recall) result instead of a dead-end. This is the fix for the
+    persona-eval search-503 bug: a disabled semantic index must degrade, not
+    refuse."""
     monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
-    resp = _search(client, {"query": "solar"}, headers=auth_headers)
-    assert resp.status_code == 503
-    assert "COGRAPH_SEMANTIC_INDEX_ENABLED" in resp.json()["detail"]
+    _seed(*_corpus())
+    resp = _search(client, {"query": "solar panel subsidies"}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["degraded"] is True
+    # The lexical leg still ranks the matching entity first.
+    assert body["hits"][0]["entity_uri"] == "e:solar"
+
+
+def test_search_gate_off_forces_lexical_even_with_embed_key(monkeypatch, client, auth_headers):
+    """With the gate off we must NOT embed the query — even if a key is
+    configured — because the vector leg is not maintained. Assert the embed
+    client is never called and the result is a 200 lexical degrade."""
+    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    _seed(*_corpus())
+    monkeypatch.setattr(settings, "openrouter_api_key", "some-key")
+
+    embed_calls: list[list[str]] = []
+
+    async def spy_embed(texts, *, api_key, timeout=30):
+        embed_calls.append(texts)
+        return [V_SOLAR for _ in texts]
+
+    monkeypatch.setattr("cograph_client.nlp.embed_client.embed_texts", spy_embed)
+    resp = _search(client, {"query": "solar panel subsidies"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["degraded"] is True
+    # Gate off ⇒ no embedding round-trip at all.
+    assert embed_calls == []
+
+
+def test_search_gate_off_unknown_kg_is_empty_200_not_503(monkeypatch, client, auth_headers):
+    """Even an unpopulated / unknown KG under a disabled gate is an
+    empty-but-200 ``degraded=true`` result — never a 503."""
+    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    _seed(*_corpus())
+    resp = _search(
+        client, {"query": "solar", "kg_name": "no-such-kg"}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["hits"] == []
+    assert body["degraded"] is True
 
 
 @pytest.mark.parametrize("bad_query", ["", "   ", "\n\t "])
