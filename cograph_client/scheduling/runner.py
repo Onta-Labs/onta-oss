@@ -178,6 +178,10 @@ class ScheduleRunner:
                 client=self._neptune,
                 job_store=self._jobs,
                 executor=self._executor,
+                # The ``notify`` action persists its fresh watch snapshot back onto
+                # the row so the NEXT fire diffs against it. Other actions ignore
+                # this; it's the same store the runner already advanced next_run on.
+                schedule_store=self._store,
             )
         except Exception as exc:  # noqa: BLE001 - a failed action must not stop the sweep
             logger.warning(

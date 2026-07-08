@@ -656,6 +656,38 @@ class CSVSchemaRequest(BaseModel):
     total_rows: int = 0
 
 
+class KeyJoin(BaseModel):
+    """Join-by-exact-key ingest mode (ONTA-250).
+
+    When set, each incoming row is matched to an EXISTING entity by an exact key
+    attribute (``key_attribute`` — the snake_case attribute name the key column
+    maps to, e.g. an id column) and the row's attributes are merged ONTO that
+    existing entity's node via the shared write path, instead of minting a
+    duplicate. A row whose key value matches no existing entity mints a new node
+    when ``mint_unmatched`` is true (default), else it is skipped and counted.
+
+    Fully general — the caller names the key attribute; there is NO per-domain
+    (NPI/sku/…) special-casing. The match is on the LEXICAL value of the
+    schema-declared ``attrs/<key_attribute>`` literal, so it is datatype-agnostic.
+    """
+
+    key_attribute: str = Field(
+        description=(
+            "The snake_case attribute name to join on (the attribute the key "
+            "column maps to). Existing entities of the row's type carrying this "
+            "attribute equal to the row's key value are merged onto."
+        ),
+    )
+    mint_unmatched: bool = Field(
+        default=True,
+        description=(
+            "When a row's key value matches no existing entity: True (default) "
+            "mints a new node; False skips the row and reports it unmatched "
+            "(never silently dropped)."
+        ),
+    )
+
+
 class CSVRowsRequest(BaseModel):
     """Request body for POST /graphs/{tenant}/ingest/csv/rows."""
 
@@ -663,6 +695,10 @@ class CSVRowsRequest(BaseModel):
     rows: list[dict[str, str]]
     source: str = ""
     kg_name: str | None = None
+    # ONTA-250: join-by-exact-key mode. None = ordinary ingest (mint by URI, the
+    # existing behavior). Set = match each row to an existing entity by an exact
+    # key attribute and merge onto it instead of minting a duplicate.
+    key_join: KeyJoin | None = None
 
 
 class IngestResult(BaseModel):
@@ -714,6 +750,28 @@ class IngestResult(BaseModel):
             "'Type.attr' entries that received a textKind='free_text' "
             "ontology marker during this ingest (schema-time semantic-index "
             "candidacy, ONTA-177)"
+        ),
+    )
+    # ONTA-250: join-by-exact-key accounting. All zero on ordinary ingest.
+    rows_key_merged: int = Field(
+        default=0,
+        description=(
+            "Rows whose key value matched an existing entity, so their "
+            "attributes were merged ONTO that node (no duplicate minted)."
+        ),
+    )
+    rows_key_minted: int = Field(
+        default=0,
+        description=(
+            "Rows whose key value matched no existing entity and minted a new "
+            "node (only when the key-join allows minting unmatched rows)."
+        ),
+    )
+    rows_key_unmatched: int = Field(
+        default=0,
+        description=(
+            "Rows whose key value matched no existing entity and were SKIPPED "
+            "(key-join with mint_unmatched=false). Reported, never silent."
         ),
     )
 

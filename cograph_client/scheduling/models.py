@@ -28,6 +28,17 @@ from cograph_client.enrichment.models import JobCategory
 # find-merge-duplicates (dedupe), enrich (enrichment), suggest-relationships
 # (reconciliation). A schedule's ``category`` should agree with its action.
 #
+# notify (ONTA-235) is the standing-alert / weekly-refresh action: on each fire
+# it SNAPSHOTS the watched value(s) in the KG, DIFFS against the snapshot from
+# the previous fire, and DELIVERS a change payload out through a
+# ``DeliverySink`` ONLY when something changed. It creates NO enrich-style job
+# row (like the semantic actions) — its work is watch → diff → deliver, dispatched
+# in ``dispatch_scheduled_action``. The watch descriptor + delivery sink live in
+# ``params`` (``params['watch']`` / ``params['sink']``), and the per-fire snapshot
+# is stashed on the row so change detection is durable across fires. Any delivery
+# secret rides ``params['sink']['secret_ref']`` (an opaque ciphertext from the OSS
+# SecretCipher seam) — never raw.
+#
 # semantic-embed-fill / semantic-reconcile (ONTA-181) are the semantic
 # instance index's maintenance duties, expressed as ordinary Schedule rows so
 # they inherit the runner's FOR UPDATE SKIP LOCKED claim (overlapping ECS
@@ -38,6 +49,7 @@ ScheduleAction = Literal[
     "find-merge-duplicates",
     "enrich",
     "suggest-relationships",
+    "notify",
     "semantic-embed-fill",
     "semantic-reconcile",
 ]
@@ -64,7 +76,7 @@ ScheduleAction = Literal[
 #: to this set (422 otherwise), and the update route refuses to modify rows
 #: whose action lies outside it (403).
 USER_SCHEDULABLE_ACTIONS: frozenset[str] = frozenset(
-    {"find-merge-duplicates", "enrich", "suggest-relationships"}
+    {"find-merge-duplicates", "enrich", "suggest-relationships", "notify"}
 )
 
 

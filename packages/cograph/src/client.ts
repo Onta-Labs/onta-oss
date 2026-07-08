@@ -23,6 +23,14 @@ export interface ClientOptions {
 export interface IngestOptions {
   kg?: string;
   contentType?: "text" | "csv" | "json" | string;
+  /** Treat `pathOrText` as a FILE PATH, not as raw text. When set, a path that
+   *  does not resolve to a readable file throws a `CographError` instead of
+   *  silently POSTing the path string itself as text content (ONTA-253: a
+   *  file-intent caller — e.g. the MCP `ingest_csv` tool — must never fabricate
+   *  a success by LLM-extracting entities out of a nonexistent filename). The
+   *  dual-mode default (`asFile` unset) keeps the CLI's intentional
+   *  `ingest <raw text>` path working. */
+  asFile?: boolean;
   /** Rows per batch for CSV ingest. Default 200. Larger = fewer round-trips
    *  but higher per-request memory; 200 is a good balance for typical KGs. */
   batchSize?: number;
@@ -32,6 +40,15 @@ export interface IngestOptions {
   /** Called after each batch completes during CSV ingest, in batch order.
    *  Use for progress UI. Not invoked for text/json ingest. */
   onProgress?: (progress: IngestProgress) => void;
+  /** CSV only. Join-by-exact-key ingest mode (ONTA-250): match each row to an
+   *  EXISTING entity by an exact key attribute and merge the row's attributes
+   *  ONTO that node instead of minting a duplicate. `keyAttribute` is the
+   *  snake_case attribute the key column maps to (e.g. an id column); when a
+   *  row's key matches no existing entity it mints a new node unless
+   *  `mintUnmatched` is false (then it is skipped and reported). A thin
+   *  pass-through of the `/ingest/csv/rows` route's `key_join` field — the
+   *  server does the matching. General over any (type, key). */
+  keyJoin?: { keyAttribute: string; mintUnmatched?: boolean };
   /** CSV only. Called once after schema inference and BEFORE any rows are
    *  written, with the inferred mapping. Return the (possibly edited/approved)
    *  mapping to ingest, or `null` to cancel without writing anything. When
@@ -516,6 +533,19 @@ export class Client {
       isFile = false;
     }
 
+    // ONTA-253: a file-intent caller (asFile) must NEVER degrade to text. If the
+    // path does not resolve to a readable file, hard-error here instead of
+    // POSTing the path string itself as content — otherwise the backend
+    // LLM-extracts phantom entities out of the filename and reports a fabricated
+    // success. The dual-mode default (asFile unset) still degrades to text for
+    // the CLI's intentional `ingest <raw text>` path.
+    if (opts.asFile && !isFile) {
+      throw new CographError(
+        `File not found or not a readable file: ${pathOrText}. ` +
+          `Pass raw text without asFile to ingest it as text.`,
+      );
+    }
+
     if (isFile) {
       const ext = extname(pathOrText).toLowerCase();
       if (ext === ".pdf") {
@@ -609,6 +639,17 @@ export class Client {
         source: "client",
       };
       if (kgName) body.kg_name = kgName;
+      // ONTA-250: forward join-by-exact-key mode to the canonical route (thin
+      // pass-through — the server matches + merges). snake_case per the route
+      // contract (KeyJoin.key_attribute / mint_unmatched).
+      if (opts.keyJoin) {
+        body.key_join = {
+          key_attribute: opts.keyJoin.keyAttribute,
+          ...(opts.keyJoin.mintUnmatched !== undefined
+            ? { mint_unmatched: opts.keyJoin.mintUnmatched }
+            : {}),
+        };
+      }
       const result = await this.request<{
         entities_resolved?: number;
         triples_inserted?: number;
@@ -1560,14 +1601,18 @@ export interface ConflictReview {
 
 /** Actions a tenant may CREATE or UPDATE through the schedules CRUD routes —
  *  mirrors the Ask-AI action endpoints: find-merge-duplicates (dedupe), enrich
- *  (enrichment), suggest-relationships (reconciliation). A schedule's
- *  `category` agrees with its `action`. The backend rejects any other action
- *  on create/update with a 422 — see {@link ScheduleAction} for the
- *  system-managed values that can still APPEAR in list/get responses. */
+ *  (enrichment), suggest-relationships (reconciliation), plus `notify` (ONTA-235):
+ *  a standing-alert / weekly-refresh that snapshots a watched value each fire,
+ *  diffs it against the previous fire, and delivers a change payload out through
+ *  a delivery sink ONLY when it changed. A schedule's `category` agrees with its
+ *  `action`. The backend rejects any other action on create/update with a 422 —
+ *  see {@link ScheduleAction} for the system-managed values that can still APPEAR
+ *  in list/get responses. */
 export type UserSchedulableAction =
   | "find-merge-duplicates"
   | "enrich"
-  | "suggest-relationships";
+  | "suggest-relationships"
+  | "notify";
 
 /** The action a {@link Schedule} fires — the FULL read-side vocabulary, a
  *  superset of {@link UserSchedulableAction}. `semantic-embed-fill` /
@@ -1588,6 +1633,7 @@ export const USER_SCHEDULABLE_ACTIONS: readonly UserSchedulableAction[] = [
   "find-merge-duplicates",
   "enrich",
   "suggest-relationships",
+  "notify",
 ] as const;
 
 /**
