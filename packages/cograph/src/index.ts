@@ -1,4 +1,15 @@
-export { Client, CographError, RawApi, USER_SCHEDULABLE_ACTIONS } from "./client.js";
+export {
+  Client,
+  CographError,
+  RawApi,
+  USER_SCHEDULABLE_ACTIONS,
+  // The terminal job-status set + predicate — the TS mirror of the backend's
+  // `JobStatus.is_terminal()`. A `wait_for_job` caller uses these to decide
+  // when a job has settled vs. needs another wait; single source of truth so
+  // the terminal set never drifts between the SDK and the wait route.
+  TERMINAL_JOB_STATUSES,
+  isTerminalJobStatus,
+} from "./client.js";
 export type {
   ClientOptions,
   IngestOptions,
