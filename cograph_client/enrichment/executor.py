@@ -55,12 +55,16 @@ from cograph_client.graph.ontology_queries import (
     xsd_to_datatype,
 )
 from cograph_client.graph.parser import parse_sparql_results
+from cograph_client.graph.provenance import (
+    build_attribute_provenance_companions,
+    build_provenance_triples,
+)
 from cograph_client.graph.queries import (
     kg_graph_uri,
     tenant_graph_uri,
 )
 from cograph_client.resolver.models import ValidatedTriple
-from cograph_client.resolver.validator import _to_wkt_point, _typed_value, validate_triple
+from cograph_client.resolver.validator import _to_wkt_point, validate_triple
 
 logger = structlog.stdlib.get_logger("cograph.enrichment")
 
@@ -687,6 +691,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _canonical_provenance_enabled() -> bool:
+    """Whether enrichment feeds the canonical companion-provenance GRAPH (ADR 0002
+    §4). Gated by the SAME ``COGRAPH_PROVENANCE_ENABLED`` env the ingest path uses
+    (default OFF) so the heavier governance/undo substrate only accrues when it is
+    switched on. The always-on per-attribute DISPLAY companions
+    (``*_source_url`` / ``*_verified_at``) are independent of this flag."""
+    return os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+
+
 def _build_select_query(
     graph_uri: str,
     type_name: str,
@@ -722,7 +735,18 @@ def _build_select_query(
     attr_uris = [_attr_uri(type_name, a) for a in attributes]
     fallback_uris = [_attr_uri(type_name, a) for a in NAME_FALLBACK_ATTRS]
 
-    in_list = ", ".join(f"<{u}>" for u in attr_uris) if attr_uris else "<urn:none>"
+    # Also pull each target attribute's EXISTING provenance companions
+    # (`<attr>_source_url` / `<attr>_verified_at`) so a CONFLICT row can carry the
+    # incumbent value's source + as-of alongside the proposed source — "hold BOTH
+    # disagreeing sources for review" (ONTA-246). Bounded: 2 extra predicates per
+    # attribute in the same OPTIONAL, so no per-entity scan is added.
+    companion_uris = [
+        _attr_uri(type_name, f"{a}_{suffix}")
+        for a in attributes
+        for suffix in ("source_url", "verified_at")
+    ]
+    fetch_uris = attr_uris + companion_uris
+    in_list = ", ".join(f"<{u}>" for u in fetch_uris) if fetch_uris else "<urn:none>"
     fallback_in = ", ".join(f"<{u}>" for u in fallback_uris)
 
     # Subset constraint. entity_uris (explicit primitive) wins over scope.
@@ -1079,6 +1103,17 @@ class EnrichmentExecutor:
                             return results
 
                         existing = ent["vals"].get(_attr_uri(job.type_name, attribute))
+                        # The incumbent value's provenance companions, read from the
+                        # same selection (fetched via the extended in_list). Carried
+                        # onto a conflict row so both sources are visible for review
+                        # (ONTA-246). None when the existing value has no prior
+                        # provenance (e.g. an ingested value).
+                        existing_source_url = ent["vals"].get(
+                            _attr_uri(job.type_name, f"{attribute}_source_url")
+                        )
+                        existing_verified_at = ent["vals"].get(
+                            _attr_uri(job.type_name, f"{attribute}_verified_at")
+                        )
                         attr_strategy = strategy.attributes.get(attribute)
 
                         # Strategy merge: request value wins; ontology fills gaps.
@@ -1144,6 +1179,8 @@ class EnrichmentExecutor:
                                 existing_value=existing,
                                 verdict=best,
                                 action=action,  # type: ignore[arg-type]
+                                existing_source_url=existing_source_url,
+                                existing_verified_at=existing_verified_at,
                             )
                         )
 
@@ -1228,6 +1265,27 @@ class EnrichmentExecutor:
                 ConflictPolicy.skip if policy == ConflictPolicy.stage else policy
             )
 
+            # FRESHNESS RE-STAMP (ONTA-245 F2): a `verified` row (the source
+            # RE-CONFIRMS the existing value) writes NO primary value under
+            # verify/skip/stage, so a decay-refresh that re-confirms a still-correct
+            # value would never advance its freshness clock — defeating "verified in
+            # the last N days" exactly where it matters most. Fix: for a `verified`
+            # row under a refresh-appropriate policy (verify/skip/stage → write_policy
+            # is verify or skip), re-emit ONLY the per-attribute provenance companions
+            # (source + a fresh `_verified_at`), advancing the stamp WITHOUT rewriting
+            # the unchanged primary value (no duplicate value triple). Idempotent:
+            # re-asserting the same `_verified_at` predicate with a newer object simply
+            # accretes a fresher stamp the NL "last N days" FILTER then matches.
+            restamp_triples: list[tuple[str, str, str]] = []
+            if write_policy in (ConflictPolicy.verify, ConflictPolicy.skip):
+                for r in all_rows:
+                    if r.action == "verified" and r.verdict is not None:
+                        restamp_triples.extend(
+                            self._provenance_triples(
+                                r.entity_uri, job.type_name, r.attribute, r.verdict
+                            )
+                        )
+
             # `applied_attr_values` is the source of truth for "was anything
             # applied?" — the attributes (primary + provenance companions) that
             # actually received a written value under `write_policy`, mapped to
@@ -1263,13 +1321,46 @@ class EnrichmentExecutor:
                 triples = self._select_triples_for_policy(
                     all_rows, job.type_name, write_policy, resolved_datatypes
                 )
+                # Append the verified-row freshness re-stamps (F2) so a decay-refresh
+                # advances the clock in the SAME write as the fills.
+                triples.extend(restamp_triples)
+                # Canonical companion-provenance-GRAPH records (F1) for every applied
+                # fill, dated from the verdict — flowed through the shared
+                # insert_facts provenance seam (gated by COGRAPH_PROVENANCE_ENABLED).
+                prov_graph_triples = self._canonical_provenance_triples(
+                    [r for r in all_rows if self._row_is_applied(r, write_policy)],
+                    job.type_name,
+                )
                 # Single shared write path — identical to CSV/JSON ingestion
                 # (graph/kg_writer.py): batched insert, then post-write
                 # housekeeping (invalidate the NL-planning cache, re-embed the
                 # enriched type so semantic retrieval doesn't serve a stale schema
                 # embedding, and recompute the Explorer's type-stats). Only fires
                 # when something was actually applied.
-                await insert_facts(self._neptune, graph_uri, triples)
+                await insert_facts(
+                    self._neptune,
+                    graph_uri,
+                    triples,
+                    provenance_triples=prov_graph_triples or None,
+                )
+                await refresh_after_write(
+                    self._neptune,
+                    tenant_id=tenant_id,
+                    kg_name=job.kg_name,
+                    affected_types=self._affected_types(job.type_name, resolved_datatypes),
+                )
+            elif restamp_triples:
+                # No new fills, but a decay-refresh re-confirmed existing values:
+                # write ONLY the freshness re-stamps (+ their ontology declaration so
+                # the `_verified_at` column is first-class schema) so the clock still
+                # advances. Same shared write path; no primary value is rewritten.
+                restamp_attr_values: dict[str, list[str]] = {}
+                for _s, pred, val in restamp_triples:
+                    restamp_attr_values.setdefault(_local_name(pred), []).append(val)
+                resolved_datatypes = await self._declare_attributes(
+                    tenant_id, job.type_name, restamp_attr_values
+                )
+                await insert_facts(self._neptune, graph_uri, restamp_triples)
                 await refresh_after_write(
                     self._neptune,
                     tenant_id=tenant_id,
@@ -1496,43 +1587,92 @@ class EnrichmentExecutor:
         return max(eligible, key=lambda v: v.confidence)
 
     @staticmethod
+    def _verdict_prov_string(verdict) -> str:
+        """The short human citation for a verdict's `<attr>_provenance` companion:
+        the source name, with the reasoning appended when present."""
+        prov = (getattr(verdict, "source", None) or "")
+        if getattr(verdict, "reasoning", None):
+            prov = f"{prov} ({verdict.reasoning})" if prov else verdict.reasoning
+        return prov
+
+    @staticmethod
+    def _verdict_as_of(verdict) -> "datetime":
+        """The as-of date to stamp for a verdict — the SOURCE's real date, not the
+        write time (ONTA-245 F1). Prefer ``source_published_at`` (when the page
+        stated the fact), else ``retrieved_at`` (when we fetched it), else now-UTC.
+        A paid adapter that carries neither degrades to now, unchanged from before."""
+        return (
+            getattr(verdict, "source_published_at", None)
+            or getattr(verdict, "retrieved_at", None)
+            or _now()
+        )
+
+    @classmethod
     def _provenance_triples(
-        entity_uri: str, type_name: str, attribute: str, verdict
+        cls, entity_uri: str, type_name: str, attribute: str, verdict
     ) -> list[tuple[str, str, str]]:
-        """Persist where + when an enriched value came from, as queryable
-        attributes (`<attr>_source_url`, `<attr>_provenance`, `<attr>_verified_at`)
+        """Persist where + when an enriched value came from, as queryable DISPLAY
+        companions (`<attr>_source_url`, `<attr>_provenance`, `<attr>_verified_at`)
         on the entity — so the citation is visible through /ask and the Explorer,
         not just in the adapter. Audit-friendly: every enriched fact carries its
         source AND a per-fact freshness stamp.
 
-        `<attr>_verified_at` is the ISO-8601 UTC instant this fact was written (a
-        PER-FACT freshness marker, unlike the per-ENTITY `onto/ingested_at` that is
-        stamped once at ingest and hidden as a system marker). It is a QUERYABLE
-        literal on the `attrs/<leaf>` namespace — deliberately NOT added to the
-        internal-marker hide-lists — so the query layer can answer "verified in the
-        last N days" per attribute. It is written as a TYPED `xsd:dateTime` literal
-        (via `_typed_value`), NOT a plain string like the citation companions: the
-        column is declared `xsd:dateTime` and the NL planner emits typed comparisons
-        (`FILTER(?x >= "…"^^xsd:dateTime)`), so an untyped string here would be
-        type-incompatible and the row would be silently dropped. Full price/value
-        history is out of scope here (a separate deferred ticket); this is only the
-        freshness stamp."""
-        out: list[tuple[str, str, str]] = []
-        if getattr(verdict, "source_url", None):
-            out.append((entity_uri, _attr_uri(type_name, f"{attribute}_source_url"), verdict.source_url))
-        prov = (verdict.source or "")
-        if getattr(verdict, "reasoning", None):
-            prov = f"{prov} ({verdict.reasoning})" if prov else verdict.reasoning
-        if prov:
-            out.append((entity_uri, _attr_uri(type_name, f"{attribute}_provenance"), prov))
-        # Per-fact freshness stamp: when this enriched value was verified/written.
-        # Typed as xsd:dateTime so the NL planner's typed FILTER comparisons match
-        # (an untyped string would be type-incompatible → silently dropped rows).
-        out.append((
+        Built via the SHARED ``build_attribute_provenance_companions``
+        (graph/provenance.py) so discovery mints the identical companion shape for
+        the same fact (ONTA-245 cross-rail symmetry). `<attr>_verified_at` is the
+        per-fact freshness marker (unlike the per-ENTITY `onto/ingested_at`); it is
+        dated from the VERDICT's real source date (``source_published_at`` /
+        ``retrieved_at``, ONTA-245 F1), NOT the write time, and is written TYPED
+        ``xsd:dateTime`` so the NL planner's ``NOW()``-relative FILTER matches it
+        (an untyped string would be type-incompatible → silently dropped, ONTA-247).
+        Full price/value history is out of scope here (a separate deferred ticket)."""
+        return build_attribute_provenance_companions(
             entity_uri,
-            _attr_uri(type_name, f"{attribute}_verified_at"),
-            _typed_value(_now().isoformat(), "datetime"),
-        ))
+            type_name,
+            attribute,
+            source_url=getattr(verdict, "source_url", None) or "",
+            provenance=cls._verdict_prov_string(verdict),
+            verified_at=cls._verdict_as_of(verdict),
+        )
+
+    def _canonical_provenance_triples(
+        self, rows_or_decisions, type_name: str
+    ) -> list[tuple[str, str, str]]:
+        """Canonical companion-provenance-GRAPH triples for the applied facts
+        (ONTA-245 F1) — the governance/undo substrate, keyed ``sha1(s|p|o|source)``
+        with ``prov:confidence`` + a real ``prov:timestamp``, flowed through the
+        shared ``insert_facts(..., provenance_triples=…)`` seam (NOT a bespoke
+        writer). One record per applied (entity, attribute) fact, dated from the
+        verdict's real source date so re-reading provenance shows WHEN the source
+        knew the fact, not when we wrote it.
+
+        Gated by ``COGRAPH_PROVENANCE_ENABLED`` (the SAME env the ingest path uses),
+        so the heavier substrate only accrues when governance/undo is switched on;
+        the always-on per-attribute display companions above are unaffected.
+
+        Accepts either ``RowResult`` rows (auto-apply path) or ``ConflictReview``
+        decisions (review-accept path) — both expose ``entity_uri`` + ``attribute``
+        and a verdict (``.verdict`` / ``.proposed``)."""
+        if not _canonical_provenance_enabled():
+            return []
+        out: list[tuple[str, str, str]] = []
+        for item in rows_or_decisions:
+            verdict = getattr(item, "verdict", None) or getattr(item, "proposed", None)
+            if verdict is None or not getattr(verdict, "value", None):
+                continue
+            source = getattr(verdict, "source", None) or ""
+            if not source:
+                continue
+            out.extend(
+                build_provenance_triples(
+                    item.entity_uri,
+                    _attr_uri(type_name, item.attribute),
+                    verdict.value,
+                    source=source,
+                    confidence=float(getattr(verdict, "confidence", 1.0) or 1.0),
+                    timestamp=self._verdict_as_of(verdict),
+                )
+            )
         return out
 
     @staticmethod
@@ -1846,10 +1986,21 @@ class EnrichmentExecutor:
                         d.entity_uri, job.type_name, d.attribute, d.proposed
                     )
                 )
+            # Canonical companion-provenance-GRAPH records (F1) for the accepted
+            # decisions, dated from the verdict — same seam as the auto-apply path
+            # (gated by COGRAPH_PROVENANCE_ENABLED).
+            prov_graph_triples = self._canonical_provenance_triples(
+                accepted, job.type_name
+            )
             # Same shared write path as run() / ingestion (graph/kg_writer.py):
             # batched insert + post-write housekeeping (cache-invalidate,
             # re-embed the type, recompute stats).
-            await insert_facts(self._neptune, graph_uri, triples)
+            await insert_facts(
+                self._neptune,
+                graph_uri,
+                triples,
+                provenance_triples=prov_graph_triples or None,
+            )
             await refresh_after_write(
                 self._neptune,
                 tenant_id=job.tenant_id,

@@ -49,7 +49,11 @@ from cograph_client.graph.text_markers import (
 )
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.provenance import build_provenance_triples, provenance_graph_uri
+from cograph_client.graph.provenance import (
+    build_attribute_provenance_companions,
+    build_provenance_triples,
+    provenance_graph_uri,
+)
 from cograph_client.graph.queries import BATCH_PREDICATE, batched_insert_triples, delete_batch_query, insert_triples, tenant_graph_uri
 from cograph_client.resolver.attribute_resolver import (
     AttributeSchema,
@@ -451,6 +455,15 @@ _TEXT_ADJUDICATION_SAMPLES = 5
 _TEXT_ADJUDICATION_SAMPLE_MAX_LEN = 140
 
 
+def _looks_like_url(value: str) -> bool:
+    """Whether a record ``source`` is a fetch URL (web discovery) vs a bare label
+    (e.g. a CSV filename). Only a URL source becomes an attribute's `_source_url`
+    citation; a non-URL source is still recorded as `_provenance`."""
+    return isinstance(value, str) and (
+        value.startswith("http://") or value.startswith("https://")
+    )
+
+
 class SchemaResolver:
     # Primary extraction model, routed through OpenRouter with the configured
     # fallback. Defaults to the shared primary.
@@ -493,6 +506,18 @@ class SchemaResolver:
         # companion provenance graph. Default OFF so default triple output and
         # Neptune call pattern stay byte-identical.
         self._provenance_enabled = os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+        # Per-attribute DISPLAY provenance companions (ONTA-245 F1): the same
+        # `<attr>_source_url` / `<attr>_verified_at` instance companions enrichment
+        # always writes, emitted by discovery too so a DISCOVERED fact and an
+        # ENRICHED fact are provenance-symmetric (attribute-level, not just the
+        # per-record `onto/source`). Default OFF so bulk CSV ingest stays byte-stable
+        # (it would otherwise add up to 3 companions PER attribute fact); web
+        # discovery flips it on to give the personas the per-fact citation + freshness
+        # signal. Flows through the SAME shared write path (insert_facts) as every
+        # other fact — the companions ride in the instance-triple collector.
+        self._attr_provenance_enabled = (
+            os.environ.get("COGRAPH_DISCOVERY_ATTR_PROVENANCE", "0") == "1"
+        )
         # Governance seam (ADR 0002 §2): when ON, a brand-new type is ALSO
         # proposed to an LLM judge panel; on majority approval it is written
         # to the Global-Public layer with governance provenance. The tenant
@@ -2393,6 +2418,33 @@ class SchemaResolver:
             else:
                 for sparql in batched_insert_triples(provenance_graph_uri(instance_graph), prov_triples):
                     await self._neptune.update(sparql)
+
+        # Per-attribute DISPLAY provenance companions (ONTA-245 F1), gated by
+        # COGRAPH_DISCOVERY_ATTR_PROVENANCE (default off). The SAME
+        # `<attr>_source_url` / `<attr>_verified_at` instance companions enrichment
+        # always writes, so a DISCOVERED fact and an ENRICHED fact are
+        # provenance-symmetric at the ATTRIBUTE level (not just the per-record
+        # `onto/source`). Built via the shared builder and appended to
+        # `triples_to_insert` so they flow through the SAME shared write path
+        # (insert_facts) as every other fact — no separate writer. The record's
+        # `source` (a URL for web discovery) becomes each attribute's
+        # `_source_url`/`_provenance`; the freshness stamp is now-UTC (first-seen).
+        if self._attr_provenance_enabled and attr_facts:
+            attr_prov_ts = datetime.now(timezone.utc)
+            for s, p, _o in attr_facts:
+                leaf = p.rstrip("/").rsplit("/", 1)[-1]
+                if not leaf:
+                    continue
+                triples_to_insert.extend(
+                    build_attribute_provenance_companions(
+                        s,
+                        resolved_type,
+                        leaf,
+                        source_url=source if _looks_like_url(source) else "",
+                        provenance=source or "",
+                        verified_at=attr_prov_ts,
+                    )
+                )
 
         # Provenance triples
         now = datetime.now(timezone.utc).isoformat()
