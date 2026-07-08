@@ -1893,3 +1893,47 @@ async def test_dedup_execute_via_plan_store(monkeypatch):
     await asyncio.sleep(0)
     assert len(job_store.created) == 1
     assert job_store.created[0].category == JobCategory.dedupe
+
+
+# --- discovery-intent guard: no false-positive on "not enrichment" adjective --- #
+# Regression for the persona-eval RCA review nit: the deterministic discovery
+# guard must NOT force-route a read-only ask into discovery just because it uses
+# "enrichment" as an ADJECTIVE ("not enrichment candidates"). Invented tokens
+# (Widget/Sprocket/Gadget) so nothing overfits.
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Show me all records that are not enrichment candidates",
+        "List the Widgets that are not enrichment candidates",
+        "give me the Sprockets that are not enrichment targets",
+        "show me all Gadgets that are not enrichment matches",
+    ],
+)
+def test_discovery_guard_not_forced_by_enrichment_adjective(message):
+    """A read-only ask that says "not enrichment <noun>" is NOT a discovery job —
+    'enrichment' is an adjective here, and 'show me'/'list'/'give me' are read-only
+    display verbs. The guard must leave these to normal classification."""
+    from cograph_client.agent.planner import _is_web_discovery_request
+
+    assert _is_web_discovery_request(message) is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "discover all Gadgets in Zone 3, this is not enrichment",
+        "This is a new discovery task, not enrichment - find Gadgets in Zone 3",
+        "find all Sprockets in Zone 9, this is a new discovery",
+        "scrape Widgets from example.test, not enrichment.",
+        "add all Gadgets from the web",
+    ],
+)
+def test_discovery_guard_still_fires_on_genuine_self_label(message):
+    """A genuine "this is a new discovery / not enrichment" self-label (at a clause
+    boundary), a leading discover/scrape imperative, or a '... from the web' fetch
+    still force-routes to discovery — the nit fix must not break the real path."""
+    from cograph_client.agent.planner import _is_web_discovery_request
+
+    assert _is_web_discovery_request(message) is True
