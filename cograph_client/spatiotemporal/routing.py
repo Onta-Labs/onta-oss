@@ -5,8 +5,10 @@ turn a natural-language geo/temporal question into a direct index lookup that
 answers WITHOUT a Neptune round-trip. It is **purely the parsing/shaping layer** —
 no LLM client, no Neptune, no index handle live here, so it is fully unit-testable.
 The orchestration (LLM intent call, anchor resolution, index query) lives in
-``NLQueryPipeline`` and is gated behind ``COGRAPH_SPATIAL_ROUTING_ENABLED`` (default
-off) so the default query path stays byte-identical for evals.
+``NLQueryPipeline``. As of ONTA-249 it is a SUPPORTED path, ENABLED BY DEFAULT
+(set ``COGRAPH_SPATIAL_ROUTING_ENABLED=0`` to force it off, e.g. for byte-stable
+evals); a free-text place-name anchor now resolves via the geocoder seam
+(``cograph_client.spatiotemporal.geocoder``).
 
 Flow the pipeline drives:
 
@@ -19,9 +21,9 @@ Flow the pipeline drives:
 
 Scope of this cut (per the approved plan): ``radius`` and ``bbox`` lookups with an
 optional denormalized ``target_type`` filter and an optional temporal predicate.
-Hybrid "geo AND <other SPARQL filter>" (VALUES pre-filter) and free-text geocoding
-of a non-KG anchor are deliberately out of scope and fall through to the normal
-SPARQL path.
+Free-text geocoding of a non-KG anchor is now IN scope (ONTA-249) via the geocoder
+seam. Hybrid "geo AND <other SPARQL filter>" (VALUES pre-filter) remains out of
+scope and falls through to the normal SPARQL path.
 """
 
 from __future__ import annotations

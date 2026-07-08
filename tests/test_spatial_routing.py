@@ -272,11 +272,18 @@ async def test_unresolved_anchor_falls_through():
     assert res is None
 
 
-def test_flag_defaults_off(monkeypatch):
+def test_flag_defaults_on(monkeypatch):
+    # ONTA-249: spatial routing is now a SUPPORTED, default-ENABLED path.
     monkeypatch.delenv("COGRAPH_SPATIAL_ROUTING_ENABLED", raising=False)
-    assert _pipeline(FakeNeptune())._spatial_routing_enabled is False
+    assert _pipeline(FakeNeptune())._spatial_routing_enabled is True
 
 
 def test_flag_on_when_set(monkeypatch):
     monkeypatch.setenv("COGRAPH_SPATIAL_ROUTING_ENABLED", "1")
     assert _pipeline(FakeNeptune())._spatial_routing_enabled is True
+
+
+def test_flag_off_when_explicitly_disabled(monkeypatch):
+    # An explicit "0" still forces it off (e.g. byte-stable evals).
+    monkeypatch.setenv("COGRAPH_SPATIAL_ROUTING_ENABLED", "0")
+    assert _pipeline(FakeNeptune())._spatial_routing_enabled is False

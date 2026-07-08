@@ -200,12 +200,18 @@ class NLQueryPipeline:
         # generated SPARQL. Default OFF so the default Neptune call pattern
         # stays byte-identical (same gating pattern as COGRAPH_ER_ENABLED).
         self._aliases_enabled = os.environ.get("COGRAPH_ALIASES_ENABLED", "0") == "1"
-        # Spatio-temporal read routing (ONTA-157 Phase 2): a geo/proximity question
-        # is answered directly from the secondary index (no Neptune round-trip).
-        # Default OFF — same gating discipline as the aliases flag — so the default
-        # query path (and every eval) stays byte-identical until explicitly enabled.
+        # Spatio-temporal read routing (ONTA-157 Phase 2 → ONTA-249): a
+        # geo/proximity question is answered directly from the secondary index (no
+        # Neptune round-trip). Now a SUPPORTED path and ENABLED BY DEFAULT (ONTA-249):
+        # the radius/bbox engine is fully built and, with the free-text geocoder
+        # seam, a bare place-name anchor resolves — so "within N km of PLACE" works
+        # end-to-end. It is defensively gated: the fast path returns None (falls
+        # through to SPARQL unchanged) whenever the question isn't spatial, the KG
+        # can't be scoped, the intent doesn't parse, or the anchor can't be
+        # resolved — so enabling it cannot regress a non-spatial query. Set
+        # COGRAPH_SPATIAL_ROUTING_ENABLED=0 to force it off (e.g. byte-stable evals).
         self._spatial_routing_enabled = (
-            os.environ.get("COGRAPH_SPATIAL_ROUTING_ENABLED", "0") == "1"
+            os.environ.get("COGRAPH_SPATIAL_ROUTING_ENABLED", "1") != "0"
         )
 
     async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None, layer_graph_uris: list[str] | None = None) -> NLResult:
@@ -462,18 +468,59 @@ class NLQueryPipeline:
             return None
 
     async def _resolve_anchor_coords(self, anchor, data_graph: str):
-        """Resolve a radius anchor to ``(lon, lat)``: explicit coords, else a KG
-        entity matched by ``entity_description`` (one Neptune lookup). None if
-        unresolved — the caller then falls through to the SPARQL path."""
+        """Resolve a radius anchor to ``(lon, lat)``.
+
+        Resolution ladder (first hit wins):
+          1. explicit coordinates on the intent;
+          2. a KG entity whose label matches ``entity_description`` AND carries a
+             ``geo:wktLiteral`` (one scoped Neptune lookup) — preferred, since it
+             pins the anchor to the tenant's own data;
+          3. the free-text GEOCODER seam (ONTA-249): turn a bare place name
+             ("Irvine") into coords via the registered geocoder — the OSS default
+             is a deterministic offline gazetteer; a premium geocoder registers
+             over it. This is what lets a place name resolve when no KG entity for
+             it exists.
+
+        Returns ``None`` when nothing resolves — the caller then falls through to
+        the normal SPARQL path (byte-stable pre-existing behavior)."""
         if anchor is None:
             return None
         if anchor.has_coords():
             return (anchor.lon, anchor.lat)
         if not anchor.entity_description:
             return None
-        return await self._resolve_anchor_via_neptune(
+        # 2. KG-entity geometry (preferred — anchored to the tenant's own data).
+        via_kg = await self._resolve_anchor_via_neptune(
             anchor.entity_description, data_graph
         )
+        if via_kg is not None:
+            return via_kg
+        # 3. Free-text geocoder seam.
+        return await self._geocode_anchor(anchor.entity_description)
+
+    async def _geocode_anchor(self, description: str):
+        """Resolve a free-text place name to ``(lon, lat)`` via the geocoder seam.
+
+        Best-effort: returns ``None`` (never raises) when the place is unknown or
+        the geocoder errors, so the caller falls through to the SPARQL path."""
+        if not description or not description.strip():
+            return None
+        try:
+            from cograph_client.spatiotemporal.geocoder import get_geocoder
+
+            coords = await get_geocoder().geocode(description)
+        except Exception:
+            logger.warning("geocode_anchor_failed", exc_info=True)
+            return None
+        if (
+            isinstance(coords, tuple)
+            and len(coords) == 2
+            and all(isinstance(c, (int, float)) for c in coords)
+        ):
+            lon, lat = float(coords[0]), float(coords[1])
+            if -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0:
+                return (lon, lat)
+        return None
 
     async def _resolve_anchor_via_neptune(self, description: str, data_graph: str):
         """Find a KG entity whose label/text contains ``description`` AND that

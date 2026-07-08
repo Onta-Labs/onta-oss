@@ -120,6 +120,33 @@ def _load_web_source_plugin() -> None:
         logger.error("web_source_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_geocoder_plugin() -> None:
+    """Import and invoke the configured free-text geocoder plugin, if any (ONTA-249).
+
+    Format: "module.path:callable". The callable is invoked with no arguments and
+    is expected to register a premium Geocoder via
+    cograph_client.spatiotemporal.geocoder.register_geocoder (e.g. a Google Places
+    / Mapbox / Nominatim adapter). Failures are logged but do not prevent startup —
+    without it the OSS default (a deterministic offline gazetteer) is used, so a
+    bare place-name radius anchor still resolves for common places. No paid
+    geocoding API is baked into OSS; premium flows premium → OSS via this seam.
+    """
+    spec = settings.geocoder_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("geocoder_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("geocoder_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("geocoder_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 def _load_api_registry_plugin() -> None:
     """Import and invoke the configured API-source-registry plugin, if any.
 
@@ -269,6 +296,7 @@ def create_app() -> FastAPI:
     _load_governance_plugin()
     _load_web_source_plugin()
     _load_api_registry_plugin()
+    _load_geocoder_plugin()
     _load_secrets_cipher_plugin()
     app = FastAPI(
         title="Omnix",
