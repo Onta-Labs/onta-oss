@@ -1,11 +1,23 @@
 """Central LLM routing for the resolver / governance / query pipeline.
 
-Every decision and inference LLM call goes through OpenRouter with a **primary
-model + automatic fallback** (OpenRouter's ``models`` array, tried in order on
-error). Both ids are env-overridable; the defaults set the production
-primary/fallback. Nothing is hardcoded at the call sites — they pass their
-per-role model (which itself defaults to ``PRIMARY_MODEL``) and the fallback is
-applied here uniformly.
+Every decision and inference (extraction) LLM call goes through this module. The
+default backend is **OpenRouter** with a **primary model + automatic fallback**
+(OpenRouter's ``models`` array, tried in order on error). Both ids are
+env-overridable; the defaults set the production primary/fallback. Nothing is
+hardcoded at the call sites — they pass their per-role model (which itself
+defaults to ``PRIMARY_MODEL``) and the fallback is applied here uniformly.
+
+**Provider selection (``OMNIX_LLM_PROVIDER``).** The backend is chosen by
+``OMNIX_LLM_PROVIDER`` (``openrouter`` | ``cerebras``), *defaulting to
+``openrouter``* so behaviour is byte-identical to the historical hardcoded
+OpenRouter path when the env is unset. When set to ``cerebras`` this routes the
+same OpenAI-shaped chat request to Cerebras (``https://api.cerebras.ai/v1``)
+instead — the auth key becomes ``CEREBRAS_API_KEY`` and the model is the bare
+``OMNIX_LLM_MODEL`` slug (e.g. ``gpt-oss-120b``, no ``openai/`` prefix). This
+mirrors the query path's Cerebras support (``nlp/pipeline.py``); one env flip
+switches ALL extraction call sites at once because they all funnel through
+:func:`openrouter_chat` here. The query path has its OWN Cerebras selector
+(``OMNIX_QUERY_PROVIDER``) and is unaffected.
 """
 
 from __future__ import annotations
@@ -17,6 +29,7 @@ import httpx
 from cograph_client.retrieval.errors import classify_llm_status_error
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+CEREBRAS_BASE = "https://api.cerebras.ai/v1"
 
 # Primary model for all LLM calls, and the automatic fallback applied via
 # OpenRouter's `models` routing. Env-overridable; defaults are the production
@@ -25,6 +38,16 @@ OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 # overridden.
 PRIMARY_MODEL = os.environ.get("OMNIX_LLM_MODEL", "anthropic/claude-opus-4.8")
 FALLBACK_MODEL = os.environ.get("OMNIX_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
+
+
+def _llm_provider() -> str:
+    """The extraction LLM backend: ``openrouter`` (default) or ``cerebras``.
+
+    Read live from the env on every call (not cached at import) so a test — or a
+    runtime reconfigure — can flip it without re-importing the module. Any value
+    other than ``cerebras`` (including unset) means ``openrouter``, preserving the
+    historical default byte-for-byte."""
+    return os.environ.get("OMNIX_LLM_PROVIDER", "openrouter").strip().lower()
 
 
 def model_chain(primary: str | None = None) -> list[str]:
@@ -78,25 +101,60 @@ async def openrouter_chat(
 
     Every existing caller (both bare-string and ``return_finish_reason``-only)
     keeps its current return shape untouched.
+
+    **Provider routing.** When ``OMNIX_LLM_PROVIDER=cerebras`` the request is sent
+    to Cerebras (``api.cerebras.ai``) with the ``CEREBRAS_API_KEY`` and the bare
+    ``OMNIX_LLM_MODEL`` slug instead of OpenRouter — see the module docstring. The
+    caller-supplied ``api_key`` / ``model`` (OpenRouter values) are ignored in that
+    mode; everything else (request params, return contract, error handling) is
+    identical. Default (unset / ``openrouter``) is byte-identical to before.
     """
-    chain = model_chain(model)
-    body: dict = {
-        "model": chain[0],
-        "models": chain,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+    provider = _llm_provider()
+    if provider == "cerebras":
+        cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
+        if not cerebras_key:
+            # Fail loud — do NOT silently fall back to OpenRouter. If the operator
+            # asked for Cerebras, running on OpenRouter instead would hide a
+            # misconfiguration (wrong key, wrong model slug) behind "it worked".
+            raise RuntimeError(
+                "OMNIX_LLM_PROVIDER=cerebras but CEREBRAS_API_KEY is not set — "
+                "set the Cerebras key or unset OMNIX_LLM_PROVIDER to use OpenRouter."
+            )
+        base = CEREBRAS_BASE
+        request_key = cerebras_key
+        # Cerebras takes a BARE model slug (e.g. "gpt-oss-120b"), not an
+        # OpenRouter-prefixed one, and has no `models` fallback array. Use the
+        # caller's per-role model when supplied, else PRIMARY_MODEL (OMNIX_LLM_MODEL).
+        body: dict = {
+            "model": model or PRIMARY_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+    else:
+        base = OPENROUTER_BASE
+        request_key = api_key
+        chain = model_chain(model)
+        body = {
+            "model": chain[0],
+            "models": chain,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
     if response_format is not None:
         body["response_format"] = response_format
     async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.post(
-            f"{OPENROUTER_BASE}/chat/completions",
+            f"{base}/chat/completions",
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {request_key}",
                 "Content-Type": "application/json",
             },
             json=body,
