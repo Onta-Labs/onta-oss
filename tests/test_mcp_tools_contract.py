@@ -20,12 +20,22 @@ Tool → backend route (via the SDK):
 from __future__ import annotations
 
 import os
+import re
+from pathlib import Path
 
 os.environ.setdefault("OMNIX_API_KEYS", '{"test-key": "test-tenant"}')
 os.environ.setdefault("OMNIX_NEPTUNE_ENDPOINT", "http://fake:8182")
 
 HEADERS = {"X-API-Key": "test-key"}
 TENANT = "test-tenant"
+
+_MCP_INDEX = (
+    Path(__file__).resolve().parent.parent
+    / "packages"
+    / "cograph-mcp"
+    / "src"
+    / "index.ts"
+)
 
 
 def test_create_kg_tool_target_exists(client, mock_neptune, auth_headers):
@@ -138,3 +148,46 @@ def test_search_tool_disabled_deployment_503(monkeypatch, client, auth_headers):
     )
     assert resp.status_code == 503
     assert "COGRAPH_SEMANTIC_INDEX_ENABLED" in resp.json()["detail"]
+
+
+# --- list_jobs discovery category (ONTA-243) --------------------------------- #
+
+
+def test_list_jobs_tool_accepts_discovery_category(client, mock_neptune, auth_headers):
+    """The `category` arg forwards `discovery` to /jobs as a valid query param —
+    the value the MCP enum used to omit, which made a web-ingest job unfindable via
+    the category filter (the persona's `category:'enrichment'` guess filtered it OUT)."""
+    resp = client.get(
+        f"/graphs/{TENANT}/jobs", params={"category": "discovery"}, headers=auth_headers
+    )
+    assert resp.status_code == 200, resp.text
+    assert isinstance(resp.json(), list)
+
+
+def _mcp_list_jobs_categories() -> set[str]:
+    """Parse the `JOB_CATEGORIES` runtime array the MCP `list_jobs` tool enum is
+    built from, straight out of the TypeScript source. Deliberately reads the SOURCE
+    (not a built artifact) so this guard runs with no npm build in CI."""
+    src = _MCP_INDEX.read_text()
+    m = re.search(r"const\s+JOB_CATEGORIES\s*=\s*\[(.*?)\]\s*as\s+const", src, re.DOTALL)
+    assert m, "could not find JOB_CATEGORIES array in the MCP index.ts"
+    return set(re.findall(r'"([a-z_]+)"', m.group(1)))
+
+
+def test_mcp_list_jobs_enum_matches_backend_job_category():
+    """Drift guard (ONTA-243): the MCP `list_jobs` category enum MUST equal the
+    backend `JobCategory` set — no more, no less. A missing member silently hides
+    that category's jobs from the agent (the exact `discovery`-omitted bug). The
+    TypeScript side also enforces this at compile time via an exhaustiveness check
+    against the SDK's `JobCategory`; this asserts it from Python so a backend change
+    that forgets the MCP enum fails CI here too."""
+    from cograph_client.enrichment.models import JobCategory
+
+    backend = {c.value for c in JobCategory}
+    assert _mcp_list_jobs_categories() == backend, (
+        "MCP list_jobs enum drifted from backend JobCategory: "
+        f"mcp={_mcp_list_jobs_categories()} backend={backend}"
+    )
+    # Explicit: discovery is present on both sides (the regression this guards).
+    assert "discovery" in backend
+    assert "discovery" in _mcp_list_jobs_categories()

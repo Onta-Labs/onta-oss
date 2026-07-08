@@ -1354,6 +1354,11 @@ export interface JobProgress {
   skipped: number;
   no_match: number;
   cache_hits: number;
+  /** Coarse WHAT-is-happening-now label for a running job (ONTA-238): discovery
+   *  sets it through the run ("searching" → "ingesting" → "done" / "failed");
+   *  enrichment/dedupe leave it "". Optional for back-compat with older payloads
+   *  that predate the field. The MCP `get_job` tool surfaces it. */
+  phase?: string;
 }
 
 export interface RowResult {
