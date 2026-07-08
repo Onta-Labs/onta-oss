@@ -120,6 +120,60 @@ def _sanitize_sparql_literal(text: str) -> str:
     return re.sub(r'["\\\n\r\t]', " ", text).strip().lower()[:80]
 
 
+_ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
+
+
+def _row_has_entity_object(row: dict) -> bool:
+    """True if any value in the row is an entity IRI (``…/entities/…``).
+
+    A describe-shape row (``?p ?o``) whose object is an entity IRI means ``?p`` is
+    a RELATIONSHIP edge, not a literal-valued housekeeping marker — so the
+    predicate filter must apply its ``is_relationship`` exemption for that row and
+    NOT hide a real relationship that happens to share a housekeeping leaf name.
+    """
+    return any(
+        isinstance(v, str) and v.startswith(_ENTITY_URI_PREFIX) for v in row.values()
+    )
+
+
+def _drop_internal_predicate_rows(bindings: list[dict]) -> list[dict]:
+    """Drop result rows that describe an INTERNAL/housekeeping predicate.
+
+    The NL ``ask`` path renders every binding verbatim, so a ``SELECT ?p ?o``
+    "describe this entity" or a ``SELECT DISTINCT ?p`` query leaks entity-
+    resolution internals (``er/blockKey``, ``er/erSignal_*``), ingest housekeeping
+    (``onto/batch_id``, …) and normalization bookkeeping (``onto/norm/*``) straight
+    into the answer text. This is the render-time twin of the Explorer's panel
+    filter: a row is dropped when ANY of its values is an internal predicate URI
+    per the shared :func:`is_internal_predicate`.
+
+    Real relationships on ``…/onto/<leaf>`` are PRESERVED (the shared helper
+    returns False for them). When a row's object is an entity IRI the predicate is
+    treated as a relationship (``is_relationship=True``) so a legitimate edge that
+    shares a housekeeping leaf name (e.g. an ``…/onto/source`` edge pointing at an
+    Organization) is not hidden. Rows carrying no predicate-shaped value (ordinary
+    attribute projections like ``?name ?latency``) are untouched — nothing in them
+    matches an internal predicate URI, so they always pass through.
+    """
+    from cograph_client.graph.predicates import is_internal_predicate
+
+    def _is_uri(v) -> bool:
+        return isinstance(v, str) and v.startswith(("http://", "https://"))
+
+    kept: list[dict] = []
+    for row in bindings:
+        is_rel = _row_has_entity_object(row)
+        # Only URI-shaped values can be a predicate; a literal / empty attribute
+        # value must never trigger the drop (is_internal_predicate("") is True).
+        if any(
+            _is_uri(v) and is_internal_predicate(v, is_relationship=is_rel)
+            for v in row.values()
+        ):
+            continue
+        kept.append(row)
+    return kept
+
+
 class NLQueryPipeline:
     def __init__(self, neptune: NeptuneClient, anthropic_key: str):
         self.neptune = neptune
@@ -1151,6 +1205,11 @@ class NLQueryPipeline:
         if max_rows is None:
             max_rows = int(os.environ.get("OMNIX_REPHRASE_MAX_ROWS", "30"))
 
+        # Same hygiene as _format_answer: never feed internal/housekeeping
+        # predicate rows (er/*, onto/norm/*, onto/batch_id, …) to the narrative
+        # summarizer, or it would describe ER plumbing as business facts.
+        bindings = _drop_internal_predicate_rows(bindings)
+
         try:
             # Build a compact tabular string from bindings
             if not bindings:
@@ -1446,6 +1505,18 @@ class NLQueryPipeline:
         if not bindings:
             # Even with no rows, surface which requested columns are absent so a
             # follow-up can re-resolve rather than assume "no data at all".
+            return "No results found." + _missing_note()
+
+        # Hygiene: drop rows describing internal/housekeeping predicates
+        # (`er/blockKey`, `er/erSignal_*`, `onto/batch_id`, `onto/norm/*`, …) so a
+        # "describe this entity" / "list all predicates" query never leaks ER /
+        # ingest plumbing as business data. Real relationships on `…/onto/<leaf>`
+        # are preserved. This mirrors the Explorer panel filter via the SAME
+        # shared `is_internal_predicate` helper.
+        bindings = _drop_internal_predicate_rows(bindings)
+        if not bindings:
+            # Every row was internal plumbing — there is no user-facing data to
+            # show. Report empty rather than emitting the internal predicates.
             return "No results found." + _missing_note()
 
         # Resolve any entity/type URIs to human-readable labels
