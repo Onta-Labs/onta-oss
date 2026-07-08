@@ -2,10 +2,37 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client, CographError } from "cograph";
-import type { AgentResult, ResolvedChange } from "cograph";
+import type { AgentResult, JobCategory, ResolvedChange } from "cograph";
 import { z } from "zod";
 
 const VERSION = "0.1.0";
+
+// The job categories the `list_jobs` filter accepts. This MUST stay in lockstep
+// with the backend `JobCategory` enum (cograph_client/enrichment/models.py) — a
+// missing member silently hides that category's jobs from the agent: the enum
+// used to omit "discovery", so `list_jobs({category:"discovery"})` was rejected
+// AND the natural fallback `category:"enrichment"` filtered the discovery job
+// OUT ("No jobs found"), stranding a working web-ingest job the agent had just
+// kicked off (persona-eval RCA, ONTA-243). Sourcing the list from the SDK's
+// exported `JobCategory` type (via the exhaustiveness check below) makes a future
+// backend addition a COMPILE error here rather than a silent runtime gap.
+const JOB_CATEGORIES = [
+  "enrichment",
+  "dedupe",
+  "reconciliation",
+  "discovery",
+] as const;
+
+// Compile-time drift guard: `JOB_CATEGORIES` must enumerate EXACTLY the SDK's
+// `JobCategory` union — no more, no less. If the backend adds/removes a category
+// (and the SDK type is regenerated), these two assignments stop type-checking
+// until `JOB_CATEGORIES` is updated to match, so the runtime enum can never drift
+// from the backend again. Purely a type check — erased at build time.
+type _CategoryUnion = (typeof JOB_CATEGORIES)[number];
+const _assertCategoriesCoverSdk: JobCategory = "" as _CategoryUnion;
+const _assertSdkCoversCategories: _CategoryUnion = "" as JobCategory;
+void _assertCategoriesCoverSdk;
+void _assertSdkCoversCategories;
 
 // Stable conversation id for this MCP server process. The `agent` tool threads
 // this into every backend `/agent` call when the caller does not supply its own
@@ -549,15 +576,21 @@ server.registerTool(
   "list_jobs",
   {
     description:
-      "List background jobs (enrichment, dedupe/merge, reconciliation) for the " +
-      "tenant, newest first. Use this to check on async work the `agent` tool " +
-      "kicked off (e.g. after confirming an enrich or find-duplicates plan): a " +
-      "plan's steps run as background jobs, and this is how you see their status.",
+      "List background jobs (enrichment, dedupe/merge, reconciliation, " +
+      "web-discovery) for the tenant, newest first. Use this to check on async " +
+      "work the `agent` tool kicked off (e.g. after confirming an enrich, " +
+      "find-duplicates, or discover-from-the-web plan): a plan's steps run as " +
+      "background jobs, and this is how you see their status. Pass no category " +
+      "to see ALL jobs across every category.",
     inputSchema: {
       category: z
-        .enum(["enrichment", "dedupe", "reconciliation"])
+        .enum(JOB_CATEGORIES)
         .optional()
-        .describe("Optional filter to a single job category."),
+        .describe(
+          "Optional filter to a single job category (enrichment, dedupe, " +
+            "reconciliation, discovery). A web-ingest job kicked off via the " +
+            "`agent` tool is category 'discovery'.",
+        ),
     },
   },
   async ({ category }) => {
@@ -583,9 +616,11 @@ server.registerTool(
   "get_job",
   {
     description:
-      "Get the full record + progress of a single enrichment job by id (as " +
-      "listed by list_jobs). Returns status, tier, per-entity progress and, when " +
-      "finished, the applied/staged counts.",
+      "Get the full record + progress of a single background job by id (as " +
+      "listed by list_jobs). Works for ANY category — enrichment, dedupe, " +
+      "reconciliation, and web-discovery (there is no separate discovery-job " +
+      "endpoint). Returns status, tier, live per-record progress (processed / " +
+      "filled / total + phase), and, when finished, the result count.",
     inputSchema: {
       job_id: z.string().describe("The job id (from list_jobs)."),
     },
@@ -598,16 +633,29 @@ server.registerTool(
       >;
       const status = String(job.status ?? "?");
       const lines = [`Job ${String(job.id ?? job_id)} — ${status}`];
-      for (const k of [
-        "type_name",
-        "resolved_tier",
-        "processed",
-        "total_entities",
-        "applied",
-        "staged",
-      ]) {
+      // Top-level scalars worth surfacing as named lines.
+      for (const k of ["type_name", "resolved_tier", "result_count"]) {
         if (job[k] !== undefined && job[k] !== null)
           lines.push(`  ${k}: ${String(job[k])}`);
+      }
+      // Live progress lives under `progress.*` (processed / filled / verified /
+      // total / phase) for EVERY category — the previous top-level `processed`/
+      // `total_entities`/`applied`/`staged` keys never matched a real job shape,
+      // so the human-readable summary rendered nothing and the agent had to parse
+      // the raw JSON. Read the nested shape so a discovery job's streaming
+      // progress is legible at a glance (ONTA-243).
+      const progress = job.progress as Record<string, unknown> | undefined;
+      if (progress && typeof progress === "object") {
+        for (const k of [
+          "phase",
+          "processed",
+          "filled",
+          "verified",
+          "total",
+        ]) {
+          if (progress[k] !== undefined && progress[k] !== null)
+            lines.push(`  ${k}: ${String(progress[k])}`);
+        }
       }
       lines.push("", "Raw job:", JSON.stringify(job, null, 2));
       return textResult(lines.join("\n"));

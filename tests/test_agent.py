@@ -352,6 +352,92 @@ async def test_web_question_is_not_hijacked(monkeypatch):
     assert out["answer"] == "7"
 
 
+@pytest.mark.asyncio
+async def test_discovery_beats_enrich_keyword_on_empty_graph(monkeypatch):
+    """ONTA-244 — a clearly-new-data ask that leads with "discover" (and even
+    contains the word "enrich") routes to DISCOVERY, not enrich. The classifier
+    WRONGLY word-triggers "enrich" (the message says "then enrich each…"); the
+    widened deterministic web-discovery guard must override it. With no web-source
+    provider registered in OSS the discover rail degrades to a clear "not enabled"
+    answer — proof the turn routed to discovery, not into an empty enrich loop.
+    Asserts on the CAPABILITY that ran, not on any field token."""
+    _stub_classifier(monkeypatch, "enrich")  # the mis-classification
+
+    # If it wrongly routed to enrich, this would run and NOT say "enabled".
+    async def fake_enrich_plan(self, ctx, instruction, parsed=None):
+        return [
+            PlanStep(
+                capability="enrich",
+                action="clarify",
+                params={"question": "ENRICH_RAN", "options": []},
+            )
+        ]
+
+    monkeypatch.setattr(EnrichCapability, "plan", fake_enrich_plan)
+
+    out = await asyncio.wait_for(
+        handle(
+            _ctx(),
+            "discover all Sprockets in Region 7 then enrich each with vendor",
+        ),
+        TIMEOUT,
+    )
+    # Routed to DISCOVERY (degrades to not-enabled in OSS), not the enrich clarify.
+    assert out.get("question") != "ENRICH_RAN"
+    body = f"{out.get('narrative', '')} {out.get('answer', '')} {out.get('question', '')}".lower()
+    assert "enabled" in body
+
+
+@pytest.mark.asyncio
+async def test_zero_match_empty_type_offers_discovery(monkeypatch):
+    """ONTA-244 — an enrich ask against a type the graph has ZERO of is a
+    discover-vs-enrich mis-route. Enrichment's 0-match clarify must offer a
+    "Discover … from the web" option (not ONLY "Enrich all"), since enriching a
+    type with no entities would do nothing. Asserts on the OPTION mechanism, with
+    an invented type."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_kg_types(monkeypatch, ["Sprocket"])
+    _stub_schema(monkeypatch, {"attributes": ["material"], "relationships": []})
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["vendor"],
+            "scope": {"predicate": "material", "value": "titanium"},
+            "tier": "core",
+        },
+    )
+
+    async def fake_sample(neptune, tenant_id, kg, type_name, pred_leaf):
+        return [], "literal"
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        fake_sample,
+    )
+
+    class EmptyTypeExecutor:
+        # 0 for BOTH the scoped filter AND the whole-type count → empty type.
+        async def count_entities(self, tenant_id, kg_name, type_name, scope=None):
+            return 0
+
+    out = await asyncio.wait_for(
+        handle(
+            _ctx(executor=EmptyTypeExecutor()),
+            "enrich the vendor for titanium Sprockets",
+        ),
+        TIMEOUT,
+    )
+    assert out["kind"] == "clarify"
+    opts = out.get("options") or []
+    # A discovery option is offered (not only "Enrich all Sprocket").
+    assert any("discover" in o.lower() for o in opts), opts
+    # And clicking it re-routes to discovery — it matches the deterministic guard.
+    from cograph_client.agent.planner import _is_web_discovery_request
+
+    discover_opt = next(o for o in opts if "discover" in o.lower())
+    assert _is_web_discovery_request(discover_opt)
+
+
 def _stub_kg_types(monkeypatch, names: list[str]):
     """Stub the enrich capability's KG type listing to ``names``."""
 
