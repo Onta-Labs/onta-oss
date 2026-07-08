@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client, CographError } from "cograph";
@@ -200,6 +202,49 @@ server.registerTool(
   },
 );
 
+// ONTA-253: this tool's contract is "ingest a CSV FILE" — so a path that does
+// not resolve to a readable file must be a CLEAR error, never a silent
+// text-ingest of the filename. We stat the path up front (returning a specific
+// error that names the missing file) BEFORE touching the SDK, and additionally
+// pass `asFile:true` so the SDK hard-errors rather than degrading to text even
+// if the file vanishes between the stat and the read (TOCTOU). Previously a
+// missing path fell through the SDK's `ingest()` text fallback, the backend
+// LLM-extracted phantom entities out of the path string, and this tool reported
+// a fabricated "N entities resolved" success (persona-eval RCA).
+export async function ingestCsvHandler(
+  { file_path, kg_name }: { file_path: string; kg_name: string },
+  makeClient: () => Client = client,
+) {
+  let ok = false;
+  try {
+    ok = existsSync(file_path) && statSync(file_path).isFile();
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    return errorResult(
+      new Error(
+        `CSV file not found or not a readable file: ${file_path}. ` +
+          `ingest_csv requires an absolute path to an existing CSV file — ` +
+          `nothing was ingested.`,
+      ),
+    );
+  }
+  try {
+    const result = await makeClient().ingest(file_path, {
+      kg: kg_name,
+      asFile: true,
+    });
+    const entities = Number(result.entities_resolved ?? 0);
+    const triples = Number(result.triples_inserted ?? 0);
+    return textResult(
+      `Ingestion complete: ${entities} entities resolved, ${triples} triples inserted into "${kg_name}".`,
+    );
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 server.registerTool(
   "ingest_csv",
   {
@@ -216,18 +261,7 @@ server.registerTool(
         ),
     },
   },
-  async ({ file_path, kg_name }) => {
-    try {
-      const result = await client().ingest(file_path, { kg: kg_name });
-      const entities = Number(result.entities_resolved ?? 0);
-      const triples = Number(result.triples_inserted ?? 0);
-      return textResult(
-        `Ingestion complete: ${entities} entities resolved, ${triples} triples inserted into "${kg_name}".`,
-      );
-    } catch (err) {
-      return errorResult(err);
-    }
-  },
+  async ({ file_path, kg_name }) => ingestCsvHandler({ file_path, kg_name }),
 );
 
 server.registerTool(
@@ -708,9 +742,21 @@ async function main(): Promise<void> {
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  process.stderr.write(
-    `cograph-mcp failed to start: ${err instanceof Error ? err.message : String(err)}\n`,
-  );
-  process.exit(1);
-});
+// Only start the stdio server when run as the CLI entrypoint. Guarding this lets
+// a test import the module (e.g. to unit-test `ingestCsvHandler`) without opening
+// a stdio transport / hanging the test process. `import.meta.url` matches
+// `process.argv[1]` only when node executed this file directly.
+const isEntrypoint =
+  typeof process !== "undefined" &&
+  Array.isArray(process.argv) &&
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  main().catch((err) => {
+    process.stderr.write(
+      `cograph-mcp failed to start: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  });
+}

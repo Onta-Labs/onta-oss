@@ -23,6 +23,14 @@ export interface ClientOptions {
 export interface IngestOptions {
   kg?: string;
   contentType?: "text" | "csv" | "json" | string;
+  /** Treat `pathOrText` as a FILE PATH, not as raw text. When set, a path that
+   *  does not resolve to a readable file throws a `CographError` instead of
+   *  silently POSTing the path string itself as text content (ONTA-253: a
+   *  file-intent caller — e.g. the MCP `ingest_csv` tool — must never fabricate
+   *  a success by LLM-extracting entities out of a nonexistent filename). The
+   *  dual-mode default (`asFile` unset) keeps the CLI's intentional
+   *  `ingest <raw text>` path working. */
+  asFile?: boolean;
   /** Rows per batch for CSV ingest. Default 200. Larger = fewer round-trips
    *  but higher per-request memory; 200 is a good balance for typical KGs. */
   batchSize?: number;
@@ -504,6 +512,19 @@ export class Client {
       isFile = existsSync(pathOrText) && statSync(pathOrText).isFile();
     } catch {
       isFile = false;
+    }
+
+    // ONTA-253: a file-intent caller (asFile) must NEVER degrade to text. If the
+    // path does not resolve to a readable file, hard-error here instead of
+    // POSTing the path string itself as content — otherwise the backend
+    // LLM-extracts phantom entities out of the filename and reports a fabricated
+    // success. The dual-mode default (asFile unset) still degrades to text for
+    // the CLI's intentional `ingest <raw text>` path.
+    if (opts.asFile && !isFile) {
+      throw new CographError(
+        `File not found or not a readable file: ${pathOrText}. ` +
+          `Pass raw text without asFile to ingest it as text.`,
+      );
     }
 
     if (isFile) {
