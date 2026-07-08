@@ -219,12 +219,13 @@ async def dispatch_scheduled_action(
     client: NeptuneClient,
     job_store,
     executor: EnrichmentExecutor,
+    schedule_store=None,
 ) -> Optional[EnrichJob]:
     """Create + run the job for a due ``schedule``, reusing the route workers.
 
-    Returns the created job (``None`` for the semantic maintenance actions,
-    which create no job rows). The worker runs to completion when awaited (the
-    runner awaits it); callers that want fire-and-forget can wrap the returned
+    Returns the created job (``None`` for the semantic maintenance + ``notify``
+    actions, which create no job rows). The worker runs to completion when awaited
+    (the runner awaits it); callers that want fire-and-forget can wrap the returned
     coroutine themselves. Action → worker mapping is identical to the routes:
 
     - ``find-merge-duplicates`` → :func:`_run_dedupe`
@@ -232,6 +233,11 @@ async def dispatch_scheduled_action(
     - ``suggest-relationships`` → :func:`_run_suggest` (premium recommender), or
       a terminal no-op job when no recommender is wired (mirrors the route's
       graceful degrade).
+    - ``notify`` (ONTA-235) → :func:`_run_notify`. Snapshot the watched value(s),
+      diff against the previous fire's snapshot on the row, and DELIVER a change
+      payload through the registered ``DeliverySink`` ONLY when something changed;
+      persist the fresh snapshot back (needs ``schedule_store``). Creates no job
+      row.
     - ``semantic-embed-fill`` / ``semantic-reconcile`` (ONTA-181) →
       ``semantic.reconciler.dispatch_semantic_schedule``. Routed through THIS
       seam (not a private loop) so semantic maintenance inherits the runner's
@@ -247,6 +253,13 @@ async def dispatch_scheduled_action(
         from cograph_client.semantic.reconciler import dispatch_semantic_schedule
 
         await dispatch_semantic_schedule(schedule, client=client)
+        return None
+
+    if action == "notify":
+        # Standing-alert / weekly-refresh: watch → diff → deliver-on-change.
+        # Job-row-free (like the semantic actions); observability is the
+        # structlog counters + the DeliveryResult in _run_notify.
+        await _run_notify(schedule, client=client, schedule_store=schedule_store)
         return None
 
     job = _job_from_schedule(schedule)
@@ -287,6 +300,107 @@ async def dispatch_scheduled_action(
 
     # Defensive: ScheduleAction is a closed Literal, so this is unreachable.
     raise ValueError(f"unknown schedule action: {action!r}")
+
+
+# --- notify (standing alert / weekly refresh; ONTA-235) -----------------------
+
+
+async def _run_notify(
+    schedule,
+    *,
+    client: NeptuneClient,
+    schedule_store=None,
+) -> "DeliveryResult":
+    """Watch → diff → deliver-on-change for a due ``notify`` schedule.
+
+    1. Snapshot the watched value(s) from the KG (``params['watch']``).
+    2. Diff against the snapshot the previous fire persisted on the row
+       (``params['last_snapshot']``). The FIRST fire only establishes the
+       baseline — it delivers nothing (see ``diff_snapshots``).
+    3. When (and only when) something changed, deliver an ``old → new`` change
+       payload through the registered ``DeliverySink`` (best-effort HTTP POST in
+       OSS; a premium reliable sink supersedes it via ``register_delivery_sink``).
+       Delivery is SSRF-guarded inside the sink.
+    4. Persist the fresh snapshot back onto the row (via ``schedule_store``) so the
+       next fire diffs against it.
+
+    Never raises: a read/deliver hiccup is logged and returned as a structured
+    ``DeliveryResult`` so one bad notify can't sink a runner sweep. Returns the
+    delivery outcome (``ok`` also True for the no-change / baseline case, where
+    there was nothing to deliver).
+    """
+    from cograph_client.graph.queries import kg_graph_uri
+    from cograph_client.scheduling.delivery import (
+        DeliveryResult,
+        DeliveryTarget,
+        get_delivery_sink,
+    )
+    from cograph_client.scheduling.watch import (
+        SNAPSHOT_KEY,
+        diff_snapshots,
+        snapshot_watch,
+    )
+
+    params = dict(schedule.params or {})
+    watch = params.get("watch") or {}
+    instance_graph = (
+        kg_graph_uri(schedule.tenant_id, schedule.kg_name)
+        if schedule.kg_name
+        else None
+    )
+
+    current = await snapshot_watch(client, watch, instance_graph)
+    previous = params.get(SNAPSHOT_KEY)
+    changes = diff_snapshots(previous, current)
+
+    result = DeliveryResult(ok=True)
+    if changes:
+        target = DeliveryTarget.from_params(params.get("sink"))
+        if target is None:
+            logger.warning(
+                "notify_no_sink",
+                schedule_id=schedule.id,
+                tenant=schedule.tenant_id,
+            )
+        else:
+            payload = {
+                "schedule_id": schedule.id,
+                "tenant_id": schedule.tenant_id,
+                "kg_name": schedule.kg_name,
+                "changes": changes,
+                "fired_at": datetime.now(timezone.utc).isoformat(),
+            }
+            sink = get_delivery_sink()
+            result = await sink.deliver(target, payload)
+            logger.info(
+                "notify_delivered",
+                schedule_id=schedule.id,
+                tenant=schedule.tenant_id,
+                changes=len(changes),
+                ok=result.ok,
+                blocked=result.blocked,
+                status=result.status_code,
+            )
+
+    # Persist the fresh snapshot back so the next fire diffs against it. Only when
+    # we could read a snapshot (a read failure yields {} → keep the old baseline
+    # so a transient outage doesn't reset the watch). Best-effort: a store hiccup
+    # must not fail the tick.
+    if schedule_store is not None and current:
+        try:
+            latest = await schedule_store.get(schedule.id)
+            if latest is not None:
+                new_params = dict(latest.params or {})
+                new_params[SNAPSHOT_KEY] = current
+                latest.params = new_params
+                await schedule_store.update(latest)
+        except Exception:  # noqa: BLE001 — snapshot persistence is best-effort
+            logger.warning(
+                "notify_snapshot_persist_failed",
+                schedule_id=schedule.id,
+                exc_info=True,
+            )
+    return result
 
 
 # --- find & merge duplicates (dedupe) -----------------------------------------
