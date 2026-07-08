@@ -257,7 +257,17 @@ class EnrichCapability:
             # Scoped only: an unfiltered "enrich all X" is never interrupted by a
             # transient 0, and the subset path handles its own empties above.
             if scope is not None and matched_exact and matched == 0:
-                return [_no_match_clarify_step(type_name, scope)]
+                # ONTA-244 discover-vs-enrich reconcile: distinguish "the filter is
+                # too narrow" (the type HAS entities, none match this value) from
+                # "the graph has NONE of these at all" (enrich is the wrong verb —
+                # the user wants to MINT them, i.e. discover). A 0 total-type count
+                # means the latter, so the clarify offers "Discover these from the
+                # web" instead of only "Enrich all" (which would enrich nothing).
+                total_matched, total_exact = await self._estimate_matched(
+                    ctx, type_name, None, attributes
+                )
+                empty_type = total_exact and total_matched == 0
+                return [_no_match_clarify_step(type_name, scope, empty_type=empty_type)]
         cost = _estimate_cost(
             tier=tier,
             per_entity_cost=per_entity_cost,
@@ -631,6 +641,16 @@ def _resolve_target_type(
 # accumulated into the next turn's instruction so resolution re-runs with it.
 
 
+# ONTA-244: the option label that routes a 0-match enrich clarify to DISCOVERY.
+# Phrased as an imperative the deterministic web-discovery guard
+# (planner._is_web_discovery_request) recognizes, so clicking it (the option text
+# is sent verbatim as the next turn) reliably re-routes to the discover rail
+# instead of looping back into an empty enrich. Domain-agnostic — the type name is
+# interpolated, never a specific type.
+def _discover_option(type_name: str) -> str:
+    return f"Discover {type_name} records from the web"
+
+
 def _subset_clarify_step(type_name: str, subset: dict) -> PlanStep:
     """Brief clarify when a described subset can't be resolved to any entities —
     guide the user toward a scope we CAN find via SPARQL (by name, all, or rank)."""
@@ -652,19 +672,52 @@ def _subset_clarify_step(type_name: str, subset: dict) -> PlanStep:
     )
 
 
-def _no_match_clarify_step(type_name: str, scope: dict) -> PlanStep:
+def _no_match_clarify_step(
+    type_name: str, scope: dict, *, empty_type: bool = False
+) -> PlanStep:
     """Brief clarify when the user's value-FILTER matched 0 entities — nothing to
-    enrich, so ask rather than propose an empty paid job."""
+    enrich, so ask rather than propose an empty paid job.
+
+    ``empty_type`` (ONTA-244): the graph has ZERO entities of this type at all, so
+    enrichment is the wrong verb — the user almost certainly wants to DISCOVER
+    (mint) them from the web. In that case we LEAD with a "Discover … from the web"
+    option and word the question around minting-new, instead of only offering
+    "Enrich all" (which would enrich nothing). When the type is non-empty (just the
+    filter is too narrow) we keep the original enrich-all guidance."""
+    if empty_type:
+        return PlanStep(
+            capability="enrich",
+            action="clarify",
+            params={
+                "question": (
+                    f"There are no {type_name} in this graph yet, so there is "
+                    f"nothing to enrich. Do you want to discover {type_name} "
+                    "records from the web and add them?"
+                ),
+                # Discovery option FIRST — it's the likely intent for an empty type.
+                "options": [
+                    _discover_option(type_name),
+                    f"Enrich all {type_name}",
+                ],
+            },
+            rationale=(
+                f"No {type_name} exist yet — offering discovery (mint new) rather "
+                "than an empty enrichment."
+            ),
+        )
     return PlanStep(
         capability="enrich",
         action="clarify",
         params={
             "question": (
                 f"No {type_name} matched {scope.get('predicate')} = "
-                f"{scope.get('value')!r}. Adjust the filter, or enrich all "
-                f"{type_name}?"
+                f"{scope.get('value')!r}. Adjust the filter, enrich all "
+                f"{type_name}, or discover more from the web?"
             ),
-            "options": [f"Enrich all {type_name}"],
+            "options": [
+                f"Enrich all {type_name}",
+                _discover_option(type_name),
+            ],
         },
         rationale=f"No {type_name} matched the requested filter.",
     )

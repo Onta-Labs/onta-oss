@@ -2528,3 +2528,141 @@ async def test_category_filter_finds_discovery_not_enrichment(monkeypatch):
     enrichment = [s for s in summaries if s.category == JobCategory.enrichment]
     assert any(s.id == ack["job_id"] for s in discovery)
     assert not any(s.id == ack["job_id"] for s in enrichment)
+
+
+# --- structured-intent fidelity (ONTA-244) ---------------------------------- #
+#
+# All on INVENTED types/fields (Widget/Sprocket/Gadget, sku/color/weight_kg/…) so
+# nothing overfits to a persona's real schema. They assert on MECHANISM: an
+# explicitly-listed schema survives to the plan with no clarify, a named type is
+# never downgraded to WebRecord, and the meta-framing never leaks into the query.
+
+
+# A spec as a DEGRADED spec LLM would return it — the entity_type collapsed to the
+# generic WebRecord placeholder and confirmed_attributes empty — even though the
+# user's message clearly named a Widget type + four fields. This is the exact
+# failure mode ONTA-244 fixes: the deterministic floors must recover both.
+DEGRADED_SPEC = {
+    "entity_type": "WebRecord",
+    "key_attribute": "name",
+    "query": "Widgets",
+    "confirmed_attributes": [],
+    "suggested_attributes": ["description"],
+}
+
+
+async def test_explicit_attributes_survive_with_no_clarify(monkeypatch):
+    """Fidelity — when the message enumerates fields, they survive to the plan's
+    ``attributes`` and the turn commits to a ``discover_ingest`` plan with NO
+    clarify, even on the FIRST turn (prior_clarify_count == 0)."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    steps = await WebIngestCapability().plan(
+        _ctx(),
+        "Add Widget records with sku, color, weight_kg, warranty_months",
+        parsed=DEGRADED_SPEC,
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.action == "discover_ingest"  # committed, not a clarify
+    assert step.action != "clarify"
+    attrs = set(step.params["attributes"])
+    assert {"sku", "color", "weight_kg", "warranty_months"} <= attrs
+
+
+async def test_named_type_not_downgraded_to_webrecord(monkeypatch):
+    """No downgrade — the plan commits to the user's named type (Widget), NOT the
+    WebRecord placeholder the degraded spec returned."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    steps = await WebIngestCapability().plan(
+        _ctx(),
+        "Add Widget records with sku, color, weight_kg, warranty_months",
+        parsed=DEGRADED_SPEC,
+    )
+    step = steps[0]
+    assert step.params["proposed_type"] == "Widget"
+    assert step.params["proposed_type"] != "WebRecord"
+
+
+async def test_entity_only_still_clarifies(monkeypatch):
+    """The picker still fires for a genuinely under-specified ask — a bare entity
+    with NO fields and a brand-new type. This is the case the clarify EXISTS for;
+    ONTA-244 narrows it, it does not remove it."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+
+    entity_only = {
+        "entity_type": "Sprocket",
+        "key_attribute": "name",
+        "query": "Sprockets",
+        "confirmed_attributes": [],
+        "core_attributes": ["size"],
+        "suggested_attributes": ["size", "material"],
+    }
+    steps = await WebIngestCapability().plan(
+        _ctx(), "a list of Sprockets", parsed=entity_only
+    )
+    assert len(steps) == 1
+    assert steps[0].action == "clarify"
+
+
+async def test_query_excludes_meta_framing_sentence(monkeypatch):
+    """The executed query is the clean SUBJECT, never the user's routing
+    meta-correction — even when the spec LLM returns no clean query and the
+    capability falls back to cleaning the raw instruction."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    # Spec with an EMPTY query forces the _clean_query fallback on the raw sentence.
+    spec = {
+        "entity_type": "Gadget",
+        "key_attribute": "name",
+        "query": "",
+        "confirmed_attributes": ["voltage"],
+        "suggested_attributes": ["voltage"],
+    }
+    steps = await WebIngestCapability().plan(
+        _ctx(),
+        "This is a new discovery task, not enrichment - find Gadgets in Zone 3",
+        parsed=spec,
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    q = step.params["query"].lower()
+    assert "not enrichment" not in q
+    assert "discovery task" not in q
+    # The real subject survived the strip.
+    assert "gadget" in q or "zone 3" in q
+
+
+def test_explicit_user_type_recovers_named_type():
+    """Unit — the deterministic type parser recovers a Capitalized named type from
+    an unambiguous frame, and returns '' for a lowercased entity phrase (so a real
+    LLM-resolved type is never overridden by a false positive)."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_type
+
+    assert _explicit_user_type("Add Widget records with sku, color") == "Widget"
+    assert _explicit_user_type("discover Sprocket entities in Region 7") == "Sprocket"
+    assert _explicit_user_type("Gadget records with voltage") == "Gadget"
+    # A two-word capitalized type.
+    assert _explicit_user_type("pull SolarPanel rows") == "SolarPanel"
+    # Lowercased entity phrase → no false positive (stays '' → keeps WebRecord).
+    assert _explicit_user_type("collect the physicians in Tustin") == ""
+    assert _explicit_user_type("a list of models") == ""
+
+
+def test_clean_query_strips_meta_framing():
+    """Unit — _clean_query drops a leading discover-vs-enrich self-label so the
+    subject after it survives; a normal query is untouched."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _clean_query
+
+    out = _clean_query(
+        "This is a new discovery task, not enrichment - find Gadgets in Zone 3"
+    )
+    low = out.lower()
+    assert "not enrichment" not in low and "discovery task" not in low
+    assert "gadget" in low
+    # A plain subject is returned essentially unchanged (filler aside).
+    assert "widgets in region 7" in _clean_query("Widgets in Region 7").lower()

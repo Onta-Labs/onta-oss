@@ -421,15 +421,45 @@ class WebIngestCapability:
         confirmed = _dedupe([key_attr, *user_floor, *llm_confirmed])
         suggested = _dedupe([key_attr, *spec.get("suggested_attributes", [])])
 
+        # ONTA-244 (schema fidelity) — NEVER downgrade a user-named type to the
+        # generic WebRecord. The spec LLM's degrade default (and an under-classified
+        # reply) is ``WebRecord``; when the user actually named a type in the
+        # message we must commit to THAT, not the placeholder. Deterministic +
+        # domain-agnostic: parse the type straight from the accumulated instruction
+        # (no LLM), so even a flaky/absent spec keeps the caller's type. Only
+        # OVERRIDES the placeholder — a real LLM-resolved type is left untouched.
+        if type_name == "WebRecord":
+            explicit_type = _explicit_user_type(instruction)
+            if explicit_type:
+                type_name = explicit_type
+
+        # ONTA-244 (already-scoped — skip the picker). The attribute-confirmation
+        # clarify exists ONLY for the genuinely under-specified "just find <X>" ask.
+        # The turn is ALREADY scoped — and must commit without re-asking — when
+        # EITHER the user handed over an explicit field list (``user_floor``/LLM
+        # ``confirmed`` gave us >1) OR the target type already exists in the
+        # ontology with declared attributes (``declared_attrs``: the schema is known,
+        # so there is nothing to confirm). This is the shared "already scoped, commit"
+        # signal that stops the two clarify gates from thrashing a fully-specified
+        # request. ``already_asked`` (the prior-clarify guard) still commits after
+        # one round for the under-specified path.
         already_asked = int(ctx.extras.get("prior_clarify_count", 0)) >= 1
-        if len(confirmed) <= 1 and not already_asked:
+        already_scoped = len(confirmed) > 1 or bool(declared_attrs)
+        if not already_scoped and not already_asked:
             # Only the key is "confirmed" (i.e. the user just named the entity and
-            # gave no explicit field list). Ask which attributes to collect —
-            # clickable options carry a SHORT recommended set (the most-important
-            # few), pre-selected, so the next turn converges without confronting the
-            # user with every column.
+            # gave no explicit field list, and the type is new to the ontology). Ask
+            # which attributes to collect — clickable options carry a SHORT
+            # recommended set (the most-important few), pre-selected, so the next
+            # turn converges without confronting the user with every column.
             core = _core_attrs(key_attr, spec.get("core_attributes", []), suggested)
             return [_clarify_step(type_name, key_attr, core)]
+
+        # Already scoped by an existing ontology type but the user named no explicit
+        # fields this turn: adopt the type's declared attributes as the floor so the
+        # plan collects the schema that already exists instead of falling to a bare
+        # [name] set (or re-asking). The LLM confirmed/suggested sets still extend it.
+        if declared_attrs and len(confirmed) <= 1:
+            confirmed = _dedupe([key_attr, *declared_attrs, *llm_confirmed])
 
         # Commit: use the confirmed set, or fall back to the suggested set if we
         # already asked once (don't loop). These drive entity naming + the
@@ -1714,18 +1744,43 @@ def _empty_sample_message(query: str, urls: list[str], sample) -> str:
     )
 
 
+# A leading META-FRAMING clause the user prepends to steer routing rather than to
+# name the search subject — "this is a new discovery task, not enrichment — …",
+# "note: not enrichment, …". Left in the query it leaks into the search string
+# (persona-eval RCA: the executed job searched for "This is a new discovery task,
+# not enrichment…"). We strip such a clause up to its trailing separator (dash /
+# colon / semicolon / comma) so the REAL subject after it survives. Conservative:
+# only fires on an explicit discovery/enrichment self-label, so a normal query is
+# untouched. Case-insensitive.
+_META_FRAMING_RE = re.compile(
+    r"^\s*(?:note[:,]?\s*)?(?:this\s+is\s+)?(?:a\s+)?"
+    r"(?:new\s+discovery(?:\s+task)?|not\s+(?:an?\s+)?enrichment"
+    r"|discovery\s+task)\b[^-:;.]*[-:;,]\s*",
+    re.IGNORECASE,
+)
+
+
 def _clean_query(instruction: str) -> str:
     """Best-effort tidy of the instruction into a discovery query. Uses the FIRST
-    line (the original ask), dropping later attribute-confirmation replies, then
-    strips one leading filler phrase."""
+    line (the original ask), strips a leading routing META-FRAME ("this is a new
+    discovery task, not enrichment — …") if present, then one leading filler phrase,
+    so the executed query is the SUBJECT, never the user's meta-correction."""
     if not instruction:
         return ""
     first = next(
         (ln.strip() for ln in instruction.splitlines() if ln.strip()),
         instruction.strip(),
     )
-    q = _LEAD_FILLER.sub("", first, count=1).strip()
-    return q or first
+    # Drop a leading discover-vs-enrich self-label so it never becomes the search
+    # string; keep looping in case the user stacked two (rare).
+    stripped = first
+    for _ in range(2):
+        nxt = _META_FRAMING_RE.sub("", stripped, count=1).strip()
+        if nxt == stripped:
+            break
+        stripped = nxt
+    q = _LEAD_FILLER.sub("", stripped, count=1).strip()
+    return q or stripped or first
 
 
 def _estimate_cost(
@@ -2133,6 +2188,72 @@ def _pascal(v: str) -> str:
     return "".join(p[:1].upper() + p[1:] for p in parts if p) or "WebRecord"
 
 
+# The user's explicitly-named record TYPE, introduced by a discovery verb + the
+# "records"/"entities" noun ("add Widget records", "discover Sprocket entities")
+# or a "<Type> with <fields>" list frame ("Gadget records with sku, color").
+# Deliberately CONSERVATIVE (high precision): the type token is 1-3 capitalized /
+# identifier words captured immediately before "records"/"entities" or before a
+# field-list "with". This only ever OVERRIDES the WebRecord placeholder, so a false
+# negative is harmless (we keep WebRecord and clarify as today) and a false
+# positive is bounded — it can't corrupt a real LLM-resolved type. Case-sensitive
+# on the leading capital so a lowercased entity phrase ("collect the physicians")
+# is NOT mistaken for a type name. Never overfit to a specific domain term.
+# Words that lead a discovery ask but are NOT the type — excluded from the type
+# capture so "Add Widget records" yields "Widget", never "AddWidget". The type
+# token immediately precedes "records"/"entities"/"rows" (or the "<Type> with"
+# field frame) and is 1-3 Capitalized words, none of them a lead verb / article.
+_TYPE_STOPWORDS = frozenset(
+    {
+        "add", "discover", "find", "pull", "fetch", "get", "grab", "collect",
+        "ingest", "import", "gather", "scrape", "the", "a", "an", "all", "these",
+        "some", "more", "new",
+    }
+)
+_TYPE_TOKEN = r"[A-Z][A-Za-z0-9]*(?:[ _-][A-Z][A-Za-z0-9]*){0,2}"
+_EXPLICIT_TYPE_RE = re.compile(
+    rf"\b(?:add|discover|find|pull|fetch|get|grab|collect|ingest|import|gather|scrape)\b"
+    rf"[^.\n]*?\b({_TYPE_TOKEN})\s+(?:records?|entities|rows)\b",
+)
+_TYPE_WITH_FIELDS_RE = re.compile(
+    rf"\b({_TYPE_TOKEN})\s+(?:records?\s+)?with\b",
+)
+
+
+def _strip_type_stopwords(cand: str) -> str:
+    """Drop leading lead-verb / article words from a captured type phrase so
+    "Add Widget" → "Widget" and "the SolarPanel" → "SolarPanel"; '' if nothing
+    substantive remains."""
+    words = [w for w in re.split(r"[ _-]+", cand.strip()) if w]
+    while words and words[0].lower() in _TYPE_STOPWORDS:
+        words.pop(0)
+    return " ".join(words)
+
+
+def _explicit_user_type(instruction: str) -> str:
+    """Deterministically extract a user-NAMED record type, or '' if none is clear.
+
+    ONTA-244: the spec LLM's degrade default is ``WebRecord`` and it sometimes
+    under-classifies a fully-specified ask to it too, silently dropping the type
+    the user actually named ("Add **Widget** records …" → WebRecord). This parser
+    recovers that named type from the raw instruction WITHOUT an LLM, so the plan
+    never downgrades a named type to the placeholder. It fires only on an
+    unambiguous frame — a discovery verb followed by "<Type> records/entities", or
+    a "<Type> with <fields>" list — and requires the type token to be Capitalized,
+    so a lowercased entity phrase is not mistaken for a type. Returns a PascalCase
+    type name (via ``_pascal``) or '' when nothing unambiguous is present (the
+    caller then keeps WebRecord and clarifies, exactly as before)."""
+    if not instruction:
+        return ""
+    text = instruction[:8000]
+    for rx in (_EXPLICIT_TYPE_RE, _TYPE_WITH_FIELDS_RE):
+        m = rx.search(text)
+        if m:
+            cand = _pascal(_strip_type_stopwords(m.group(1)))
+            if cand and cand != "WebRecord":
+                return cand
+    return ""
+
+
 # A field token in an explicit list: a snake_case / hyphenated identifier, or a
 # short multi-word phrase ("word error rate"). We deliberately keep it tight — a
 # word made of letters/digits/_/- optionally followed by up to THREE more such
@@ -2147,14 +2268,17 @@ _FIELD_TOKEN = re.compile(
 # actually enumerated fields — never from arbitrary prose. Deliberately CONSERVATIVE
 # (high precision over recall): a false positive would pollute the attribute floor
 # with an entity phrase ("collect the physicians in Tustin"), so we require an
-# unambiguous list-introducer — the "Use these:" chip, or a "fields/columns/
+# unambiguous list-introducer — the "Use these:" chip, a "fields/columns/
 # attributes" noun that is either introduced by a preposition (with/of/including)
-# or immediately followed by a colon. Bare verbs like "collect"/"include" are NOT
-# markers (too easily an entity phrase). Case-insensitive.
+# or immediately followed by a colon, OR a "records/entities/rows with" frame
+# (the record noun before "with" makes it unambiguous a field list follows, e.g.
+# "Add Widget records with sku, color, weight"). A bare "with" alone is NOT a
+# marker (too easily "physicians with insurance X"). Case-insensitive.
 _FIELD_LIST_MARKERS = re.compile(
     r"(?:use\s+these"
     r"|(?:with|of|including|these|the\s+following)\s+"
     r"(?:the\s+)?(?:fields?|columns?|attributes?|properties)"
+    r"|(?:records?|entities|rows)\s+with"
     r"|(?:fields?|columns?|attributes?|properties)\s*:)"
     r"\s*:?\s*",
     re.IGNORECASE,
