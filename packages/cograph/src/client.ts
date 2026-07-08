@@ -245,6 +245,16 @@ export class Client {
   /** @internal */ pEnrichJob(jobId: string): string {
     return `${this.base()}/enrich/jobs/${encodeURIComponent(jobId)}`;
   }
+  /** @internal Bounded server-side long-poll: waits until the job is terminal
+   *  or a capped timeout, then returns its current status. `timeoutS` is baked
+   *  into the query string by the caller. */
+  pEnrichJobWait(jobId: string, timeoutS?: number): string {
+    const qs =
+      timeoutS === undefined
+        ? ""
+        : `?timeout_s=${encodeURIComponent(String(timeoutS))}`;
+    return `${this.pEnrichJob(jobId)}/wait${qs}`;
+  }
   /** @internal */ pEnrichJobConflicts(jobId: string): string {
     return `${this.pEnrichJob(jobId)}/conflicts`;
   }
@@ -961,6 +971,35 @@ export class Client {
     );
   }
 
+  /**
+   * Wait for a job to settle, then return it (`GET …/enrich/jobs/{id}/wait`).
+   *
+   * The backend blocks SERVER-SIDE (async, never busy-waiting) until the job is
+   * terminal or the bounded timeout elapses, then returns the job with its
+   * current status. This is the efficient alternative to hammering
+   * {@link enrichJob} in a client-side poll loop: web discovery / enrichment
+   * jobs take minutes to settle, and one `waitForJob` call covers a whole
+   * server-side wait window.
+   *
+   * @param timeoutS how long the SERVER should block, in seconds. Clamped
+   *   server-side to a hard cap (120s); omit to use the server default (60s).
+   * @returns the job. If it is still `running`/`queued` when the server window
+   *   elapses, it comes back with that (non-terminal) status — NOT an error —
+   *   so a caller loops: `while (!isTerminalJobStatus(job.status)) job =
+   *   await client.waitForJob(job.id);`. A few iterations cover a multi-minute
+   *   job. Inspect {@link isTerminalJobStatus} to decide when to stop.
+   */
+  async waitForJob(jobId: string, timeoutS?: number): Promise<EnrichJob> {
+    // The client timeout must outlast the server's max wait window (120s) so
+    // the long-poll completes on the server, never aborts client-side first.
+    return this.request<EnrichJob>(
+      "GET",
+      this.pEnrichJobWait(jobId, timeoutS),
+      undefined,
+      130_000,
+    );
+  }
+
   /** Fetch the conflict review queue for a job. */
   async enrichConflicts(jobId: string): Promise<ConflictReview[]> {
     const data = await this.request<unknown>(
@@ -1362,6 +1401,23 @@ export type JobStatus =
   | "applied"
   | "cancelled"
   | "failed";
+
+/** The job statuses that mean "stopped doing work, will not advance on its own"
+ *  — the mirror of the backend's `JobStatus.is_terminal()`. `queued`/`running`
+ *  are the only in-flight states; everything else is settled (`review` is a
+ *  finished run parked for human conflict decisions). Kept in lockstep with the
+ *  server so a `waitForJob` caller and the wait route agree on when to stop. */
+export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = [
+  "review",
+  "applied",
+  "cancelled",
+  "failed",
+] as const;
+
+/** True when a job status is terminal (see {@link TERMINAL_JOB_STATUSES}). */
+export function isTerminalJobStatus(status: JobStatus): boolean {
+  return (TERMINAL_JOB_STATUSES as readonly string[]).includes(status);
+}
 /** The kind of work a tracked job performs — the unified `/jobs` feed spans all
  *  categories. Existing enrichment jobs default to `enrichment` server-side.
  *  `discovery` is a web-discovery ingest (the `web_ingest` capability): it
@@ -1891,6 +1947,20 @@ export class RawApi {
   /** `GET /graphs/{tenant}/enrich/jobs/{id}` — fetch a single job. */
   enrichJob(jobId: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pEnrichJob(jobId), init);
+  }
+
+  /** `GET /graphs/{tenant}/enrich/jobs/{id}/wait?timeout_s=` — bounded
+   *  server-side long-poll until the job is terminal or the (capped) timeout. */
+  waitForJob(
+    jobId: string,
+    timeoutS?: number,
+    init?: RawInit,
+  ): Promise<Response> {
+    return this.client.requestRaw(
+      "GET",
+      this.client.pEnrichJobWait(jobId, timeoutS),
+      init,
+    );
   }
 
   /** `GET /graphs/{tenant}/enrich/jobs/{id}/conflicts` — conflict review queue. */
