@@ -2316,3 +2316,377 @@ async def test_failed_job_marks_phase_failed(monkeypatch):
     done = await store.get(ack["job_id"])
     assert done.status == JobStatus.failed
     assert done.progress.phase == "failed"
+
+
+# --- in-session progress observability (ONTA-243) ---------------------------- #
+#
+# These assert on the MECHANISM — incremental per-record ``processed``/``filled``
+# flushing while a discovery job is still ``running``, and a distinct terminal
+# state — using an INVENTED domain (``Widget`` with a ``color`` attribute) so
+# nothing overfits to any persona's fields. The stub provider returns 6 synthetic
+# rows and the stub ingest is gated on an ``asyncio.Event`` the test controls, so
+# the run can be paused mid-flight and the live job state inspected.
+
+
+# Six synthetic Widget rows — a made-up domain, deliberately NOT any persona's.
+WIDGET_ROWS = [
+    {"name": f"widget-{i}", "color": c}
+    for i, c in enumerate(["red", "green", "blue", "cyan", "magenta", "yellow"])
+]
+WIDGET_SPEC = {
+    "entity_type": "Widget",
+    "key_attribute": "name",
+    "query": "Widgets",
+    "confirmed_attributes": ["color"],
+    "suggested_attributes": ["color"],
+}
+
+
+def _widget_entities(rows):
+    return [
+        ExtractedEntity(
+            type_name="Widget",
+            id=r["name"],
+            attributes=[ExtractedAttribute(name="color", value=r["color"])],
+        )
+        for r in rows
+    ]
+
+
+async def test_progress_moves_while_running(monkeypatch):
+    """RC1 — ``processed`` AND ``filled`` both move mid-run, WHILE the job is still
+    ``running``. The bug: ``filled`` was written ONLY at _finish_job, so a poller
+    saw running/processed:0/filled:0 the entire session even as the job worked.
+    We force a fine sub-batch, gate the stub ingest so the run pauses after the
+    first sub-batch has landed, and assert the LIVE job already shows non-zero
+    ``processed`` and ``filled`` before any terminal state."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    # One record per sub-batch → maximal streaming granularity, domain-agnostic.
+    monkeypatch.setattr(web_ingest_cap, "_DISCOVERY_INGEST_SUBBATCH", 1)
+
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    # Coordination: the FIRST sub-batch's ingest runs to completion (so the run
+    # flushes non-zero progress), then the SECOND blocks on ``release`` — at which
+    # point the first has already committed but the run is still going, giving a
+    # deterministic mid-run snapshot. ``second_reached`` tells the test we're there.
+    calls = {"n": 0}
+    release = asyncio.Event()
+    second_reached = asyncio.Event()
+
+    async def gated_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        calls["n"] += 1
+        if calls["n"] == 2:
+            # First sub-batch has committed + flushed; pause here mid-run.
+            second_reached.set()
+            await release.wait()
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", gated_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    job_id = ack["job_id"]
+
+    # Run is now paused entering the SECOND sub-batch — the first has landed.
+    await asyncio.wait_for(second_reached.wait(), timeout=3)
+
+    mid = await store.get(job_id)
+    # The job is STILL running — not yet terminal.
+    assert mid.status == JobStatus.running
+    # …yet BOTH headline counters have already moved off zero (the regression:
+    # ``filled`` used to be written only at _finish_job, so it read 0 mid-run).
+    assert mid.progress.processed > 0
+    assert mid.progress.filled > 0
+
+    # Release the run and let it finish cleanly.
+    release.set()
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+
+async def test_terminal_state_has_final_counts(monkeypatch):
+    """RC1 — at completion the job is a DISTINCT terminal state with honest final
+    counts: applied, ``filled`` == every row, ``processed`` == ``total``,
+    ``result_count`` == the rows, ``completed_at`` set, phase 'done'."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    monkeypatch.setattr(web_ingest_cap, "_DISCOVERY_INGEST_SUBBATCH", 2)
+
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    assert done.progress.filled == len(WIDGET_ROWS)
+    assert done.progress.processed == done.progress.total == len(WIDGET_ROWS)
+    assert done.result_count == len(WIDGET_ROWS)
+    assert done.completed_at is not None
+    assert done.progress.phase == "done"
+
+
+async def test_terminal_state_failed_on_provider_error(monkeypatch):
+    """RC1 negative — a discovery whose PROVIDER raises reaches a distinct FAILED
+    terminal state (never a silent success, never stuck running), with an error
+    and completed_at set."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    class BoomProvider(FakeProvider):
+        async def discover(self, *a, **k):
+            raise RuntimeError("provider unreachable")
+
+    register_web_source(BoomProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    failed = await store.get(ack["job_id"])
+    assert failed.status == JobStatus.failed
+    assert failed.completed_at is not None
+    assert "provider unreachable" in (failed.error or "")
+
+
+async def test_category_filter_finds_discovery_not_enrichment(monkeypatch):
+    """RC2 (backend) — a discovery job is filed under category=discovery, so a
+    ``discovery`` filter finds it and an ``enrichment`` filter does NOT. This is
+    the honest scoping the persona's ``category:'enrichment'`` guess broke on."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobCategory
+
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    # The unified jobs listing (what GET /jobs reads) filters by category the same
+    # way the route does (summaries filtered on ``category``).
+    summaries = await store.list_for_tenant("demo-tenant")
+    discovery = [s for s in summaries if s.category == JobCategory.discovery]
+    enrichment = [s for s in summaries if s.category == JobCategory.enrichment]
+    assert any(s.id == ack["job_id"] for s in discovery)
+    assert not any(s.id == ack["job_id"] for s in enrichment)
+
+
+# --- structured-intent fidelity (ONTA-244) ---------------------------------- #
+#
+# All on INVENTED types/fields (Widget/Sprocket/Gadget, sku/color/weight_kg/…) so
+# nothing overfits to a persona's real schema. They assert on MECHANISM: an
+# explicitly-listed schema survives to the plan with no clarify, a named type is
+# never downgraded to WebRecord, and the meta-framing never leaks into the query.
+
+
+# A spec as a DEGRADED spec LLM would return it — the entity_type collapsed to the
+# generic WebRecord placeholder and confirmed_attributes empty — even though the
+# user's message clearly named a Widget type + four fields. This is the exact
+# failure mode ONTA-244 fixes: the deterministic floors must recover both.
+DEGRADED_SPEC = {
+    "entity_type": "WebRecord",
+    "key_attribute": "name",
+    "query": "Widgets",
+    "confirmed_attributes": [],
+    "suggested_attributes": ["description"],
+}
+
+
+async def test_explicit_attributes_survive_with_no_clarify(monkeypatch):
+    """Fidelity — when the message enumerates fields, they survive to the plan's
+    ``attributes`` and the turn commits to a ``discover_ingest`` plan with NO
+    clarify, even on the FIRST turn (prior_clarify_count == 0)."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    steps = await WebIngestCapability().plan(
+        _ctx(),
+        "Add Widget records with sku, color, weight_kg, warranty_months",
+        parsed=DEGRADED_SPEC,
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.action == "discover_ingest"  # committed, not a clarify
+    assert step.action != "clarify"
+    attrs = set(step.params["attributes"])
+    assert {"sku", "color", "weight_kg", "warranty_months"} <= attrs
+
+
+async def test_named_type_not_downgraded_to_webrecord(monkeypatch):
+    """No downgrade — the plan commits to the user's named type (Widget), NOT the
+    WebRecord placeholder the degraded spec returned."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    steps = await WebIngestCapability().plan(
+        _ctx(),
+        "Add Widget records with sku, color, weight_kg, warranty_months",
+        parsed=DEGRADED_SPEC,
+    )
+    step = steps[0]
+    assert step.params["proposed_type"] == "Widget"
+    assert step.params["proposed_type"] != "WebRecord"
+
+
+async def test_entity_only_still_clarifies(monkeypatch):
+    """The picker still fires for a genuinely under-specified ask — a bare entity
+    with NO fields and a brand-new type. This is the case the clarify EXISTS for;
+    ONTA-244 narrows it, it does not remove it."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+
+    entity_only = {
+        "entity_type": "Sprocket",
+        "key_attribute": "name",
+        "query": "Sprockets",
+        "confirmed_attributes": [],
+        "core_attributes": ["size"],
+        "suggested_attributes": ["size", "material"],
+    }
+    steps = await WebIngestCapability().plan(
+        _ctx(), "a list of Sprockets", parsed=entity_only
+    )
+    assert len(steps) == 1
+    assert steps[0].action == "clarify"
+
+
+async def test_query_excludes_meta_framing_sentence(monkeypatch):
+    """The executed query is the clean SUBJECT, never the user's routing
+    meta-correction — even when the spec LLM returns no clean query and the
+    capability falls back to cleaning the raw instruction."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    # Spec with an EMPTY query forces the _clean_query fallback on the raw sentence.
+    spec = {
+        "entity_type": "Gadget",
+        "key_attribute": "name",
+        "query": "",
+        "confirmed_attributes": ["voltage"],
+        "suggested_attributes": ["voltage"],
+    }
+    steps = await WebIngestCapability().plan(
+        _ctx(),
+        "This is a new discovery task, not enrichment - find Gadgets in Zone 3",
+        parsed=spec,
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    q = step.params["query"].lower()
+    assert "not enrichment" not in q
+    assert "discovery task" not in q
+    # The real subject survived the strip.
+    assert "gadget" in q or "zone 3" in q
+
+
+def test_explicit_user_type_recovers_named_type():
+    """Unit — the deterministic type parser recovers a Capitalized named type from
+    an unambiguous frame, and returns '' for a lowercased entity phrase (so a real
+    LLM-resolved type is never overridden by a false positive)."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_type
+
+    assert _explicit_user_type("Add Widget records with sku, color") == "Widget"
+    assert _explicit_user_type("discover Sprocket entities in Region 7") == "Sprocket"
+    assert _explicit_user_type("Gadget records with voltage") == "Gadget"
+    # A two-word capitalized type.
+    assert _explicit_user_type("pull SolarPanel rows") == "SolarPanel"
+    # Lowercased entity phrase → no false positive (stays '' → keeps WebRecord).
+    assert _explicit_user_type("collect the physicians in Tustin") == ""
+    assert _explicit_user_type("a list of models") == ""
+
+
+def test_clean_query_strips_meta_framing():
+    """Unit — _clean_query drops a leading discover-vs-enrich self-label so the
+    subject after it survives; a normal query is untouched."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _clean_query
+
+    out = _clean_query(
+        "This is a new discovery task, not enrichment - find Gadgets in Zone 3"
+    )
+    low = out.lower()
+    assert "not enrichment" not in low and "discovery task" not in low
+    assert "gadget" in low
+    # A plain subject is returned essentially unchanged (filler aside).
+    assert "widgets in region 7" in _clean_query("Widgets in Region 7").lower()
+
+
+def test_explicit_user_fields_records_with_requires_enumeration():
+    """Unit — the "<Type> records with …" frame harvests a field list ONLY when the
+    tail is a real ENUMERATION (2+ comma/"and"-joined items). A lone trailing phrase
+    after "records with" is a FILTER, not a field list, and must NOT be harvested —
+    otherwise "records with high error rates" would mint a junk `high_error_rates`
+    attribute (the precision guard for the widened marker)."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
+
+    # Real enumerations → harvested.
+    assert _explicit_user_fields(
+        "Add Widget records with sku, color, weight_kg, warranty_months"
+    ) == ["sku", "color", "weight_kg", "warranty_months"]
+    assert _explicit_user_fields("pull Gadget records with voltage and amperage") == [
+        "voltage",
+        "amperage",
+    ]
+    # Lone trailing phrases / filters → NOT harvested (no junk attribute).
+    assert _explicit_user_fields("find records with high error rates") == []
+    assert _explicit_user_fields("get entities with a rating above 4") == []
+    assert _explicit_user_fields("pull records with names") == []
+    # The strict "with fields …" marker still harvests even a single field.
+    assert _explicit_user_fields("discover Widgets with fields sku") == ["sku"]

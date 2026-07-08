@@ -154,6 +154,31 @@ _DISCOVERY_SOFT_EXTRACT = (
     os.environ.get("COGRAPH_DISCOVERY_SOFT_EXTRACT", "1") != "0"
 )
 
+# In-session progress observability (ONTA-243). A single (sub-query, provider)
+# batch's ``resolver.ingest`` is one opaque LLM-extraction await — for the classic
+# single-list ask (one sub-query, one provider) it is the WHOLE run, so
+# ``processed``/``filled`` otherwise stay 0/0 until it completes (minutes), and a
+# poller reads the job as stalled and gives up on a job that is in fact working
+# (the persona-eval RCA: 7 of 15 tool calls burned polling identical running/0/0).
+# The fix mirrors enrichment's per-record flush cadence (executor.py
+# PROGRESS_FLUSH_EVERY): split each batch's rows into sub-batches, ingest each,
+# and flush ``processed``/``filled`` after every one — so both headline counters
+# move WHILE the run is still ``running``, in ANY domain, without a resolver
+# signature change. A small sub-batch trades a few extra (cheap) LLM extraction
+# calls for real streaming progress; env-overridable so ops can retune the
+# progress-granularity vs call-count balance without a deploy.
+_DISCOVERY_INGEST_SUBBATCH = max(
+    1, int(os.environ.get("COGRAPH_DISCOVERY_INGEST_SUBBATCH", "5"))
+)
+
+
+def _chunk_rows(rows: list, size: int) -> list[list]:
+    """Split ``rows`` into consecutive sub-batches of at most ``size`` (order
+    preserved). ``size <= 0`` degrades to one whole chunk — never an empty split."""
+    if size <= 0 or len(rows) <= size:
+        return [rows] if rows else []
+    return [rows[i : i + size] for i in range(0, len(rows), size)]
+
 
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
@@ -396,15 +421,45 @@ class WebIngestCapability:
         confirmed = _dedupe([key_attr, *user_floor, *llm_confirmed])
         suggested = _dedupe([key_attr, *spec.get("suggested_attributes", [])])
 
+        # ONTA-244 (schema fidelity) — NEVER downgrade a user-named type to the
+        # generic WebRecord. The spec LLM's degrade default (and an under-classified
+        # reply) is ``WebRecord``; when the user actually named a type in the
+        # message we must commit to THAT, not the placeholder. Deterministic +
+        # domain-agnostic: parse the type straight from the accumulated instruction
+        # (no LLM), so even a flaky/absent spec keeps the caller's type. Only
+        # OVERRIDES the placeholder — a real LLM-resolved type is left untouched.
+        if type_name == "WebRecord":
+            explicit_type = _explicit_user_type(instruction)
+            if explicit_type:
+                type_name = explicit_type
+
+        # ONTA-244 (already-scoped — skip the picker). The attribute-confirmation
+        # clarify exists ONLY for the genuinely under-specified "just find <X>" ask.
+        # The turn is ALREADY scoped — and must commit without re-asking — when
+        # EITHER the user handed over an explicit field list (``user_floor``/LLM
+        # ``confirmed`` gave us >1) OR the target type already exists in the
+        # ontology with declared attributes (``declared_attrs``: the schema is known,
+        # so there is nothing to confirm). This is the shared "already scoped, commit"
+        # signal that stops the two clarify gates from thrashing a fully-specified
+        # request. ``already_asked`` (the prior-clarify guard) still commits after
+        # one round for the under-specified path.
         already_asked = int(ctx.extras.get("prior_clarify_count", 0)) >= 1
-        if len(confirmed) <= 1 and not already_asked:
+        already_scoped = len(confirmed) > 1 or bool(declared_attrs)
+        if not already_scoped and not already_asked:
             # Only the key is "confirmed" (i.e. the user just named the entity and
-            # gave no explicit field list). Ask which attributes to collect —
-            # clickable options carry a SHORT recommended set (the most-important
-            # few), pre-selected, so the next turn converges without confronting the
-            # user with every column.
+            # gave no explicit field list, and the type is new to the ontology). Ask
+            # which attributes to collect — clickable options carry a SHORT
+            # recommended set (the most-important few), pre-selected, so the next
+            # turn converges without confronting the user with every column.
             core = _core_attrs(key_attr, spec.get("core_attributes", []), suggested)
             return [_clarify_step(type_name, key_attr, core)]
+
+        # Already scoped by an existing ontology type but the user named no explicit
+        # fields this turn: adopt the type's declared attributes as the floor so the
+        # plan collects the schema that already exists instead of falling to a bare
+        # [name] set (or re-asking). The LLM confirmed/suggested sets still extend it.
+        if declared_attrs and len(confirmed) <= 1:
+            confirmed = _dedupe([key_attr, *declared_attrs, *llm_confirmed])
 
         # Commit: use the confirmed set, or fall back to the suggested set if we
         # already asked once (don't loop). These drive entity naming + the
@@ -971,54 +1026,75 @@ class WebIngestCapability:
                                 job.platforms = platforms
                                 job.provider_logs = list(plogs.values())
                                 await job_store.update(job)
-                            # BATCHED ingest — one commit per (sub-query, provider)
-                            # batch, so the job card streams ("N of ~M records
-                            # added") instead of jumping 0 → all. Source names the
-                            # provider that actually produced the batch.
-                            content = json.dumps(
-                                batch, default=str, ensure_ascii=False
-                            )
-                            result = await resolver.ingest(
-                                content,
-                                ctx.tenant_id,
-                                content_type="json",
-                                source=f"web:{prov.name}:{query}",
-                                instance_graph=instance_graph,
-                                # Discovery CONFIRMED the target type + attribute set
-                                # with the user, so it passes them to extraction as a
-                                # focus. SOFT (default): a PRIOR that keeps extraction
-                                # compact yet still decomposes faithfully (subtypes,
-                                # real-world nodes, multi-valued splits) — the ONTA-199
-                                # follow-up that fixed the flat single-type mis-modeling
-                                # (NPs typed as Physician, city/specialty as literals)
-                                # without the open-ended reifier's ~20-type blowup.
-                                # HARD (kill-switch): the original flat cage.
-                                constrain_types=[proposed_type],
-                                constrain_attributes={proposed_type: list(attributes)},
-                                constrain_soft=_DISCOVERY_SOFT_EXTRACT,
-                            )
-                            processed += len(batch)
-                            entities_total += int(
-                                getattr(result, "entities_resolved", 0) or 0
-                            )
-                            affected_types |= set(result.types_created)
-                            for attr_added in result.attributes_added:
-                                affected_types.add(attr_added.split(".")[0])
-                            if job is not None and job_store is not None:
-                                # Rolling, honest total: what landed + the average
-                                # per-sub-query yield extrapolated over the
-                                # sub-queries still to run, never above the cap.
-                                # Settles to == processed at the end.
-                                subs_done = sub_i + 1
-                                subs_left = len(subqueries) - subs_done
-                                avg = math.ceil(processed / subs_done)
-                                job.progress.processed = processed
-                                job.progress.total = min(
-                                    cap, processed + subs_left * avg
+                            # SUB-BATCHED ingest (ONTA-243) — split the batch's
+                            # rows into small sub-batches, commit each, and flush
+                            # ``processed``/``filled`` AFTER EVERY ONE so both
+                            # headline counters move WHILE the job is still
+                            # ``running`` — not just once the whole (slow)
+                            # extraction of the entire batch completes. This is the
+                            # single-list ask's fix: one sub-query × one provider is
+                            # the WHOLE run, so without sub-batching a poller sees a
+                            # flat 0/0 for the entire extraction and concludes the
+                            # job stalled (persona-eval RCA). Mirrors enrichment's
+                            # per-record flush cadence. Source names the provider
+                            # that actually produced the batch.
+                            for micro in _chunk_rows(
+                                batch, _DISCOVERY_INGEST_SUBBATCH
+                            ):
+                                content = json.dumps(
+                                    micro, default=str, ensure_ascii=False
                                 )
-                                job.platforms = platforms
-                                job.provider_logs = list(plogs.values())
-                                await job_store.update(job)
+                                result = await resolver.ingest(
+                                    content,
+                                    ctx.tenant_id,
+                                    content_type="json",
+                                    source=f"web:{prov.name}:{query}",
+                                    instance_graph=instance_graph,
+                                    # Discovery CONFIRMED the target type + attribute
+                                    # set with the user, so it passes them to
+                                    # extraction as a focus. SOFT (default): a PRIOR
+                                    # that keeps extraction compact yet still
+                                    # decomposes faithfully (subtypes, real-world
+                                    # nodes, multi-valued splits) — the ONTA-199
+                                    # follow-up that fixed the flat single-type
+                                    # mis-modeling (NPs typed as Physician,
+                                    # city/specialty as literals) without the
+                                    # open-ended reifier's ~20-type blowup. HARD
+                                    # (kill-switch): the original flat cage.
+                                    constrain_types=[proposed_type],
+                                    constrain_attributes={
+                                        proposed_type: list(attributes)
+                                    },
+                                    constrain_soft=_DISCOVERY_SOFT_EXTRACT,
+                                )
+                                processed += len(micro)
+                                entities_total += int(
+                                    getattr(result, "entities_resolved", 0) or 0
+                                )
+                                affected_types |= set(result.types_created)
+                                for attr_added in result.attributes_added:
+                                    affected_types.add(attr_added.split(".")[0])
+                                if job is not None and job_store is not None:
+                                    # Rolling, honest total: what landed + the
+                                    # average per-sub-query yield extrapolated over
+                                    # the sub-queries still to run, never above the
+                                    # cap. Settles to == processed at the end.
+                                    # ``filled`` is the persona's success signal —
+                                    # it MUST move mid-run, so we set it to the
+                                    # entities resolved so far after each sub-batch
+                                    # (it was previously written ONLY at
+                                    # _finish_job, so it read 0 the whole session).
+                                    subs_done = sub_i + 1
+                                    subs_left = len(subqueries) - subs_done
+                                    avg = math.ceil(processed / subs_done)
+                                    job.progress.processed = processed
+                                    job.progress.filled = entities_total
+                                    job.progress.total = min(
+                                        cap, processed + subs_left * avg
+                                    )
+                                    job.platforms = platforms
+                                    job.provider_logs = list(plogs.values())
+                                    await job_store.update(job)
                         except LLMError as exc:
                             # FATAL, SYSTEMIC LLM-backend failure (402 billing /
                             # 401 auth) surfaced by the extraction call inside
@@ -1668,18 +1744,43 @@ def _empty_sample_message(query: str, urls: list[str], sample) -> str:
     )
 
 
+# A leading META-FRAMING clause the user prepends to steer routing rather than to
+# name the search subject — "this is a new discovery task, not enrichment — …",
+# "note: not enrichment, …". Left in the query it leaks into the search string
+# (persona-eval RCA: the executed job searched for "This is a new discovery task,
+# not enrichment…"). We strip such a clause up to its trailing separator (dash /
+# colon / semicolon / comma) so the REAL subject after it survives. Conservative:
+# only fires on an explicit discovery/enrichment self-label, so a normal query is
+# untouched. Case-insensitive.
+_META_FRAMING_RE = re.compile(
+    r"^\s*(?:note[:,]?\s*)?(?:this\s+is\s+)?(?:a\s+)?"
+    r"(?:new\s+discovery(?:\s+task)?|not\s+(?:an?\s+)?enrichment"
+    r"|discovery\s+task)\b[^-:;.]*[-:;,]\s*",
+    re.IGNORECASE,
+)
+
+
 def _clean_query(instruction: str) -> str:
     """Best-effort tidy of the instruction into a discovery query. Uses the FIRST
-    line (the original ask), dropping later attribute-confirmation replies, then
-    strips one leading filler phrase."""
+    line (the original ask), strips a leading routing META-FRAME ("this is a new
+    discovery task, not enrichment — …") if present, then one leading filler phrase,
+    so the executed query is the SUBJECT, never the user's meta-correction."""
     if not instruction:
         return ""
     first = next(
         (ln.strip() for ln in instruction.splitlines() if ln.strip()),
         instruction.strip(),
     )
-    q = _LEAD_FILLER.sub("", first, count=1).strip()
-    return q or first
+    # Drop a leading discover-vs-enrich self-label so it never becomes the search
+    # string; keep looping in case the user stacked two (rare).
+    stripped = first
+    for _ in range(2):
+        nxt = _META_FRAMING_RE.sub("", stripped, count=1).strip()
+        if nxt == stripped:
+            break
+        stripped = nxt
+    q = _LEAD_FILLER.sub("", stripped, count=1).strip()
+    return q or stripped or first
 
 
 def _estimate_cost(
@@ -2087,6 +2188,72 @@ def _pascal(v: str) -> str:
     return "".join(p[:1].upper() + p[1:] for p in parts if p) or "WebRecord"
 
 
+# The user's explicitly-named record TYPE, introduced by a discovery verb + the
+# "records"/"entities" noun ("add Widget records", "discover Sprocket entities")
+# or a "<Type> with <fields>" list frame ("Gadget records with sku, color").
+# Deliberately CONSERVATIVE (high precision): the type token is 1-3 capitalized /
+# identifier words captured immediately before "records"/"entities" or before a
+# field-list "with". This only ever OVERRIDES the WebRecord placeholder, so a false
+# negative is harmless (we keep WebRecord and clarify as today) and a false
+# positive is bounded — it can't corrupt a real LLM-resolved type. Case-sensitive
+# on the leading capital so a lowercased entity phrase ("collect the physicians")
+# is NOT mistaken for a type name. Never overfit to a specific domain term.
+# Words that lead a discovery ask but are NOT the type — excluded from the type
+# capture so "Add Widget records" yields "Widget", never "AddWidget". The type
+# token immediately precedes "records"/"entities"/"rows" (or the "<Type> with"
+# field frame) and is 1-3 Capitalized words, none of them a lead verb / article.
+_TYPE_STOPWORDS = frozenset(
+    {
+        "add", "discover", "find", "pull", "fetch", "get", "grab", "collect",
+        "ingest", "import", "gather", "scrape", "the", "a", "an", "all", "these",
+        "some", "more", "new",
+    }
+)
+_TYPE_TOKEN = r"[A-Z][A-Za-z0-9]*(?:[ _-][A-Z][A-Za-z0-9]*){0,2}"
+_EXPLICIT_TYPE_RE = re.compile(
+    rf"\b(?:add|discover|find|pull|fetch|get|grab|collect|ingest|import|gather|scrape)\b"
+    rf"[^.\n]*?\b({_TYPE_TOKEN})\s+(?:records?|entities|rows)\b",
+)
+_TYPE_WITH_FIELDS_RE = re.compile(
+    rf"\b({_TYPE_TOKEN})\s+(?:records?\s+)?with\b",
+)
+
+
+def _strip_type_stopwords(cand: str) -> str:
+    """Drop leading lead-verb / article words from a captured type phrase so
+    "Add Widget" → "Widget" and "the SolarPanel" → "SolarPanel"; '' if nothing
+    substantive remains."""
+    words = [w for w in re.split(r"[ _-]+", cand.strip()) if w]
+    while words and words[0].lower() in _TYPE_STOPWORDS:
+        words.pop(0)
+    return " ".join(words)
+
+
+def _explicit_user_type(instruction: str) -> str:
+    """Deterministically extract a user-NAMED record type, or '' if none is clear.
+
+    ONTA-244: the spec LLM's degrade default is ``WebRecord`` and it sometimes
+    under-classifies a fully-specified ask to it too, silently dropping the type
+    the user actually named ("Add **Widget** records …" → WebRecord). This parser
+    recovers that named type from the raw instruction WITHOUT an LLM, so the plan
+    never downgrades a named type to the placeholder. It fires only on an
+    unambiguous frame — a discovery verb followed by "<Type> records/entities", or
+    a "<Type> with <fields>" list — and requires the type token to be Capitalized,
+    so a lowercased entity phrase is not mistaken for a type. Returns a PascalCase
+    type name (via ``_pascal``) or '' when nothing unambiguous is present (the
+    caller then keeps WebRecord and clarifies, exactly as before)."""
+    if not instruction:
+        return ""
+    text = instruction[:8000]
+    for rx in (_EXPLICIT_TYPE_RE, _TYPE_WITH_FIELDS_RE):
+        m = rx.search(text)
+        if m:
+            cand = _pascal(_strip_type_stopwords(m.group(1)))
+            if cand and cand != "WebRecord":
+                return cand
+    return ""
+
+
 # A field token in an explicit list: a snake_case / hyphenated identifier, or a
 # short multi-word phrase ("word error rate"). We deliberately keep it tight — a
 # word made of letters/digits/_/- optionally followed by up to THREE more such
@@ -2096,15 +2263,11 @@ _FIELD_TOKEN = re.compile(
     r"^[A-Za-z][A-Za-z0-9_\-]*(?: [A-Za-z0-9][A-Za-z0-9_\-]*){0,3}$"
 )
 
-# Markers that introduce an EXPLICIT user-supplied field list, so we only harvest
-# a comma/newline list when the user (or the server-generated "Use these:" chip)
-# actually enumerated fields — never from arbitrary prose. Deliberately CONSERVATIVE
-# (high precision over recall): a false positive would pollute the attribute floor
-# with an entity phrase ("collect the physicians in Tustin"), so we require an
-# unambiguous list-introducer — the "Use these:" chip, or a "fields/columns/
-# attributes" noun that is either introduced by a preposition (with/of/including)
-# or immediately followed by a colon. Bare verbs like "collect"/"include" are NOT
-# markers (too easily an entity phrase). Case-insensitive.
+# STRICT markers that UNAMBIGUOUSLY introduce a field list, so we harvest even a
+# single field after them — the "Use these:" chip, a "fields/columns/attributes"
+# noun preposition-introduced ("with fields …") or colon-terminated ("fields: …").
+# A false positive here would pollute the attribute floor with an entity phrase, so
+# these stay conservative. Case-insensitive.
 _FIELD_LIST_MARKERS = re.compile(
     r"(?:use\s+these"
     r"|(?:with|of|including|these|the\s+following)\s+"
@@ -2113,6 +2276,21 @@ _FIELD_LIST_MARKERS = re.compile(
     r"\s*:?\s*",
     re.IGNORECASE,
 )
+
+# LOOSE marker — a "records/entities/rows with" frame ("Add Widget records with
+# sku, color, weight"). The record noun before "with" signals a field list, but the
+# frame is weaker than the strict markers: a single trailing phrase could be a
+# FILTER ("records with high error rates") rather than a field list. So we only
+# harvest from this frame when the tail is an actual ENUMERATION — 2+ items joined
+# by a comma/semicolon/"and"/"or" — never a lone trailing phrase. This keeps the
+# legitimate "with a, b, c" case while rejecting "with <prose filter>".
+_LOOSE_FIELD_LIST_MARKER = re.compile(
+    r"(?:records?|entities|rows)\s+with\s+",
+    re.IGNORECASE,
+)
+# A tail is a real field ENUMERATION only if it carries a list joiner before the
+# first sentence break — a comma/semicolon, or an "and"/"or" between two items.
+_LIST_JOINER = re.compile(r"[,;]|\b(?:and|or)\b", re.IGNORECASE)
 
 
 def _explicit_user_fields(instruction: str) -> list[str]:
@@ -2125,16 +2303,17 @@ def _explicit_user_fields(instruction: str) -> list[str]:
     instruction WITHOUT an LLM, so the plan can guarantee no user-named field is
     lost, regardless of what the resolver returned.
 
-    It fires only after an unambiguous list MARKER (the server-generated
-    ``Use these: …`` confirmation chip, or a "fields/columns/attributes" noun that
-    is preposition-introduced — "with fields …", "with the following columns:" — or
-    colon-terminated — "fields: …"), then harvests the comma/newline/semicolon-
-    separated tokens that follow on the SAME logical run. Deliberately conservative:
-    bare verbs like "collect"/"include" are NOT markers, since "collect the coffee
-    shops in SF" is an entity phrase, not a field list. Each token must look like a
-    field name (a short identifier or ≤4-word phrase) — a longer prose run breaks
-    the list. Returns snake_case, de-duped, order-preserving. Empty when the user
-    gave no explicit list (the entity-only / free-text ask — unchanged behavior).
+    It fires after an unambiguous list MARKER — the server-generated
+    ``Use these: …`` chip, a "fields/columns/attributes" noun preposition-introduced
+    ("with fields …") or colon-terminated ("fields: …"), or a weaker "records/
+    entities/rows with …" frame that requires a real ENUMERATION (2+ comma/"and"-
+    joined items) so a lone filter phrase ("records with high error rates") is NOT
+    mistaken for a field list — then harvests the comma/newline/semicolon-separated
+    tokens on the SAME logical run. Deliberately conservative: bare verbs like
+    "collect"/"include" are NOT markers ("collect the coffee shops in SF" is an
+    entity phrase). Each token must look like a field name (a short identifier or
+    ≤4-word phrase) — a longer prose run breaks the list. Returns snake_case,
+    de-duped, order-preserving. Empty when the user gave no explicit list.
     """
     if not instruction:
         return []
@@ -2147,12 +2326,17 @@ def _explicit_user_fields(instruction: str) -> list[str]:
     instruction = instruction[:8000]
     out: list[str] = []
     seen: set[str] = set()
-    for m in _FIELD_LIST_MARKERS.finditer(instruction):
-        tail = instruction[m.end():]
-        # Stop the list at the first hard sentence break so a following sentence
-        # of prose is never harvested; split the remainder on list separators.
+
+    def _harvest(tail: str, *, require_enumeration: bool) -> None:
+        # Stop the list at the first hard sentence break so a following sentence of
+        # prose is never harvested.
         segment = re.split(r"[.\n?!]", tail, maxsplit=1)[0]
-        # "a, b, c and d" / "a; b" / "a, b, or c" — normalize the joiners to commas.
+        # LOOSE frame guard: only treat this as a field list when the tail is an
+        # actual enumeration (a list joiner present) — a lone trailing phrase after
+        # "records with" is a filter/prose, not a field list.
+        if require_enumeration and not _LIST_JOINER.search(segment):
+            return
+        # "a, b, c and d" / "a; b" / "a, b, or c" — normalize joiners to commas.
         segment = re.sub(r"\b(?:and|or)\b", ",", segment, flags=re.IGNORECASE)
         raw_tokens = re.split(r"[,;/]", segment)
         matched_any = False
@@ -2170,6 +2354,11 @@ def _explicit_user_fields(instruction: str) -> list[str]:
                 seen.add(slug)
                 out.append(slug)
                 matched_any = True
+
+    for m in _FIELD_LIST_MARKERS.finditer(instruction):
+        _harvest(instruction[m.end():], require_enumeration=False)
+    for m in _LOOSE_FIELD_LIST_MARKER.finditer(instruction):
+        _harvest(instruction[m.end():], require_enumeration=True)
     return out
 
 

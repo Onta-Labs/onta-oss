@@ -200,6 +200,25 @@ _WEB_FETCH_RE = re.compile(
     r"[^?]*\bfrom\s+the\s+web\b",
     re.IGNORECASE,
 )
+# Widened discovery guard (ONTA-244): a "… from the web" suffix is NOT the only
+# unmistakable discovery framing. Two more, kept just as conservative:
+#   * A "discover"/"scrape" imperative — those verbs are never a read-only query
+#     verb (unlike "find"/"get", which can lead a question), so "discover all
+#     orthopedic surgeons in Orange County" is unambiguously a mint-new-records ask
+#     even without the literal web suffix. We require the verb to LEAD the message
+#     so "how many did we discover" (question) is untouched.
+#   * An explicit "new discovery" / "not enrichment" self-label the user adds to
+#     disambiguate ("… this is a new discovery task, not enrichment"). Honoring the
+#     caller's stated intent is the whole point of ONTA-244.
+# Both still defer to the interrogative guard below (trailing '?' / question lead).
+_DISCOVER_IMPERATIVE_RE = re.compile(
+    r"^\s*(?:please\s+)?(?:discover|scrape)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_DISCOVERY_INTENT_RE = re.compile(
+    r"\bnew\s+discovery\b|\bnot\s+(?:an?\s+)?enrichment\b|\bdiscovery\s+task\b",
+    re.IGNORECASE,
+)
 # Read-only framings we must NOT hijack even when they mention the web (e.g.
 # "how many companies did we add from the web?").
 _QUESTION_LEAD_RE = re.compile(
@@ -210,16 +229,22 @@ _QUESTION_LEAD_RE = re.compile(
 
 
 def _is_web_discovery_request(message: str) -> bool:
-    """True when ``message`` is an unmistakable 'fetch X from the web' request.
+    """True when ``message`` is an unmistakable discovery (mint-new-records) request.
 
-    Conservative on purpose: a trailing '?' or a question-word lead disqualifies
-    it, so a real read-only question that merely mentions the web is never forced
-    into discovery.
+    Fires on any of: an explicit "… from the web" fetch, a leading
+    "discover"/"scrape" imperative, or a caller-stated "new discovery / not
+    enrichment" intent. Conservative on purpose: a trailing '?' or a question-word
+    lead disqualifies it, so a real read-only question that merely mentions the web
+    (or the word "discover" mid-sentence) is never forced into discovery.
     """
     msg = (message or "").strip()
     if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
         return False
-    return bool(_WEB_FETCH_RE.search(msg))
+    return bool(
+        _WEB_FETCH_RE.search(msg)
+        or _DISCOVER_IMPERATIVE_RE.match(msg)
+        or _EXPLICIT_DISCOVERY_INTENT_RE.search(msg)
+    )
 
 
 # --- deterministic links-to-parse guard -------------------------------------- #
@@ -457,16 +482,27 @@ async def _respond(
     intents = classification.get("intents", ["ambiguous"])
 
     # Deterministic web-discovery override: an explicit "… from the web" ingest
+    # (or a "discover …" / "new discovery, not enrichment" framing — ONTA-244)
     # must route to discovery even if the classifier filed it as question /
-    # ambiguous (the payload often reads like a query — "list … with …"). Force
-    # discover and drop the read-only intents so it can't be hijacked by the
-    # question fast-path below. Only when the discover capability is registered.
+    # ambiguous (the payload often reads like a query — "list … with …") or
+    # word-triggered "enrich" (a "discover … then enrich each" ask contains the
+    # word "enrich"). Force discover and drop the read-only intents so it can't be
+    # hijacked by the question fast-path below. We ALSO drop a co-classified
+    # "enrich" here: on a mint-new-records ask the entities do not exist yet, so an
+    # enrich pass in the SAME turn would match 0 and premature-clarify (the
+    # enrich-plan-order-1 short-circuit that beat discovery). Discovery mints them
+    # first; enriching the fresh entities is a natural follow-up turn. Only when
+    # the discover capability is registered.
     if _is_web_discovery_request(message) and get_capability(
         _INTENT_TO_CAPABILITY["discover"]
     ) is not None:
         intents = [
             "discover",
-            *[i for i in intents if i not in ("discover", "question", "ambiguous")],
+            *[
+                i
+                for i in intents
+                if i not in ("discover", "enrich", "question", "ambiguous")
+            ],
         ]
 
     # Deterministic links-to-parse override: when the user hands us explicit URLs

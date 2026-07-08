@@ -18,6 +18,12 @@ export type {
   RowResult,
   EnrichmentTier,
   JobStatus,
+  // The kind of work a background job performs (dedupe / enrichment /
+  // reconciliation / discovery). Re-exported so a consumer (e.g. the MCP server's
+  // `list_jobs` category filter) can source its allowed-category list from the
+  // canonical SDK type instead of hand-maintaining a twin that silently drifts
+  // from the backend `JobCategory` enum (ONTA-243).
+  JobCategory,
   ConflictPolicy,
   RowAction,
   ReviewDecision,
