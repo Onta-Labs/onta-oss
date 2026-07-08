@@ -154,6 +154,31 @@ _DISCOVERY_SOFT_EXTRACT = (
     os.environ.get("COGRAPH_DISCOVERY_SOFT_EXTRACT", "1") != "0"
 )
 
+# In-session progress observability (ONTA-243). A single (sub-query, provider)
+# batch's ``resolver.ingest`` is one opaque LLM-extraction await — for the classic
+# single-list ask (one sub-query, one provider) it is the WHOLE run, so
+# ``processed``/``filled`` otherwise stay 0/0 until it completes (minutes), and a
+# poller reads the job as stalled and gives up on a job that is in fact working
+# (the persona-eval RCA: 7 of 15 tool calls burned polling identical running/0/0).
+# The fix mirrors enrichment's per-record flush cadence (executor.py
+# PROGRESS_FLUSH_EVERY): split each batch's rows into sub-batches, ingest each,
+# and flush ``processed``/``filled`` after every one — so both headline counters
+# move WHILE the run is still ``running``, in ANY domain, without a resolver
+# signature change. A small sub-batch trades a few extra (cheap) LLM extraction
+# calls for real streaming progress; env-overridable so ops can retune the
+# progress-granularity vs call-count balance without a deploy.
+_DISCOVERY_INGEST_SUBBATCH = max(
+    1, int(os.environ.get("COGRAPH_DISCOVERY_INGEST_SUBBATCH", "5"))
+)
+
+
+def _chunk_rows(rows: list, size: int) -> list[list]:
+    """Split ``rows`` into consecutive sub-batches of at most ``size`` (order
+    preserved). ``size <= 0`` degrades to one whole chunk — never an empty split."""
+    if size <= 0 or len(rows) <= size:
+        return [rows] if rows else []
+    return [rows[i : i + size] for i in range(0, len(rows), size)]
+
 
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
@@ -971,54 +996,75 @@ class WebIngestCapability:
                                 job.platforms = platforms
                                 job.provider_logs = list(plogs.values())
                                 await job_store.update(job)
-                            # BATCHED ingest — one commit per (sub-query, provider)
-                            # batch, so the job card streams ("N of ~M records
-                            # added") instead of jumping 0 → all. Source names the
-                            # provider that actually produced the batch.
-                            content = json.dumps(
-                                batch, default=str, ensure_ascii=False
-                            )
-                            result = await resolver.ingest(
-                                content,
-                                ctx.tenant_id,
-                                content_type="json",
-                                source=f"web:{prov.name}:{query}",
-                                instance_graph=instance_graph,
-                                # Discovery CONFIRMED the target type + attribute set
-                                # with the user, so it passes them to extraction as a
-                                # focus. SOFT (default): a PRIOR that keeps extraction
-                                # compact yet still decomposes faithfully (subtypes,
-                                # real-world nodes, multi-valued splits) — the ONTA-199
-                                # follow-up that fixed the flat single-type mis-modeling
-                                # (NPs typed as Physician, city/specialty as literals)
-                                # without the open-ended reifier's ~20-type blowup.
-                                # HARD (kill-switch): the original flat cage.
-                                constrain_types=[proposed_type],
-                                constrain_attributes={proposed_type: list(attributes)},
-                                constrain_soft=_DISCOVERY_SOFT_EXTRACT,
-                            )
-                            processed += len(batch)
-                            entities_total += int(
-                                getattr(result, "entities_resolved", 0) or 0
-                            )
-                            affected_types |= set(result.types_created)
-                            for attr_added in result.attributes_added:
-                                affected_types.add(attr_added.split(".")[0])
-                            if job is not None and job_store is not None:
-                                # Rolling, honest total: what landed + the average
-                                # per-sub-query yield extrapolated over the
-                                # sub-queries still to run, never above the cap.
-                                # Settles to == processed at the end.
-                                subs_done = sub_i + 1
-                                subs_left = len(subqueries) - subs_done
-                                avg = math.ceil(processed / subs_done)
-                                job.progress.processed = processed
-                                job.progress.total = min(
-                                    cap, processed + subs_left * avg
+                            # SUB-BATCHED ingest (ONTA-243) — split the batch's
+                            # rows into small sub-batches, commit each, and flush
+                            # ``processed``/``filled`` AFTER EVERY ONE so both
+                            # headline counters move WHILE the job is still
+                            # ``running`` — not just once the whole (slow)
+                            # extraction of the entire batch completes. This is the
+                            # single-list ask's fix: one sub-query × one provider is
+                            # the WHOLE run, so without sub-batching a poller sees a
+                            # flat 0/0 for the entire extraction and concludes the
+                            # job stalled (persona-eval RCA). Mirrors enrichment's
+                            # per-record flush cadence. Source names the provider
+                            # that actually produced the batch.
+                            for micro in _chunk_rows(
+                                batch, _DISCOVERY_INGEST_SUBBATCH
+                            ):
+                                content = json.dumps(
+                                    micro, default=str, ensure_ascii=False
                                 )
-                                job.platforms = platforms
-                                job.provider_logs = list(plogs.values())
-                                await job_store.update(job)
+                                result = await resolver.ingest(
+                                    content,
+                                    ctx.tenant_id,
+                                    content_type="json",
+                                    source=f"web:{prov.name}:{query}",
+                                    instance_graph=instance_graph,
+                                    # Discovery CONFIRMED the target type + attribute
+                                    # set with the user, so it passes them to
+                                    # extraction as a focus. SOFT (default): a PRIOR
+                                    # that keeps extraction compact yet still
+                                    # decomposes faithfully (subtypes, real-world
+                                    # nodes, multi-valued splits) — the ONTA-199
+                                    # follow-up that fixed the flat single-type
+                                    # mis-modeling (NPs typed as Physician,
+                                    # city/specialty as literals) without the
+                                    # open-ended reifier's ~20-type blowup. HARD
+                                    # (kill-switch): the original flat cage.
+                                    constrain_types=[proposed_type],
+                                    constrain_attributes={
+                                        proposed_type: list(attributes)
+                                    },
+                                    constrain_soft=_DISCOVERY_SOFT_EXTRACT,
+                                )
+                                processed += len(micro)
+                                entities_total += int(
+                                    getattr(result, "entities_resolved", 0) or 0
+                                )
+                                affected_types |= set(result.types_created)
+                                for attr_added in result.attributes_added:
+                                    affected_types.add(attr_added.split(".")[0])
+                                if job is not None and job_store is not None:
+                                    # Rolling, honest total: what landed + the
+                                    # average per-sub-query yield extrapolated over
+                                    # the sub-queries still to run, never above the
+                                    # cap. Settles to == processed at the end.
+                                    # ``filled`` is the persona's success signal —
+                                    # it MUST move mid-run, so we set it to the
+                                    # entities resolved so far after each sub-batch
+                                    # (it was previously written ONLY at
+                                    # _finish_job, so it read 0 the whole session).
+                                    subs_done = sub_i + 1
+                                    subs_left = len(subqueries) - subs_done
+                                    avg = math.ceil(processed / subs_done)
+                                    job.progress.processed = processed
+                                    job.progress.filled = entities_total
+                                    job.progress.total = min(
+                                        cap, max(processed, processed + subs_left * avg)
+                                    )
+                                    job.platforms = platforms
+                                    job.provider_logs = list(plogs.values())
+                                    await job_store.update(job)
                         except LLMError as exc:
                             # FATAL, SYSTEMIC LLM-backend failure (402 billing /
                             # 401 auth) surfaced by the extraction call inside

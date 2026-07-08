@@ -2316,3 +2316,215 @@ async def test_failed_job_marks_phase_failed(monkeypatch):
     done = await store.get(ack["job_id"])
     assert done.status == JobStatus.failed
     assert done.progress.phase == "failed"
+
+
+# --- in-session progress observability (ONTA-243) ---------------------------- #
+#
+# These assert on the MECHANISM — incremental per-record ``processed``/``filled``
+# flushing while a discovery job is still ``running``, and a distinct terminal
+# state — using an INVENTED domain (``Widget`` with a ``color`` attribute) so
+# nothing overfits to any persona's fields. The stub provider returns 6 synthetic
+# rows and the stub ingest is gated on an ``asyncio.Event`` the test controls, so
+# the run can be paused mid-flight and the live job state inspected.
+
+
+# Six synthetic Widget rows — a made-up domain, deliberately NOT any persona's.
+WIDGET_ROWS = [
+    {"name": f"widget-{i}", "color": c}
+    for i, c in enumerate(["red", "green", "blue", "cyan", "magenta", "yellow"])
+]
+WIDGET_SPEC = {
+    "entity_type": "Widget",
+    "key_attribute": "name",
+    "query": "Widgets",
+    "confirmed_attributes": ["color"],
+    "suggested_attributes": ["color"],
+}
+
+
+def _widget_entities(rows):
+    return [
+        ExtractedEntity(
+            type_name="Widget",
+            id=r["name"],
+            attributes=[ExtractedAttribute(name="color", value=r["color"])],
+        )
+        for r in rows
+    ]
+
+
+async def test_progress_moves_while_running(monkeypatch):
+    """RC1 — ``processed`` AND ``filled`` both move mid-run, WHILE the job is still
+    ``running``. The bug: ``filled`` was written ONLY at _finish_job, so a poller
+    saw running/processed:0/filled:0 the entire session even as the job worked.
+    We force a fine sub-batch, gate the stub ingest so the run pauses after the
+    first sub-batch has landed, and assert the LIVE job already shows non-zero
+    ``processed`` and ``filled`` before any terminal state."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    # One record per sub-batch → maximal streaming granularity, domain-agnostic.
+    monkeypatch.setattr(web_ingest_cap, "_DISCOVERY_INGEST_SUBBATCH", 1)
+
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    # Coordination: the FIRST sub-batch's ingest runs to completion (so the run
+    # flushes non-zero progress), then the SECOND blocks on ``release`` — at which
+    # point the first has already committed but the run is still going, giving a
+    # deterministic mid-run snapshot. ``second_reached`` tells the test we're there.
+    calls = {"n": 0}
+    release = asyncio.Event()
+    second_reached = asyncio.Event()
+
+    async def gated_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        calls["n"] += 1
+        if calls["n"] == 2:
+            # First sub-batch has committed + flushed; pause here mid-run.
+            second_reached.set()
+            await release.wait()
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", gated_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    job_id = ack["job_id"]
+
+    # Run is now paused entering the SECOND sub-batch — the first has landed.
+    await asyncio.wait_for(second_reached.wait(), timeout=3)
+
+    mid = await store.get(job_id)
+    # The job is STILL running — not yet terminal.
+    assert mid.status == JobStatus.running
+    # …yet BOTH headline counters have already moved off zero (the regression:
+    # ``filled`` used to be written only at _finish_job, so it read 0 mid-run).
+    assert mid.progress.processed > 0
+    assert mid.progress.filled > 0
+
+    # Release the run and let it finish cleanly.
+    release.set()
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+
+async def test_terminal_state_has_final_counts(monkeypatch):
+    """RC1 — at completion the job is a DISTINCT terminal state with honest final
+    counts: applied, ``filled`` == every row, ``processed`` == ``total``,
+    ``result_count`` == the rows, ``completed_at`` set, phase 'done'."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    monkeypatch.setattr(web_ingest_cap, "_DISCOVERY_INGEST_SUBBATCH", 2)
+
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    assert done.progress.filled == len(WIDGET_ROWS)
+    assert done.progress.processed == done.progress.total == len(WIDGET_ROWS)
+    assert done.result_count == len(WIDGET_ROWS)
+    assert done.completed_at is not None
+    assert done.progress.phase == "done"
+
+
+async def test_terminal_state_failed_on_provider_error(monkeypatch):
+    """RC1 negative — a discovery whose PROVIDER raises reaches a distinct FAILED
+    terminal state (never a silent success, never stuck running), with an error
+    and completed_at set."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    class BoomProvider(FakeProvider):
+        async def discover(self, *a, **k):
+            raise RuntimeError("provider unreachable")
+
+    register_web_source(BoomProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    failed = await store.get(ack["job_id"])
+    assert failed.status == JobStatus.failed
+    assert failed.completed_at is not None
+    assert "provider unreachable" in (failed.error or "")
+
+
+async def test_category_filter_finds_discovery_not_enrichment(monkeypatch):
+    """RC2 (backend) — a discovery job is filed under category=discovery, so a
+    ``discovery`` filter finds it and an ``enrichment`` filter does NOT. This is
+    the honest scoping the persona's ``category:'enrichment'`` guess broke on."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobCategory
+
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "a list of Widgets", parsed=WIDGET_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await asyncio.wait_for(spawned["task"], timeout=3)
+
+    # The unified jobs listing (what GET /jobs reads) filters by category the same
+    # way the route does (summaries filtered on ``category``).
+    summaries = await store.list_for_tenant("demo-tenant")
+    discovery = [s for s in summaries if s.category == JobCategory.discovery]
+    enrichment = [s for s in summaries if s.category == JobCategory.enrichment]
+    assert any(s.id == ack["job_id"] for s in discovery)
+    assert not any(s.id == ack["job_id"] for s in enrichment)
