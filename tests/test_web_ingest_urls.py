@@ -253,11 +253,17 @@ async def test_execute_repasses_urls_to_provider(monkeypatch):
     provider = UrlProvider(url_only=True)
     register_web_source(provider)
 
-    captured: dict = {}
+    captured: dict = {"content_types": set()}
+    committed_rows: list[dict] = []
 
     async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
-        captured.update(content=content, content_type=content_type, source=source)
+        captured["content_types"].add(content_type)
+        captured["source"] = source
         rows = json.loads(content)
+        committed_rows.extend(rows)
+        # Citation-binding fix: each ingest call sees rows from ONE page only —
+        # the two URL rows cite DIFFERENT pages, so they arrive in separate calls.
+        assert len({r.get("source_url") for r in rows}) == 1
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
     monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
@@ -281,10 +287,13 @@ async def test_execute_repasses_urls_to_provider(monkeypatch):
     full_call = provider.calls[-1]
     assert full_call["sample"] is False
     assert full_call["urls"] == [URL_A, URL_B]
-    # The extracted rows were committed through the multi-type ingest path; the
-    # JSON content round-trips back to the extracted rows.
-    assert captured["content_type"] == "json"
-    assert len(json.loads(captured["content"])) == 2
+    # The extracted rows were committed through the multi-type ingest path (JSON);
+    # both rows landed, each citing its OWN page (deterministic per-record binding).
+    assert captured["content_types"] == {"json"}
+    assert len(committed_rows) == 2
+    by_name = {r["name"]: r["source_url"] for r in committed_rows}
+    assert by_name["row-0"] == URL_A
+    assert by_name["row-1"] == URL_B
 
 
 async def test_query_path_unchanged_when_no_urls():
