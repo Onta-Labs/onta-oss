@@ -139,15 +139,19 @@ def test_search_tool_target_contract(monkeypatch, client, auth_headers):
         reset_semantic_index()
 
 
-def test_search_tool_disabled_deployment_503(monkeypatch, client, auth_headers):
-    """The MCP tool surfaces this 503 verbatim when the semantic index is off —
-    the detail must name the env gate so the operator knows the fix."""
+def test_search_tool_disabled_deployment_degrades_not_503(monkeypatch, client, auth_headers):
+    """With the semantic index gate off, the route degrades to lexical keyword
+    search (200 + degraded=true) instead of 503 — so the MCP `search` tool
+    still returns a usable, honestly-badged result instead of a hard failure.
+    The response keeps the canonical envelope the tool renders."""
     monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
     resp = client.post(
         f"/graphs/{TENANT}/search", json={"query": "anything"}, headers=auth_headers
     )
-    assert resp.status_code == 503
-    assert "COGRAPH_SEMANTIC_INDEX_ENABLED" in resp.json()["detail"]
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body) == {"hits", "count", "degraded", "top_k"}
+    assert body["degraded"] is True
 
 
 # --- list_jobs discovery category (ONTA-243) --------------------------------- #
