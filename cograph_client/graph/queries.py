@@ -154,6 +154,25 @@ def count_subject_predicates_query(
     )
 
 
+def select_subject_predicate_objects_query(
+    graph_uri: str, sp_pairs: list[tuple[str, str]]
+) -> str:
+    """SELECT the CURRENT ``?o`` of every ``(subject, predicate)`` in ``sp_pairs``.
+
+    The read half of an attribute UPDATE: before a predicate-scoped delete drops
+    the old value, ``kg_writer.delete_facts`` reads it here so a value CHANGE can
+    be versioned (ONTA-236 value history). One ``VALUES (?s ?p)`` batch — the same
+    batching style as ``count_subject_predicates_query`` — so a large update reads
+    in bounded statements. ``?s ?p`` are projected too so the caller can key the
+    returned objects back to their pair.
+    """
+    tuples = " ".join(f"(<{s}> <{p}>)" for s, p in sp_pairs)
+    return (
+        f"SELECT ?s ?p ?o FROM <{graph_uri}>\n"
+        f"WHERE {{ VALUES (?s ?p) {{ {tuples} }} ?s ?p ?o }}"
+    )
+
+
 def rewrite_subject_update(graph_uri: str, old_uri: str, new_uri: str) -> str:
     """SPARQL update that renames ``old_uri`` to ``new_uri`` in one graph.
 
