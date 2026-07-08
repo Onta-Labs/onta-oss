@@ -2828,3 +2828,143 @@ def test_explicit_user_fields_records_with_requires_enumeration():
     assert _explicit_user_fields("pull records with names") == []
     # The strict "with fields …" marker still harvests even a single field.
     assert _explicit_user_fields("discover Widgets with fields sku") == ["sku"]
+
+
+# ---------------------------------------------------------------------------
+# ONTA-244 (part 2) — schema intake robust to real LLM output. The deployed
+# failure (persona-eval priya-nayar 20260708T122741Z): a persona enumerated ~20
+# per-record fields, several with inline "(…)" annotations, and the plan STILL
+# came back type=WebRecord + attributes=[name, provider] — the deterministic
+# floor parser truncated the list at the FIRST annotated field because the
+# parenthetical made the token fail _FIELD_TOKEN and the harvest ``break``s on
+# the first non-field token. These tests reproduce that class with INVENTED
+# fields (no persona/domain tokens) and prove the deterministic parse recovers.
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_user_fields_survives_inline_annotations():
+    """RCA (the real deployed gap): an inline "(…)"/"[…]" annotation on a field —
+    "kind (a/b/c)", "weight [kg]" — must NOT truncate the list. The deployed parser
+    stopped at the first annotated field; here the whole enumerated list survives,
+    annotations stripped, order + names preserved. Invented fields, no domain
+    tokens."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
+
+    # A comma list where the 3rd field carries a slash-bearing parenthetical — the
+    # exact shape that collapsed the deployed list to its two leading fields.
+    got = _explicit_user_fields(
+        "each record needs these attributes: sku, weight_kg, "
+        "kind (physical/digital/bundle), is_active, region, price_cents (USD)"
+    )
+    assert got == [
+        "sku",
+        "weight_kg",
+        "kind",
+        "is_active",
+        "region",
+        "price_cents",
+    ], "an inline annotation truncated the field list (the deployed bug)"
+
+    # Bracketed unit annotations are stripped too.
+    assert _explicit_user_fields(
+        "fields: latency [ms], throughput [tokens/s], name"
+    ) == ["latency", "throughput", "name"]
+
+    # A genuine trailing PROSE clause (not a bracketed annotation) still ends the
+    # run — the annotation stripper does not turn prose into a harvestable field.
+    assert _explicit_user_fields(
+        "fields: sku, region and grab the rest if you happen to find them"
+    ) == ["sku", "region"]
+
+
+def test_explicit_user_type_recovers_lowercase_each_record_noun():
+    """RCA (type half): an "each <noun> record …" shape description names the
+    per-record type even when the noun is lowercase — the capitalized-only frames
+    missed it, so the deployed plan kept WebRecord. Recover + singularize +
+    PascalCase, while rejecting the generic record nouns so no junk type is
+    minted."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_type
+
+    assert _explicit_user_type("each product record needs sku, price") == "Product"
+    assert _explicit_user_type("every company entity should have name") == "Company"
+    # Plural noun is singularized.
+    assert _explicit_user_type("each companies record has revenue") == "Company"
+    # Generic record nouns / fillers → no type (stays WebRecord + clarifies).
+    assert _explicit_user_type("each record should have a name") == ""
+    assert _explicit_user_type("each data row needs a value") == ""
+    # An ordinary entity phrase is still not mistaken for a type.
+    assert _explicit_user_type("collect the coffee shops in San Francisco") == ""
+
+
+async def test_annotated_multifield_request_yields_full_typed_plan(monkeypatch):
+    """END-TO-END reproduction of the DEPLOYED failure class (persona-eval RCA),
+    with INVENTED fields and a WRONG spec-LLM stub.
+
+    The scenario the deployed backend fails: the caller enumerates a rich,
+    inline-ANNOTATED field list AND names the record type via an "each <noun>
+    record" shape sentence. The (real) spec LLM under-extracts — it returns the
+    generic WebRecord placeholder and a SHRUNKEN [name, provider] attribute set
+    (exactly the transcript). We inject that WRONG spec via ``parsed`` so the test
+    drives the DETERMINISTIC recovery path, not a lucky LLM.
+
+    Asserts the plan the deployed backend could NOT produce:
+      * commits to ``discover_ingest`` with NO clarify,
+      * ``proposed_type`` is the caller's named type (recovered from "each gadget
+        record"), NOT the WebRecord placeholder,
+      * ``attributes`` contains EVERY enumerated field — including the ones behind
+        an inline "(…)"/"[…]" annotation that truncated the deployed list.
+
+    On the deployed code this fails twice over: proposed_type == 'WebRecord' and
+    attributes == ['name', 'provider'] (the LLM's shrunken set)."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+    _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
+
+    # New type → the ontology read returns no declared attributes, so the ONLY
+    # thing that can save the schema is the deterministic instruction parse.
+    async def empty_schema(neptune, tenant_id, type_name):
+        return {"attributes": [], "relationships": []}
+
+    monkeypatch.setattr(web_ingest_cap, "list_type_schema", empty_schema)
+
+    # The WRONG spec the real LLM returned in the transcript: placeholder type +
+    # a collapsed 2-field set. Invented, domain-neutral fields throughout.
+    wrong_spec = {
+        "entity_type": "WebRecord",
+        "key_attribute": "name",
+        "query": "gadgets",
+        "confirmed_attributes": ["name", "provider"],
+        "suggested_attributes": ["name", "provider"],
+    }
+    instruction = (
+        "Discover gadgets from the web. I need each gadget record to have these "
+        "attributes: sku, weight_kg (float), is_active (true/false), region, "
+        "price_cents (USD), warranty_months, color (hex), rating [0-5]"
+    )
+
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1), instruction, parsed=wrong_spec
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    # Committed — not stranded on the attribute-picker clarify.
+    assert step.action == "discover_ingest", step.action
+    # Type preserved, NOT downgraded to the WebRecord placeholder the spec returned.
+    assert step.params["proposed_type"] == "Gadget"
+    assert step.params["proposed_type"] != "WebRecord"
+    # Every enumerated field survives — including those the deployed parser dropped
+    # at the first inline annotation (weight_kg, is_active, price_cents, color,
+    # rating were all behind a "(…)"/"[…]" annotation).
+    attrs = set(step.params["attributes"])
+    for f in [
+        "sku",
+        "weight_kg",
+        "is_active",
+        "region",
+        "price_cents",
+        "warranty_months",
+        "color",
+        "rating",
+    ]:
+        assert f in attrs, f"user field {f!r} dropped from plan attributes"
+    # The LLM's shrunken set is NOT what the plan settled on.
+    assert attrs != {"name", "provider"}
