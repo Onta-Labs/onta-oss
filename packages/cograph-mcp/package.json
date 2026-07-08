@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepack": "node ../../scripts/chmod-bin.js packages/cograph-mcp/dist/index.js"
   },
   "keywords": [
