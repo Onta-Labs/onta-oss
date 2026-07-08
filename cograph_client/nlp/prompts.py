@@ -41,6 +41,14 @@ for the entity's label. NEVER use an attribute URI from a different type.
 - Aggregates MUST be aliased: SELECT (COUNT(?x) AS ?count), never SELECT COUNT(?x). \
 Bare aggregates cause 400 errors.
 - For dateTime comparisons, use ISO-8601 with time component (e.g., "2008-01-01T00:00:00"^^xsd:dateTime).
+- FRESHNESS / RECENCY windows ("verified in the last N days", "updated in the last 2 weeks", \
+"checked recently"): filter a dateTime-valued attribute against NOW() minus a duration, using \
+xsd:dayTimeDuration. Pattern: `FILTER(?ts >= (NOW() - "P7D"^^<http://www.w3.org/2001/XMLSchema#dayTimeDuration>))` \
+for "last 7 days" (use "P14D" for 14 days, "PT48H" for 48 hours, etc.). The freshness attribute is any \
+dateTime-ranged attribute whose name ends in `_verified_at` (an enrichment/discovery per-fact freshness \
+stamp) or otherwise reads as a checked/verified/updated timestamp — bind it to ?ts via its exact attribute \
+URI from the schema and apply the NOW()-relative FILTER. This is a RELATIVE window: do NOT hardcode an \
+absolute date. NOW() returns the current dateTime, so no server-side date substitution is needed.
 - For enum values shown in [values: ...], use the EXACT case as listed.
 - For numeric comparisons, use typed literals: "2000"^^<http://www.w3.org/2001/XMLSchema#integer> for \
 integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast with xsd:integer()/xsd:float().

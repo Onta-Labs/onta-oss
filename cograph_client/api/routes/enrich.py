@@ -306,6 +306,10 @@ async def list_conflicts(
                 attribute=r.attribute,
                 existing_value=r.existing_value or "",
                 proposed=r.verdict,
+                # Carry the incumbent value's provenance so the review surface can
+                # show BOTH disagreeing sources, not just the proposal (ONTA-246).
+                existing_source_url=r.existing_source_url,
+                existing_verified_at=r.existing_verified_at,
             )
         )
     return out

@@ -43,12 +43,38 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import _escape_value
 
 PROV_NS = "https://cograph.tech/prov/"
+
+# --- Per-attribute DISPLAY provenance companions (ADR 0009 / ONTA-245) ---------
+#
+# The canonical companion-provenance GRAPH above (build_provenance_triples) is the
+# governance/undo substrate. Enrichment and discovery ALSO surface a small, shared
+# set of per-attribute INSTANCE attributes on the entity itself — the user-facing
+# citations the Explorer + /ask render:
+#
+#   <entity> <types/<Type>/attrs/<attr>_source_url>  "https://…"        (plain string)
+#   <entity> <types/<Type>/attrs/<attr>_provenance>  "wikidata (…)"      (plain string)
+#   <entity> <types/<Type>/attrs/<attr>_verified_at> "…"^^xsd:dateTime   (TYPED date)
+#
+# This is the deliberate dual-purpose split CLAUDE.md sanctions: the graph is the
+# governance record, these companions are the display projection. BOTH flow through
+# the shared write path (insert_facts) — the companions ride in ``instance_triples``,
+# the canonical record in ``provenance_triples``.
+#
+# The ONE reason ``<attr>_verified_at`` is typed ``xsd:dateTime`` (not a plain
+# string like the other two): the NL planner emits typed date FILTERs
+# (``FILTER(?ts >= NOW() - "P7D"^^xsd:dayTimeDuration)``), and an untyped string
+# stamp is type-incompatible → the freshness query silently drops the row
+# (ONTA-247). ``_TYPES_PREFIX`` mirrors the executor's ``TYPE_URI_PREFIX`` and the
+# stamp reuses the module ``_XSD`` datetime type, so the SAME literal shape is
+# produced whichever rail writes it (cross-rail symmetry).
+
+_TYPES_PREFIX = "https://cograph.tech/types/"
 PROV_SUBJECT = f"{PROV_NS}subject"
 PROV_PREDICATE = f"{PROV_NS}predicate"
 PROV_OBJECT = f"{PROV_NS}object"
@@ -133,6 +159,66 @@ def build_provenance_triples(
     if graph_uri:
         triples.append((node, PROV_GRAPH, graph_uri))
     return triples
+
+
+def attr_provenance_companion_uri(type_name: str, attribute: str, suffix: str) -> str:
+    """The attribute-namespace URI for one per-attribute display companion.
+
+    ``suffix`` is ``source_url`` / ``provenance`` / ``verified_at``. This is the
+    SAME ``types/<Type>/attrs/<attr>_<suffix>`` shape the enrichment executor's
+    ``_attr_uri`` produces, defined ONCE here so discovery and enrichment mint the
+    identical companion predicate for the same fact (cross-rail symmetry — a
+    discovered fact and an enriched fact carry provenance the same way)."""
+    return f"{_TYPES_PREFIX}{type_name}/attrs/{attribute}_{suffix}"
+
+
+def _as_iso(ts: datetime | str) -> str:
+    """Normalize a datetime/ISO-string stamp to an ISO-8601 string."""
+    return ts.isoformat() if isinstance(ts, datetime) else str(ts)
+
+
+def build_attribute_provenance_companions(
+    entity_uri: str,
+    type_name: str,
+    attribute: str,
+    *,
+    source_url: str = "",
+    provenance: str = "",
+    verified_at: datetime | str = "",
+) -> list[tuple[str, str, str]]:
+    """Build the per-attribute DISPLAY provenance companions for ONE filled fact.
+
+    The user-facing citations the Explorer + /ask render, emitted the SAME way by
+    every rail (enrichment + discovery) so a discovered fact and an enriched fact
+    are provenance-symmetric (ONTA-245). These are ordinary INSTANCE triples — the
+    caller passes them in ``insert_facts(instance_triples=…)``, NOT a separate
+    write path.
+
+    - ``<attr>_source_url`` — where the value came from (plain string; only when a
+      URL is present).
+    - ``<attr>_provenance`` — a short human citation (plain string; only when set).
+    - ``<attr>_verified_at`` — the per-fact freshness stamp, ALWAYS emitted and
+      ALWAYS TYPED ``xsd:dateTime`` so the NL planner's ``NOW()``-relative FILTER
+      matches it (an untyped string would be type-incompatible → the freshness
+      query silently drops the row, ONTA-247). Defaults to now-UTC when the caller
+      passes no explicit stamp, so every rail advances a recency signal.
+    """
+    out: list[tuple[str, str, str]] = []
+    if source_url:
+        out.append(
+            (entity_uri, attr_provenance_companion_uri(type_name, attribute, "source_url"), source_url)
+        )
+    if provenance:
+        out.append(
+            (entity_uri, attr_provenance_companion_uri(type_name, attribute, "provenance"), provenance)
+        )
+    stamp = verified_at or datetime.now(timezone.utc)
+    out.append((
+        entity_uri,
+        attr_provenance_companion_uri(type_name, attribute, "verified_at"),
+        f"{_as_iso(stamp)}^^{_XSD}#dateTime",
+    ))
+    return out
 
 
 def _event_uri(event: str, subject: str, obj: str, ts: str) -> str:

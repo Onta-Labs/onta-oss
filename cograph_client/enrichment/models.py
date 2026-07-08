@@ -238,6 +238,13 @@ class RowResult(BaseModel):
     existing_value: Optional[str] = None
     verdict: Optional[Verdict] = None
     action: RowAction
+    # The INCUMBENT value's provenance, read from its per-attribute companions
+    # (`<attr>_source_url` / `<attr>_verified_at`) at selection time. Populated for
+    # a CONFLICT row so the review queue can show BOTH disagreeing sources — the
+    # existing source vs the proposed verdict's source (ONTA-246). Both default
+    # None so a value with no prior provenance (or a non-conflict row) is unchanged.
+    existing_source_url: Optional[str] = None
+    existing_verified_at: Optional[str] = None
 
 
 class JobProgress(BaseModel):
@@ -464,6 +471,12 @@ class ConflictReview(BaseModel):
     existing_value: str
     proposed: Verdict
     decision: Optional[ReviewDecision] = None
+    # The incumbent value's provenance (source + as-of), so the review surface can
+    # show BOTH disagreeing sources — the existing one vs the proposed verdict's —
+    # not just the new proposal (ONTA-246). Both default None (no prior provenance
+    # recorded) so existing construction / older jobs are unaffected.
+    existing_source_url: Optional[str] = None
+    existing_verified_at: Optional[str] = None
 
 
 def _progress_pct(progress: JobProgress) -> int:
