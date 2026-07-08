@@ -3,8 +3,14 @@ import { existsSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Client, CographError } from "cograph";
-import type { AgentResult, JobCategory, ResolvedChange, Schedule } from "cograph";
+import { Client, CographError, isTerminalJobStatus } from "cograph";
+import type {
+  AgentResult,
+  JobCategory,
+  JobStatus,
+  ResolvedChange,
+  Schedule,
+} from "cograph";
 import { z } from "zod";
 
 const VERSION = "0.1.0";
@@ -840,6 +846,32 @@ server.registerTool(
   },
 );
 
+/**
+ * Render a job record (the shape returned by `enrichJob` / `waitForJob`) as a
+ * readable status summary plus the raw JSON. Shared by `get_job` and
+ * `wait_for_job` so both surface identical status/progress lines.
+ */
+function renderJob(job: Record<string, unknown>, fallbackId: string): string[] {
+  const status = String(job.status ?? "?");
+  const lines = [`Job ${String(job.id ?? fallbackId)} — ${status}`];
+  // Top-level scalars worth surfacing as named lines.
+  for (const k of ["type_name", "resolved_tier", "result_count"]) {
+    if (job[k] !== undefined && job[k] !== null)
+      lines.push(`  ${k}: ${String(job[k])}`);
+  }
+  // Live progress lives under `progress.*` (processed / filled / verified /
+  // total / phase) for EVERY category — read the nested shape so a discovery
+  // job's streaming progress is legible at a glance (ONTA-243).
+  const progress = job.progress as Record<string, unknown> | undefined;
+  if (progress && typeof progress === "object") {
+    for (const k of ["phase", "processed", "filled", "verified", "total"]) {
+      if (progress[k] !== undefined && progress[k] !== null)
+        lines.push(`  ${k}: ${String(progress[k])}`);
+    }
+  }
+  return lines;
+}
+
 server.registerTool(
   "get_job",
   {
@@ -848,7 +880,9 @@ server.registerTool(
       "listed by list_jobs). Works for ANY category — enrichment, dedupe, " +
       "reconciliation, and web-discovery (there is no separate discovery-job " +
       "endpoint). Returns status, tier, live per-record progress (processed / " +
-      "filled / total + phase), and, when finished, the result count.",
+      "filled / total + phase), and, when finished, the result count. This " +
+      "returns INSTANTLY with the current status — to WAIT for a long-running " +
+      "job to finish, use `wait_for_job` instead of polling this in a loop.",
     inputSchema: {
       job_id: z.string().describe("The job id (from list_jobs)."),
     },
@@ -859,31 +893,62 @@ server.registerTool(
         string,
         unknown
       >;
-      const status = String(job.status ?? "?");
-      const lines = [`Job ${String(job.id ?? job_id)} — ${status}`];
-      // Top-level scalars worth surfacing as named lines.
-      for (const k of ["type_name", "resolved_tier", "result_count"]) {
-        if (job[k] !== undefined && job[k] !== null)
-          lines.push(`  ${k}: ${String(job[k])}`);
-      }
-      // Live progress lives under `progress.*` (processed / filled / verified /
-      // total / phase) for EVERY category — the previous top-level `processed`/
-      // `total_entities`/`applied`/`staged` keys never matched a real job shape,
-      // so the human-readable summary rendered nothing and the agent had to parse
-      // the raw JSON. Read the nested shape so a discovery job's streaming
-      // progress is legible at a glance (ONTA-243).
-      const progress = job.progress as Record<string, unknown> | undefined;
-      if (progress && typeof progress === "object") {
-        for (const k of [
-          "phase",
-          "processed",
-          "filled",
-          "verified",
-          "total",
-        ]) {
-          if (progress[k] !== undefined && progress[k] !== null)
-            lines.push(`  ${k}: ${String(progress[k])}`);
-        }
+      const lines = renderJob(job, job_id);
+      lines.push("", "Raw job:", JSON.stringify(job, null, 2));
+      return textResult(lines.join("\n"));
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
+);
+
+server.registerTool(
+  "wait_for_job",
+  {
+    description:
+      "WAIT for a background job to finish, efficiently. Web-discovery and " +
+      "enrichment jobs (kicked off via the `agent` tool) take MINUTES to " +
+      "settle — do NOT poll get_job in a tight loop, which returns 'running' " +
+      "instantly and wastes your turns. This tool blocks SERVER-SIDE until the " +
+      "job reaches a terminal state (done / failed / cancelled / awaiting " +
+      "review) or a bounded timeout, then returns its status + progress — so " +
+      "ONE call covers a whole wait window. If it returns and the job is still " +
+      "'running', just call wait_for_job AGAIN with the same job_id to keep " +
+      "waiting; a few calls cover a multi-minute job. The graph is populated " +
+      "INCREMENTALLY as the job runs, so you can also `ask` it for entities " +
+      "landed so far before it fully finishes.",
+    inputSchema: {
+      job_id: z.string().describe("The job id (from list_jobs)."),
+      timeout_s: z
+        .number()
+        .optional()
+        .describe(
+          "How long the SERVER should block, in seconds (default 60, capped " +
+            "at 120 server-side). Omit for the default.",
+        ),
+    },
+  },
+  async ({ job_id, timeout_s }) => {
+    try {
+      const job = (await client().waitForJob(
+        job_id,
+        timeout_s,
+      )) as unknown as Record<string, unknown>;
+      const status = String(job.status ?? "?") as JobStatus;
+      const lines = renderJob(job, job_id);
+      lines.push("");
+      if (isTerminalJobStatus(status)) {
+        lines.push(
+          `This job has settled (status: ${status}) — it is done and will not ` +
+            `advance further.`,
+        );
+      } else {
+        lines.push(
+          `Still running (status: ${status}) after the wait window — the job ` +
+            `has not finished yet. Call wait_for_job again with the same ` +
+            `job_id to keep waiting, or ask the graph now for the entities ` +
+            `landed so far.`,
+        );
       }
       lines.push("", "Raw job:", JSON.stringify(job, null, 2));
       return textResult(lines.join("\n"));
