@@ -18,7 +18,13 @@ from cograph_client.api_registry import (
     route_query,
 )
 from cograph_client.api_registry.catalog import reset_api_source_layers
-from cograph_client.api_registry.router import RoutingDecision, _lexical_rank
+from cograph_client.api_registry.router import (
+    MODE_API_ONLY as _MODE_API_ONLY,  # noqa: F401 (re-exported for readability)
+    RoutingDecision,
+    _candidate_block,
+    _lexical_rank,
+    _param_geo_kind,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -179,3 +185,109 @@ def test_lexical_rank_prefers_overlap():
 async def test_routing_decision_default_is_web_only():
     d = RoutingDecision()
     assert d.mode == MODE_WEB_ONLY and not d.uses_api and d.uses_web
+
+
+# --------------------------------------------------------------------------- #
+# geographic scope-mismatch guard (county-geo-scope bug)
+# --------------------------------------------------------------------------- #
+def test_candidate_block_includes_param_descriptions():
+    """The LLM must see each param's DESCRIPTION, not just its name — otherwise
+    it cannot tell a city-granularity param from a county-level one. Assert the
+    'name: description' shape appears for a described param."""
+    block = _candidate_block(_catalog().enabled())
+    # nppes's city param carries a description in its seed spec; it must be shown.
+    assert "city: " in block
+    # Concretely, the described text (not just the bare name) is present.
+    assert "Practice city" in block
+
+
+def test_param_geo_kind_classifies_by_semantics_not_placename():
+    """Pure param-semantics classifier: city/zip => narrow, county/region/radius
+    => broad, state/other => neither. No place names involved."""
+    from cograph_client.api_registry.spec import ParamSpec
+
+    def kind(name, desc=""):
+        return _param_geo_kind(ParamSpec(name=name, description=desc))
+
+    assert kind("city", "Practice city.") == "narrow"
+    assert kind("postal_code", "ZIP code.") == "narrow"
+    assert kind("county", "County name.") == "broad"
+    assert kind("region") == "broad"
+    assert kind("radius_miles", "Search radius in miles.") == "broad"
+    # A state binding is a legitimate coarsening — not touched by the guard.
+    assert kind("state", "Two-letter state code.") == ""
+    assert kind("taxonomy_description", "Specialty text.") == ""
+
+
+@pytest.mark.asyncio
+async def test_broad_scope_ask_does_not_silently_bind_same_named_city():
+    """The core county-geo-scope fix: a county/region-scoped request against a
+    source whose only geo param is city-granularity must NOT silently bind that
+    broader place into `city`. The narrowing binding is dropped, api_only is
+    demoted to api_plus_web (so web covers the full area), and a note is set.
+
+    Uses an INVENTED county ('Wexford County') so nothing overfits."""
+    dec = await route_query(
+        "all cardiologists in Wexford County, California",
+        _catalog(),
+        entity_type="healthcare_provider",
+        chat_fn=_chat({
+            "mode": "api_only",
+            "picks": [{"slug": "nppes", "endpoint": "search",
+                       "bindings": {"taxonomy_description": "cardiology",
+                                    "city": "Wexford", "state": "CA"}}],
+            "rationale": "official US clinician registry",
+        }),
+    )
+    assert dec.picks, "a pick should survive (state is still bindable)"
+    pk = dec.picks[0]
+    # The greedy city binding is gone — not silently kept.
+    assert "city" not in pk.bindings
+    # The bindings we CAN honor exactly are preserved.
+    assert pk.bindings.get("state") == "CA"
+    assert pk.bindings.get("taxonomy_description") == "cardiology"
+    # Demoted so web search still runs over the full county.
+    assert dec.mode == MODE_API_PLUS_WEB
+    assert dec.uses_web and dec.uses_api
+    assert dec.scope_notes and any("nppes" in n for n in dec.scope_notes)
+
+
+@pytest.mark.asyncio
+async def test_radius_scope_ask_also_guards_against_city_narrowing():
+    """A 'within N miles' radius ask is broader than a city too — the same guard
+    applies. Invented town name to avoid overfitting."""
+    dec = await route_query(
+        "orthopedic surgeons within 25 miles of Zephyrford",
+        _catalog(),
+        entity_type="healthcare_provider",
+        chat_fn=_chat({
+            "mode": "api_only",
+            "picks": [{"slug": "nppes", "endpoint": "search",
+                       "bindings": {"taxonomy_description": "orthopedic",
+                                    "city": "Zephyrford"}}],
+        }),
+    )
+    assert dec.picks
+    assert "city" not in dec.picks[0].bindings
+    assert dec.mode == MODE_API_PLUS_WEB
+    assert dec.scope_notes
+
+
+@pytest.mark.asyncio
+async def test_city_scope_ask_is_unchanged_by_the_guard():
+    """A plain city-scoped ask must be untouched: the guard is a no-op unless the
+    request names a BROADER unit. The city binding survives and api_only holds."""
+    dec = await route_query(
+        "all cardiologists in Springfield",
+        _catalog(),
+        entity_type="healthcare_provider",
+        chat_fn=_chat({
+            "mode": "api_only",
+            "picks": [{"slug": "nppes", "endpoint": "search",
+                       "bindings": {"taxonomy_description": "cardiology",
+                                    "city": "Springfield"}}],
+        }),
+    )
+    assert dec.picks[0].bindings.get("city") == "Springfield"
+    assert dec.mode == MODE_API_ONLY
+    assert not dec.scope_notes
