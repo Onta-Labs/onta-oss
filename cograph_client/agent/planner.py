@@ -319,6 +319,45 @@ def _is_subscribe_request(message: str) -> bool:
     )
 
 
+# --- deterministic refresh-existing / re-verify guard ------------------------ #
+# A "refresh / re-verify / update / re-check the <attributes> for <existing
+# subset>" ask is ENRICHMENT in re-verify mode (ONTA-245) — re-confirm existing
+# values and advance their freshness stamp, scoped to the matching existing
+# records. It is NOT a new web discovery. But the LLM classifier keeps mis-filing
+# it as "discover" (the goal text reads like "pull current numbers from the web
+# for OpenAI, Google, …"), which mints a fresh dataset instead of refreshing the
+# rows that already exist — the reported persona-eval gap (ran_enrich=false,
+# ran_build=true). When the phrasing is an unmistakable refresh-EXISTING verb we
+# force the enrich intent ourselves so ONTA-245's refresh path fires regardless of
+# the LLM. Kept narrow: a refresh verb near a "from the web"/"discover" framing
+# (genuinely minting new records) still defers to the web-discovery guard below,
+# and a recurring-cadence "standing refresh" still defers to subscribe.
+_REFRESH_EXISTING_RE = re.compile(
+    r"\b(?:re-?verif\w*|re-?check\w*|re-?confirm\w*|re-?validat\w*|"
+    r"refresh(?:ed|es|ing)?|update(?:d|s)?|keep\s+(?:it\s+)?current|"
+    r"make\s+(?:it\s+|them\s+)?current|freshness|decay(?:ing|s)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_refresh_existing_request(message: str) -> bool:
+    """True when ``message`` unmistakably asks to REFRESH / re-verify EXISTING data.
+
+    Fires on a refresh/re-verify/re-check/update/keep-current verb. Conservative:
+    a trailing '?' or question-word lead disqualifies it (a genuine question), and
+    the caller only lets it force the enrich rail when the message is NOT already a
+    web-discovery framing ("… from the web", a leading "discover") and NOT a
+    recurring standing-alert (which routes to subscribe). Deterministic so a scoped
+    refresh recovers even when the LLM classifier returns the wrong (discover)
+    intent — the whole point of the guard (mirrors the enrich cap's own
+    ``_looks_like_refresh`` verb detection, which flips the run to verify mode).
+    """
+    msg = (message or "").strip()
+    if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
+        return False
+    return bool(_REFRESH_EXISTING_RE.search(msg))
+
+
 # --- deterministic links-to-parse guard -------------------------------------- #
 # When the user hands us explicit URLs (in the message, or attached as structured
 # request context) the turn is an URL-targeted web extraction, NOT a plain
@@ -574,6 +613,35 @@ async def _respond(
                 i
                 for i in intents
                 if i not in ("discover", "enrich", "question", "ambiguous")
+            ],
+        ]
+
+    # Deterministic refresh-EXISTING override (ONTA-245): a "refresh / re-verify /
+    # update the <attrs> for <existing subset>" ask is ENRICHMENT in re-verify
+    # mode — it re-confirms values on records that ALREADY exist and advances their
+    # freshness stamp, scoped to the matching subset. The LLM classifier keeps
+    # mis-filing it as "discover" (the goal reads like "pull current numbers from
+    # the web for OpenAI, Google, …"), which mints a fresh dataset instead of
+    # refreshing the existing rows (the reported gap: ran_enrich=false,
+    # ran_build=true). Force enrich to the front and DROP a mis-classified
+    # discover/question so the refresh path fires regardless of the LLM. Deliberately
+    # defers to BOTH the web-discovery guard above (a genuine "… from the web" /
+    # leading "discover" mint-new still wins) and the subscribe guard below (a
+    # recurring standing "weekly refresh" still routes to subscribe) — so this only
+    # rescues the plain scoped-refresh case the classifier drops. Only when enrich
+    # is registered.
+    if (
+        _is_refresh_existing_request(message)
+        and not _is_web_discovery_request(message)
+        and not _is_subscribe_request(message)
+        and get_capability(_INTENT_TO_CAPABILITY["enrich"]) is not None
+    ):
+        intents = [
+            "enrich",
+            *[
+                i
+                for i in intents
+                if i not in ("enrich", "discover", "question", "ambiguous")
             ],
         ]
 

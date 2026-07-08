@@ -97,6 +97,42 @@ def _spawn(coro) -> None:
 _COMPOSITE_DELIMS = ["__", ", ", "; ", " / ", " | "]
 
 
+# A scope value that names MULTIPLE things — "OpenAI, Google, Deepgram and
+# ElevenLabs", "Hoag / Kaiser / MemorialCare". The LLM extractor frequently crams
+# such a list into a single ``scope.value``; matched as one literal it hits 0 rows
+# (the reported persona-eval refresh gap). We split on commas / semicolons /
+# slashes / pipes / the word "and" (or "&") so the scope becomes a value SET and
+# each member is matched case-insensitively (value IN {…}). Split is done ONLY
+# when a delimiter is present, so an ordinary single value ("titanium", "Manager",
+# "Persian") is never fragmented.
+_LIST_SPLIT_RE = re.compile(r"\s*(?:,|;|/|\||\band\b|&)\s*", re.IGNORECASE)
+
+
+def _split_scope_values(value: str) -> list[str]:
+    """Split a delimited scope value into its members, or ``[]`` if it names one.
+
+    "OpenAI, Google, Deepgram and ElevenLabs" -> the four names; "titanium" -> []
+    (no delimiter → a single value, left on the normal single-value scope path).
+    De-duped case-insensitively, order-preserving, each trimmed of surrounding
+    quotes/whitespace. A trailing/serial-comma "and" ("A, B, and C") collapses to
+    three, not four (empty fragments are dropped).
+    """
+    if not isinstance(value, str) or not value.strip():
+        return []
+    parts = [
+        p.strip().strip("\"'").strip()
+        for p in _LIST_SPLIT_RE.split(value)
+    ]
+    members: list[str] = []
+    seen: set[str] = set()
+    for p in parts:
+        if p and p.lower() not in seen:
+            seen.add(p.lower())
+            members.append(p)
+    # Only treat it as a LIST when it actually decomposed into 2+ members.
+    return members if len(members) >= 2 else []
+
+
 class EnrichCapability:
     name = "enrich"
 
@@ -190,6 +226,41 @@ class EnrichCapability:
                 # guide us to a scope we can find (COG: confirm-the-scope).
                 return [_subset_clarify_step(type_name, subset)]
             scope = None  # the explicit entity set supersedes any value-scope
+
+        # MULTI-VALUE scope → resolve to concrete entity_uris deterministically.
+        # "refresh pricing for OpenAI, Google, Deepgram and ElevenLabs" extracts a
+        # scope whose ``value`` is a delimited LIST. Matched as one literal it hits
+        # 0 rows and premature-clarifies (offering discovery, which the caller then
+        # picks — the reported refresh-routing gap). Split the list and resolve the
+        # entities whose scope value is a case-insensitive MEMBER of the set via the
+        # executor's deterministic value-IN select (NOT the NL LLM), landing on the
+        # well-tested ``entity_uris`` path. Runs only when a subset didn't already
+        # supersede the scope.
+        if entity_uris is None and scope and scope.get("predicate"):
+            members = _split_scope_values(str(scope.get("value") or ""))
+            if members:
+                entity_uris = await self._resolve_scope_value_uris(
+                    ctx, type_name, scope["predicate"], members
+                )
+                if not entity_uris:
+                    # None of the named values matched an existing record. Ask a
+                    # brief, targeted question (naming the values we looked for)
+                    # rather than proposing an empty paid job or silently falling
+                    # into discovery — the confirm-the-scope contract, list variant.
+                    return [
+                        _no_value_match_clarify_step(
+                            type_name, scope["predicate"], members
+                        )
+                    ]
+                # Echo the interpreted set back so the preview reads naturally.
+                subset = {
+                    "description": (
+                        f"{scope['predicate']} in "
+                        f"{', '.join(members)}"
+                    ),
+                    "limit": None,
+                }
+                scope = None  # the resolved entity set supersedes the value-scope
 
         # Resolve the tier's adapter chain ONCE and derive (a) whether it is a
         # paid/web chain and (b) the per-entity paid cost — both driven by
@@ -464,6 +535,40 @@ class EnrichCapability:
             logger.warning("agent_enrich_subset_resolve_failed", exc_info=True)
             return []
 
+    async def _resolve_scope_value_uris(
+        self,
+        ctx: AgentContext,
+        type_name: str,
+        predicate: str,
+        values: list[str],
+    ) -> list[str]:
+        """Resolve a MULTI-VALUE scope (a list of scope values) to entity IRIs.
+
+        Drives the executor's DETERMINISTIC value-IN select
+        (:meth:`EnrichmentExecutor.select_scope_value_uris`) — NOT the NL LLM — so
+        "refresh pricing for OpenAI, Google, Deepgram and ElevenLabs" matches the
+        existing records whose ``predicate`` value is any of those names
+        (case/normalization-insensitive), rather than the single crammed literal
+        that matches nothing. Bounded by ``_SUBSET_MAX`` so a huge list can't fan a
+        paid enrich out unboundedly. Returns ``[]`` on any failure (no executor, no
+        select method, Neptune error) so the caller fails closed.
+        """
+        executor = ctx.extras.get("enrichment_executor")
+        if executor is None or not hasattr(executor, "select_scope_value_uris"):
+            return []
+        try:
+            return await executor.select_scope_value_uris(
+                ctx.tenant_id,
+                ctx.kg_name,
+                type_name,
+                predicate,
+                values,
+                limit=_SUBSET_MAX,
+            )
+        except Exception:  # noqa: BLE001 — resolution must never crash planning
+            logger.warning("agent_enrich_scope_value_resolve_failed", exc_info=True)
+            return []
+
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         """Create + run an EnrichJob in the background (same as /enrich/jobs)."""
         p = step.params
@@ -698,6 +803,38 @@ def _subset_clarify_step(type_name: str, subset: dict) -> PlanStep:
     )
 
 
+def _no_value_match_clarify_step(
+    type_name: str, predicate: str, values: list[str]
+) -> PlanStep:
+    """Brief clarify when a MULTI-VALUE scope matched no existing records.
+
+    The user named a SET of scope values (e.g. "OpenAI, Google, Deepgram,
+    ElevenLabs") and none matched an existing entity. Unlike the single-value
+    0-match clarify, we do NOT lead with a discovery option: the user asked to
+    REFRESH an existing subset, so guide them back onto the enrich rail (fix the
+    names, or enrich all) rather than nudging a fresh discovery build — the exact
+    mis-route this fix closes. Naming the values we looked for lets them correct a
+    typo / stale label quickly."""
+    shown = ", ".join(values[:6]) + ("…" if len(values) > 6 else "")
+    return PlanStep(
+        capability="enrich",
+        action="clarify",
+        params={
+            "question": (
+                f"None of the {type_name} records match {predicate} in "
+                f"[{shown}]. Check the names/values, or refresh all {type_name}?"
+            ),
+            # Enrich-rail options ONLY — the user asked to refresh EXISTING
+            # records, so we don't offer discovery here (that was the mis-route).
+            "options": [f"Enrich all {type_name}"],
+        },
+        rationale=(
+            f"No {type_name} matched any of the {len(values)} requested "
+            f"{predicate} values — guiding back to the enrich rail, not discovery."
+        ),
+    )
+
+
 def _no_match_clarify_step(
     type_name: str, scope: dict, *, empty_type: bool = False
 ) -> PlanStep:
@@ -768,11 +905,16 @@ def _refresh_conflict_policy():
 # Verbs that signal a REFRESH-EXISTING (re-verify a subset) intent rather than a
 # discover-new or first-fill enrich. Matched as whole words, case-insensitively,
 # so "refresh the pricing", "re-verify affiliations", "re-check the numbers",
-# "update the verified dates" all route to the verify-policy refresh. Generic —
-# no persona field is referenced.
+# "update the verified dates", "keep the address current" all route to the
+# verify-policy refresh. Kept in lockstep with the planner's deterministic
+# refresh-existing router (`_REFRESH_EXISTING_RE`) so the SAME verb set that forces
+# the enrich rail also flips the run to verify mode — a message the planner treats
+# as a refresh must not land as a plain first-fill enrich. Generic — no persona
+# field is referenced.
 _REFRESH_RE = re.compile(
-    r"\b(re-?verif\w*|re-?check\w*|re-?confirm\w*|refresh\w*|"
-    r"re-?validat\w*|freshness|decay)\b",
+    r"\b(re-?verif\w*|re-?check\w*|re-?confirm\w*|refresh\w*|update(?:d|s)?|"
+    r"re-?validat\w*|keep\s+(?:it\s+|them\s+)?current|"
+    r"make\s+(?:it\s+|them\s+)?current|freshness|decay(?:ing|s)?)\b",
     re.IGNORECASE,
 )
 
