@@ -645,6 +645,238 @@ async def test_enrich_zero_match_scope_clarifies(monkeypatch):
     assert out.get("options")  # offers "enrich all" / "different value"
 
 
+# --------------------------------------------------------------------------- #
+# 2c. Refresh-existing routing + multi-value subset scoping
+#     "refresh <attrs> for <named/scoped existing subset>" must route to the
+#     enrichment VERIFY path scoped to the matching existing records — NOT a fresh
+#     discovery — and a subset named by a LIST of values must MATCH existing
+#     records case/normalization-insensitively. Regression for the persona-eval
+#     refresh gap (agent ran a new discovery build; the crammed-literal scope
+#     matched 0 → premature-clarify → discovery). All-invented types/attrs/values.
+# --------------------------------------------------------------------------- #
+class _ScopeValueExecutor:
+    """A FakeExecutor whose ``select_scope_value_uris`` matches a value SET
+    case/normalization-insensitively against a canned {value -> uri} table — the
+    deterministic multi-value resolver the enrich cap drives. Records the values
+    it was asked for so a test can assert the crammed list was split."""
+
+    def __init__(self, value_to_uri: dict[str, str]):
+        self.ran = []
+        # Normalize the table keys so matching is case/whitespace-insensitive.
+        self._table = {k.strip().lower(): v for k, v in value_to_uri.items()}
+        self.select_calls: list[tuple] = []
+
+    async def run(self, job, tenant_id):
+        self.ran.append((job, tenant_id))
+
+    async def count_entities(self, tenant_id, kg_name, type_name, scope=None,
+                             entity_uris=None):
+        # Whole-type is non-empty (so a 0-scope match is "filter too narrow", not
+        # "empty type") — but the multi-value path resolves before this is hit.
+        return 5
+
+    async def select_scope_value_uris(self, tenant_id, kg_name, type_name,
+                                      predicate, values, limit=None):
+        self.select_calls.append((predicate, list(values)))
+        uris: list[str] = []
+        for v in values:
+            u = self._table.get(str(v).strip().lower())
+            if u and u not in uris:
+                uris.append(u)
+        return uris
+
+
+def _stub_refresh_classifier_wrong(monkeypatch):
+    """Stub the LLM classifier to return the WRONG intent (discover) — proving the
+    deterministic refresh-existing guard recovers routing without the classifier."""
+    _stub_classifier(monkeypatch, "discover")
+
+
+@pytest.mark.asyncio
+async def test_refresh_multi_value_subset_routes_to_enrich_verify(monkeypatch):
+    """A "refresh <attrs> for <comma+and list of values>" request routes to the
+    enrichment VERIFY path scoped to the matching existing records — even when the
+    LLM classifier mis-classifies it as DISCOVER. The crammed value list is split,
+    matched case-insensitively to existing entity_uris, and the plan is a scoped
+    refresh (refresh=True), NOT a discovery build. Invented type/attr/values."""
+    # Classifier is WRONG (discover) — the deterministic route must recover.
+    _stub_refresh_classifier_wrong(monkeypatch)
+    _stub_kg_types(monkeypatch, ["Widget"])
+    _stub_schema(
+        monkeypatch, {"attributes": ["price", "made_by"], "relationships": []}
+    )
+    # The extractor crams the vendor LIST into a single scope.value (the real bug).
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["price"],
+            "scope": {"predicate": "made_by", "value": "Acme, Globex and Initech"},
+            "tier": "core",
+        },
+    )
+    # Existing records for two of the three named vendors (mixed casing/spacing).
+    execu = _ScopeValueExecutor(
+        {
+            "acme": "https://onta.dev/e/widget/1",
+            "globex": "https://onta.dev/e/widget/2",
+            # "Initech" intentionally absent — the set still matches the 2 present.
+        }
+    )
+    out = await asyncio.wait_for(
+        handle(
+            _ctx(executor=execu),
+            "refresh the price for the Acme, Globex and Initech widgets",
+        ),
+        TIMEOUT,
+    )
+    # Routed to a scoped ENRICH plan, not a discovery build / not a clarify.
+    assert out["kind"] == "plan", out
+    step = out["steps"][0]
+    assert step["capability"] == "enrich"
+    assert step["action"] == "run_enrichment"
+    p = step["params"]
+    # Scoped to EXACTLY the matched existing records (entity_uris), scope cleared.
+    assert p["entity_uris"] == [
+        "https://onta.dev/e/widget/1",
+        "https://onta.dev/e/widget/2",
+    ]
+    assert p["scope"] is None
+    # It is a REFRESH (verify) run — ran_enrich-equivalent true.
+    assert p["refresh"] is True
+    assert step["preview"]["refresh"] is True
+    # The crammed literal was SPLIT into the three named values before matching.
+    assert execu.select_calls, "multi-value resolver was not called"
+    _, asked_values = execu.select_calls[0]
+    assert [v.lower() for v in asked_values] == ["acme", "globex", "initech"]
+
+
+@pytest.mark.asyncio
+async def test_multi_value_scope_matches_case_insensitively(monkeypatch):
+    """The subset is matched case/normalization-insensitively: the user types the
+    values in one casing, the existing records store them in another, and the scope
+    still resolves. Drives the enrich cap directly through EnrichCapability.plan."""
+    _stub_kg_types(monkeypatch, ["Vendor"])
+
+    async def fake_schema(neptune, tenant_id, type_name):
+        # ``region`` must be a real schema predicate or the extractor's scope is
+        # (correctly) dropped as unknown before it can be split.
+        return {"attributes": ["rating", "region"], "relationships": []}
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+    )
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["rating"],
+            # Different casing + a slash delimiter than the stored records.
+            "scope": {"predicate": "region", "value": "NORTH / south"},
+            "tier": "core",
+        },
+    )
+    execu = _ScopeValueExecutor(
+        {"north": "https://onta.dev/e/vendor/n", "south": "https://onta.dev/e/vendor/s"}
+    )
+    cap = EnrichCapability()
+    ctx = _ctx(executor=execu)
+    steps = await asyncio.wait_for(
+        cap.plan(ctx, "update the rating for vendors in NORTH / south region"),
+        TIMEOUT,
+    )
+    assert len(steps) == 1
+    p = steps[0].params
+    assert p["entity_uris"] == [
+        "https://onta.dev/e/vendor/n",
+        "https://onta.dev/e/vendor/s",
+    ]
+    assert p["scope"] is None
+    # "update" is a refresh-existing verb → verify mode.
+    assert p.get("refresh") is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_existing_guard_recovers_wrong_classification(monkeypatch):
+    """The planner-level deterministic guard: a refresh-existing message forces the
+    ENRICH intent even when the classifier returns discover — asserted on the
+    capability the turn reached, not on any field token. If routing had followed
+    the (wrong) discover classification, the enrich plan below would never run."""
+    _stub_refresh_classifier_wrong(monkeypatch)  # classifier says "discover"
+
+    captured: dict = {}
+
+    async def fake_enrich_plan(self, ctx, instruction, parsed=None):
+        captured["reached_enrich"] = True
+        return [
+            PlanStep(
+                capability="enrich",
+                action="run_enrichment",
+                params={"type_name": "Gadget", "attributes": ["spec"],
+                        "tier": "core", "scope": None, "limit": None,
+                        "entity_uris": None},
+                preview={},
+            )
+        ]
+
+    monkeypatch.setattr(EnrichCapability, "plan", fake_enrich_plan)
+
+    out = await asyncio.wait_for(
+        handle(_ctx(), "re-verify the spec for the existing Gadgets"), TIMEOUT
+    )
+    assert captured.get("reached_enrich") is True  # forced onto the enrich rail
+    assert out["kind"] == "plan"
+    assert out["steps"][0]["capability"] == "enrich"
+
+
+@pytest.mark.asyncio
+async def test_refresh_guard_defers_to_web_discovery(monkeypatch):
+    """The refresh guard must NOT hijack a genuine mint-new "… from the web"
+    discovery even though it contains a refresh verb — the web-discovery guard
+    still wins so we don't force enrich on records that don't exist yet."""
+    _stub_classifier(monkeypatch, "ambiguous", clarify="?")
+    # A refresh verb ("refresh our data") next to an unmistakable mint-new fetch
+    # ("… pull new Gizmos from the web") — the web-discovery guard must still win.
+    out = await asyncio.wait_for(
+        handle(_ctx(), "refresh our data — pull new Gizmos from the web"),
+        TIMEOUT,
+    )
+    # Routed to DISCOVERY (degrades to not-enabled in OSS), not the enrich rail.
+    body = f"{out.get('narrative', '')} {out.get('answer', '')}".lower()
+    assert "enabled" in body
+
+
+@pytest.mark.asyncio
+async def test_multi_value_scope_no_match_stays_on_enrich_rail(monkeypatch):
+    """When a multi-value scope matches NO existing record, the clarify keeps the
+    user on the ENRICH rail (offer "Enrich all"), and does NOT lead with a
+    discovery option — the mis-route this fix closes. The clicked option must NOT
+    be a web-discovery trigger."""
+    from cograph_client.agent.planner import _is_web_discovery_request
+
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_kg_types(monkeypatch, ["Widget"])
+    _stub_schema(
+        monkeypatch, {"attributes": ["price", "made_by"], "relationships": []}
+    )
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["price"],
+            "scope": {"predicate": "made_by", "value": "Foo, Bar and Baz"},
+            "tier": "core",
+        },
+    )
+    execu = _ScopeValueExecutor({})  # nothing matches
+    out = await asyncio.wait_for(
+        handle(_ctx(executor=execu), "refresh the price for Foo, Bar and Baz widgets"),
+        TIMEOUT,
+    )
+    assert out["kind"] == "clarify"
+    opts = out.get("options") or []
+    # Enrich-rail guidance only — NO discovery option that would re-route to a build.
+    assert opts, opts
+    assert not any(_is_web_discovery_request(o) for o in opts), opts
+
+
 @pytest.mark.asyncio
 async def test_execute_enrich_passes_entity_uris(monkeypatch):
     """An enrich step carrying entity_uris builds an EnrichJob scoped to exactly
