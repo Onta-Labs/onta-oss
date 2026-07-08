@@ -100,9 +100,29 @@ _bg_tasks: set[asyncio.Task] = set()
 _SAMPLE_ROWS = 8
 _PREVIEW_SAMPLE = 5
 _PREVIEW_SOURCES = 5
-# Conservative default cap so a first (paid) discovery is BOUNDED and cheap to
-# inspect. Mirrors the enrich plan's _DEFAULT_PLAN_LIMIT. User-overridable.
-_DEFAULT_PLAN_CAP = 200
+# Default cap on rows a single interactive discovery run pulls. Sized so a first
+# (paid) discovery is BOUNDED, cheap to inspect, AND — critically — SETTLES to a
+# terminal state WITHIN the run's own wall-clock budget, so an interactive session
+# gets a usable, CONSISTENT populated subset instead of a slow job that never
+# finishes in-session (persona-eval m3 RCA).
+#
+# Why 50 and not 200: discovery's dominant cost is the per-record LLM extraction
+# (~one extract call per _DISCOVERY_INGEST_SUBBATCH rows), which runs SEQUENTIALLY.
+# Measured on the UCI oc-physicians build (deployed b66e2ef2): ~9-10s/record end to
+# end. Against the hard _RUN_TIMEOUT_S wall (600s default) that means:
+#   cap=200 -> ~32 min to fill -> ALWAYS hits the 600s wall at ~60 records and
+#              flips to ``failed`` — the graph is left a partial MOVING TARGET
+#              (rolling ``total`` 25->200->134->159) that different follow-up tasks
+#              see contradictory snapshots of.
+#   cap=50  -> ~8 min to fill -> settles to a real terminal state under the wall,
+#              and needs only ~4 sequential wait_for_job (120s) calls to observe.
+# 50 records is enough for a persona to query a coherent subset; pulling MORE is a
+# clean follow-up (re-run the discovery, or raise this via the env knob / a future
+# per-query cap) rather than a single slow job that never lands. Env-overridable so
+# ops can retune (e.g. a batch/back-office deployment that wants the old 200 and
+# accepts a longer _RUN_TIMEOUT_S) without a deploy. Mirrors the enrich plan's
+# _DEFAULT_PLAN_LIMIT pattern; still user-overridable per plan.
+_DEFAULT_PLAN_CAP = max(1, int(os.environ.get("COGRAPH_DISCOVERY_DEFAULT_CAP", "50")))
 
 # Wall-clock budgets for building the plan-time PREVIEW, sized well under the
 # Explorer proxy's 55s backend abort (web/app/api/demo/agent/route.ts
