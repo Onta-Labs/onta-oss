@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Client, CographError } from "../src/client.js";
+import {
+  Client,
+  CographError,
+  isTerminalJobStatus,
+  TERMINAL_JOB_STATUSES,
+} from "../src/client.js";
 
 // --- fetch mock -------------------------------------------------------------- #
 // Every test installs a single fetch spy and asserts on the (url, init) it was
@@ -602,5 +607,66 @@ describe("new typed parsed variants of the missing methods", () => {
   it("ontologyApplyBatch (typed) surfaces a non-2xx as CographError", async () => {
     installFetch(new Response("boom", { status: 500 }));
     await expect(makeClient().ontologyApplyBatch([] as never)).rejects.toBeInstanceOf(CographError);
+  });
+});
+
+describe("waitForJob — bounded server-side long-poll", () => {
+  const jobBody = (status: string) =>
+    JSON.stringify({ id: "j1", tenant_id: TENANT, status });
+
+  it("hits GET …/enrich/jobs/{id}/wait with the timeout_s query", async () => {
+    const { calls } = installFetch(
+      new Response(jobBody("running"), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const job = await makeClient().waitForJob("j1", 90);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(`${PREFIX}/enrich/jobs/j1/wait?timeout_s=90`);
+    expect(calls[0]!.init.method).toBe("GET");
+    // Thin pass-through: it returns the job envelope verbatim (running is a
+    // valid, non-error timeout result — the typed method must NOT throw).
+    expect(job.status).toBe("running");
+  });
+
+  it("omits the query string when no timeout is given", async () => {
+    const { calls } = installFetch(
+      new Response(jobBody("applied"), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await makeClient().waitForJob("j1");
+    expect(calls[0]!.url).toBe(`${PREFIX}/enrich/jobs/j1/wait`);
+  });
+
+  it("URL-encodes the job id (path is built through the SDK, not hand-rolled)", async () => {
+    const { calls } = installFetch(
+      new Response(jobBody("applied"), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await makeClient().waitForJob("a/b c");
+    expect(calls[0]!.url).toBe(`${PREFIX}/enrich/jobs/a%2Fb%20c/wait`);
+  });
+
+  it("raw.waitForJob returns the Response verbatim without throwing on 404", async () => {
+    installFetch(new Response('{"detail":"job not found"}', { status: 404 }));
+    const res = await makeClient().raw.waitForJob("missing", 30);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe('{"detail":"job not found"}');
+  });
+
+  it("isTerminalJobStatus mirrors the backend terminal set", () => {
+    expect(isTerminalJobStatus("queued")).toBe(false);
+    expect(isTerminalJobStatus("running")).toBe(false);
+    for (const s of TERMINAL_JOB_STATUSES) {
+      expect(isTerminalJobStatus(s)).toBe(true);
+    }
+    expect([...TERMINAL_JOB_STATUSES].sort()).toEqual(
+      ["applied", "cancelled", "failed", "review"].sort(),
+    );
   });
 });
