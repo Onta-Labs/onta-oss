@@ -279,12 +279,20 @@ async def invoke_function(
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     new_triples: list[tuple[str, str, str]] = []
     replaced_preds: list[str] = []
+    # ONTA-236 value history: the NEW value each PRIMARY attribute predicate is
+    # replaced WITH, so delete_facts can version a genuine old→new change (gated by
+    # COGRAPH_VALUE_HISTORY_ENABLED). Only PRIMARY attributes are tracked — the
+    # per-fact `_verified_at` / per-entity `lambda_refreshed_at` companions advance
+    # every run by design, so treating their clock ticks as "value changes" would
+    # be noise, not signal.
+    new_value_by_pred: dict[tuple[str, str], str] = {}
     for key, value in output.items():
         if value is None:
             continue
         attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
         new_triples.append((body.entity_uri, attr_pred, str(value)))
         replaced_preds.append(attr_pred)
+        new_value_by_pred[(body.entity_uri, attr_pred)] = str(value)
 
         # Per-fact freshness stamp: a QUERYABLE `<key>_verified_at` literal on the
         # `attrs/<leaf>` namespace, mirroring enrichment's _provenance_triples. This
@@ -347,6 +355,7 @@ async def invoke_function(
             client,
             instance_graph,
             triples=[(body.entity_uri, pred, None) for pred in replaced_preds],
+            new_values=new_value_by_pred,
             touched_types=[entity_type],
             reason=f"lambda re-invoke: {function_name}",
         )
