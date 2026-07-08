@@ -689,6 +689,48 @@ async def test_free_provider_also_skips_plan_time_preview():
     assert steps[0].cost["paid_calls"] == 0
 
 
+def test_default_cap_settles_within_run_timeout():
+    """The default discovery cap MUST be small enough that a first interactive
+    build SETTLES to a terminal state inside the run's own wall-clock budget.
+
+    persona-eval m3 RCA: with cap=200 and the measured ~9.5s/record sequential
+    extraction, a physician build needs ~32 min to fill but _RUN_TIMEOUT_S is 600s,
+    so the job ALWAYS hit the wall at ~60 records and flipped to ``failed`` — the
+    graph never settled, and different follow-up tasks saw contradictory partial
+    snapshots. The default must fit: cap × per-record-seconds < _RUN_TIMEOUT_S, with
+    margin. This test pins the invariant so a future bump to the default (or a drop
+    in the run timeout) can't silently reintroduce the never-settling build.
+    """
+    # Conservative worst-case per-record extraction time measured on the deployed
+    # backend (b66e2ef2): 600s wall / 63 records landed ≈ 9.5s/record.
+    per_record_s = 9.5
+    fill_estimate_s = web_ingest_cap._DEFAULT_PLAN_CAP * per_record_s
+    # Require the whole fill to complete with ≥15% headroom under the wall, so
+    # search-phase latency + variance don't push a realistic run over.
+    assert fill_estimate_s <= 0.85 * web_ingest_cap._RUN_TIMEOUT_S, (
+        f"default cap {web_ingest_cap._DEFAULT_PLAN_CAP} × {per_record_s}s/record "
+        f"= {fill_estimate_s:.0f}s does not settle under the "
+        f"{web_ingest_cap._RUN_TIMEOUT_S:.0f}s run timeout — an interactive build "
+        "would never finish in-session"
+    )
+
+
+def test_default_cap_is_env_overridable(monkeypatch):
+    """Ops can retune the interactive default without a deploy (e.g. a batch
+    deployment that also raises _RUN_TIMEOUT_S and wants the old 200)."""
+    import importlib
+
+    monkeypatch.setenv("COGRAPH_DISCOVERY_DEFAULT_CAP", "37")
+    try:
+        importlib.reload(web_ingest_cap)
+        assert web_ingest_cap._DEFAULT_PLAN_CAP == 37
+    finally:
+        # Restore the module to its env-free default so later tests see the real
+        # constant (reload rebinds the module-level symbol).
+        monkeypatch.delenv("COGRAPH_DISCOVERY_DEFAULT_CAP", raising=False)
+        importlib.reload(web_ingest_cap)
+
+
 async def test_plan_emits_registry_route_stage_timing(monkeypatch):
     """Observability (ONTA-198 follow-up): the plan path times its LLM stages.
     Every query-mode plan consults the registry, so a `stage_timing` span for
