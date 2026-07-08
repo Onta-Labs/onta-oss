@@ -43,7 +43,9 @@ Bare aggregates cause 400 errors.
 - For dateTime comparisons, use ISO-8601 with time component (e.g., "2008-01-01T00:00:00"^^xsd:dateTime).
 - FRESHNESS / RECENCY windows ("verified in the last N days", "updated in the last 2 weeks", \
 "checked recently"): filter a dateTime-valued attribute against NOW() minus a duration, using \
-xsd:dayTimeDuration. Pattern: `FILTER(?ts >= (NOW() - "P7D"^^<http://www.w3.org/2001/XMLSchema#dayTimeDuration>))` \
+xsd:duration (NOT xsd:dayTimeDuration — Neptune does not implement dayTimeDuration/yearMonthDuration \
+arithmetic, so that form silently drops every row or 400s; xsd:duration works). Pattern: \
+`FILTER(?ts >= (NOW() - "P7D"^^<http://www.w3.org/2001/XMLSchema#duration>))` \
 for "last 7 days" (use "P14D" for 14 days, "PT48H" for 48 hours, etc.). The freshness attribute is any \
 dateTime-ranged attribute whose name ends in `_verified_at` (an enrichment/discovery per-fact freshness \
 stamp) or otherwise reads as a checked/verified/updated timestamp — bind it to ?ts via its exact attribute \

@@ -133,6 +133,43 @@ def _sanitize_sparql_literal(text: str) -> str:
     return re.sub(r'["\\\n\r\t]', " ", text).strip().lower()[:80]
 
 
+# Neptune does not implement `xsd:dayTimeDuration` (nor `xsd:yearMonthDuration`)
+# arithmetic on `xsd:dateTime`: `NOW() - "P7D"^^xsd:dayTimeDuration` evaluates to an
+# ERROR/unbound (not a dateTime), so a recency FILTER against it silently drops every
+# row — and in aggregate/property-path query shapes escalates to a hard 400/500. The
+# equivalent `xsd:duration` subtraction DOES evaluate on Neptune (verified on the
+# deployed cluster) and is also accepted by spec engines like pyoxigraph, so it is the
+# common-denominator datatype for a "last N days" window. This rewrites the datatype IRI
+# of a duration literal (bare `xsd:` prefix or the full XMLSchema# IRI, in angle brackets
+# or not) to `duration`. Idempotent — a literal already typed `duration` is untouched.
+_DURATION_DATATYPE_RE = re.compile(
+    r"(\^\^)"                                                    # the datatype marker
+    r"(<?)"                                                      # optional opening angle bracket
+    r"(xsd:|http://www\.w3\.org/2001/XMLSchema#)"                # bare prefix OR full namespace
+    r"(?:dayTimeDuration|yearMonthDuration)"                     # the Neptune-unsupported subtypes
+    r"(>?)",                                                     # optional closing angle bracket
+    re.IGNORECASE,
+)
+
+
+def _neptune_safe_duration(sparql: str) -> str:
+    """Rewrite `xsd:dayTimeDuration`/`xsd:yearMonthDuration` duration literals to
+    `xsd:duration` so a NOW()-relative recency FILTER is valid on Neptune.
+
+    Preserves the exact surface form the LLM emitted (bare `xsd:` prefix vs full
+    XMLSchema# IRI, and whether it was wrapped in angle brackets), rewriting only the
+    local name. Idempotent and safe on any query — it matches only a duration-subtype
+    datatype IRI, which appears nowhere else.
+    """
+    def _sub(m: re.Match) -> str:
+        marker, open_b, namespace, close_b = m.groups()
+        # `namespace` is exactly the prefix/IRI the LLM used (`xsd:` or the full
+        # XMLSchema# IRI); reuse it verbatim so only the local name changes.
+        return f"{marker}{open_b}{namespace}duration{close_b}"
+
+    return _DURATION_DATATYPE_RE.sub(_sub, sparql)
+
+
 _ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 
 
@@ -1180,6 +1217,19 @@ class NLQueryPipeline:
         if alias_map:
             from cograph_client.graph.aliases import rewrite_query_attrs
             sparql = rewrite_query_attrs(sparql, alias_map)
+
+        # Fix 6: normalize freshness-window duration literals to the Neptune-valid
+        # datatype. The recency pattern the prompt teaches is
+        # `NOW() - "PnD"^^xsd:dayTimeDuration`, which is valid SPARQL 1.1 (and works
+        # on spec engines like pyoxigraph) — but Neptune does NOT implement
+        # `xsd:dayTimeDuration` arithmetic: `NOW() - "P7D"^^xsd:dayTimeDuration`
+        # yields an ERROR/unbound rather than a dateTime, so a comparison against it
+        # is an error and the FILTER silently drops EVERY row (and in aggregate /
+        # property-path shapes escalates to a hard 400/500). The identical `xsd:duration`
+        # subtraction DOES evaluate on Neptune and on pyoxigraph, so rewriting the
+        # datatype makes the recency filter work on the deployed backend while staying
+        # correct on the spec engine. Idempotent; touches only the duration datatype IRI.
+        sparql = _neptune_safe_duration(sparql)
 
         return sparql
 
