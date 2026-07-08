@@ -379,6 +379,19 @@ def test_fetch_value_history_since_returns_only_post_cutoff(monkeypatch):
     asyncio.run(run())
 
 
+def test_value_history_query_escapes_since_no_literal_breakout():
+    """A crafted `since` cannot break out of the SPARQL literal (injection guard):
+    quotes/backslashes are escaped through _escape_literal, so the closing quote
+    of the FILTER literal stays intact."""
+    malicious = '2026" ) } ; DROP GRAPH <x> ; SELECT * WHERE { ?a ?b ?c #'
+    q = value_history_query(GRAPH, since=malicious)
+    # The embedded quote is escaped (\"), so the FILTER literal is not terminated
+    # early — the whole payload stays trapped inside one string literal.
+    assert '2026\\"' in q
+    # The unescaped breakout sequence must NOT appear verbatim.
+    assert '"2026" )' not in q
+
+
 def test_history_graph_uri_is_not_an_instance_graph():
     """The companion history graph must NOT parse as a per-KG instance graph, so
     the derived-index hooks never mistake it for one."""

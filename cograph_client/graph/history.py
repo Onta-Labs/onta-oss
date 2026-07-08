@@ -55,7 +55,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from cograph_client.graph.parser import parse_sparql_results
-from cograph_client.graph.queries import _escape_value
+from cograph_client.graph.queries import _escape_literal, _escape_value
 
 HIST_NS = "https://cograph.tech/history/"
 
@@ -192,8 +192,13 @@ def value_history_query(
         # Typed comparison — an untyped bound would be type-incompatible with the
         # typed changedAt literal and match nothing (ONTA-247). STRICTLY AFTER the
         # cutoff (`>`), so "changed since <last run at T>" excludes the boundary
-        # itself and returns only genuinely newer transitions.
-        since_filter = f'  FILTER(?changedAt > "{since}"^^<{_XSD}#dateTime>)\n'
+        # itself and returns only genuinely newer transitions. The cutoff is a
+        # user-supplied string, so it is escaped through the SAME _escape_literal
+        # the rest of the write path uses — no SPARQL-literal breakout on a crafted
+        # `since` (a non-date string just matches nothing, which is fine).
+        since_filter = (
+            f'  FILTER(?changedAt > "{_escape_literal(since)}"^^<{_XSD}#dateTime>)\n'
+        )
     return (
         f"SELECT ?s ?p ?oldValue ?newValue ?changedAt "
         f"FROM <{history_graph_uri(graph_uri)}>\n"
