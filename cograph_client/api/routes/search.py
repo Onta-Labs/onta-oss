@@ -26,10 +26,19 @@ Division of labor (the ONTA-176 locked contract):
 
 Documented semantics (each is tested in ``tests/test_search_route.py``):
 
-* **503 when disabled** — ``COGRAPH_SEMANTIC_INDEX_ENABLED`` is the master
-  gate for the write hook, the reconciler AND this read path; serving from an
-  index that nothing populates would return confidently-empty results, so we
-  refuse loudly with the same hint the reindex route uses.
+* **Semantic gate off → lexical degrade, NOT 503.** When
+  ``COGRAPH_SEMANTIC_INDEX_ENABLED`` (the master gate for the write hook and
+  the reconciler) is off, the vector leg simply never populates — but the
+  backend's lexical/full-text leg still works, so this read path DEGRADES to
+  keyword-only search and returns ``degraded=True`` (an honest "reduced
+  recall" badge) instead of a hard 503 dead-end. Forcing the query embedding
+  to ``None`` guarantees the lexical path even on a deployment that happens to
+  have a stray query key configured. A gated-off deployment therefore still
+  answers "which entities mention X?" from whatever the FTS leg can match
+  (possibly empty, but always a 200), matching the degraded rendering the MCP
+  ``search`` tool already shows. (Historically this route hard-503'd here; that
+  removed a natural keyword fallback for no correctness benefit — the index is
+  never *queried* semantically when the gate is off anyway.)
 * **Empty/whitespace query → 400.** Chosen over "empty results" because a
   blank query is always a caller bug (a UI submitting an empty box), and an
   empty 200 would hide it; 400 with a clear message is actionable.
@@ -171,22 +180,19 @@ async def semantic_search(
     route: the search is ALWAYS scoped to the resolved tenant (a multi-tenant
     key requesting an unowned path tenant is a 403 before this body runs), so
     the index's tenant-isolation contract starts here. See the module
-    docstring for the full documented semantics (503-when-disabled, 400 on
-    blank query, unknown-KG-empty, top_k clamp, type-staleness caveat).
+    docstring for the full documented semantics (lexical-degrade when the gate
+    is off, 400 on blank query, unknown-KG-empty, top_k clamp, type-staleness
+    caveat).
     """
-    # Master env gate — mirror the reindex route exactly (ONTA-181): a search
-    # against a deployment where nothing indexes would be confidently empty,
-    # which is worse than an explicit 503 with the fix in the message.
+    # Master env gate — same knob (ONTA-181) that governs the write hook and
+    # the reconciler. When it is OFF, the semantic (vector) leg is not
+    # maintained, so we run the backend's lexical/full-text leg only and flag
+    # the result ``degraded=True`` rather than 503'ing: a keyword fallback is
+    # strictly more useful than a hard dead-end, and it matches the degraded
+    # rendering the MCP ``search`` tool already surfaces.
     from cograph_client.semantic.reconciler import semantic_index_enabled
 
-    if not semantic_index_enabled():
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Semantic search is disabled for this deployment "
-                "(set COGRAPH_SEMANTIC_INDEX_ENABLED=true to enable it)."
-            ),
-        )
+    gate_on = semantic_index_enabled()
 
     query = body.query.strip()
     if not query:
@@ -197,7 +203,11 @@ async def semantic_search(
 
     top_k = max(1, min(body.top_k, TOP_K_MAX))
 
-    query_embedding = await _embed_query(query)
+    # Only embed the query when the semantic leg is actually maintained. With
+    # the gate off, force ``None`` so the backend runs lexical-only (and
+    # reports ``degraded=True``) instead of scoring against a stale/empty
+    # vector index.
+    query_embedding = await _embed_query(query) if gate_on else None
 
     from cograph_client.semantic.registry import get_semantic_index
 

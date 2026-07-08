@@ -201,3 +201,117 @@ def test_apply_attribute_extend_writes_single_upsert(client, auth_headers, mock_
     assert mock_neptune.update.call_count == 1
     sent = mock_neptune.update.call_args[0][0]
     assert "email" in sent
+
+
+# --- batch apply (persona-eval batch-ontology-apply bug) ---------------------
+
+
+def _change(name, datatype, kind="attribute", action="extend", subject="Person"):
+    return {
+        "kind": kind,
+        "subject_type": subject,
+        "name": name,
+        "datatype_or_target": datatype,
+        "action": action,
+        "confidence": 0.95,
+        "reason": "confirmed",
+    }
+
+
+def test_apply_batch_applies_all_changes_in_one_call(client, auth_headers, mock_neptune):
+    """N proposals in ONE batch call create all N attrs/relationships and is
+    equivalent to N single calls: three extend attributes => three upserts, all
+    reported ok, no partial failure."""
+    batch = {
+        "changes": [
+            _change("email", "string"),
+            _change("age", "integer"),
+            _change("works_at", "Company", kind="relationship", action="create"),
+        ]
+    }
+    resp = client.post(
+        "/graphs/test-tenant/ontology/apply/batch",
+        headers=auth_headers,
+        json=batch,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["applied_count"] == 3
+    assert data["failed_count"] == 0
+    assert len(data["results"]) == 3
+    assert all(r["ok"] for r in data["results"])
+    # Each change's SPARQL actually ran: the two extends = 1 op each; the create
+    # relationship mints subject + target + property = 3 ops → 5 total updates.
+    assert mock_neptune.update.call_count == 5
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    for token in ("email", "age", "works_at", "Company"):
+        assert token in all_sparql
+
+
+def test_apply_batch_equivalent_to_n_single_calls(client, auth_headers, mock_neptune):
+    """The batch route runs the exact same SPARQL as calling /apply once per
+    change — assert the concatenated update stream matches."""
+    changes = [_change("email", "string"), _change("age", "integer")]
+
+    # N single calls.
+    for ch in changes:
+        r = client.post("/graphs/test-tenant/ontology/apply", headers=auth_headers, json=ch)
+        assert r.status_code == 200
+    single_sparql = [c[0][0] for c in mock_neptune.update.call_args_list]
+
+    mock_neptune.update.reset_mock()
+
+    # One batch call.
+    r = client.post(
+        "/graphs/test-tenant/ontology/apply/batch",
+        headers=auth_headers,
+        json={"changes": changes},
+    )
+    assert r.status_code == 200
+    batch_sparql = [c[0][0] for c in mock_neptune.update.call_args_list]
+
+    assert batch_sparql == single_sparql
+
+
+def test_apply_batch_partial_failure_is_well_defined(client, auth_headers, mock_neptune):
+    """A change that raises is isolated: ok=False + error on that entry, the
+    others still apply, and counts reflect the split (no all-or-nothing abort)."""
+    async def flaky_update(sparql, *a, **k):
+        if "boomattr" in sparql:
+            raise RuntimeError("neptune rejected the write")
+        return None
+
+    mock_neptune.update.side_effect = flaky_update
+
+    batch = {
+        "changes": [
+            _change("email", "string"),
+            _change("boomattr", "string"),
+            _change("age", "integer"),
+        ]
+    }
+    resp = client.post(
+        "/graphs/test-tenant/ontology/apply/batch",
+        headers=auth_headers,
+        json=batch,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["applied_count"] == 2
+    assert data["failed_count"] == 1
+    results = data["results"]
+    assert results[0]["ok"] is True and results[0]["change"]["name"] == "email"
+    assert results[1]["ok"] is False and results[1]["change"]["name"] == "boomattr"
+    assert "neptune rejected" in results[1]["error"]
+    assert results[2]["ok"] is True and results[2]["change"]["name"] == "age"
+
+
+def test_apply_batch_empty_list_is_422(client, auth_headers, mock_neptune):
+    """An empty change list is a caller bug → 422 (min_length=1), not a silent
+    no-op 200."""
+    resp = client.post(
+        "/graphs/test-tenant/ontology/apply/batch",
+        headers=auth_headers,
+        json={"changes": []},
+    )
+    assert resp.status_code == 422
