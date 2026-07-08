@@ -287,6 +287,72 @@ async def get_job(
     return job
 
 
+# wait_for_job long-poll knobs. The default and the hard cap bound how long a
+# single request blocks server-side; a job that outlives the cap simply returns
+# still-running (not an error) so the caller loops with one more cheap call
+# rather than burning many rapid polls. POLL_INTERVAL_S is the async-sleep
+# cadence between job-store reads inside one wait — small enough to return
+# promptly once the job settles, large enough that a multi-minute wait is a
+# handful of reads, never a busy-wait.
+WAIT_DEFAULT_TIMEOUT_S = 60.0
+WAIT_MAX_TIMEOUT_S = 120.0
+WAIT_POLL_INTERVAL_S = 1.0
+
+
+@router.get("/jobs/{job_id}/wait", response_model=EnrichJob)
+async def wait_for_job(
+    job_id: str,
+    timeout_s: float = WAIT_DEFAULT_TIMEOUT_S,
+    tenant: TenantContext = Depends(get_tenant),
+    job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
+):
+    """Block until a job reaches a TERMINAL state OR a bounded timeout, then
+    return its current status (COG — persona-eval async-settling blocker).
+
+    Web-discovery / enrichment jobs take minutes to settle. The only status
+    primitive is ``GET .../jobs/{id}``, which returns instantly with
+    ``running`` — so a client that wants to *wait* has no choice but to hammer
+    it in a tight loop (15 polls in seconds, all ``running``, then gives up)
+    without ever actually waiting. This route waits SERVER-SIDE with an async
+    sleep loop (never a busy-wait) and returns as soon as the job is done, or
+    after at most ``timeout_s`` (clamped to ``WAIT_MAX_TIMEOUT_S``) if it is
+    still in flight.
+
+    Return contract:
+    - Job already terminal (applied/failed/cancelled/review) → returns
+      immediately with the final status.
+    - Job completes mid-wait → returns promptly once it settles.
+    - Job still ``queued``/``running`` at the timeout → returns the job with its
+      CURRENT (non-terminal) status and HTTP 200. This is NOT an error: the
+      caller inspects ``status`` and, if still running, simply calls ``wait``
+      again. A few such calls cover a multi-minute job for a few steps total.
+
+    Same auth + tenant-scoping + result-truncation as ``get_job``; the only
+    added behavior is the bounded server-side blocking.
+    """
+    # Clamp the caller's requested timeout into [0, cap]. A negative or absurd
+    # value can never make this block longer than the hard cap (bounded), and a
+    # zero/short value degenerates to a single get_job read (still correct).
+    budget = max(0.0, min(float(timeout_s), WAIT_MAX_TIMEOUT_S))
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + budget
+    while True:
+        job = await job_store.get(job_id)
+        if not job or job.tenant_id != tenant.tenant_id:
+            raise HTTPException(status_code=404, detail="job not found")
+        if job.status.is_terminal() or loop.time() >= deadline:
+            # Terminal → done. Timed out → return the current running status so
+            # the caller loops with one cheap follow-up call instead of erroring.
+            if job.results and len(job.results) > CONFLICT_RESULT_TRUNCATE:
+                job.results = job.results[:CONFLICT_RESULT_TRUNCATE]
+            return job
+        # Non-terminal and time left: async-sleep, but never past the deadline —
+        # the wait can only ever be as long as the (clamped) budget.
+        remaining = deadline - loop.time()
+        await asyncio.sleep(min(WAIT_POLL_INTERVAL_S, max(0.0, remaining)))
+
+
 @router.get("/jobs/{job_id}/conflicts", response_model=list[ConflictReview])
 async def list_conflicts(
     job_id: str,

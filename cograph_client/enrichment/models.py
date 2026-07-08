@@ -56,6 +56,25 @@ class JobStatus(str, Enum):
     cancelled = "cancelled"
     failed = "failed"
 
+    def is_terminal(self) -> bool:
+        """True when the job has stopped doing work and will not advance on its
+        own — the states a bounded ``wait_for_job`` long-poll should return on.
+
+        ``queued`` and ``running`` are the only in-flight states: the job is
+        still searching / ingesting / enriching and its progress may still
+        change. Everything else is settled:
+
+        - ``applied`` / ``failed`` / ``cancelled`` — classic done/error/stopped.
+        - ``review`` — the enrichment run finished computing and is now parked
+          waiting for a human's conflict decisions; it does no more work until a
+          caller applies decisions, so a waiter should stop blocking and return.
+
+        This is the single source of truth for "is this job done?" — the wait
+        route, the SDK, and the MCP tool all defer to it so the terminal set can
+        never drift between the interfaces.
+        """
+        return self not in (JobStatus.queued, JobStatus.running)
+
 
 class JobCategory(str, Enum):
     """The kind of work a job performs.
