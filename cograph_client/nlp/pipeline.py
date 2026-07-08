@@ -29,6 +29,19 @@ logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
 _ontology_cache: dict[str, tuple[str, float]] = {}
 ONTOLOGY_CACHE_TTL = 60  # seconds
 
+# Distinct markers so a TRANSIENT fetch failure is never mistaken for a genuinely
+# empty graph (ONTA-248 A2: "errors masquerade as facts"). The old error text
+# ("Graph may be empty.") let the LLM authoritatively state the graph was empty on
+# a mere throttle/timeout. These strings are surfaced to the SPARQL-generation LLM;
+# the error marker explicitly forbids asserting absence.
+ONTOLOGY_FETCH_ERROR = (
+    "Could not fetch the ontology for this graph (a transient backend error, e.g. "
+    "a timeout or throttle). This does NOT mean the graph is empty or that any "
+    "type is absent — the schema is simply UNKNOWN right now. Do not claim any "
+    "type or attribute does not exist; suggest retrying."
+)
+ONTOLOGY_EMPTY = "No ontology defined yet."
+
 # Cap on concurrent enum-discovery SPARQL queries (COG-58). Enum discovery
 # fires one COUNT(DISTINCT) per attribute + per relationship; an unbounded
 # asyncio.gather meant a wide table (hundreds of columns → hundreds of
@@ -707,7 +720,7 @@ class NLQueryPipeline:
                             )
                             _ontology_cache[cache_key] = (summary, time.time())
                             return summary
-                return "No ontology defined yet."
+                return ONTOLOGY_EMPTY
 
             # Discover enumerated values for low-cardinality string attributes.
             # Runs cardinality checks concurrently (asyncio.gather) instead of
@@ -802,7 +815,12 @@ class NLQueryPipeline:
                     except Exception:
                         logger.warning("cardinality_attr_check_failed", exc_info=True)
 
-                # Phase 3: Check relationship cardinality to hide empty ones
+                # Phase 3: Check relationship cardinality to annotate empty ones.
+                # A CONFIRMED-empty relationship is annotated "[no instances]" but
+                # NEVER removed (ONTA-248 determinism): a DECLARED relationship is
+                # part of the schema, and dropping it on a cnt==0 — which a
+                # transient throttle produces exactly like a genuinely-empty edge —
+                # made a relationship appear then vanish across identical calls.
                 empty_rels: set[tuple[str, str]] = set()  # (type_name, rel_name)
                 if rel_uris:
                     try:
@@ -835,8 +853,17 @@ class NLQueryPipeline:
                         elif type_name in enum_counts and a_name in enum_counts[type_name]:
                             cnt = enum_counts[type_name][a_name]
                             if cnt == 0:
-                                # Skip empty attributes — no data, would confuse the LLM
-                                continue
+                                # DECLARED attribute with zero instances. Keep it
+                                # (do NOT drop) — dropping made the schema the LLM
+                                # sees NON-DETERMINISTIC (ONTA-248): a transient
+                                # Neptune throttle returns an empty COUNT result
+                                # (cnt=0) exactly like a genuinely-empty attribute,
+                                # so the attribute flickered in and out of the
+                                # summary between otherwise-identical calls. The
+                                # attribute is DECLARED in the ontology, so it
+                                # exists; annotate it as empty rather than deleting
+                                # it, so an existence claim stays stable.
+                                annotated.append(f"{attr_entry} [no instances]")
                             elif cnt > MAX_ENUM_CARDINALITY:
                                 # High-cardinality: just show the count
                                 annotated.append(f"{attr_entry} [{cnt} unique values]")
@@ -846,12 +873,15 @@ class NLQueryPipeline:
                             annotated.append(attr_entry)
                     lines.append(f"  Attributes: {', '.join(annotated)}")
                 if info["relationships"]:
-                    filtered_rels = [
-                        r for r in info["relationships"]
-                        if (type_name, r.split(" →")[0].strip()) not in empty_rels
-                    ]
-                    if filtered_rels:
-                        lines.append(f"  Relationships: {', '.join(sorted(filtered_rels))}")
+                    # Keep EVERY declared relationship; annotate confirmed-empty
+                    # ones instead of hiding them (ONTA-248 determinism).
+                    annotated_rels = []
+                    for r in sorted(info["relationships"]):
+                        if (type_name, r.split(" →")[0].strip()) in empty_rels:
+                            annotated_rels.append(f"{r} [no instances]")
+                        else:
+                            annotated_rels.append(r)
+                    lines.append(f"  Relationships: {', '.join(annotated_rels)}")
                 if info["functions"]:
                     lines.append(f"  Functions: {', '.join(sorted(info['functions']))}")
             summary = "\n".join(lines)
@@ -867,7 +897,9 @@ class NLQueryPipeline:
             return summary
         except Exception:
             logger.error("ontology_fetch_failed", exc_info=True)
-            return "Could not fetch ontology. Graph may be empty."
+            # Distinct from the empty-graph message: a transient fetch failure must
+            # NOT be reported to the LLM as "graph is empty" (ONTA-248 A2).
+            return ONTOLOGY_FETCH_ERROR
 
     async def _instance_graph_ontology_fallback(
         self,
