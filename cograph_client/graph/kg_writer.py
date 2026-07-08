@@ -56,6 +56,11 @@ from typing import Iterable, Optional
 
 import structlog
 
+from cograph_client.graph.history import (
+    build_value_change_triples,
+    history_graph_uri,
+    lexical_value,
+)
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.provenance import (
     build_rewrite_triples,
@@ -72,6 +77,7 @@ from cograph_client.graph.queries import (
     delete_subjects_query,
     parse_kg_graph_uri,
     rewrite_subject_update,
+    select_subject_predicate_objects_query,
     tenant_graph_uri,
 )
 
@@ -121,6 +127,20 @@ def _provenance_enabled() -> bool:
     when governance/undo is switched on.
     """
     return os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+
+
+def _value_history_enabled() -> bool:
+    """Whether an attribute UPDATE records a dated value-history entry (ONTA-236).
+
+    Gated by ``COGRAPH_VALUE_HISTORY_ENABLED`` (default OFF) so bulk ingest stays
+    byte-stable and the extra read-before-delete + companion-graph write are only
+    paid where "what changed, old→new, when" matters. When ON, ``delete_facts``
+    reads the prior value of each predicate-scoped clear it is given a NEW value
+    for, and versions any genuine change (see :func:`_record_value_history`). The
+    mechanism is GENERAL — it versions ANY attribute of ANY type, with zero
+    domain knowledge.
+    """
+    return os.environ.get("COGRAPH_VALUE_HISTORY_ENABLED", "0") == "1"
 
 
 def _chunk(items: list, size: int):
@@ -499,6 +519,7 @@ async def delete_facts(
     *,
     subjects: Optional[list[str]] = None,
     triples: Optional[list[Triple]] = None,
+    new_values: Optional[dict[tuple[str, str], str]] = None,
     touched_types: Iterable[str] = (),
     reason: str = "",
 ) -> int:
@@ -518,6 +539,16 @@ async def delete_facts(
       ``(s, p)`` is removed — the "clear this attribute before writing the new
       value" case (an attribute update = delete-old + insert-new), which avoids a
       fragile literal round-trip on the old value.
+
+    ``new_values`` (ONTA-236 value history): a ``{(subject, predicate): new_value}``
+    map declaring the value each predicate-scoped clear is about to be replaced
+    WITH. When value history is enabled (``COGRAPH_VALUE_HISTORY_ENABLED``), the
+    predicate-scoped delete first reads the CURRENT value of each such ``(s, p)``
+    and, for any genuine change (old ≠ new), records a dated ``old → new`` entry
+    in the companion history graph via the shared batched-insert seam — so "what
+    changed since <date>" is queryable. This is GENERAL: any attribute of any
+    type. A first insert (no prior value) records nothing; an unchanged value
+    records nothing. History recording is best-effort and never fails the delete.
 
     Writes a ``tombstone`` event to the companion provenance graph
     (:func:`cograph_client.graph.provenance.build_tombstone_triples`, gated by
@@ -541,7 +572,13 @@ async def delete_facts(
             await neptune.update(sparql)
         removed += len(concrete)
     # 2. Predicate-scoped deletes (every object of each (s, p)) — count per chunk.
+    #    Value history (ONTA-236) rides HERE: this is the exact "clear the old
+    #    value before writing the new" step of an attribute update, so it is the
+    #    one place that can see the old value going out and the new value coming
+    #    in — recorded BEFORE the delete removes the old value.
     for chunk in _chunk(sp_pairs, 500):
+        if new_values and _value_history_enabled():
+            await _record_value_history(neptune, instance_graph, chunk, new_values)
         removed += await _count_matching(
             neptune, count_subject_predicates_query(instance_graph, chunk)
         )
@@ -575,6 +612,75 @@ async def delete_facts(
                 exc_info=True,
             )
     return removed
+
+
+async def _record_value_history(
+    neptune,
+    instance_graph: str,
+    sp_pairs: list[tuple[str, str]],
+    new_values: dict[tuple[str, str], str],
+) -> None:
+    """Version any genuine value CHANGE among ``sp_pairs`` before they're cleared.
+
+    Called by :func:`delete_facts` (gated by ``COGRAPH_VALUE_HISTORY_ENABLED``)
+    for the predicate-scoped-delete step of an attribute UPDATE — the one place
+    that sees both the OLD value (still in the graph) and the NEW value the caller
+    is about to write. For every ``(s, p)`` in this chunk that the caller declared
+    a ``new_value`` for, it reads the current object(s), and for each old value
+    that actually differs from the new one it builds an ``old → new`` version node
+    (:func:`build_value_change_triples`) and writes it to the companion HISTORY
+    graph through the SAME shared batched-insert seam every other write uses —
+    never a bespoke writer.
+
+    General by construction (no attribute is special) and correct on the two
+    no-record cases the ticket calls out:
+
+    * **First insert** — a brand-new ``(s, p)`` has no current object, so the read
+      returns nothing and no entry is recorded (a value appearing for the first
+      time is not a *change*).
+    * **Unchanged value** — old == new (compared on the lexical axis via
+      ``build_value_change_triples``) yields an empty triple list, so re-writing
+      the same value records nothing.
+
+    Best-effort and fully isolated (its own try/except, only reachable inside
+    ``delete_facts``'s own flow): a history hiccup must NEVER fail the update —
+    the primary KG write is the source of truth; history is a derived companion
+    exactly like provenance and the secondary indexes.
+    """
+    # Only pairs the caller gave a replacement value for can be a tracked change.
+    tracked = [(s, p) for (s, p) in sp_pairs if (s, p) in new_values]
+    if not tracked:
+        return
+    try:
+        _, rows = parse_sparql_results(
+            await neptune.query(
+                select_subject_predicate_objects_query(instance_graph, tracked)
+            )
+        )
+        now = datetime.now(timezone.utc)
+        hist_triples: list[Triple] = []
+        for row in rows:
+            s, p, old = row.get("s", ""), row.get("p", ""), row.get("o", "")
+            if not s or not p:
+                continue
+            new = new_values.get((s, p))
+            if new is None:
+                continue
+            # The reader already returns the LEXICAL form; normalize new the same
+            # way so old==new is a true no-op regardless of serialization.
+            hist_triples.extend(
+                build_value_change_triples(s, p, old, lexical_value(new), changed_at=now)
+            )
+        if hist_triples:
+            hist_graph = history_graph_uri(instance_graph)
+            for sparql in batched_insert_triples(hist_graph, hist_triples):
+                await neptune.update(sparql)
+    except Exception:  # noqa: BLE001 — history is a derived companion, never the write
+        logger.warning(
+            "value_history_record_failed",
+            instance_graph=instance_graph,
+            exc_info=True,
+        )
 
 
 async def rewrite_subject(

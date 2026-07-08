@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, enrich, explore, functions, health, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage, workspace_invites
+from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, enrich, explore, functions, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage, workspace_invites
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.logging import setup_logging
@@ -312,6 +312,9 @@ def create_app() -> FastAPI:
     app.include_router(query.router, tags=["query"])
     app.include_router(functions.router, tags=["functions"])
     app.include_router(lambda_functions.router, tags=["lambda_functions"])
+    # ONTA-236: dated old→new value-history read route (companion of the shared
+    # write-path history graph delete_facts populates).
+    app.include_router(history.router, tags=["history"])
     app.include_router(ask.router, tags=["ask"])
     app.include_router(ontology.router, tags=["ontology"])
     app.include_router(ingest.router, tags=["ingest"])
