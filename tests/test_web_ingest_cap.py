@@ -2666,3 +2666,27 @@ def test_clean_query_strips_meta_framing():
     assert "gadget" in low
     # A plain subject is returned essentially unchanged (filler aside).
     assert "widgets in region 7" in _clean_query("Widgets in Region 7").lower()
+
+
+def test_explicit_user_fields_records_with_requires_enumeration():
+    """Unit — the "<Type> records with …" frame harvests a field list ONLY when the
+    tail is a real ENUMERATION (2+ comma/"and"-joined items). A lone trailing phrase
+    after "records with" is a FILTER, not a field list, and must NOT be harvested —
+    otherwise "records with high error rates" would mint a junk `high_error_rates`
+    attribute (the precision guard for the widened marker)."""
+    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
+
+    # Real enumerations → harvested.
+    assert _explicit_user_fields(
+        "Add Widget records with sku, color, weight_kg, warranty_months"
+    ) == ["sku", "color", "weight_kg", "warranty_months"]
+    assert _explicit_user_fields("pull Gadget records with voltage and amperage") == [
+        "voltage",
+        "amperage",
+    ]
+    # Lone trailing phrases / filters → NOT harvested (no junk attribute).
+    assert _explicit_user_fields("find records with high error rates") == []
+    assert _explicit_user_fields("get entities with a rating above 4") == []
+    assert _explicit_user_fields("pull records with names") == []
+    # The strict "with fields …" marker still harvests even a single field.
+    assert _explicit_user_fields("discover Widgets with fields sku") == ["sku"]

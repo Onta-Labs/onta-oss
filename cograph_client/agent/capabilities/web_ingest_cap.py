@@ -1090,7 +1090,7 @@ class WebIngestCapability:
                                     job.progress.processed = processed
                                     job.progress.filled = entities_total
                                     job.progress.total = min(
-                                        cap, max(processed, processed + subs_left * avg)
+                                        cap, processed + subs_left * avg
                                     )
                                     job.platforms = platforms
                                     job.provider_logs = list(plogs.values())
@@ -2263,26 +2263,34 @@ _FIELD_TOKEN = re.compile(
     r"^[A-Za-z][A-Za-z0-9_\-]*(?: [A-Za-z0-9][A-Za-z0-9_\-]*){0,3}$"
 )
 
-# Markers that introduce an EXPLICIT user-supplied field list, so we only harvest
-# a comma/newline list when the user (or the server-generated "Use these:" chip)
-# actually enumerated fields — never from arbitrary prose. Deliberately CONSERVATIVE
-# (high precision over recall): a false positive would pollute the attribute floor
-# with an entity phrase ("collect the physicians in Tustin"), so we require an
-# unambiguous list-introducer — the "Use these:" chip, a "fields/columns/
-# attributes" noun that is either introduced by a preposition (with/of/including)
-# or immediately followed by a colon, OR a "records/entities/rows with" frame
-# (the record noun before "with" makes it unambiguous a field list follows, e.g.
-# "Add Widget records with sku, color, weight"). A bare "with" alone is NOT a
-# marker (too easily "physicians with insurance X"). Case-insensitive.
+# STRICT markers that UNAMBIGUOUSLY introduce a field list, so we harvest even a
+# single field after them — the "Use these:" chip, a "fields/columns/attributes"
+# noun preposition-introduced ("with fields …") or colon-terminated ("fields: …").
+# A false positive here would pollute the attribute floor with an entity phrase, so
+# these stay conservative. Case-insensitive.
 _FIELD_LIST_MARKERS = re.compile(
     r"(?:use\s+these"
     r"|(?:with|of|including|these|the\s+following)\s+"
     r"(?:the\s+)?(?:fields?|columns?|attributes?|properties)"
-    r"|(?:records?|entities|rows)\s+with"
     r"|(?:fields?|columns?|attributes?|properties)\s*:)"
     r"\s*:?\s*",
     re.IGNORECASE,
 )
+
+# LOOSE marker — a "records/entities/rows with" frame ("Add Widget records with
+# sku, color, weight"). The record noun before "with" signals a field list, but the
+# frame is weaker than the strict markers: a single trailing phrase could be a
+# FILTER ("records with high error rates") rather than a field list. So we only
+# harvest from this frame when the tail is an actual ENUMERATION — 2+ items joined
+# by a comma/semicolon/"and"/"or" — never a lone trailing phrase. This keeps the
+# legitimate "with a, b, c" case while rejecting "with <prose filter>".
+_LOOSE_FIELD_LIST_MARKER = re.compile(
+    r"(?:records?|entities|rows)\s+with\s+",
+    re.IGNORECASE,
+)
+# A tail is a real field ENUMERATION only if it carries a list joiner before the
+# first sentence break — a comma/semicolon, or an "and"/"or" between two items.
+_LIST_JOINER = re.compile(r"[,;]|\b(?:and|or)\b", re.IGNORECASE)
 
 
 def _explicit_user_fields(instruction: str) -> list[str]:
@@ -2295,16 +2303,17 @@ def _explicit_user_fields(instruction: str) -> list[str]:
     instruction WITHOUT an LLM, so the plan can guarantee no user-named field is
     lost, regardless of what the resolver returned.
 
-    It fires only after an unambiguous list MARKER (the server-generated
-    ``Use these: …`` confirmation chip, or a "fields/columns/attributes" noun that
-    is preposition-introduced — "with fields …", "with the following columns:" — or
-    colon-terminated — "fields: …"), then harvests the comma/newline/semicolon-
-    separated tokens that follow on the SAME logical run. Deliberately conservative:
-    bare verbs like "collect"/"include" are NOT markers, since "collect the coffee
-    shops in SF" is an entity phrase, not a field list. Each token must look like a
-    field name (a short identifier or ≤4-word phrase) — a longer prose run breaks
-    the list. Returns snake_case, de-duped, order-preserving. Empty when the user
-    gave no explicit list (the entity-only / free-text ask — unchanged behavior).
+    It fires after an unambiguous list MARKER — the server-generated
+    ``Use these: …`` chip, a "fields/columns/attributes" noun preposition-introduced
+    ("with fields …") or colon-terminated ("fields: …"), or a weaker "records/
+    entities/rows with …" frame that requires a real ENUMERATION (2+ comma/"and"-
+    joined items) so a lone filter phrase ("records with high error rates") is NOT
+    mistaken for a field list — then harvests the comma/newline/semicolon-separated
+    tokens on the SAME logical run. Deliberately conservative: bare verbs like
+    "collect"/"include" are NOT markers ("collect the coffee shops in SF" is an
+    entity phrase). Each token must look like a field name (a short identifier or
+    ≤4-word phrase) — a longer prose run breaks the list. Returns snake_case,
+    de-duped, order-preserving. Empty when the user gave no explicit list.
     """
     if not instruction:
         return []
@@ -2317,12 +2326,17 @@ def _explicit_user_fields(instruction: str) -> list[str]:
     instruction = instruction[:8000]
     out: list[str] = []
     seen: set[str] = set()
-    for m in _FIELD_LIST_MARKERS.finditer(instruction):
-        tail = instruction[m.end():]
-        # Stop the list at the first hard sentence break so a following sentence
-        # of prose is never harvested; split the remainder on list separators.
+
+    def _harvest(tail: str, *, require_enumeration: bool) -> None:
+        # Stop the list at the first hard sentence break so a following sentence of
+        # prose is never harvested.
         segment = re.split(r"[.\n?!]", tail, maxsplit=1)[0]
-        # "a, b, c and d" / "a; b" / "a, b, or c" — normalize the joiners to commas.
+        # LOOSE frame guard: only treat this as a field list when the tail is an
+        # actual enumeration (a list joiner present) — a lone trailing phrase after
+        # "records with" is a filter/prose, not a field list.
+        if require_enumeration and not _LIST_JOINER.search(segment):
+            return
+        # "a, b, c and d" / "a; b" / "a, b, or c" — normalize joiners to commas.
         segment = re.sub(r"\b(?:and|or)\b", ",", segment, flags=re.IGNORECASE)
         raw_tokens = re.split(r"[,;/]", segment)
         matched_any = False
@@ -2340,6 +2354,11 @@ def _explicit_user_fields(instruction: str) -> list[str]:
                 seen.add(slug)
                 out.append(slug)
                 matched_any = True
+
+    for m in _FIELD_LIST_MARKERS.finditer(instruction):
+        _harvest(instruction[m.end():], require_enumeration=False)
+    for m in _LOOSE_FIELD_LIST_MARKER.finditer(instruction):
+        _harvest(instruction[m.end():], require_enumeration=True)
     return out
 
 
