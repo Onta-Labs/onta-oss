@@ -212,7 +212,11 @@ server.registerTool(
 // LLM-extracted phantom entities out of the path string, and this tool reported
 // a fabricated "N entities resolved" success (persona-eval RCA).
 export async function ingestCsvHandler(
-  { file_path, kg_name }: { file_path: string; kg_name: string },
+  {
+    file_path,
+    kg_name,
+    join_on,
+  }: { file_path: string; kg_name: string; join_on?: string },
   makeClient: () => Client = client,
 ) {
   let ok = false;
@@ -234,6 +238,10 @@ export async function ingestCsvHandler(
     const result = await makeClient().ingest(file_path, {
       kg: kg_name,
       asFile: true,
+      // ONTA-250: when join_on is given, merge each row onto the EXISTING entity
+      // whose key attribute matches, instead of minting a duplicate (thin
+      // pass-through to the SDK's keyJoin → the canonical route's key_join).
+      ...(join_on ? { keyJoin: { keyAttribute: join_on } } : {}),
     });
     const entities = Number(result.entities_resolved ?? 0);
     const triples = Number(result.triples_inserted ?? 0);
@@ -249,7 +257,11 @@ server.registerTool(
   "ingest_csv",
   {
     description:
-      "Ingest a CSV file into a knowledge graph. The schema is automatically inferred.",
+      "Ingest a CSV file into a knowledge graph. The schema is automatically " +
+      "inferred. To JOIN an internal CSV onto an EXISTING graph — merging each " +
+      "row onto the entity that already carries the same exact key value instead " +
+      "of creating duplicates — set join_on to the key attribute (e.g. an id " +
+      "column).",
     inputSchema: {
       file_path: z
         .string()
@@ -259,9 +271,20 @@ server.registerTool(
         .describe(
           'Name for the knowledge graph (e.g., "sales-data", "customer-records").',
         ),
+      join_on: z
+        .string()
+        .optional()
+        .describe(
+          "Optional. The snake_case attribute name to JOIN on (the attribute the " +
+            "key column maps to, e.g. an id column). When set, each row is merged " +
+            "ONTO the existing entity whose key attribute equals the row's key " +
+            "value — no duplicate is minted; a row matching nothing mints a new " +
+            "node. Omit for ordinary ingest.",
+        ),
     },
   },
-  async ({ file_path, kg_name }) => ingestCsvHandler({ file_path, kg_name }),
+  async ({ file_path, kg_name, join_on }) =>
+    ingestCsvHandler({ file_path, kg_name, join_on }),
 );
 
 server.registerTool(

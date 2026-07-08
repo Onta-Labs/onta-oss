@@ -90,5 +90,29 @@ describe("ingest_csv handler — real file (happy path)", () => {
     const [pathArg, opts] = ingest.mock.calls[0]!;
     expect(pathArg).toBe(csv);
     expect(opts).toMatchObject({ kg: "widget-catalog", asFile: true });
+    // No key-join unless the caller asked for one.
+    expect((opts as Record<string, unknown>).keyJoin).toBeUndefined();
+  });
+
+  it("forwards join_on to the SDK as keyJoin.keyAttribute (ONTA-250)", async () => {
+    const csv = join(dir, "widgets.csv");
+    writeFileSync(csv, "sku,region\nW-1,west\n", "utf-8");
+
+    const { client, ingest } = stubClient(async () => ({
+      entities_resolved: 1,
+      triples_inserted: 1,
+    }));
+
+    await ingestCsvHandler(
+      { file_path: csv, kg_name: "widget-catalog", join_on: "sku" },
+      () => client,
+    );
+
+    const [, opts] = ingest.mock.calls[0]!;
+    expect(opts).toMatchObject({
+      kg: "widget-catalog",
+      asFile: true,
+      keyJoin: { keyAttribute: "sku" },
+    });
   });
 });

@@ -27,6 +27,7 @@ from cograph_client.graph.ontology_queries import (
     TEXT_KIND_FREE_TEXT,
     TEXT_KIND_NOT_TEXT,
     batch_entity_exists_query,
+    entities_by_key_value_query,
     entity_exists_query,
     entity_uri as _entity_uri,
     get_full_ontology_query,
@@ -71,6 +72,7 @@ from cograph_client.resolver.models import (
     ExtractedEntity,
     ExtractedRelationship,
     IngestResult,
+    KeyJoin,
     MatchVerdict,
     RejectedValue,
     ValidatedTriple,
@@ -780,6 +782,7 @@ class SchemaResolver:
         entity_type_map: dict[str, str],
         batch_id: str,
         decide_text_candidacy: bool = False,
+        key_join: KeyJoin | None = None,
     ) -> IngestResult:
         """Inner pipeline: resolve entities, insert triples. Separated for rollback.
 
@@ -901,6 +904,25 @@ class SchemaResolver:
         if er_merged_count:
             logger.info("er_merged_entities", count=er_merged_count, total=len(extraction.entities))
 
+        # ONTA-250 join-by-exact-key: rebind each row-entity whose key value
+        # matches an EXISTING entity onto that node's URI, so the existence check
+        # below sees a duplicate (Pass 2 merges attributes, skips a second
+        # rdf:type/label) instead of minting a parallel node. Runs AFTER ER so a
+        # caller-declared exact key wins over signal-based minting. Returns the ids
+        # to SKIP (unmatched with mint_unmatched=false).
+        skip_ids: set[str] = set()
+        if key_join is not None:
+            skip_ids = await self._resolve_key_join(
+                extraction.entities, resolved_types, entity_uri_map,
+                instance_graph, key_join, result,
+            )
+            # Only URIs we will actually write get the existence check.
+            pending_uris = [
+                entity_uri_map[e.id]
+                for e in extraction.entities
+                if e.id in resolved_types and e.id not in skip_ids
+            ]
+
         # Batch existence check: one SPARQL query per 500 URIs instead of N individual ASKs
         existing_uris: set[str] = set()
         BATCH_CHECK_SIZE = 500
@@ -924,6 +946,8 @@ class SchemaResolver:
         for entity in extraction.entities:
             if entity.id not in resolved_types:
                 continue
+            if entity.id in skip_ids:
+                continue  # key-join unmatched with mint_unmatched=false
             resolved_type = resolved_types[entity.id]
             entity_uri = entity_uri_map[entity.id]
             is_duplicate = entity_uri in existing_uris
@@ -980,6 +1004,10 @@ class SchemaResolver:
         instance_graph = getattr(self, "_instance_graph", graph_uri)
         rel_triples: list[tuple[str, str, str]] = []
         for rel in extraction.relationships:
+            # An edge whose source or target was skipped (key-join unmatched with
+            # mint_unmatched=false) has no node to hang off — drop it.
+            if rel.source_id in skip_ids or rel.target_id in skip_ids:
+                continue
             source_uri = entity_uri_map.get(rel.source_id)
             target_uri = entity_uri_map.get(rel.target_id)
             if source_uri and target_uri:
@@ -1077,6 +1105,7 @@ class SchemaResolver:
         tenant_id: str,
         source: str = "",
         instance_graph: str | None = None,
+        key_join: KeyJoin | None = None,
     ) -> IngestResult:
         """Ingest pre-mapped records (no schema inference) — the fixed-mapping seam.
 
@@ -1103,7 +1132,137 @@ class SchemaResolver:
         self._parent_of = await self._fetch_parent_map(graph_uri)
         return await self._ingest_mapped(
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
+            key_join=key_join,
         )
+
+    async def _resolve_key_join(
+        self,
+        entities: list[ExtractedEntity],
+        resolved_types: dict[str, str],
+        entity_uri_map: dict[str, str],
+        instance_graph: str,
+        key_join: KeyJoin,
+        result: IngestResult,
+    ) -> set[str]:
+        """Join-by-exact-key (ONTA-250): rebind each row-entity whose key value
+        matches an EXISTING entity onto that existing node's URI, so Pass 2 merges
+        the row's attributes onto it (via the shared write path) instead of
+        minting a duplicate.
+
+        The key value is the resolved value of ``key_join.key_attribute`` carried
+        on the entity (the CSV key column lands the key as a regular attribute —
+        ADR 0003 §2 "key-as-attribute"). For every entity of a type that has that
+        attribute, we look up the existing entity(ies) whose
+        ``attrs/<key_attribute>`` equals it (one batched SPARQL per type), and:
+
+        - exactly one match → rebind ``entity_uri_map[id]`` to that URI (MERGE),
+        - no match → leave the freshly-minted URI in place; the caller mints it
+          only if ``mint_unmatched`` (else the id is returned as *skip*),
+        - several matches → the key is not unique; leave as-is + log (treated as
+          unmatched so we never silently merge onto an arbitrary one).
+
+        Returns the set of entity ids to SKIP (unmatched + ``mint_unmatched`` is
+        false). Mutates ``entity_uri_map`` in place for merged rows and records the
+        merged/minted/unmatched counts on ``result``. Fully general over any
+        (type, key-attribute); best-effort — a lookup failure degrades to
+        ordinary minting (never blocks ingest)."""
+        key_attr = _normalize_attr_name(key_join.key_attribute)
+
+        # Group the incoming key value per entity id, bucketed by resolved type
+        # (the lookup query is per-type). An entity with no value for the key
+        # attribute cannot be joined — it is treated as unmatched.
+        by_type: dict[str, dict[str, str]] = {}  # type -> {entity.id: key_value}
+        no_key: set[str] = set()
+        for entity in entities:
+            if entity.id not in resolved_types:
+                continue
+            rtype = resolved_types[entity.id]
+            val = next(
+                (a.value for a in entity.attributes
+                 if _normalize_attr_name(a.name) == key_attr and (a.value or "").strip()),
+                None,
+            )
+            if val is None:
+                no_key.add(entity.id)
+                continue
+            by_type.setdefault(rtype, {})[entity.id] = val.strip()
+
+        # value -> existing URI(s), resolved per type via one batched query.
+        matched_uri: dict[str, str] = {}   # entity.id -> existing URI
+        ambiguous: set[str] = set()
+        BATCH = 300
+        for rtype, id_to_val in by_type.items():
+            # Distinct values to look up (many rows may share a key value).
+            distinct_vals = sorted({v for v in id_to_val.values()})
+            val_to_uris: dict[str, list[str]] = {}
+            for i in range(0, len(distinct_vals), BATCH):
+                chunk = distinct_vals[i : i + BATCH]
+                try:
+                    sparql = entities_by_key_value_query(
+                        instance_graph, rtype, key_attr, chunk,
+                    )
+                    res = await self._neptune.query(sparql)
+                except Exception as e:  # best-effort — degrade to ordinary mint
+                    logger.warning("key_join_lookup_failed", type=rtype, error=str(e))
+                    continue
+                for b in res.get("results", {}).get("bindings", []):
+                    v = b.get("v", {}).get("value")
+                    ent = b.get("entity", {}).get("value")
+                    if v is not None and ent:
+                        val_to_uris.setdefault(v, []).append(ent)
+            for eid, val in id_to_val.items():
+                uris = val_to_uris.get(val, [])
+                if len(uris) == 1:
+                    matched_uri[eid] = uris[0]
+                elif len(uris) > 1:
+                    ambiguous.add(eid)
+
+        if ambiguous:
+            logger.warning(
+                "key_join_ambiguous",
+                key_attribute=key_attr,
+                count=len(ambiguous),
+            )
+
+        # Rebind merged rows onto the existing node; tally outcomes. Entities with
+        # NO key value (``no_key`` — e.g. the mapping's relationship-target stubs,
+        # or a row missing the key column) were never join CANDIDATES, so they
+        # always mint and are NEVER force-skipped by mint_unmatched=false — that
+        # flag governs only rows that HAD a key value but matched nothing (or
+        # matched ambiguously). Otherwise strict mode would silently drop
+        # relationship targets.
+        skip: set[str] = set()
+        for entity in entities:
+            if entity.id not in resolved_types:
+                continue
+            if entity.id in matched_uri:
+                entity_uri_map[entity.id] = matched_uri[entity.id]
+                result.rows_key_merged += 1
+            elif entity.id in no_key:
+                # No key to join on → ordinary mint, unaffected by mint_unmatched.
+                pass
+            else:
+                # Had a key value but no unique match (missed or ambiguous).
+                if key_join.mint_unmatched:
+                    result.rows_key_minted += 1
+                else:
+                    result.rows_key_unmatched += 1
+                    skip.add(entity.id)
+
+        if result.rows_key_unmatched:
+            logger.warning(
+                "key_join_unmatched_skipped",
+                key_attribute=key_attr,
+                skipped=result.rows_key_unmatched,
+            )
+        logger.info(
+            "key_join_resolved",
+            key_attribute=key_attr,
+            merged=result.rows_key_merged,
+            minted=result.rows_key_minted,
+            unmatched=result.rows_key_unmatched,
+        )
+        return skip
 
     async def _ingest_mapped(
         self,
@@ -1113,11 +1272,19 @@ class SchemaResolver:
         existing_types: dict[str, str],
         existing_attrs: dict[str, dict[str, AttributeSchema]],
         source: str,
+        key_join: KeyJoin | None = None,
     ) -> IngestResult:
         """Apply a pre-inferred mapping to rows and run the resolve→insert tail.
 
         Extracted verbatim from the former ``_ingest_csv`` body (Step 2 onward)
         so CSV ingest and web-discovery ingest commit through one code path.
+
+        ``key_join`` (ONTA-250): when set, each row is matched to an EXISTING
+        entity by an exact key attribute and its attributes are merged ONTO that
+        node instead of minting a duplicate — a first-class, deterministic
+        complement to signal-ER. The merge rides the SAME resolve→insert tail (the
+        row's minted URI is simply rebound to the existing node's URI before the
+        write), so it flows through the shared write path untouched.
         """
         from cograph_client.resolver.csv_resolver import CSVResolver
 
@@ -1161,10 +1328,31 @@ class SchemaResolver:
                     entity_uri = _entity_uri(resolved_type, entity.id)
                     entity_uri_map[entity.id] = entity_uri
                     entity_type_map[entity.id] = resolved_type
-                    pending_uris.append(entity_uri)
+
+            instance_graph = getattr(self, "_instance_graph", graph_uri)
+
+            # ONTA-250 join-by-exact-key: rebind matched rows onto the EXISTING
+            # node's URI BEFORE the existence check, so a merged row's URI is seen
+            # as a duplicate (Pass 2 merges attributes, skips a second rdf:type)
+            # and never mints a parallel node. Runs on the mapping's stub
+            # relationship-target entities too, but those carry no key value so
+            # they fall through as unmatched-minted (unchanged). Returns the ids
+            # to SKIP entirely (unmatched + mint_unmatched=false).
+            skip_ids: set[str] = set()
+            if key_join is not None:
+                skip_ids = await self._resolve_key_join(
+                    entities, resolved_types, entity_uri_map,
+                    instance_graph, key_join, result,
+                )
+
+            # Only URIs we will actually write get the existence check.
+            pending_uris = [
+                entity_uri_map[e.id]
+                for e in entities
+                if e.id in resolved_types and e.id not in skip_ids
+            ]
 
             # Batch existence check
-            instance_graph = getattr(self, "_instance_graph", graph_uri)
             existing_uris: set[str] = set()
             BATCH_CHECK_SIZE = 500
             for i in range(0, len(pending_uris), BATCH_CHECK_SIZE):
@@ -1179,6 +1367,8 @@ class SchemaResolver:
             for entity in entities:
                 if entity.id not in resolved_types:
                     continue
+                if entity.id in skip_ids:
+                    continue  # key-join unmatched with mint_unmatched=false
                 resolved_type = resolved_types[entity.id]
                 entity_uri = entity_uri_map[entity.id]
                 is_duplicate = entity_uri in existing_uris
@@ -1203,6 +1393,10 @@ class SchemaResolver:
             # Step 4: Batch-insert relationships
             rel_triples: list[tuple[str, str, str]] = []
             for rel in relationships:
+                # An edge whose source or target was skipped (key-join unmatched
+                # with mint_unmatched=false) has no node to hang off — drop it.
+                if rel.source_id in skip_ids or rel.target_id in skip_ids:
+                    continue
                 source_uri = entity_uri_map.get(rel.source_id)
                 target_uri = entity_uri_map.get(rel.target_id)
                 if source_uri and target_uri:

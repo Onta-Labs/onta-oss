@@ -40,6 +40,15 @@ export interface IngestOptions {
   /** Called after each batch completes during CSV ingest, in batch order.
    *  Use for progress UI. Not invoked for text/json ingest. */
   onProgress?: (progress: IngestProgress) => void;
+  /** CSV only. Join-by-exact-key ingest mode (ONTA-250): match each row to an
+   *  EXISTING entity by an exact key attribute and merge the row's attributes
+   *  ONTO that node instead of minting a duplicate. `keyAttribute` is the
+   *  snake_case attribute the key column maps to (e.g. an id column); when a
+   *  row's key matches no existing entity it mints a new node unless
+   *  `mintUnmatched` is false (then it is skipped and reported). A thin
+   *  pass-through of the `/ingest/csv/rows` route's `key_join` field — the
+   *  server does the matching. General over any (type, key). */
+  keyJoin?: { keyAttribute: string; mintUnmatched?: boolean };
   /** CSV only. Called once after schema inference and BEFORE any rows are
    *  written, with the inferred mapping. Return the (possibly edited/approved)
    *  mapping to ingest, or `null` to cancel without writing anything. When
@@ -620,6 +629,17 @@ export class Client {
         source: "client",
       };
       if (kgName) body.kg_name = kgName;
+      // ONTA-250: forward join-by-exact-key mode to the canonical route (thin
+      // pass-through — the server matches + merges). snake_case per the route
+      // contract (KeyJoin.key_attribute / mint_unmatched).
+      if (opts.keyJoin) {
+        body.key_join = {
+          key_attribute: opts.keyJoin.keyAttribute,
+          ...(opts.keyJoin.mintUnmatched !== undefined
+            ? { mint_unmatched: opts.keyJoin.mintUnmatched }
+            : {}),
+        };
+      }
       const result = await this.request<{
         entities_resolved?: number;
         triples_inserted?: number;
