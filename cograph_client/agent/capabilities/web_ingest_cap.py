@@ -2281,6 +2281,37 @@ _TYPE_WITH_FIELDS_RE = re.compile(
     rf"\b({_TYPE_TOKEN})\s+(?:records?\s+)?with\b",
 )
 
+# The "each <noun> record …" frame — a caller describing the SHAPE of the dataset
+# ("each **model** record needs …", "every **product** entity should have …")
+# names the record type explicitly even when the noun is lowercase, so the
+# capitalized-only frames above miss it (the persona-eval RCA: the LLM degraded to
+# WebRecord and "each model record needs …" left it there). "each"/"every" + a
+# single common-noun word + "record"/"entity"/"row" is a strong, unambiguous "this
+# is the per-record type" signal — far tighter than a bare entity phrase, so it
+# won't fire on "collect the coffee shops". The noun is a single ``[a-z]`` word
+# (an adjective before it, "each voice model record", is dropped — we take the word
+# ADJACENT to the record noun); a stopword there ("each one record") is rejected by
+# the caller's stopword filter. We singularize a trailing plural and PascalCase it.
+_EACH_RECORD_TYPE_RE = re.compile(
+    r"\b(?:each|every|per|a)\s+([a-z][a-z0-9]*)\s+(?:records?|entities|entity|rows?)\b",
+    re.IGNORECASE,
+)
+
+
+def _singularize(word: str) -> str:
+    """Best-effort English singularization for a type noun: "companies" → "company",
+    "boxes" → "box", "models" → "model". Conservative — only the common regular
+    plural endings, so a non-plural noun ("data", "series") is left unchanged rather
+    than mangled. Not a full inflector; good enough to name a type."""
+    w = word
+    if len(w) > 3 and w.endswith("ies"):
+        return w[:-3] + "y"
+    if len(w) > 3 and w.endswith(("ses", "xes", "zes", "ches", "shes")):
+        return w[:-2]
+    if len(w) > 2 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
 
 def _strip_type_stopwords(cand: str) -> str:
     """Drop leading lead-verb / article words from a captured type phrase so
@@ -2299,12 +2330,13 @@ def _explicit_user_type(instruction: str) -> str:
     under-classifies a fully-specified ask to it too, silently dropping the type
     the user actually named ("Add **Widget** records …" → WebRecord). This parser
     recovers that named type from the raw instruction WITHOUT an LLM, so the plan
-    never downgrades a named type to the placeholder. It fires only on an
-    unambiguous frame — a discovery verb followed by "<Type> records/entities", or
-    a "<Type> with <fields>" list — and requires the type token to be Capitalized,
-    so a lowercased entity phrase is not mistaken for a type. Returns a PascalCase
-    type name (via ``_pascal``) or '' when nothing unambiguous is present (the
-    caller then keeps WebRecord and clarifies, exactly as before)."""
+    never downgrades a named type to the placeholder. It fires on an unambiguous
+    frame — a discovery verb followed by "<Type> records/entities", a "<Type> with
+    <fields>" list, or an "each <noun> record …" shape description — and requires
+    the type token to be either Capitalized (a lowercased entity phrase is not
+    mistaken for a type) or introduced by the strong "each … record" frame. Returns
+    a PascalCase type name (via ``_pascal``) or '' when nothing unambiguous is
+    present (the caller then keeps WebRecord and clarifies, exactly as before)."""
     if not instruction:
         return ""
     text = instruction[:8000]
@@ -2314,7 +2346,31 @@ def _explicit_user_type(instruction: str) -> str:
             cand = _pascal(_strip_type_stopwords(m.group(1)))
             if cand and cand != "WebRecord":
                 return cand
+    # "each <noun> record …" — a shape description that names the per-record type
+    # even in lowercase. Reject the generic record nouns themselves + non-type
+    # fillers so "each record", "each data row" don't mint a junk type.
+    m = _EACH_RECORD_TYPE_RE.search(text)
+    if m:
+        noun = m.group(1).lower()
+        if noun not in _EACH_NOUN_STOPWORDS:
+            cand = _pascal(_singularize(noun))
+            if cand and cand != "WebRecord":
+                return cand
     return ""
+
+
+# Nouns that appear in an "each <noun> record" frame but are NOT a real record
+# type — the record-noun synonyms themselves ("each record record" can't happen but
+# "each data row" / "each result entity" can) and generic fillers. Rejecting these
+# keeps the frame from minting a meaningless Data/Result/Item type. Conservative:
+# a genuine domain noun (model, product, physician, company) is never in this set.
+_EACH_NOUN_STOPWORDS = frozenset(
+    {
+        "record", "records", "entity", "entities", "row", "rows", "data",
+        "result", "results", "item", "items", "thing", "things", "one", "single",
+        "new", "such",
+    }
+)
 
 
 # A field token in an explicit list: a snake_case / hyphenated identifier, or a
