@@ -2326,6 +2326,32 @@ _FIELD_TOKEN = re.compile(
     r"^[A-Za-z][A-Za-z0-9_\-]*(?: [A-Za-z0-9][A-Za-z0-9_\-]*){0,3}$"
 )
 
+# An INLINE annotation a user commonly appends to a field name to clarify its
+# meaning or enumerate its allowed values — "model_type (LLM/TTS/STT/…)",
+# "latency [ms]", "cost_per_1M_tokens (USD)". The annotation is NOT part of the
+# field name and would otherwise fail ``_FIELD_TOKEN`` (parens/brackets/slashes
+# aren't identifier chars), which — because the harvest ``break``s on the first
+# non-field token — silently truncated the whole list at the first annotated
+# field (the persona-eval RCA: an explicit 20-field list collapsed to just the
+# two un-annotated leading fields ``name, provider``). We blank out each
+# ``(...)`` / ``[...]`` / ``{...}`` group so the bare field name survives AND a
+# list separator INSIDE the annotation ("LLM/TTS/STT") can't shatter the token.
+# Matches one balanced-free (non-nested) group at a time, applied globally, so it
+# also protects a mid-list annotation, not just a trailing one. Domain-agnostic.
+_FIELD_ANNOTATION_RE = re.compile(r"[\(\[\{][^\(\)\[\]\{\}]*[\)\]\}]")
+
+
+def _strip_inline_annotations(segment: str) -> str:
+    """Replace every inline "(…)"/"[…]"/"{…}" annotation in a field-list segment
+    with a single space, so an annotated field collapses to its bare name in place
+    — ``model_type (LLM/TTS/STT), latency [ms]`` → ``model_type , latency`` — and
+    a separator hidden inside an annotation never fragments the list. Nested
+    brackets aren't special-cased (a single pass removes the inner group and leaves
+    a stray outer bracket, which then simply fails _FIELD_TOKEN — safe: it ends the
+    run rather than harvesting garbage). Whitespace is left for the tokenizer to
+    trim."""
+    return _FIELD_ANNOTATION_RE.sub(" ", segment)
+
 # STRICT markers that UNAMBIGUOUSLY introduce a field list, so we harvest even a
 # single field after them — the "Use these:" chip, a "fields/columns/attributes"
 # noun preposition-introduced ("with fields …") or colon-terminated ("fields: …").
@@ -2401,6 +2427,13 @@ def _explicit_user_fields(instruction: str) -> list[str]:
             return
         # "a, b, c and d" / "a; b" / "a, b, or c" — normalize joiners to commas.
         segment = re.sub(r"\b(?:and|or)\b", ",", segment, flags=re.IGNORECASE)
+        # Blank out inline annotations BEFORE tokenizing, so a separator INSIDE an
+        # annotation ("model_type (LLM/TTS/STT)") can't shatter the field into
+        # bogus fragments and the annotation itself never becomes a token. We
+        # replace each "(…)"/"[…]"/"{…}" group with a single space, collapsing the
+        # annotated field down to its bare name in place. Domain-agnostic; keeps
+        # slashes that are genuine separators ("a/b/c") splitting as before.
+        segment = _strip_inline_annotations(segment)
         raw_tokens = re.split(r"[,;/]", segment)
         matched_any = False
         for tok in raw_tokens:
