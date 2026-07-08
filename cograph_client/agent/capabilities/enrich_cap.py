@@ -155,6 +155,16 @@ class EnrichCapability:
         # ignore them. No adapter name is hardcoded — selection stays the tier
         # chain's job.
         urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
+        # REFRESH-EXISTING mode (ONTA-245 F3): "re-verify / refresh / re-check the
+        # <attr> on <subset>" is re-verify-a-subset, NOT discover-new and NOT
+        # enrich-all. It routes to the EXISTING scoped enrichment primitive with the
+        # `verify` conflict policy — which re-confirms existing values and advances
+        # each fact's freshness stamp (`_verified_at`) WITHOUT re-minting entities
+        # (no discovery). No new backend primitive; this is agent routing over the
+        # same canonical enrichment path. Detected generically from the instruction
+        # verb (refresh / re-verify / re-check / update / freshness), never a
+        # persona-specific field.
+        refresh = _looks_like_refresh(instruction)
         tier = _coerce_tier(req.get("tier"))
         requested_confidence = float(
             req.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
@@ -317,9 +327,14 @@ class EnrichCapability:
                 # when present so existing (non-URL) plans are byte-for-byte
                 # unchanged.
                 **({"source_urls": urls} if urls else {}),
+                # Refresh-existing mode: route to the `verify` conflict policy at
+                # execute time so a re-verify advances the freshness stamp without
+                # re-minting. Only set when true → non-refresh plans unchanged.
+                **({"refresh": True} if refresh else {}),
             },
             rationale=(
-                f"Enrich {', '.join(attributes)} on {type_name}"
+                f"{'Refresh (re-verify)' if refresh else 'Enrich'} "
+                f"{', '.join(attributes)} on {type_name}"
                 + (
                     f" for {subset_desc}" if subset_desc
                     else (
@@ -340,8 +355,14 @@ class EnrichCapability:
                         if urls
                         else ""
                     )
-                    + " and stage the results for review."
+                    + (
+                        " and re-verify the existing values (advancing their "
+                        "freshness stamp)."
+                        if refresh
+                        else " and stage the results for review."
+                    )
                 ),
+                "refresh": refresh,
                 "scope": scope,
                 "tier": tier.value,
                 "limit": limit,
@@ -474,7 +495,12 @@ class EnrichCapability:
             tier=_coerce_tier(p.get("tier")),
             status=JobStatus.queued,
             created_at=datetime.now(timezone.utc),
-            conflict_policy=_default_conflict_policy(),
+            # Refresh-existing mode re-verifies existing values (advancing the
+            # freshness stamp) via the `verify` policy; a normal enrich stages
+            # conflicts for review (`stage`). ONTA-245 F3.
+            conflict_policy=_refresh_conflict_policy()
+            if p.get("refresh")
+            else _default_conflict_policy(),
             confidence_min=float(
                 p.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
                 or _DEFAULT_CONFIDENCE_MIN
@@ -727,6 +753,33 @@ def _default_conflict_policy():
     from cograph_client.enrichment.models import ConflictPolicy
 
     return ConflictPolicy.stage
+
+
+def _refresh_conflict_policy():
+    """Refresh-existing mode uses the `verify` policy: it re-confirms existing
+    values and advances each fact's freshness stamp (`_verified_at`) WITHOUT
+    overwriting the primary value or holding conflicts for review — the decay-
+    refresh contract (ONTA-245 F2/F3)."""
+    from cograph_client.enrichment.models import ConflictPolicy
+
+    return ConflictPolicy.verify
+
+
+# Verbs that signal a REFRESH-EXISTING (re-verify a subset) intent rather than a
+# discover-new or first-fill enrich. Matched as whole words, case-insensitively,
+# so "refresh the pricing", "re-verify affiliations", "re-check the numbers",
+# "update the verified dates" all route to the verify-policy refresh. Generic —
+# no persona field is referenced.
+_REFRESH_RE = re.compile(
+    r"\b(re-?verif\w*|re-?check\w*|re-?confirm\w*|refresh\w*|"
+    r"re-?validat\w*|freshness|decay)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_refresh(instruction: str) -> bool:
+    """True when the instruction asks to REFRESH / re-verify existing values."""
+    return bool(_REFRESH_RE.search(instruction or ""))
 
 
 def _looks_composite(samples: list[str]) -> bool:
