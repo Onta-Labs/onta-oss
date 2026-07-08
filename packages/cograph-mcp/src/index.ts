@@ -390,28 +390,30 @@ server.registerTool(
   },
 );
 
+// The raw ResolvedChange proposal shape, shared by the single- and batch-apply
+// tools so they can never drift.
+const proposalShape = z.object({
+  kind: z.enum(["attribute", "relationship"]),
+  subject_type: z.string(),
+  name: z.string(),
+  datatype_or_target: z.string(),
+  action: z.enum(["reuse", "extend", "create"]),
+  confidence: z.number(),
+  reason: z.string(),
+});
+
 server.registerTool(
   "apply_ontology_change",
   {
     description:
       "Confirm and apply a single ontology change proposal returned by " +
       "evolve_ontology. Pass one of the raw proposal objects through unchanged " +
-      "as `proposal`.",
+      "as `proposal`. To apply several proposals at once, prefer " +
+      "apply_ontology_changes (one call instead of many).",
     inputSchema: {
-      proposal: z
-        .object({
-          kind: z.enum(["attribute", "relationship"]),
-          subject_type: z.string(),
-          name: z.string(),
-          datatype_or_target: z.string(),
-          action: z.enum(["reuse", "extend", "create"]),
-          confidence: z.number(),
-          reason: z.string(),
-        })
-        .describe(
-          "A ResolvedChange proposal object exactly as returned by " +
-            "evolve_ontology.",
-        ),
+      proposal: proposalShape.describe(
+        "A ResolvedChange proposal object exactly as returned by evolve_ontology.",
+      ),
     },
   },
   async ({ proposal }) => {
@@ -420,6 +422,42 @@ server.registerTool(
       const lines = [result.summary];
       lines.push("", `Operations applied: ${result.operations}`);
       lines.push(describeChange(result.applied));
+      return textResult(lines.join("\n"));
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
+);
+
+server.registerTool(
+  "apply_ontology_changes",
+  {
+    description:
+      "Confirm and apply SEVERAL ontology change proposals returned by " +
+      "evolve_ontology in a single call — pass the raw proposal objects as " +
+      "`proposals`. Prefer this over calling apply_ontology_change once per " +
+      "proposal: it is one round-trip instead of N and reports each change's " +
+      "outcome. Idempotent; a proposal that fails does not abort the rest.",
+    inputSchema: {
+      proposals: z
+        .array(proposalShape)
+        .min(1)
+        .describe(
+          "The ResolvedChange proposal objects to apply, exactly as returned " +
+            "by evolve_ontology (the `Raw proposal objects` array).",
+        ),
+    },
+  },
+  async ({ proposals }) => {
+    try {
+      const result = await client().ontologyApplyBatch(
+        proposals as ResolvedChange[],
+      );
+      const lines = [result.summary, ""];
+      for (const r of result.results) {
+        const status = r.ok ? "applied" : `FAILED: ${r.error}`;
+        lines.push(`  ${describeChange(r.change)} — ${status}`);
+      }
       return textResult(lines.join("\n"));
     } catch (err) {
       return errorResult(err);
