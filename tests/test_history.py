@@ -392,6 +392,27 @@ def test_value_history_query_escapes_since_no_literal_breakout():
     assert '"2026" )' not in q
 
 
+def test_value_history_query_rejects_iri_breakout_subject():
+    """A crafted subject carrying a `>` cannot break out of the <…> IRI wrapper to
+    inject a GRAPH <other-tenant> block — _escape_value rejects it, so the query
+    builder raises instead of emitting cross-tenant SPARQL (tenant isolation)."""
+    import pytest
+
+    victim = "https://cograph.tech/graphs/VICTIM/kg/secret/history"
+    payload = (
+        f"http://x> }} UNION {{ GRAPH <{victim}> {{ ?node "
+        f"<https://cograph.tech/history/subject> ?s "
+    )
+    with pytest.raises(ValueError):
+        value_history_query(GRAPH, subject=payload)
+    # A `>`-bearing predicate is rejected the same way.
+    with pytest.raises(ValueError):
+        value_history_query(GRAPH, predicate="http://p> } GRAPH <x> { ?a ?b ?c ")
+    # A legit IRI still builds fine (no false positive).
+    q = value_history_query(GRAPH, subject=SUBJ, predicate=PRED)
+    assert f"<{SUBJ}>" in q and f"<{PRED}>" in q
+
+
 def test_history_graph_uri_is_not_an_instance_graph():
     """The companion history graph must NOT parse as a per-KG instance graph, so
     the derived-index hooks never mistake it for one."""

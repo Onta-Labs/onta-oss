@@ -79,3 +79,49 @@ def test_history_route_requires_kg_name(client, auth_headers, mock_neptune):
     """kg_name is required (history is per-KG) → 422 without it."""
     resp = client.get("/graphs/test-tenant/history", headers=auth_headers)
     assert resp.status_code == 422
+
+
+def test_history_route_rejects_injection_subject(client, auth_headers, mock_neptune):
+    """TENANT ISOLATION: a subject carrying a `>` that tries to inject a
+    GRAPH <other-tenant> block is rejected at the route boundary (422) and NEVER
+    reaches Neptune — so it cannot read another tenant's history."""
+    victim = "https://cograph.tech/graphs/VICTIM/kg/secret/history"
+    payload = f"http://x> }} UNION {{ GRAPH <{victim}> {{ ?node ?p ?o "
+    resp = client.get(
+        "/graphs/test-tenant/history",
+        params={"kg_name": "widgets", "subject": payload},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    # The malicious query must never have been sent to Neptune.
+    if mock_neptune.query.await_args is not None:
+        assert victim not in mock_neptune.query.await_args.args[0]
+
+
+def test_history_route_rejects_injection_predicate(client, auth_headers, mock_neptune):
+    """Same boundary rejection for a `>`-bearing predicate."""
+    resp = client.get(
+        "/graphs/test-tenant/history",
+        params={
+            "kg_name": "widgets",
+            "predicate": "http://p> } GRAPH <x> { ?a ?b ?c ",
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+def test_history_route_accepts_valid_iri_subject(client, auth_headers, mock_neptune):
+    """A well-formed absolute IRI subject is accepted (no false positive) and is
+    scoped to the CALLER's tenant graph — never another tenant's."""
+    mock_neptune.query.return_value = _history_response([])
+    resp = client.get(
+        "/graphs/test-tenant/history",
+        params={"kg_name": "widgets", "subject": SUBJ},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    sent = mock_neptune.query.await_args.args[0]
+    assert f"<{SUBJ}>" in sent
+    # The FROM graph is the caller's tenant, not the payload's.
+    assert history_graph_uri(kg_graph_uri("test-tenant", "widgets")) in sent

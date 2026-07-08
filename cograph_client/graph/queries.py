@@ -36,14 +36,36 @@ def parse_kg_graph_uri(graph_uri: str) -> tuple[str, str] | None:
     return m.group("tenant"), m.group("kg")
 
 
+# Characters that CANNOT appear in a well-formed absolute IRI reference and would
+# let a value break out of the ``<…>`` wrapper: the angle brackets that delimit it,
+# any whitespace, and control chars. A user-supplied ``subject``/``predicate`` that
+# smuggles a ``>`` would otherwise terminate the IRI early and inject arbitrary
+# SPARQL (e.g. a ``GRAPH <other-tenant>`` block → cross-tenant read). SPARQL's own
+# IRIREF grammar forbids exactly these, so rejecting them never rejects a legit IRI.
+_IRI_FORBIDDEN = re.compile(r'[<>"{}|\^`\\\x00-\x20]')
+
+
 def _escape_value(value: str) -> str:
     """Wrap a value as a URI (<...>), typed literal ("..."^^<xsd:type>), or plain literal ("...").
 
     Typed literal convention: "500000^^xsd:integer" → "500000"^^<xsd:integer>
+
+    The ``http(s)://`` URI branch REJECTS a value carrying an IRIREF-forbidden
+    character (``<`` ``>`` whitespace / control / ``"{}|^`\\``) rather than wrapping
+    it verbatim: a ``>`` inside the value would close the ``<…>`` early and let a
+    crafted subject/predicate inject SPARQL (a tenant-isolation break on the read
+    routes that pass user input here — the history + provenance readers). A
+    well-formed absolute IRI never contains these, so this only ever rejects an
+    injection attempt.
     """
     if value.startswith("http://") or value.startswith("https://"):
+        if _IRI_FORBIDDEN.search(value):
+            raise ValueError(f"invalid IRI (illegal character): {value!r}")
         return f"<{value}>"
     if value.startswith("<") and value.endswith(">"):
+        inner = value[1:-1]
+        if _IRI_FORBIDDEN.search(inner):
+            raise ValueError(f"invalid IRI (illegal character): {value!r}")
         return value
     # Check for typed literal: value^^xsd:type
     if "^^" in value:

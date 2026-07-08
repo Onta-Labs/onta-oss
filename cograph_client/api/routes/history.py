@@ -12,7 +12,9 @@ since <cutoff>" question returns only transitions after the cutoff, each dated.
 The WRITE side stays entirely on the shared write path — this route never writes.
 """
 
-from fastapi import APIRouter, Depends, Query
+import re
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
@@ -21,6 +23,22 @@ from cograph_client.graph.history import fetch_value_history
 from cograph_client.graph.queries import kg_graph_uri
 
 router = APIRouter()
+
+# A well-formed absolute IRI for the subject/predicate narrowing filters: an
+# ``http(s)://`` scheme with NO IRIREF-forbidden character. This is the route-
+# boundary belt to _escape_value's suspenders (defense in depth): a crafted
+# ``subject``/``predicate`` carrying a ``>`` (which would break out of the ``<…>``
+# wrapper and inject a ``GRAPH <other-tenant>`` block — a cross-tenant read) is
+# rejected here with a 422 before it ever reaches the query builder.
+_ABS_IRI_RE = re.compile(r'^https?://[^\s<>"{}|\^`\\\x00-\x20]+$')
+
+
+def _require_abs_iri(name: str, value: str | None) -> None:
+    if value is not None and not _ABS_IRI_RE.match(value):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{name} must be a well-formed absolute http(s) IRI",
+        )
 
 
 @router.get("/graphs/{tenant}/history")
@@ -50,6 +68,12 @@ async def get_value_history(
     prior value) and an unchanged re-write are never recorded, so every row is a
     genuine change.
     """
+    # Tenant isolation: reject a malformed subject/predicate at the boundary so an
+    # injection payload can never reach the query builder (defense in depth with
+    # _escape_value, which also rejects). The graph is scoped to the authenticated
+    # tenant via kg_graph_uri, so a valid narrow can only ever read this tenant.
+    _require_abs_iri("subject", subject)
+    _require_abs_iri("predicate", predicate)
     graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
     changes = await fetch_value_history(
         client,
