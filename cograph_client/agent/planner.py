@@ -216,19 +216,23 @@ _DISCOVER_IMPERATIVE_RE = re.compile(
     re.IGNORECASE,
 )
 #
-# The "not enrichment" self-label must be a genuine ROUTING self-label, not the
-# word "enrichment" used as an ADJECTIVE ("not enrichment candidates", "not
-# enrichment targets") in an ordinary read-only ask. We therefore require the
-# self-label to sit at a CLAUSE boundary: end-of-string, punctuation, or a
-# conjunction ("but"/"so"/"then"/…). "… not enrichment - find Gadgets" (dash =
-# boundary) and "… not enrichment." still match; "… not enrichment candidates"
-# (a following noun, no boundary) no longer does. Same clause-boundary anchor on
-# "new discovery" / "discovery task" for consistency.
+# "new discovery" and "discovery task" are POSITIVE discovery self-labels — they
+# should force-route wherever they appear, including MID-SENTENCE ("new discovery
+# run of Widgets", "kick off a discovery task for Sprockets now"). They match on a
+# plain word boundary (\b), no clause-boundary requirement.
+#
+# "not enrichment" is the one that needs a guard: the word "enrichment" as an
+# ADJECTIVE ("not enrichment candidates", "not enrichment targets") in an ordinary
+# read-only ask must NOT be read as a routing self-label. So ONLY that branch is
+# anchored to a CLAUSE boundary — end-of-string, punctuation, or a conjunction
+# ("but"/"so"/"then"/…). "… not enrichment - find Gadgets" (dash = boundary),
+# "… not enrichment." and "…, not enrichment" still match; "… not enrichment
+# candidates" (a following noun, no boundary) does not.
 _CLAUSE_BOUNDARY = r"(?=$|[\s]*[-:;,.]|\s+(?:but|so|then|and|please)\b)"
 _EXPLICIT_DISCOVERY_INTENT_RE = re.compile(
-    r"\bnew\s+discovery" + _CLAUSE_BOUNDARY + r"|"
-    r"\bnot\s+(?:an?\s+)?enrichment" + _CLAUSE_BOUNDARY + r"|"
-    r"\bdiscovery\s+task" + _CLAUSE_BOUNDARY,
+    r"\bnew\s+discovery\b|"
+    r"\bdiscovery\s+task\b|"
+    r"\bnot\s+(?:an?\s+)?enrichment" + _CLAUSE_BOUNDARY,
     re.IGNORECASE,
 )
 # Read-only framings we must NOT hijack even when they mention the web (e.g.

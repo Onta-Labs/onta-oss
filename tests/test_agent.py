@@ -1928,12 +1928,21 @@ def test_discovery_guard_not_forced_by_enrichment_adjective(message):
         "find all Sprockets in Zone 9, this is a new discovery",
         "scrape Widgets from example.test, not enrichment.",
         "add all Gadgets from the web",
+        # MID-SENTENCE positive self-labels must still force-route (they were
+        # over-narrowed by the first clause-boundary anchor; the review nit fix
+        # restores them). "new discovery" / "discovery task" are always positive.
+        "new discovery run of Widgets",
+        "kick off a discovery task now",
+        "discovery task for Sprockets",
+        "kick off a discovery task for Sprockets now",
     ],
 )
 def test_discovery_guard_still_fires_on_genuine_self_label(message):
-    """A genuine "this is a new discovery / not enrichment" self-label (at a clause
-    boundary), a leading discover/scrape imperative, or a '... from the web' fetch
-    still force-routes to discovery — the nit fix must not break the real path."""
+    """A genuine "this is a new discovery / not enrichment" self-label (the "not
+    enrichment" one at a clause boundary; "new discovery"/"discovery task" anywhere,
+    including mid-sentence), a leading discover/scrape imperative, or a '... from the
+    web' fetch still force-routes to discovery — the nit fix must not break the real
+    path, nor under-trigger on a mid-sentence positive self-label."""
     from cograph_client.agent.planner import _is_web_discovery_request
 
     assert _is_web_discovery_request(message) is True

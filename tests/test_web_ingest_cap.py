@@ -1282,15 +1282,16 @@ async def test_execute_threads_per_record_source_url(monkeypatch):
 
     captured: dict = {"content_types": set()}
     committed_rows: list[dict] = []
+    # URL set of EACH ingest call, recorded here so the homogeneity check runs in
+    # the test body (below) — an assert inside fake_ingest would be swallowed by
+    # the run loop's `except Exception: continue` and never fail the test.
+    per_call_url_sets: list[set] = []
 
     async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
         captured["content_types"].add(content_type)
         rows = json.loads(content)
         committed_rows.extend(rows)
-        # Each ingest call now sees rows from ONE page only (citation-binding fix):
-        # every row in a single call shares one source_url.
-        urls = {r.get("source_url") for r in rows}
-        assert len(urls) == 1, f"an ingest batch mixed source URLs: {urls}"
+        per_call_url_sets.append({r.get("source_url") for r in rows})
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
     monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
@@ -1312,6 +1313,11 @@ async def test_execute_threads_per_record_source_url(monkeypatch):
 
     assert committed_rows, "rows were committed"
     assert captured["content_types"] == {"json"}  # same ingest path
+    # Each ingest call saw rows from ONE page only (citation-binding fix) — asserted
+    # here in the test body so a mixed-URL batch actually fails.
+    assert per_call_url_sets, "at least one ingest call ran"
+    for urls in per_call_url_sets:
+        assert len(urls) == 1, f"an ingest batch mixed source URLs: {urls}"
     # Every committed record traces to its OWN page; source_url rides alongside
     # the confirmed attributes (an extra provenance column, not a replacement).
     # The provider gives each row a distinct page, so the citation-binding fix
