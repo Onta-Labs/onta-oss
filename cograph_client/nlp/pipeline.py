@@ -29,6 +29,19 @@ logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
 _ontology_cache: dict[str, tuple[str, float]] = {}
 ONTOLOGY_CACHE_TTL = 60  # seconds
 
+# Distinct markers so a TRANSIENT fetch failure is never mistaken for a genuinely
+# empty graph (ONTA-248 A2: "errors masquerade as facts"). The old error text
+# ("Graph may be empty.") let the LLM authoritatively state the graph was empty on
+# a mere throttle/timeout. These strings are surfaced to the SPARQL-generation LLM;
+# the error marker explicitly forbids asserting absence.
+ONTOLOGY_FETCH_ERROR = (
+    "Could not fetch the ontology for this graph (a transient backend error, e.g. "
+    "a timeout or throttle). This does NOT mean the graph is empty or that any "
+    "type is absent — the schema is simply UNKNOWN right now. Do not claim any "
+    "type or attribute does not exist; suggest retrying."
+)
+ONTOLOGY_EMPTY = "No ontology defined yet."
+
 # Cap on concurrent enum-discovery SPARQL queries (COG-58). Enum discovery
 # fires one COUNT(DISTINCT) per attribute + per relationship; an unbounded
 # asyncio.gather meant a wide table (hundreds of columns → hundreds of
@@ -120,6 +133,60 @@ def _sanitize_sparql_literal(text: str) -> str:
     return re.sub(r'["\\\n\r\t]', " ", text).strip().lower()[:80]
 
 
+_ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
+
+
+def _row_has_entity_object(row: dict) -> bool:
+    """True if any value in the row is an entity IRI (``…/entities/…``).
+
+    A describe-shape row (``?p ?o``) whose object is an entity IRI means ``?p`` is
+    a RELATIONSHIP edge, not a literal-valued housekeeping marker — so the
+    predicate filter must apply its ``is_relationship`` exemption for that row and
+    NOT hide a real relationship that happens to share a housekeeping leaf name.
+    """
+    return any(
+        isinstance(v, str) and v.startswith(_ENTITY_URI_PREFIX) for v in row.values()
+    )
+
+
+def _drop_internal_predicate_rows(bindings: list[dict]) -> list[dict]:
+    """Drop result rows that describe an INTERNAL/housekeeping predicate.
+
+    The NL ``ask`` path renders every binding verbatim, so a ``SELECT ?p ?o``
+    "describe this entity" or a ``SELECT DISTINCT ?p`` query leaks entity-
+    resolution internals (``er/blockKey``, ``er/erSignal_*``), ingest housekeeping
+    (``onto/batch_id``, …) and normalization bookkeeping (``onto/norm/*``) straight
+    into the answer text. This is the render-time twin of the Explorer's panel
+    filter: a row is dropped when ANY of its values is an internal predicate URI
+    per the shared :func:`is_internal_predicate`.
+
+    Real relationships on ``…/onto/<leaf>`` are PRESERVED (the shared helper
+    returns False for them). When a row's object is an entity IRI the predicate is
+    treated as a relationship (``is_relationship=True``) so a legitimate edge that
+    shares a housekeeping leaf name (e.g. an ``…/onto/source`` edge pointing at an
+    Organization) is not hidden. Rows carrying no predicate-shaped value (ordinary
+    attribute projections like ``?name ?latency``) are untouched — nothing in them
+    matches an internal predicate URI, so they always pass through.
+    """
+    from cograph_client.graph.predicates import is_internal_predicate
+
+    def _is_uri(v) -> bool:
+        return isinstance(v, str) and v.startswith(("http://", "https://"))
+
+    kept: list[dict] = []
+    for row in bindings:
+        is_rel = _row_has_entity_object(row)
+        # Only URI-shaped values can be a predicate; a literal / empty attribute
+        # value must never trigger the drop (is_internal_predicate("") is True).
+        if any(
+            _is_uri(v) and is_internal_predicate(v, is_relationship=is_rel)
+            for v in row.values()
+        ):
+            continue
+        kept.append(row)
+    return kept
+
+
 class NLQueryPipeline:
     def __init__(self, neptune: NeptuneClient, anthropic_key: str):
         self.neptune = neptune
@@ -133,12 +200,18 @@ class NLQueryPipeline:
         # generated SPARQL. Default OFF so the default Neptune call pattern
         # stays byte-identical (same gating pattern as COGRAPH_ER_ENABLED).
         self._aliases_enabled = os.environ.get("COGRAPH_ALIASES_ENABLED", "0") == "1"
-        # Spatio-temporal read routing (ONTA-157 Phase 2): a geo/proximity question
-        # is answered directly from the secondary index (no Neptune round-trip).
-        # Default OFF — same gating discipline as the aliases flag — so the default
-        # query path (and every eval) stays byte-identical until explicitly enabled.
+        # Spatio-temporal read routing (ONTA-157 Phase 2 → ONTA-249): a
+        # geo/proximity question is answered directly from the secondary index (no
+        # Neptune round-trip). Now a SUPPORTED path and ENABLED BY DEFAULT (ONTA-249):
+        # the radius/bbox engine is fully built and, with the free-text geocoder
+        # seam, a bare place-name anchor resolves — so "within N km of PLACE" works
+        # end-to-end. It is defensively gated: the fast path returns None (falls
+        # through to SPARQL unchanged) whenever the question isn't spatial, the KG
+        # can't be scoped, the intent doesn't parse, or the anchor can't be
+        # resolved — so enabling it cannot regress a non-spatial query. Set
+        # COGRAPH_SPATIAL_ROUTING_ENABLED=0 to force it off (e.g. byte-stable evals).
         self._spatial_routing_enabled = (
-            os.environ.get("COGRAPH_SPATIAL_ROUTING_ENABLED", "0") == "1"
+            os.environ.get("COGRAPH_SPATIAL_ROUTING_ENABLED", "1") != "0"
         )
 
     async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None, layer_graph_uris: list[str] | None = None) -> NLResult:
@@ -395,18 +468,59 @@ class NLQueryPipeline:
             return None
 
     async def _resolve_anchor_coords(self, anchor, data_graph: str):
-        """Resolve a radius anchor to ``(lon, lat)``: explicit coords, else a KG
-        entity matched by ``entity_description`` (one Neptune lookup). None if
-        unresolved — the caller then falls through to the SPARQL path."""
+        """Resolve a radius anchor to ``(lon, lat)``.
+
+        Resolution ladder (first hit wins):
+          1. explicit coordinates on the intent;
+          2. a KG entity whose label matches ``entity_description`` AND carries a
+             ``geo:wktLiteral`` (one scoped Neptune lookup) — preferred, since it
+             pins the anchor to the tenant's own data;
+          3. the free-text GEOCODER seam (ONTA-249): turn a bare place name
+             ("Irvine") into coords via the registered geocoder — the OSS default
+             is a deterministic offline gazetteer; a premium geocoder registers
+             over it. This is what lets a place name resolve when no KG entity for
+             it exists.
+
+        Returns ``None`` when nothing resolves — the caller then falls through to
+        the normal SPARQL path (byte-stable pre-existing behavior)."""
         if anchor is None:
             return None
         if anchor.has_coords():
             return (anchor.lon, anchor.lat)
         if not anchor.entity_description:
             return None
-        return await self._resolve_anchor_via_neptune(
+        # 2. KG-entity geometry (preferred — anchored to the tenant's own data).
+        via_kg = await self._resolve_anchor_via_neptune(
             anchor.entity_description, data_graph
         )
+        if via_kg is not None:
+            return via_kg
+        # 3. Free-text geocoder seam.
+        return await self._geocode_anchor(anchor.entity_description)
+
+    async def _geocode_anchor(self, description: str):
+        """Resolve a free-text place name to ``(lon, lat)`` via the geocoder seam.
+
+        Best-effort: returns ``None`` (never raises) when the place is unknown or
+        the geocoder errors, so the caller falls through to the SPARQL path."""
+        if not description or not description.strip():
+            return None
+        try:
+            from cograph_client.spatiotemporal.geocoder import get_geocoder
+
+            coords = await get_geocoder().geocode(description)
+        except Exception:
+            logger.warning("geocode_anchor_failed", exc_info=True)
+            return None
+        if (
+            isinstance(coords, tuple)
+            and len(coords) == 2
+            and all(isinstance(c, (int, float)) for c in coords)
+        ):
+            lon, lat = float(coords[0]), float(coords[1])
+            if -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0:
+                return (lon, lat)
+        return None
 
     async def _resolve_anchor_via_neptune(self, description: str, data_graph: str):
         """Find a KG entity whose label/text contains ``description`` AND that
@@ -653,7 +767,7 @@ class NLQueryPipeline:
                             )
                             _ontology_cache[cache_key] = (summary, time.time())
                             return summary
-                return "No ontology defined yet."
+                return ONTOLOGY_EMPTY
 
             # Discover enumerated values for low-cardinality string attributes.
             # Runs cardinality checks concurrently (asyncio.gather) instead of
@@ -748,7 +862,12 @@ class NLQueryPipeline:
                     except Exception:
                         logger.warning("cardinality_attr_check_failed", exc_info=True)
 
-                # Phase 3: Check relationship cardinality to hide empty ones
+                # Phase 3: Check relationship cardinality to annotate empty ones.
+                # A CONFIRMED-empty relationship is annotated "[no instances]" but
+                # NEVER removed (ONTA-248 determinism): a DECLARED relationship is
+                # part of the schema, and dropping it on a cnt==0 — which a
+                # transient throttle produces exactly like a genuinely-empty edge —
+                # made a relationship appear then vanish across identical calls.
                 empty_rels: set[tuple[str, str]] = set()  # (type_name, rel_name)
                 if rel_uris:
                     try:
@@ -781,8 +900,17 @@ class NLQueryPipeline:
                         elif type_name in enum_counts and a_name in enum_counts[type_name]:
                             cnt = enum_counts[type_name][a_name]
                             if cnt == 0:
-                                # Skip empty attributes — no data, would confuse the LLM
-                                continue
+                                # DECLARED attribute with zero instances. Keep it
+                                # (do NOT drop) — dropping made the schema the LLM
+                                # sees NON-DETERMINISTIC (ONTA-248): a transient
+                                # Neptune throttle returns an empty COUNT result
+                                # (cnt=0) exactly like a genuinely-empty attribute,
+                                # so the attribute flickered in and out of the
+                                # summary between otherwise-identical calls. The
+                                # attribute is DECLARED in the ontology, so it
+                                # exists; annotate it as empty rather than deleting
+                                # it, so an existence claim stays stable.
+                                annotated.append(f"{attr_entry} [no instances]")
                             elif cnt > MAX_ENUM_CARDINALITY:
                                 # High-cardinality: just show the count
                                 annotated.append(f"{attr_entry} [{cnt} unique values]")
@@ -792,12 +920,15 @@ class NLQueryPipeline:
                             annotated.append(attr_entry)
                     lines.append(f"  Attributes: {', '.join(annotated)}")
                 if info["relationships"]:
-                    filtered_rels = [
-                        r for r in info["relationships"]
-                        if (type_name, r.split(" →")[0].strip()) not in empty_rels
-                    ]
-                    if filtered_rels:
-                        lines.append(f"  Relationships: {', '.join(sorted(filtered_rels))}")
+                    # Keep EVERY declared relationship; annotate confirmed-empty
+                    # ones instead of hiding them (ONTA-248 determinism).
+                    annotated_rels = []
+                    for r in sorted(info["relationships"]):
+                        if (type_name, r.split(" →")[0].strip()) in empty_rels:
+                            annotated_rels.append(f"{r} [no instances]")
+                        else:
+                            annotated_rels.append(r)
+                    lines.append(f"  Relationships: {', '.join(annotated_rels)}")
                 if info["functions"]:
                     lines.append(f"  Functions: {', '.join(sorted(info['functions']))}")
             summary = "\n".join(lines)
@@ -813,7 +944,9 @@ class NLQueryPipeline:
             return summary
         except Exception:
             logger.error("ontology_fetch_failed", exc_info=True)
-            return "Could not fetch ontology. Graph may be empty."
+            # Distinct from the empty-graph message: a transient fetch failure must
+            # NOT be reported to the LLM as "graph is empty" (ONTA-248 A2).
+            return ONTOLOGY_FETCH_ERROR
 
     async def _instance_graph_ontology_fallback(
         self,
@@ -1151,6 +1284,11 @@ class NLQueryPipeline:
         if max_rows is None:
             max_rows = int(os.environ.get("OMNIX_REPHRASE_MAX_ROWS", "30"))
 
+        # Same hygiene as _format_answer: never feed internal/housekeeping
+        # predicate rows (er/*, onto/norm/*, onto/batch_id, …) to the narrative
+        # summarizer, or it would describe ER plumbing as business facts.
+        bindings = _drop_internal_predicate_rows(bindings)
+
         try:
             # Build a compact tabular string from bindings
             if not bindings:
@@ -1446,6 +1584,18 @@ class NLQueryPipeline:
         if not bindings:
             # Even with no rows, surface which requested columns are absent so a
             # follow-up can re-resolve rather than assume "no data at all".
+            return "No results found." + _missing_note()
+
+        # Hygiene: drop rows describing internal/housekeeping predicates
+        # (`er/blockKey`, `er/erSignal_*`, `onto/batch_id`, `onto/norm/*`, …) so a
+        # "describe this entity" / "list all predicates" query never leaks ER /
+        # ingest plumbing as business data. Real relationships on `…/onto/<leaf>`
+        # are preserved. This mirrors the Explorer panel filter via the SAME
+        # shared `is_internal_predicate` helper.
+        bindings = _drop_internal_predicate_rows(bindings)
+        if not bindings:
+            # Every row was internal plumbing — there is no user-facing data to
+            # show. Report empty rather than emitting the internal predicates.
             return "No results found." + _missing_note()
 
         # Resolve any entity/type URIs to human-readable labels

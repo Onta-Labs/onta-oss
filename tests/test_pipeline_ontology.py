@@ -88,55 +88,56 @@ class TestOntologyActiveTypeFilter:
 
 
 class TestCardinalityFiltering:
-    """Test that cardinality checks correctly filter empty vs non-empty attributes."""
+    """Test the ONTA-248 determinism contract: a DECLARED attribute is NEVER
+    dropped on a zero/failed cardinality COUNT — it is annotated "[no instances]"
+    so the schema the LLM sees is stable across identical calls (a transient
+    throttle produces cnt==0 exactly like a genuinely-empty attribute)."""
 
-    def test_zero_cardinality_attributes_hidden(self):
-        """Attributes with 0 data should not appear in the summary."""
+    def _render_attrs(self, enum_counts, attributes):
+        """Mirror the keep-and-annotate render in pipeline._fetch_ontology."""
+        MAX = 25
+        annotated = []
+        for attr_entry in attributes:
+            a_name = attr_entry.split(" (")[0]
+            if "Singer" in enum_counts and a_name in enum_counts["Singer"]:
+                cnt = enum_counts["Singer"][a_name]
+                if cnt == 0:
+                    annotated.append(f"{attr_entry} [no instances]")
+                elif cnt > MAX:
+                    annotated.append(f"{attr_entry} [{cnt} unique values]")
+                else:
+                    annotated.append(attr_entry)
+            else:
+                annotated.append(attr_entry)
+        return annotated
+
+    def test_zero_cardinality_attributes_kept_and_annotated(self):
+        """Attributes with 0 data are KEPT (annotated), not dropped — dropping
+        made the schema non-deterministic (ONTA-248)."""
         enum_counts = {"Singer": {"name": 6, "bio": 0, "age": 6}}
-
-        # Simulate the filtering logic from pipeline.py lines 310-331
         attributes = [
             "name (string) — URI: <https://cograph.tech/types/Singer/attrs/name>",
             "bio (string) — URI: <https://cograph.tech/types/Singer/attrs/bio>",
             "age (integer) — URI: <https://cograph.tech/types/Singer/attrs/age>",
         ]
-
-        annotated = []
-        for attr_entry in attributes:
-            a_name = attr_entry.split(" (")[0]
-            if "Singer" in enum_counts and a_name in enum_counts["Singer"]:
-                cnt = enum_counts["Singer"][a_name]
-                if cnt == 0:
-                    continue  # Skip empty
-                annotated.append(attr_entry)
-
-        assert len(annotated) == 2
+        annotated = self._render_attrs(enum_counts, attributes)
+        assert len(annotated) == 3  # nothing dropped
         assert any("name" in a for a in annotated)
         assert any("age" in a for a in annotated)
-        assert not any("bio" in a for a in annotated)
+        bio = next(a for a in annotated if "bio" in a)
+        assert "[no instances]" in bio
 
-    def test_type_with_all_zero_attrs_still_appears(self):
-        """A type with all zero-cardinality attributes should still show up
-        (it might have relationships that have data)."""
+    def test_type_with_all_zero_attrs_keeps_them(self):
+        """A type with all zero-cardinality attributes keeps every declared attr
+        (annotated), so the type + its schema stay visible and stable."""
         enum_counts = {"Singer": {"name": 0, "age": 0}}
-
         attributes = [
             "name (string) — URI: <...>",
             "age (integer) — URI: <...>",
         ]
-
-        annotated = []
-        for attr_entry in attributes:
-            a_name = attr_entry.split(" (")[0]
-            if "Singer" in enum_counts and a_name in enum_counts["Singer"]:
-                cnt = enum_counts["Singer"][a_name]
-                if cnt == 0:
-                    continue
-                annotated.append(attr_entry)
-
-        # annotated is empty, but the type should still appear in lines
-        # (with relationships if any)
-        assert len(annotated) == 0
+        annotated = self._render_attrs(enum_counts, attributes)
+        assert len(annotated) == 2
+        assert all("[no instances]" in a for a in annotated)
 
     def test_missing_enum_counts_keeps_attribute(self):
         """If cardinality check fails (no enum_counts entry), attribute should
@@ -165,35 +166,43 @@ class TestCardinalityFiltering:
 class TestRelationshipFiltering:
     """Test that relationship cardinality filtering works correctly."""
 
-    def test_empty_relationship_hidden(self):
-        """Relationships with 0 instances should be filtered out."""
+    def _render_rels(self, empty_rels, relationships):
+        """Mirror the keep-and-annotate relationship render in _fetch_ontology."""
+        out = []
+        for r in relationships:
+            if ("Singer", r.split(" →")[0].strip()) in empty_rels:
+                out.append(f"{r} [no instances]")
+            else:
+                out.append(r)
+        return out
+
+    def test_empty_relationship_kept_and_annotated(self):
+        """A DECLARED relationship with 0 instances is KEPT (annotated), not
+        removed (ONTA-248): dropping it made a real relationship flicker in/out of
+        the schema across identical calls under a transient throttle."""
         empty_rels = {("Singer", "country")}
         relationships = [
             "country → Country — predicate URI: <https://cograph.tech/onto/country>",
             "genre → Genre — predicate URI: <https://cograph.tech/onto/genre>",
         ]
-
-        filtered = [
-            r for r in relationships
-            if ("Singer", r.split(" →")[0].strip()) not in empty_rels
-        ]
-
-        assert len(filtered) == 1
-        assert "genre" in filtered[0]
+        rendered = self._render_rels(empty_rels, relationships)
+        assert len(rendered) == 2  # nothing dropped
+        country = next(r for r in rendered if "country" in r)
+        genre = next(r for r in rendered if "genre" in r)
+        assert "[no instances]" in country
+        assert "[no instances]" not in genre
+        # The relationship predicate URI is preserved on onto/<leaf>.
+        assert "https://cograph.tech/onto/country" in country
 
     def test_non_empty_relationship_kept(self):
-        """Relationships with data should survive filtering."""
+        """Relationships with data survive without annotation."""
         empty_rels = set()  # Nothing is empty
         relationships = [
             "country → Country — predicate URI: <https://cograph.tech/onto/country>",
         ]
-
-        filtered = [
-            r for r in relationships
-            if ("Singer", r.split(" →")[0].strip()) not in empty_rels
-        ]
-
-        assert len(filtered) == 1
+        rendered = self._render_rels(empty_rels, relationships)
+        assert len(rendered) == 1
+        assert "[no instances]" not in rendered[0]
 
 
 class TestExceptionHandling:
