@@ -23,6 +23,7 @@ from cograph_client.graph.queries import kg_graph_uri
 from cograph_client.nlp.pipeline import NLQueryPipeline
 from cograph_client.spatiotemporal.geocoder import (
     GazetteerGeocoder,
+    GeoNamesGeocoder,
     get_geocoder,
     register_geocoder,
     reset_geocoder,
@@ -96,9 +97,12 @@ async def _run(pipe, question, intent_json):
 
 
 # ------------------------------------------------------------------- geocoder seam
-async def test_default_geocoder_is_deterministic_gazetteer():
+async def test_default_geocoder_is_general_and_deterministic():
+    # The OSS default is now the GENERAL GeoNames gazetteer (~34k public cities),
+    # not the tiny hand-list — a bare place name resolves because it's a real
+    # place in public data, not because anyone seeded it.
     g = get_geocoder()
-    assert isinstance(g, GazetteerGeocoder)
+    assert isinstance(g, GeoNamesGeocoder)
     # Deterministic: two calls, identical result; unknown place → None.
     a = await g.geocode("San Francisco")
     b = await g.geocode("san francisco")
@@ -112,7 +116,7 @@ async def test_register_geocoder_overrides_default():
     assert get_geocoder() is invented
     assert await get_geocoder().geocode("Zorptown") == ZORP_CENTER
     reset_geocoder()
-    assert isinstance(get_geocoder(), GazetteerGeocoder)  # back to default
+    assert isinstance(get_geocoder(), GeoNamesGeocoder)  # back to general default
 
 
 # ----------------------------------------------------------- radius over place name
