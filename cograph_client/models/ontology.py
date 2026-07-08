@@ -94,6 +94,49 @@ class ResolutionResult(BaseModel):
     )
 
 
+class ApplyBatchRequest(BaseModel):
+    """Body for ``POST /graphs/{tenant}/ontology/apply/batch``.
+
+    A list of the SAME ``ResolvedChange`` objects the single ``/apply`` route
+    takes — apply many proposals from one ``/resolve`` call in ONE round-trip
+    instead of N. The canonical batch surface every client (SDK / MCP) rides;
+    no interface hand-rolls its own multi-apply loop.
+    """
+
+    changes: list[ResolvedChange] = Field(
+        min_length=1,
+        description="The resolved changes to apply, in order. Idempotent (upserts).",
+    )
+
+
+class ApplyChangeResult(BaseModel):
+    """Per-change outcome inside an :class:`ApplyBatchResult`.
+
+    ``ok`` is the well-defined partial-failure signal: a change that raised is
+    reported with ``ok=False`` + ``error`` and does NOT abort the rest of the
+    batch (each change's writes are independent + idempotent, so a re-POST of the
+    whole batch safely retries the failed ones).
+    """
+
+    change: ResolvedChange
+    ok: bool = True
+    operations: int = 0
+    error: str = ""
+
+
+class ApplyBatchResult(BaseModel):
+    """Response for the batch-apply route — one entry per submitted change."""
+
+    results: list[ApplyChangeResult] = Field(default_factory=list)
+    #: Count of changes that applied cleanly (== number with ok=True).
+    applied_count: int = 0
+    #: Count of changes that raised (ok=False). 0 ⇒ the whole batch succeeded.
+    failed_count: int = 0
+    #: Sum of individual SPARQL operations run across all successful changes.
+    operations: int = 0
+    summary: str = ""
+
+
 class ResolveRequest(BaseModel):
     """Body for ``POST /graphs/{tenant}/ontology/resolve`` (COG-81).
 

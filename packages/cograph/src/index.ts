@@ -8,6 +8,8 @@ export type {
   ResolvedChange,
   OntologyResolveResult,
   OntologyApplyResult,
+  OntologyApplyChangeResult,
+  OntologyApplyBatchResult,
   EnrichRequest,
   EnrichJob,
   EnrichJobCreate,
