@@ -625,6 +625,101 @@ def _scope_subselect(
     )
 
 
+def _scope_values_block(pred_iris: list[str], values: list[str]) -> str:
+    """INLINE SPARQL graph patterns restricting ``?e`` (already typed) to a
+    MULTI-VALUE scope — the ``IN`` variant of :func:`_scope_block`.
+
+    A user who says "refresh pricing for OpenAI, Google, Deepgram and ElevenLabs"
+    or "the physicians named A. Selvan, R. Mokabberi, …" is naming a SET of scope
+    values, not one literal. Matching that set as a single crammed literal
+    (``value = "OpenAI, Google, Deepgram, ElevenLabs"``) matches zero rows — the
+    reported persona-eval gap (a scoped refresh premature-clarified to 0, then the
+    caller fell into a fresh discovery). This block matches ``?e`` whose scope
+    predicate value (or a related node's label, or its own ``rdfs:label``) is a
+    case-insensitive member of ``values`` — the same arms as ``_scope_block`` with
+    the single ``= "<v>"`` comparison replaced by ``IN (<v1>, <v2>, …)``.
+
+    ``pred_iris`` are the concrete instance predicate IRI(s) the scope predicate
+    resolved to (via :func:`_resolve_scope_predicate_iris`) — matched as a
+    BOUND-predicate property path so Neptune uses its POS index. ``values`` are
+    lower-cased + ``_esc_lit``-escaped string literals only (never spliced into an
+    IRI), so this is injection-safe exactly like the single-value block. Empty
+    ``pred_iris`` → ``FILTER(false)`` (match nothing fast, never a scan).
+    """
+    safe_iris = [u for u in pred_iris if _safe_iri(u)]
+    if not safe_iris or not values:
+        return "  FILTER(false)"
+
+    lowered = [_esc_lit(v.strip().lower()) for v in values if v and v.strip()]
+    if not lowered:
+        return "  FILTER(false)"
+    in_list = ", ".join(f'"{v}"' for v in lowered)
+    pred_path = _pred_path(safe_iris)
+
+    # Each arm is a SELF-CONTAINED top-level UNION branch that RE-STATES its own
+    # ``?e {pred} ?sv`` triple (rather than sharing one from an enclosing group).
+    # This keeps the branches independent and portable: a nested
+    # ``{ ?e p ?sv . { FILTER(?sv…) } UNION { ?sv ?p ?o . FILTER } }`` shape (the
+    # form _scope_block uses, tuned for Neptune) evaluates the FILTER-only inner
+    # arm differently across engines. Flattening to top-level UNIONs — one triple +
+    # one FILTER per branch — matches identically on Neptune AND a standards engine,
+    # and each still leads with the POS-indexed bound-predicate triple. DISTINCT in
+    # the caller collapses an entity matched by several arms to one row.
+    attr_value_arms = "".join(
+        f"  UNION {{\n"
+        f"    ?e <{iri}> ?av .\n"
+        f"    FILTER(isLiteral(?av) && LCASE(STR(?av)) IN ({in_list}))\n"
+        f"  }}\n"
+        for iri in safe_iris
+        if "/attrs/" in iri
+    )
+
+    return (
+        # Literal-attribute arm.
+        f"  {{\n"
+        f"    ?e {pred_path} ?sv .\n"
+        f"    FILTER(isLiteral(?sv) && LCASE(STR(?sv)) IN ({in_list}))\n"
+        f"  }} UNION {{\n"
+        # Relationship arm: ?sv is the (bounded) target node; match ANY literal on
+        # it, case-insensitively, against the value set.
+        f"    ?e {pred_path} ?sv .\n"
+        f"    ?sv ?slp ?stl .\n"
+        f"    FILTER(isLiteral(?stl) && LCASE(STR(?stl)) IN ({in_list}))\n"
+        f"  }} UNION {{\n"
+        # … or the related IRI's local-name as a fallback.
+        f"    ?e {pred_path} ?sv .\n"
+        f"    FILTER(isIRI(?sv) && LCASE(REPLACE(STR(?sv), \"^.*[/#]\", \"\")) IN ({in_list}))\n"
+        f"  }} UNION {{\n"
+        # Displayed-name arm: the entity's own rdfs:label is a member of the set —
+        # covers a subset named by DISPLAY NAME (e.g. "the physicians named …")
+        # where the name lives only as rdfs:label, not an attrs/<attr> literal.
+        f"    ?e <{RDFS_LABEL}> ?lbl .\n"
+        f"    FILTER(isLiteral(?lbl) && LCASE(STR(?lbl)) IN ({in_list}))\n"
+        f"  }}\n"
+        f"{attr_value_arms}"
+    )
+
+
+def _scope_values_subselect(
+    type_name: str,
+    pred_iris: list[str],
+    values: list[str],
+    limit: Optional[int] = None,
+) -> str:
+    """Bounded ``SELECT DISTINCT ?e`` reducing ``?e`` to the multi-value-scoped
+    (and, if ``limit`` given, capped) subset — the ``IN`` twin of
+    :func:`_scope_subselect`."""
+    type_uri = _type_uri(type_name)
+    limit_clause = f"\n    LIMIT {int(limit)}" if limit else ""
+    scope_patterns = _scope_values_block(pred_iris, values)
+    return (
+        f"  {{ SELECT DISTINCT ?e WHERE {{\n"
+        f"    ?e a <{type_uri}> .\n"
+        f"  {scope_patterns}\n"
+        f"  }}{limit_clause} }}\n"
+    )
+
+
 def _resolve_scope_predicate_query(graph_uri: str, type_name: str) -> str:
     """SELECT every predicate the ontology declares on ``type_name`` (leaf + URI).
 
@@ -999,6 +1094,71 @@ class EnrichmentExecutor:
         except (TypeError, ValueError):
             return 0
         return n
+
+    async def select_scope_value_uris(
+        self,
+        tenant_id: str,
+        kg_name: str,
+        type_name: str,
+        predicate: str,
+        values: list[str],
+        limit: Optional[int] = None,
+    ) -> list[str]:
+        """Resolve a MULTI-VALUE scope to the concrete entity IRIs it names.
+
+        "refresh pricing for OpenAI, Google, Deepgram and ElevenLabs" (or "the
+        physicians named A. Selvan, R. Mokabberi, …") is a scope over a SET of
+        values, not one literal. Matching the crammed literal
+        (``provided_by = "OpenAI, Google, Deepgram, ElevenLabs"``) matches zero
+        rows — the reported persona-eval gap. This returns the IRIs of
+        ``type_name`` entities whose ``predicate`` value (or a related node's
+        label, or its own ``rdfs:label``) is a case-insensitive member of
+        ``values``, so the agent can enrich EXACTLY those via ``entity_uris`` (the
+        already-converged scoped-enrich path) instead of premature-clarifying to
+        0 and falling into a fresh discovery.
+
+        Reuses the SAME predicate resolution (:meth:`_resolve_scope_predicate_iris`)
+        and bound-predicate matching arms as the single-value scope, so casing /
+        attribute-vs-relationship / label-only names are all handled identically.
+        Returns a deduped, order-preserving, ``limit``-capped list; ``[]`` on any
+        failure (unresolved predicate, empty value set, Neptune error) — the caller
+        fails closed rather than enriching the whole type by accident.
+        """
+        clean = [v.strip() for v in (values or []) if v and v.strip()]
+        if not clean:
+            return []
+        # Resolve the predicate to concrete instance IRIs (reuses the single-value
+        # path; EnrichScope validates the predicate is a safe local-name).
+        try:
+            probe = EnrichScope(predicate=predicate, value=clean[0])
+        except Exception:  # noqa: BLE001 — a bad predicate resolves to nothing
+            return []
+        pred_iris = await self._resolve_scope_predicate_iris(
+            tenant_id, type_name, probe
+        )
+        if not pred_iris:
+            return []
+        graph_uri = kg_graph_uri(tenant_id, kg_name)
+        subset_clause = _scope_values_subselect(type_name, pred_iris, clean, limit)
+        query = (
+            f"SELECT DISTINCT ?e FROM <{graph_uri}> WHERE {{\n"
+            f"{subset_clause}"
+            f"}}"
+        )
+        try:
+            raw = await self._neptune.query(query)
+            _, bindings = parse_sparql_results(raw)
+        except Exception:  # noqa: BLE001 — resolution must never crash planning
+            logger.warning("enrich_scope_value_select_failed", exc_info=True)
+            return []
+        uris: list[str] = []
+        seen: set[str] = set()
+        for b in bindings:
+            u = b.get("e")
+            if u and u not in seen:
+                seen.add(u)
+                uris.append(u)
+        return uris
 
     async def run(self, job: EnrichJob, tenant_id: str) -> None:
         # Per-provider activity + error accumulator for this run; stamped onto the
