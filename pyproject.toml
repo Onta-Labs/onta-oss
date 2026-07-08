@@ -33,16 +33,6 @@ dev = [
     "httpx",
 ]
 
-# Ship non-Python package data (the bundled GeoNames gazetteer for the offline
-# geocoder, and any api_registry JSON seeds). Hatchling includes git-tracked
-# files by default; listing the binary artifact explicitly makes the wheel's
-# data payload robust to VCS-detection edge cases and self-documenting.
-[tool.hatch.build.targets.wheel]
-packages = ["cograph_client"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"cograph_client/spatiotemporal/data" = "cograph_client/spatiotemporal/data"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
