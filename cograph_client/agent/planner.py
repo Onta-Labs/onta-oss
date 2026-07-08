@@ -42,6 +42,7 @@ from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
 from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
 from cograph_client.agent.capabilities.ontology_cap import OntologyCapability
 from cograph_client.agent.capabilities.query import QueryCapability
+from cograph_client.agent.capabilities.subscribe_cap import SubscribeCapability
 from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
 from cograph_client.agent.capabilities.web_research_cap import WebResearchCapability
 from cograph_client.agent.conversation_store import (  # noqa: F401  (re-exported)
@@ -79,6 +80,7 @@ _INTENT_TO_CAPABILITY = {
     "ontology": "ontology",  # registered (OntologyCapability) → inspect/declare
     "discover": "web_ingest",  # registered (WebIngestCapability) → web search + ingest
     "research": "web_research",  # registered (WebResearchCapability) → cited answer/artifact, no KG write
+    "subscribe": "subscribe",  # registered (SubscribeCapability) → recurring notify schedule
 }
 
 # When the user asks for SEVERAL actions in one breath ("clean the names and
@@ -93,6 +95,9 @@ _INTENT_PLAN_ORDER = {
     "ontology": 3,
     "discover": 4,
     "research": 5,
+    # A subscribe/standing-alert is set up LAST — it schedules a recurring watch
+    # over whatever the other actions in the same breath just built/cleaned.
+    "subscribe": 6,
 }
 
 # Convergence guard (COG-130): once the agent has asked this many clarifying
@@ -146,6 +151,15 @@ returns an ANSWER/artifact FROM the web — distinct from "discover" (which INGE
 web records as NEW graph entities to keep) and from "question" (read-only about \
 data ALREADY in the graph). Prefer "discover" when the user wants the results \
 ADDED to the graph; prefer "research" when they want an answer/report/CSV back.
+- "subscribe": set up a RECURRING standing alert / scheduled refresh — the user \
+wants something to run ON A CADENCE (weekly, daily, …) and NOTIFY / deliver \
+automatically when watched values CHANGE, set up ONCE instead of re-run by hand \
+("set up a standing weekly alert", "notify my webhook when X changes", "a weekly \
+refresh delivered to me automatically", "I don't want to re-run this by hand — I \
+want a standing trigger", "subscribe me to changes in …"). This creates a \
+recurring trigger — distinct from "question"/"research" (a one-off answer) and \
+from "enrich"/"discover" (a one-off data update). The tell is a CADENCE + \
+"automatically / on its own / don't want to re-run it".
 - "ambiguous": you genuinely cannot tell what is wanted and must ask ONE \
 clarifying question.
 
@@ -264,6 +278,44 @@ def _is_web_discovery_request(message: str) -> bool:
         _WEB_FETCH_RE.search(msg)
         or _DISCOVER_IMPERATIVE_RE.match(msg)
         or _EXPLICIT_DISCOVERY_INTENT_RE.search(msg)
+    )
+
+
+# --- deterministic subscribe / standing-alert guard -------------------------- #
+# The classifier can mis-file "set up a standing weekly alert …" as a plain
+# question / research (the payload reads like "notify me whenever …"), stranding
+# the persona who explicitly wants a RECURRING trigger. When the phrasing is an
+# unmistakable "set up a standing / recurring alert on a cadence, delivered
+# automatically" ask, force the subscribe intent ourselves. Kept narrow: it
+# requires BOTH a recurrence/cadence signal AND an alert/notify/refresh signal, so
+# a one-off "notify me the answer" or a bare "what changed this week?" is untouched.
+_SUBSCRIBE_CADENCE_RE = re.compile(
+    r"\b(standing|recurring|weekly|daily|hourly|monthly|"
+    r"every\s+(?:week|day|hour|month|morning|monday)|"
+    r"each\s+(?:week|day|hour|month|monday)|on\s+a\s+cadence|"
+    r"don'?t\s+want\s+to\s+re-?run|not\s+.*re-?issue|by\s+itself|"
+    r"automatically|on\s+its\s+own)\b",
+    re.IGNORECASE,
+)
+_SUBSCRIBE_ALERT_RE = re.compile(
+    r"\b(alert|notif(?:y|ication)|standing\s+trigger|subscribe|"
+    r"watch\s+for|refresh|monitor)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_subscribe_request(message: str) -> bool:
+    """True when ``message`` is an unmistakable recurring-standing-alert request.
+
+    Requires a cadence/recurrence signal AND an alert/notify/refresh signal, so a
+    one-off "notify me the count" or a read-only "what changed?" never trips it.
+    A trailing '?' or question-word lead still disqualifies (a genuine question).
+    """
+    msg = (message or "").strip()
+    if not msg or msg.endswith("?") or _QUESTION_LEAD_RE.match(msg):
+        return False
+    return bool(
+        _SUBSCRIBE_CADENCE_RE.search(msg) and _SUBSCRIBE_ALERT_RE.search(msg)
     )
 
 
@@ -525,6 +577,24 @@ async def _respond(
             ],
         ]
 
+    # Deterministic subscribe override: an unmistakable "set up a standing/
+    # recurring alert on a cadence, delivered automatically" ask must route to the
+    # subscribe capability even if the classifier filed it as a plain question /
+    # research (the payload reads like "notify me whenever …"). Force subscribe to
+    # the front and drop the read-only intents so the question fast-path can't
+    # hijack it. Only when the subscribe capability is registered.
+    if _is_subscribe_request(message) and get_capability(
+        _INTENT_TO_CAPABILITY["subscribe"]
+    ) is not None:
+        intents = [
+            "subscribe",
+            *[
+                i
+                for i in intents
+                if i not in ("subscribe", "question", "research", "ambiguous")
+            ],
+        ]
+
     # Deterministic links-to-parse override: when the user hands us explicit URLs
     # (in the message or as structured request context), this is a URL-targeted
     # web extraction, not a plain question — route it by intent ourselves. An
@@ -532,8 +602,13 @@ async def _respond(
     # else brings in a NEW set of records ("discover"). Force the chosen intent to
     # the front and drop question/ambiguous so it can't be hijacked by the
     # question fast-path below. Only when the target capability is registered.
+    # A subscribe/standing-alert request whose URL is the DELIVERY webhook (not a
+    # page to scrape) must NOT be hijacked by the links-to-parse override below —
+    # "notify https://ex/hook when X changes" is a delivery target, not an ingest
+    # source. When the subscribe override already fired, skip the URL routing.
+    _subscribe_forced = intents and intents[0] == "subscribe"
     _ctx_urls = getattr(ctx, "urls", None)
-    if _message_has_urls(message, _ctx_urls):
+    if not _subscribe_forced and _message_has_urls(message, _ctx_urls):
         url_intent = _url_intent(message)
         # Don't hijack a genuine read-only question that merely contains a link in
         # its TEXT (e.g. "what does https://acme/about say about pricing?"). A link
@@ -924,6 +999,13 @@ def register_default_capabilities() -> None:
     # DORMANT until a downstream deployment registers a web-source provider —
     # plan() returns a plain "not enabled" answer when none is registered.
     register_capability(WebIngestCapability())
+    # Subscribe / standing alert (ONTA-235): registered in OSS so the "subscribe"
+    # intent routes and the persona can set a recurring, subscribe-able alert ONCE.
+    # It persists a `notify` Schedule through the shared schedule store (the same
+    # store the canonical /schedules route uses); the OSS best-effort HTTP sink
+    # delivers change payloads, and a premium reliable sink supersedes it via
+    # register_delivery_sink.
+    register_capability(SubscribeCapability())
     # Web research (ADR 0006): the read-only counterpart — answers a question from
     # the web and returns a cited answer/artifact, no KG write. Works in OSS from
     # user-supplied URLs via the default static fetcher; open-web search lights up

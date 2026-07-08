@@ -33,6 +33,7 @@ from cograph_client.api.deps import (
     get_enrichment_job_store,
     get_executor,
     get_neptune_client,
+    get_schedule_store,
 )
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.config import settings
@@ -80,6 +81,7 @@ def _build_ctx(
     client: NeptuneClient,
     executor: EnrichmentExecutor,
     job_store,
+    schedule_store=None,
 ) -> AgentContext:
     return AgentContext(
         tenant_id=tenant.tenant_id,
@@ -99,6 +101,10 @@ def _build_ctx(
         extras={
             "enrichment_executor": executor,
             "enrichment_job_store": job_store,
+            # The subscribe capability persists a ``notify`` Schedule through the
+            # SAME schedule store the canonical /schedules route uses (no bespoke
+            # endpoint / logic — interface convergence). Built lazily on app.state.
+            "schedule_store": schedule_store,
         },
     )
 
@@ -110,9 +116,10 @@ async def agent_turn(
     client: NeptuneClient = Depends(get_neptune_client),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store=Depends(get_enrichment_job_store),
+    schedule_store=Depends(get_schedule_store),
 ):
     """One agent turn: confirm→execute a plan, or classify+respond to a message."""
-    ctx = _build_ctx(tenant, body, client, executor, job_store)
+    ctx = _build_ctx(tenant, body, client, executor, job_store, schedule_store)
     if body.confirm is not None:
         return await planner.execute_plan(ctx, body.confirm.plan_id)
     # Tag the thread with the auth subject (the signed-in user) so it shows up in

@@ -1504,14 +1504,18 @@ export interface ConflictReview {
 
 /** Actions a tenant may CREATE or UPDATE through the schedules CRUD routes —
  *  mirrors the Ask-AI action endpoints: find-merge-duplicates (dedupe), enrich
- *  (enrichment), suggest-relationships (reconciliation). A schedule's
- *  `category` agrees with its `action`. The backend rejects any other action
- *  on create/update with a 422 — see {@link ScheduleAction} for the
- *  system-managed values that can still APPEAR in list/get responses. */
+ *  (enrichment), suggest-relationships (reconciliation), plus `notify` (ONTA-235):
+ *  a standing-alert / weekly-refresh that snapshots a watched value each fire,
+ *  diffs it against the previous fire, and delivers a change payload out through
+ *  a delivery sink ONLY when it changed. A schedule's `category` agrees with its
+ *  `action`. The backend rejects any other action on create/update with a 422 —
+ *  see {@link ScheduleAction} for the system-managed values that can still APPEAR
+ *  in list/get responses. */
 export type UserSchedulableAction =
   | "find-merge-duplicates"
   | "enrich"
-  | "suggest-relationships";
+  | "suggest-relationships"
+  | "notify";
 
 /** The action a {@link Schedule} fires — the FULL read-side vocabulary, a
  *  superset of {@link UserSchedulableAction}. `semantic-embed-fill` /
@@ -1532,6 +1536,7 @@ export const USER_SCHEDULABLE_ACTIONS: readonly UserSchedulableAction[] = [
   "find-merge-duplicates",
   "enrich",
   "suggest-relationships",
+  "notify",
 ] as const;
 
 /**

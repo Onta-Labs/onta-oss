@@ -424,8 +424,9 @@ def test_route_create_rejects_system_managed_actions(client, auth_headers):
 
 
 def test_route_create_accepts_all_user_schedulable_actions(client, auth_headers):
-    """The three user-schedulable actions still work end-to-end (create → get
-    → patch → delete)."""
+    """The user-schedulable actions (incl. ONTA-235 ``notify``) work end-to-end
+    (create → get → patch → delete). This is the SAME canonical route the MCP
+    ``schedule`` tool and the CLI reach through the SDK — interface convergence."""
     from cograph_client.config import settings
 
     settings.database_url = ""
@@ -433,16 +434,24 @@ def test_route_create_accepts_all_user_schedulable_actions(client, auth_headers)
         ("find-merge-duplicates", "dedupe"),
         ("enrich", "enrichment"),
         ("suggest-relationships", "reconciliation"),
+        # notify — a recurring standing alert delivered to an example webhook.
+        ("notify", "enrichment"),
     ):
+        body = {
+            "kg_name": "kg",
+            "category": category,
+            "action": action,
+            "interval_seconds": 604_800 if action == "notify" else 3600,
+        }
+        if action == "notify":
+            body["params"] = {
+                "watch": {"condition": "Widget price change"},
+                "sink": {"url": "https://example.test/hook"},
+            }
         r = client.post(
             "/graphs/test-tenant/schedules",
             headers=auth_headers,
-            json={
-                "kg_name": "kg",
-                "category": category,
-                "action": action,
-                "interval_seconds": 3600,
-            },
+            json=body,
         )
         assert r.status_code == 201, r.text
         sid = r.json()["id"]

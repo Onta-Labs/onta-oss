@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client, CographError } from "cograph";
-import type { AgentResult, JobCategory, ResolvedChange } from "cograph";
+import type { AgentResult, JobCategory, ResolvedChange, Schedule } from "cograph";
 import { z } from "zod";
 
 const VERSION = "0.1.0";
@@ -604,6 +604,139 @@ server.registerTool(
         confirmPlanId: confirm_plan_id,
       });
       return textResult(describeAgentResult(result));
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
+);
+
+// Read a Response from the SDK's `raw` schedule methods, mapping a non-2xx into
+// a clear thrown error (requestRaw resolves non-2xx as a Response, only throwing
+// on network/timeout) so the tool's catch renders it uniformly.
+async function readScheduleResponse<T>(resp: Response): Promise<T> {
+  if (!resp.ok) {
+    let detail = "";
+    try {
+      detail = await resp.text();
+    } catch {
+      /* body already consumed / empty */
+    }
+    throw new CographError(
+      `schedules request failed (HTTP ${resp.status})${detail ? `: ${detail}` : ""}`,
+    );
+  }
+  return (await resp.json()) as T;
+}
+
+server.registerTool(
+  "schedule",
+  {
+    description:
+      "Set up a RECURRING standing alert / scheduled refresh, or list existing " +
+      "ones. Use this when the user wants something to run ON A CADENCE (weekly, " +
+      "daily, …) and be NOTIFIED automatically when watched values CHANGE — set " +
+      "up ONCE, not re-run by hand ('a standing weekly alert that notifies my " +
+      "orchestrator when a model changes price', 'a weekly refresh delivered to " +
+      "me automatically'). It creates a recurring `notify` schedule that, each " +
+      "run, snapshots the watched values and delivers a change payload to your " +
+      "webhook ONLY when they changed since last run. Pass `action:\"list\"` to " +
+      "see the tenant's schedules instead. This is a thin wrapper over the " +
+      "canonical /graphs/{tenant}/schedules route (the same one the web app and " +
+      "CLI use) — no bespoke endpoint.",
+    inputSchema: {
+      action: z
+        .enum(["create", "list"])
+        .default("create")
+        .describe("`create` a new recurring alert (default) or `list` existing ones."),
+      kg_name: z
+        .string()
+        .optional()
+        .describe(
+          "Knowledge graph the alert watches. Required for `create`. Use " +
+            "list_knowledge_graphs to see available KGs.",
+        ),
+      cadence: z
+        .enum(["hourly", "daily", "weekly", "monthly"])
+        .default("weekly")
+        .describe("How often the alert runs (default weekly)."),
+      condition: z
+        .string()
+        .optional()
+        .describe(
+          "Plain-language description of WHAT to watch for a change on (e.g. " +
+            "'price or deprecation date on models I route to'). Recorded on the " +
+            "schedule so the watch can be resolved to concrete values.",
+        ),
+      deliver_to: z
+        .string()
+        .optional()
+        .describe(
+          "An http(s) webhook URL to deliver change notifications to. When " +
+            "omitted the schedule is still created but delivery is inactive until " +
+            "a URL is added. The outbound POST is SSRF-guarded server-side.",
+        ),
+    },
+  },
+  async ({ action, kg_name, cadence, condition, deliver_to }) => {
+    try {
+      const c = client();
+      if (action === "list") {
+        const schedules = await readScheduleResponse<Schedule[]>(
+          await c.raw.schedules(),
+        );
+        if (!schedules.length) return textResult("No schedules found.");
+        const lines = schedules.map((s) => {
+          const every = s.interval_seconds
+            ? `every ${s.interval_seconds}s`
+            : s.cron
+              ? `cron ${s.cron}`
+              : "?";
+          const state = s.enabled ? "enabled" : "disabled";
+          return `- ${s.id} [${s.action}] ${every} — ${state} (next: ${s.next_run ?? "?"})`;
+        });
+        return textResult(lines.join("\n"));
+      }
+
+      if (!kg_name) {
+        return errorResult(
+          new CographError("kg_name is required to create a schedule."),
+        );
+      }
+      const intervalByCadence = {
+        hourly: 3600,
+        daily: 86_400,
+        weekly: 604_800,
+        monthly: 2_592_000,
+      } as const;
+      const params: Record<string, unknown> = {
+        watch: { condition: condition ?? "" },
+        condition: condition ?? "",
+      };
+      if (deliver_to) params.sink = { url: deliver_to };
+      // Body matches the canonical POST /schedules contract. `category` is carried
+      // for the model only (a notify fires no enrich-style job); enrichment is a
+      // neutral default, mirroring the agent subscribe capability.
+      const body = {
+        kg_name,
+        category: "enrichment" as JobCategory,
+        action: "notify" as const,
+        params,
+        interval_seconds: intervalByCadence[cadence],
+        enabled: true,
+      };
+      const created = await readScheduleResponse<Schedule>(
+        await c.raw.createSchedule(body),
+      );
+      const lines = [
+        `Created a standing ${cadence} alert on "${kg_name}" (schedule ${created.id}).`,
+        `  next run: ${created.next_run ?? "?"}`,
+        deliver_to
+          ? `  delivers change notifications to: ${deliver_to}`
+          : "  no delivery URL yet — add one to activate automatic delivery.",
+        "",
+        "It runs on its own and notifies only when the watched values change.",
+      ];
+      return textResult(lines.join("\n"));
     } catch (err) {
       return errorResult(err);
     }
