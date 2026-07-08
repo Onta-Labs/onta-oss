@@ -253,11 +253,19 @@ async def test_execute_repasses_urls_to_provider(monkeypatch):
     provider = UrlProvider(url_only=True)
     register_web_source(provider)
 
-    captured: dict = {}
+    captured: dict = {"content_types": set()}
+    committed_rows: list[dict] = []
+    # Recorded here (not asserted inside ingest) so the homogeneity check runs in
+    # the test body — an assert inside fake_ingest would be swallowed by the run
+    # loop's `except Exception: continue` and never fail the test.
+    per_call_url_sets: list[set] = []
 
     async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
-        captured.update(content=content, content_type=content_type, source=source)
+        captured["content_types"].add(content_type)
+        captured["source"] = source
         rows = json.loads(content)
+        committed_rows.extend(rows)
+        per_call_url_sets.append({r.get("source_url") for r in rows})
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
     monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
@@ -281,10 +289,18 @@ async def test_execute_repasses_urls_to_provider(monkeypatch):
     full_call = provider.calls[-1]
     assert full_call["sample"] is False
     assert full_call["urls"] == [URL_A, URL_B]
-    # The extracted rows were committed through the multi-type ingest path; the
-    # JSON content round-trips back to the extracted rows.
-    assert captured["content_type"] == "json"
-    assert len(json.loads(captured["content"])) == 2
+    # The extracted rows were committed through the multi-type ingest path (JSON);
+    # both rows landed, each citing its OWN page (deterministic per-record binding).
+    assert captured["content_types"] == {"json"}
+    assert len(committed_rows) == 2
+    by_name = {r["name"]: r["source_url"] for r in committed_rows}
+    assert by_name["row-0"] == URL_A
+    assert by_name["row-1"] == URL_B
+    # Citation-binding fix: the two rows cite DIFFERENT pages, so they arrived in
+    # separate homogeneous ingest calls (checked in the test body so it can fail).
+    assert per_call_url_sets, "at least one ingest call ran"
+    for urls in per_call_url_sets:
+        assert len(urls) == 1, f"an ingest batch mixed source URLs: {urls}"
 
 
 async def test_query_path_unchanged_when_no_urls():

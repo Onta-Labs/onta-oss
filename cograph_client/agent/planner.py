@@ -215,15 +215,35 @@ _DISCOVER_IMPERATIVE_RE = re.compile(
     r"^\s*(?:please\s+)?(?:discover|scrape)\b",
     re.IGNORECASE,
 )
+#
+# "new discovery" and "discovery task" are POSITIVE discovery self-labels — they
+# should force-route wherever they appear, including MID-SENTENCE ("new discovery
+# run of Widgets", "kick off a discovery task for Sprockets now"). They match on a
+# plain word boundary (\b), no clause-boundary requirement.
+#
+# "not enrichment" is the one that needs a guard: the word "enrichment" as an
+# ADJECTIVE ("not enrichment candidates", "not enrichment targets") in an ordinary
+# read-only ask must NOT be read as a routing self-label. So ONLY that branch is
+# anchored to a CLAUSE boundary — end-of-string, punctuation, or a conjunction
+# ("but"/"so"/"then"/…). "… not enrichment - find Gadgets" (dash = boundary),
+# "… not enrichment." and "…, not enrichment" still match; "… not enrichment
+# candidates" (a following noun, no boundary) does not.
+_CLAUSE_BOUNDARY = r"(?=$|[\s]*[-:;,.]|\s+(?:but|so|then|and|please)\b)"
 _EXPLICIT_DISCOVERY_INTENT_RE = re.compile(
-    r"\bnew\s+discovery\b|\bnot\s+(?:an?\s+)?enrichment\b|\bdiscovery\s+task\b",
+    r"\bnew\s+discovery\b|"
+    r"\bdiscovery\s+task\b|"
+    r"\bnot\s+(?:an?\s+)?enrichment" + _CLAUSE_BOUNDARY,
     re.IGNORECASE,
 )
 # Read-only framings we must NOT hijack even when they mention the web (e.g.
-# "how many companies did we add from the web?").
+# "how many companies did we add from the web?"). Includes the read-only display
+# imperatives "show me" / "list" / "give me" — a "show me all records that are not
+# enrichment candidates" is a read-only ask, not a discovery job, even though it
+# lacks a trailing '?'.
 _QUESTION_LEAD_RE = re.compile(
     r"^\s*(?:how\s+many|how\s+much|what|which|who|whom|whose|when|where|why|"
-    r"do\s+we|did\s+we|does|is\s+there|are\s+there|count)\b",
+    r"do\s+we|did\s+we|does|is\s+there|are\s+there|count|"
+    r"show\s+me|list|give\s+me)\b",
     re.IGNORECASE,
 )
 

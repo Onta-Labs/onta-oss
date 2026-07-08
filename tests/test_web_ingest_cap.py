@@ -1152,6 +1152,126 @@ def test_attach_source_urls_never_clobbers_and_skips_unknown():
     assert "source_url" not in rows[2]
 
 
+# --- citation mis-binding fix (persona-eval RCA) ---------------------------- #
+
+
+def test_group_rows_by_source_url_partitions_homogeneously():
+    """A batch mixing rows from different pages splits into one group per URL, so
+    every group is homogeneous in its source_url — the extractor that ingests a
+    group can only ever stamp THAT group's page URL. Consecutive-run grouping
+    preserves order and record count."""
+    from cograph_client.agent.capabilities.web_ingest_cap import (
+        _group_rows_by_source_url,
+    )
+
+    # Two invented pages, three invented entities (no persona tokens).
+    rows = [
+        {"name": "Widget A", "source_url": "https://example.test/widgets"},
+        {"name": "Widget B", "source_url": "https://example.test/widgets"},
+        {"name": "Sprocket X", "source_url": "https://example.test/sprockets"},
+    ]
+    groups = _group_rows_by_source_url(rows)
+    assert len(groups) == 2
+    assert [r["name"] for r in groups[0]] == ["Widget A", "Widget B"]
+    assert {r["source_url"] for r in groups[0]} == {"https://example.test/widgets"}
+    assert [r["name"] for r in groups[1]] == ["Sprocket X"]
+    assert {r["source_url"] for r in groups[1]} == {"https://example.test/sprockets"}
+    # No record dropped or duplicated by the partition.
+    assert sum(len(g) for g in groups) == len(rows)
+
+
+def test_group_rows_by_source_url_single_and_missing_url():
+    """A batch that already shares one URL (or carries none) is a single group —
+    identical to the pre-fix single-partition behavior (no needless fan-out)."""
+    from cograph_client.agent.capabilities.web_ingest_cap import (
+        _group_rows_by_source_url,
+    )
+
+    same = [
+        {"name": "Gadget 1", "source_url": "https://example.test/gadgets"},
+        {"name": "Gadget 2", "source_url": "https://example.test/gadgets"},
+    ]
+    assert len(_group_rows_by_source_url(same)) == 1
+
+    none = [{"name": "Gadget 1"}, {"name": "Gadget 2"}]
+    assert len(_group_rows_by_source_url(none)) == 1
+
+    assert _group_rows_by_source_url([]) == []
+
+
+async def test_execute_binds_citation_per_source_record(monkeypatch):
+    """MECHANISM test for the citation mis-binding fix: when ONE discovery batch
+    mixes entities drawn from TWO different pages, each `resolver.ingest` call sees
+    rows from exactly ONE page — so an entity's source_url is the URL of the record
+    it was extracted from, never the other page's URL broadcast across it.
+
+    Uses invented entities/URLs (Widget/Sprocket) so nothing overfits to personas.
+    """
+    # A provider whose rows span two pages: two Widgets from page W, one Sprocket
+    # from page S. Provenance keys each row to its OWN page (the real adapter key).
+    class TwoPageProvider:
+        name = "twopage"
+        is_paid = True
+        cost_per_call = 0.75
+
+        async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
+            rows = [
+                {"name": "Widget A"},
+                {"name": "Widget B"},
+                {"name": "Sprocket X"},
+            ]
+            rows = rows[: (5 if sample else max_rows)]
+            prov = {
+                "Widget A": "https://example.test/widgets",
+                "Widget B": "https://example.test/widgets",
+                "Sprocket X": "https://example.test/sprockets",
+            }
+            return DiscoverResult(
+                rows=rows,
+                provenance=prov,
+                sources=["https://example.test"],
+                estimated_total=3,
+                is_partial=sample,
+            )
+
+    register_web_source(TwoPageProvider())
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    # Capture every ingest call's committed rows so we can assert homogeneity.
+    ingest_calls: list[list[dict]] = []
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        rows = json.loads(content)
+        ingest_calls.append(rows)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    cap = WebIngestCapability()
+    step = (await cap.plan(_ctx(), "find widgets and sprockets", parsed=CONFIRMED_SPEC))[0]
+    await cap.execute(_ctx(), step)
+    await spawned["task"]
+
+    # Every ingest call is homogeneous in source_url (the citation the extractor
+    # can bind is fixed by the partition, not chosen by the LLM per entity).
+    assert ingest_calls, "rows were committed"
+    for rows in ingest_calls:
+        urls = {r.get("source_url") for r in rows}
+        assert len(urls) == 1, f"a batch mixed source URLs: {urls}"
+
+    # And each entity ended up with the URL of ITS page — Widgets → widgets page,
+    # Sprocket → sprockets page. Never the cross-record broadcast.
+    by_name = {r["name"]: r["source_url"] for rows in ingest_calls for r in rows}
+    assert by_name["Widget A"] == "https://example.test/widgets"
+    assert by_name["Widget B"] == "https://example.test/widgets"
+    assert by_name["Sprocket X"] == "https://example.test/sprockets"
+
+
 async def test_execute_threads_per_record_source_url(monkeypatch):
     """Each discovered entity carries its own source_url drawn from the provider's
     provenance map, committed through the SAME ingest path (content_type="json")
@@ -1160,11 +1280,18 @@ async def test_execute_threads_per_record_source_url(monkeypatch):
     register_web_source(provider)
     _patch_preview(monkeypatch, entities=_single_type_entities())
 
-    captured: dict = {}
+    captured: dict = {"content_types": set()}
+    committed_rows: list[dict] = []
+    # URL set of EACH ingest call, recorded here so the homogeneity check runs in
+    # the test body (below) — an assert inside fake_ingest would be swallowed by
+    # the run loop's `except Exception: continue` and never fail the test.
+    per_call_url_sets: list[set] = []
 
     async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
-        captured.update(content=content, content_type=content_type)
+        captured["content_types"].add(content_type)
         rows = json.loads(content)
+        committed_rows.extend(rows)
+        per_call_url_sets.append({r.get("source_url") for r in rows})
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
     monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
@@ -1184,13 +1311,24 @@ async def test_execute_threads_per_record_source_url(monkeypatch):
     await cap.execute(_ctx(), step)
     await spawned["task"]
 
-    rows_back = json.loads(captured["content"])
-    assert rows_back, "rows were committed"
+    assert committed_rows, "rows were committed"
+    assert captured["content_types"] == {"json"}  # same ingest path
+    # Each ingest call saw rows from ONE page only (citation-binding fix) — asserted
+    # here in the test body so a mixed-URL batch actually fails.
+    assert per_call_url_sets, "at least one ingest call ran"
+    for urls in per_call_url_sets:
+        assert len(urls) == 1, f"an ingest batch mixed source URLs: {urls}"
     # Every committed record traces to its OWN page; source_url rides alongside
     # the confirmed attributes (an extra provenance column, not a replacement).
-    for i, r in enumerate(rows_back):
-        assert r["source_url"] == f"https://src.example/page-{i}"
-        assert "name" in r and "context_length" in r
+    # The provider gives each row a distinct page, so the citation-binding fix
+    # commits them in per-page batches — the source_url still equals THIS record's
+    # own page (keyed by name), independent of batch ordering.
+    by_name = {r["name"]: r for r in committed_rows}
+    for r in FULL_ROWS:
+        got = by_name[r["name"]]
+        idx = FULL_ROWS.index(r)
+        assert got["source_url"] == f"https://src.example/page-{idx}"
+        assert "name" in got and "context_length" in got
 
 
 async def test_execute_no_provenance_adds_no_source_url(monkeypatch):
