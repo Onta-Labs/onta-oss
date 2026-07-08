@@ -65,10 +65,13 @@ def test_verified_at_is_typed_datetime_literal(type_name, attr, label, value, sr
 
 def test_recency_filter_selects_and_excludes_by_window():
     """A generic NOW()-relative recency FILTER over a typed `<attr>_verified_at`
-    (the EXACT pattern the NL prompt now teaches) returns fresh rows and excludes
-    stale ones. Runs against a REAL pyoxigraph SPARQL engine on invented schema."""
+    (the EXACT pattern the NL prompt now teaches, AFTER the Neptune-safe duration
+    normalizer runs) returns fresh rows and excludes stale ones. Runs against a REAL
+    pyoxigraph SPARQL engine on invented schema."""
     pytest.importorskip("pyoxigraph")
     from pyoxigraph import QueryResultsFormat, Store
+
+    from cograph_client.nlp.pipeline import _neptune_safe_duration
 
     store = Store()
     graph = "https://cograph.tech/graphs/test-tenant/kg/kg"
@@ -85,15 +88,65 @@ def test_recency_filter_selects_and_excludes_by_window():
     )
 
     for window, expect in [("P7D", {"urn:w:fresh"}), ("P60D", {"urn:w:fresh", "urn:w:stale"})]:
-        q = (
+        # Start from the dayTimeDuration form the LLM tends to emit (SPARQL 1.1 spec),
+        # then run it through the normalizer the pipeline applies before execution.
+        raw = (
             f"SELECT ?e FROM <{graph}> WHERE {{ "
             f"?e <{vpred}> ?ts . "
             f'FILTER(?ts >= (NOW() - "{window}"^^'
             f"<http://www.w3.org/2001/XMLSchema#dayTimeDuration>)) }}"
         )
+        q = _neptune_safe_duration(raw)
+        # The Neptune-unsupported datatype must be gone (this is the crux of the fix —
+        # the query as sent to Neptune must never carry dayTimeDuration).
+        assert "dayTimeDuration" not in q
+        assert "XMLSchema#duration" in q
         res = json.loads(store.query(q).serialize(format=QueryResultsFormat.JSON))
         got = {b["e"]["value"] for b in res["results"]["bindings"]}
         assert got == expect, f"{window}: {got} != {expect}"
+
+
+def test_neptune_safe_duration_rewrites_all_surface_forms():
+    """The normalizer rewrites every surface form of a duration-subtype datatype to
+    `duration` while preserving the prefix/IRI style the LLM emitted, and leaves an
+    already-`duration` literal (and unrelated SPARQL) untouched. Reproduces the exact
+    400-causing construct from the persona-eval m3 run and asserts the replacement.
+
+    Neptune reproduction (deployed cluster, invented data-free probes):
+      * `SELECT ((NOW() - "P14D"^^xsd:dayTimeDuration) AS ?cutoff) …`  → ?cutoff DROPPED
+        (silently unbound); over real rows the recency FILTER returned COUNT 0.
+      * same query with `xsd:duration`                               → ?cutoff computes;
+        recency FILTER returned the 33 fresh rows.
+    """
+    from cograph_client.nlp.pipeline import _neptune_safe_duration
+
+    XSD = "http://www.w3.org/2001/XMLSchema#"
+    cases = [
+        # full IRI in angle brackets (what the prompt teaches / the LLM emits)
+        (f'FILTER(?ts >= (NOW() - "P7D"^^<{XSD}dayTimeDuration>))',
+         f'FILTER(?ts >= (NOW() - "P7D"^^<{XSD}duration>))'),
+        # yearMonthDuration is likewise unsupported by Neptune
+        (f'BIND((NOW() - "P1M"^^<{XSD}yearMonthDuration>) AS ?c)',
+         f'BIND((NOW() - "P1M"^^<{XSD}duration>) AS ?c)'),
+        # bare xsd: prefix, no angle brackets → keep the prefix
+        ('FILTER(?ts >= (NOW() - "PT48H"^^xsd:dayTimeDuration))',
+         'FILTER(?ts >= (NOW() - "PT48H"^^xsd:duration))'),
+        # full IRI WITHOUT angle brackets
+        (f'BIND((NOW() - "P14D"^^{XSD}dayTimeDuration) AS ?cutoff)',
+         f'BIND((NOW() - "P14D"^^{XSD}duration) AS ?cutoff)'),
+    ]
+    for raw, expected in cases:
+        out = _neptune_safe_duration(raw)
+        assert out == expected, f"{raw!r} -> {out!r} != {expected!r}"
+        assert "dayTimeDuration" not in out and "yearMonthDuration" not in out
+        # Idempotent: running twice changes nothing more.
+        assert _neptune_safe_duration(out) == expected
+
+    # Already-valid and unrelated queries are untouched.
+    valid = f'FILTER(?ts >= (NOW() - "P7D"^^<{XSD}duration>))'
+    assert _neptune_safe_duration(valid) == valid
+    unrelated = "SELECT ?x WHERE { ?x <urn:p> ?y . FILTER(?y > 3) }"
+    assert _neptune_safe_duration(unrelated) == unrelated
 
 
 def test_discovery_stamps_per_fact_verified_at():
@@ -113,13 +166,14 @@ def test_discovery_stamps_per_fact_verified_at():
 
 def test_freshness_prompt_teaches_relative_window():
     """The NL generation prompt teaches a NOW()-relative recency window keyed off
-    dateTime attributes — generically (dayTimeDuration + NOW()), not a hardcoded
-    field or absolute date."""
+    dateTime attributes — generically (NOW() minus a duration), not a hardcoded
+    field or absolute date, and using the Neptune-valid `xsd:duration` datatype."""
     from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
 
     p = SPARQL_GENERATION_SYSTEM
     assert "NOW()" in p
-    assert "dayTimeDuration" in p
+    # Must teach the Neptune-valid duration datatype in the FILTER pattern.
+    assert "XMLSchema#duration>" in p
     assert "_verified_at" in p
     # It must be RELATIVE, not steer the model to a hardcoded absolute date.
     assert "do NOT hardcode an" in p or "RELATIVE" in p

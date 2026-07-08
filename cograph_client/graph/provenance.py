@@ -68,9 +68,10 @@ PROV_NS = "https://cograph.tech/prov/"
 #
 # The ONE reason ``<attr>_verified_at`` is typed ``xsd:dateTime`` (not a plain
 # string like the other two): the NL planner emits typed date FILTERs
-# (``FILTER(?ts >= NOW() - "P7D"^^xsd:dayTimeDuration)``), and an untyped string
-# stamp is type-incompatible → the freshness query silently drops the row
-# (ONTA-247). ``_TYPES_PREFIX`` mirrors the executor's ``TYPE_URI_PREFIX`` and the
+# (``FILTER(?ts >= NOW() - "P7D"^^xsd:duration)`` — xsd:duration, not
+# dayTimeDuration, which Neptune rejects; see nlp/pipeline._neptune_safe_duration),
+# and an untyped string stamp is type-incompatible → the freshness query silently
+# drops the row (ONTA-247). ``_TYPES_PREFIX`` mirrors the executor's ``TYPE_URI_PREFIX`` and the
 # stamp reuses the module ``_XSD`` datetime type, so the SAME literal shape is
 # produced whichever rail writes it (cross-rail symmetry).
 
