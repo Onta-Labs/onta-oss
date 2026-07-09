@@ -265,7 +265,7 @@ async function reviewMapping(
 const program = new Command();
 program
   .name("cograph")
-  .description("Cograph Knowledge Graph CLI")
+  .description("Cograph Context Graph CLI")
   .version(pkgVersion())
   // Default action when no subcommand is given: drop into the interactive
   // shell. So `cograph` (or `npx cograph`) Just Works for the common case;
@@ -290,16 +290,16 @@ program
 // kg
 // ---------------------------------------------------------------------------
 
-const kg = program.command("kg").description("Manage knowledge graphs");
+const kg = program.command("kg").description("Manage context graphs");
 
 kg.command("list")
-  .description("List knowledge graphs")
+  .description("List context graphs")
   .action(async () => {
     await withErrors(async () => {
       const kgs = await client().listKgs();
       if (!kgs.length) {
         process.stdout.write(
-          "No knowledge graphs. Create one with: cograph kg create <name>\n",
+          "No context graphs. Create one with: cograph kg create <name>\n",
         );
         return;
       }
@@ -315,21 +315,21 @@ kg.command("list")
   });
 
 kg.command("create <name>")
-  .description("Create a knowledge graph")
+  .description("Create a context graph")
   .option("-d, --description <text>", "Description")
   .action(async (name: string, opts: { description?: string }) => {
     await withErrors(async () => {
       const created = await client().createKg(name, opts.description);
-      process.stdout.write(`Created knowledge graph: ${created.name ?? name}\n`);
+      process.stdout.write(`Created context graph: ${created.name ?? name}\n`);
     });
   });
 
 kg.command("delete <name>")
-  .description("Delete a knowledge graph")
+  .description("Delete a context graph")
   .action(async (name: string) => {
     await withErrors(async () => {
       await client().deleteKg(name);
-      process.stdout.write(`Deleted knowledge graph: ${name}\n`);
+      process.stdout.write(`Deleted context graph: ${name}\n`);
     });
   });
 
@@ -402,7 +402,7 @@ program
   .command("ingest [file]")
   .description("Ingest data from a file or --text")
   .option("-t, --text <text>", "Inline text to ingest")
-  .option("--kg <name>", "Target knowledge graph name")
+  .option("--kg <name>", "Target context graph name")
   .option(
     "-f, --format <fmt>",
     "Override format detection (text|csv|json)",
@@ -485,7 +485,7 @@ function printIngestResult(result: Record<string, unknown>): void {
 program
   .command("ask <question>")
   .description("Ask a natural language question")
-  .option("--kg <name>", "Knowledge graph to query")
+  .option("--kg <name>", "Context graph to query")
   .option("-d, --debug", "Show SPARQL and latency breakdown")
   .option("-m, --model <model>", "Override query model")
   .action(
@@ -618,7 +618,7 @@ export async function runAgentCommand(
 program
   .command("agent <message>")
   .description("Talk to the unified Ask-AI agent (answers, plans, and runs actions)")
-  .option("--kg <name>", "Knowledge graph to operate within")
+  .option("--kg <name>", "Context graph to operate within")
   .option("--type <Type>", "Active type scope (for enrich/clean/dedup planning)")
   .option(
     "-y, --yes",
@@ -679,7 +679,7 @@ er.command("rebuild")
   .description(
     "Second pass: collapse intra-batch entity fragments in an ingested KG",
   )
-  .requiredOption("--kg <name>", "Knowledge graph to rebuild")
+  .requiredOption("--kg <name>", "Context graph to rebuild")
   .action(async (opts: { kg: string }) => {
     await withErrors(async () => {
       process.stdout.write(`Rebuilding entity resolution for ${opts.kg}…\n`);
@@ -705,7 +705,7 @@ er.command("rebuild")
 program
   .command("enrich")
   .description("Agentic enrichment — fill an attribute from web sources, with citations")
-  .requiredOption("--kg <name>", "Knowledge graph")
+  .requiredOption("--kg <name>", "Context graph")
   .requiredOption("--type <Type>", "Entity type to enrich")
   .requiredOption("--attribute <attr>", "Attribute to fill (e.g. reviews, description)")
   .option("--tier <tier>", "auto | lite | base | core | pro (auto lets the backend pick free vs paid web search)", "auto")
@@ -790,7 +790,7 @@ program
 program
   .command("vis <type>")
   .description("Visualise a type — instance count, attribute coverage, top relations")
-  .option("--kg <name>", "Knowledge graph to inspect")
+  .option("--kg <name>", "Context graph to inspect")
   .action(async (typeName: string, opts: { kg?: string }) => {
     await withErrors(async () => {
       const c = client();
@@ -800,7 +800,7 @@ program
       if (!kg) {
         const kgs = await c.listKgs();
         if (!kgs.length) {
-          fail("No knowledge graphs found. Run 'cograph ingest' first.");
+          fail("No context graphs found. Run 'cograph ingest' first.");
         }
         kg = String(kgs[0].name ?? "");
       }
@@ -855,7 +855,7 @@ program
 program
   .command("clear")
   .description("Clear data")
-  .option("--kg <name>", "Clear a specific knowledge graph")
+  .option("--kg <name>", "Clear a specific context graph")
   .option(
     "--include-ontology",
     "Also clear the ontology (only meaningful when --kg is omitted)",
@@ -956,7 +956,7 @@ program
 program
   .command("shell")
   .description("Start an interactive REPL")
-  .option("--kg <name>", "Knowledge graph to use")
+  .option("--kg <name>", "Context graph to use")
   .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
   .option("--no-login", "Skip browser login (assume open-access backend)")
   .action(

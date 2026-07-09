@@ -70,7 +70,7 @@ function showCommands(): void {
     ["/ingest <file> ...", "Ingest a CSV/JSON/text file"],
     ["/ask <question>", "Ask in natural language"],
     ["/agent <message>", "Unified Ask-AI agent — answers, plans, runs actions"],
-    ["/kg list", "List your knowledge graphs"],
+    ["/kg list", "List your context graphs"],
     ["/kg switch <name>", "Switch to a different KG"],
     ["/kg create <name>", "Create a new KG and switch to it"],
     ["/kg delete <name>", "Delete a KG (irreversible)"],
@@ -133,14 +133,14 @@ async function selectKg(
     kgs = await client.listKgs();
   } catch (err) {
     printError(
-      `Could not list knowledge graphs: ${err instanceof Error ? err.message : String(err)}`,
+      `Could not list context graphs: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }
 
   if (kgs.length === 0) {
     stdout.write(
-      `  ${DIM}No knowledge graphs found. Enter a name to create your first KG.${RESET}\n`,
+      `  ${DIM}No context graphs found. Enter a name to create your first KG.${RESET}\n`,
     );
     const name = (await ask(rl, "  KG name: ")).trim();
     if (!name) return null;
@@ -156,7 +156,7 @@ async function selectKg(
       // 409 / "already exists" is fine — someone created it between listKgs
       // and now, or the user retried. Anything else is a real failure.
       if (!/already exists|409/i.test(msg)) {
-        printError(`Could not create knowledge graph: ${msg}`);
+        printError(`Could not create context graph: ${msg}`);
         return null;
       }
     }
@@ -171,7 +171,7 @@ async function selectKg(
     }
   }
 
-  stdout.write(`  ${BOLD}Available knowledge graphs:${RESET}\n`);
+  stdout.write(`  ${BOLD}Available context graphs:${RESET}\n`);
   kgs.forEach((kg, i) => {
     const n = (kg as { name?: string }).name ?? "?";
     const tc = (kg as { triple_count?: number }).triple_count ?? 0;
@@ -1396,7 +1396,7 @@ export async function runShell(opts: {
           const list = await client.listKgs();
           if (!list.length) {
             stdout.write(
-              `  ${DIM}No knowledge graphs yet. /kg create <name>${RESET}\n`,
+              `  ${DIM}No context graphs yet. /kg create <name>${RESET}\n`,
             );
           } else {
             for (const k of list) {
