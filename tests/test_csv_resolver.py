@@ -2,6 +2,7 @@
 
 import copy
 import csv
+import json
 import os
 from pathlib import Path
 
@@ -530,6 +531,123 @@ class TestInferSchemaRetry:
                 existing_types={},
                 total_rows=1,
             )
+
+
+class TestInferSchemaEmptyLLMResponseRetry:
+    """Regression guard for the llm_router missing-content hardening.
+
+    ``openrouter_chat`` used to raise a raw ``KeyError('content')`` when the
+    extraction model omitted/blanked the message ``content`` (a Cerebras
+    ``gpt-oss-120b`` reasoning turn that spends its whole budget →
+    ``finish_reason == "length"`` with no content). It now degrades that to a
+    clean ``ValueError("empty LLM response from <provider>")``.
+
+    The CSV schema retry sites caught ``(ValidationError, KeyError,
+    json.JSONDecodeError)``. The OLD ``KeyError`` was in that tuple → caught →
+    retried at temp 0.3 → a persistent failure surfaced as a clean HTTP 422. But
+    ``json.JSONDecodeError`` is a SUBCLASS of ``ValueError``, and catching a
+    subclass does NOT catch the parent, so the new plain ``ValueError`` ESCAPED
+    the tuple → the retry was skipped and ``POST /ingest/csv/schema`` 500'd
+    instead of 422'ing. The fix widens the caught type to ``ValueError`` (which
+    still catches JSON errors, since ``json.JSONDecodeError ⊂ ValueError``).
+
+    These exercise the REAL ``openrouter_chat → _chat_openrouter → _call_llm``
+    chain via the legacy single-call path (``OMNIX_CSV_INFERENCE_V2=0``); the
+    only thing mocked is ``openrouter_chat`` itself. Invented tokens; no network.
+    """
+
+    # The exact message llm_router now raises on missing/blank content.
+    _EMPTY = "empty LLM response from openrouter (finish_reason=length)"
+
+    @pytest.mark.asyncio
+    async def test_recovers_when_empty_response_then_valid(self, monkeypatch):
+        """First call returns an empty-response ValueError; the retry at temp 0.3
+        returns valid JSON → inference RECOVERS. With the old
+        ``json.JSONDecodeError`` tuple the first ValueError would escape and the
+        retry would never run, so this asserts the widening restored recovery."""
+        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")  # legacy single-call path
+        resolver = CSVResolver(client=None, openrouter_key="test-or-key")
+
+        valid = {
+            "entity_type": "Widget",
+            "columns": [
+                {"column_name": "rec_id", "role": "type_id", "datatype": "string"},
+                {"column_name": "label", "role": "attribute",
+                 "datatype": "string", "attribute_name": "label"},
+            ],
+        }
+        temps: list[float] = []
+
+        async def fake_openrouter_chat(*args, **kwargs):
+            temps.append(kwargs.get("temperature", 0.0))
+            if len(temps) == 1:
+                raise ValueError(self._EMPTY)
+            return json.dumps(valid)  # _chat_openrouter json.loads() the text
+
+        monkeypatch.setattr(csv_resolver, "openrouter_chat", fake_openrouter_chat)
+
+        mapping = await resolver.infer_schema(
+            headers=["rec_id", "label"],
+            sample_rows=[{"rec_id": "R1", "label": "L1"}],
+            existing_types={},
+            total_rows=1,
+        )
+        assert mapping.entity_type == "Widget"  # recovered on the retry
+        assert temps == [0.0, 0.3]  # the empty response was caught → retried
+
+    @pytest.mark.asyncio
+    async def test_persistent_empty_response_retries_then_raises_valueerror(
+        self, monkeypatch
+    ):
+        """A persistently-empty response retries once (temp 0.3) and then
+        propagates as the SAME ``ValueError`` the /ingest/csv/schema route maps
+        to a clean 422 — never an uncaught non-ValueError that would 500."""
+        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        resolver = CSVResolver(client=None, openrouter_key="test-or-key")
+        temps: list[float] = []
+
+        async def always_empty(*args, **kwargs):
+            temps.append(kwargs.get("temperature", 0.0))
+            raise ValueError(self._EMPTY)
+
+        monkeypatch.setattr(csv_resolver, "openrouter_chat", always_empty)
+
+        with pytest.raises(ValueError) as ei:
+            await resolver.infer_schema(
+                headers=["rec_id"],
+                sample_rows=[{"rec_id": "R1"}],
+                existing_types={},
+                total_rows=1,
+            )
+        assert temps == [0.0, 0.3]  # the retry WAS attempted (tuple caught it)
+        assert "empty LLM response" in str(ei.value)
+
+    def test_route_maps_persistent_empty_response_to_422_not_500(
+        self, monkeypatch, client, auth_headers
+    ):
+        """End-to-end: POST /ingest/csv/schema with an extraction model that
+        persistently returns an empty response yields a clean 422 (with retry
+        guidance), NOT an uncaught 500. TestClient re-raises uncaught server
+        errors, so a regression here would ERROR, not silently pass."""
+        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")  # legacy single-call path
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")  # reach openrouter_chat
+
+        async def always_empty(*args, **kwargs):
+            raise ValueError(self._EMPTY)
+
+        monkeypatch.setattr(csv_resolver, "openrouter_chat", always_empty)
+
+        resp = client.post(
+            "/graphs/test-tenant/ingest/csv/schema",
+            json={
+                "headers": ["rec_id", "label"],
+                "sample_rows": [{"rec_id": "R1", "label": "L1"}],
+                "total_rows": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+        assert "Schema inference failed after retry" in resp.json()["detail"]
 
 
 class TestBatchedInsertTriples:
