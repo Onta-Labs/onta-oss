@@ -49,6 +49,13 @@ CEREBRAS_BASE = "https://api.cerebras.ai/v1"
 PRIMARY_MODEL = os.environ.get("OMNIX_LLM_MODEL", "anthropic/claude-opus-4.8")
 FALLBACK_MODEL = os.environ.get("OMNIX_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
 
+# A reasoning model (e.g. Cerebras gpt-oss-120b) spends part of its token budget on
+# a hidden reasoning phase before emitting content; too small a budget yields an
+# empty `finish_reason=length` response. Floor every completion budget so a small
+# caller value can't starve reasoning. max_tokens is a CEILING, not a target — a
+# non-reasoning model that finishes early stops well under this and is unaffected.
+REASONING_MIN_TOKENS = 2048   # matches #164's Cerebras SPARQL budget
+
 
 def _llm_provider() -> str:
     """The extraction LLM backend: ``openrouter`` (default) or ``cerebras``.
@@ -126,6 +133,12 @@ async def openrouter_chat(
     """
     provider = _llm_provider()
     effective_model = model or PRIMARY_MODEL
+    # Floor the completion budget so a small caller value can't starve a reasoning
+    # model's hidden reasoning phase (empty finish_reason=length). This is a
+    # CEILING, not a target: callers passing >= REASONING_MIN_TOKENS are unchanged,
+    # and a model that finishes early stops well under it. Applied to whichever
+    # completion-budget field each request branch below sends.
+    effective_max_tokens = max(max_tokens, REASONING_MIN_TOKENS)
     if provider == "cerebras" and "/" not in effective_model:
         cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
         if not cerebras_key:
@@ -148,7 +161,7 @@ async def openrouter_chat(
                 {"role": "user", "content": user},
             ],
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": effective_max_tokens,
         }
     else:
         base = OPENROUTER_BASE
@@ -162,7 +175,7 @@ async def openrouter_chat(
                 {"role": "user", "content": user},
             ],
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": effective_max_tokens,
         }
     # The 402/401 message must name the account that ACTUALLY served this call.
     # Post-#163 the branch above is chosen per-call by slug shape, so the live
