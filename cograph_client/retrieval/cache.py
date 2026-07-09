@@ -223,7 +223,13 @@ class FetchCache:
                 except OSError:
                     pass
                 raise
-        except OSError as exc:
+        except Exception as exc:
+            # Any failure to PERSIST (an OSError, or a serialization error such as a
+            # UnicodeEncodeError from a page whose text carries a lone surrogate) must
+            # NEVER break the fetch it is caching — the PageFetcher contract is that
+            # fetch never raises. Log and move on; the (still-good) page is returned
+            # uncached, so the next record run re-attempts. BaseException
+            # (KeyboardInterrupt / SystemExit) intentionally still propagates.
             logger.warning("fetch_cache_write_failed", path=str(path), error=str(exc)[:200])
 
 

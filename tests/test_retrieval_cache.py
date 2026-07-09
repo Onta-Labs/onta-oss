@@ -316,6 +316,23 @@ def test_wrapper_satisfies_pagefetcher_protocol():
     assert isinstance(CachingPageFetcher(FakeFetcher()), PageFetcher)
 
 
+async def test_record_unserializable_page_does_not_raise_and_leaves_no_temp(tmp_path):
+    """A page whose text carries a lone surrogate can't be UTF-8/JSON-encoded. The
+    store write must fail SILENTLY (PageFetcher never raises): fetch returns the good
+    page uncached, and no orphaned .tmp file is left behind."""
+    cache = _cache(tmp_path)
+    bad = FetchedPage(url="https://s.test/surrogate", text="ok\ud800bad", tier="static", ok=True)
+    fetcher = CachingPageFetcher(FakeFetcher(page=bad), cache=cache, mode=FetchCacheMode.RECORD)
+
+    page = await fetcher.fetch("https://s.test/surrogate")  # must NOT raise
+    assert page.ok is True and page is bad
+    # the entry was not persisted (unserializable), so it's a miss on re-read
+    assert cache.get(cache.key(name="static", tier=0, url="https://s.test/surrogate", want="")) is None
+    # no orphaned temp file from the aborted atomic write
+    leftovers = list(cache.directory.glob("*.tmp")) if cache.directory.exists() else []
+    assert leftovers == []
+
+
 async def test_off_mode_only_caches_ok_pages(tmp_path):
     """A failed fetch under record mode is NOT pinned (so a later run re-attempts)."""
     cache = _cache(tmp_path)
