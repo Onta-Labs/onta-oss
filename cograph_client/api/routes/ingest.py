@@ -1,6 +1,5 @@
 """POST /graphs/{tenant}/ingest — raw data ingestion with schema resolution."""
 
-import json
 from pathlib import Path
 
 import structlog
@@ -124,7 +123,12 @@ async def infer_csv_schema(
     )
     try:
         return await csv_resolver.infer_schema(body.headers, body.sample_rows, existing_types, body.total_rows)
-    except (ValidationError, KeyError, json.JSONDecodeError) as e:
+    # ValueError (widened from json.JSONDecodeError, a ValueError subclass) also
+    # catches the empty-LLM-response ValueError that openrouter_chat now raises
+    # when the extraction model omits/blanks `content` (llm_router hardening) —
+    # so a persistent missing-content failure surfaces as this clean 422 with its
+    # retry, not an uncaught 500. Keeps catching JSON + pydantic validation errors.
+    except (ValidationError, KeyError, ValueError) as e:
         _log.warning("csv_schema_inference_failed", error=str(e))
         raise HTTPException(
             status_code=422,

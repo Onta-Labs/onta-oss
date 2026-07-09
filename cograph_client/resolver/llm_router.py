@@ -204,8 +204,37 @@ async def openrouter_chat(
                 raise fatal from exc
             raise
         payload = res.json()
-        choice = payload["choices"][0]
-        content = choice["message"]["content"]
+        # Degrade EVERY response-shape defect — a non-dict payload, a
+        # missing/empty ``choices``, a missing/non-dict ``message``, or a
+        # missing/``null``/``""`` ``content`` — to ONE diagnosable, typed error
+        # instead of a raw ``KeyError``/``IndexError``/``TypeError``. A reasoning
+        # model (Cerebras ``gpt-oss-120b``) that spends its ENTIRE token budget on
+        # reasoning returns ``finish_reason == "length"`` with the ``content`` key
+        # ABSENT (not merely ``null``); a filtered/empty reply omits it too. The
+        # old ``choice["message"]["content"]`` raised ``KeyError('content')`` — an
+        # opaque crash on the extraction path (web-ingest spec resolution, agent
+        # classify, enrichment, CSV schema inference) that named nothing. This
+        # mirrors the query path's #172 guard (``nlp/pipeline.py``): callers'
+        # existing ``except`` (e.g. ``_resolve_spec``'s fallback) now degrades
+        # gracefully on a clean ``ValueError`` naming the ACTIVE provider. The
+        # happy path (a normal non-empty content string) is returned verbatim,
+        # unchanged, through the SAME return variants below.
+        if not isinstance(payload, dict):
+            payload = {}
+        try:
+            choice = payload["choices"][0]
+        except (KeyError, IndexError, TypeError):
+            choice = {}
+        if not isinstance(choice, dict):
+            choice = {}
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            message = {}
+        content = message.get("content")
+        if not content:
+            finish_reason = choice.get("finish_reason")
+            detail = f" (finish_reason={finish_reason})" if finish_reason else ""
+            raise ValueError(f"empty LLM response from {active_provider}{detail}")
         if return_finish_reason and return_usage:
             return content, choice.get("finish_reason"), payload.get("usage")
         if return_finish_reason:

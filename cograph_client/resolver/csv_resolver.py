@@ -591,7 +591,7 @@ class CSVResolver:
         try:
             data = await self._call_llm(user_content, temperature=0.0)
             mapping = self._build_mapping(data)
-        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+        except (ValidationError, KeyError, ValueError) as e:
             logger.warning("csv_schema_validation_retry", error=str(e))
             data = await self._call_llm(user_content, temperature=0.3)
             mapping = self._build_mapping(data)
@@ -736,7 +736,7 @@ class CSVResolver:
                     REASON_SYSTEM, reason_user, temperature=0.0, max_tokens=max_tokens,
                 )
                 _check_reason_shape(proposed)
-            except (ValidationError, KeyError, json.JSONDecodeError) as e:
+            except (ValidationError, KeyError, ValueError) as e:
                 logger.warning("csv_reason_validation_retry", error=str(e))
                 proposed = await self._call_llm_v2(
                     REASON_SYSTEM, reason_user, temperature=0.3, max_tokens=max_tokens,
@@ -756,7 +756,7 @@ class CSVResolver:
                 REFUTE_SYSTEM, refute_user, temperature=0.0, max_tokens=max_tokens,
             )
             violations, corrected = _check_refute_shape(refuted, proposed)
-        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+        except (ValidationError, KeyError, ValueError) as e:
             logger.warning("csv_refute_validation_retry", error=str(e))
             refuted = await self._call_llm_v2(
                 REFUTE_SYSTEM, refute_user, temperature=0.3, max_tokens=max_tokens,
@@ -777,7 +777,7 @@ class CSVResolver:
                 COMPLETE_SYSTEM, complete_user, temperature=0.0, max_tokens=max_tokens,
             )
             extensions = _check_complete_shape(completed)
-        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+        except (ValidationError, KeyError, ValueError) as e:
             logger.warning("csv_complete_validation_retry", error=str(e))
             completed = await self._call_llm_v2(
                 COMPLETE_SYSTEM, complete_user, temperature=0.3, max_tokens=max_tokens,
@@ -866,7 +866,7 @@ class CSVResolver:
                 ENTITY_SYSTEM, entity_user, temperature=0.0, max_tokens=_V2_BASE_MAX_TOKENS,
             )
             _check_entities(decomposition)
-        except (ValidationError, KeyError, json.JSONDecodeError) as e:
+        except (ValidationError, KeyError, ValueError) as e:
             logger.warning("csv_entity_validation_retry", error=str(e))
             decomposition = await self._call_llm_v2(
                 ENTITY_SYSTEM, entity_user, temperature=0.3, max_tokens=_V2_BASE_MAX_TOKENS,
@@ -929,7 +929,7 @@ class CSVResolver:
                         COLUMN_ASSIGN_SYSTEM, user, temperature=0.0, max_tokens=tokens,
                     )
                     _check_cols(data)
-                except (ValidationError, KeyError, json.JSONDecodeError) as e:
+                except (ValidationError, KeyError, ValueError) as e:
                     logger.warning("csv_column_assign_retry", error=str(e), chunk=len(chunk))
                     data = await self._call_llm_v2(
                         COLUMN_ASSIGN_SYSTEM, user, temperature=0.3, max_tokens=tokens,

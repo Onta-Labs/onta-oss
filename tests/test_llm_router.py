@@ -372,3 +372,132 @@ async def test_provider_cerebras_missing_key_raises_clear_error(monkeypatch):
     assert "cerebras" in msg.lower()
     # Never leak the caller's (or any) key in the error.
     assert "or-key" not in msg
+
+
+# --------------------------------------------------------------------------- #
+# Missing / empty / malformed response-shape guard (production KeyError today).
+#
+# ``openrouter_chat`` did a RAW subscript ``choices[0]["message"]["content"]``:
+# when a (reasoning) model returns a message that OMITS ``content`` — e.g.
+# Cerebras gpt-oss-120b with ``finish_reason == "length"`` after reasoning ate
+# the whole budget, or a filtered/empty reply — that raised a HARD
+# ``KeyError('content')`` on the EXTRACTION path (web-ingest spec resolution,
+# agent classify, enrichment, CSV schema inference). This is the same bug class
+# #172 fixed for the SEPARATE query pipeline (``nlp/pipeline.py``); this guards
+# the extraction router. The fix degrades every shape defect to ONE diagnosable
+# ``ValueError`` naming the ACTIVE provider — NEVER a raw KeyError/IndexError/
+# TypeError. All values below are invented tokens; all HTTP is mocked.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # content key MISSING (the production traceback: reasoning-budget exhaustion)
+        {"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]},
+        {"choices": [{"message": {"content": None}}]},  # content: null
+        {"choices": [{"message": {"content": ""}}]},  # content: ""
+        {},  # no choices key at all
+        {"choices": []},  # empty choices list
+        {"choices": [{"finish_reason": "stop"}]},  # choice has no message
+        {"choices": [{"message": "not-a-dict"}]},  # message is not a dict
+        {"choices": ["not-a-dict"]},  # choice is not a dict
+        {"choices": "not-a-list"},  # choices is not a list
+        [],  # whole payload is not a dict
+        None,  # whole payload is None
+    ],
+    ids=[
+        "content-key-missing",
+        "content-null",
+        "content-empty-string",
+        "no-choices-key",
+        "empty-choices-list",
+        "choice-without-message",
+        "message-not-dict",
+        "choice-not-dict",
+        "choices-not-list",
+        "payload-not-dict",
+        "payload-none",
+    ],
+)
+async def test_openrouter_chat_missing_content_degrades_to_clean_error(
+    monkeypatch, payload
+):
+    """Every malformed / empty response shape raises the SAME clean ``ValueError``
+    (NOT a raw KeyError/IndexError/TypeError), and the message names the provider.
+    This is the mechanism the production ``KeyError('content')`` violated."""
+    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)  # default = openrouter
+    _stub_client(monkeypatch, payload)
+
+    with pytest.raises(ValueError) as excinfo:
+        await llm_router.openrouter_chat("k", "s", "u")
+
+    # Assert the MECHANISM: not a raw lookup/type crash — a typed, diagnosable error.
+    assert not isinstance(excinfo.value, (KeyError, IndexError, TypeError))
+    msg = str(excinfo.value)
+    assert "empty LLM response" in msg
+    assert "openrouter" in msg  # names the ACTIVE provider
+
+
+@pytest.mark.asyncio
+async def test_openrouter_chat_missing_content_names_cerebras_provider(monkeypatch):
+    """When the ACTIVE provider is Cerebras (bare slug), the clean empty-response
+    error names Cerebras — reusing this function's post-#165 provider derivation,
+    not a hardcoded backend."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
+    monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "gadget-oss-120b")
+    # finish_reason=length + content key absent = the exact production shape.
+    _stub_client(
+        monkeypatch,
+        {"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]},
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        await llm_router.openrouter_chat("ignored", "s", "u", model="gadget-oss-120b")
+
+    assert not isinstance(excinfo.value, (KeyError, IndexError, TypeError))
+    msg = str(excinfo.value)
+    assert "empty LLM response" in msg
+    assert "cerebras" in msg
+    # The readily-available finish_reason is threaded in for diagnosis (like #172).
+    assert "length" in msg
+
+
+@pytest.mark.asyncio
+async def test_openrouter_chat_missing_content_guard_holds_for_return_variants(
+    monkeypatch,
+):
+    """The guard fires BEFORE the return-shape branch, so the
+    ``return_finish_reason`` / ``return_usage`` variants also raise the clean
+    error (never a KeyError) on a missing content — the guard covers ALL exit
+    paths, not just the bare-string one."""
+    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    _stub_client(
+        monkeypatch,
+        {"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]},
+    )
+
+    for kwargs in (
+        {"return_finish_reason": True},
+        {"return_usage": True},
+        {"return_finish_reason": True, "return_usage": True},
+    ):
+        with pytest.raises(ValueError) as excinfo:
+            await llm_router.openrouter_chat("k", "s", "u", **kwargs)
+        assert not isinstance(excinfo.value, (KeyError, IndexError, TypeError))
+        assert "empty LLM response" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_chat_happy_path_returns_content_verbatim(monkeypatch):
+    """Regression guard: a normal non-empty content string is returned BYTE-FOR-BYTE
+    unchanged — the guard only touches the missing/empty/malformed branches."""
+    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    _stub_client(
+        monkeypatch,
+        {"choices": [{"message": {"content": "  Sprocket-42 verbatim  "}}]},
+    )
+    out = await llm_router.openrouter_chat("k", "s", "u")
+    assert out == "  Sprocket-42 verbatim  "  # not stripped, not altered
