@@ -172,7 +172,14 @@ class EnrichCapability:
         names no known type (see :func:`_resolve_target_type`).
         """
         known_types = await _list_types(ctx)
-        type_name = _resolve_target_type(instruction, known_types, ctx.type_name)
+        # Prefer a type named in the LIVE turn over one lingering in the
+        # accumulated instruction window (session-context-bleed defense). The
+        # planner stashes the current message on ctx.extras; absent it (a direct
+        # call) resolution falls back to the instruction, unchanged.
+        current_message = ctx.extras.get("current_message") if ctx.extras else None
+        type_name = _resolve_target_type(
+            instruction, known_types, ctx.type_name, current_message
+        )
         if not type_name:
             return []
         schema = await list_type_schema(ctx.neptune, ctx.tenant_id, type_name)
@@ -743,17 +750,35 @@ def _match_type_in_text(text: str, known_types: list[str]) -> str | None:
 
 
 def _resolve_target_type(
-    instruction: str, known_types: list[str], selected: str | None
+    instruction: str,
+    known_types: list[str],
+    selected: str | None,
+    current_message: str | None = None,
 ) -> str | None:
-    """Pick the type to enrich, PREFERRING one named in the instruction.
+    """Pick the type to enrich, PREFERRING the one named in the LIVE turn.
 
     Order:
-      1. a known type named in the message wins — the user said it explicitly;
-      2. else the selected (UI) type, when it is a real KG type OR when we
+      1. a known type named in the CURRENT message wins — the user just said it,
+         so it beats a stale mention still sitting in the accumulated
+         ``instruction`` window (the session-context-bleed defense: without this,
+         "longest type named anywhere in the instruction" let a type from a
+         COMPLETED earlier request hijack the new one);
+      2. else a known type named anywhere in the accumulated ``instruction`` —
+         the clarify-chain fallback, where the type was named an earlier turn of
+         the SAME open ask and the current reply is a terse scope answer;
+      3. else the selected (UI) type, when it is a real KG type OR when we
          couldn't list types at all (preserve the legacy selection behavior);
-      3. else, when the KG has exactly one type, that type;
-      4. else None — the caller asks which type to enrich.
+      4. else, when the KG has exactly one type, that type;
+      5. else None — the caller asks which type to enrich.
+
+    ``current_message`` is optional: when omitted (a direct/legacy call) step 1 is
+    skipped and this collapses to the prior instruction-first behavior, so
+    existing callers are unaffected.
     """
+    if current_message:
+        named_now = _match_type_in_text(current_message, known_types)
+        if named_now:
+            return named_now
     named = _match_type_in_text(instruction, known_types)
     if named:
         return named
@@ -1170,17 +1195,28 @@ async def _extract_enrich_request(
             parsed = None
     if not parsed:
         parsed = _parse_enrich_instruction(instruction)
-    return _validate_enrich_request(parsed, attr_names, rel_names)
+    return _validate_enrich_request(parsed, attr_names, rel_names, type_name)
 
 
 def _validate_enrich_request(
-    parsed: dict, attr_names: list[str], rel_names: list[str]
+    parsed: dict,
+    attr_names: list[str],
+    rel_names: list[str],
+    type_name: str | None = None,
 ) -> dict:
     """Sanitize an extracted request against the type's real schema.
 
-    - attributes: dropped if they are stray modifier words; otherwise normalized
-      (matched case-insensitively to an existing attribute, else kept as a
-      proposed new attribute name).
+    - attributes: each raw entry is first SPLIT into individual tokens (an
+      extractor over multi-attribute phrasing sometimes crams a whole list — or a
+      stray ``attributes:`` label — into one string, which would otherwise fuse
+      into a single garbled token; see :func:`_split_attr_list`). Each token is
+      normalized (a stray modifier word is dropped). Then, GROUNDED in the type's
+      real schema: if ANY token names a declared attribute, keep ONLY the declared
+      ones (canonical-cased) — a non-member sitting alongside real fields is a
+      hallucination/garble and is dropped. If NONE match, the user is naming a
+      brand-new attribute to add (e.g. "company"), so keep the clean new nouns —
+      minus the target TYPE name itself, which is never a valid attribute of its
+      own type (a common hallucination, e.g. "Physician" extracted for Physician).
     - scope.predicate: kept only if it resolves to a real attribute/relationship
       (case-insensitively); otherwise the scope is dropped (a bad scope would
       match nothing).
@@ -1192,15 +1228,25 @@ def _validate_enrich_request(
     raw_attrs = parsed.get("attributes") or []
     if isinstance(raw_attrs, str):
         raw_attrs = [raw_attrs]
-    attributes: list[str] = []
-    for a in raw_attrs:
-        norm = _normalize_attr(a)
-        if not norm:
-            continue
-        attributes.append(attr_lookup.get(norm.lower(), norm))
-    # De-dupe preserving order.
+    # Expand each raw entry into individual tokens, then normalize + de-dupe.
+    candidates: list[str] = []
     seen: set[str] = set()
-    attributes = [a for a in attributes if not (a.lower() in seen or seen.add(a.lower()))]
+    for a in raw_attrs:
+        for frag in _split_attr_list(a):
+            norm = _normalize_attr(frag)
+            if norm and norm.lower() not in seen:
+                seen.add(norm.lower())
+                candidates.append(norm)
+    # Strict schema intersection when the type HAS declared attributes and at
+    # least one candidate matches one: keep only the declared (canonical) members
+    # — this drops hallucinated attrs mixed in with real ones. Otherwise (no
+    # match, or an empty/uningested schema) keep the clean new nouns as proposed
+    # attributes, never the type name itself.
+    matched = [attr_lookup[c.lower()] for c in candidates if c.lower() in attr_lookup]
+    if matched:
+        attributes = matched
+    else:
+        attributes = [c for c in candidates if not _is_type_name(c, type_name)]
 
     scope = parsed.get("scope")
     if isinstance(scope, dict) and scope.get("predicate") and scope.get("value"):
@@ -1255,6 +1301,45 @@ _STOPWORDS = {
     "this", "that", "these", "those", "all", "each", "every", "some", "new",
     "of", "for", "in", "on", "with",
 }
+
+
+# A leading "attributes:" / "field:" / "column:" label an extractor sometimes
+# keeps on a crammed attribute string ("attributes: group_affiliation, npi").
+# Stripped before splitting so it doesn't fuse into the first token.
+_ATTR_LABEL_RE = re.compile(
+    r"^\s*(?:attributes?|fields?|columns?|properties?)\s*[:=]\s*", re.IGNORECASE
+)
+
+
+def _split_attr_list(value) -> list[str]:
+    """Split one extracted attribute entry into individual attribute tokens.
+
+    An extractor over MULTI-attribute phrasing sometimes crams a whole list into
+    a single string ("group_affiliation, board_certifications, npi") or keeps a
+    stray ``attributes:`` label ("attributes: group_affiliation"). Left as one
+    string, :func:`_normalize_attr` would fuse it into a single garbled token
+    (e.g. ``attributes_group_affiliation``), silently collapsing four named
+    fields into one bogus one. We strip a leading label and split on the same
+    list delimiters the scope splitter uses, so each named field is validated on
+    its own. A single clean value ("company", "group affiliation") returns as a
+    lone element — ordinary single-attribute extraction is byte-for-byte
+    unchanged.
+    """
+    if not isinstance(value, str):
+        return []
+    stripped = _ATTR_LABEL_RE.sub("", value.strip())
+    if not stripped:
+        return []
+    return [p.strip() for p in _LIST_SPLIT_RE.split(stripped) if p.strip()]
+
+
+def _is_type_name(candidate: str, type_name: str | None) -> bool:
+    """True when ``candidate`` names the target type itself (singular/plural,
+    case-insensitive) — never a valid attribute OF that type, so it is dropped as
+    a hallucination (e.g. "Physician" extracted as an attribute of Physician)."""
+    if not candidate or not type_name:
+        return False
+    return _singularize(candidate.lower()) == _singularize(type_name.lower())
 
 
 def _normalize_attr(value) -> str:
