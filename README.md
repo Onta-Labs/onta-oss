@@ -1,6 +1,6 @@
 # Cograph
 
-Turn any CSV into a knowledge graph you can query in natural language.
+Turn any CSV into a context graph — a knowledge graph you can query in natural language.
 
 One LLM call infers the schema. All rows are mapped deterministically. Ask questions, get answers backed by SPARQL.
 
@@ -183,7 +183,7 @@ All endpoints at `http://localhost:8000`. No auth required for local usage.
 | POST | `/graphs/{tenant}/ask` | Natural language query |
 | POST | `/graphs/{tenant}/ingest/csv/schema` | Infer CSV schema |
 | POST | `/graphs/{tenant}/ingest/csv/rows` | Insert rows |
-| GET | `/graphs/{tenant}/kgs` | List knowledge graphs |
+| GET | `/graphs/{tenant}/kgs` | List context graphs |
 | POST | `/graphs/{tenant}/query` | Raw SPARQL query |
 | GET | `/graphs/{tenant}/ontology/schema` | View ontology |
 | POST | `/graphs/{tenant}/enrich/jobs` | Create + queue an enrichment job |
