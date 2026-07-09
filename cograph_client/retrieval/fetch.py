@@ -113,9 +113,18 @@ def register_default_fetchers() -> None:
 def default_ladder() -> list[PageFetcher]:
     """The fetch ladder to use: the registered fetchers, or a lone
     :class:`StaticHttpFetcher` when nothing is registered (so the harness works in
-    a bare unit test that never boots the app)."""
-    fetchers = get_page_fetchers()
-    return fetchers or [StaticHttpFetcher()]
+    a bare unit test that never boots the app).
+
+    When the record-and-replay fetch cache is enabled (``COGRAPH_FETCH_CACHE`` is
+    ``record`` / ``replay`` / ``auto``), each rung is transparently wrapped in a
+    :class:`~cograph_client.retrieval.cache.CachingPageFetcher` so repeat scrapes
+    replay from disk. With caching ``off`` (the default) the ladder is returned
+    UNCHANGED — behaviour is byte-identical to no cache. Imported lazily to keep
+    ``cache`` (which depends on this module's types) out of an import cycle."""
+    from cograph_client.retrieval.cache import maybe_wrap_ladder
+
+    fetchers = get_page_fetchers() or [StaticHttpFetcher()]
+    return maybe_wrap_ladder(fetchers)
 
 
 def fetcher_cost(fetcher: PageFetcher) -> tuple[bool, float]:

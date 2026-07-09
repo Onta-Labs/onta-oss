@@ -26,6 +26,10 @@ Boundary: OSS.
 from __future__ import annotations
 
 from cograph_client.research.types import FetchedPage
+from cograph_client.retrieval.cache import (
+    CachingPageFetcher,
+    maybe_wrap_ladder,
+)
 from cograph_client.retrieval.fetch import (
     PageFetcher,
     StaticHttpFetcher,
@@ -49,6 +53,7 @@ from cograph_client.retrieval.safety import (
 )
 
 __all__ = [
+    "CachingPageFetcher",
     "FetchedPage",
     "PageFetcher",
     "StaticHttpFetcher",
@@ -58,6 +63,7 @@ __all__ = [
     "host_dns_blocked",
     "html_to_text",
     "is_fetchable_url",
+    "maybe_wrap_ladder",
     "register_default_fetchers",
     "register_page_fetcher",
     "reset_page_fetchers",
