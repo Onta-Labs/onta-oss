@@ -68,6 +68,16 @@ integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast wi
 `?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/TypeName>`. \
 Do NOT select the type via FILTER(?t = <...type...>), FILTER(?t IN (...)), or a VALUES block \
 on the type — the direct triple form returns subtype instances too.
+- LOOKUP BY NAME across a type HIERARCHY: when the question looks up an entity by \
+its NAME / label (e.g. "show details for <name>", "who is <name>", "find <name>") and does \
+NOT restrict to one specific subtype, bind rdf:type to the broadest applicable SUPERTYPE, \
+NOT a single guessed subtype. Because the direct type triple returns subtype instances too, \
+binding to the supertype spans EVERY subtype, so the entity is found regardless of which \
+subtype it actually is. Binding to one guessed subtype (e.g. OrthopedicSurgeon when the \
+person is a BreastOncologist) returns zero rows even though a supertype (Physician) would \
+match. If the schema shows no single supertype covering the candidates, UNION the rdf:type \
+triple across the plausible subtypes instead. Prefer the most general type whose name/label \
+attribute can carry the value being searched.
 - To get an entity's display name, ALWAYS use <http://www.w3.org/2000/01/rdf-schema#label> first. \
 The rdfs:label is set on every entity during ingestion. Do NOT use attributes from the WRONG type \
 (e.g., do not use Person/attrs/name to get a Movie name). Each type's attributes are ONLY for that type.
