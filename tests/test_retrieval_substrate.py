@@ -192,6 +192,185 @@ def test_html_to_text_never_raises_and_keeps_title():
     assert html_to_text("") == ("", "")
 
 
+# --- structured-depth: tables + definition lists keep their shape ------------- #
+# The ONTA-193 P4 depth RCA: discovery/enrichment/research land name/desc/url but
+# rarely the DECLARED STRUCTURED attributes (pricing, latency, NPI/taxonomy) even
+# when asked, because a flat HTML→text dump destroys the row→column / label→value
+# association those fields live in. These freeze the reshaping that keeps a record
+# coherent for the extractor — asserting the MECHANISM (the " | " row join and the
+# "term: value" pair), with INVENTED tokens so they can't pass by memorizing a
+# real page. The anti-fabrication half asserts the reducer never invents a value
+# the page did not contain (unknown → gap, never a hallucinated cell) — a reducer
+# that only REFORMATS text cannot regress ONTA-259.
+
+def test_html_to_text_keeps_table_row_column_association():
+    # Invented model/price tokens: a pass requires the reshaping, not recall.
+    html = (
+        "<html><head><title>Zorptech Pricing</title></head><body>"
+        "<nav>Home Docs</nav><h1>Plans</h1>"
+        "<table>"
+        "<tr><th>Model</th><th>Input/1M</th><th>Latency</th></tr>"
+        "<tr><td>qwix-9</td><td>$4.44</td><td>88ms</td></tr>"
+        "<tr><td>vmb-3</td><td>$0.07</td><td>512ms</td></tr>"
+        "</table></body></html>"
+    )
+    title, text = html_to_text(html)
+    assert title == "Zorptech Pricing"
+    lines = text.splitlines()
+    # MECHANISM: each record is ONE line with its own cells joined by " | " — the
+    # declared price/latency stay bound to their model, not scattered vertically.
+    assert "qwix-9 | $4.44 | 88ms" in lines
+    assert "vmb-3 | $0.07 | 512ms" in lines
+    assert "Model | Input/1M | Latency" in lines  # header row preserved too
+    # No cross-row bleed: qwix-9's price never glued to vmb-3's row.
+    assert not any("$4.44" in ln and "vmb-3" in ln for ln in lines)
+
+
+def test_html_to_text_keeps_definition_list_label_value_pairs():
+    html = (
+        "<html><body><div class='card'><dl>"
+        "<dt>NPI</dt><dd>4477881122</dd>"
+        "<dt>Taxonomy</dt><dd>Zephyrology</dd>"
+        "<dt>Affiliation</dt><dd>Vandelay Clinic</dd>"
+        "</dl></div></body></html>"
+    )
+    _title, text = html_to_text(html)
+    lines = text.splitlines()
+    # MECHANISM: each definition emits "term: value" on one line, so the declared
+    # NPI/taxonomy/affiliation attributes carry their label with them.
+    assert "NPI: 4477881122" in lines
+    assert "Taxonomy: Zephyrology" in lines
+    assert "Affiliation: Vandelay Clinic" in lines
+
+
+def test_html_to_text_preserves_empty_cell_as_gap_never_fabricates():
+    # Middle cell is EMPTY. The declared value is genuinely absent → it must stay a
+    # visible gap keeping column alignment, never be back-filled from a neighbour
+    # or invented (the anti-fabrication contract, ONTA-259). The invented token
+    # ``NEVER_ON_PAGE`` must not appear — a reducer cannot add data.
+    html = (
+        "<table>"
+        "<tr><th>Drug</th><th>Dose</th><th>Route</th></tr>"
+        "<tr><td>quixil</td><td></td><td>oral</td></tr>"
+        "</table>"
+    )
+    _title, text = html_to_text(html)
+    assert "quixil |  | oral" in text.splitlines()  # empty middle cell preserved
+    assert "NEVER_ON_PAGE" not in text
+    # The gap is NOT filled with the route or the header value.
+    assert "quixil | oral | oral" not in text
+    assert "quixil | Dose | oral" not in text
+
+
+def test_html_to_text_no_structure_no_invented_values():
+    # A plain prose page carrying NONE of the declared structured data must yield
+    # text WITHOUT any price/id-shaped token — the reducer adds nothing.
+    html = (
+        "<html><head><title>About Us</title></head><body>"
+        "<h1>Our Mission</h1><p>We help teams collaborate.</p></body></html>"
+    )
+    _title, text = html_to_text(html)
+    assert "Our Mission" in text and "collaborate" in text
+    assert "$" not in text and " | " not in text  # no fabricated table/price
+
+
+def test_html_to_text_nested_table_never_raises_and_keeps_all_text():
+    # A nested table must not crash the parser or drop any cell's text; the inner
+    # table flattens into the outer cell (space-joined, never GLUED).
+    html = (
+        "<table><tr>"
+        "<td>outer1 <table><tr><td>innerA</td><td>innerB</td></tr></table></td>"
+        "<td>outer2</td>"
+        "</tr></table>"
+    )
+    _title, text = html_to_text(html)
+    for token in ("outer1", "innerA", "innerB", "outer2"):
+        assert token in text  # no data loss under nesting
+    assert "innerAinnerB" not in text  # inner cells space-separated, not glued
+    assert "outer2" in text.split("|")[-1]  # outer row structure survives
+
+
+def test_html_to_text_block_elements_in_cell_do_not_glue_tokens():
+    # display:block elements nested inside a <td> (where <dl> structure is
+    # suppressed) must space-break, or adjacent block texts GLUE into a value the
+    # page never rendered — the anti-fabrication contract (ONTA-259). Invented
+    # numeric tokens, so a corrupted glue (``2``+``50`` -> ``250``) would be an
+    # obvious fabrication. INLINE runs (<span>/<b>) must STAY joined — that IS how
+    # a browser renders them (``12``+``8k`` -> ``128k`` is real, not fabricated).
+    def cell(inner: str) -> str:
+        return f"<table><tr><td>{inner}</td></tr></table>"
+
+    # <dl> (dt/dd), <form>, and <details> block children — no glue.
+    assert "250" not in html_to_text(cell("<dl><dt>2</dt><dd>50</dd></dl>"))[1]
+    assert "128k" not in html_to_text(cell("<form>12</form><form>8k</form>"))[1]
+    assert "128k" not in html_to_text(
+        cell("<details>12</details><details>8k</details>")
+    )[1]
+    # The real tokens survive, just un-glued (space-separated).
+    npi = html_to_text(cell("<dl><dt>NPI</dt><dd>7788991000</dd></dl>"))[1]
+    assert "NPI 7788991000" in npi and "NPI7788991000" not in npi
+    # INLINE elements are NOT block — their run correctly joins (browser behavior).
+    assert "128k" in html_to_text(cell("<span>12</span><span>8k</span>"))[1]
+    assert "$2.50" in html_to_text(cell("$<b>2.50</b>"))[1]
+
+
+# --- robustness: OMITTED end tags must never lose text ------------------------ #
+# <td>/<th>/<tr>/<dt>/<dd> END tags are OPTIONAL per the HTML spec and are
+# routinely omitted by real CMS / hand-written markup; HTMLParser does NOT insert
+# the implied closes. A reducer that buffered until an end tag would silently DROP
+# the value on exactly the structured pages this targets — strictly WORSE than a
+# flat dump. These freeze that the boundaries are keyed off the always-present
+# START tags (+ the non-omittable </table>/</dl>) and flushed at EOF.
+
+def test_html_to_text_table_with_omitted_end_tags_keeps_rows():
+    # No </td> or </tr> anywhere — valid HTML. Every record must survive, bound.
+    html = "<table><tr><td>wibblex<td>$3.21<tr><td>flarnk<td>$9.99</table>"
+    _title, text = html_to_text(html)
+    lines = text.splitlines()
+    assert "wibblex | $3.21" in lines
+    assert "flarnk | $9.99" in lines
+
+
+def test_html_to_text_dl_with_omitted_end_tags_keeps_pairs():
+    # No </dt> or </dd> — the value must not leak into the term buffer and vanish.
+    html = "<dl><dt>NPI<dd>5561234000<dt>Taxonomy<dd>Quaxonomy</dl>"
+    _title, text = html_to_text(html)
+    lines = text.splitlines()
+    assert "NPI: 5561234000" in lines
+    assert "Taxonomy: Quaxonomy" in lines
+
+
+def test_html_to_text_truncated_page_flushes_open_buffers_at_eof():
+    # A fetch capped mid-cell (StaticHttpFetcher byte cap) ends with an open
+    # table/cell — its text must still be emitted, never dropped on EOF.
+    html = "<table><tr><td>zonkid</td><td>partial-val-777"  # abruptly cut off
+    _title, text = html_to_text(html)
+    assert "zonkid" in text
+    assert "partial-val-777" in text
+
+
+def test_html_to_text_one_unclosed_cell_does_not_poison_whole_table():
+    # A single missing </td> must not discard the rest of the table.
+    html = (
+        "<table>"
+        "<tr><td>plonktar</td><td>row1b"       # missing </td> and </tr>
+        "<tr><td>grubnix</td><td>row2b</td></tr>"
+        "</table>"
+    )
+    _title, text = html_to_text(html)
+    for token in ("plonktar", "row1b", "grubnix", "row2b"):
+        assert token in text  # nothing dropped
+
+
+def test_html_to_text_term_with_empty_value_is_not_lost():
+    # A <dt> whose <dd> is empty must still surface the term — the flat dump kept
+    # it, so the structured reducer must not silently drop it.
+    html = "<dl><dt>Blarnix</dt><dd></dd><dt>Grofnak</dt><dd>present</dd></dl>"
+    _title, text = html_to_text(html)
+    assert "Blarnix" in text                 # term preserved despite empty value
+    assert "Grofnak: present" in text.splitlines()
+
+
 # --- convergence contract: shim + research re-export the SAME objects --------- #
 def test_shim_reexports_are_substrate_objects():
     # The published research.fetch shim must BE the substrate (identity), so a

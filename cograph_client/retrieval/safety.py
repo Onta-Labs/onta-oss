@@ -170,13 +170,66 @@ async def host_dns_blocked(host: str) -> bool:
 
 # --- HTML → text -------------------------------------------------------------- #
 class _TextExtractor(HTMLParser):
-    """Minimal readability: drop script/style/nav chrome, keep visible text and
-    the ``<title>``. Not a full readability port — enough to feed an extractor;
-    the premium render tier returns clean markdown for the hard pages."""
+    """Minimal readability that PRESERVES the structural cues an extractor needs.
+
+    Beyond dropping script/style/nav chrome and keeping the ``<title>``, this
+    keeps the row/column shape of ``<table>``\\ s and the label/value pairing of
+    ``<dl>``\\ s — the very carriers of the DECLARED STRUCTURED attributes
+    (pricing, latency, NPI/taxonomy, …) a naive text dump destroys (ONTA-193 P4
+    depth RCA). A flat reducer turns a pricing table into an undifferentiated
+    vertical stream — ``Model / Input / Output / Context / gpt-4o / $2.50 /
+    $10.00 / 128k / …`` — with the row→column association GONE, so the extractor
+    can no longer tell which price belongs to which model and the declared fields
+    never land (name/description/url do, because those need no association). We
+    instead emit each table ROW as one line with cells joined by ``" | "`` —
+    ``gpt-4o | $2.50 | $10.00 | 128k`` — so a record stays coherent, and a
+    ``<dl>`` emits ``term: definition`` pairs. Empty cells are kept in place so a
+    missing value is a visible gap (``a |  | c``), never silently realigned into a
+    neighbour's column — the anti-fabrication contract (unknown → gap, never an
+    invented value): this reducer only ever REFORMATS text already on the page, it
+    can add no value that was not there. Adjacent display:block elements inside a
+    cell are space-broken (see ``_BLOCK``) so they can't glue into a token the page
+    never rendered (``<dt>2</dt><dd>50</dd>`` → ``2 50``, not ``250``); inline runs
+    (``$<b>2.50</b>`` → ``$2.50``) stay joined, matching the browser. Everything
+    else is the prior
+    line-per-text-node flow. Not a full readability port — enough to feed an
+    extractor; the premium render tier returns clean markdown for the hard pages,
+    and ITS rendered HTML flows back through here too, so this reshaping is what
+    gives depth on every successfully-fetched page regardless of fetch tier.
+
+    Robustness note: ``</td>``/``</th>``/``</tr>``/``</dt>``/``</dd>`` are OPTIONAL
+    end tags (routinely omitted by real markup) and ``HTMLParser`` does not insert
+    the implied closes, so boundaries are keyed off the always-present START tags
+    plus the non-omittable ``</table>``/``</dl>``, and every open buffer is flushed
+    at EOF (:meth:`text`) — a page that ends mid-cell (truncated fetch) or omits
+    its closes still yields ALL its text, never less than the old flat dump.
+    """
 
     # NB: do NOT skip <head> wholesale — <title> lives there. Its noisy children
     # (script/style) are skipped individually below.
     _SKIP = {"script", "style", "noscript", "template", "svg"}
+    # Block-level tags whose boundary inside a buffered cell/term/value marks a
+    # VISUAL break: a space is inserted so two adjacent block texts can't GLUE
+    # into a token that never appeared on the rendered page
+    # (``<div>12</div><div>8k</div>`` → ``12 8k``, NOT ``128k`` — the
+    # anti-fabrication contract; a reducer must add no value the page lacked).
+    # Excludes the table/dl structural tags, whose spacing is handled explicitly.
+    _BLOCK = {
+        "p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6",
+        "section", "article", "header", "footer", "aside", "nav", "blockquote",
+        "pre", "hr", "figure", "figcaption", "address", "main", "caption",
+        "thead", "tbody", "tfoot", "dl",
+        # display:block elements that can nest INSIDE a <td>/<th> cell (where <dl>
+        # structure is suppressed) — must space-break too, or their adjacent block
+        # texts GLUE into a fabricated token (``<dt>2</dt><dd>50</dd>`` -> ``250``,
+        # ``<form>12</form><form>8k</form>`` -> ``128k``). Inline tags (span/b/i/a/
+        # em/strong) stay OUT so their run correctly joins (``$<b>2.50</b>`` ->
+        # ``$2.50``) — matching browser rendering. (A residual exotic case — a bare
+        # <dt> directly in a <table> with no <td>, gluing across a <tr> — is a low
+        # non-blocking follow-up.)
+        "dt", "dd", "form", "fieldset", "details", "summary", "dialog",
+        "hgroup", "menu", "legend",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -184,18 +237,172 @@ class _TextExtractor(HTMLParser):
         self._skip_depth = 0
         self._in_title = False
         self.title = ""
+        # --- Structured-context state -------------------------------------- #
+        # HTML lets <td>/<th>/<tr>/<dt>/<dd> END tags be OMITTED, and HTMLParser
+        # (a raw SAX parser) does NOT insert the implied closes — so buffering
+        # text until an end tag would silently DROP it on the very pages (real
+        # CMS/hand-written markup) this targets. We instead key boundaries off the
+        # always-present START tags and the NON-omittable ``</table>`` / ``</dl>``
+        # (whose end tags are required), flushing a cell/row/pair on the NEXT
+        # boundary or at EOF. ``_table_depth`` / ``_dl_depth`` are therefore
+        # reliable nesting counters; only the OUTERMOST table/dl is given
+        # structure (nested ones flatten into the enclosing buffer, space-joined).
+        self._table_depth = 0
+        self._cells: Optional[list[str]] = None  # finalized cells of current row
+        self._cur: Optional[list[str]] = None     # fragments of the open cell
+        self._dl_depth = 0
+        self._dl_sink: Optional[str] = None        # "term" | "value" | None
+        self._term: list[str] = []
+        self._value: list[str] = []
+        self._last_term = ""
+        self._term_paired = False  # did _last_term already emit in a pair?
+
+    # -- active text sink -------------------------------------------------- #
+    def _active(self) -> Optional[list[str]]:
+        """The buffer raw text is currently routed into (cell > dl term/value),
+        or ``None`` when text flows straight to output as its own line."""
+        if self._cur is not None:
+            return self._cur
+        if self._dl_sink == "term":
+            return self._term
+        if self._dl_sink == "value":
+            return self._value
+        return None
+
+    # -- table flush helpers ----------------------------------------------- #
+    def _finalize_cell(self) -> None:
+        if self._cur is not None:
+            if self._cells is None:
+                self._cells = []
+            self._cells.append(self._collapse(self._cur))  # empties kept → gap
+            self._cur = None
+
+    def _flush_row(self) -> None:
+        self._finalize_cell()
+        if self._cells and any(self._cells):
+            self._parts.append(" | ".join(self._cells))
+        self._cells = None
+
+    # -- definition-list flush helpers ------------------------------------- #
+    def _emit_pending_value(self) -> None:
+        """Emit the buffered ``term: value`` pair (keeps ``_last_term`` so a
+        sibling <dd> under the same <dt> reuses it). An EMPTY value does not emit
+        and does not mark the term paired — the term is preserved for a later <dd>
+        or the final flush, so a ``<dt>`` with an empty ``<dd>`` never loses it."""
+        if self._dl_sink == "value":
+            val = self._collapse(self._value)
+            if val:
+                self._parts.append(
+                    f"{self._last_term}: {val}" if self._last_term else val
+                )
+                self._term_paired = True
+            self._value = []
+            self._dl_sink = None
+
+    def _flush_dl(self) -> None:
+        """Close out a definition list: emit a dangling value, then any term that
+        never paired (a <dt> with no/empty <dd> — keep its text so nothing is
+        lost), then reset."""
+        self._emit_pending_value()
+        if self._dl_sink == "term":  # a term still open (no <dd> seen at all)
+            self._last_term = self._collapse(self._term)
+            self._dl_sink = None
+        if self._last_term and not self._term_paired:
+            self._parts.append(self._last_term)
+        self._last_term = ""
+        self._term_paired = False
+
+    def _flush_all(self) -> None:
+        """Flush every open buffer — called at EOF so text is NEVER dropped even
+        when a page ends mid-table / mid-list (truncated fetch, omitted closes)."""
+        self._flush_row()
+        self._flush_dl()
 
     def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
         if tag in self._SKIP:
             self._skip_depth += 1
-        elif tag == "title":
+            return
+        if self._skip_depth:
+            return
+        if tag == "title":
             self._in_title = True
+            return
+        active = self._active()
+        # A block-level boundary inside a buffer becomes a space (anti-glue).
+        if active is not None and tag in self._BLOCK:
+            active.append(" ")
+        if tag == "table":
+            if active is not None:
+                active.append(" ")  # nested table inside a cell/value: break
+            self._table_depth += 1
+        elif tag == "tr":
+            if self._table_depth == 1:
+                self._flush_row()      # implied-close the previous row
+                self._cells = []
+            elif active is not None:
+                active.append(" ")     # nested-table row: break inside the buffer
+        elif tag in ("td", "th"):
+            if self._table_depth == 1:
+                self._finalize_cell()  # implied-close the previous cell
+                if self._cells is None:
+                    self._cells = []
+                self._cur = []
+            elif active is not None:
+                active.append(" ")     # nested-table cell: break inside the buffer
+        elif tag == "dl":
+            self._dl_depth += 1
+        elif tag == "dt":
+            # Suppress <dl> structure while inside a table cell (text stays cell
+            # content); its block space was already inserted above.
+            if self._dl_depth >= 1 and self._cur is None:
+                self._flush_dl()       # implied-close the previous pair
+                self._dl_sink = "term"
+                self._term = []
+        elif tag == "dd":
+            if self._dl_depth >= 1 and self._cur is None:
+                if self._dl_sink == "value":
+                    self._emit_pending_value()          # sibling <dd>: flush, keep term
+                elif self._dl_sink == "term":
+                    self._last_term = self._collapse(self._term)
+                self._dl_sink = "value"
+                self._value = []
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in self._SKIP and self._skip_depth > 0:
-            self._skip_depth -= 1
-        elif tag == "title":
+        if tag in self._SKIP:
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+            return
+        if self._skip_depth:
+            return
+        if tag == "title":
             self._in_title = False
+            return
+        active = self._active()
+        if active is not None and tag in self._BLOCK:
+            active.append(" ")
+        if tag == "table":
+            if self._table_depth == 1:
+                self._flush_row()
+            if self._table_depth > 0:
+                self._table_depth -= 1
+        elif tag == "tr":
+            if self._table_depth == 1:
+                self._flush_row()
+        elif tag in ("td", "th"):
+            if self._table_depth == 1:
+                self._finalize_cell()
+        elif tag == "dl":
+            if self._dl_depth == 1:
+                self._flush_dl()
+            if self._dl_depth > 0:
+                self._dl_depth -= 1
+        elif tag == "dt":
+            if self._dl_sink == "term" and self._cur is None:
+                self._last_term = self._collapse(self._term)
+                self._dl_sink = None   # term captured; await its <dd>
+        elif tag == "dd":
+            if self._cur is None:
+                self._emit_pending_value()
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
@@ -203,11 +410,24 @@ class _TextExtractor(HTMLParser):
         if self._in_title:
             self.title += data
             return
+        # Structured contexts buffer RAW data (whitespace normalized on flush) so
+        # a cell split across inline nodes — ``$<b>2.50</b>`` — rejoins to
+        # ``$2.50``; block boundaries above inject the separating space.
+        active = self._active()
+        if active is not None:
+            active.append(data)
+            return
         text = data.strip()
         if text:
             self._parts.append(text)
 
+    @staticmethod
+    def _collapse(parts: list[str]) -> str:
+        """Join a buffered cell/term/value and collapse internal whitespace."""
+        return re.sub(r"\s+", " ", "".join(parts)).strip()
+
     def text(self) -> str:
+        self._flush_all()  # never leave a buffer un-emitted at EOF
         return re.sub(r"\n{3,}", "\n\n", "\n".join(self._parts)).strip()
 
 
