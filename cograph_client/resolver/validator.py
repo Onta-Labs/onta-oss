@@ -164,19 +164,41 @@ def _typed_value(value: str, datatype: str) -> str:
 
     Returns "500000^^http://www.w3.org/2001/XMLSchema#integer" for integers, etc.
     Plain strings return as-is (no annotation needed).
-    Datetime values are normalized to full ISO-8601 with time component so that
-    Neptune xsd:dateTime comparisons work correctly. ``geo`` values are normalized
-    to canonical ``POINT(lon lat)`` WKT so the spatio-temporal index can parse them.
+
+    The lexical form is **canonicalized before the datatype is stamped** so that
+    every typed literal we write is a VALID lexical form for its XSD datatype.
+    This is the single choke point for typing: both the "conforms as-is" and the
+    "coerced" branches of ``validate_triple`` run through here, so canonicalizing
+    here guarantees no writer can emit a malformed typed literal.
+
+    Why this matters (the boolean bug this fixes): ``validate_value`` accepts
+    booleans case-insensitively (``"True"`` conforms), so ``"True"`` skipped
+    coercion and was stamped raw as ``"True"^^xsd:boolean``. But ``"True"`` is
+    NOT a valid ``xsd:boolean`` lexical form — the only valid forms are ``true``
+    / ``false`` / ``1`` / ``0`` — so no semantically-correct SPARQL boolean
+    filter (``?o = true``) ever matched the data (verified live: 0 rows). By
+    reusing ``coerce_value``'s canonicalization for ``boolean`` we store the
+    canonical lexical form. ``coerce_value`` is idempotent on its own output, so
+    double-normalizing an already-coerced value is a no-op.
+
+    Canonicalization is applied ONLY to the datatypes where a *conforming* value
+    can still be non-canonical or invalid — ``boolean`` (case-insensitive accept),
+    ``datetime`` (many input formats → ISO-8601), and ``geo`` (WKT normalization).
+    ``integer`` / ``float`` are left on the raw path on purpose: a value that
+    conformed is ALREADY a valid xsd numeric lexical form (compared numerically,
+    so ``"030"`` matches ``= 30``), and routing it through ``coerce_value`` —
+    which does ``str(int(float(value)))`` — would silently CORRUPT large integers
+    (``xsd:integer`` is unbounded; ``9223372036854775807`` → ``…808`` once it
+    round-trips through a float) and CRASH on very long ones (``float()`` overflows
+    to ``inf`` → ``int(inf)`` raises ``OverflowError``). Both are reachable from the
+    CSV path, which types large-int ID columns as ``integer``.
     """
     xsd = _DATATYPE_TO_XSD.get(datatype)
     if xsd:
-        if datatype == "datetime":
-            # Normalize to full ISO-8601 so Neptune dateTime comparisons work
-            normalized = _parse_datetime(value)
-            if normalized:
-                value = normalized
-        elif datatype == "geo":
-            value = _to_wkt_point(value) or value
+        if datatype in ("boolean", "datetime", "geo"):
+            canonical = coerce_value(value, datatype)
+            if canonical is not None:
+                value = canonical
         return f"{value}^^{xsd}"
     return value
 
