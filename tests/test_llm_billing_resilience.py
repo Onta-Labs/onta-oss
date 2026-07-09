@@ -44,6 +44,7 @@ from cograph_client.retrieval.errors import (
     LLMBillingError,
     LLMError,
     RetrievalError,
+    classify_llm_status_error,
 )
 
 
@@ -156,6 +157,127 @@ async def test_openrouter_500_still_raises_raw_httpstatuserror(monkeypatch):
     with pytest.raises(httpx.HTTPStatusError) as ei:
         await openrouter_chat("key", "sys", "user")
     assert not isinstance(ei.value, LLMError)
+
+
+# --------------------------------------------------------------------------- #
+# (a2) the billing/auth message names the ACTUAL provider (2026-07-08 bug)
+#
+# openrouter_chat routes to Cerebras when OMNIX_LLM_PROVIDER=cerebras, but the
+# 402/401 message used to hardcode "OpenRouter". On 2026-07-08 a Cerebras 402
+# (Cerebras out of credits) told the operator to check the *OpenRouter* balance
+# — an hour lost debugging the wrong account. These assert the MECHANISM: the
+# message names whatever provider it is HANDED and never a different one. They
+# use invented provider strings on purpose, so a fix that only special-cases the
+# two real literals (a hardcoded {cerebras, openrouter} table) would FAIL them.
+# --------------------------------------------------------------------------- #
+def _billing_msg(provider=None, host=None) -> str:
+    err = classify_llm_status_error(402, provider=provider, host=host)
+    assert isinstance(err, LLMBillingError)  # sanity: 402 → billing
+    return str(err)
+
+
+@pytest.mark.parametrize(
+    "provider, host",
+    [
+        ("cerebras", "api.cerebras.ai"),  # the real regressor
+        ("openrouter", "openrouter.ai"),  # the other real backend
+        ("acme-llm", "api.acme-llm.example"),  # invented → proves derivation
+        ("Zephyr", "llm.zephyr.test"),  # arbitrary casing → still derived
+    ],
+)
+def test_billing_message_names_the_handed_provider_only(provider, host):
+    """For ANY provider it is given, the message names THAT provider (via slug or
+    host) and never leaks a DIFFERENT known backend's name — the exact 2026-07-08
+    failure mode was a Cerebras 402 that named OpenRouter."""
+    msg = _billing_msg(provider=provider, host=host).lower()
+    # It always names the provider it was handed (the slug and the host both do).
+    assert provider.lower() in msg
+    assert host.lower() in msg
+    # It NEVER names a different backend. Any known backend token that is not part
+    # of the handed provider/host must be absent (no cross-provider misdiagnosis).
+    handed = f"{provider.lower()} {host.lower()}"
+    for foreign in ("cerebras", "openrouter", "api.cerebras.ai", "openrouter.ai"):
+        if foreign not in handed:
+            assert foreign not in msg, f"{provider!r} 402 wrongly mentioned {foreign!r}"
+
+
+def test_cerebras_402_says_cerebras_not_openrouter():
+    """The literal production regression, spelled out: a Cerebras 402 must name
+    Cerebras and must NOT say OpenRouter."""
+    msg = _billing_msg(provider="cerebras", host="api.cerebras.ai")
+    assert "Cerebras" in msg
+    assert "OpenRouter" not in msg
+    assert "openrouter" not in msg.lower()
+
+
+def test_openrouter_402_says_openrouter_not_cerebras():
+    """The mirror: an OpenRouter 402 must name OpenRouter and must NOT say
+    Cerebras."""
+    msg = _billing_msg(provider="openrouter", host="openrouter.ai").lower()
+    assert "openrouter" in msg
+    assert "cerebras" not in msg
+
+
+def test_billing_message_without_provider_is_generic_and_backward_compatible():
+    """Every pre-existing caller passes no provider/host — the message must stay a
+    valid, actionable LLMBillingError that invents NO specific backend name."""
+    msg = _billing_msg()  # no provider, no host
+    assert "402 Payment Required" in msg
+    lower = msg.lower()
+    assert "cerebras" not in lower
+    assert "openrouter" not in lower
+    # Still points the operator somewhere sensible (a generic provider account).
+    assert "provider" in lower
+
+
+def test_auth_401_message_is_also_provider_aware():
+    """401 (auth) threads the same provider so a bad Cerebras key doesn't tell the
+    operator to rotate the OpenRouter key."""
+    err = classify_llm_status_error(401, provider="acme-llm", host="api.acme-llm.example")
+    assert isinstance(err, LLMAuthError)
+    msg = str(err).lower()
+    assert "401" in msg
+    assert "acme-llm" in msg
+    assert "cerebras" not in msg
+    assert "openrouter" not in msg
+
+
+def test_classify_detail_still_folded_with_provider():
+    """The provider threading composes with the existing ``detail`` folding — the
+    provider body reason is still appended."""
+    err = classify_llm_status_error(
+        402, detail="out of credits", provider="acme-llm", host="api.acme-llm.example"
+    )
+    msg = str(err)
+    assert "out of credits" in msg
+    assert "Acme-Llm" in msg or "acme-llm" in msg.lower()
+
+
+async def test_cerebras_provider_message_flows_through_openrouter_chat(monkeypatch):
+    """End-to-end at the RAISE site: with the backend flipped to Cerebras, a 402
+    out of ``openrouter_chat`` names Cerebras (its host), not OpenRouter — proving
+    the call site actually threads the live provider, not just the pure classifier."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
+    _patch_client(monkeypatch, 402)
+    with pytest.raises(LLMBillingError) as ei:
+        # The OpenRouter-shaped api_key/model are ignored in cerebras mode.
+        await openrouter_chat("ignored-openrouter-key", "sys", "user")
+    msg = str(ei.value).lower()
+    assert "cerebras" in msg
+    assert "openrouter" not in msg
+
+
+async def test_openrouter_provider_message_flows_through_openrouter_chat(monkeypatch):
+    """Mirror end-to-end: the default (OpenRouter) backend's 402 names OpenRouter,
+    not Cerebras."""
+    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)  # default → openrouter
+    _patch_client(monkeypatch, 402)
+    with pytest.raises(LLMBillingError) as ei:
+        await openrouter_chat("openrouter-key", "sys", "user")
+    msg = str(ei.value).lower()
+    assert "openrouter" in msg
+    assert "cerebras" not in msg
 
 
 # --------------------------------------------------------------------------- #
