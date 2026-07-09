@@ -1,6 +1,6 @@
 # cograph
 
-Node.js SDK and CLI for [Cograph](https://cograph.cloud) — turn raw data into a queryable knowledge graph.
+Node.js SDK and CLI for [Cograph](https://cograph.cloud) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
 ## Quickstart
 
@@ -114,7 +114,7 @@ new Client({
 
 - `ingest(pathOrText, { kg?, contentType? })` — auto-detects CSV by extension and uses the two-step schema/rows flow; otherwise sends raw content.
 - `ask(question, { kg? })` — returns `{ answer, sparql?, ... }`.
-- `listKgs()`, `createKg(name, description?)`, `deleteKg(name)` — knowledge-graph CRUD.
+- `listKgs()`, `createKg(name, description?)`, `deleteKg(name)` — context-graph CRUD.
 - `ontologyTypes()` — list every type in the tenant ontology with attributes and parents.
 - `ontologyResolve(ask, { knowledge_graph? })` — resolve a fuzzy natural-language ontology-evolution ask (no exact type/attribute/relationship names needed) against the current schema. Returns `{ applied, proposals, summary }`; high-confidence changes land automatically, ambiguous/new-type ones come back as `proposals`.
 - `ontologyApply(proposal)` — confirm and commit a single `ResolvedChange` from `ontologyResolve`'s `proposals`. Pass the object through unchanged; returns `{ applied, operations, summary }`.
@@ -160,7 +160,7 @@ network error or timeout (i.e. when there is no HTTP response to return).
 For scripts and CI — every command is a single HTTP round-trip:
 
 ```bash
-# List / create / delete knowledge graphs
+# List / create / delete context graphs
 npx cograph kg list
 npx cograph kg create my-data --description "demo"
 npx cograph kg delete my-data
