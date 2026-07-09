@@ -800,14 +800,32 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     }
     try:
         from cograph_client.graph.kg_stats_store import KgStats, get_kg_stats_store
+        from cograph_client.graph.kg_summary import (
+            generate_kg_summary,
+            should_generate_summary,
+        )
 
-        await get_kg_stats_store().upsert(
+        store = get_kg_stats_store()
+        prev = await store.get(tenant_id, kg_name)
+        prev_desc = prev.ai_description if prev else ""
+        prev_breakdown = prev.type_breakdown if prev else {}
+        # Only (re)generate the one-line summary when the type SET changed (or
+        # there's none yet) — an enrichment write that just fills attributes on
+        # existing types keeps the existing line instead of paying for an LLM
+        # call. A transient generation miss (empty) must not blank a good line.
+        if should_generate_summary(prev_desc, prev_breakdown, type_breakdown):
+            ai_description = await generate_kg_summary(kg_name, type_breakdown) or prev_desc
+        else:
+            ai_description = prev_desc
+
+        await store.upsert(
             KgStats(
                 tenant_id=tenant_id,
                 kg_name=kg_name,
                 entity_count=sum(entity_counts.values()),
                 edge_count=total_edges,
                 type_breakdown=type_breakdown,
+                ai_description=ai_description,
             )
         )
     except Exception:  # noqa: BLE001 — store write is best-effort
