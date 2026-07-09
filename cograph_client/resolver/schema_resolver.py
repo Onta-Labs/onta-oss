@@ -827,9 +827,15 @@ def _looks_like_url(value: str) -> bool:
 
 #: Whole-value filler tokens (case-folded) an extractor emits in place of a real
 #: value. Matched only when the ENTIRE trimmed value equals one of these.
+#: DELIBERATELY excludes ambiguous tokens that carry a real reading in some
+#: domains — "None"/"nil" is a clinical CONFIRMED-none (allergies="None",
+#: medications="None"), and "NA"/"nan" is a real code (Namibia's ISO code, a
+#: North-America region code, or a person's name). Dropping those would turn a
+#: STATED "none" into indistinguishable-from-unknown = information loss, so only
+#: UNAMBIGUOUS non-values live here. "N/A" (with the slash) stays: it reads only
+#: as "not applicable / available", never as a value.
 _PLACEHOLDER_FILLER_TOKENS = frozenset({
-    "n/a", "n.a.", "na", "none", "null", "nil", "nan",
-    "unknown", "unspecified", "undefined",
+    "n/a", "n.a.", "null", "unknown", "unspecified", "undefined",
     "not available", "not applicable", "no data", "no value",
     "tbd", "tba", "test", "placeholder",
 })

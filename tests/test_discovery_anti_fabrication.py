@@ -50,7 +50,8 @@ _FABRICATED = "1234567890"
 # 1. The deterministic predicate — drops junk, KEEPS legitimate values.
 # ---------------------------------------------------------------------------
 
-# Obvious fabricated placeholders — every one must be dropped.
+# Obvious fabricated placeholders — every one must be dropped. Only UNAMBIGUOUS
+# non-values live here (the ambiguous "None"/"NA"/"nil"/"nan" are in _KEEP).
 _DROP = [
     "1234567890",          # classic sequential (phone-keypad order, wraps 9->0)
     "0123456789",          # ascending run
@@ -62,20 +63,25 @@ _DROP = [
     "123-45-6789",         # SSN-shaped sequential
     "N/A",
     "n/a",
-    "NA",
-    "None",
+    "null",
+    "NULL",
     "unknown",
     "UNKNOWN",
+    "unspecified",
     "tbd",
     "TBD",
     "not applicable",
+    "no data",
+    "placeholder",
     "xxx",
     "XXXXX",
     "----",
     "????",
 ]
 
-# Legitimate values — none may be dropped (conservative by design).
+# Legitimate values — none may be dropped (conservative by design). Includes the
+# ambiguous tokens the review flagged (a clinical CONFIRMED-none, a country code)
+# that MUST survive because they carry a real reading.
 _KEEP = [
     "1000",                # a real price
     "2024",                # a real year
@@ -91,6 +97,12 @@ _KEEP = [
     "Cardiology",          # a real category
     "id 007",              # a short real code with a space
     "100",                 # small round number
+    "None",                # clinical confirmed-none (allergies="None")
+    "none",                # same, lower-cased
+    "NA",                  # Namibia ISO code / North-America region code
+    "na",                  # same, lower-cased
+    "nil",                 # a stated zero / nothing, not a placeholder
+    "nan",                 # a real code / name ("Nan"), not "not-a-number" filler
 ]
 
 
@@ -117,6 +129,25 @@ def test_backstop_task_spec_examples():
     assert _is_fabricated_placeholder("N/A") is True
     assert _is_fabricated_placeholder("1000") is False   # a price
     assert _is_fabricated_placeholder("2024") is False   # a year
+
+
+def test_backstop_keeps_ambiguous_tokens_but_drops_unambiguous_ones():
+    """Review nit (health-domain safety): "None"/"nil" is a clinical
+    CONFIRMED-none and "NA"/"nan" is a real code — dropping them would lose
+    information, so they are KEPT. The unambiguous non-values ("n/a", "null",
+    "unknown") are still dropped, and the digit-pattern rules are unchanged."""
+    # KEPT — carry a real reading in some domain.
+    for kept in ("None", "none", "NONE", "NA", "na", "nil", "NIL", "nan", "NaN"):
+        assert _is_fabricated_placeholder(kept) is False, f"should KEEP {kept!r}"
+    # STILL DROPPED — no valid reading as a value.
+    for dropped in ("n/a", "N/A", "null", "NULL", "unknown", "tbd", "no data"):
+        assert _is_fabricated_placeholder(dropped) is True, f"should DROP {dropped!r}"
+    # Digit-pattern rules are untouched by the token-set change.
+    assert _is_fabricated_placeholder("1234567890") is True   # sequential
+    assert _is_fabricated_placeholder("0000000000") is True   # all-same, len 10
+    assert _is_fabricated_placeholder("777777") is True       # all-same, len 6 (>=6)
+    assert _is_fabricated_placeholder("12345") is False       # sequential but len 5 (<6)
+    assert _is_fabricated_placeholder("55555") is False       # all-same but len 5 (<6)
 
 
 # ---------------------------------------------------------------------------
