@@ -187,7 +187,11 @@ class _TextExtractor(HTMLParser):
     missing value is a visible gap (``a |  | c``), never silently realigned into a
     neighbour's column — the anti-fabrication contract (unknown → gap, never an
     invented value): this reducer only ever REFORMATS text already on the page, it
-    can add no value that was not there. Everything else is the prior
+    can add no value that was not there. Adjacent display:block elements inside a
+    cell are space-broken (see ``_BLOCK``) so they can't glue into a token the page
+    never rendered (``<dt>2</dt><dd>50</dd>`` → ``2 50``, not ``250``); inline runs
+    (``$<b>2.50</b>`` → ``$2.50``) stay joined, matching the browser. Everything
+    else is the prior
     line-per-text-node flow. Not a full readability port — enough to feed an
     extractor; the premium render tier returns clean markdown for the hard pages,
     and ITS rendered HTML flows back through here too, so this reshaping is what
@@ -215,6 +219,16 @@ class _TextExtractor(HTMLParser):
         "section", "article", "header", "footer", "aside", "nav", "blockquote",
         "pre", "hr", "figure", "figcaption", "address", "main", "caption",
         "thead", "tbody", "tfoot", "dl",
+        # display:block elements that can nest INSIDE a <td>/<th> cell (where <dl>
+        # structure is suppressed) — must space-break too, or their adjacent block
+        # texts GLUE into a fabricated token (``<dt>2</dt><dd>50</dd>`` -> ``250``,
+        # ``<form>12</form><form>8k</form>`` -> ``128k``). Inline tags (span/b/i/a/
+        # em/strong) stay OUT so their run correctly joins (``$<b>2.50</b>`` ->
+        # ``$2.50``) — matching browser rendering. (A residual exotic case — a bare
+        # <dt> directly in a <table> with no <td>, gluing across a <tr> — is a low
+        # non-blocking follow-up.)
+        "dt", "dd", "form", "fieldset", "details", "summary", "dialog",
+        "hgroup", "menu", "legend",
     }
 
     def __init__(self) -> None:

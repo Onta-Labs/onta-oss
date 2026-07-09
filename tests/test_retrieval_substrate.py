@@ -290,6 +290,30 @@ def test_html_to_text_nested_table_never_raises_and_keeps_all_text():
     assert "outer2" in text.split("|")[-1]  # outer row structure survives
 
 
+def test_html_to_text_block_elements_in_cell_do_not_glue_tokens():
+    # display:block elements nested inside a <td> (where <dl> structure is
+    # suppressed) must space-break, or adjacent block texts GLUE into a value the
+    # page never rendered — the anti-fabrication contract (ONTA-259). Invented
+    # numeric tokens, so a corrupted glue (``2``+``50`` -> ``250``) would be an
+    # obvious fabrication. INLINE runs (<span>/<b>) must STAY joined — that IS how
+    # a browser renders them (``12``+``8k`` -> ``128k`` is real, not fabricated).
+    def cell(inner: str) -> str:
+        return f"<table><tr><td>{inner}</td></tr></table>"
+
+    # <dl> (dt/dd), <form>, and <details> block children — no glue.
+    assert "250" not in html_to_text(cell("<dl><dt>2</dt><dd>50</dd></dl>"))[1]
+    assert "128k" not in html_to_text(cell("<form>12</form><form>8k</form>"))[1]
+    assert "128k" not in html_to_text(
+        cell("<details>12</details><details>8k</details>")
+    )[1]
+    # The real tokens survive, just un-glued (space-separated).
+    npi = html_to_text(cell("<dl><dt>NPI</dt><dd>7788991000</dd></dl>"))[1]
+    assert "NPI 7788991000" in npi and "NPI7788991000" not in npi
+    # INLINE elements are NOT block — their run correctly joins (browser behavior).
+    assert "128k" in html_to_text(cell("<span>12</span><span>8k</span>"))[1]
+    assert "$2.50" in html_to_text(cell("$<b>2.50</b>"))[1]
+
+
 # --- robustness: OMITTED end tags must never lose text ------------------------ #
 # <td>/<th>/<tr>/<dt>/<dd> END tags are OPTIONAL per the HTML spec and are
 # routinely omitted by real CMS / hand-written markup; HTMLParser does NOT insert
