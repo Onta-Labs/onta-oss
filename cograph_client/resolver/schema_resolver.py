@@ -2046,11 +2046,21 @@ class SchemaResolver:
             )
             # Discovery-only post-guard: inactive constraint returns unchanged.
             return _apply_extraction_constraint(result, constraint)
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             # A parse failure on a TRUNCATED response is the expected symptom of
             # the output exceeding max_tokens (the recovery loop will split +
             # retry); log it distinctly so it isn't mistaken for a malformed
             # model reply.
+            #
+            # ``ValueError`` (added belt-and-suspenders) also covers
+            # ``pydantic.ValidationError`` — a ``ValueError`` subclass — so a
+            # NOVEL bad record shape the extractor returns (e.g. a value type the
+            # models don't yet coerce) degrades to empty-extraction + split-retry
+            # instead of hard-failing the whole discovery job. The systemic
+            # fatal LLM errors (``LLMBillingError`` / ``LLMAuthError``, 402/401)
+            # are NOT ``ValueError`` subclasses and are raised in the LLM call
+            # ABOVE this try block, so they still propagate and abort the run
+            # fast (ONTA-201) rather than being swallowed here.
             logger.warning(
                 "extraction_parse_error",
                 error=str(e),
