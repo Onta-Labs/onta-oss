@@ -275,8 +275,8 @@ def test_html_to_text_no_structure_no_invented_values():
 
 
 def test_html_to_text_nested_table_never_raises_and_keeps_all_text():
-    # A nested table must not crash the parser or drop any cell's text (the outer
-    # try/except is a backstop, but the streaming buffers must degrade gracefully).
+    # A nested table must not crash the parser or drop any cell's text; the inner
+    # table flattens into the outer cell (space-joined, never GLUED).
     html = (
         "<table><tr>"
         "<td>outer1 <table><tr><td>innerA</td><td>innerB</td></tr></table></td>"
@@ -286,7 +286,65 @@ def test_html_to_text_nested_table_never_raises_and_keeps_all_text():
     _title, text = html_to_text(html)
     for token in ("outer1", "innerA", "innerB", "outer2"):
         assert token in text  # no data loss under nesting
+    assert "innerAinnerB" not in text  # inner cells space-separated, not glued
     assert "outer2" in text.split("|")[-1]  # outer row structure survives
+
+
+# --- robustness: OMITTED end tags must never lose text ------------------------ #
+# <td>/<th>/<tr>/<dt>/<dd> END tags are OPTIONAL per the HTML spec and are
+# routinely omitted by real CMS / hand-written markup; HTMLParser does NOT insert
+# the implied closes. A reducer that buffered until an end tag would silently DROP
+# the value on exactly the structured pages this targets — strictly WORSE than a
+# flat dump. These freeze that the boundaries are keyed off the always-present
+# START tags (+ the non-omittable </table>/</dl>) and flushed at EOF.
+
+def test_html_to_text_table_with_omitted_end_tags_keeps_rows():
+    # No </td> or </tr> anywhere — valid HTML. Every record must survive, bound.
+    html = "<table><tr><td>wibblex<td>$3.21<tr><td>flarnk<td>$9.99</table>"
+    _title, text = html_to_text(html)
+    lines = text.splitlines()
+    assert "wibblex | $3.21" in lines
+    assert "flarnk | $9.99" in lines
+
+
+def test_html_to_text_dl_with_omitted_end_tags_keeps_pairs():
+    # No </dt> or </dd> — the value must not leak into the term buffer and vanish.
+    html = "<dl><dt>NPI<dd>5561234000<dt>Taxonomy<dd>Quaxonomy</dl>"
+    _title, text = html_to_text(html)
+    lines = text.splitlines()
+    assert "NPI: 5561234000" in lines
+    assert "Taxonomy: Quaxonomy" in lines
+
+
+def test_html_to_text_truncated_page_flushes_open_buffers_at_eof():
+    # A fetch capped mid-cell (StaticHttpFetcher byte cap) ends with an open
+    # table/cell — its text must still be emitted, never dropped on EOF.
+    html = "<table><tr><td>zonkid</td><td>partial-val-777"  # abruptly cut off
+    _title, text = html_to_text(html)
+    assert "zonkid" in text
+    assert "partial-val-777" in text
+
+
+def test_html_to_text_one_unclosed_cell_does_not_poison_whole_table():
+    # A single missing </td> must not discard the rest of the table.
+    html = (
+        "<table>"
+        "<tr><td>plonktar</td><td>row1b"       # missing </td> and </tr>
+        "<tr><td>grubnix</td><td>row2b</td></tr>"
+        "</table>"
+    )
+    _title, text = html_to_text(html)
+    for token in ("plonktar", "row1b", "grubnix", "row2b"):
+        assert token in text  # nothing dropped
+
+
+def test_html_to_text_term_with_empty_value_is_not_lost():
+    # A <dt> whose <dd> is empty must still surface the term — the flat dump kept
+    # it, so the structured reducer must not silently drop it.
+    html = "<dl><dt>Blarnix</dt><dd></dd><dt>Grofnak</dt><dd>present</dd></dl>"
+    _title, text = html_to_text(html)
+    assert "Blarnix" in text                 # term preserved despite empty value
+    assert "Grofnak: present" in text.splitlines()
 
 
 # --- convergence contract: shim + research re-export the SAME objects --------- #
