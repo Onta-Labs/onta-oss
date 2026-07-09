@@ -800,14 +800,31 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     }
     try:
         from cograph_client.graph.kg_stats_store import KgStats, get_kg_stats_store
+        from cograph_client.graph.kg_summary import resolve_summary
 
-        await get_kg_stats_store().upsert(
+        store = get_kg_stats_store()
+        prev = await store.get(tenant_id, kg_name)
+        # Regenerate the one-line summary only when the type SET changed since it
+        # was last generated (or there's none yet) — an enrichment write that
+        # just fills attributes on existing types keeps the existing line instead
+        # of paying for an LLM call. A transient miss keeps the old line and
+        # leaves the signature stale so the next recompute retries.
+        ai_description, ai_description_types = await resolve_summary(
+            prev.ai_description if prev else "",
+            prev.ai_description_types if prev else [],
+            type_breakdown,
+            kg_name,
+        )
+
+        await store.upsert(
             KgStats(
                 tenant_id=tenant_id,
                 kg_name=kg_name,
                 entity_count=sum(entity_counts.values()),
                 edge_count=total_edges,
                 type_breakdown=type_breakdown,
+                ai_description=ai_description,
+                ai_description_types=ai_description_types,
             )
         )
     except Exception:  # noqa: BLE001 — store write is best-effort
@@ -1037,6 +1054,57 @@ def schedule_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> N
     task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
+
+
+# Cap on concurrent summary-generation LLM calls in a single backfill sweep, so a
+# tenant with many pre-existing KGs doesn't fan out one call per KG at once.
+_SUMMARY_BACKFILL_CONCURRENCY = 5
+
+
+def schedule_summary_backfill(rows: list) -> None:
+    """Fire-and-forget generation of any missing one-line KG summaries.
+
+    Kept OFF the ``list_kgs`` hot path (the file's stated rule: never compute the
+    summary live on a request) — the descriptions are persisted by the background
+    task and appear on the NEXT list. Recompute fills them at write time going
+    forward, so this only covers rows that predate the feature. No-op when
+    nothing is pending.
+    """
+    pending = [r for r in rows if not r.ai_description and r.type_breakdown]
+    if not pending:
+        return
+    task = asyncio.create_task(_run_summary_backfill(pending))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def _run_summary_backfill(pending: list) -> None:
+    """Generate + persist summaries for the given stats rows (bounded fan-out).
+
+    Best-effort throughout: a generation miss or store hiccup just leaves the
+    line blank for the next sweep. Concurrency is capped so a big tenant can't
+    fire one LLM call per KG simultaneously."""
+    from cograph_client.graph.kg_stats_store import get_kg_stats_store
+    from cograph_client.graph.kg_summary import generate_kg_summary
+
+    sem = asyncio.Semaphore(_SUMMARY_BACKFILL_CONCURRENCY)
+
+    async def _one(row):
+        async with sem:
+            return await generate_kg_summary(row.kg_name, row.type_breakdown)
+
+    summaries = await asyncio.gather(
+        *(_one(r) for r in pending), return_exceptions=True
+    )
+    store = get_kg_stats_store()
+    for row, desc in zip(pending, summaries):
+        if isinstance(desc, str) and desc:
+            row.ai_description = desc
+            row.ai_description_types = sorted(row.type_breakdown)
+            try:
+                await store.upsert(row)
+            except Exception:  # noqa: BLE001 — persistence is a cache warm, not required
+                logger.warning("kg_summary_backfill_upsert_failed", kg=row.kg_name)
 
 
 @router.get("/kgs/{kg_name}/types/{type_name}/summary")
