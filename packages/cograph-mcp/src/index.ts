@@ -394,7 +394,7 @@ server.registerTool(
   "evolve_ontology",
   {
     description:
-      "Evolve the knowledge-graph ontology from a plain-language description of " +
+      "Evolve the context-graph ontology from a plain-language description of " +
       "the change you want. You do NOT need to know exact type, attribute, or " +
       'relationship names — just describe the change in natural language (e.g. ' +
       '"track which company a person works for" or "people should have a birth ' +
