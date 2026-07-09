@@ -9,6 +9,7 @@ import asyncio
 import io
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -35,6 +36,47 @@ logger = logging.getLogger(__name__)
 TYPE_URI_PREFIX = "https://cograph.tech/types/"
 LARGE_TYPE_ATTR_THRESHOLD = 200
 LARGE_TYPE_ATTR_KEEP = 50
+
+
+def _singularize(word: str) -> str:
+    """Lowercase + strip a simple English plural suffix for loose token matching.
+
+    Deliberately conservative (no external NLP dep): handles the common
+    regular-plural cases so "Sprockets" in a question surfaces the declared
+    "Sprocket" type. Not exhaustive — false negatives just fall back to the
+    embedding ranking, which is the pre-existing behavior.
+    """
+    w = word.lower()
+    if len(w) > 3 and w.endswith("ies"):
+        return w[:-3] + "y"
+    if len(w) > 4 and w.endswith(("ches", "shes", "sses", "xes", "zes")):
+        return w[:-2]
+    if len(w) > 1 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def _types_named_in_question(question: str, type_names) -> set[str]:
+    """Declared type names the question explicitly mentions.
+
+    Matches each declared type against the question's word tokens with loose
+    singular/plural normalization (so "list all Sprockets" surfaces "Sprocket"),
+    plus a verbatim-substring check for compound/multi-word type names. Used to
+    force-include a named type into the retrieved subset even when it ranks below
+    top-K or has no instances (ONTA-258) — a declared type dropped from the
+    subset is invisible to the SPARQL LLM, which then wrongly claims it "does not
+    exist".
+    """
+    ql = question.lower()
+    q_singulars = {_singularize(t) for t in re.findall(r"[a-z0-9]+", ql)}
+    named: set[str] = set()
+    for tn in type_names:
+        nl = tn.lower()
+        if _singularize(nl) in q_singulars:
+            named.add(tn)
+        elif len(nl) > 2 and nl in ql:  # compound / multi-word type named verbatim
+            named.add(tn)
+    return named
 
 
 @dataclass
@@ -185,6 +227,15 @@ class OntologyEmbeddingService:
             if len(selected) >= max_total:
                 break
             selected.add(target)
+
+        # ONTA-258: always surface a type the question names by name, even if it
+        # ranked below top-K or carries no instances. A declared type dropped
+        # from the retrieved subset is invisible to the SPARQL LLM, which then
+        # claims the type "does not exist" instead of returning an honest
+        # zero-row answer. Matched against the FULL declared set (all chunks),
+        # and force-included past the expansion cap on purpose.
+        for tn in _types_named_in_question(question, type_names):
+            selected.add(tn)
 
         # Assemble ontology text
         lines: list[str] = []
