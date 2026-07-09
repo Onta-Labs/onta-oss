@@ -1,9 +1,9 @@
 """Tests for the NL query pipeline ontology fetch and cardinality filtering.
 
 These tests verify that:
-1. Active types filter correctly includes/excludes types based on KG instances
+1. A declared-but-empty type stays VISIBLE, annotated "[no instances]" (ONTA-258)
 2. Cardinality checks don't silently drop types with valid data
-3. Empty attributes are hidden but non-empty ones survive
+3. Empty attributes are kept + annotated "[no instances]", not hidden (ONTA-248)
 4. Relationship cardinality filtering works correctly
 5. Exceptions in cardinality checks don't crash the entire ontology fetch
 """
@@ -14,30 +14,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
-def _make_ontology_bindings(types_with_attrs: dict[str, list[tuple[str, str]]]) -> list[dict]:
-    """Create mock ontology query results.
+TYPES = "https://cograph.tech/types/"
 
-    Args:
-        types_with_attrs: {type_name: [(attr_name, range_uri), ...]}
-    """
-    bindings = []
-    for type_name, attrs in types_with_attrs.items():
-        if not attrs:
-            # Type with no attributes
-            bindings.append({
-                "typeLabel": type_name,
-                "type": f"https://cograph.tech/types/{type_name}",
-            })
-        for attr_name, range_uri in attrs:
-            bindings.append({
-                "typeLabel": type_name,
-                "type": f"https://cograph.tech/types/{type_name}",
-                "attrLabel": attr_name,
-                "attr": f"https://cograph.tech/types/{type_name}/attrs/{attr_name}",
-                "range": range_uri,
-            })
-    return bindings
+
+def _uri_row(**cells):
+    return {k: {"type": "uri", "value": v} for k, v in cells.items()}
+
+
+def _sparql_results(rows):
+    vars_ = sorted({k for r in rows for k in r})
+    return {"head": {"vars": vars_}, "results": {"bindings": rows}}
 
 
 def _count_types_in_summary(summary: str) -> list[str]:
@@ -58,33 +46,62 @@ def _get_type_attrs(summary: str, type_name: str) -> str:
     return ""
 
 
-class TestOntologyActiveTypeFilter:
-    """Test that ontology summary only includes types with instances in the target KG."""
+class _ActiveTypeNeptune:
+    """Routes SPARQL by shape: Singer/Stadium have instances, Movie does not.
 
-    def test_filters_to_active_types(self):
-        """Types without instances in the KG should not appear in the summary."""
-        # Singer and Stadium have instances, Movie does not
-        active_types = {"Singer", "Stadium"}
-        ontology_types = {
-            "Singer": [("name", "http://www.w3.org/2001/XMLSchema#string")],
-            "Stadium": [("capacity", "http://www.w3.org/2001/XMLSchema#integer")],
-            "Movie": [("title", "http://www.w3.org/2001/XMLSchema#string")],
-        }
+    Declares Singer{name}, Stadium{capacity}, Movie{title}; the active-types
+    probe returns only Singer + Stadium, so Movie is declared-but-empty.
+    """
 
-        bindings = _make_ontology_bindings(ontology_types)
+    _ONTOLOGY = [
+        _uri_row(type=f"{TYPES}Singer", typeLabel="Singer",
+                 attr=f"{TYPES}Singer/attrs/name", attrLabel="name",
+                 range="http://www.w3.org/2001/XMLSchema#string"),
+        _uri_row(type=f"{TYPES}Stadium", typeLabel="Stadium",
+                 attr=f"{TYPES}Stadium/attrs/capacity", attrLabel="capacity",
+                 range="http://www.w3.org/2001/XMLSchema#integer"),
+        _uri_row(type=f"{TYPES}Movie", typeLabel="Movie",
+                 attr=f"{TYPES}Movie/attrs/title", attrLabel="title",
+                 range="http://www.w3.org/2001/XMLSchema#string"),
+    ]
 
-        # Filter like the pipeline does
-        types = {}
-        for row in bindings:
-            tl = row.get("typeLabel", "")
-            if tl not in active_types:
-                continue
-            if tl not in types:
-                types[tl] = {"attributes": [], "relationships": []}
+    async def query(self, sparql: str):
+        s = sparql
+        if "SELECT DISTINCT ?type" in s and "rdf-syntax-ns#type" in s:
+            return _sparql_results([_uri_row(type=f"{TYPES}Singer"),
+                                    _uri_row(type=f"{TYPES}Stadium")])
+        if "?typeLabel" in s:
+            return _sparql_results(self._ONTOLOGY)
+        if "COUNT(DISTINCT ?val)" in s:
+            return _sparql_results([{"cnt": {"type": "literal", "value": "4"}}])
+        if "SELECT DISTINCT ?val" in s:
+            return _sparql_results([{"val": {"type": "literal", "value": "x"}}])
+        return _sparql_results([])
 
-        assert "Singer" in types
-        assert "Stadium" in types
-        assert "Movie" not in types
+
+class TestOntologyEmptyTypeVisibility:
+    """ONTA-258: a DECLARED type with no instances in the target KG is KEPT and
+    annotated "[no instances]", NOT dropped.
+
+    (This class formerly asserted the PRE-ONTA-258 behavior — that Movie was
+    filtered OUT — while only reimplementing the old filter inline, so it passed
+    as a tautology. It now drives the REAL `_fetch_ontology` and asserts the
+    reversed, current behavior. Full coverage lives in
+    tests/test_ontology_empty_types_visible.py.)"""
+
+    async def test_declared_empty_type_kept_and_annotated(self):
+        _ontology_cache.clear()
+        pipe = NLQueryPipeline(_ActiveTypeNeptune(), anthropic_key="dummy")
+        summary = await pipe._fetch_ontology(
+            "https://cograph.tech/graphs/t",
+            "https://cograph.tech/graphs/t/kg/Sports",
+        )
+        # Movie has no instances but is STILL visible, annotated (reverses old behavior).
+        assert "Type: Movie" in summary
+        assert "Type: Movie — URI: <https://cograph.tech/types/Movie> [no instances]" in summary
+        # Populated types are present and NOT annotated.
+        assert "Type: Singer" in summary and "Singer> [no instances]" not in summary
+        assert "Type: Stadium" in summary and "Stadium> [no instances]" not in summary
 
 
 class TestCardinalityFiltering:

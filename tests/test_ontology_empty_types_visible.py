@@ -74,9 +74,12 @@ class WidgetNeptune:
              attr=f"{TYPES}Gadget/attrs/weight", attrLabel="weight", range=FLOAT),
     ]
 
-    def __init__(self, *, active=("Widget",), count_value=5):
+    def __init__(self, *, active=("Widget",), count_value=5, pred_map=None):
         self.active = tuple(active)
         self.count_value = count_value
+        # Instance-graph predicates per type leaf, served to the schema-missing
+        # fallback's `SELECT DISTINCT ?p` probe (used by the disjoint test).
+        self.pred_map: dict[str, list[str]] = dict(pred_map or {})
         self.queries: list[str] = []
 
     async def query(self, sparql: str):
@@ -88,6 +91,12 @@ class WidgetNeptune:
         # Full-ontology schema query.
         if "?typeLabel" in s:
             return _results(self.ONTOLOGY_ROWS)
+        # Schema-missing fallback: predicates used on a type's instances.
+        if "SELECT DISTINCT ?p" in s:
+            for leaf, preds in self.pred_map.items():
+                if f"<{TYPES}{leaf}>" in s:
+                    return _results([_row(p=p) for p in preds])
+            return _results([])
         # Cardinality COUNT(DISTINCT ?val).
         if "COUNT(DISTINCT ?val)" in s:
             return _results([{"cnt": {"type": "literal", "value": str(self.count_value)}}])
@@ -183,6 +192,45 @@ async def test_mechanism_empty_set_equals_declared_minus_active():
         assert annotated_empty == declared - set(active), (
             f"empty set != declared−active for active={active}"
         )
+
+
+# --------------------------------------------------------------------------- #
+# disjoint active_matched == 0 fallback (ONTA-248-preserving)
+# --------------------------------------------------------------------------- #
+
+async def test_disjoint_instance_types_route_to_instance_fallback():
+    """When the instance graph reports types but NONE overlap the DECLARED
+    ontology (active_matched == 0), _fetch_ontology must route to the
+    instance-derived fallback — exactly as the old `if not types:` guard did —
+    NOT render an all-[no instances] summary of the disjoint declared types.
+
+    This locks in the ONTA-248-preserving behavior: keeping declared-but-empty
+    types visible (ONTA-258) must NOT swallow the schema-missing fallback."""
+    _ontology_cache.clear()
+    # Instance graph reports only "Gizmo" — a type the declared ontology
+    # (Widget/Sprocket/Gadget) does NOT contain. So declared ∩ active = ∅.
+    neptune = WidgetNeptune(
+        active=("Gizmo",),
+        pred_map={"Gizmo": [f"{TYPES}Gizmo/attrs/spin", f"{ONTO}links"]},
+    )
+    summary = await _pipe(neptune)._fetch_ontology(GRAPH, KG)
+
+    # Routed to the schema-missing, instance-derived fallback (its diagnostic
+    # prefix), surfacing the ACTUAL instance type + its probed predicates.
+    assert "has not been written yet" in summary
+    assert "Type: Gizmo" in summary
+    assert "spin" in summary  # instance-derived attribute predicate
+    assert "links" in summary  # instance-derived relationship predicate
+
+    # The disjoint DECLARED types are NOT rendered, and nothing is falsely
+    # annotated "[no instances]" — an all-empty declared summary would be worse
+    # than the instance-derived fallback (the whole point of active_matched==0).
+    assert "[no instances]" not in summary
+    for t in ("Widget", "Sprocket", "Gadget"):
+        assert f"Type: {t}" not in summary
+
+    # ONTA-248 behavior preserved: this path issues ZERO cardinality COUNT probes.
+    assert not any("COUNT(DISTINCT ?val)" in q for q in neptune.queries)
 
 
 # --------------------------------------------------------------------------- #
