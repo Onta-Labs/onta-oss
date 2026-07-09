@@ -1052,17 +1052,28 @@ class WebIngestCapability:
                             if not rows_found:
                                 plog.no_match += 1
                                 continue
-                            batch = _dedupe_rows(rows_found, key_attr, seen_keys)
-                            if not batch:
-                                continue  # found rows; all already contributed
                             # Per-record source-URL provenance (ONTA-151): stamp
                             # each row with the page it was drawn from BEFORE
                             # serialization, so it rides through the SAME extract →
                             # ingest → insert_facts path as the rest of the row's
                             # data and lands as a `source_url` citation.
-                            _attach_source_urls(
-                                batch, getattr(full, "provenance", None) or {}
+                            #
+                            # ONTA-256: bind the URL BEFORE _dedupe_rows drops rows.
+                            # Dedupe SHIFTS every surviving row's positional index;
+                            # the provenance map is keyed by each row's ORIGINAL
+                            # position, so stamping AFTER the drop (re-derived by the
+                            # shifted index) mis-binds a survivor to a DROPPED
+                            # neighbour's page. Binding first — indices still
+                            # original — and carrying the URL on the row object makes
+                            # the citation immune to the reindex.
+                            batch = _dedupe_rows_with_source_urls(
+                                rows_found,
+                                key_attr,
+                                seen_keys,
+                                getattr(full, "provenance", None) or {},
                             )
+                            if not batch:
+                                continue  # found rows; all already contributed
                             platforms = list(
                                 dict.fromkeys(
                                     [
@@ -1569,6 +1580,33 @@ def _dedupe_rows(
     return out
 
 
+def _dedupe_rows_with_source_urls(
+    rows: list[dict],
+    key_attr: str,
+    seen: set[str],
+    provenance: dict[str, str],
+) -> list[dict]:
+    """Bind each row's per-record ``source_url`` provenance BEFORE deduping, then
+    dedupe — the ORDER is the whole fix (ONTA-256).
+
+    :func:`_dedupe_rows` drops already-seen rows, which SHIFTS every surviving
+    row's positional index. The provider's ``provenance`` map is keyed by each
+    row's ORIGINAL position (or name), so re-deriving a URL by position AFTER the
+    drop binds a surviving row to a DROPPED neighbour's page — the citation
+    mis-binds (a row shows a source URL that isn't its own). Stamping first, while
+    indices are still original, and carrying the URL ON the row object itself makes
+    the citation immune to the reindex: :func:`_dedupe_rows` returns the SAME row
+    objects, so each survivor keeps exactly the URL that was bound to it. And
+    because :func:`_attach_source_urls` never clobbers a row that already carries a
+    ``source_url``, the position-based derivation is a last resort that only runs
+    while indices are still faithful — never on a reindexed survivor.
+
+    Behaviour-preserving when nothing is dropped: attach-then-dedupe and
+    dedupe-then-attach are identical for an unshifted list."""
+    _attach_source_urls(rows, provenance)
+    return _dedupe_rows(rows, key_attr, seen)
+
+
 def _norm_subqueries(v) -> list[str]:
     """Sanitize the LLM's enumeration partition: non-empty strings, stripped,
     case-insensitively deduped, capped at ``_MAX_SUBQUERIES``. Anything malformed
@@ -2009,7 +2047,14 @@ def _row_source_url(
     stub use (``{r.get("name", str(i)): url}``). Mirror that exact key here (name
     when the row carries one, else the index), then fall back to the positional
     index so an index-keyed provider also resolves. Returns ``None`` when no URL
-    is known for the row (e.g. a free/stub provider that supplied no provenance)."""
+    is known for the row (e.g. a free/stub provider that supplied no provenance).
+
+    ORDERING CONTRACT (ONTA-256): the positional-index fallback is only sound
+    while ``index`` still matches the row's ORIGINAL position in the provider's
+    output. Callers MUST resolve/stamp the URL BEFORE any step that reindexes the
+    list (e.g. :func:`_dedupe_rows` dropping rows) — see
+    :func:`_dedupe_rows_with_source_urls`. Re-deriving by position on a reindexed
+    survivor binds it to a dropped neighbour's page."""
     if not provenance or not isinstance(row, dict):
         return None
     key = row.get("name", str(index))
