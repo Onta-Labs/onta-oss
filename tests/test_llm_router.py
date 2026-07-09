@@ -291,6 +291,72 @@ async def test_provider_cerebras_return_contract_matches_openrouter(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_provider_cerebras_slash_model_stays_on_openrouter(monkeypatch):
+    """Under OMNIX_LLM_PROVIDER=cerebras, a per-role model with an OpenRouter
+    ``vendor/model`` slug (which Cerebras cannot serve) keeps routing to
+    OpenRouter with the caller's key and the ``models`` fallback array. This is
+    the production regression: the global flip sent CSV schema inference's
+    ``google/gemini-2.5-flash`` to api.cerebras.ai → 404 → every ingest 500d."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
+    monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "sprocket-oss-120b")
+    monkeypatch.setattr(llm_router, "FALLBACK_MODEL", "acme/fallback-1")
+    cap: dict = {}
+    _capturing_client(
+        monkeypatch, {"choices": [{"message": {"content": "Doohickey"}}]}, cap
+    )
+
+    out = await llm_router.openrouter_chat(
+        "openrouter-secret", "sys", "usr", model="google/gemini-2.5-flash"
+    )
+
+    assert out == "Doohickey"
+    assert cap["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert cap["headers"]["Authorization"] == "Bearer openrouter-secret"
+    assert cap["json"]["model"] == "google/gemini-2.5-flash"
+    assert cap["json"]["models"] == ["google/gemini-2.5-flash", "acme/fallback-1"]
+
+
+@pytest.mark.asyncio
+async def test_provider_cerebras_slash_primary_model_stays_on_openrouter(monkeypatch):
+    """Same slug-shape guard when the caller omits ``model`` and PRIMARY_MODEL
+    itself is an OpenRouter slug (OMNIX_LLM_MODEL left at a vendor/model id)."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
+    monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "anthropic/claude-opus-4.8")
+    cap: dict = {}
+    _capturing_client(
+        monkeypatch, {"choices": [{"message": {"content": "Widget"}}]}, cap
+    )
+
+    out = await llm_router.openrouter_chat("or-key", "s", "u")
+
+    assert out == "Widget"
+    assert cap["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert cap["json"]["model"] == "anthropic/claude-opus-4.8"
+
+
+@pytest.mark.asyncio
+async def test_provider_cerebras_slash_model_needs_no_cerebras_key(monkeypatch):
+    """A slash-slug call under cerebras mode routes to OpenRouter, so a missing
+    CEREBRAS_API_KEY must not fail it — the fail-loud guard is only for calls
+    Cerebras would actually serve (bare slugs)."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    cap: dict = {}
+    _capturing_client(
+        monkeypatch, {"choices": [{"message": {"content": "Gizmo"}}]}, cap
+    )
+
+    out = await llm_router.openrouter_chat(
+        "or-key", "s", "u", model="google/gemini-2.5-flash"
+    )
+
+    assert out == "Gizmo"
+    assert cap["url"] == "https://openrouter.ai/api/v1/chat/completions"
+
+
+@pytest.mark.asyncio
 async def test_provider_cerebras_missing_key_raises_clear_error(monkeypatch):
     """OMNIX_LLM_PROVIDER=cerebras with NO CEREBRAS_API_KEY → a clear error, NOT a
     silent fall-back to OpenRouter (we want the misconfiguration to be loud)."""
