@@ -82,6 +82,74 @@ def _require_message_content(data: dict, provider: str) -> str:
     return content
 
 
+def _strip_code_fences(text: str) -> str:
+    """Drop ```/```json fence lines a model sometimes wraps its JSON in.
+
+    Mirrors the fence-stripping the OpenRouter/Anthropic SPARQL paths already do,
+    so the Cerebras path tolerates the same wrapping. A fence-free response is
+    returned with only surrounding whitespace stripped (happy path unchanged).
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = "\n".join(
+            l for l in stripped.split("\n") if not l.strip().startswith("```")
+        )
+    return stripped
+
+
+def _salvage_sparql_field(text: str) -> str:
+    """Best-effort extraction of the ``sparql`` string from a MALFORMED JSON blob.
+
+    A reasoning model occasionally truncates its JSON mid-string (an unterminated
+    ``"sparql": "SELECT …`` with no closing quote/brace) or otherwise emits JSON
+    that ``json.loads`` rejects. Rather than throw the whole (possibly usable)
+    query away, walk the characters after ``"sparql":`` honoring JSON escapes and
+    stop at the first UNescaped closing quote — or at end-of-string when the model
+    was cut off. Returns the recovered query text, or ``""`` when there is no
+    ``sparql`` field to recover (which degrades to the empty-query escalation).
+    """
+    m = re.search(r'"sparql"\s*:\s*"', text)
+    if not m:
+        return ""
+    i, n = m.end(), len(text)
+    out: list[str] = []
+    escapes = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/"}
+    while i < n:
+        c = text[i]
+        if c == "\\" and i + 1 < n:
+            out.append(escapes.get(text[i + 1], text[i + 1]))
+            i += 2
+            continue
+        if c == '"':
+            break  # unescaped closing quote — end of the value
+        out.append(c)
+        i += 1
+    return "".join(out).strip()
+
+
+def _parse_sparql_gen_json(content: str) -> dict:
+    """Tolerantly parse a SPARQL-generation JSON response.
+
+    Well-formed JSON (the happy path) parses byte-identically to
+    ``json.loads(content)`` — code fences, if any, are stripped first exactly as
+    the OpenRouter path already does. On a JSON parse error (code-fence residue,
+    an unterminated/truncated string, trailing prose) it SALVAGES the ``sparql``
+    field so a truncated-but-usable query still runs; when nothing can be
+    recovered it returns an EMPTY ``sparql`` so the caller's retry loop escalates
+    (full ontology + explicit "produce a valid non-empty SELECT" feedback) instead
+    of surfacing an uncaught ``JSONDecodeError``.
+    """
+    stripped = _strip_code_fences(content)
+    try:
+        return json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return {
+            "sparql": _salvage_sparql_field(stripped),
+            "explanation": "",
+            "functions_needed": [],
+        }
+
+
 # Max rows rendered in the plain-text answer before truncating. The old
 # hard-coded 20 silently dropped most of a wide "list all ..." result; raise it
 # and make it tunable. Truncation is now stated prominently (not buried) AND
@@ -292,17 +360,23 @@ class NLQueryPipeline:
         t0 = time.time()
         # Try semantic retrieval first, fall back to full ontology
         ontology = None
+        # Track whether the context is the REDUCED semantic subset or the FULL
+        # ontology. On an empty/unparseable-SPARQL failure the retry escalates a
+        # semantic subset up to the full ontology (see the retry loop below).
+        ontology_source = "full"
         embedding_svc = get_embedding_service()
         if embedding_svc:
             try:
                 from cograph_client.config import settings
                 ontology = await embedding_svc.retrieve(graph_uri, question, top_k=settings.embeddings_top_k)
                 if ontology:
+                    ontology_source = "semantic"
                     timing["ontology_source"] = "semantic"
             except Exception:
                 pass
         if ontology is None:
             ontology = await self._fetch_ontology(graph_uri, data_graph)
+            ontology_source = "full"
             timing["ontology_source"] = "full"
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
 
@@ -351,6 +425,12 @@ class NLQueryPipeline:
         sparql = ""
         explanation = ""
         functions_needed: list[str] = []
+        # Escalation state (retry/failure path only — the happy path never reads
+        # these): whether the PREVIOUS attempt produced an empty/blank SPARQL
+        # query, and whether we have already widened a semantic subset to the
+        # full ontology (so we escalate at most once).
+        last_was_empty_sparql = False
+        full_ontology_loaded = ontology_source == "full"
 
         for attempt in range(max_attempts):
             # The ENTIRE attempt — SPARQL generation, post-processing,
@@ -366,6 +446,38 @@ class NLQueryPipeline:
                 t1 = time.time()
                 if attempt == 0:
                     llm_response = await self._generate_sparql(question, ontology, data_graph, examples_text=examples_text)
+                elif last_was_empty_sparql:
+                    # ESCALATION (persona-eval RCA): the previous attempt returned
+                    # an EMPTY/blank or only-salvageable-to-nothing SPARQL query.
+                    # Retrying the IDENTICAL reduced semantic-subset context with a
+                    # generic "fix the syntax" note reproduces the same empty result
+                    # (the persona-eval "Could not answer … Last error: Empty query"
+                    # loop). Change the context instead: widen a semantic subset to
+                    # the FULL ontology ONCE, and give explicit "produce a valid
+                    # non-empty SELECT" feedback rather than a note about a query
+                    # that never existed.
+                    if not full_ontology_loaded:
+                        try:
+                            full_ontology = await self._fetch_ontology(graph_uri, data_graph)
+                            if full_ontology and full_ontology.strip():
+                                ontology = full_ontology
+                                ontology_source = "full"
+                                timing["ontology_escalated_to_full_attempt"] = attempt
+                        except Exception:
+                            # Keep the subset if the full fetch fails; the explicit
+                            # non-empty feedback below still helps on its own.
+                            logger.debug("ontology_escalation_fetch_failed", exc_info=True)
+                        full_ontology_loaded = True
+                    llm_response = await self._generate_sparql(
+                        question, ontology, data_graph,
+                        error_feedback=(
+                            "The previous attempt returned an EMPTY or unparseable SPARQL "
+                            "query. You MUST output a VALID, non-empty SPARQL SELECT query "
+                            "in the `sparql` field, using the exact type/attribute/"
+                            "relationship URIs from the ontology schema above. Never return "
+                            "an empty string."
+                        ),
+                    )
                 else:
                     llm_response = await self._generate_sparql(
                         question, ontology, data_graph,
@@ -393,12 +505,36 @@ class NLQueryPipeline:
                 is_valid, error = validate_sparql(sparql)
                 if not is_valid:
                     last_error = error
+                    # A blank query is the escalation trigger: the NEXT attempt
+                    # widens the ontology + demands a non-empty SELECT rather than
+                    # replaying the same subset. A non-blank-but-invalid query
+                    # (e.g. brace mismatch) keeps the normal "fix the syntax" path.
+                    last_was_empty_sparql = not sparql.strip()
                     continue
+                # Got a real query; any subsequent failure is a genuine query error,
+                # not the empty-generation case.
+                last_was_empty_sparql = False
 
                 t2 = time.time()
                 raw = await self.neptune.query(sparql)
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
                 variables, bindings = parse_sparql_results(raw)
+                # Name-lookup broadening (persona-eval RCA): a lookup BY NAME that
+                # the generator pinned to ONE guessed subtype returns zero rows when
+                # the entity is a DIFFERENT subtype of the same supertype. Re-issue
+                # once against the supertype (subclass closure then spans every
+                # sibling subtype). No-op — and thus byte-identical to the prior
+                # behavior — whenever the first query already returned rows, isn't a
+                # single-subtype name lookup, or the type has no supertype.
+                if not bindings:
+                    broadened = await self._broaden_name_lookup(sparql, graph_uri)
+                    if broadened is not None:
+                        b_sparql, b_raw = broadened
+                        b_variables, b_bindings = parse_sparql_results(b_raw)
+                        if b_bindings:
+                            sparql = b_sparql
+                            variables, bindings = b_variables, b_bindings
+                            timing["name_lookup_broadened"] = True
                 # Projected vars that bound in ZERO rows (e.g. an OPTIONAL
                 # attribute absent from every matching entity, or a drifted
                 # attribute URI). Reported honestly instead of silently omitted,
@@ -424,6 +560,12 @@ class NLQueryPipeline:
                 )
             except Exception as e:
                 last_error = str(e)
+                # If the attempt died BEFORE producing a query (generation raised,
+                # or degraded to a blank `sparql`), escalate on the next attempt —
+                # the same "we never got a usable query" situation the empty branch
+                # handles. A non-blank query that failed at execution keeps the
+                # normal "fix the syntax" retry.
+                last_was_empty_sparql = not (sparql or "").strip()
                 logger.warning("ask_attempt_failed", attempt=attempt, error=last_error, question=question)
                 continue
 
@@ -436,6 +578,130 @@ class NLQueryPipeline:
             ontology=ontology,
             timing=timing,
         )
+
+    # ------------------------------------------------ name-lookup broadening
+    # Match a `types/<Leaf>` URI in rdf:type OBJECT position, whether the
+    # predicate is a bare rdf:type or the subclass-closure path the pipeline
+    # rewrites it to (`<…#type>/<…#subClassOf>*`).
+    _TYPE_OBJECT_RE = re.compile(
+        r"#type>(?:\s*/\s*<[^>]*#subClassOf>\*)?\s*"
+        r"<(https://cograph\.tech/types/[^>]+)>"
+    )
+    # Capture the variable a case-insensitive substring FILTER targets:
+    # FILTER(CONTAINS(LCASE(?V), …)) — allowing an optional STR() coercion around
+    # the variable. The generation prompt teaches this exact shape for BOTH name
+    # matching AND arbitrary string-attribute filters (tags, status, …), so a bare
+    # `CONTAINS(LCASE` match would over-trigger broadening; we additionally require
+    # ?V to be a display-NAME variable (see :meth:`_targets_label_name_var`).
+    _CONTAINS_VAR_RE = re.compile(
+        r"CONTAINS\s*\(\s*LCASE\s*\(\s*(?:STR\s*\(\s*)?\?(\w+)", re.IGNORECASE
+    )
+    _RDFS_LABEL_URI = "http://www.w3.org/2000/01/rdf-schema#label"
+
+    @classmethod
+    def _targets_label_name_var(cls, sparql: str) -> bool:
+        """True iff a ``CONTAINS(LCASE(?V))`` filter in the query targets a DISPLAY
+        NAME variable — ``?V`` bound in the SAME query as the object of an
+        ``rdfs:label`` triple or a ``types/<T>/attrs/{name,label}`` attribute
+        triple.
+
+        A ``CONTAINS`` over an arbitrary string attribute (``tags``, ``status``, …)
+        returns ``False``. Without this gate, broadening would widen a
+        legitimately type-constrained attribute query (e.g. a ``MortgageComplaint``
+        filtered on ``attrs/tags`` that returns zero rows) up to the supertype and
+        surface a sibling-subtype row — turning an honest "no results" into a
+        confidently wrong-TYPE answer.
+        """
+        for m in cls._CONTAINS_VAR_RE.finditer(sparql):
+            v = re.escape(m.group(1))
+            if re.search(rf"<{re.escape(cls._RDFS_LABEL_URI)}>\s*\?{v}\b", sparql):
+                return True
+            if re.search(
+                rf"<https://cograph\.tech/types/[^>]+/attrs/(?:name|label)>\s*\?{v}\b",
+                sparql,
+                re.IGNORECASE,
+            ):
+                return True
+        return False
+
+    async def _broaden_name_lookup(
+        self, sparql: str, graph_uri: str
+    ) -> tuple[str, dict] | None:
+        """Retry a zero-row NAME lookup against the type's SUPERTYPE.
+
+        A lookup by name that the generator bound to ONE specific subtype (e.g. a
+        person queried as ``OrthopedicSurgeon`` who is actually a
+        ``BreastOncologist``) returns zero rows, even though the shared supertype
+        (``Physician``) spans every subtype. When the executed query is (a) a
+        DISPLAY-NAME lookup — a ``FILTER(CONTAINS(LCASE(?V)))`` whose ``?V`` is
+        bound as an ``rdfs:label`` / name attribute (NOT an arbitrary string
+        attribute like ``tags``; see :meth:`_targets_label_name_var`) — and (b)
+        constrains ``rdf:type`` to EXACTLY ONE ``types/<Sub>`` that HAS a
+        supertype, re-issue it with that subtype swapped for its top-most
+        ancestor. The subclass-closure rewrite (``rdf:type/subClassOf*``) already
+        applied to the query then makes the ancestor match every sibling subtype.
+
+        Returns ``(broadened_sparql, raw_result)`` from the re-query, or ``None``
+        when the query is not a single-subtype NAME lookup, the type has no
+        supertype, or anything errors — best-effort, never raises into ``ask()``.
+        """
+        try:
+            if not self._targets_label_name_var(sparql):
+                return None
+            type_uris = set(self._TYPE_OBJECT_RE.findall(sparql))
+            if len(type_uris) != 1:
+                return None
+            sub_uri = next(iter(type_uris))
+            sub_name = sub_uri.rsplit("/", 1)[-1]
+
+            parent_of = await self._fetch_parent_map(graph_uri)
+            if sub_name not in parent_of:
+                return None
+            # Walk to the top-most ancestor so the broadened query spans the whole
+            # hierarchy, not just one level up. Guard against cyclic subClassOf.
+            ancestor = sub_name
+            seen = {ancestor}
+            while parent_of.get(ancestor) and parent_of[ancestor] not in seen:
+                ancestor = parent_of[ancestor]
+                seen.add(ancestor)
+            if ancestor == sub_name:
+                return None
+
+            from cograph_client.graph.ontology_queries import type_uri as _type_uri
+            super_uri = _type_uri(ancestor)
+            # Replace ONLY the exact bracketed type-object, never a raw substring:
+            # a bare `sparql.replace(sub_uri, super_uri)` would corrupt every URI
+            # that shares the prefix — `types/Cat/attrs/breed` → the non-existent
+            # `types/Animal/attrs/breed`, and sibling `types/CatFood` →
+            # `types/AnimalFood` — breaking a "show details" query that projects
+            # type-specific attribute URIs.
+            broadened = sparql.replace(f"<{sub_uri}>", f"<{super_uri}>")
+            if broadened == sparql:
+                return None
+            raw = await self.neptune.query(broadened)
+            return broadened, raw
+        except Exception:
+            logger.debug("name_lookup_broaden_failed", exc_info=True)
+            return None
+
+    async def _fetch_parent_map(self, graph_uri: str) -> dict[str, str]:
+        """child_name -> parent_name from the graph's ``rdfs:subClassOf`` edges.
+
+        Best-effort; used only on the zero-row broadening path. Keys/values are
+        the type NAMES (last URI path segment), so callers walk the hierarchy by
+        name.
+        """
+        from cograph_client.graph.ontology_queries import parent_map_query
+        TYPES = "https://cograph.tech/types/"
+        raw = await self.neptune.query(parent_map_query(graph_uri))
+        _, bindings = parse_sparql_results(raw)
+        parent_of: dict[str, str] = {}
+        for row in bindings:
+            child = row.get("child", "")
+            parent = row.get("parent", "")
+            if child.startswith(TYPES) and parent.startswith(TYPES):
+                parent_of[child[len(TYPES):]] = parent[len(TYPES):]
+        return parent_of
 
     # ------------------------------------------------------------- spatial path
     async def _try_spatial_fast_path(
@@ -1536,7 +1802,14 @@ class NLQueryPipeline:
             )
             res.raise_for_status()
             data = res.json()
-            return json.loads(_require_message_content(data, "cerebras"))
+            # `_require_message_content` still raises the typed, provider-named
+            # ValueError on a null/empty content (unchanged guard). Only the JSON
+            # DECODE is made tolerant: gpt-oss-120b sometimes wraps its JSON in
+            # code fences or truncates it mid-string, which used to throw an
+            # uncaught JSONDecodeError past the retry loop. Now a truncated-but-
+            # usable query is salvaged, and an unrecoverable blob degrades to an
+            # empty `sparql` that triggers the ask() escalation path.
+            return _parse_sparql_gen_json(_require_message_content(data, "cerebras"))
 
     async def _generate_via_openrouter(self, prompt: str) -> dict:
         """Generate SPARQL via OpenRouter (OpenAI-compatible API)."""
