@@ -154,6 +154,16 @@ descriptive label stitched together from those fields (the measured thing + the 
 number) is redundant — omit it. Forcing a name onto a nameless entity is a \
 modeling error, not a default.
 
+Never fabricate values:
+Extract only values the source actually STATES. When the text does not give a \
+value for an attribute, that attribute is UNKNOWN — OMIT it entirely (leave it \
+out; never emit it with a made-up value and never null-pad it). NEVER invent an \
+identifier, code, NPI, SKU, price, date, phone number, or any other value to \
+fill a field: a value you cannot find is omitted, not guessed. Do NOT emit \
+placeholder filler such as "1234567890", "0000000000", "123-45-6789", "N/A", \
+"unknown", or "TBD" — a fabricated identifier silently corrupts every join \
+keyed on it, so a missing value is correct and a made-up one is a bug.
+
 Lift providers / organizations:
 When records carry a recurring CATEGORICAL naming a provider, vendor, publisher, \
 manufacturer, organization, or brand (a value that repeats across records and \
@@ -317,6 +327,12 @@ the Widget; model "SprocketSafe" as a Certification NODE the Widget links to via
 `certified_for`. Do NOT mint a "SprocketSafe" / Certification record and hang \
 `cost_per_unit` / `latency_ms` on it — that misfiles the subject and its metrics \
 under a mere fact about it.
+- NEVER FABRICATE A VALUE. Extract only what the source STATES. If a requested \
+attribute (an identifier, code, NPI, price, date, phone, …) is not given for a \
+record, OMIT it — never invent one, never null-pad, and never emit placeholder \
+filler like "1234567890", "0000000000", "N/A", "unknown", or "TBD". A made-up \
+identifier silently breaks every join keyed on it, so a missing value is \
+correct and a fabricated one is a bug.
 The focus type + expected attributes below say what to look for; add exactly the \
 structure the data justifies and keep it tight."""
 
@@ -791,6 +807,85 @@ def _looks_like_url(value: str) -> bool:
     return isinstance(value, str) and (
         value.startswith("http://") or value.startswith("https://")
     )
+
+
+# --- ONTA-259: deterministic anti-fabrication backstop ----------------------
+# Discovery / text extraction runs an LLM over a source and PROPOSES attribute
+# VALUES. When the model has no real value but the prompt nudges it to fill the
+# field anyway, it emits a placeholder — in one UCI-health run the NPI
+# "1234567890" landed on 92 distinct physicians, silently breaking every
+# ID-keyed join. The extraction prompts now forbid this (see EXTRACTION_SYSTEM /
+# EXTRACTION_TARGET_SYSTEM), but a prompt is not a guarantee: this
+# deterministic, model-agnostic filter is the defense-in-depth backstop. A value
+# it flags is treated as UNSTATED — the attribute is omitted (never written),
+# exactly as if the source gave no value.
+#
+# Conservative BY DESIGN. It fires ONLY on values that are placeholder-shaped in
+# FULL (whole-value match, never a substring), so a legitimate price "1000", a
+# year "2024", or a real short code ("AAA", "XYZ") is KEPT. It is a fabrication
+# guard, not a data cleaner — when unsure it keeps the value.
+
+#: Whole-value filler tokens (case-folded) an extractor emits in place of a real
+#: value. Matched only when the ENTIRE trimmed value equals one of these.
+_PLACEHOLDER_FILLER_TOKENS = frozenset({
+    "n/a", "n.a.", "na", "none", "null", "nil", "nan",
+    "unknown", "unspecified", "undefined",
+    "not available", "not applicable", "no data", "no value",
+    "tbd", "tba", "test", "placeholder",
+})
+
+#: Glyphs that, repeated as the WHOLE value (length ≥ 3), read as "unknown"
+#: filler — "xxx", "xxxx", "----", "????", "....".
+_PLACEHOLDER_RUN_CHARS = frozenset("x-_.?*#")
+
+#: Canonical monotonic digit rings. A digit-only value is a sequential
+#: placeholder when it is a SUBSTRING of one of these — so "1234567890"
+#: (phone-keypad order, wraps 9→0), "0123456789", "123456", and their reverses
+#: all match, while a real NPI like "1023011178" (not a contiguous run) does not.
+_SEQ_DIGITS_ASC = "01234567890"
+_SEQ_DIGITS_DESC = "09876543210"
+
+#: A value must reduce to at least this many bare digits before the digit-run /
+#: all-same-digit rules can flag it — so a real year ("2024"), a small price
+#: ("1000"), or a short code is never caught. NPIs / phones / SSNs are 9–10 long.
+_MIN_PLACEHOLDER_DIGITS = 6
+
+
+def _is_fabricated_placeholder(value: str | None) -> bool:
+    """True when ``value`` is an OBVIOUS fabricated placeholder (ONTA-259).
+
+    Two families, both WHOLE-value (never a substring match) so the check stays
+    conservative:
+      * a filler token / filler-glyph run ("N/A", "unknown", "TBD", "xxx", …); and
+      * a digit-shaped identifier placeholder — all-same-digit ("0000000000") or
+        a monotonic run ("1234567890", "0123456789") — of at least
+        ``_MIN_PLACEHOLDER_DIGITS`` digits, after stripping separators so
+        "000-00-0000" / "(000) 000-0000" normalize.
+
+    A legitimate price ("1000"), year ("2024"), or short code is NOT flagged.
+    """
+    if not value:
+        return False
+    v = value.strip()
+    if not v:
+        return False
+    low = v.casefold()
+    if low in _PLACEHOLDER_FILLER_TOKENS:
+        return True
+    # A run of a single filler glyph as the whole value: "xxx", "----", "????".
+    if len(v) >= 3 and len(set(low)) == 1 and low[0] in _PLACEHOLDER_RUN_CHARS:
+        return True
+    # Digit-shaped identifier placeholders. Only judge values that are
+    # essentially all digits (digits + separators) so a real alphanumeric code
+    # is never touched.
+    if re.fullmatch(r"[0-9\s().+\-/]+", v):
+        digits = re.sub(r"[^0-9]", "", v)
+        if len(digits) >= _MIN_PLACEHOLDER_DIGITS:
+            if len(set(digits)) == 1:  # 0000000000, 1111111111, …
+                return True
+            if digits in _SEQ_DIGITS_ASC or digits in _SEQ_DIGITS_DESC:
+                return True
+    return False
 
 
 class SchemaResolver:
@@ -1301,6 +1396,12 @@ class SchemaResolver:
                 _collect_provenance=all_provenance_triples,
                 also_types=entity_also_types.get(entity.id),
                 _collect_text_values=text_values,
+                # ONTA-259: this is the model-proposed extraction path (text /
+                # JSON / web-discovery), the only rail where an LLM can invent an
+                # identifier value — enable the anti-fabrication backstop here.
+                # The CSV path (`_ingest_mapped`) leaves it off: cells are
+                # authoritative and written verbatim.
+                drop_placeholder_values=True,
             )
 
         # Append ER index triples (block keys + denormalized signals) to the
@@ -2746,6 +2847,7 @@ class SchemaResolver:
         _collect_provenance: list[tuple[str, str, str]] | None = None,
         also_types: list[str] | None = None,
         _collect_text_values: dict[tuple[str, str], list[str]] | None = None,
+        drop_placeholder_values: bool = False,
     ) -> None:
         """Pass 2: Resolve attributes, validate, and collect triples for one entity.
 
@@ -2766,7 +2868,36 @@ class SchemaResolver:
         resolved attr name) — free-text candidacy evidence the caller decides
         on after the write. Values only, never names: the name-blind
         classification happens downstream (ADR 0003 litmus).
+
+        ``drop_placeholder_values`` (ONTA-259): on the model-proposed extraction
+        path (text / JSON / web-discovery) drop any attribute whose VALUE is an
+        obvious fabricated placeholder ("1234567890", "0000000000", "N/A", …)
+        BEFORE it is resolved or written — a dropped value is treated as
+        UNSTATED (the attribute is omitted, as if the source gave no value),
+        counted via a structured log. OFF (default) for the authoritative CSV
+        path, whose cells are written verbatim.
         """
+        # ONTA-259: deterministic anti-fabrication backstop. Filter placeholder
+        # VALUES up front so a hallucinated identifier is uniformly invisible to
+        # EVERY downstream step (promotion, resolution, the write) — exactly as
+        # if the source had never stated it. Prompt-forbidden too; this is the
+        # model-agnostic defense-in-depth layer behind the prompt.
+        if drop_placeholder_values and entity.attributes:
+            kept_attrs = []
+            for a in entity.attributes:
+                if _is_fabricated_placeholder(a.value):
+                    logger.info(
+                        "discovery_placeholder_value_dropped",
+                        entity_id=entity.id,
+                        type_name=resolved_type,
+                        attribute=a.name,
+                        value=a.value,
+                    )
+                    continue
+                kept_attrs.append(a)
+            if len(kept_attrs) != len(entity.attributes):
+                entity = entity.model_copy(update={"attributes": kept_attrs})
+
         type_attrs = existing_attrs.get(resolved_type, {})
 
         # Option D promotions
