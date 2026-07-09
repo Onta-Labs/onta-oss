@@ -375,11 +375,15 @@ def _apply_extraction_constraint(result, constraint):
         # cage. The extractor's decomposition (subtypes, real-world nodes,
         # multi-valued splits, relationships) is the desired output — never drop
         # off-type entities, strip lineage, or delete edges here. The ONE thing
-        # this backstop still asserts (ONTA-255) is the FOCUS-TYPE FLOOR: a whole
-        # batch must not drift onto an off-brief standards/compliance concept that
-        # then absorbs the subject's own cost/latency metrics. Non-destructive —
-        # metrics are re-homed onto the focus subject, never silently dropped.
-        return _apply_soft_focus_floor(result, constraint)
+        # this backstop still asserts (ONTA-255) is that a subject's cost/latency
+        # metric must not sit on an off-brief standards/compliance concept. This
+        # is the PER-CHUNK view, so it runs RE-HOME-ONLY (``allow_strip=False``):
+        # it re-homes a misattached metric onto a focus subject visible in THIS
+        # chunk, but never strips-and-declares-starved on a partial view — the
+        # subject may live in another chunk. The merged full-batch pass in
+        # ``ingest`` (allow_strip=True) is the only one trusted to strip / judge
+        # starvation, so a cross-chunk metric survives to be re-homed there.
+        return _apply_soft_focus_floor(result, constraint, allow_strip=False)
     allowed_types = set(constraint.types)
     kept_entities = []
     kept_ids: set[str] = set()
@@ -455,45 +459,50 @@ def _apply_extraction_constraint(result, constraint):
 # the extractor can latch onto a fact-ABOUT-the-subject (a Compliance / Standard
 # concept) as the DOMINANT type and mint the subject's records under it — folding
 # the subject's own cost / latency / price metrics onto a standards-body node.
-# The confirmed focus type is a CONTRACT about what the records ARE, so two
-# invariants are enforced here, both NON-DESTRUCTIVELY (assert the floor, never
-# silently strip the batch):
-#   * METRIC-ON-CONCEPT: a numeric metric-shaped attribute (cost / price / fee /
-#     latency / throughput …) must not sit on an entity whose TYPE reads as a
-#     standards / certification / regulation concept. The metric belongs to the
-#     subject, so it is RE-HOMED onto the focus subject.
-#   * FOCUS-TYPE FLOOR: if the confirmed focus type minted ~zero entities while an
-#     off-brief concept type absorbed those metrics, the subject is unrecoverable
-#     — log `discovery_focus_type_starved` (loud) and, having no subject to re-home
-#     to, remove the metric from the concept node so a cost/latency triple can
-#     never land on a standards entity.
+# The confirmed focus type is a CONTRACT about what the records ARE, so a numeric
+# metric-shaped attribute (cost / price / fee / latency / throughput …) must not
+# sit on an entity whose TYPE reads as a standards / certification / regulation
+# concept — the metric belongs to the SUBJECT. What the guard actually does with
+# a misattached metric, honestly (not "always re-homed"):
+#   * RE-HOME when a subject can be identified — the concept entity is linked to a
+#     focus subject by a surviving edge, OR there is exactly ONE focus subject in
+#     the batch (see the single-subject caveat at the `sole_focus` attach below).
+#   * Otherwise (no identifiable subject) STRIP the metric off the concept node so
+#     a cost/latency triple can never persist on a standards entity, and COUNT +
+#     LOG every removed value so nothing is silent. When the focus type minted
+#     ~zero entities at all, that strip is the FOCUS-TYPE FLOOR breach and is
+#     logged as `discovery_focus_type_starved`.
+# `allow_strip` gates the destructive half: the PER-CHUNK backstop
+# (`_apply_extraction_constraint`) runs with allow_strip=False so a partial view
+# can RE-HOME within its own chunk but NEVER strip-and-declare-starved (the
+# subject may live in another chunk); only the MERGED full-batch pass in `ingest`
+# runs with allow_strip=True and is trusted to strip / judge starvation.
 # A compliance-FOCUSED KG is safe: its confirmed focus IS the cert/standard, so
 # those entities are focus-lineage and never treated as a misattachment target.
 
-# High-precision tokens for a type whose NAME reads as a standards / cert /
-# regulation / compliance concept. Singular forms only — the tokenizer
-# de-pluralizes ("Standards" -> "standard", "Certs" -> "cert").
+# Whole-token allowlist for a type whose NAME reads as a genuine standards / cert
+# / regulation concept. Deliberately NARROW and matched as WHOLE tokens (never as
+# a loose stem): loose stems like "standard"/"license"/"audit"/"governance" occur
+# inside ordinary SUBJECT types (StandardRoom, SoftwareLicense, AuditLog,
+# GovernanceBoard) and would mis-yank their legitimate metrics. The tokenizer
+# de-pluralizes ("Certifications" -> "certification", "Certs" -> "cert").
 _STANDARDS_CONCEPT_TOKENS = frozenset(
     {
         "compliance",
         "certification",
         "certificate",
         "cert",
-        "standard",
         "regulation",
         "regulatory",
         "accreditation",
         "attestation",
-        "audit",
-        "governance",
-        "license",
-        "licence",
-        "licensing",
-        "directive",
-        "mandate",
-        "statute",
     }
 )
+# "standard" is compound-prone, so it signals a standards concept ONLY as a BARE
+# type (Standard / Standards) or when combined with a token above (which already
+# matches). Any Standard-COMPOUND without a concept token (StandardRoom,
+# StandardPlan, StandardEdition) is a subject and keeps its metrics.
+_BARE_STANDARD_TOKENS = frozenset({"standard", "standards"})
 
 # Substrings that mark an attribute NAME as a cost / price / latency-shaped
 # metric. Combined with a numeric-value check so a non-numeric attribute whose
@@ -539,9 +548,20 @@ def _split_type_tokens(name: str) -> set[str]:
 
 
 def _is_standards_concept_type(type_name: str) -> bool:
-    """True when ``type_name`` reads as a standards / certification / regulation /
-    compliance concept (a fact ABOUT a subject, not a subject itself)."""
-    return bool(_split_type_tokens(type_name) & _STANDARDS_CONCEPT_TOKENS)
+    """True when ``type_name`` reads as a genuine standards / certification /
+    regulation concept (a fact ABOUT a subject, not a subject itself).
+
+    Whole-token match against a narrow allowlist, so compound SUBJECT types that
+    merely CONTAIN a loose stem — StandardRoom, SoftwareLicense, License,
+    AuditLog / AuditTrail, LicensePlate, GovernanceBoard, DataGovernance — are
+    correctly classified as NON-concept and keep their own metrics. "standard"
+    counts only as a bare type (Standard / Standards) or paired with a concept
+    token (ComplianceStandard / RegulatoryStandard, matched by the token above).
+    """
+    tokens = _split_type_tokens(type_name)
+    if tokens & _STANDARDS_CONCEPT_TOKENS:
+        return True
+    return bool(tokens) and tokens <= _BARE_STANDARD_TOKENS
 
 
 def _is_metric_attribute(attr) -> bool:
@@ -555,20 +575,28 @@ def _is_metric_attribute(attr) -> bool:
     return bool(_LEADING_NUMBER_RE.match(str(getattr(attr, "value", "") or "")))
 
 
-def _apply_soft_focus_floor(result, constraint):
+def _apply_soft_focus_floor(result, constraint, *, allow_strip: bool = True):
     """SOFT-mode focus-type floor + metric-misattachment guard (ONTA-255).
 
     Runs only for an ACTIVE, SOFT constraint. Returns ``result`` UNCHANGED unless
     a numeric metric-shaped attribute has landed on an off-brief standards /
-    certification / regulation-typed entity — the drift signature. When it has:
+    certification / regulation-typed entity — the drift signature. When it has,
+    each such metric is handled by identifiability, NOT unconditionally re-homed:
 
-      * the metric is RE-HOMED onto a focus-lineage subject (preferring one the
-        concept entity is linked to by a relationship, else the sole focus subject
-        in the batch), and
-      * if NO focus subject survives (the floor is breached), the metric is
-        removed from the concept node instead and ``discovery_focus_type_starved``
-        is logged — the batch's subject identity is unrecoverable, so persisting a
-        cost/latency triple on a standards node is refused rather than kept.
+      * RE-HOMED onto a focus-lineage subject when one can be identified — the
+        concept entity is linked to a focus subject by a surviving edge, or there
+        is exactly ONE focus subject in the batch.
+      * Otherwise STRIPPED off the concept node (so a cost/latency triple can never
+        persist on a standards entity) and COUNTED. When no focus subject survives
+        at all, that strip is the floor breach: ``discovery_focus_type_starved``.
+
+    ``allow_strip`` gates only the destructive half. The PER-CHUNK backstop passes
+    ``allow_strip=False``: on a partial view it re-homes within its own chunk but
+    NEVER strips or declares starvation (the subject may be in another chunk), so
+    the metric survives for the merged full-batch pass to re-home. The merged pass
+    (``allow_strip=True``, the default) is the only one trusted to strip / judge
+    starvation. A same-named metric that collides on the subject is COUNTED and
+    logged (`discovery_metric_collision`), never silently dropped.
 
     Never drops an entity, a relationship, or a non-metric attribute. Idempotent:
     a second pass finds no misattached metric and returns the input untouched.
@@ -614,30 +642,67 @@ def _apply_soft_focus_floor(result, constraint):
             linked_focus_of.setdefault(r.target_id, focus_by_id[r.source_id])
         if r.target_id in focus_by_id and r.source_id not in focus_by_id:
             linked_focus_of.setdefault(r.source_id, focus_by_id[r.target_id])
+    # Single-subject fallback: when exactly one focus subject exists and the
+    # concept carries no surviving link, attach to that subject. CAVEAT: a metric
+    # that truly belonged to an ABSENT subject would attach to the present one —
+    # accepted because a discovery micro-batch is homogeneous per source_url, so
+    # the single surviving subject is almost always the right owner, and the
+    # alternative (dropping the metric) is worse.
     sole_focus = focus_entities[0] if len(focus_entities) == 1 else None
 
-    starved = len(focus_entities) == 0
+    # Only the full-batch pass (allow_strip=True) may declare the floor breached;
+    # a per-chunk partial view must never call starvation.
+    starved = allow_strip and len(focus_entities) == 0
     stripped_attrs: dict[str, list] = {}   # concept id -> surviving (non-metric) attrs
     add_to_focus: dict[str, list] = {}     # focus id -> metrics moved onto it
     reattributed = 0
     stripped = 0
+    collisions = 0
     for concept_entity, metrics in misattached:
+        dest = linked_focus_of.get(concept_entity.id) or sole_focus
+        if dest is None:
+            if not allow_strip:
+                # PER-CHUNK partial view: the subject may live in another chunk.
+                # Leave the metric in place — the merged pass re-homes it. Never
+                # strip here (would destroy it) and never declare starvation.
+                continue
+            # MERGED pass, no subject anywhere → assert the floor. Count the loss.
+            stripped_attrs[concept_entity.id] = [
+                a for a in concept_entity.attributes if not _is_metric_attribute(a)
+            ]
+            stripped += len(metrics)
+            continue
+        # A subject was identified → move the metrics off the concept onto it.
         stripped_attrs[concept_entity.id] = [
             a for a in concept_entity.attributes if not _is_metric_attribute(a)
         ]
-        dest = linked_focus_of.get(concept_entity.id) or sole_focus
-        if dest is None:
-            # No subject to receive the metric — assert the floor, don't keep it.
-            stripped += len(metrics)
-            continue
         existing = {a.name for a in dest.attributes} | {
             a.name for a in add_to_focus.get(dest.id, [])
         }
         for m in metrics:
-            if m.name not in existing:
-                add_to_focus.setdefault(dest.id, []).append(m)
-                existing.add(m.name)
-                reattributed += 1
+            if m.name in existing:
+                # The subject already holds this metric slot (its own value, or an
+                # earlier re-home). Do NOT silently drop the second value — count
+                # and log it so the collision is visible.
+                collisions += 1
+                logger.warning(
+                    "discovery_metric_collision",
+                    focus_types=sorted(focus_types),
+                    concept_type=concept_entity.type_name,
+                    subject_id=dest.id,
+                    attribute=m.name,
+                    dropped_value=str(getattr(m, "value", "")),
+                )
+                continue
+            add_to_focus.setdefault(dest.id, []).append(m)
+            existing.add(m.name)
+            reattributed += 1
+
+    if not stripped_attrs and not add_to_focus:
+        # PER-CHUNK partial view could not identify any subject → nothing acted
+        # on; leave the batch for the merged pass. (Cannot happen when
+        # allow_strip=True, which always strips an un-re-homable metric.)
+        return result
 
     new_entities = []
     for e in result.entities:
@@ -659,6 +724,7 @@ def _apply_soft_focus_floor(result, constraint):
             concept_types=concept_type_names,
             metrics_reattributed=reattributed,
             metrics_stripped=stripped,
+            metrics_collision=collisions,
             focus_entities=len(focus_entities),
         )
     else:
@@ -668,7 +734,9 @@ def _apply_soft_focus_floor(result, constraint):
             concept_types=concept_type_names,
             metrics_reattributed=reattributed,
             metrics_stripped=stripped,
+            metrics_collision=collisions,
             focus_entities=len(focus_entities),
+            partial_view=not allow_strip,
         )
 
     return ExtractionResult(
@@ -955,12 +1023,14 @@ class SchemaResolver:
             )
 
         # ONTA-255: SOFT-mode focus-type floor over the FULLY-MERGED extraction.
-        # The per-chunk backstop in `_apply_extraction_constraint` already runs
-        # inside each `_extract`, but re-asserting here (a) sees every subject in
-        # the batch so a misattached metric can be re-homed onto the right focus
-        # subject even when a stray concept entity landed in a different chunk,
-        # and (b) covers callers/tests that stub `_extract` wholesale. Idempotent:
-        # once the metrics are off the concept nodes, this is a no-op.
+        # This is the AUTHORITATIVE pass (allow_strip=True): the per-chunk backstop
+        # in `_apply_extraction_constraint` only RE-HOMES within a chunk and never
+        # strips, so a metric whose subject sits in a different chunk survives to
+        # here. With the whole batch in view this pass re-homes such a metric onto
+        # the right subject (or, if no subject exists anywhere, strips it off the
+        # concept node and logs the loss / starvation — nothing silent). It also
+        # covers callers/tests that stub `_extract` wholesale. Idempotent: once the
+        # metrics are off the concept nodes, this is a no-op.
         if constraint is not None and constraint.is_active and constraint.soft:
             extraction = _apply_soft_focus_floor(extraction, constraint)
 

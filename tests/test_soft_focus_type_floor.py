@@ -21,6 +21,8 @@ metric), so they hold for ANY domain, not just the originating example.
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -300,3 +302,304 @@ async def test_ingest_applies_floor_before_resolve(tmp_path, monkeypatch):
     assert not _num_metric_on_concept_entity(out)
     widget = next(e for e in out.entities if e.type_name == "Widget")
     assert {"cost_per_unit", "latency_ms"} <= {a.name for a in widget.attributes}
+
+
+# --------------------------------------------------------------------------- #
+# Review finding #2 — classifier must not false-positive on subject compounds  #
+# --------------------------------------------------------------------------- #
+def test_classifier_rejects_subject_compounds_that_merely_contain_a_stem():
+    """A loose stem inside an ordinary SUBJECT type must NOT read as a standards
+    concept — else the guard yanks that subject's legitimate metric. Regression
+    guard for review finding #2 (StandardRoom / SoftwareLicense / AuditLog …)."""
+    for subject in (
+        "StandardRoom", "SoftwareLicense", "License", "AuditLog", "AuditTrail",
+        "LicensePlate", "GovernanceBoard", "DataGovernance", "GadgetLicense",
+        "StandardPlan", "StandardEdition",
+    ):
+        assert not sr._is_standards_concept_type(subject), subject
+    # …while genuine concepts (incl. bare Standard and Standard-compounds with a
+    # concept token) still classify TRUE.
+    for concept in (
+        "Compliance", "Certification", "Certifications", "Cert", "Certificate",
+        "Regulation", "Regulatory", "Accreditation", "Attestation",
+        "Standard", "Standards", "ComplianceStandard", "RegulatoryStandard",
+    ):
+        assert sr._is_standards_concept_type(concept), concept
+
+
+def test_floor_leaves_a_non_concept_license_subject_metric_untouched():
+    """A non-focus `GadgetLicense` (subject-shaped, NOT a standards concept)
+    carrying `price` keeps it — the guard neither moves nor strips it. Mirrors the
+    hotel `StandardRoom.price` / product `SoftwareLicense.cost` cases from #2."""
+    widget = ExtractedEntity(
+        type_name="Widget", id="w1",
+        attributes=[ExtractedAttribute(name="name", value="Widget One")],
+    )
+    lic = ExtractedEntity(
+        type_name="GadgetLicense", id="g1",
+        attributes=[ExtractedAttribute(name="price", value="12.5", datatype="float")],
+    )
+    inp = ExtractionResult(entities=[widget, lic], relationships=[])
+    assert sr._apply_soft_focus_floor(inp, _soft("price")) is inp  # untouched
+
+
+@pytest.mark.asyncio
+async def test_ingest_leaves_non_concept_license_metric_untouched(tmp_path):
+    """ingest-level (#2): a Widget KG whose extraction includes a non-focus
+    `GadgetLicense` carrying `price` — the batch reaching resolve keeps `price` on
+    the license, unmoved and unstripped."""
+    resolver = SchemaResolver(
+        AsyncMock(), "fake-key", JsonVerdictCache(tmp_path / "cache.json")
+    )
+    resolver._fetch_ontology = AsyncMock(return_value=({}, {}))
+    resolver._fetch_parent_map = AsyncMock(return_value={})
+    widget = ExtractedEntity(
+        type_name="Widget", id="w1",
+        attributes=[ExtractedAttribute(name="name", value="Widget One")],
+    )
+    lic = ExtractedEntity(
+        type_name="GadgetLicense", id="g1",
+        attributes=[ExtractedAttribute(name="price", value="12.5", datatype="float")],
+    )
+    resolver._extract = AsyncMock(
+        return_value=ExtractionResult(entities=[widget, lic], relationships=[])
+    )
+    captured: dict = {}
+
+    async def _capture(extraction, *a, **k):
+        captured["extraction"] = extraction
+        return IngestResult(entities_extracted=len(extraction.entities))
+
+    resolver._resolve_and_insert = AsyncMock(side_effect=_capture)
+    await resolver.ingest(
+        "widget rows with a license and price",
+        tenant_id="test-tenant",
+        content_type="text",
+        constrain_types=["Widget"],
+        constrain_attributes={"Widget": ["price"]},
+        constrain_soft=True,
+    )
+    out = captured["extraction"]
+    lic_out = next(e for e in out.entities if e.type_name == "GadgetLicense")
+    assert {a.name for a in lic_out.attributes} == {"price"}   # kept, unmoved
+
+
+# --------------------------------------------------------------------------- #
+# Review finding #1 — per-chunk must never strip; merged pass re-homes          #
+# --------------------------------------------------------------------------- #
+def test_per_chunk_pass_never_strips_or_declares_starved():
+    """On a PARTIAL (per-chunk) view with no focus subject present, the guard must
+    RE-HOME-ONLY: it leaves the metric in place (so the merged pass can re-home it)
+    and never logs `discovery_focus_type_starved`. Regression for finding #1."""
+    cert = ExtractedEntity(
+        type_name="Compliance", id="SprocketSafe",
+        attributes=[
+            ExtractedAttribute(name="label", value="SprocketSafe"),
+            ExtractedAttribute(name="cost_per_unit", value="4.20", datatype="float"),
+        ],
+    )
+    inp = ExtractionResult(entities=[cert], relationships=[])
+
+    mock_logger = MagicMock()
+    original = sr.logger
+    sr.logger = mock_logger
+    try:
+        out = sr._apply_soft_focus_floor(inp, _soft("cost_per_unit"), allow_strip=False)
+    finally:
+        sr.logger = original
+
+    assert out is inp  # partial view could not act → returned untouched
+    assert any(a.name == "cost_per_unit" for a in out.entities[0].attributes)
+    starved = [
+        c for c in mock_logger.error.call_args_list
+        if c.args and c.args[0] == "discovery_focus_type_starved"
+    ]
+    assert not starved, "per-chunk partial view must NEVER declare starvation"
+
+
+def test_cross_chunk_metric_rehomed_by_merged_pass_not_stripped():
+    """The end-to-end sequence of #1: subject in chunk 1, its mis-attributed
+    metric-concept in chunk 2. Each chunk's per-chunk pass runs first
+    (allow_strip=False), the outputs are merged, then the authoritative merged
+    pass (allow_strip=True) runs — and the metric lands on the Widget, NOT
+    stripped, with NO starvation ever declared."""
+    widget = ExtractedEntity(
+        type_name="Widget", id="w1",
+        attributes=[ExtractedAttribute(name="name", value="Widget One")],
+    )
+    cert = ExtractedEntity(
+        type_name="Compliance", id="SprocketSafe",
+        attributes=[
+            ExtractedAttribute(name="label", value="SprocketSafe"),
+            ExtractedAttribute(name="cost_per_unit", value="4.20", datatype="float"),
+        ],
+    )
+    soft = _soft("cost_per_unit")
+
+    mock_logger = MagicMock()
+    original = sr.logger
+    sr.logger = mock_logger
+    try:
+        # Per-chunk passes (the real wiring routes the soft branch here).
+        chunk1 = sr._apply_soft_focus_floor(
+            ExtractionResult(entities=[widget]), soft, allow_strip=False
+        )
+        chunk2 = sr._apply_soft_focus_floor(
+            ExtractionResult(entities=[cert]), soft, allow_strip=False
+        )
+        # ingest merges the per-chunk outputs …
+        merged = ExtractionResult(
+            entities=[*chunk1.entities, *chunk2.entities], relationships=[]
+        )
+        # … then runs the authoritative full-batch pass.
+        final = sr._apply_soft_focus_floor(merged, soft, allow_strip=True)
+    finally:
+        sr.logger = original
+
+    widget_out = next(e for e in final.entities if e.type_name == "Widget")
+    assert any(a.name == "cost_per_unit" for a in widget_out.attributes)  # re-homed
+    assert not _num_metric_on_concept_entity(final)                       # cert clean
+    starved = [
+        c for c in mock_logger.error.call_args_list
+        if c.args and c.args[0] == "discovery_focus_type_starved"
+    ]
+    assert not starved, "cross-chunk subject exists — starvation must NOT be logged"
+
+
+def _anthropic_msg(payload: dict):
+    """A minimal Anthropic messages.create() response carrying JSON `payload`."""
+    return SimpleNamespace(
+        content=[SimpleNamespace(text=json.dumps(payload))],
+        stop_reason="end_turn",
+        usage=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ingest_real_two_chunk_path_rehomes_across_chunks(tmp_path, monkeypatch):
+    """#1 through the REAL chunk path: two TEXT chunks (subject in one, the drifted
+    cert in the other) drive `ingest` → per-chunk `_extract` guard → merge → merged
+    floor. The batch reaching resolve has `cost_per_unit` on the Widget (re-homed,
+    not destroyed by the per-chunk pass) and `discovery_focus_type_starved` is
+    never logged."""
+    resolver = SchemaResolver(
+        AsyncMock(), "fake-key", JsonVerdictCache(tmp_path / "cache.json")
+    )
+    resolver._openrouter_key = ""  # force the Anthropic extraction path
+    resolver._fetch_ontology = AsyncMock(return_value=({}, {}))
+    resolver._fetch_parent_map = AsyncMock(return_value={})
+
+    # Force exactly two text chunks with distinctive markers.
+    monkeypatch.setattr(
+        "cograph_client.resolver.chunker.chunk_text",
+        lambda content: ["WIDGET_CHUNK", "CERT_CHUNK"],
+    )
+
+    widget_payload = {
+        "entities": [
+            {"type_name": "Widget", "id": "w1",
+             "attributes": [{"name": "name", "value": "Widget One"}]}
+        ],
+        "relationships": [],
+    }
+    cert_payload = {
+        "entities": [
+            {"type_name": "Compliance", "id": "SprocketSafe",
+             "attributes": [
+                 {"name": "label", "value": "SprocketSafe"},
+                 {"name": "cost_per_unit", "value": "4.20", "datatype": "float"},
+             ]}
+        ],
+        "relationships": [],
+    }
+
+    async def _create(**kwargs):
+        content = kwargs["messages"][0]["content"]
+        return _anthropic_msg(widget_payload if "WIDGET_CHUNK" in content else cert_payload)
+
+    resolver._anthropic.messages.create = AsyncMock(side_effect=_create)
+
+    captured: dict = {}
+
+    async def _capture(extraction, *a, **k):
+        captured["extraction"] = extraction
+        return IngestResult(entities_extracted=len(extraction.entities))
+
+    resolver._resolve_and_insert = AsyncMock(side_effect=_capture)
+
+    mock_logger = MagicMock()
+    original = sr.logger
+    sr.logger = mock_logger
+    try:
+        await resolver.ingest(
+            "widget rows plus a compliance appendix",
+            tenant_id="test-tenant",
+            content_type="text",
+            constrain_types=["Widget"],
+            constrain_attributes={"Widget": ["cost_per_unit"]},
+            constrain_soft=True,
+        )
+    finally:
+        sr.logger = original
+
+    out = captured["extraction"]
+    widget = next(e for e in out.entities if e.type_name == "Widget")
+    assert any(a.name == "cost_per_unit" for a in widget.attributes)  # survived + re-homed
+    assert not _num_metric_on_concept_entity(out)
+    starved = [
+        c for c in mock_logger.error.call_args_list
+        if c.args and c.args[0] == "discovery_focus_type_starved"
+    ]
+    assert not starved, "subject exists in another chunk — no starvation"
+
+
+# --------------------------------------------------------------------------- #
+# Review finding #3 — same-name collision must be counted/logged, not silent    #
+# --------------------------------------------------------------------------- #
+def test_same_name_metric_collision_is_counted_and_logged():
+    """Two concept entities each carry `cost_per_unit`; with one sole focus, only
+    the first can occupy the subject's slot. The second must NOT vanish silently:
+    it is counted and a `discovery_metric_collision` is logged with the dropped
+    value. Regression for finding #3."""
+    widget = ExtractedEntity(
+        type_name="Widget", id="w1",
+        attributes=[ExtractedAttribute(name="name", value="Widget One")],
+    )
+    c1 = ExtractedEntity(
+        type_name="Compliance", id="c1",
+        attributes=[ExtractedAttribute(name="cost_per_unit", value="1.00", datatype="float")],
+    )
+    c2 = ExtractedEntity(
+        type_name="Certification", id="c2",
+        attributes=[ExtractedAttribute(name="cost_per_unit", value="2.00", datatype="float")],
+    )
+    inp = ExtractionResult(entities=[widget, c1, c2], relationships=[])
+
+    mock_logger = MagicMock()
+    original = sr.logger
+    sr.logger = mock_logger
+    try:
+        out = sr._apply_soft_focus_floor(inp, _soft("cost_per_unit"))
+    finally:
+        sr.logger = original
+
+    # The dropped second value is explicitly logged (never silent).
+    collisions = [
+        c for c in mock_logger.warning.call_args_list
+        if c.args and c.args[0] == "discovery_metric_collision"
+    ]
+    assert collisions, "expected a discovery_metric_collision log for the 2nd value"
+    assert collisions[0].kwargs["attribute"] == "cost_per_unit"
+    assert collisions[0].kwargs["dropped_value"] == "2.00"
+
+    # …and the summary log counts it.
+    summary = [
+        c for c in mock_logger.warning.call_args_list
+        if c.args and c.args[0] == "discovery_metric_reattributed"
+    ]
+    assert summary and summary[0].kwargs["metrics_collision"] == 1
+
+    # The subject holds exactly one cost_per_unit; no concept keeps the metric.
+    widget_out = next(e for e in out.entities if e.type_name == "Widget")
+    assert sum(1 for a in widget_out.attributes if a.name == "cost_per_unit") == 1
+    assert not _num_metric_on_concept_entity(out)
