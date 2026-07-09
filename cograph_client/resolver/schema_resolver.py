@@ -3016,7 +3016,39 @@ class SchemaResolver:
                 result.attributes_added.append(f"{resolved_type}.{resolved.name}")
                 type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
-            if resolved.datatype not in PRIMITIVE_TYPES and resolved.datatype in existing_types:
+            if resolved.datatype not in PRIMITIVE_TYPES:
+                # This attribute is TYPED as a relationship to `resolved.datatype`
+                # (a non-primitive type name), not a literal — so its value is
+                # another entity and MUST be minted as a node reached by an edge,
+                # never stored as a bare string. Two cases converge here:
+                #   * DECLARED (warm): the ontology already declares this an object
+                #     property whose range is `resolved.datatype` (an existing type)
+                #     — the original promotion path.
+                #   * COLD START: THIS extraction typed the attribute as a
+                #     relationship (LLM emitted `datatype=<Type>`), so the EXTEND
+                #     branch above already declared the object property with
+                #     `rdfs:range = types/<datatype>` (insert_attribute maps a
+                #     non-primitive datatype to a type URI). Without minting the type
+                #     the schema carried a DANGLING range (an object property whose
+                #     range type was never created) and the value fell to the literal
+                #     path — a literal on attrs/<leaf>, INVISIBLE to NL relationship
+                #     traversal, with no target node (the #123-class bug, in the
+                #     cold-start branch). Create the target type so the schema is
+                #     internally consistent and the edge is NL-queryable.
+                # This never OVER-PROMOTES: a plain literal attribute has a PRIMITIVE
+                # datatype and takes the else-branch below unchanged — only an
+                # attribute EXPLICITLY typed as a relationship is minted as a node.
+                if resolved.datatype not in existing_types:
+                    await self._neptune.update(
+                        insert_type(
+                            graph_uri,
+                            resolved.datatype,
+                            f"Relationship target of {resolved_type}.{resolved.name}",
+                        )
+                    )
+                    result.types_created.append(resolved.datatype)
+                    existing_types[resolved.datatype] = ""
+                    existing_attrs.setdefault(resolved.datatype, {})
                 target_uri = _entity_uri(resolved.datatype, resolved.value)
                 # Relationship INSTANCE edge → onto/<leaf>. That is the ONLY
                 # predicate the NL→SPARQL planner queries a type-ranged attribute on
