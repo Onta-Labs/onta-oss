@@ -449,6 +449,15 @@ class WebIngestCapability:
         if not query:
             return []
         key_attr = spec.get("key_attribute") or "name"
+        # A GENUINELY degraded spec (the resolver LLM failed AND no explicit field
+        # list could be recovered) carries a user-facing note so the thinning to a
+        # bare name/description capture is SURFACED, not silent. Empty on the happy
+        # path / when a field floor was recovered → no prefix is shown. Prepended to
+        # the clarify question and to a committed thin plan's rationale/summary so the
+        # user always learns the planning degraded instead of quietly getting a thin
+        # dataset.
+        degraded_note = str(spec.get("degraded_note") or "").strip()
+        degraded_prefix = f"{degraded_note} " if degraded_note else ""
 
         # ONTA-239 (Cluster 2b) — ONTOLOGY GROUNDING. Fetch the target type's
         # already-declared attribute names so this second rail converges on the
@@ -512,7 +521,7 @@ class WebIngestCapability:
             # recommended set (the most-important few), pre-selected, so the next
             # turn converges without confronting the user with every column.
             core = _core_attrs(key_attr, spec.get("core_attributes", []), suggested)
-            return [_clarify_step(type_name, key_attr, core)]
+            return [_clarify_step(type_name, key_attr, core, note=degraded_note)]
 
         # Already scoped by an existing ontology type but the user named no explicit
         # fields this turn: adopt the type's declared attributes as the floor so the
@@ -639,14 +648,16 @@ class WebIngestCapability:
                         **registry_params,
                     },
                     rationale=(
-                        (f"{registry_card}. " if registry_card else "")
+                        degraded_prefix
+                        + (f"{registry_card}. " if registry_card else "")
                         + f"Find {query} on the web and add them to this graph as "
                         f"{type_name} records."
                     ),
                     confidence=0.7,
                     preview={
                         "summary": (
-                            (f"{registry_card}. " if registry_card else "")
+                            degraded_prefix
+                            + (f"{registry_card}. " if registry_card else "")
                             + f"Search the web for {query} and add the results as "
                             f"{type_name} records (up to {cap})."
                         ),
@@ -784,14 +795,16 @@ class WebIngestCapability:
                 **registry_params,
             },
             rationale=(
-                (f"{registry_card}. " if registry_card else "")
+                degraded_prefix
+                + (f"{registry_card}. " if registry_card else "")
                 + f"Find {query} on the web and add them to this graph as "
                 f"{type_name} records."
             ),
             confidence=0.7,
             preview={
                 "summary": (
-                    (f"{registry_card}. " if registry_card else "")
+                    degraded_prefix
+                    + (f"{registry_card}. " if registry_card else "")
                     + _preview_summary(
                         discovered_types, relationships, cap, degraded=preview_degraded
                     )
@@ -1402,8 +1415,10 @@ class WebIngestCapability:
 
 _SPEC_SYSTEM = """\
 You plan a web-discovery ingest: the user wants to pull a NEW set of records from \
-the web and add them to a knowledge graph. From the WHOLE conversation, output \
-STRICT JSON only (no markdown):
+the web and add them to a knowledge graph. Read the whole conversation for context, \
+but treat the user's CURRENT (latest) request as the PRIMARY intent — earlier turns \
+only fill gaps it leaves and must NEVER override the entity type, fields, or search \
+subject the current request names. Output STRICT JSON only (no markdown):
 {
   "entity_type": "<PascalCase singular type for the records, e.g. Model, Company, Drug>",
   "key_attribute": "<the natural identifier, usually 'name', snake_case>",
@@ -1465,11 +1480,116 @@ price/ranking column (those become reified entities downstream). For Model: \
 "output_price","modality","latency","rating","score","votes","release_date"]."""
 
 
+# How many leading named fields the DETERMINISTIC fallback pre-selects as the
+# "core" recommendation (mirrors the LLM path's short core set). Kept small so a
+# long field list doesn't pre-check every column.
+_FALLBACK_CORE_MAX = 4
+
+# The user-facing note attached to a GENUINELY degraded spec — the resolver LLM was
+# unavailable AND no explicit field list could be recovered, so discovery falls back
+# to a bare name/description capture. Surfaced (not swallowed) so the user learns the
+# planning degraded and can re-state the fields they want, instead of silently
+# receiving a thin dataset.
+_DEGRADED_NOTE = (
+    "Automated field planning was unavailable, so I set up a basic "
+    "name/description capture. Tell me the specific fields you want "
+    '(e.g. "with field_a, field_b, field_c") and I\'ll collect those too.'
+)
+
+
+def _current_request(instruction: str) -> str:
+    """The user's CURRENT turn within the accumulated instruction.
+
+    The planner concatenates the session's user turns oldest-first with newlines
+    (``_effective_instruction``), so the ask in front of us is the LAST non-empty
+    line. Weighting it keeps a STALE earlier turn from overriding the fields / type /
+    search subject the current message names. Collapses to the whole instruction when
+    there is only one turn (no newline)."""
+    if not instruction:
+        return ""
+    lines = [ln for ln in instruction.splitlines() if ln.strip()]
+    return lines[-1].strip() if lines else instruction.strip()
+
+
+def _fallback_spec(instruction: str) -> dict:
+    """Deterministic spec for when the resolver LLM is unavailable / errored / timed
+    out / returned nothing usable — NEVER the bare ``[name, description, url]``
+    default that silently drops a field list the user explicitly named (the
+    persona-eval RCA: a ~15s spec-LLM timeout thinned a fully-specified ask to
+    name/description, so the NPI/taxonomy/affiliation fields the user listed never
+    landed).
+
+    Recovers the enumerated fields + the named type straight from the message with
+    the SAME deterministic parsers the plan-time floor uses, WEIGHTING the current
+    request: current-turn fields lead (earlier turns only fill the gaps they leave),
+    and the current turn's type / search subject win over a stale earlier turn's.
+    When no field list can be parsed at all the spec still degrades to name/
+    description, but SURFACES it (``degraded`` + ``degraded_note``) instead of
+    thinning silently, so the caller can tell the user rather than quietly hand back
+    a thin dataset. When the LLM path succeeds it may ENRICH this set — it must never
+    shrink below the fields recovered here."""
+    current = _current_request(instruction)
+    # Current-turn fields FIRST (weighted), then any additional the earlier turns
+    # named — a union, so no explicitly-named field is ever lost, but the current
+    # ask leads the ordering. ``_explicit_user_fields`` already scans the whole
+    # instruction; the current-first splice is what makes the latest request
+    # dominate rather than a stale earlier list.
+    fields = _dedupe(
+        [*_explicit_user_fields(current), *_explicit_user_fields(instruction)]
+    )
+    # Type: the current turn wins; the whole instruction only fills a gap.
+    etype = _explicit_user_type(current) or _explicit_user_type(instruction)
+    # Search SUBJECT: let the CURRENT turn drive it ONLY when that turn actually
+    # names a subject/type (a genuine PIVOT like "actually discover Beta records
+    # with …"). A bare confirmation ("yes go ahead") or a "Use these: …" chip reply
+    # is NOT a subject — but its ``_clean_query`` is still truthy, so a naive
+    # ``current or instruction`` would search the web for the confirmation/chip text
+    # and return an empty/garbage dataset (reviewer-reproduced regression on the
+    # multi-turn confirm path). Gating on ``_explicit_user_type(current)`` falls back
+    # to the ORIGINAL first-line ask on any confirm/chip turn while still honoring a
+    # real pivot turn.
+    query = (
+        _clean_query(current) if _explicit_user_type(current) else ""
+    ) or _clean_query(instruction)
+    key = "name"
+    if fields:
+        suggested = [a for a in fields if a and a != key]
+        return {
+            "entity_type": etype or "WebRecord",
+            "key_attribute": key,
+            "query": query,
+            # No LLM ran → no kind classification (general default provider).
+            "query_kind": None,
+            "subqueries": [],
+            "confirmed_attributes": fields,
+            "core_attributes": suggested[:_FALLBACK_CORE_MAX],
+            "suggested_attributes": suggested,
+            "degraded": False,
+        }
+    # No explicit field list to recover → genuinely degraded. Keep a recovered type
+    # if the user named one; SURFACE the thinning so it is not silent.
+    return {
+        "entity_type": etype or "WebRecord",
+        "key_attribute": key,
+        "query": query,
+        "query_kind": None,
+        "subqueries": [],
+        "confirmed_attributes": [],
+        "core_attributes": ["description"],
+        "suggested_attributes": ["name", "description", "url"],
+        "degraded": True,
+        "degraded_note": _DEGRADED_NOTE,
+    }
+
+
 async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:
     """LLM-resolve {entity_type, key_attribute, confirmed/suggested attributes}.
 
-    Degrades to a minimal deterministic spec when there is no key or the LLM
-    errors, so the turn never 500s — that minimal spec triggers the clarify path.
+    Degrades to a DETERMINISTIC fallback spec (``_fallback_spec``) when there is no
+    LLM key or the call errors / times out / returns nothing usable, so the turn
+    never 500s AND an explicitly-named field list is never silently dropped by a
+    resolver timeout — the fallback recovers the user's fields + type from the
+    CURRENT request instead of collapsing to a bare name/description default.
     """
     if ctx.openrouter_key:
         try:
@@ -1482,8 +1602,7 @@ async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:
                 max_tokens=400,
                 # Kept well under the preview budget: this small spec call runs
                 # BEFORE the sample fetch, so a slow one eats the sample's time.
-                # On timeout _resolve_spec degrades to the minimal spec (→ clarify),
-                # never 500s.
+                # On timeout _resolve_spec degrades to the fallback spec, never 500s.
                 timeout=15,
             )
             parsed = _parse_json_object(text)
@@ -1491,16 +1610,7 @@ async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:
                 return _normalize_spec(parsed)
         except Exception:  # noqa: BLE001
             logger.warning("web_ingest_spec_failed", exc_info=True)
-    # No-LLM fallback: name the records generically and ask. No kind classification
-    # without the LLM → query_kind stays None (general default provider).
-    return {
-        "entity_type": "WebRecord",
-        "key_attribute": "name",
-        "query_kind": None,
-        "confirmed_attributes": [],
-        "core_attributes": ["description"],
-        "suggested_attributes": ["name", "description", "url"],
-    }
+    return _fallback_spec(instruction)
 
 
 def _normalize_spec(parsed: dict) -> dict:
@@ -1663,7 +1773,9 @@ def _core_attrs(key_attr: str, core: list[str], suggested: list[str]) -> list[st
     return picked[:_DEFAULT_CORE_CAP]
 
 
-def _clarify_step(type_name: str, key_attr: str, core: list[str]) -> PlanStep:
+def _clarify_step(
+    type_name: str, key_attr: str, core: list[str], note: str = ""
+) -> PlanStep:
     """Ask which attributes to collect. Shows a SHORT recommended set (``core`` —
     the few most-important attributes), pre-selected, as clickable chips; the user
     can drop some, add their own, or keep just the name. The concrete list rides in
@@ -1671,10 +1783,14 @@ def _clarify_step(type_name: str, key_attr: str, core: list[str]) -> PlanStep:
     the next turn converges. The question stays terse and does NOT re-list the
     attributes — they're already the chips below it. The comprehensive fetch
     projection is chosen server-side (``hint_columns``), independent of this minimal
-    recommendation, so a lean chip list never narrows what actually gets pulled."""
+    recommendation, so a lean chip list never narrows what actually gets pulled.
+
+    ``note`` is an optional leading advisory (e.g. the degraded-planning note) so a
+    resolver-LLM failure is SURFACED in the question the user reads, not swallowed."""
     shown = _dedupe([key_attr, *core])
     question = (
-        f"I'll collect **{type_name}** records and always include **{key_attr}**. "
+        (f"{note}\n\n" if note else "")
+        + f"I'll collect **{type_name}** records and always include **{key_attr}**. "
         "Pick the ones to collect below, add your own, or keep just the name."
     )
     options = [f"Use these: {', '.join(shown)}", f"Just the {key_attr}"]
