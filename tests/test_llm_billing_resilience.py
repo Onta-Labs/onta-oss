@@ -254,18 +254,37 @@ def test_classify_detail_still_folded_with_provider():
 
 
 async def test_cerebras_provider_message_flows_through_openrouter_chat(monkeypatch):
-    """End-to-end at the RAISE site: with the backend flipped to Cerebras, a 402
-    out of ``openrouter_chat`` names Cerebras (its host), not OpenRouter — proving
-    the call site actually threads the live provider, not just the pure classifier."""
+    """End-to-end at the RAISE site: a 402 for a call that ACTUALLY hit Cerebras
+    names Cerebras (its host), not OpenRouter — proving the call site threads the
+    provider actually served, not just the pure classifier. A BARE model slug is
+    what routes to Cerebras (the #163 slug-shape flip); a vendor/model slug would
+    route to OpenRouter regardless of OMNIX_LLM_PROVIDER (see the next test)."""
     monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
     _patch_client(monkeypatch, 402)
     with pytest.raises(LLMBillingError) as ei:
-        # The OpenRouter-shaped api_key/model are ignored in cerebras mode.
-        await openrouter_chat("ignored-openrouter-key", "sys", "user")
+        # Bare slug -> Cerebras branch. api_key is ignored in cerebras mode.
+        await openrouter_chat("ignored-openrouter-key", "sys", "user", model="gpt-oss-120b")
     msg = str(ei.value).lower()
     assert "cerebras" in msg
     assert "openrouter" not in msg
+
+
+async def test_cerebras_provider_with_slashed_model_names_openrouter(monkeypatch):
+    """Reconciliation guard (#162 x #163): OMNIX_LLM_PROVIDER=cerebras but a
+    vendor/model (slash) slug routes to OpenRouter by slug shape, so a 402 there
+    must name OpenRouter — the account that ACTUALLY served the call — never the
+    globally-configured 'cerebras'. This is the interaction that a naive
+    provider=_llm_provider() would misreport (and did, until the raise site began
+    deriving the provider from the base it actually hit)."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
+    _patch_client(monkeypatch, 402)
+    with pytest.raises(LLMBillingError) as ei:
+        await openrouter_chat("openrouter-key", "sys", "user", model="anthropic/claude-opus-4.8")
+    msg = str(ei.value).lower()
+    assert "openrouter" in msg
+    assert "cerebras" not in msg
 
 
 async def test_openrouter_provider_message_flows_through_openrouter_chat(monkeypatch):
