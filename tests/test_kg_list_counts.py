@@ -67,6 +67,7 @@ def test_stored_count_served_without_live_scan(client, mock_neptune, auth_header
             "edge_count": 0,
             "status": "active",
             "stats_updated_at": None,
+            "ai_description": "",
         }
     ]
 

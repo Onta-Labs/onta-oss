@@ -126,6 +126,11 @@ class KGInfo(BaseModel):
     # "active" | "enriching" — derived live from the tenant's in-flight jobs.
     status: str = "active"
     stats_updated_at: Optional[str] = None
+    # One-line AI summary of what the graph is about, synthesized from its type
+    # breakdown and served from the same durable stats row (see
+    # graph/kg_summary.py). Empty until generated (no key / empty graph / first
+    # list before backfill). Distinct from the user-set ``description`` above.
+    ai_description: str = ""
 
 
 @router.get("", response_model=list[KGInfo])
@@ -207,6 +212,7 @@ async def list_kgs(
                 edge_count=s.edge_count if s else 0,
                 status="enriching" if e["name"] in enriching else "active",
                 stats_updated_at=s.updated_at.isoformat() if s else None,
+                ai_description=s.ai_description if s else "",
             )
         )
     return out
@@ -222,7 +228,11 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
     now. Best-effort throughout — a store/Neptune hiccup degrades to zeros, it
     never fails the KG listing.
     """
-    from cograph_client.api.routes.explore import backfill_kg_summary, schedule_recompute
+    from cograph_client.api.routes.explore import (
+        backfill_kg_summary,
+        schedule_recompute,
+        schedule_summary_backfill,
+    )
     from cograph_client.graph.kg_stats_store import KgStats, get_kg_stats_store
 
     store = get_kg_stats_store()
@@ -248,6 +258,16 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
                     schedule_recompute(client, tenant_id, name)
                 except Exception:  # noqa: BLE001
                     pass
+
+    # Fill one-line AI summaries for KGs that have entities but no stored
+    # description yet — KGs that predate the feature, or whose row was just
+    # count-backfilled above. Fire-and-forget so the summary never lands on this
+    # (hot) list path: the background sweep persists them and they appear on the
+    # next list; recompute writes them at write time going forward.
+    try:
+        schedule_summary_backfill(list(by_kg.values()))
+    except Exception:  # noqa: BLE001 — scheduling a warm-up must never fail listing
+        pass
     return by_kg
 
 
