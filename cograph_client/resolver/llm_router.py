@@ -18,6 +18,15 @@ mirrors the query path's Cerebras support (``nlp/pipeline.py``); one env flip
 switches ALL extraction call sites at once because they all funnel through
 :func:`openrouter_chat` here. The query path has its OWN Cerebras selector
 (``OMNIX_QUERY_PROVIDER``) and is unaffected.
+
+The flip is guarded per call by SLUG SHAPE: Cerebras serves only bare slugs, so
+a call whose effective model contains ``/`` (an OpenRouter ``vendor/model`` id —
+per-role knobs like CSV schema inference's ``google/gemini-2.5-flash`` default)
+stays on OpenRouter even under ``cerebras``. Without this, the provider flip
+sends OpenRouter-only slugs to ``api.cerebras.ai``, which 404s them — in
+production that broke every rail whose per-role model kept a ``vendor/model``
+default (CSV schema inference, enrichment extraction, research extraction)
+while bare-slug callers kept working.
 """
 
 from __future__ import annotations
@@ -104,13 +113,19 @@ async def openrouter_chat(
 
     **Provider routing.** When ``OMNIX_LLM_PROVIDER=cerebras`` the request is sent
     to Cerebras (``api.cerebras.ai``) with the ``CEREBRAS_API_KEY`` and the bare
-    ``OMNIX_LLM_MODEL`` slug instead of OpenRouter — see the module docstring. The
-    caller-supplied ``api_key`` / ``model`` (OpenRouter values) are ignored in that
-    mode; everything else (request params, return contract, error handling) is
-    identical. Default (unset / ``openrouter``) is byte-identical to before.
+    ``OMNIX_LLM_MODEL`` slug instead of OpenRouter — see the module docstring.
+    Cerebras only serves BARE slugs, so the flip applies per call by slug shape
+    (the same heuristic the query path uses): a bare effective model
+    (``model or PRIMARY_MODEL``) goes to Cerebras; a ``vendor/model`` slug —
+    e.g. a per-role knob like ``OMNIX_CSV_SCHEMA_MODEL``'s
+    ``google/gemini-2.5-flash`` default — can only be served by OpenRouter and
+    keeps routing there with the caller's ``api_key``. Everything else (request
+    params, return contract, error handling) is identical. Default (unset /
+    ``openrouter``) is byte-identical to before.
     """
     provider = _llm_provider()
-    if provider == "cerebras":
+    effective_model = model or PRIMARY_MODEL
+    if provider == "cerebras" and "/" not in effective_model:
         cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
         if not cerebras_key:
             # Fail loud — do NOT silently fall back to OpenRouter. If the operator
@@ -126,7 +141,7 @@ async def openrouter_chat(
         # OpenRouter-prefixed one, and has no `models` fallback array. Use the
         # caller's per-role model when supplied, else PRIMARY_MODEL (OMNIX_LLM_MODEL).
         body: dict = {
-            "model": model or PRIMARY_MODEL,
+            "model": effective_model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
