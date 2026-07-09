@@ -131,37 +131,121 @@ def test_inmemory_store_preserves_ai_description():
     assert got is not None and got.ai_description == "hello"
 
 
-# ── _backfill_kg_summaries: list-time lazy fill ─────────────────────────────
+# ── _summary_model: cheap default, env override ─────────────────────────────
 
 
-def test_backfill_only_fills_pending_rows(monkeypatch):
-    from cograph_client.api.routes import knowledge_graphs as kg_routes
+def test_summary_model_default_and_override(monkeypatch):
+    monkeypatch.delenv("OMNIX_KG_SUMMARY_MODEL", raising=False)
+    assert kg_summary._summary_model() == "google/gemini-2.5-flash"
+    monkeypatch.setenv("OMNIX_KG_SUMMARY_MODEL", "vendor/cheap-model")
+    assert kg_summary._summary_model() == "vendor/cheap-model"
+
+
+# ── resolve_summary: the recompute decision + staleness self-heal ────────────
+
+
+def test_resolve_summary_generates_when_blank():
+    async def gen(kg, bd):
+        return "fresh line"
+
+    desc, types = asyncio.run(
+        kg_summary.resolve_summary("", [], {"A": 1, "B": 2}, "kg", generate=gen)
+    )
+    assert desc == "fresh line" and types == ["A", "B"]
+
+
+def test_resolve_summary_keeps_when_type_set_unchanged():
+    async def gen(kg, bd):
+        raise AssertionError("must not regenerate when the type set is unchanged")
+
+    # Counts moved but the type SET is the same as the description's signature.
+    desc, types = asyncio.run(
+        kg_summary.resolve_summary("old line", ["A", "B"], {"B": 9, "A": 3}, "kg", generate=gen)
+    )
+    assert desc == "old line" and types == ["A", "B"]
+
+
+def test_resolve_summary_regenerates_on_type_change():
+    async def gen(kg, bd):
+        return "new line"
+
+    desc, types = asyncio.run(
+        kg_summary.resolve_summary("old line", ["A"], {"A": 1, "C": 2}, "kg", generate=gen)
+    )
+    assert desc == "new line" and types == ["A", "C"]
+
+
+def test_resolve_summary_failed_regen_keeps_old_line_and_stale_signature():
+    # Type set changed but generation returned "" — keep the old line AND leave
+    # the signature at the OLD set, so the next recompute still sees a mismatch
+    # and retries (the description never silently sticks to a defunct type set).
+    async def gen(kg, bd):
+        return ""
+
+    desc, types = asyncio.run(
+        kg_summary.resolve_summary("old line", ["A"], {"A": 1, "C": 2}, "kg", generate=gen)
+    )
+    assert desc == "old line" and types == ["A"]
+    # Confirm the invariant: a mismatch remains, so we'd regenerate next time.
+    assert kg_summary.should_generate_summary(desc, types, {"A": 1, "C": 2}) is True
+
+
+# ── background summary backfill (off the list_kgs hot path) ──────────────────
+
+
+def test_run_summary_backfill_fills_and_persists(monkeypatch):
+    from cograph_client.api.routes import explore as explore_mod
     from cograph_client.graph import kg_stats_store as store_mod
 
     store = InMemoryKgStatsStore()
     monkeypatch.setattr(store_mod, "get_kg_stats_store", lambda: store)
 
-    calls: list[str] = []
-
     async def fake_gen(kg_name, breakdown, **kwargs):
-        calls.append(kg_name)
         return f"summary of {kg_name}"
 
     monkeypatch.setattr(kg_summary, "generate_kg_summary", fake_gen)
 
-    rows = [
-        # pending: has entities, no description → should generate
-        KgStats(tenant_id="t", kg_name="needs-one", type_breakdown={"A": 3}),
-        # already has a description → skip
-        KgStats(tenant_id="t", kg_name="has-one", type_breakdown={"A": 3}, ai_description="x"),
-        # empty graph → skip (nothing to describe)
-        KgStats(tenant_id="t", kg_name="empty", type_breakdown={}),
-    ]
-    asyncio.run(kg_routes._backfill_kg_summaries(rows))
+    rows = [KgStats(tenant_id="t", kg_name="needs-one", type_breakdown={"A": 3})]
+    asyncio.run(explore_mod._run_summary_backfill(rows))
 
-    assert calls == ["needs-one"]
-    # mutated in place for the caller
     assert rows[0].ai_description == "summary of needs-one"
-    # and persisted for next time
+    assert rows[0].ai_description_types == ["A"]  # signature stamped on fill
     persisted = asyncio.run(store.get("t", "needs-one"))
     assert persisted is not None and persisted.ai_description == "summary of needs-one"
+
+
+def test_schedule_summary_backfill_only_schedules_pending(monkeypatch):
+    from cograph_client.api.routes import explore as explore_mod
+
+    scheduled: list[list[str]] = []
+
+    async def fake_run(pending):
+        scheduled.append([r.kg_name for r in pending])
+
+    monkeypatch.setattr(explore_mod, "_run_summary_backfill", fake_run)
+
+    async def drive(rows):
+        explore_mod.schedule_summary_backfill(rows)
+        await asyncio.sleep(0)  # let the fire-and-forget task run
+
+    # Nothing pending (all described or empty) → no task scheduled.
+    asyncio.run(
+        drive(
+            [
+                KgStats(tenant_id="t", kg_name="has", type_breakdown={"A": 1}, ai_description="x"),
+                KgStats(tenant_id="t", kg_name="empty", type_breakdown={}),
+            ]
+        )
+    )
+    assert scheduled == []
+
+    # One pending row → exactly that row is scheduled.
+    asyncio.run(
+        drive(
+            [
+                KgStats(tenant_id="t", kg_name="needs", type_breakdown={"A": 1}),
+                KgStats(tenant_id="t", kg_name="has", type_breakdown={"A": 1}, ai_description="x"),
+            ]
+        )
+    )
+    assert scheduled == [["needs"]]

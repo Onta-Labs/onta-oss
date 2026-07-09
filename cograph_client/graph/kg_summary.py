@@ -49,25 +49,69 @@ def _openrouter_key() -> str:
     return settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
 
 
+def _summary_model() -> str:
+    """Model for the one-liner. A ≤10-word label doesn't need the flagship
+    extraction model, so default to the cheap query-tier model; override with
+    ``OMNIX_KG_SUMMARY_MODEL``. Falls back to ``PRIMARY_MODEL`` only if the env
+    is explicitly blanked."""
+    from cograph_client.resolver.llm_router import PRIMARY_MODEL
+
+    return os.environ.get("OMNIX_KG_SUMMARY_MODEL", "google/gemini-2.5-flash") or PRIMARY_MODEL
+
+
 def should_generate_summary(
     existing: str,
-    old_breakdown: dict[str, int],
+    summary_types,
     new_breakdown: dict[str, int],
 ) -> bool:
     """Whether a KG's one-line summary should be (re)generated.
 
     Regenerate only when there's something to describe (``new_breakdown``
     non-empty) AND either no summary exists yet OR the *set of entity types*
-    changed — the summary describes the graph's domain, which is a function of
-    its types, not of per-type counts. This keeps enrichment writes (which fill
-    attributes on existing types) from triggering a needless regeneration on
-    every ingest, while a genuinely new type set gets a fresh line.
+    changed since the description was generated — the summary describes the
+    graph's domain, which is a function of its types, not of per-type counts.
+    This keeps enrichment writes (which fill attributes on existing types) from
+    triggering a needless regeneration on every ingest, while a genuinely new
+    type set gets a fresh line.
+
+    ``summary_types`` is the type set the *existing* description was generated
+    for (``KgStats.ai_description_types``), NOT the previous breakdown — so a
+    failed regen (which deliberately leaves the signature stale) is retried next
+    time instead of the stale line becoming permanent. Accepts any iterable.
     """
     if not new_breakdown:
         return False
     if not existing.strip():
         return True
-    return set(old_breakdown) != set(new_breakdown)
+    return set(summary_types) != set(new_breakdown)
+
+
+async def resolve_summary(
+    prev_desc: str,
+    prev_types,
+    new_breakdown: dict[str, int],
+    kg_name: str,
+    *,
+    generate=None,
+) -> tuple[str, list[str]]:
+    """Decide the ``(ai_description, ai_description_types)`` for a recompute.
+
+    - No regeneration warranted → keep the existing line + its signature.
+    - Regeneration warranted and it succeeds → the fresh line + the NEW type set.
+    - Regeneration warranted but it fails (empty) → keep the OLD line and DON'T
+      advance the signature, so the next recompute sees the mismatch and retries
+      rather than letting a stale description describe an old type set forever.
+
+    Pure decision logic around one best-effort ``generate`` call — unit-testable
+    with a fake ``generate`` (defaults to :func:`generate_kg_summary`).
+    """
+    gen = generate or generate_kg_summary
+    if not should_generate_summary(prev_desc, prev_types, new_breakdown):
+        return prev_desc, sorted(set(prev_types))
+    fresh = await gen(kg_name, new_breakdown)
+    if fresh:
+        return fresh, sorted(new_breakdown)
+    return prev_desc, sorted(set(prev_types))
 
 
 def _clean(text: str) -> str:
@@ -112,14 +156,14 @@ async def generate_kg_summary(
         return ""
     # Lazy import keeps module import cheap and avoids any graph→resolver import
     # cycle at load time (mirrors graph/text_markers.py).
-    from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
+    from cograph_client.resolver.llm_router import openrouter_chat
 
     try:
         text = await openrouter_chat(
             key,
             _SYSTEM,
             _prompt(kg_name, breakdown),
-            model=PRIMARY_MODEL,
+            model=_summary_model(),
             temperature=0.0,
             max_tokens=60,
             timeout=timeout,

@@ -228,7 +228,11 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
     now. Best-effort throughout — a store/Neptune hiccup degrades to zeros, it
     never fails the KG listing.
     """
-    from cograph_client.api.routes.explore import backfill_kg_summary, schedule_recompute
+    from cograph_client.api.routes.explore import (
+        backfill_kg_summary,
+        schedule_recompute,
+        schedule_summary_backfill,
+    )
     from cograph_client.graph.kg_stats_store import KgStats, get_kg_stats_store
 
     store = get_kg_stats_store()
@@ -255,41 +259,16 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
                 except Exception:  # noqa: BLE001
                     pass
 
-    # Lazily fill one-line AI summaries for KGs that have entities but no stored
-    # description yet — KGs that predate the summary feature, or whose row was
-    # just count-backfilled above. Recompute writes descriptions going forward;
-    # this covers already-materialized rows that would otherwise never get one.
-    await _backfill_kg_summaries(list(by_kg.values()))
+    # Fill one-line AI summaries for KGs that have entities but no stored
+    # description yet — KGs that predate the feature, or whose row was just
+    # count-backfilled above. Fire-and-forget so the summary never lands on this
+    # (hot) list path: the background sweep persists them and they appear on the
+    # next list; recompute writes them at write time going forward.
+    try:
+        schedule_summary_backfill(list(by_kg.values()))
+    except Exception:  # noqa: BLE001 — scheduling a warm-up must never fail listing
+        pass
     return by_kg
-
-
-async def _backfill_kg_summaries(rows: list) -> None:
-    """Generate + persist missing one-line summaries for the given stats rows.
-
-    Concurrent and best-effort: a KG with no ``ai_description`` but a non-empty
-    type breakdown gets one LLM call (no OpenRouter key → instant no-op); a
-    generation miss or store hiccup just leaves the line blank for the next list
-    to retry. Rows are mutated in place so the caller returns the fresh text
-    without a re-read. Runs once per KG in steady state (persisted after).
-    """
-    from cograph_client.graph.kg_stats_store import get_kg_stats_store
-    from cograph_client.graph.kg_summary import generate_kg_summary
-
-    pending = [r for r in rows if not r.ai_description and r.type_breakdown]
-    if not pending:
-        return
-    summaries = await asyncio.gather(
-        *(generate_kg_summary(r.kg_name, r.type_breakdown) for r in pending),
-        return_exceptions=True,
-    )
-    store = get_kg_stats_store()
-    for r, desc in zip(pending, summaries):
-        if isinstance(desc, str) and desc:
-            r.ai_description = desc  # in-place: the caller's by_kg holds this ref
-            try:
-                await store.upsert(r)
-            except Exception:  # noqa: BLE001 — persistence is a cache warm, not required
-                pass
 
 
 async def _enriching_kgs(job_store, tenant_id: str) -> set[str]:
