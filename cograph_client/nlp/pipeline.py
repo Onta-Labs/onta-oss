@@ -60,25 +60,77 @@ OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 DEFAULT_QUERY_MODEL = os.environ.get("OMNIX_QUERY_MODEL", "llama3.1-8b")
 DEFAULT_QUERY_PROVIDER = os.environ.get("OMNIX_QUERY_PROVIDER", "cerebras")  # cerebras, openrouter, or anthropic
 
+# Reasoning-budget recovery for the Cerebras SPARQL-gen path (persona-eval RCA).
+# gpt-oss-120b is a reasoning model; on a hard question it can spend its ENTIRE
+# `max_completion_tokens` (the default 2048) on reasoning and return
+# `finish_reason == "length"` with NO answer content. Replaying at the same
+# budget just truncates again, so the retry loop escalates: attempt-1 retries the
+# Cerebras path with this bigger budget (leaving room for the answer AFTER
+# reasoning), and a second consecutive length-truncation falls back to the
+# non-reasoning OpenRouter/Anthropic JSON path entirely.
+CEREBRAS_LENGTH_RECOVERY_TOKENS = int(
+    os.environ.get("OMNIX_QUERY_LENGTH_RECOVERY_TOKENS", "6144")
+)
+
+
+class EmptyLLMResponse(ValueError):
+    """Raised when an OpenAI-compatible chat completion carried no usable
+    ``content`` — the key is missing entirely, ``null``, or an empty string.
+
+    Subclasses ``ValueError`` (and keeps the exact ``"empty LLM response from
+    <provider>"`` message) so every existing ``except ValueError`` /
+    ``except Exception`` retry-and-fallback path — and the existing guard tests —
+    treat it identically to the old bare ``ValueError``. It additionally carries
+    ``finish_reason`` so a caller can distinguish a *reasoning-budget exhaustion*
+    (``finish_reason == "length"``: the model spent its whole
+    ``max_completion_tokens`` on reasoning and never emitted the answer) — which
+    is RECOVERABLE with a bigger budget or a non-reasoning fallback — from an
+    ordinary empty/null response.
+    """
+
+    def __init__(self, provider: str, finish_reason: str | None = None):
+        self.provider = provider
+        self.finish_reason = finish_reason
+        super().__init__(f"empty LLM response from {provider}")
+
 
 def _require_message_content(data: dict, provider: str) -> str:
     """Extract ``choices[0].message.content`` from an OpenAI-compatible chat
     completion, raising a clear, typed error when the model returns an
-    empty/``None`` content.
+    empty/``None``/ABSENT content.
 
     Some models intermittently return ``content: null`` (e.g. GLM-5.2 did this
-    ~40x in production) or an empty string. Callers immediately ``.strip()`` or
-    ``json.loads()`` the content, so a null surfaces as an opaque
-    ``AttributeError: 'NoneType' object has no attribute 'strip'`` (or a
-    ``TypeError`` from ``json.loads(None)``) that says nothing about what went
-    wrong. Guarding here turns that into a diagnosable ``ValueError`` that names
-    the provider, so each caller's existing retry/fallback/error path can handle
-    it and the logs say *what* happened. The happy path is unchanged: when
-    ``content`` is a normal non-empty string it is returned verbatim.
+    ~40x in production) or an empty string; a *reasoning* model that exhausts its
+    ``max_completion_tokens`` on reasoning (``finish_reason == "length"``) can
+    omit the ``content`` key ENTIRELY (Cerebras gpt-oss-120b did this ~11x in
+    persona-eval). Callers immediately ``.strip()`` or ``json.loads()`` the
+    content, so a null surfaces as an opaque ``AttributeError`` / ``TypeError``,
+    and a *missing* key used to surface as a hard ``KeyError('content')`` that flew
+    past the retry loop as ``"Could not answer … Last error: 'content'"``. This
+    guard turns ALL of those — missing/absent ``choices``/``message``/``content``,
+    ``null``, or ``""`` — into one diagnosable :class:`EmptyLLMResponse` (a
+    ``ValueError`` subclass) that names the provider and carries the
+    ``finish_reason``, so each caller's existing retry/fallback/error path handles
+    it uniformly and can RECOVER a truncated reasoning turn. The happy path is
+    unchanged: when ``content`` is a normal non-empty string it is returned
+    verbatim.
     """
-    content = data["choices"][0]["message"]["content"]
+    # Degrade every shape defect (absent choices/message/content, empty list,
+    # non-dict payload) to the SAME diagnosable empty-response error rather than
+    # trading one raw KeyError/IndexError/TypeError for another.
+    try:
+        choice = data["choices"][0]
+    except (KeyError, IndexError, TypeError):
+        choice = {}
+    if not isinstance(choice, dict):
+        choice = {}
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        message = {}
+    content = message.get("content")
     if not content:
-        raise ValueError(f"empty LLM response from {provider}")
+        finish_reason = choice.get("finish_reason")
+        raise EmptyLLMResponse(provider, finish_reason=finish_reason)
     return content
 
 
@@ -431,6 +483,14 @@ class NLQueryPipeline:
         # full ontology (so we escalate at most once).
         last_was_empty_sparql = False
         full_ontology_loaded = ontology_source == "full"
+        # Reasoning-budget recovery state (retry path only). `last_was_length_truncated`
+        # records that the PREVIOUS attempt's generator raised EmptyLLMResponse with
+        # finish_reason="length" (a reasoning model burned its whole output budget
+        # before emitting the answer); `length_recovery_stage` counts how many times
+        # we've escalated so the two-tier recovery (bigger budget -> non-reasoning
+        # fallback) advances instead of replaying the same truncation.
+        last_was_length_truncated = False
+        length_recovery_stage = 0
 
         for attempt in range(max_attempts):
             # The ENTIRE attempt — SPARQL generation, post-processing,
@@ -444,8 +504,23 @@ class NLQueryPipeline:
             # max_attempts it falls through to the graceful NLResult below.
             try:
                 t1 = time.time()
+                # Reasoning-budget recovery (Cerebras gpt-oss-120b): if the PREVIOUS
+                # attempt truncated on reasoning (finish_reason="length" with no
+                # answer content), escalate this attempt's generation instead of
+                # replaying the same 2048-token budget. Tier 1 = bigger budget on the
+                # SAME (Cerebras) path; tier 2 (a second consecutive truncation) =
+                # fall back to the non-reasoning OpenRouter/Anthropic JSON path. Empty
+                # on the happy path and on non-length failures, so the generation call
+                # is byte-identical whenever no reasoning truncation occurred.
+                gen_recovery: dict = {}
+                if last_was_length_truncated:
+                    length_recovery_stage += 1
+                    if length_recovery_stage >= 2:
+                        gen_recovery["prefer_fallback"] = True
+                    else:
+                        gen_recovery["max_completion_tokens"] = CEREBRAS_LENGTH_RECOVERY_TOKENS
                 if attempt == 0:
-                    llm_response = await self._generate_sparql(question, ontology, data_graph, examples_text=examples_text)
+                    llm_response = await self._generate_sparql(question, ontology, data_graph, examples_text=examples_text, **gen_recovery)
                 elif last_was_empty_sparql:
                     # ESCALATION (persona-eval RCA): the previous attempt returned
                     # an EMPTY/blank or only-salvageable-to-nothing SPARQL query.
@@ -477,12 +552,18 @@ class NLQueryPipeline:
                             "relationship URIs from the ontology schema above. Never return "
                             "an empty string."
                         ),
+                        **gen_recovery,
                     )
                 else:
                     llm_response = await self._generate_sparql(
                         question, ontology, data_graph,
                         error_feedback=f"The previous query failed with: {last_error}\nQuery was: {sparql}\nPlease fix the SPARQL syntax and try again.",
+                        **gen_recovery,
                     )
+                # Generation returned content (didn't raise): this attempt was NOT a
+                # reasoning-budget truncation, so clear the flag. (The except branch
+                # re-sets it if a length-truncation is what raised.)
+                last_was_length_truncated = False
                 timing[f"sparql_gen_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t1) * 1000, 1)
 
                 sparql = normalize_sparql(llm_response.get("sparql", ""))
@@ -566,6 +647,14 @@ class NLQueryPipeline:
                 # handles. A non-blank query that failed at execution keeps the
                 # normal "fix the syntax" retry.
                 last_was_empty_sparql = not (sparql or "").strip()
+                # A reasoning-budget truncation (EmptyLLMResponse with
+                # finish_reason="length": the reasoning model spent its whole output
+                # budget and emitted no answer content) is RECOVERABLE — flag it so
+                # the next attempt bumps the token budget / falls back to a
+                # non-reasoning provider instead of replaying the same truncation.
+                last_was_length_truncated = (
+                    isinstance(e, EmptyLLMResponse) and e.finish_reason == "length"
+                )
                 logger.warning("ask_attempt_failed", attempt=attempt, error=last_error, question=question)
                 continue
 
@@ -1742,12 +1831,37 @@ class NLQueryPipeline:
             logger.warning("narrative_rephrase_failed", exc_info=True)
             return ""
 
-    async def _generate_sparql(self, question: str, ontology: str, graph_uri: str = "", error_feedback: str = "", examples_text: str = "") -> dict:
+    async def _generate_sparql(
+        self,
+        question: str,
+        ontology: str,
+        graph_uri: str = "",
+        error_feedback: str = "",
+        examples_text: str = "",
+        max_completion_tokens: int | None = None,
+        prefer_fallback: bool = False,
+    ) -> dict:
         prompt = build_generation_prompt(question, ontology, graph_uri, examples_text=examples_text)
         if error_feedback:
             prompt += f"\n\n{error_feedback}"
 
+        # Reasoning-budget recovery (persona-eval RCA), retry path only. When the
+        # Cerebras reasoning model exhausted its output budget on reasoning
+        # (finish_reason="length"), `ask()` sets `prefer_fallback` to escalate OFF
+        # the reasoning model to the non-reasoning OpenRouter/Anthropic JSON path,
+        # which doesn't burn the budget reasoning before answering. Prefer
+        # OpenRouter unless that's already the (truncating) provider, else Anthropic.
+        if prefer_fallback:
+            if self._openrouter_key and self._query_provider != "openrouter":
+                return await self._generate_via_openrouter(prompt)
+            return await self._generate_via_anthropic(prompt)
+
         if self._query_provider == "cerebras" and self._cerebras_key:
+            # `max_completion_tokens` is threaded ONLY on the recovery retry (a
+            # bigger budget so reasoning + the answer both fit). On the happy path
+            # it is None and the call is byte-identical to before (default 2048).
+            if max_completion_tokens is not None:
+                return await self._generate_via_cerebras(prompt, max_completion_tokens=max_completion_tokens)
             return await self._generate_via_cerebras(prompt)
         if self._query_provider == "openrouter" and self._openrouter_key:
             return await self._generate_via_openrouter(prompt)
@@ -1755,8 +1869,14 @@ class NLQueryPipeline:
             return await self._generate_via_openrouter(prompt)
         return await self._generate_via_anthropic(prompt)
 
-    async def _generate_via_cerebras(self, prompt: str) -> dict:
-        """Generate SPARQL via Cerebras with structured output."""
+    async def _generate_via_cerebras(self, prompt: str, max_completion_tokens: int = 2048) -> dict:
+        """Generate SPARQL via Cerebras with structured output.
+
+        `max_completion_tokens` defaults to 2048 — the happy-path value, kept as a
+        literal so a normal call is byte-identical to before. `ask()` passes a
+        BIGGER budget only on the reasoning-budget recovery retry (see
+        `CEREBRAS_LENGTH_RECOVERY_TOKENS`) after a finish_reason="length" truncation.
+        """
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
                 "https://api.cerebras.ai/v1/chat/completions",
@@ -1775,8 +1895,10 @@ class NLQueryPipeline:
                     # JSON gets truncated mid-string and json.loads raises
                     # (empirically 0/3 at 512, 3/3 at 2048). Keep enough headroom
                     # for reasoning + a full SPARQL response. (OpenRouter/Anthropic
-                    # caps are separate and unchanged.)
-                    "max_completion_tokens": 2048,
+                    # caps are separate and unchanged.) The default is 2048; the
+                    # reasoning-budget recovery retry passes a bigger value when a
+                    # hard question still exhausts it (finish_reason="length").
+                    "max_completion_tokens": max_completion_tokens,
                     "temperature": 0,
                     "response_format": {
                         "type": "json_schema",
@@ -1802,11 +1924,15 @@ class NLQueryPipeline:
             )
             res.raise_for_status()
             data = res.json()
-            # `_require_message_content` still raises the typed, provider-named
-            # ValueError on a null/empty content (unchanged guard). Only the JSON
-            # DECODE is made tolerant: gpt-oss-120b sometimes wraps its JSON in
-            # code fences or truncates it mid-string, which used to throw an
-            # uncaught JSONDecodeError past the retry loop. Now a truncated-but-
+            # `_require_message_content` raises the typed, provider-named
+            # EmptyLLMResponse (a ValueError) on a null/empty/ABSENT content —
+            # including the finish_reason="length" reasoning-budget truncation where
+            # the `content` key is missing entirely (which used to surface as a hard
+            # KeyError('content') past the retry loop). It carries the finish_reason
+            # so `ask()` can RECOVER a length truncation (bigger budget / fallback).
+            # Separately, the JSON DECODE is tolerant: gpt-oss-120b sometimes wraps
+            # its JSON in code fences or truncates it mid-string, which used to throw
+            # an uncaught JSONDecodeError past the retry loop. Now a truncated-but-
             # usable query is salvaged, and an unrecoverable blob degrades to an
             # empty `sparql` that triggers the ask() escalation path.
             return _parse_sparql_gen_json(_require_message_content(data, "cerebras"))
