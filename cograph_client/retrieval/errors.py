@@ -41,12 +41,12 @@ class FetchError(RetrievalError):
 
 
 # --- LLM-backend billing / auth (ONTA-201) ---------------------------------- #
-# A 402/401 from the shared OpenRouter account is SYSTEMIC, not a per-record
-# hiccup: the prepaid balance hit $0, or the key is invalid/revoked. It will
-# recur on the very next call, so any split-and-retry / per-batch degrade just
-# burns more (equally-doomed) calls and hides the real cause behind a vague
-# per-batch "failed" while the run still reports "complete". These typed errors
-# are distinct, FATAL signals a rail short-circuits on: abort the remaining
+# A 402/401 from the active LLM account is SYSTEMIC, not a per-record hiccup: the
+# prepaid balance hit $0, or the key is invalid/revoked. It will recur on the
+# very next call, so any split-and-retry / per-batch degrade just burns more
+# (equally-doomed) calls and hides the real cause behind a vague per-batch
+# "failed" while the run still reports "complete". These typed errors are
+# distinct, FATAL signals a rail short-circuits on: abort the remaining
 # chunks/sub-queries and fail the whole job with a clear, actionable message.
 #
 # They subclass :class:`LLMError` (itself a :class:`RetrievalError`) so the ONE
@@ -79,32 +79,75 @@ _FATAL_LLM_STATUS: dict[int, type[LLMError]] = {
     401: LLMAuthError,
 }
 
-#: User-facing message templates keyed by status — surfaced verbatim on the
-#: terminal job/error state so the fix (top up / rotate the key) is obvious.
+#: User-facing message templates keyed by status, with a ``{who}`` slot for the
+#: PROVIDER-ACCURATE phrase (see :func:`_provider_phrase`). Surfaced verbatim on
+#: the terminal job/error state so the fix (top up / rotate the key) is obvious —
+#: and points at the account that ACTUALLY rejected the call.
+#:
+#: Cautionary tale (the bug this template fixes): the message used to hardcode
+#: "OpenRouter", but :func:`openrouter_chat` routes to Cerebras when
+#: ``OMNIX_LLM_PROVIDER=cerebras``. On 2026-07-08 a Cerebras 402 (Cerebras out of
+#: credits) surfaced telling the operator to check the *OpenRouter* balance,
+#: sending debugging in the wrong direction. The provider is now DERIVED from the
+#: caller-supplied slug/host — no provider name is hardcoded here.
 _FATAL_LLM_MESSAGE: dict[int, str] = {
     402: (
-        "LLM extraction backend returned 402 Payment Required — check the "
-        "OpenRouter balance (the shared prepaid account is likely at $0)."
+        "LLM extraction backend returned 402 Payment Required — check {who} "
+        "balance (the prepaid account is likely at $0)."
     ),
     401: (
-        "LLM extraction backend returned 401 Unauthorized — check the "
-        "OpenRouter API key (missing, invalid, or revoked)."
+        "LLM extraction backend returned 401 Unauthorized — check {who} "
+        "API key (missing, invalid, or revoked)."
     ),
 }
 
 
-def classify_llm_status_error(status_code: int, *, detail: str = "") -> LLMError | None:
+def _provider_phrase(provider: str | None, host: str | None) -> str:
+    """A human phrase naming the LLM backend that returned the error.
+
+    DERIVED purely from the caller-supplied ``provider`` slug (e.g. the value of
+    ``OMNIX_LLM_PROVIDER`` — ``"cerebras"`` / ``"openrouter"`` / any future
+    backend) and/or the base ``host`` (``api.cerebras.ai`` / ``openrouter.ai``);
+    nothing provider-specific is hardcoded here, so a brand-new backend names
+    itself correctly with no code change. Degrades to a generic phrase when the
+    caller supplies neither (every pre-existing caller), so old call sites keep a
+    sensible, non-misleading message."""
+    label = provider.strip() if provider else ""
+    host = host.strip() if host else ""
+    if label and host:
+        return f"the {label.title()} account ({host})"
+    if label:
+        return f"the {label.title()} account"
+    if host:
+        return f"the LLM provider account at {host}"
+    return "the LLM provider account"
+
+
+def classify_llm_status_error(
+    status_code: int,
+    *,
+    detail: str = "",
+    provider: str | None = None,
+    host: str | None = None,
+) -> LLMError | None:
     """Return the typed FATAL LLM error for a systemic status code, else ``None``.
 
     ``status_code`` is the HTTP status the LLM backend returned. 402 → billing,
     401 → auth; every other code (429 rate-limit, 5xx, timeouts) is a normal,
     per-call transient the caller keeps handling as before — this returns
     ``None`` so nothing is escalated to a run-level abort. ``detail`` is folded
-    into the message when supplied (e.g. the provider's error body)."""
+    into the message when supplied (e.g. the provider's error body).
+
+    ``provider`` (the backend slug, e.g. ``OMNIX_LLM_PROVIDER``) and ``host`` (the
+    base API host, e.g. ``api.cerebras.ai``) make the message name the account
+    that ACTUALLY rejected the call — a Cerebras 402 says "Cerebras", an
+    OpenRouter 402 says "OpenRouter". Both are optional and default to ``None`` so
+    every existing caller keeps working and gets a generic (still non-misleading)
+    phrase; the provider name is derived, never hardcoded."""
     kind = _FATAL_LLM_STATUS.get(status_code)
     if kind is None:
         return None
-    msg = _FATAL_LLM_MESSAGE[status_code]
+    msg = _FATAL_LLM_MESSAGE[status_code].format(who=_provider_phrase(provider, host))
     if detail:
         msg = f"{msg} ({detail})"
     return kind(msg)
