@@ -1,6 +1,6 @@
 # cograph-mcp
 
-MCP (Model Context Protocol) server for [Cograph](https://cograph.cloud). Gives AI agents tools to query and ingest data into your knowledge graphs.
+MCP (Model Context Protocol) server for [Cograph](https://cograph.cloud). Gives AI agents tools to query and ingest data into your context graphs (knowledge graphs).
 
 ## Install / run
 
