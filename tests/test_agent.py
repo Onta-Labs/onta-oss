@@ -2178,3 +2178,246 @@ def test_discovery_guard_still_fires_on_genuine_self_label(message):
     from cograph_client.agent.planner import _is_web_discovery_request
 
     assert _is_web_discovery_request(message) is True
+
+
+# --------------------------------------------------------------------------- #
+# Session-context bleed (invented tokens — assert the MECHANISM, not a domain)
+# --------------------------------------------------------------------------- #
+# Three defects amplified one real persona-eval failure where a COMPLETED prior
+# request's text was replayed into a new, unrelated request:
+#   1. planner._effective_instruction concatenated EVERY prior user turn, so a
+#      finished ask bled into the next one.
+#   2. enrich_cap._resolve_target_type let the longest type named anywhere in the
+#      (bled) instruction win, overriding the type named in the LIVE turn.
+#   3. enrich_cap._validate_enrich_request garbled a crammed multi-attribute list
+#      into one token and let hallucinated attributes past validation.
+# These tests pin each fix with invented tokens.
+
+
+def _turn(role, text, kind=None):
+    from cograph_client.agent.conversation_store import Turn
+
+    return Turn(role=role, text=text, kind=kind)
+
+
+def test_effective_instruction_drops_completed_prior_request():
+    """A committed plan RESETS the accumulation window: a completed prior request
+    ("enrich Widget entities") does NOT bleed into a new one ("discover Sprocket
+    entities"). Only the current message survives."""
+    history = [
+        _turn("user", "enrich Widget entities with their price"),
+        _turn("assistant", "Proposed a plan (enrich).", kind="plan"),
+    ]
+    eff = planner_mod._effective_instruction(history, "discover Sprocket entities")
+    assert eff == "discover Sprocket entities"
+    assert "Widget" not in eff  # the finished prior intent is not replayed
+
+
+def test_effective_instruction_resets_after_answered_question():
+    """An answered question is a committed boundary too — it does not bleed into
+    the next, unrelated request."""
+    history = [
+        _turn("user", "how many Widget entities are there?"),
+        _turn("assistant", "There are 5.", kind="answer"),
+    ]
+    eff = planner_mod._effective_instruction(history, "enrich Sprocket weights")
+    assert eff == "enrich Sprocket weights"
+    assert "Widget" not in eff
+
+
+def test_effective_instruction_keeps_open_clarify_chain():
+    """A clarify does NOT close the window: the field named before the clarify
+    still accumulates so a terse answer converges (the COG-130 behavior we must
+    preserve)."""
+    history = [
+        _turn("user", "clean the Alpha field"),
+        _turn("assistant", "Clean the values or split them?", kind="clarify"),
+    ]
+    eff = planner_mod._effective_instruction(history, "split them")
+    assert "clean the Alpha field" in eff  # survives the clarify
+    assert "split them" in eff
+    # The current message is last so it dominates.
+    assert eff.splitlines()[-1] == "split them"
+
+
+def test_effective_instruction_window_starts_after_last_committed_turn():
+    """Only turns SINCE the last committed plan/answer accumulate. An earlier,
+    finished request is excluded; the open clarify chain after it is kept."""
+    history = [
+        _turn("user", "enrich Widget prices"),  # finished ask
+        _turn("assistant", "Proposed a plan (enrich).", kind="plan"),  # boundary
+        _turn("user", "clean the Alpha field"),  # new open ask
+        _turn("assistant", "Clean or split?", kind="clarify"),  # window stays open
+    ]
+    eff = planner_mod._effective_instruction(history, "split it")
+    assert "Widget" not in eff  # the pre-boundary request is dropped
+    assert "clean the Alpha field" in eff and "split it" in eff
+
+
+@pytest.mark.asyncio
+async def test_completed_prior_request_does_not_bleed_through_planner(monkeypatch):
+    """End-to-end through handle(): a COMPLETED prior enrich (a plan was proposed)
+    must not replay into a later enrich on a different type. The new turn targets
+    the new type and the accumulated instruction the enrich cap sees drops the
+    prior request's text."""
+    _stub_classifier(monkeypatch, "enrich")
+    _stub_kg_types(monkeypatch, ["Widget", "Sprocket"])
+
+    async def fake_schema(neptune, tenant_id, type_name):
+        return {"attributes": ["price", "weight"], "relationships": []}
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+    )
+
+    captured: dict = {}
+
+    async def fake_extract(ctx, instruction, type_name, schema):
+        captured["instruction"] = instruction
+        captured["type_name"] = type_name
+        return {
+            "attributes": ["weight"],
+            "scope": None,
+            "subset": None,
+            "tier": "core",
+            "confidence_min": 0.85,
+        }
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap._extract_enrich_request",
+        fake_extract,
+    )
+
+    ctx = _ctx()
+    session = {"id": "bleed-sess"}
+    t1 = await asyncio.wait_for(
+        handle(ctx, "enrich Widget entities with their price", session), TIMEOUT
+    )
+    assert t1["kind"] == "plan"  # a committed plan → resets the window
+    t2 = await asyncio.wait_for(
+        handle(ctx, "enrich Sprocket entities with their weight", session), TIMEOUT
+    )
+    assert t2["kind"] == "plan"
+    assert captured["type_name"] == "Sprocket"  # the live turn's type won
+    # The completed Widget request did NOT bleed into the new instruction.
+    assert "Widget" not in captured["instruction"]
+    assert captured["instruction"] == "enrich Sprocket entities with their weight"
+
+
+# --------------------------------------------------------------------------- #
+# Explicit / live-turn type wins over a stale mention (2a)
+# --------------------------------------------------------------------------- #
+def test_live_message_type_beats_stale_history_mention():
+    """The type named in the CURRENT message wins over one lingering in the
+    accumulated instruction — an explicit live target must not be overridden by a
+    stale mention (even a longer one)."""
+    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+
+    resolved = _resolve_target_type(
+        instruction="enrich BetaGadget entities\nnow enrich Alpha entities",
+        known_types=["Alpha", "BetaGadget"],
+        selected=None,
+        current_message="now enrich Alpha entities",
+    )
+    # Without the fix, "longest type named anywhere" would pick BetaGadget.
+    assert resolved == "Alpha"
+
+
+def test_open_ask_type_beats_wrong_selection():
+    """When the current message names no type, the type named in the open ask
+    (accumulated instruction) is used — and it beats a wrong UI selection, so a
+    clarify-chain reply resolves the right type."""
+    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+
+    resolved = _resolve_target_type(
+        instruction="enrich Alpha entities\nall of them",
+        known_types=["Alpha", "Beta"],
+        selected="Beta",  # a wrong UI selection must not win
+        current_message="all of them",
+    )
+    assert resolved == "Alpha"
+
+
+def test_resolve_target_type_backward_compatible_without_current_message():
+    """Omitting current_message (a direct/legacy call) collapses to the prior
+    instruction-first behavior — existing callers are unaffected."""
+    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+
+    assert (
+        _resolve_target_type("enrich Alpha entities", ["Alpha", "Beta"], "Beta")
+        == "Alpha"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Multi-attribute parsing + schema intersection (2b)
+# --------------------------------------------------------------------------- #
+def test_validate_enrich_intersects_multi_attrs_with_schema():
+    """[foo, bar, baz] on a schema with {foo, bar, qux} → {foo, bar}: baz is
+    dropped as a non-member (real fields present → strict intersection)."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["foo", "bar", "baz"]},
+        attr_names=["foo", "bar", "qux"],
+        rel_names=[],
+        type_name="Widget",
+    )
+    assert out["attributes"] == ["foo", "bar"]
+
+
+def test_validate_enrich_splits_crammed_list_not_one_garbled_token():
+    """A crammed list + a stray "attributes:" label in ONE string is parsed into
+    the individual real fields, NOT fused into a single garbled token."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["attributes: foo, bar, qux"]},
+        attr_names=["foo", "bar", "qux"],
+        rel_names=[],
+        type_name="Widget",
+    )
+    assert set(out["attributes"]) == {"foo", "bar", "qux"}
+    assert all("attributes_" not in a for a in out["attributes"])  # not garbled
+
+
+def test_validate_enrich_drops_hallucinated_and_type_name_attrs():
+    """A real field mixed with a hallucinated attr and the TYPE NAME itself keeps
+    only the real field — the hallucinations are dropped."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["foo", "data_from", "Widget"]},
+        attr_names=["foo", "bar"],
+        rel_names=[],
+        type_name="Widget",
+    )
+    assert out["attributes"] == ["foo"]
+
+
+def test_validate_enrich_keeps_new_attribute_when_none_in_schema():
+    """When NO extracted attr matches the schema, the user is naming a brand-new
+    attribute to add — keep the clean noun, but never the type name itself."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["company", "Widget"]},
+        attr_names=["foo", "bar"],
+        rel_names=[],
+        type_name="Widget",
+    )
+    assert out["attributes"] == ["company"]  # new attr kept; type name dropped
+
+
+def test_validate_enrich_empty_schema_keeps_named_attrs():
+    """An empty/uningested schema can't validate members, so clean named attrs are
+    kept (minus the type name) — a brand-new type is still enrichable."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["foo", "bar"]},
+        attr_names=[],
+        rel_names=[],
+        type_name="Widget",
+    )
+    assert out["attributes"] == ["foo", "bar"]
