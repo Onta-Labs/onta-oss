@@ -32,6 +32,7 @@ while bare-slug callers kept working.
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 
 import httpx
 
@@ -184,8 +185,14 @@ async def openrouter_chat(
             # instead of burning more doomed calls and reporting "complete".
             # Every OTHER status (429, 5xx, …) keeps propagating as the raw
             # HTTPStatusError, so existing transient handling is unchanged.
+            # Thread the ACTIVE provider + host so the message names the account
+            # that actually returned the 402/401 (Cerebras vs OpenRouter) — not a
+            # hardcoded backend that may be the wrong one to go check.
             fatal = classify_llm_status_error(
-                exc.response.status_code, detail=_error_detail(exc.response)
+                exc.response.status_code,
+                detail=_error_detail(exc.response),
+                provider=provider,
+                host=urlparse(base).hostname,
             )
             if fatal is not None:
                 raise fatal from exc
