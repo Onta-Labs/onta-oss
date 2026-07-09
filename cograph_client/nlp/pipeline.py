@@ -751,9 +751,11 @@ class NLQueryPipeline:
                 tl = row.get("typeLabel", "")
                 if not tl:
                     continue
-                # Filter to only types with instances in the target KG
-                if active_types is not None and tl not in active_types:
-                    continue
+                # NOTE: we no longer drop a declared type that is absent from
+                # `active_types` here (ONTA-258). Every declared type is parsed
+                # in; types with no instances in the queried KG are annotated
+                # "[no instances]" during summary assembly below instead of being
+                # hidden. See the empty-type handling after this loop.
                 if tl not in types:
                     types[tl] = {"attributes": [], "relationships": [], "functions": set()}
                 if row.get("attrLabel"):
@@ -774,10 +776,32 @@ class NLQueryPipeline:
                 if row.get("funcName"):
                     types[tl]["functions"].add(row["funcName"])
 
-            if not types:
-                # The schema query returned zero usable types. When querying a
-                # SPECIFIC KG (distinct instance graph), that can mean two very
-                # different things which look identical here:
+            # A DECLARED type with no correctly-typed instances in the queried KG
+            # is KEPT and annotated "[no instances]" — NOT dropped (ONTA-258).
+            # This mirrors the ONTA-248 treatment of declared-but-empty
+            # attributes/relationships further down. Hiding a declared type made
+            # it indistinguishable from a nonexistent one, so the SPARQL-
+            # generating LLM asserted "that type doesn't exist" (or silently
+            # queried the closest wrong type) instead of returning an honest
+            # zero-row answer. `active_types` still scopes which types carry
+            # instance data — it no longer decides a declared type's VISIBILITY.
+            empty_types: set[str] = (
+                {tl for tl in types if tl not in active_types}
+                if active_types is not None else set()
+            )
+            # Declared types that actually carry instances in this KG. When this
+            # is zero we fall through to the SAME instance-graph fallback /
+            # ONTOLOGY_EMPTY handling as before (ONTA-248): a schema that shares
+            # NO type with the instance data is the "schema missing" case, and a
+            # summary of only [no instances] types would be worse than the
+            # instance-derived fallback.
+            active_matched = len(types) - len(empty_types)
+
+            if active_matched == 0:
+                # No DECLARED type carries instances in this KG (the schema query
+                # returned nothing, or nothing that overlaps the instance data).
+                # When querying a SPECIFIC KG (distinct instance graph), that can
+                # mean two very different things which look identical here:
                 #  (a) instances exist but the base-graph schema hasn't been
                 #      written yet (fresh ingest, schema-write lagging) — a basic
                 #      "list all X" ask SHOULD still work, so fall back to the
@@ -836,6 +860,12 @@ class NLQueryPipeline:
                 string_attrs: list[tuple[str, str, str]] = []  # string attrs only (for enum values)
                 rel_uris: list[tuple[str, str, str]] = []  # (type_name, rel_name, onto_uri)
                 for type_name, info in types.items():
+                    # Empty declared types have zero instances by definition, so
+                    # every cardinality COUNT would return 0 — skip the probes
+                    # (no extra Neptune round-trips) and render their declared
+                    # schema plainly under the type-level [no instances] mark.
+                    if type_name in empty_types:
+                        continue
                     for attr_entry in info["attributes"]:
                         a_name = attr_entry.split(" (")[0]
                         all_attrs.append((type_name, a_name, attr_uri(type_name, a_name)))
@@ -922,7 +952,12 @@ class NLQueryPipeline:
 
             lines = []
             for type_name, info in types.items():
-                lines.append(f"Type: {type_name} — URI: <{type_uri(type_name)}>")
+                # DECLARED-but-empty type: annotate at the type level (ONTA-258)
+                # so the LLM writes a valid zero-row query with an honest
+                # "declared but no instances" explanation instead of claiming the
+                # type is absent or substituting a different type.
+                empty_suffix = " [no instances]" if type_name in empty_types else ""
+                lines.append(f"Type: {type_name} — URI: <{type_uri(type_name)}>{empty_suffix}")
                 if info["attributes"]:
                     annotated = []
                     for attr_entry in sorted(info["attributes"]):
@@ -974,6 +1009,7 @@ class NLQueryPipeline:
             logger.info("ontology_summary_built", types_shown=len(types_in_summary),
                         types_active=len(active_types) if active_types else "all",
                         types_with_attrs=len(types),
+                        types_empty=len(empty_types),
                         names=types_in_summary[:10])
 
             # Cache it
