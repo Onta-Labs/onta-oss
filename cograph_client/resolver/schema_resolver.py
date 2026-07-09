@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -295,6 +296,27 @@ glued string.
 - REUSE, DON'T FRAGMENT. Prefer an existing ontology type over minting a new one; \
 create a new type only for a genuinely new real-world KIND. Aim for a COMPACT, \
 reusable ontology — not a type per column or per value.
+- THE FOCUS TYPE NAMES THE SUBJECT — a requested attribute is a FACT ABOUT the \
+subject, NEVER a rival type to mint records under. The focus type names WHAT each \
+record IS. When the brief also asks for something like a certification, standard, \
+compliance regime, accreditation, or regulation, that is a FACT/EDGE about the \
+subject — model it as its own node the subject LINKS to (e.g. `certified_for` / \
+`complies_with` / `conforms_to`), not as the type the record collapses into. Never \
+let a certification / standard / regulation / compliance concept become the \
+dominant type that the subject's own records get reclassified as; the number of \
+subject records must not shrink to zero while such a concept absorbs them.
+- MEASUREMENTS BELONG TO THE SUBJECT. A cost, price, fee, latency, throughput, \
+rate, or other measurement is a property of the SUBJECT record — attach it to the \
+focus subject (as a literal, per KEEP MEASUREMENTS LITERAL above), NEVER to a \
+certification / standard / regulatory / compliance entity. A standards body or \
+certificate is never the bearer of the subject's cost or latency.
+- EXAMPLE (neutral, non-domain): you are collecting Widget records that carry \
+`cost_per_unit`, `latency_ms`, and a "SprocketSafe" certification. Mint each row \
+as a Widget (the subject); keep `cost_per_unit` and `latency_ms` as LITERALS on \
+the Widget; model "SprocketSafe" as a Certification NODE the Widget links to via \
+`certified_for`. Do NOT mint a "SprocketSafe" / Certification record and hang \
+`cost_per_unit` / `latency_ms` on it — that misfiles the subject and its metrics \
+under a mere fact about it.
 The focus type + expected attributes below say what to look for; add exactly the \
 structure the data justifies and keep it tight."""
 
@@ -352,8 +374,12 @@ def _apply_extraction_constraint(result, constraint):
         # SOFT (seed) mode: the type/attributes were a PRIOR in the prompt, not a
         # cage. The extractor's decomposition (subtypes, real-world nodes,
         # multi-valued splits, relationships) is the desired output — never drop
-        # off-type entities, strip lineage, or delete edges here.
-        return result
+        # off-type entities, strip lineage, or delete edges here. The ONE thing
+        # this backstop still asserts (ONTA-255) is the FOCUS-TYPE FLOOR: a whole
+        # batch must not drift onto an off-brief standards/compliance concept that
+        # then absorbs the subject's own cost/latency metrics. Non-destructive —
+        # metrics are re-homed onto the focus subject, never silently dropped.
+        return _apply_soft_focus_floor(result, constraint)
     allowed_types = set(constraint.types)
     kept_entities = []
     kept_ids: set[str] = set()
@@ -415,6 +441,239 @@ def _apply_extraction_constraint(result, constraint):
     return ExtractionResult(
         entities=kept_entities,
         relationships=kept_rels,
+        source_text=result.source_text,
+    )
+
+
+# --- ONTA-255: SOFT-mode focus-type floor + metric-misattachment guard -------
+# SOFT extraction (the seed prior) deliberately lets the model decompose freely
+# — that faithful decomposition IS the desired output, so the soft post-guard
+# stays a no-op for everything EXCEPT one drift failure it must still assert
+# against. When a multi-type brief ("<subject> records … with pricing, latency,
+# AND compliance") is collapsed to a single focus type + a flat attribute list,
+# and a source page interleaves subject rows with certification / standard rows,
+# the extractor can latch onto a fact-ABOUT-the-subject (a Compliance / Standard
+# concept) as the DOMINANT type and mint the subject's records under it — folding
+# the subject's own cost / latency / price metrics onto a standards-body node.
+# The confirmed focus type is a CONTRACT about what the records ARE, so two
+# invariants are enforced here, both NON-DESTRUCTIVELY (assert the floor, never
+# silently strip the batch):
+#   * METRIC-ON-CONCEPT: a numeric metric-shaped attribute (cost / price / fee /
+#     latency / throughput …) must not sit on an entity whose TYPE reads as a
+#     standards / certification / regulation concept. The metric belongs to the
+#     subject, so it is RE-HOMED onto the focus subject.
+#   * FOCUS-TYPE FLOOR: if the confirmed focus type minted ~zero entities while an
+#     off-brief concept type absorbed those metrics, the subject is unrecoverable
+#     — log `discovery_focus_type_starved` (loud) and, having no subject to re-home
+#     to, remove the metric from the concept node so a cost/latency triple can
+#     never land on a standards entity.
+# A compliance-FOCUSED KG is safe: its confirmed focus IS the cert/standard, so
+# those entities are focus-lineage and never treated as a misattachment target.
+
+# High-precision tokens for a type whose NAME reads as a standards / cert /
+# regulation / compliance concept. Singular forms only — the tokenizer
+# de-pluralizes ("Standards" -> "standard", "Certs" -> "cert").
+_STANDARDS_CONCEPT_TOKENS = frozenset(
+    {
+        "compliance",
+        "certification",
+        "certificate",
+        "cert",
+        "standard",
+        "regulation",
+        "regulatory",
+        "accreditation",
+        "attestation",
+        "audit",
+        "governance",
+        "license",
+        "licence",
+        "licensing",
+        "directive",
+        "mandate",
+        "statute",
+    }
+)
+
+# Substrings that mark an attribute NAME as a cost / price / latency-shaped
+# metric. Combined with a numeric-value check so a non-numeric attribute whose
+# name merely contains one of these (e.g. `pricing_model: "usage-based"`) is
+# never touched.
+_METRIC_NAME_SUBSTRINGS = (
+    "cost",
+    "price",
+    "pricing",
+    "fee",
+    "latency",
+    "throughput",
+    "bandwidth",
+    "per_minute",
+    "per_second",
+    "per_hour",
+    "per_token",
+    "per_unit",
+    "_ms",
+)
+
+_NUMERIC_DATATYPES = frozenset(
+    {"integer", "int", "float", "number", "double", "decimal", "long"}
+)
+# A leading number (optionally signed / currency-prefixed), so "0.30", "$0.30",
+# "200", and "200ms" read as numeric while "SprocketSafe" / "GDPR" / "yes" do not.
+_LEADING_NUMBER_RE = re.compile(r"^\s*[-+]?\s*\$?\s*\d[\d,]*(?:\.\d+)?")
+
+
+def _split_type_tokens(name: str) -> set[str]:
+    """Lowercased word tokens of a type name, splitting camelCase and separators,
+    with a crude de-pluralization so "Standards" matches "standard"."""
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name or "")
+    tokens: set[str] = set()
+    for part in re.split(r"[^A-Za-z0-9]+", spaced):
+        if not part:
+            continue
+        low = part.lower()
+        tokens.add(low)
+        if low.endswith("s") and len(low) > 1:
+            tokens.add(low[:-1])
+    return tokens
+
+
+def _is_standards_concept_type(type_name: str) -> bool:
+    """True when ``type_name`` reads as a standards / certification / regulation /
+    compliance concept (a fact ABOUT a subject, not a subject itself)."""
+    return bool(_split_type_tokens(type_name) & _STANDARDS_CONCEPT_TOKENS)
+
+
+def _is_metric_attribute(attr) -> bool:
+    """True when ``attr`` is a numeric metric (cost / price / latency-shaped NAME
+    AND a numeric value/datatype). Requires BOTH so non-numeric look-alikes stay."""
+    name = (getattr(attr, "name", "") or "").lower()
+    if not any(sub in name for sub in _METRIC_NAME_SUBSTRINGS):
+        return False
+    if (getattr(attr, "datatype", "") or "").lower() in _NUMERIC_DATATYPES:
+        return True
+    return bool(_LEADING_NUMBER_RE.match(str(getattr(attr, "value", "") or "")))
+
+
+def _apply_soft_focus_floor(result, constraint):
+    """SOFT-mode focus-type floor + metric-misattachment guard (ONTA-255).
+
+    Runs only for an ACTIVE, SOFT constraint. Returns ``result`` UNCHANGED unless
+    a numeric metric-shaped attribute has landed on an off-brief standards /
+    certification / regulation-typed entity — the drift signature. When it has:
+
+      * the metric is RE-HOMED onto a focus-lineage subject (preferring one the
+        concept entity is linked to by a relationship, else the sole focus subject
+        in the batch), and
+      * if NO focus subject survives (the floor is breached), the metric is
+        removed from the concept node instead and ``discovery_focus_type_starved``
+        is logged — the batch's subject identity is unrecoverable, so persisting a
+        cost/latency triple on a standards node is refused rather than kept.
+
+    Never drops an entity, a relationship, or a non-metric attribute. Idempotent:
+    a second pass finds no misattached metric and returns the input untouched.
+    """
+    if constraint is None or not getattr(constraint, "is_active", False):
+        return result
+    if not getattr(constraint, "soft", False):
+        return result
+
+    focus_types = set(constraint.types)
+
+    def _is_focus_lineage(e) -> bool:
+        if e.type_name in focus_types:
+            return True
+        lineage = set(e.parent_chain or []) | set(e.also_types or [])
+        if e.parent_type:
+            lineage.add(e.parent_type)
+        return bool(lineage & focus_types)
+
+    focus_entities = [e for e in result.entities if _is_focus_lineage(e)]
+    # Concept entities: standards/cert/regulation-typed AND not themselves the
+    # confirmed focus (a compliance-focused KG's own records are never targets).
+    concept_entities = [
+        e
+        for e in result.entities
+        if not _is_focus_lineage(e) and _is_standards_concept_type(e.type_name)
+    ]
+
+    misattached = [
+        (e, [a for a in e.attributes if _is_metric_attribute(a)])
+        for e in concept_entities
+    ]
+    misattached = [(e, metrics) for e, metrics in misattached if metrics]
+    if not misattached:
+        return result  # no drift — soft decomposition passes through untouched
+
+    # Map a concept entity to a focus subject it is directly linked to, so a
+    # re-homed metric lands on the RIGHT subject when the edge survived extraction.
+    focus_by_id = {e.id: e for e in focus_entities}
+    linked_focus_of: dict[str, object] = {}
+    for r in result.relationships:
+        if r.source_id in focus_by_id and r.target_id not in focus_by_id:
+            linked_focus_of.setdefault(r.target_id, focus_by_id[r.source_id])
+        if r.target_id in focus_by_id and r.source_id not in focus_by_id:
+            linked_focus_of.setdefault(r.source_id, focus_by_id[r.target_id])
+    sole_focus = focus_entities[0] if len(focus_entities) == 1 else None
+
+    starved = len(focus_entities) == 0
+    stripped_attrs: dict[str, list] = {}   # concept id -> surviving (non-metric) attrs
+    add_to_focus: dict[str, list] = {}     # focus id -> metrics moved onto it
+    reattributed = 0
+    stripped = 0
+    for concept_entity, metrics in misattached:
+        stripped_attrs[concept_entity.id] = [
+            a for a in concept_entity.attributes if not _is_metric_attribute(a)
+        ]
+        dest = linked_focus_of.get(concept_entity.id) or sole_focus
+        if dest is None:
+            # No subject to receive the metric — assert the floor, don't keep it.
+            stripped += len(metrics)
+            continue
+        existing = {a.name for a in dest.attributes} | {
+            a.name for a in add_to_focus.get(dest.id, [])
+        }
+        for m in metrics:
+            if m.name not in existing:
+                add_to_focus.setdefault(dest.id, []).append(m)
+                existing.add(m.name)
+                reattributed += 1
+
+    new_entities = []
+    for e in result.entities:
+        update: dict = {}
+        if e.id in stripped_attrs:
+            update["attributes"] = stripped_attrs[e.id]
+        if e.id in add_to_focus:
+            base = update.get("attributes", list(e.attributes))
+            update["attributes"] = base + add_to_focus[e.id]
+        if update:
+            e = e.model_copy(update=update)
+        new_entities.append(e)
+
+    concept_type_names = sorted({e.type_name for e, _ in misattached})
+    if starved:
+        logger.error(
+            "discovery_focus_type_starved",
+            focus_types=sorted(focus_types),
+            concept_types=concept_type_names,
+            metrics_reattributed=reattributed,
+            metrics_stripped=stripped,
+            focus_entities=len(focus_entities),
+        )
+    else:
+        logger.warning(
+            "discovery_metric_reattributed",
+            focus_types=sorted(focus_types),
+            concept_types=concept_type_names,
+            metrics_reattributed=reattributed,
+            metrics_stripped=stripped,
+            focus_entities=len(focus_entities),
+        )
+
+    return ExtractionResult(
+        entities=new_entities,
+        relationships=result.relationships,
         source_text=result.source_text,
     )
 
@@ -694,6 +953,16 @@ class SchemaResolver:
                 relationships=merged_relationships,
                 source_text=content[:500],
             )
+
+        # ONTA-255: SOFT-mode focus-type floor over the FULLY-MERGED extraction.
+        # The per-chunk backstop in `_apply_extraction_constraint` already runs
+        # inside each `_extract`, but re-asserting here (a) sees every subject in
+        # the batch so a misattached metric can be re-homed onto the right focus
+        # subject even when a stray concept entity landed in a different chunk,
+        # and (b) covers callers/tests that stub `_extract` wholesale. Idempotent:
+        # once the metrics are off the concept nodes, this is a no-op.
+        if constraint is not None and constraint.is_active and constraint.soft:
+            extraction = _apply_soft_focus_floor(extraction, constraint)
 
         logger.info(
             "extraction_complete",
