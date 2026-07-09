@@ -587,9 +587,42 @@ class NLQueryPipeline:
         r"#type>(?:\s*/\s*<[^>]*#subClassOf>\*)?\s*"
         r"<(https://cograph\.tech/types/[^>]+)>"
     )
-    # A name/text lookup is recognized by a case-insensitive substring FILTER —
-    # the exact shape the generation prompt teaches for name matching.
-    _NAME_FILTER_RE = re.compile(r"CONTAINS\s*\(\s*LCASE", re.IGNORECASE)
+    # Capture the variable a case-insensitive substring FILTER targets:
+    # FILTER(CONTAINS(LCASE(?V), …)) — allowing an optional STR() coercion around
+    # the variable. The generation prompt teaches this exact shape for BOTH name
+    # matching AND arbitrary string-attribute filters (tags, status, …), so a bare
+    # `CONTAINS(LCASE` match would over-trigger broadening; we additionally require
+    # ?V to be a display-NAME variable (see :meth:`_targets_label_name_var`).
+    _CONTAINS_VAR_RE = re.compile(
+        r"CONTAINS\s*\(\s*LCASE\s*\(\s*(?:STR\s*\(\s*)?\?(\w+)", re.IGNORECASE
+    )
+    _RDFS_LABEL_URI = "http://www.w3.org/2000/01/rdf-schema#label"
+
+    @classmethod
+    def _targets_label_name_var(cls, sparql: str) -> bool:
+        """True iff a ``CONTAINS(LCASE(?V))`` filter in the query targets a DISPLAY
+        NAME variable — ``?V`` bound in the SAME query as the object of an
+        ``rdfs:label`` triple or a ``types/<T>/attrs/{name,label}`` attribute
+        triple.
+
+        A ``CONTAINS`` over an arbitrary string attribute (``tags``, ``status``, …)
+        returns ``False``. Without this gate, broadening would widen a
+        legitimately type-constrained attribute query (e.g. a ``MortgageComplaint``
+        filtered on ``attrs/tags`` that returns zero rows) up to the supertype and
+        surface a sibling-subtype row — turning an honest "no results" into a
+        confidently wrong-TYPE answer.
+        """
+        for m in cls._CONTAINS_VAR_RE.finditer(sparql):
+            v = re.escape(m.group(1))
+            if re.search(rf"<{re.escape(cls._RDFS_LABEL_URI)}>\s*\?{v}\b", sparql):
+                return True
+            if re.search(
+                rf"<https://cograph\.tech/types/[^>]+/attrs/(?:name|label)>\s*\?{v}\b",
+                sparql,
+                re.IGNORECASE,
+            ):
+                return True
+        return False
 
     async def _broaden_name_lookup(
         self, sparql: str, graph_uri: str
@@ -600,18 +633,20 @@ class NLQueryPipeline:
         person queried as ``OrthopedicSurgeon`` who is actually a
         ``BreastOncologist``) returns zero rows, even though the shared supertype
         (``Physician``) spans every subtype. When the executed query is (a) a
-        name/text lookup — a ``FILTER(CONTAINS(LCASE(…)))`` — and (b) constrains
-        ``rdf:type`` to EXACTLY ONE ``types/<Sub>`` that HAS a supertype, re-issue
-        it with that subtype swapped for its top-most ancestor. The subclass-
-        closure rewrite (``rdf:type/subClassOf*``) already applied to the query
-        then makes the ancestor match every sibling subtype.
+        DISPLAY-NAME lookup — a ``FILTER(CONTAINS(LCASE(?V)))`` whose ``?V`` is
+        bound as an ``rdfs:label`` / name attribute (NOT an arbitrary string
+        attribute like ``tags``; see :meth:`_targets_label_name_var`) — and (b)
+        constrains ``rdf:type`` to EXACTLY ONE ``types/<Sub>`` that HAS a
+        supertype, re-issue it with that subtype swapped for its top-most
+        ancestor. The subclass-closure rewrite (``rdf:type/subClassOf*``) already
+        applied to the query then makes the ancestor match every sibling subtype.
 
         Returns ``(broadened_sparql, raw_result)`` from the re-query, or ``None``
-        when the query is not a single-subtype name lookup, the type has no
+        when the query is not a single-subtype NAME lookup, the type has no
         supertype, or anything errors — best-effort, never raises into ``ask()``.
         """
         try:
-            if not self._NAME_FILTER_RE.search(sparql):
+            if not self._targets_label_name_var(sparql):
                 return None
             type_uris = set(self._TYPE_OBJECT_RE.findall(sparql))
             if len(type_uris) != 1:
@@ -634,7 +669,13 @@ class NLQueryPipeline:
 
             from cograph_client.graph.ontology_queries import type_uri as _type_uri
             super_uri = _type_uri(ancestor)
-            broadened = sparql.replace(sub_uri, super_uri)
+            # Replace ONLY the exact bracketed type-object, never a raw substring:
+            # a bare `sparql.replace(sub_uri, super_uri)` would corrupt every URI
+            # that shares the prefix — `types/Cat/attrs/breed` → the non-existent
+            # `types/Animal/attrs/breed`, and sibling `types/CatFood` →
+            # `types/AnimalFood` — breaking a "show details" query that projects
+            # type-specific attribute URIs.
+            broadened = sparql.replace(f"<{sub_uri}>", f"<{super_uri}>")
             if broadened == sparql:
                 return None
             raw = await self.neptune.query(broadened)

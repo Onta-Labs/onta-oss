@@ -277,6 +277,87 @@ async def test_ask_broadens_zero_row_name_lookup_end_to_end():
     assert f"{TYPES}/Animal" in result.sparql
 
 
+# --- reviewer defect A: broadening must be scoped to real NAME lookups ------
+@pytest.mark.asyncio
+async def test_broaden_skips_contains_filter_on_non_name_attribute():
+    """A single-subtype query whose CONTAINS filter targets a NON-name attribute
+    (tags) must NOT broaden, even at zero rows — otherwise an honest "no results"
+    for MortgageComplaint would surface a sibling CreditCardComplaint row (wrong
+    TYPE). It short-circuits before any Neptune probe. A true label lookup over
+    the SAME hierarchy still qualifies."""
+    neptune = AsyncMock()
+    neptune.query = AsyncMock(return_value=EMPTY_RESULT)
+    p = NLQueryPipeline(neptune, "k")
+
+    non_name = (
+        f"SELECT ?tags WHERE {{ "
+        f"?x <{TYPE}>/<{SUBCLASS}>* <{TYPES}/MortgageComplaint> . "
+        f"?x <{TYPES}/MortgageComplaint/attrs/tags> ?tags . "
+        f'FILTER(CONTAINS(LCASE(?tags), "escrow")) }}'
+    )
+    assert await p._broaden_name_lookup(non_name, "https://cograph.tech/graphs/t1") is None
+    neptune.query.assert_not_awaited()  # gated out before the parent-map probe
+
+    # Contrast, SAME hierarchy: a CONTAINS over an rdfs:label variable DOES qualify.
+    label_lookup = (
+        f"SELECT ?name WHERE {{ "
+        f"?x <{TYPE}>/<{SUBCLASS}>* <{TYPES}/MortgageComplaint> . "
+        f"?x <{LABEL}> ?name . "
+        f'FILTER(CONTAINS(LCASE(?name), "escrow")) }}'
+    )
+    assert p._targets_label_name_var(label_lookup) is True
+    assert p._targets_label_name_var(non_name) is False
+    # A name-attribute (types/<T>/attrs/name) binding also qualifies.
+    attr_name_lookup = (
+        f"SELECT ?nm WHERE {{ "
+        f"?x <{TYPE}>/<{SUBCLASS}>* <{TYPES}/MortgageComplaint> . "
+        f"?x <{TYPES}/MortgageComplaint/attrs/name> ?nm . "
+        f'FILTER(CONTAINS(LCASE(?nm), "escrow")) }}'
+    )
+    assert p._targets_label_name_var(attr_name_lookup) is True
+
+
+# --- reviewer defect B: rewrite ONLY the exact type-object, not prefix twins -
+@pytest.mark.asyncio
+async def test_broaden_rewrites_only_the_type_object_not_prefixed_uris():
+    """Broadening must rewrite ONLY the exact bracketed type-object. Attribute URIs
+    and sibling-type URIs that share the 'Cat' prefix (types/Cat/attrs/breed,
+    types/CatFood/attrs/flavor) must be left intact — a raw substring replace would
+    corrupt them into non-existent URIs on the abstract supertype."""
+    parent_map = _uri_rows([(f"{TYPES}/Cat", f"{TYPES}/Animal")])
+    rex = _rows(["name"], {"name": "Rex"})
+
+    async def query(sparql, *a, **k):
+        if "?child" in sparql:
+            return parent_map
+        return rex
+
+    neptune = AsyncMock()
+    neptune.query = AsyncMock(side_effect=query)
+    p = NLQueryPipeline(neptune, "k")
+
+    original = (
+        f"SELECT ?name ?breed ?flavor WHERE {{ "
+        f"?x <{TYPE}>/<{SUBCLASS}>* <{TYPES}/Cat> . "
+        f"?x <{LABEL}> ?name . "
+        f"?x <{TYPES}/Cat/attrs/breed> ?breed . "        # type-specific attribute URI
+        f"?x <{TYPES}/CatFood/attrs/flavor> ?flavor . "  # sibling type sharing the 'Cat' prefix
+        f'FILTER(CONTAINS(LCASE(?name), "rex")) }}'
+    )
+    out = await p._broaden_name_lookup(original, "https://cograph.tech/graphs/t1")
+    assert out is not None
+    broadened, _ = out
+
+    # ONLY the exact type-object was rewritten to the supertype.
+    assert f"<{TYPES}/Animal>" in broadened
+    assert f"<{TYPES}/Cat>" not in broadened
+    # Prefix-sharing URIs are preserved verbatim (NOT corrupted).
+    assert f"<{TYPES}/Cat/attrs/breed>" in broadened
+    assert f"<{TYPES}/CatFood/attrs/flavor>" in broadened
+    assert f"<{TYPES}/Animal/attrs/breed>" not in broadened
+    assert f"<{TYPES}/AnimalFood/attrs/flavor>" not in broadened
+
+
 # =========================================================================== #
 # Fix 3: malformed-JSON TOLERANCE                                              #
 # =========================================================================== #
