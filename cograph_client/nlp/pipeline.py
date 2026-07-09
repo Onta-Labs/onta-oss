@@ -60,6 +60,28 @@ OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 DEFAULT_QUERY_MODEL = os.environ.get("OMNIX_QUERY_MODEL", "llama3.1-8b")
 DEFAULT_QUERY_PROVIDER = os.environ.get("OMNIX_QUERY_PROVIDER", "cerebras")  # cerebras, openrouter, or anthropic
 
+
+def _require_message_content(data: dict, provider: str) -> str:
+    """Extract ``choices[0].message.content`` from an OpenAI-compatible chat
+    completion, raising a clear, typed error when the model returns an
+    empty/``None`` content.
+
+    Some models intermittently return ``content: null`` (e.g. GLM-5.2 did this
+    ~40x in production) or an empty string. Callers immediately ``.strip()`` or
+    ``json.loads()`` the content, so a null surfaces as an opaque
+    ``AttributeError: 'NoneType' object has no attribute 'strip'`` (or a
+    ``TypeError`` from ``json.loads(None)``) that says nothing about what went
+    wrong. Guarding here turns that into a diagnosable ``ValueError`` that names
+    the provider, so each caller's existing retry/fallback/error path can handle
+    it and the logs say *what* happened. The happy path is unchanged: when
+    ``content`` is a normal non-empty string it is returned verbatim.
+    """
+    content = data["choices"][0]["message"]["content"]
+    if not content:
+        raise ValueError(f"empty LLM response from {provider}")
+    return content
+
+
 # Max rows rendered in the plain-text answer before truncating. The old
 # hard-coded 20 silently dropped most of a wide "list all ..." result; raise it
 # and make it tunable. Truncation is now stated prominently (not buried) AND
@@ -622,7 +644,7 @@ class NLQueryPipeline:
                 },
             )
             res.raise_for_status()
-            text = res.json()["choices"][0]["message"]["content"].strip()
+            text = _require_message_content(res.json(), self._query_provider).strip()
             if text.startswith("```"):
                 text = "\n".join(
                     l for l in text.split("\n") if not l.strip().startswith("```")
@@ -1446,7 +1468,7 @@ class NLQueryPipeline:
                 )
                 res.raise_for_status()
                 data = res.json()
-                narrative = data["choices"][0]["message"]["content"].strip()
+                narrative = _require_message_content(data, "openrouter").strip()
             rephrase_ms = round((time.time() - t_rephrase) * 1000, 1)
             logger.info("narrative_rephrase_ok", rephrase_ms=rephrase_ms, rows=len(bindings))
             return narrative
@@ -1482,7 +1504,13 @@ class NLQueryPipeline:
                         {"role": "system", "content": SPARQL_GENERATION_SYSTEM},
                         {"role": "user", "content": prompt},
                     ],
-                    "max_completion_tokens": 512,
+                    # gpt-oss-120b is a reasoning model that spends output
+                    # tokens on reasoning BEFORE emitting the answer. At 512 the
+                    # JSON gets truncated mid-string and json.loads raises
+                    # (empirically 0/3 at 512, 3/3 at 2048). Keep enough headroom
+                    # for reasoning + a full SPARQL response. (OpenRouter/Anthropic
+                    # caps are separate and unchanged.)
+                    "max_completion_tokens": 2048,
                     "temperature": 0,
                     "response_format": {
                         "type": "json_schema",
@@ -1508,7 +1536,7 @@ class NLQueryPipeline:
             )
             res.raise_for_status()
             data = res.json()
-            return json.loads(data["choices"][0]["message"]["content"])
+            return json.loads(_require_message_content(data, "cerebras"))
 
     async def _generate_via_openrouter(self, prompt: str) -> dict:
         """Generate SPARQL via OpenRouter (OpenAI-compatible API)."""
@@ -1551,7 +1579,7 @@ class NLQueryPipeline:
             )
             res.raise_for_status()
             data = res.json()
-            text = data["choices"][0]["message"]["content"]
+            text = _require_message_content(data, "openrouter")
             # Strip code fences if present
             stripped = text.strip()
             if stripped.startswith("```"):
