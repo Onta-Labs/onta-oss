@@ -60,8 +60,8 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Cograph is a knowledge graph platform. Use these tools to query " +
-      "structured data across multiple knowledge graphs using natural language.",
+      "Cograph is a context graph platform. Use these tools to query " +
+      "structured data across multiple context graphs using natural language.",
   },
 );
 
@@ -92,13 +92,13 @@ server.registerTool(
   "list_knowledge_graphs",
   {
     description:
-      "List all available knowledge graphs and their descriptions.",
+      "List all available context graphs and their descriptions.",
     inputSchema: {},
   },
   async () => {
     try {
       const kgs = await client().listKgs();
-      if (!kgs.length) return textResult("No knowledge graphs found.");
+      if (!kgs.length) return textResult("No context graphs found.");
       const lines = kgs.map((kg) => {
         const name = String(kg.name ?? "?");
         const desc = kg.description ? `: ${kg.description}` : "";
@@ -115,7 +115,7 @@ server.registerTool(
   "ask",
   {
     description:
-      "Ask a natural language question against a knowledge graph. " +
+      "Ask a natural language question against a context graph. " +
       'Use list_knowledge_graphs to see available KGs first.',
     inputSchema: {
       question: z
@@ -127,7 +127,7 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Name of the knowledge graph to query. Use list_knowledge_graphs to see available KGs.",
+          "Name of the context graph to query. Use list_knowledge_graphs to see available KGs.",
         ),
     },
   },
@@ -163,7 +163,7 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Optional knowledge graph to search within. Omit to search every KG " +
+          "Optional context graph to search within. Omit to search every KG " +
             "in the tenant. Use list_knowledge_graphs to see available KGs.",
         ),
       type: z
@@ -263,7 +263,7 @@ server.registerTool(
   "ingest_csv",
   {
     description:
-      "Ingest a CSV file into a knowledge graph. The schema is automatically " +
+      "Ingest a CSV file into a context graph. The schema is automatically " +
       "inferred. To JOIN an internal CSV onto an EXISTING graph — merging each " +
       "row onto the entity that already carries the same exact key value instead " +
       "of creating duplicates — set join_on to the key attribute (e.g. an id " +
@@ -275,7 +275,7 @@ server.registerTool(
       kg_name: z
         .string()
         .describe(
-          'Name for the knowledge graph (e.g., "sales-data", "customer-records").',
+          'Name for the context graph (e.g., "sales-data", "customer-records").',
         ),
       join_on: z
         .string()
@@ -297,13 +297,13 @@ server.registerTool(
   "create_knowledge_graph",
   {
     description:
-      "Create a new, empty knowledge graph in the current tenant. Use this " +
+      "Create a new, empty context graph in the current tenant. Use this " +
       "before ingesting data into a fresh graph (ingest_csv also auto-creates a " +
       "graph, so this is for setting one up explicitly / with a description).",
     inputSchema: {
       name: z
         .string()
-        .describe('Name for the new knowledge graph (e.g. "sales-2026").'),
+        .describe('Name for the new context graph (e.g. "sales-2026").'),
       description: z
         .string()
         .optional()
@@ -314,7 +314,7 @@ server.registerTool(
     try {
       const kg = await client().createKg(name, description);
       return textResult(
-        `Created knowledge graph "${String(kg.name ?? name)}".`,
+        `Created context graph "${String(kg.name ?? name)}".`,
       );
     } catch (err) {
       return errorResult(err);
@@ -326,16 +326,16 @@ server.registerTool(
   "delete_knowledge_graph",
   {
     description:
-      "Delete a knowledge graph and ALL of its data. This is irreversible — " +
+      "Delete a context graph and ALL of its data. This is irreversible — " +
       "confirm with the user before calling it.",
     inputSchema: {
-      name: z.string().describe("Name of the knowledge graph to delete."),
+      name: z.string().describe("Name of the context graph to delete."),
     },
   },
   async ({ name }) => {
     try {
       await client().deleteKg(name);
-      return textResult(`Deleted knowledge graph "${name}".`);
+      return textResult(`Deleted context graph "${name}".`);
     } catch (err) {
       return errorResult(err);
     }
@@ -346,7 +346,7 @@ server.registerTool(
   "view_ontology",
   {
     description:
-      "View the ontology (types, attributes, relationships) across all knowledge graphs.",
+      "View the ontology (types, attributes, relationships) across all context graphs.",
     inputSchema: {},
   },
   async () => {
@@ -414,7 +414,7 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Optional name of the knowledge graph to scope the change to. " +
+          "Optional name of the context graph to scope the change to. " +
             "Use list_knowledge_graphs to see available KGs.",
         ),
     },
@@ -592,7 +592,7 @@ server.registerTool(
   {
     description:
       "Talk to the Cograph Ask-AI agent — the single conversational front door " +
-      "to a knowledge graph. Send a natural-language message and the agent " +
+      "to a context graph. Send a natural-language message and the agent " +
       "classifies your intent and either ANSWERS a question directly, asks a " +
       "CLARIFYing question, or proposes a PLAN of actions (enrich attributes, " +
       "clean/normalize values, merge duplicates, inspect/extend the ontology). " +
@@ -614,7 +614,7 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Knowledge graph to operate within. Use list_knowledge_graphs to see " +
+          "Context graph to operate within. Use list_knowledge_graphs to see " +
             "available KGs.",
         ),
       type_name: z
@@ -715,7 +715,7 @@ server.registerTool(
         .string()
         .optional()
         .describe(
-          "Knowledge graph the alert watches. Required for `create`. Use " +
+          "Context graph the alert watches. Required for `create`. Use " +
             "list_knowledge_graphs to see available KGs.",
         ),
       cadence: z

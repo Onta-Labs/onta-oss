@@ -512,7 +512,7 @@ export class Client {
   }
 
   /**
-   * Ingest a file path or raw text into a knowledge graph.
+   * Ingest a file path or raw text into a context graph.
    *
    * If `pathOrText` points to an existing file, its contents are read and the
    * format is inferred from the extension (.csv, .json, .txt) unless
@@ -779,7 +779,7 @@ export class Client {
     );
   }
 
-  /** List all knowledge graphs for the current tenant. */
+  /** List all context graphs for the current tenant. */
   async listKgs(): Promise<Array<Record<string, unknown>>> {
     const data = await this.request<unknown>(
       "GET",
@@ -795,7 +795,7 @@ export class Client {
     return [];
   }
 
-  /** Create a knowledge graph. */
+  /** Create a context graph. */
   async createKg(
     name: string,
     description?: string,
@@ -805,7 +805,7 @@ export class Client {
     return this.request("POST", `${this.base()}/kgs`, body, 15_000);
   }
 
-  /** Delete a knowledge graph by name. */
+  /** Delete a context graph by name. */
   async deleteKg(name: string): Promise<Record<string, unknown>> {
     return this.request(
       "DELETE",
@@ -1665,7 +1665,7 @@ export interface AgentTurnOptions {
   /** The user's natural-language message. Optional when `confirmPlanId` is set
    *  (a confirm turn carries no new message). */
   message?: string;
-  /** Knowledge graph the turn operates within. */
+  /** Context graph the turn operates within. */
   kgName?: string;
   /** Optional active type scope (needed for enrich/clean/dedup planning). */
   typeName?: string;
@@ -2036,19 +2036,19 @@ export class RawApi {
     return this.client.requestRaw("POST", this.client.pOntologyApplyBatch(), { body, ...init });
   }
 
-  // -- knowledge graphs ---------------------------------------------------- #
+  // -- context graphs ---------------------------------------------------- #
 
-  /** `GET /graphs/{tenant}/kgs` — list knowledge graphs. */
+  /** `GET /graphs/{tenant}/kgs` — list context graphs. */
   kgs(init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pKgs(), init);
   }
 
-  /** `POST /graphs/{tenant}/kgs` — create a knowledge graph. */
+  /** `POST /graphs/{tenant}/kgs` — create a context graph. */
   createKg(body: unknown, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("POST", this.client.pKgs(), { body, ...init });
   }
 
-  /** `DELETE /graphs/{tenant}/kgs/{name}` — delete a knowledge graph. */
+  /** `DELETE /graphs/{tenant}/kgs/{name}` — delete a context graph. */
   deleteKg(name: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("DELETE", this.client.pKg(name), init);
   }
