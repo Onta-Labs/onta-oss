@@ -414,18 +414,53 @@ def _format_history(history: list[Turn] | None) -> str:
     return "Conversation so far:\n" + "\n".join(lines) + "\n\n"
 
 
+# Assistant reply kinds that COMMIT / resolve an intent, ending the current ask.
+# A ``clarify`` is the ONE reply that means "still gathering the parameters of the
+# SAME ask", so it does NOT close the accumulation window; everything else
+# (``answer`` answered a question, ``plan`` proposed a committed plan, ``result``
+# ran one) is a finished, different request whose text must not bleed forward.
+_COMMITTED_REPLY_KINDS = frozenset({"answer", "plan", "result"})
+
+
+def _open_ask_user_turns(history: list[Turn] | None) -> list[str]:
+    """The user turns belonging to the CURRENT, still-open ask (oldest→newest).
+
+    Walk the transcript backwards collecting user turns, stopping as soon as we
+    cross the boundary of a RESOLVED intent — any assistant reply that is not a
+    ``clarify`` (see :data:`_COMMITTED_REPLY_KINDS`). A ``clarify`` → answer
+    exchange keeps accumulating so the field named an earlier turn survives a
+    terse reply ("both"); but once a ``plan`` was proposed or a question
+    ``answer``ed, that intent is DONE and its text is dropped from the window so
+    a later, unrelated request is not contaminated by it (the session-context
+    bleed the planner previously suffered — every prior user turn was replayed).
+    """
+    out: list[str] = []
+    for t in reversed(history or []):
+        if t.role == "assistant":
+            # A clarify keeps the window open; anything else closes it.
+            if t.kind == "clarify":
+                continue
+            break
+        if t.role == "user" and t.text:
+            out.append(t.text)
+    out.reverse()
+    return out
+
+
 def _effective_instruction(history: list[Turn] | None, message: str) -> str:
     """Accumulate the user's answers so capability extraction sees the full ask.
 
     A capability's parameter extraction (which field, which attribute, which
     rule) runs on a single string. Feeding it only the latest reply ("I wanna do
-    both") loses the field the user named two turns ago. Concatenating every
-    user turn in the session — oldest first, current last — gives the extractor
-    the whole dialogue, which is what lets a clarify→answer exchange converge to
-    a concrete plan. With no prior turns this is just the message (unchanged
-    single-turn behavior).
+    both") loses the field the user named two turns ago — so we DO concatenate
+    prior user turns. But only the turns of the CURRENT, still-open ask
+    (:func:`_open_ask_user_turns`): a committed plan / answered question RESETS
+    the window, so a finished prior request never replays into a new one. The
+    current ``message`` is always appended LAST so it dominates. With no
+    (in-window) prior turns this is just the message (unchanged single-turn
+    behavior).
     """
-    prior_user = [t.text for t in (history or []) if t.role == "user" and t.text]
+    prior_user = _open_ask_user_turns(history)
     if not prior_user:
         return message
     return "\n".join([*prior_user, message])
@@ -582,6 +617,11 @@ async def _respond(
     # it has already asked — the capability-level analogue of the classifier's
     # _MAX_CLARIFY_ROUNDS guard.
     ctx.extras["prior_clarify_count"] = prior_clarify_count
+    # Expose the CURRENT message (distinct from the accumulated instruction) so a
+    # capability can prefer a target named in the live turn over one that appears
+    # only in prior-turn history — the enrich cap uses this to resolve the target
+    # TYPE from what the user just said, not a stale mention still in the window.
+    ctx.extras["current_message"] = message
     # Only the recent tail grounds the prompt — a long history-backed thread
     # shouldn't blow up the classifier context (COG-131).
     recent = (
