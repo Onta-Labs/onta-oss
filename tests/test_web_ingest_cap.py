@@ -1194,7 +1194,67 @@ def test_attach_source_urls_never_clobbers_and_skips_unknown():
     assert "source_url" not in rows[2]
 
 
-# --- citation mis-binding fix (persona-eval RCA) ---------------------------- #
+# --- citation reindex mis-binding fix (ONTA-256) ---------------------------- #
+
+
+def test_dedupe_rows_with_source_urls_binds_before_reindex():
+    """MECHANISM (ONTA-256): a row's source_url must be bound BEFORE dedupe drops
+    rows and reindexes the survivors.
+
+    ``_dedupe_rows`` shifts every surviving row's positional index; the provider's
+    provenance map is keyed by each row's ORIGINAL position, so deriving the URL by
+    position AFTER the drop binds a survivor to a DROPPED neighbour's page. The fix
+    stamps first (indices still original) and carries the URL on the row object, so
+    the survivor keeps ITS OWN url through the reindex.
+
+    Invented tokens only (Widget-*, page-*): the invariant must hold for ANY
+    rows/urls, so nothing here is a domain-specific example.
+    """
+    from cograph_client.agent.capabilities.web_ingest_cap import (
+        _attach_source_urls,
+        _dedupe_rows,
+        _dedupe_rows_with_source_urls,
+    )
+
+    url_a = "https://example.test/page-a"
+    url_b = "https://example.test/page-b"
+    url_c = "https://example.test/page-c"
+    # Provenance keyed by each row's ORIGINAL position — an index-keyed provider,
+    # the exact case ``_row_source_url``'s positional fallback serves and the one a
+    # reindex corrupts. (A name-keyed map would resolve order-independently and so
+    # could never exercise the bug.)
+    provenance = {"0": url_a, "1": url_b, "2": url_c}
+
+    def fresh_rows():
+        return [
+            {"name": "Widget-A"},
+            {"name": "Widget-B"},
+            {"name": "Widget-C"},
+        ]
+
+    # Seed `seen` with the MIDDLE row's dedupe key (computed via _dedupe_rows so we
+    # don't hardcode the normalization), so Widget-B is the one dropped — that is
+    # what shifts Widget-C from original index 2 down to deduped index 1.
+    seed: set[str] = set()
+    _dedupe_rows([{"name": "Widget-B"}], "name", seed)
+
+    # --- THE FIX: bind before dedupe -> survivors keep their OWN page. -------- #
+    batch = _dedupe_rows_with_source_urls(fresh_rows(), "name", set(seed), provenance)
+    survivors = {r["name"]: r.get("source_url") for r in batch}
+    assert set(survivors) == {"Widget-A", "Widget-C"}  # Widget-B dropped
+    assert survivors["Widget-A"] == url_a
+    assert survivors["Widget-C"] == url_c              # its OWN page …
+    assert survivors["Widget-C"] != url_b              # … NOT the dropped neighbour's
+
+    # --- REGRESSION GUARD: the OLD order (dedupe THEN attach) mis-binds. ------ #
+    # Drop Widget-B first, then attach by the now-shifted index: Widget-C sits at
+    # deduped index 1, so the positional lookup hands it Widget-B's page (url_b).
+    # This is exactly the bug the fix removes — asserting it proves the ordering is
+    # load-bearing, not incidental, and that this test would fail on a revert.
+    dropped_first = _dedupe_rows(fresh_rows(), "name", set(seed))
+    _attach_source_urls(dropped_first, provenance)
+    buggy = {r["name"]: r.get("source_url") for r in dropped_first}
+    assert buggy["Widget-C"] == url_b  # the mis-bind the fix prevents
 
 
 def test_group_rows_by_source_url_partitions_homogeneously():
