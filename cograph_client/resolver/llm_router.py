@@ -164,6 +164,12 @@ async def openrouter_chat(
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+    # The 402/401 message must name the account that ACTUALLY served this call.
+    # Post-#163 the branch above is chosen per-call by slug shape, so the live
+    # provider can differ from the globally-configured _llm_provider() (a
+    # vendor/model slug under provider=cerebras still routes to OpenRouter). Derive
+    # it from the base we actually hit so provider + host never disagree.
+    active_provider = "cerebras" if base == CEREBRAS_BASE else "openrouter"
     if response_format is not None:
         body["response_format"] = response_format
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -191,7 +197,7 @@ async def openrouter_chat(
             fatal = classify_llm_status_error(
                 exc.response.status_code,
                 detail=_error_detail(exc.response),
-                provider=provider,
+                provider=active_provider,
                 host=urlparse(base).hostname,
             )
             if fatal is not None:
