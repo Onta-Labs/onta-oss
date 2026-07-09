@@ -170,13 +170,34 @@ async def host_dns_blocked(host: str) -> bool:
 
 # --- HTML → text -------------------------------------------------------------- #
 class _TextExtractor(HTMLParser):
-    """Minimal readability: drop script/style/nav chrome, keep visible text and
-    the ``<title>``. Not a full readability port — enough to feed an extractor;
-    the premium render tier returns clean markdown for the hard pages."""
+    """Minimal readability that PRESERVES the structural cues an extractor needs.
+
+    Beyond dropping script/style/nav chrome and keeping the ``<title>``, this
+    keeps the row/column shape of ``<table>``\\ s and the label/value pairing of
+    ``<dl>``\\ s — the very carriers of the DECLARED STRUCTURED attributes
+    (pricing, latency, NPI/taxonomy, …) a naive text dump destroys (ONTA-193 P4
+    depth RCA). A flat reducer turns a pricing table into an undifferentiated
+    vertical stream — ``Model / Input / Output / Context / gpt-4o / $2.50 /
+    $10.00 / 128k / …`` — with the row→column association GONE, so the extractor
+    can no longer tell which price belongs to which model and the declared fields
+    never land (name/description/url do, because those need no association). We
+    instead emit each table ROW as one line with cells joined by ``" | "`` —
+    ``gpt-4o | $2.50 | $10.00 | 128k`` — so a record stays coherent, and a
+    ``<dl>`` emits ``term: definition`` pairs. Empty cells are kept in place so a
+    missing value is a visible gap (``a |  | c``), never silently realigned into a
+    neighbour's column — the anti-fabrication contract (unknown → gap, never an
+    invented value): this reducer only ever REFORMATS text already on the page, it
+    can add no value that was not there. Everything else is the prior
+    line-per-text-node flow. Not a full readability port — enough to feed an
+    extractor; the premium render tier returns clean markdown for the hard pages,
+    and ITS rendered HTML flows back through here too, so this reshaping is what
+    gives depth on every successfully-fetched page regardless of fetch tier.
+    """
 
     # NB: do NOT skip <head> wholesale — <title> lives there. Its noisy children
     # (script/style) are skipped individually below.
     _SKIP = {"script", "style", "noscript", "template", "svg"}
+    _CELL_TAGS = {"td", "th"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -184,18 +205,83 @@ class _TextExtractor(HTMLParser):
         self._skip_depth = 0
         self._in_title = False
         self.title = ""
+        # Structured-context buffers. A table cell's text accumulates in ``_cell``
+        # (with ``_cell_depth`` counting nested cells so an INNER </td> of a nested
+        # table can't prematurely close the outer cell), a row's finished cells in
+        # ``_row``. A <dl> buffers the current term (``_dt``) / value (``_dd``);
+        # ``_last_dt`` carries the term onto its (possibly several) <dd>s.
+        self._cell: Optional[list[str]] = None
+        self._cell_depth = 0
+        self._row: Optional[list[str]] = None
+        self._dt: Optional[list[str]] = None
+        self._dd: Optional[list[str]] = None
+        self._last_dt = ""
 
     def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
         if tag in self._SKIP:
             self._skip_depth += 1
-        elif tag == "title":
+            return
+        if self._skip_depth:
+            return
+        if tag == "title":
             self._in_title = True
+        elif tag in self._CELL_TAGS:
+            # Open a cell, or descend into a nested one (keep the outer buffer;
+            # nested-table text flattens into the enclosing cell).
+            if self._cell is None:
+                self._cell = []
+                self._cell_depth = 1
+            else:
+                self._cell_depth += 1
+        elif tag == "tr":
+            # Only the OUTERMOST table gets its own row structure; a <tr> seen
+            # while inside a cell (nested table) is left to flatten into that cell.
+            if self._cell is None:
+                self._row = []
+        elif tag == "dt" and self._cell is None:
+            self._dt = []
+        elif tag == "dd" and self._cell is None:
+            self._dd = []
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in self._SKIP and self._skip_depth > 0:
-            self._skip_depth -= 1
-        elif tag == "title":
+        if tag in self._SKIP:
+            if self._skip_depth > 0:
+                self._skip_depth -= 1
+            return
+        if self._skip_depth:
+            return
+        if tag == "title":
             self._in_title = False
+        elif tag in self._CELL_TAGS:
+            if self._cell is not None:
+                self._cell_depth -= 1
+                if self._cell_depth <= 0:
+                    cell_text = self._collapse(self._cell)
+                    if self._row is not None:
+                        self._row.append(cell_text)  # keep empties → gap preserved
+                    elif cell_text:
+                        self._parts.append(cell_text)  # stray cell, no <tr>
+                    self._cell = None
+                    self._cell_depth = 0
+        elif tag == "tr":
+            # Ignore an inner </tr> (fired while inside a cell) — only the
+            # outermost row, closed with no cell open, is emitted.
+            if self._cell is None and self._row is not None:
+                if any(self._row):
+                    self._parts.append(" | ".join(self._row))
+                self._row = None
+        elif tag == "dt":
+            if self._dt is not None:
+                self._last_dt = self._collapse(self._dt)
+                self._dt = None
+        elif tag == "dd":
+            if self._dd is not None:
+                dd_text = self._collapse(self._dd)
+                if dd_text:
+                    self._parts.append(
+                        f"{self._last_dt}: {dd_text}" if self._last_dt else dd_text
+                    )
+                self._dd = None
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
@@ -203,9 +289,25 @@ class _TextExtractor(HTMLParser):
         if self._in_title:
             self.title += data
             return
+        # Structured contexts buffer RAW data (whitespace normalized on close) so
+        # a cell split across text nodes — ``$2.50 <span>/mo</span>`` — rejoins.
+        if self._cell is not None:
+            self._cell.append(data)
+            return
+        if self._dt is not None:
+            self._dt.append(data)
+            return
+        if self._dd is not None:
+            self._dd.append(data)
+            return
         text = data.strip()
         if text:
             self._parts.append(text)
+
+    @staticmethod
+    def _collapse(parts: list[str]) -> str:
+        """Join a buffered cell/term/value and collapse internal whitespace."""
+        return re.sub(r"\s+", " ", "".join(parts)).strip()
 
     def text(self) -> str:
         return re.sub(r"\n{3,}", "\n\n", "\n".join(self._parts)).strip()
