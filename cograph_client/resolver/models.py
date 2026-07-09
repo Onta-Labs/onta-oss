@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -19,6 +19,32 @@ class ExtractedAttribute(BaseModel):
     name: str
     value: str
     datatype: str = "string"
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _coerce_scalar(cls, v):
+        """Stringify non-string SCALAR values the extractor returns.
+
+        The LLM / Firecrawl JSON extraction legitimately emits a bare ``true`` /
+        ``false`` or a number for a boolean- or numeric-valued attribute (e.g.
+        ``streaming_support: true``, ``context_window: 8192``). ``value`` is
+        typed ``str``, so Pydantic v2 would raise ``ValidationError`` on those and
+        — because the extraction handler only caught JSON/Key/Type errors and
+        ``ValidationError`` subclasses ``ValueError`` — the error propagated and
+        failed the WHOLE discovery job with 0 records. Coerce genuine scalars to
+        their string form here so extraction proceeds; the downstream validator
+        (#166 ``_typed_value``) still canonicalizes the lexical form.
+
+        ``bool`` maps to lowercase ``"true"``/``"false"`` — the canonical
+        ``xsd:boolean`` lexical form the validator expects. ``None`` / dict /
+        list are left untouched so they fall through to the existing validation
+        (not silently swallowed).
+        """
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, (int, float)):
+            return str(v)
+        return v
 
 
 class ExtractedEntity(BaseModel):
