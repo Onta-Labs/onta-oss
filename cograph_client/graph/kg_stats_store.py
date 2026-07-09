@@ -47,6 +47,16 @@ class KgStats(BaseModel):
     edge_count: int = 0
     # Per-type entity counts, keyed by type leaf name (e.g. {"Person": 5000}).
     type_breakdown: dict[str, int] = Field(default_factory=dict)
+    # One-line AI-generated "what is this graph about" summary, synthesized from
+    # the type breakdown (see graph/kg_summary.py) and recomputed only when the
+    # type SET changes. Empty = not generated yet (no key, empty graph, or a KG
+    # that predates the feature — the next list/recompute backfills it).
+    ai_description: str = ""
+    # The sorted entity-type set the current ``ai_description`` was generated for.
+    # Regeneration is gated on this (not on ``type_breakdown``) so a FAILED regen
+    # leaves the signature stale and the next recompute retries, instead of the
+    # description silently describing an old type set forever.
+    ai_description_types: list[str] = Field(default_factory=list)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
