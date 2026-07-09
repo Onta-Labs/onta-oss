@@ -126,6 +126,95 @@ async def test_discovery_and_enrichment_emit_the_identical_fact(tmp_path):
     assert (PHYS_URI, LOCATED_IN, target) in enrichment
 
 
+# --- COLD-START relationship promotion (invented tokens, anti-overfit) --------
+# The warm path above requires the target type to ALREADY exist. This block
+# covers the COLD-START case: an attribute the extraction typed as a relationship
+# (`datatype=<Type>`) whose target type does NOT exist yet. Previously discovery
+# dropped such a value to the literal path — a literal on ``attrs/<leaf>`` (invisible
+# to NL relationship traversal) plus a DANGLING object-property range (the property
+# was declared with ``rdfs:range = types/<Type>`` but the type was never minted). The
+# fix mints the target type, materializes the node (rdf:type + rdfs:label), and puts
+# the edge on ``onto/<leaf>`` — the same shared ``entity_uri`` / instance-edge
+# convention as the warm path. Invented domain-neutral tokens (Gadget / manufactured_by
+# / Company / AcmeCorp) so the test cannot be passing by memorizing a real ontology.
+
+GADGET_URI = entity_uri("Gadget", "g1")
+MANUFACTURED_BY = "https://cograph.tech/onto/manufactured_by"
+MANUFACTURED_BY_ATTR = "https://cograph.tech/types/Gadget/attrs/manufactured_by"
+
+
+async def _drive_cold_start(tmp_path):
+    """Fire the promotion branch on a COLD START: ``Gadget.manufactured_by`` is
+    typed ``Company`` but neither the ``Company`` type nor the property exists yet.
+    A second, PRIMITIVE attribute (``weight_grams``) rides along to prove a plain
+    literal is never promoted. Returns ``(collected_triples, IngestResult)``."""
+    resolver = SchemaResolver(AsyncMock(), "fake-key", JsonVerdictCache(tmp_path / "c.json"))
+    result = IngestResult()
+    collected: list[tuple[str, str, str]] = []
+    await resolver._resolve_and_insert_entity(
+        entity=ExtractedEntity(
+            type_name="Gadget",
+            id="g1",
+            attributes=[
+                ExtractedAttribute(name="manufactured_by", value="AcmeCorp", datatype="Company"),
+                ExtractedAttribute(name="weight_grams", value="42", datatype="integer"),
+            ],
+        ),
+        resolved_type="Gadget",
+        entity_uri=GADGET_URI,
+        is_duplicate=False,
+        graph_uri="https://omnix.dev/graphs/test",
+        existing_types={"Gadget": ""},   # Company does NOT exist yet
+        existing_attrs={"Gadget": {}},    # manufactured_by NOT declared yet
+        source="test",
+        result=result,
+        _collect_triples=collected,
+    )
+    return collected, result
+
+
+async def test_cold_start_relationship_attr_mints_typed_node_and_onto_edge(tmp_path):
+    """The fix: a relationship-typed attribute for a NOT-YET-EXISTING target type
+    mints the node (typed + labelled) and the edge on ``onto/<leaf>`` — never a
+    literal, never a bare node."""
+    collected, _ = await _drive_cold_start(tmp_path)
+    target = entity_uri("Company", "AcmeCorp")
+
+    # Cross-rail node identity: the URI is exactly the shared entity_uri.
+    assert target == "https://cograph.tech/entities/Company/AcmeCorp"
+    assert (GADGET_URI, MANUFACTURED_BY, target) in collected        # edge on onto/<leaf>
+    assert (target, RDF_TYPE, type_uri("Company")) in collected      # typed target node
+    assert (target, RDFS_LABEL, "AcmeCorp") in collected             # labelled target node
+    # The bug this closes: never a literal on attrs/<leaf>, never a bare-string object.
+    assert (GADGET_URI, MANUFACTURED_BY_ATTR, "AcmeCorp") not in collected
+    assert (GADGET_URI, MANUFACTURED_BY, "AcmeCorp") not in collected
+
+
+async def test_cold_start_creates_target_type_and_records_it_for_refresh(tmp_path):
+    """The target type is CREATED (no dangling object-property range) and surfaced
+    on both ``types_created`` and ``node_target_types`` so post-write housekeeping
+    re-embeds / re-stats it."""
+    _, result = await _drive_cold_start(tmp_path)
+    assert "Company" in result.types_created
+    assert "Company" in result.node_target_types
+    assert "Company" in result.affected_types()
+
+
+async def test_cold_start_leaves_primitive_attribute_a_literal(tmp_path):
+    """Anti-over-promotion: a PLAIN literal (primitive datatype) that rides along is
+    written as a literal attribute — NOT minted as a node. Only an attribute
+    EXPLICITLY typed as a relationship is promoted."""
+    collected, result = await _drive_cold_start(tmp_path)
+    weight_attr = "https://cograph.tech/types/Gadget/attrs/weight_grams"
+    # The integer literal stays on attrs/<leaf> as a typed literal value…
+    assert any(
+        s == GADGET_URI and p == weight_attr for (s, p, o) in collected
+    ), "primitive attribute must be written as a literal"
+    # …and never spawns a node/type of its own.
+    assert "Grams" not in result.types_created and "42" not in str(result.types_created)
+    assert not any(p == "https://cograph.tech/onto/weight_grams" for (s, p, o) in collected)
+
+
 def test_ingest_result_affected_types_unions_all_three_sources():
     """``IngestResult.affected_types()`` — the single set both ingest routes hand to
     ``refresh_after_write`` — unions created types + the SUBJECT type of each added
