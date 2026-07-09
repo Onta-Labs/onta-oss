@@ -1684,6 +1684,34 @@ async def test_resolve_spec_normalizes_literal_null_kind(monkeypatch):
     assert out2["query_kind"] is None
 
 
+async def test_resolve_spec_warns_when_llm_text_unparsed(monkeypatch):
+    """When the LLM returns text that isn't a JSON object, _resolve_spec must SURFACE
+    the degrade (a `web_ingest_spec_unparsed` warning) rather than silently falling
+    through to the fallback spec — so a future non-JSON degrade is never invisible.
+    The exception path already logs `web_ingest_spec_failed`; this is the parse miss.
+
+    Records against a mock module logger (order-independent under the full suite —
+    the module logger is cached by earlier tests so capture_logs sees nothing)."""
+    from unittest.mock import MagicMock as _MagicMock
+
+    async def fake_chat(*_a, **_k):
+        return "here is your spec but it is prose, not json at all"
+
+    rec = _MagicMock()
+    monkeypatch.setattr(web_ingest_cap, "logger", rec)
+    monkeypatch.setattr(web_ingest_cap, "openrouter_chat", fake_chat)
+    ctx = AgentContext(
+        tenant_id="demo-tenant", kg_name="places", neptune=MagicMock(),
+        anthropic_key="sk-ant-test", openrouter_key="k",
+    )
+    out = await web_ingest_cap._resolve_spec(ctx, "list of OpenRouter models")
+    # Degraded to the deterministic fallback spec (never 500s / never empty).
+    assert out["entity_type"]
+    warned = [c for c in rec.warning.call_args_list
+              if c.args and c.args[0] == "web_ingest_spec_unparsed"]
+    assert warned, "unparsed LLM text must emit web_ingest_spec_unparsed"
+
+
 def test_norm_query_kind_lowercases_and_slugs():
     """A real kind is lowercased + slugged so casing/punctuation from the LLM still
     matches a provider's query_kinds; empty/null-ish collapse to None."""

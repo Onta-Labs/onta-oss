@@ -1608,6 +1608,10 @@ async def _resolve_spec(ctx: AgentContext, instruction: str) -> dict:
             parsed = _parse_json_object(text)
             if parsed:
                 return _normalize_spec(parsed)
+            # Non-empty text that didn't parse as a JSON object — the exception path
+            # below never sees this, so surface it instead of a SILENT fall-through
+            # to _fallback_spec (a future non-JSON degrade would otherwise vanish).
+            logger.warning("web_ingest_spec_unparsed")
         except Exception:  # noqa: BLE001
             logger.warning("web_ingest_spec_failed", exc_info=True)
     return _fallback_spec(instruction)
