@@ -1537,9 +1537,20 @@ def _fallback_spec(instruction: str) -> dict:
     fields = _dedupe(
         [*_explicit_user_fields(current), *_explicit_user_fields(instruction)]
     )
-    # Type / subject: the current turn wins; the whole instruction only fills a gap.
+    # Type: the current turn wins; the whole instruction only fills a gap.
     etype = _explicit_user_type(current) or _explicit_user_type(instruction)
-    query = _clean_query(current) or _clean_query(instruction)
+    # Search SUBJECT: let the CURRENT turn drive it ONLY when that turn actually
+    # names a subject/type (a genuine PIVOT like "actually discover Beta records
+    # with …"). A bare confirmation ("yes go ahead") or a "Use these: …" chip reply
+    # is NOT a subject — but its ``_clean_query`` is still truthy, so a naive
+    # ``current or instruction`` would search the web for the confirmation/chip text
+    # and return an empty/garbage dataset (reviewer-reproduced regression on the
+    # multi-turn confirm path). Gating on ``_explicit_user_type(current)`` falls back
+    # to the ORIGINAL first-line ask on any confirm/chip turn while still honoring a
+    # real pivot turn.
+    query = (
+        _clean_query(current) if _explicit_user_type(current) else ""
+    ) or _clean_query(instruction)
     key = "name"
     if fields:
         suggested = [a for a in fields if a and a != key]

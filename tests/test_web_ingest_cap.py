@@ -3227,3 +3227,82 @@ async def test_plan_surfaces_degraded_note_in_clarify(monkeypatch):
     step = steps[0]
     assert step.action == "clarify"
     assert web_ingest_cap._DEGRADED_NOTE in step.params["question"]
+
+
+async def test_resolve_spec_fallback_query_ignores_confirm_turn(monkeypatch):
+    """Regression guard — on a multi-turn CONFIRM path the recovered search SUBJECT
+    must stay the ORIGINAL ask, NEVER the confirmation / chip reply. Turns are joined
+    oldest-first with newlines, so the current turn is a bare "yes" or a "Use these:
+    …" chip — neither names a subject, so the query must fall back to the first-line
+    ask instead of searching the web for the confirmation text (the reviewer-
+    reproduced regression: without the type gate, ``query`` became the chip text)."""
+    # turn1 = the real ask; turn2 = a bare confirmation (no subject / no type).
+    spec = await _resolve_spec_llm_fails(
+        monkeypatch, "find some physicians for me\nyes go ahead"
+    )
+    q = spec["query"].lower()
+    assert "physician" in q  # the original subject survived
+    assert "yes" not in q and "go ahead" not in q
+
+    # turn2 = a "Use these: …" chip: its FIELDS are recovered, but the chip text is
+    # NOT the search subject.
+    spec2 = await _resolve_spec_llm_fails(
+        monkeypatch,
+        "find some physicians for me\nUse these: name, npi, taxonomy, affiliation",
+    )
+    q2 = spec2["query"].lower()
+    assert "physician" in q2
+    assert "use these" not in q2 and "npi" not in q2
+    # The chip's fields still land as the recovered floor — that half keeps working.
+    assert {"npi", "taxonomy", "affiliation"} <= set(spec2["suggested_attributes"])
+
+
+async def test_resolve_spec_fallback_pivot_turn_still_drives_subject(monkeypatch):
+    """The type gate must NOT over-correct: a genuine PIVOT turn (one that names a
+    new type/subject) still drives the search subject, so the current request keeps
+    winning over a stale earlier one when it actually is a new ask."""
+    spec = await _resolve_spec_llm_fails(
+        monkeypatch,
+        "discover Alpha entities with old_field_a\n"
+        "actually discover Beta records with new_field_x, new_field_y",
+    )
+    q = spec["query"].lower()
+    # The pivot ("Beta") drives the subject, not the stale "Alpha" first line.
+    assert "beta" in q
+    assert "alpha" not in q
+    assert spec["entity_type"] == "Beta"
+
+
+async def test_plan_query_ignores_chip_confirm_turn(monkeypatch):
+    """END-TO-END regression (reviewer reproduced at ``params['query']``) — a
+    committed discovery job's ``params['query']`` stays the ORIGINAL subject, not the
+    "Use these: …" chip text, when the spec LLM fails on the confirm turn."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+
+    async def boom_chat(*_a, **_k):
+        raise RuntimeError("spec LLM down")
+
+    async def empty_schema(neptune, tenant_id, type_name):
+        return {"attributes": [], "relationships": []}
+
+    monkeypatch.setattr(web_ingest_cap, "openrouter_chat", boom_chat)
+    monkeypatch.setattr(web_ingest_cap, "list_type_schema", empty_schema)
+
+    # prior_clarify=1 → the turn commits (already asked once) instead of re-clarifying.
+    ctx = AgentContext(
+        tenant_id="demo-tenant", kg_name="kg", neptune=MagicMock(),
+        anthropic_key="sk-ant-test", openrouter_key="k",
+        extras={"prior_clarify_count": 1},
+    )
+    steps = await WebIngestCapability().plan(
+        ctx,
+        "find some physicians for me\nUse these: name, npi, taxonomy, affiliation",
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    q = step.params["query"].lower()
+    assert "physician" in q
+    assert "use these" not in q and "npi" not in q
+    # The chip fields still survive into the plan's attributes.
+    assert {"npi", "taxonomy", "affiliation"} <= set(step.params["attributes"])
