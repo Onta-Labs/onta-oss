@@ -94,7 +94,9 @@ async def test_openrouter_chat_sends_fallback_array_and_returns_content(monkeypa
     assert out == "hello"
     assert captured["json"]["model"] == "anthropic/claude-opus-4.8"
     assert captured["json"]["models"] == ["anthropic/claude-opus-4.8", "openai/gpt-5.5"]
-    assert captured["json"]["max_tokens"] == 7
+    # A tiny caller budget (7) is FLOORED to REASONING_MIN_TOKENS so a reasoning
+    # model isn't starved of its content phase (see the reasoning-floor tests below).
+    assert captured["json"]["max_tokens"] == llm_router.REASONING_MIN_TOKENS
     assert captured["headers"]["Authorization"] == "Bearer secret-key"
     assert captured["url"].endswith("/chat/completions")
 
@@ -501,3 +503,90 @@ async def test_openrouter_chat_happy_path_returns_content_verbatim(monkeypatch):
     )
     out = await llm_router.openrouter_chat("k", "s", "u")
     assert out == "  Sprocket-42 verbatim  "  # not stripped, not altered
+
+
+# --------------------------------------------------------------------------- #
+# Reasoning-adequate token floor (REASONING_MIN_TOKENS).
+#
+# A reasoning model (Cerebras gpt-oss-120b, the deployed PRIMARY_MODEL) spends
+# part of its budget on a hidden reasoning phase BEFORE emitting content. A small
+# `max_tokens` (the ~200-400 several call sites pass) is consumed entirely by
+# reasoning, so the model returns `finish_reason=length` with EMPTY content and
+# openrouter_chat raises the `empty LLM response ... (finish_reason=length)` guard
+# above. openrouter_chat floors every completion budget to REASONING_MIN_TOKENS so
+# no caller can starve reasoning. The floor is a CEILING: a value at/above it is
+# forwarded verbatim; a value below it is raised to it. It applies to whichever
+# completion-budget field each request branch sends. All HTTP is mocked.
+# --------------------------------------------------------------------------- #
+
+
+def _cerebras_env(monkeypatch):
+    """Route through the Cerebras request branch (bare-slug PRIMARY_MODEL)."""
+    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "cerebras-secret")
+    monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "gadget-oss-120b")
+
+
+def _openrouter_env(monkeypatch):
+    """Route through the OpenRouter request branch (vendor/model slug)."""
+    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(llm_router, "PRIMARY_MODEL", "widgetco/sprocket-2")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["openrouter", "cerebras"])
+async def test_openrouter_chat_floors_small_max_tokens(monkeypatch, route):
+    """A small caller budget (200) is raised to REASONING_MIN_TOKENS on BOTH the
+    OpenAI-style (OpenRouter) and Cerebras request branches — the exact production
+    starvation (`empty LLM response ... finish_reason=length`) this prevents."""
+    (_cerebras_env if route == "cerebras" else _openrouter_env)(monkeypatch)
+    cap: dict = {}
+    _capturing_client(monkeypatch, {"choices": [{"message": {"content": "ok"}}]}, cap)
+
+    out = await llm_router.openrouter_chat("k", "s", "u", max_tokens=200)
+
+    assert out == "ok"
+    assert cap["json"]["max_tokens"] == llm_router.REASONING_MIN_TOKENS
+    assert cap["json"]["max_tokens"] >= 2048
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["openrouter", "cerebras"])
+async def test_openrouter_chat_does_not_lower_large_max_tokens(monkeypatch, route):
+    """The floor never LOWERS a budget: a value above the floor (8000) is forwarded
+    verbatim on both branches — max_tokens stays a ceiling for callers above it."""
+    (_cerebras_env if route == "cerebras" else _openrouter_env)(monkeypatch)
+    cap: dict = {}
+    _capturing_client(monkeypatch, {"choices": [{"message": {"content": "ok"}}]}, cap)
+
+    await llm_router.openrouter_chat("k", "s", "u", max_tokens=8000)
+
+    assert cap["json"]["max_tokens"] == 8000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["openrouter", "cerebras"])
+async def test_openrouter_chat_value_at_floor_stays(monkeypatch, route):
+    """A value exactly at the floor is unchanged (boundary: max() is inclusive)."""
+    (_cerebras_env if route == "cerebras" else _openrouter_env)(monkeypatch)
+    cap: dict = {}
+    _capturing_client(monkeypatch, {"choices": [{"message": {"content": "ok"}}]}, cap)
+
+    await llm_router.openrouter_chat(
+        "k", "s", "u", max_tokens=llm_router.REASONING_MIN_TOKENS
+    )
+
+    assert cap["json"]["max_tokens"] == llm_router.REASONING_MIN_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_openrouter_chat_default_budget_unchanged_by_floor(monkeypatch):
+    """The default max_tokens (4096) already exceeds the floor, so an unspecified
+    budget is forwarded verbatim — the floor only touches small-budget callers."""
+    _openrouter_env(monkeypatch)
+    cap: dict = {}
+    _capturing_client(monkeypatch, {"choices": [{"message": {"content": "ok"}}]}, cap)
+
+    await llm_router.openrouter_chat("k", "s", "u")
+
+    assert cap["json"]["max_tokens"] == 4096
