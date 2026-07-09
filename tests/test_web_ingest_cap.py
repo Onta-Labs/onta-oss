@@ -3070,3 +3070,160 @@ async def test_annotated_multifield_request_yields_full_typed_plan(monkeypatch):
         assert f in attrs, f"user field {f!r} dropped from plan attributes"
     # The LLM's shrunken set is NOT what the plan settled on.
     assert attrs != {"name", "provider"}
+
+
+# ---------------------------------------------------------------------------
+# _resolve_spec FALLBACK on a resolver-LLM FAILURE — the fix here. The
+# persona-eval RCA: the spec LLM timed out (~15s), _resolve_spec fell to the bare
+# [name, description, url] default, and a fully-specified ask (an enumerated field
+# list + a named record type) silently collapsed to a name/description capture —
+# the listed fields never landed. These stub the spec LLM to FAIL and assert the
+# DETERMINISTIC fallback recovers the user's fields + type from the CURRENT
+# request, surfaces genuine degradation, and leaves the happy path unchanged.
+# INVENTED, domain-neutral tokens throughout: they assert the MECHANISM (any
+# enumerated list, any named type), never a specific domain example.
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_spec_llm_fails(monkeypatch, instruction: str) -> dict:
+    """Drive ``_resolve_spec`` with the spec LLM stubbed to RAISE (the ~15s timeout /
+    provider error the RCA hit), so the deterministic fallback branch runs. A key IS
+    present, so the LLM is actually attempted and its FAILURE — not a missing key —
+    is what triggers the fallback."""
+    async def boom_chat(*_a, **_k):
+        raise RuntimeError("spec LLM timed out")
+
+    monkeypatch.setattr(web_ingest_cap, "openrouter_chat", boom_chat)
+    ctx = AgentContext(
+        tenant_id="demo-tenant", kg_name="kg", neptune=MagicMock(),
+        anthropic_key="sk-ant-test", openrouter_key="k",
+    )
+    return await web_ingest_cap._resolve_spec(ctx, instruction)
+
+
+async def test_resolve_spec_fallback_keeps_named_fields_on_llm_failure(monkeypatch):
+    """The core fix — an explicit field list + a named type survive a spec-LLM
+    failure: the fallback spec's suggested attributes carry EVERY named field (not
+    the bare [name, description, url] default) and the entity type is the one derived
+    from the request (not the WebRecord placeholder)."""
+    spec = await _resolve_spec_llm_fails(
+        monkeypatch,
+        "discover Gadget entities with serial_number, weight_kg, "
+        "warranty_months, supplier",
+    )
+    named = {"serial_number", "weight_kg", "warranty_months", "supplier"}
+    # Every named field is in the FETCH set the caller projects to (not dropped).
+    assert named <= set(spec["suggested_attributes"])
+    # …and in the confirmed floor the LLM path may only EXTEND, never shrink.
+    assert named <= set(spec["confirmed_attributes"])
+    # NOT the bare generic default that silently thinned the deployed ask.
+    assert spec["suggested_attributes"] != ["name", "description", "url"]
+    # A real type derived from the request — not the placeholder.
+    assert spec["entity_type"] != "WebRecord"
+    assert spec["entity_type"] == "Gadget"
+    # A field floor was recovered → NOT flagged degraded.
+    assert spec.get("degraded") is not True
+
+
+async def test_resolve_spec_fallback_mechanism_generalizes(monkeypatch):
+    """Anti-overfit — the SAME recovery fires for a DIFFERENT marker form ("with
+    fields …"), a DIFFERENT invented type, and DIFFERENT invented fields. Asserts the
+    mechanism, not one phrasing."""
+    spec = await _resolve_spec_llm_fails(
+        monkeypatch,
+        "Add Sprocket records with fields torque_nm, radius_mm, batch_code",
+    )
+    assert spec["entity_type"] == "Sprocket"
+    assert {"torque_nm", "radius_mm", "batch_code"} <= set(
+        spec["suggested_attributes"]
+    )
+    assert spec["suggested_attributes"] != ["name", "description", "url"]
+    assert spec.get("degraded") is not True
+
+
+async def test_resolve_spec_fallback_weights_current_request_over_stale(monkeypatch):
+    """Point 3 — when the accumulated instruction stacks an OLD ask and a NEW one,
+    the CURRENT (last) turn's type wins and its fields LEAD the recovered set; the
+    stale earlier turn only fills the tail, it never overrides. Accumulated turns are
+    newline-joined oldest-first (``_effective_instruction``)."""
+    instruction = (
+        "discover Alpha entities with old_field_a, old_field_b\n"
+        "actually discover Beta records with new_field_x, new_field_y"
+    )
+    spec = await _resolve_spec_llm_fails(monkeypatch, instruction)
+    # The current turn's type wins over the stale earlier one.
+    assert spec["entity_type"] == "Beta"
+    sugg = spec["suggested_attributes"]
+    # The current turn's fields lead the ordering (weighted first)…
+    assert sugg[0] == "new_field_x"
+    assert {"new_field_x", "new_field_y"} <= set(sugg)
+    # …and no explicitly-named field is lost (history fills the tail, never drops).
+    assert {"old_field_a", "old_field_b"} <= set(sugg)
+
+
+async def test_resolve_spec_fallback_surfaces_degraded_note_when_no_fields(monkeypatch):
+    """Point 2 — when the LLM fails AND no field list can be parsed, the fallback
+    still degrades to name/description but SURFACES it: the spec carries a truthy
+    ``degraded`` flag and a non-empty, human-readable ``degraded_note`` so the
+    thinning is visible, not silent."""
+    spec = await _resolve_spec_llm_fails(
+        monkeypatch, "find a list of interesting things from the web"
+    )
+    assert spec.get("degraded") is True
+    note = spec.get("degraded_note") or ""
+    assert note and isinstance(note, str)
+    # The genuinely-degraded set is the honest name/description floor.
+    assert "name" in spec["suggested_attributes"]
+    assert "description" in spec["suggested_attributes"]
+
+
+async def test_resolve_spec_happy_path_unchanged(monkeypatch):
+    """Regression guard — when the LLM SUCCEEDS, its normalized spec flows through
+    untouched: the fallback recovery never runs and no degraded flag is stamped.
+    Same behavior as before the fix."""
+    spec_json = json.dumps({
+        "entity_type": "Model",
+        "key_attribute": "name",
+        "query": "OpenRouter models",
+        "query_kind": None,
+        "confirmed_attributes": ["provider"],
+        "suggested_attributes": ["provider", "context_length"],
+    })
+    out = await _run_resolve_spec(monkeypatch, spec_json, "list of OpenRouter models")
+    assert out["entity_type"] == "Model"
+    assert out["suggested_attributes"] == ["provider", "context_length"]
+    assert out["confirmed_attributes"] == ["provider"]
+    # The happy path never stamps the degraded flag.
+    assert "degraded" not in out
+
+
+async def test_plan_surfaces_degraded_note_in_clarify(monkeypatch):
+    """END-TO-END (point 2) — when the resolver LLM fails AND no fields can be parsed
+    for a brand-new type, plan() still asks (clarify), but the clarify question now
+    SURFACES the degraded-planning note so the user learns automated planning fell
+    back rather than being silently handed a thin capture."""
+    register_web_source(FakeProvider(rows=WIDGET_ROWS))
+
+    async def boom_chat(*_a, **_k):
+        raise RuntimeError("spec LLM down")
+
+    async def empty_schema(neptune, tenant_id, type_name):
+        return {"attributes": [], "relationships": []}
+
+    monkeypatch.setattr(web_ingest_cap, "openrouter_chat", boom_chat)
+    monkeypatch.setattr(web_ingest_cap, "list_type_schema", empty_schema)
+
+    # A key present so the LLM is attempted (and fails); a bare entity ask with no
+    # field list and a brand-new type → genuinely degraded → clarify with the note.
+    ctx = AgentContext(
+        tenant_id="demo-tenant", kg_name="kg", neptune=MagicMock(),
+        anthropic_key="sk-ant-test", openrouter_key="k",
+        extras={"prior_clarify_count": 0},
+    )
+    steps = await WebIngestCapability().plan(
+        ctx, "find a list of interesting things from the web"
+    )
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.action == "clarify"
+    assert web_ingest_cap._DEGRADED_NOTE in step.params["question"]
