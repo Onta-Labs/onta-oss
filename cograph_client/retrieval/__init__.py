@@ -37,6 +37,16 @@ Boundary: OSS. Every module here imports only stdlib / ``cograph_client.*`` /
 
 from __future__ import annotations
 
+from cograph_client.retrieval.cache import (
+    CachingPageFetcher,
+    FetchCache,
+    FetchCacheMode,
+    current_mode,
+    default_cache_dir,
+    get_default_cache,
+    maybe_wrap_ladder,
+    resolve_mode,
+)
 from cograph_client.retrieval.coerce import parse_json_array, parse_json_object
 from cograph_client.retrieval.cost import rows_per_call, source_cost
 from cograph_client.retrieval.errors import (
@@ -62,23 +72,31 @@ from cograph_client.retrieval.safety import (
 from cograph_client.retrieval.types import FetchedPage
 
 __all__ = [
+    "CachingPageFetcher",
+    "FetchCache",
+    "FetchCacheMode",
     "FetchError",
     "FetchErrorPolicy",
     "FetchedPage",
     "PageFetcher",
     "RetrievalError",
     "StaticHttpFetcher",
+    "current_mode",
+    "default_cache_dir",
     "default_ladder",
     "fetcher_cost",
+    "get_default_cache",
     "get_page_fetchers",
     "host_dns_blocked",
     "html_to_text",
     "is_fetchable_url",
+    "maybe_wrap_ladder",
     "parse_json_array",
     "parse_json_object",
     "register_default_fetchers",
     "register_page_fetcher",
     "reset_page_fetchers",
+    "resolve_mode",
     "rows_per_call",
     "source_cost",
 ]
