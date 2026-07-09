@@ -52,6 +52,14 @@ stamp) or otherwise reads as a checked/verified/updated timestamp — bind it to
 URI from the schema and apply the NOW()-relative FILTER. This is a RELATIVE window: do NOT hardcode an \
 absolute date. NOW() returns the current dateTime, so no server-side date substitution is needed.
 - For enum values shown in [values: ...], use the EXACT case as listed.
+- "[no instances]": a Type, attribute, or relationship marked "[no instances]" in the schema IS \
+DECLARED and valid — it exists in the ontology, it simply has no data in THIS graph yet. When the \
+question targets such a type/attribute, STILL generate a correct query against it using its exact \
+URI; it will legitimately return zero rows. In the explanation, state plainly that the \
+type/attribute is declared in the ontology but currently has no instances. NEVER claim the type \
+"does not exist" / "is not in the schema", and NEVER silently substitute a different, populated \
+type — a zero-row answer for a declared-but-empty target is the correct, honest answer, not a reason \
+to answer a different question.
 - For numeric comparisons, use typed literals: "2000"^^<http://www.w3.org/2001/XMLSchema#integer> for \
 integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast with xsd:integer()/xsd:float().
 - NEVER use the `a` shorthand for rdf:type. Always write the full URI: \
