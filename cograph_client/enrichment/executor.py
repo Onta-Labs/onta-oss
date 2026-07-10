@@ -45,7 +45,11 @@ from cograph_client.enrichment.strategy import (
 from cograph_client.enrichment.extraction import coerce_url_attribute_value
 from cograph_client.enrichment.tiers import get_chain
 from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.kg_writer import insert_facts, refresh_after_write
+from cograph_client.graph.kg_writer import (
+    delete_facts,
+    insert_facts,
+    refresh_after_write,
+)
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     XSD_STRING,
@@ -1516,6 +1520,28 @@ class EnrichmentExecutor:
                     [r for r in all_rows if self._row_is_applied(r, write_policy)],
                     job.type_name,
                 )
+                # OVERWRITE = true REPLACE (pf10 sp-refresh-pricing): before the
+                # insert, CLEAR each conflict row's stale value + provenance
+                # companions through the shared delete_facts (predicate-scoped
+                # delete + ONTA-236 value history) so the fresh value REPLACES the
+                # stale one instead of accreting beside it (insert_facts never
+                # removes a same-predicate value). Ordering matters — the clear runs
+                # BEFORE insert_facts, else the predicate-scoped delete would also
+                # drop the just-written fresh value; and value-history reads the old
+                # value while it is still present. No-op for non-overwrite policies
+                # and for filled/verified rows.
+                clear_triples, overwrite_new_values = self._overwrite_clear_targets(
+                    all_rows, job.type_name, write_policy, resolved_datatypes
+                )
+                if clear_triples:
+                    await delete_facts(
+                        self._neptune,
+                        graph_uri,
+                        triples=clear_triples,
+                        new_values=overwrite_new_values,
+                        touched_types={job.type_name},
+                        reason="enrichment overwrite: replace stale value",
+                    )
                 # Single shared write path — identical to CSV/JSON ingestion
                 # (graph/kg_writer.py): batched insert, then post-write
                 # housekeeping (invalidate the NL-planning cache, re-embed the
@@ -1890,6 +1916,80 @@ class EnrichmentExecutor:
             dt for dt in resolved_datatypes.values() if dt not in PRIMITIVE_TYPES
         }
 
+    def _overwrite_clear_targets(
+        self,
+        rows: list[RowResult],
+        type_name: str,
+        policy: ConflictPolicy,
+        resolved_datatypes: dict[str, str],
+    ) -> tuple[list[tuple[str, str, None]], dict[tuple[str, str], str]]:
+        """Under ``overwrite``, the predicate-scoped CLEAR list + value-history map
+        that turn a CONFLICT row into a true REPLACE (delete-old + insert-new).
+
+        Enrichment's ``insert_facts`` is a pure ``INSERT DATA`` — it never removes a
+        same-``(subject, predicate)`` value. So without an explicit clear, an
+        ``overwrite`` of a CONFLICT row (fresh value ≠ existing) ACCRETES: the stale
+        value lingers next to the fresh one and the citation companions carry BOTH
+        the old and new source — defeating the persona goal "every number is CURRENT
+        and sourced" (pf10 sp-refresh-pricing). The fix mirrors the canonical
+        attribute-update contract (ONTA-236 / ADR 0007, `api/routes/lambda_functions.py`):
+        clear the prior value + its provenance companions, then insert the new ones,
+        so the instance triples hold the SINGULAR current value.
+
+        Scope is deliberately narrow:
+          * ONLY under ``overwrite`` (verify/skip/stage never replace);
+          * ONLY ``conflict`` rows — a ``filled`` row has nothing to clear (empty
+            slot) and a ``verified`` row's value is unchanged, so neither needs a
+            delete. This leaves every non-conflict path byte-for-byte as before;
+          * ONLY when the fresh value actually PRODUCES a primary triple. If the
+            new value fails ``validate_triple`` (a non-conforming primitive →
+            :meth:`_instance_triples_for_value` returns ``[]`` and the insert writes
+            nothing), we must NOT clear the old value — clearing-without-replacing
+            would EMPTY the attribute (data loss). Fail safe: keep the incumbent.
+
+        Returns ``(clear_triples, new_value_by_pred)`` for the shared
+        :func:`delete_facts`: ``clear_triples`` are predicate-scoped deletes
+        (``(subject, predicate, None)``) for the primary value AND its
+        ``_source_url`` / ``_provenance`` / ``_verified_at`` companions;
+        ``new_value_by_pred`` maps ``(subject, primary_pred) -> new value`` so
+        value-history (ONTA-236, gated) can version the genuine old→new change. Only
+        the PRIMARY attribute is tracked for history — the freshness companions
+        advance every refresh by design, so versioning them would be noise (matching
+        the lambda-update path)."""
+        clear: list[tuple[str, str, None]] = []
+        new_value_by_pred: dict[tuple[str, str], str] = {}
+        if policy != ConflictPolicy.overwrite:
+            return clear, new_value_by_pred
+        for r in rows:
+            if r.action != "conflict" or r.verdict is None:
+                continue
+            datatype = resolved_datatypes.get(r.attribute, "string")
+            # Only replace when the fresh value will actually be written — never
+            # clear the incumbent if the new value is rejected (would empty the slot).
+            new_triples = self._instance_triples_for_value(
+                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
+            )
+            if not new_triples:
+                continue
+            # The primary instance edge lives on onto/<leaf> for a relationship
+            # (node-valued range) and attrs/<leaf> for a literal — matching exactly
+            # where :meth:`_instance_triples_for_value` writes the NEW value, so the
+            # clear targets the same predicate the insert repopulates.
+            primary_pred = (
+                f"https://cograph.tech/onto/{r.attribute}"
+                if datatype not in PRIMITIVE_TYPES
+                else _attr_uri(type_name, r.attribute)
+            )
+            for pred in (
+                primary_pred,
+                _attr_uri(type_name, f"{r.attribute}_source_url"),
+                _attr_uri(type_name, f"{r.attribute}_provenance"),
+                _attr_uri(type_name, f"{r.attribute}_verified_at"),
+            ):
+                clear.append((r.entity_uri, pred, None))
+            new_value_by_pred[(r.entity_uri, primary_pred)] = str(r.verdict.value)
+        return clear, new_value_by_pred
+
     def _select_triples_for_policy(
         self,
         rows: list[RowResult],
@@ -1917,11 +2017,19 @@ class EnrichmentExecutor:
             # Default to ``string`` if a datatype somehow wasn't resolved for this
             # attribute (defensive — _declare_attributes covers every applied attr).
             datatype = resolved_datatypes.get(r.attribute, "string")
-            triples.extend(
-                self._instance_triples_for_value(
-                    r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
-                )
+            value_triples = self._instance_triples_for_value(
+                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
             )
+            # Only stamp provenance for a value that was ACTUALLY written. A rejected
+            # primitive (validate_triple → no triple) writes no primary value; for a
+            # conflict row under `overwrite` the incumbent is then RETAINED (see
+            # :meth:`_overwrite_clear_targets`), so emitting fresh `_source_url` /
+            # `_verified_at` here would falsely cite — ON THE OLD VALUE — a source
+            # that DISAGREED with it. Gate the citation on the same condition as the
+            # primary value (reviewer finding).
+            if not value_triples:
+                continue
+            triples.extend(value_triples)
             # Provenance companions are user-facing citations (URLs / free text) —
             # plain string literals — EXCEPT `<attr>_verified_at`, which
             # _provenance_triples types as xsd:dateTime so typed date FILTERs match.
