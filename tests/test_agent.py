@@ -792,6 +792,56 @@ async def test_multi_value_scope_matches_case_insensitively(monkeypatch):
     assert p["scope"] is None
     # "update" is a refresh-existing verb → verify mode.
     assert p.get("refresh") is True
+    # Plain refresh (no explicit replace intent) → NOT overwrite; the key is
+    # absent so plain-refresh plans stay byte-for-byte unchanged.
+    assert "overwrite" not in p
+    assert "overwrite" not in steps[0].preview
+
+
+@pytest.mark.asyncio
+async def test_replace_intent_plan_sets_overwrite_param(monkeypatch):
+    """pf10 sp-refresh-pricing: an EXPLICIT replace intent ("… so every number is
+    current") makes the enrich plan carry BOTH refresh=True (routes to the enrich
+    rail + preview) AND overwrite=True (flips the execute-time conflict policy to
+    `overwrite` = REPLACE the changed value). A plain refresh sets refresh but NOT
+    overwrite (asserted above). Drives EnrichCapability.plan directly."""
+    _stub_kg_types(monkeypatch, ["Vendor"])
+
+    async def fake_schema(neptune, tenant_id, type_name):
+        return {"attributes": ["rating", "region"], "relationships": []}
+
+    monkeypatch.setattr(
+        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+    )
+    _stub_enrich_extract(
+        monkeypatch,
+        {
+            "attributes": ["rating"],
+            "scope": {"predicate": "region", "value": "NORTH / south"},
+            "tier": "core",
+        },
+    )
+    execu = _ScopeValueExecutor(
+        {"north": "https://onta.dev/e/vendor/n", "south": "https://onta.dev/e/vendor/s"}
+    )
+    cap = EnrichCapability()
+    ctx = _ctx(executor=execu)
+    steps = await asyncio.wait_for(
+        cap.plan(
+            ctx,
+            "refresh the rating for vendors in NORTH / south region so every "
+            "number is current",
+        ),
+        TIMEOUT,
+    )
+    assert len(steps) == 1
+    p = steps[0].params
+    # Both flags: refresh (enrich rail) AND overwrite (replace policy).
+    assert p.get("refresh") is True
+    assert p.get("overwrite") is True
+    # The confirm UI surfaces the destructive replace.
+    assert steps[0].preview.get("overwrite") is True
+    assert "REPLACE" in steps[0].preview["summary"]
 
 
 @pytest.mark.asyncio

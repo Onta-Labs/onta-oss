@@ -263,6 +263,60 @@ def test_agent_refresh_intent_routes_to_verify_policy():
     assert _default_conflict_policy() == ConflictPolicy.stage
 
 
+def test_agent_replace_intent_routes_to_overwrite_policy():
+    """pf10 sp-refresh-pricing: an EXPLICIT replace / update-to-current intent routes
+    refresh to the `overwrite` conflict policy (REPLACE the changed value), while a
+    plain refresh / re-verify STAYS `verify` (ONTA-245 default preserved) and a bare
+    enrich stays `stage`. Conservative — a false-positive overwrite destroys data."""
+    from cograph_client.agent.capabilities.enrich_cap import (
+        _default_conflict_policy,
+        _looks_like_overwrite,
+        _looks_like_refresh,
+        _overwrite_conflict_policy,
+        _refresh_conflict_policy,
+    )
+
+    # Explicit REPLACE intent → overwrite.
+    for phrase in [
+        "refresh pricing so every number is current",
+        "replace the stale prices with the latest",
+        "update the prices to current",
+        "make them current",
+        "keep the address current",
+        "overwrite the existing values",
+        "correct the values",
+        "fix outdated numbers",
+        "refresh per-minute pricing and vendor-reported latency so every number "
+        "is current and sourced",
+    ]:
+        assert _looks_like_overwrite(phrase), phrase
+
+    # Plain refresh / re-verify / re-check / re-confirm — must STAY verify (NOT
+    # overwrite), plus a few non-refresh negatives so the detector isn't over-eager.
+    for phrase in [
+        "re-verify the affiliations",
+        "refresh the pricing",
+        "re-check the numbers",
+        "re-check the material values",  # "values" alone must not trigger replace
+        "re-confirm the addresses",
+        "update the freshness of these records",
+        "refresh the current pricing",  # "current" as an adjective, not predicate
+        "enrich the sku for all widgets",
+        "fill in the missing color",
+        "discover new gadgets from the web",
+    ]:
+        assert not _looks_like_overwrite(phrase), phrase
+
+    # A plain refresh verb still routes to the ENRICH rail (refresh detection is
+    # unchanged) — only the POLICY differs.
+    assert _looks_like_refresh("refresh the pricing")
+    assert _looks_like_refresh("re-verify the affiliations")
+
+    assert _overwrite_conflict_policy() == ConflictPolicy.overwrite
+    assert _refresh_conflict_policy() == ConflictPolicy.verify
+    assert _default_conflict_policy() == ConflictPolicy.stage
+
+
 def test_scoped_refresh_processes_subset_without_discovery(monkeypatch):
     """A scoped refresh (entity_uris subset + verify policy) processes ONLY the named
     subset and mints NO new entities — re-verify-existing, not re-discover."""

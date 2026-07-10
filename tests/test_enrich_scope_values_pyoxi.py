@@ -16,6 +16,7 @@ pyoxigraph is not installed (it is not a declared CI test dep); runs in local de
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -25,6 +26,13 @@ from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 from cograph_client.enrichment.cache import EnrichmentCache  # noqa: E402
 from cograph_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
 from cograph_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
+from cograph_client.enrichment.models import (  # noqa: E402
+    ConflictPolicy,
+    EnrichJob,
+    EnrichmentTier,
+    JobStatus,
+    Verdict,
+)
 from cograph_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
 from cograph_client.graph.queries import (  # noqa: E402
     kg_graph_uri,
@@ -175,3 +183,179 @@ async def test_select_scope_value_uris_empty_on_no_match_and_bad_predicate():
     ) == []
     # Empty value set.
     assert await ex.select_scope_value_uris(TENANT, KG, TYPE, "made_by", []) == []
+
+
+# --------------------------------------------------------------------------- #
+# overwrite = true REPLACE of a conflicting value (pf10 sp-refresh-pricing)
+# --------------------------------------------------------------------------- #
+
+
+class _FakeAdapter:
+    """Minimal enrichment adapter returning a fixed verdict per (label, attribute).
+    Named ``wikidata`` so the default ``lite`` tier chain resolves it (the executor
+    registers the injected adapter by name), matching the other enrichment tests."""
+
+    name = "wikidata"
+    is_paid = False
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    async def lookup(self, entity_label, attribute, job=None, context=None):
+        return self._mapping.get((entity_label, attribute), [])
+
+
+async def _seed_conflict_entity(n: PyoxiNeptune) -> None:
+    """One Widget with an EXISTING literal ``pricing`` value + its OLD per-attribute
+    provenance companions (source_url + a stale verified_at), plus the ontology
+    declaration so the predicate resolves during selection."""
+    kgg, onto = kg_graph_uri(TENANT, KG), tenant_graph_uri(TENANT)
+    pricing = attr_uri(TYPE, "pricing")
+    src = attr_uri(TYPE, "pricing_source_url")
+    ver = attr_uri(TYPE, "pricing_verified_at")
+    xsd_dt = "http://www.w3.org/2001/XMLSchema#dateTime"
+    await n.update(
+        f'INSERT DATA {{ GRAPH <{onto}> {{ '
+        f'<{pricing}> <{RDF_TYPE}> <{RDF_PROPERTY}> ; '
+        f'<{RDFS_DOMAIN}> <{type_uri(TYPE)}> ; <{RDFS_LABEL}> "pricing" . }} }}'
+    )
+    await n.update(
+        f'INSERT DATA {{ GRAPH <{kgg}> {{ '
+        f'<{ENT}{TYPE}/w1> <{RDF_TYPE}> <{type_uri(TYPE)}> ; '
+        f'<{RDFS_LABEL}> "Acme Widget" ; '
+        f'<{pricing}> "0.0100 (2023-09-01)" ; '
+        f'<{src}> <https://old.example/price> ; '
+        f'<{ver}> "2023-09-01T00:00:00"^^<{xsd_dt}> . }} }}'
+    )
+
+
+def _objects(n: PyoxiNeptune, subject: str, pred: str) -> list[str]:
+    rows = n.store.query(
+        f"SELECT ?o WHERE {{ GRAPH ?g {{ <{subject}> <{pred}> ?o }} }}",
+        use_default_graph_as_union=True,
+    )
+    return sorted(str(row["o"].value) for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_overwrite_replaces_conflicting_value_and_restamps_provenance():
+    """pf10 sp-refresh-pricing (real store): under the `overwrite` conflict policy a
+    CONFLICT row (fresh value ≠ existing) REPLACES the stale value — the instance
+    triples hold the SINGULAR current value (delete-old + insert-new, ONTA-236), and
+    the per-attribute provenance companions are restamped to the FRESH source +
+    verified date (the stale citation is gone). This is what "every number is CURRENT
+    and sourced" requires; enrichment's pure-INSERT write path would otherwise accrete
+    the fresh value beside the stale one."""
+    n = PyoxiNeptune()
+    await _seed_conflict_entity(n)
+    w1 = f"{ENT}{TYPE}/w1"
+    pricing = attr_uri(TYPE, "pricing")
+    src = attr_uri(TYPE, "pricing_source_url")
+    ver = attr_uri(TYPE, "pricing_verified_at")
+
+    ex = EnrichmentExecutor(
+        n, InMemoryJobStore(), EnrichmentCache(),
+        _FakeAdapter({("Acme Widget", "pricing"): [
+            Verdict(value="0.0043 (2026-07-07)", confidence=0.95, source="fake",
+                    source_url="https://new.example/price",
+                    source_published_at=datetime(2026, 7, 7, tzinfo=timezone.utc))
+        ]}),
+    )
+    job = EnrichJob(
+        id="ow-1", tenant_id=TENANT, kg_name=KG, type_name=TYPE,
+        attributes=["pricing"], tier=EnrichmentTier.lite, status=JobStatus.queued,
+        created_at=datetime.now(timezone.utc), conflict_policy=ConflictPolicy.overwrite,
+        entity_uris=[w1],
+    )
+    await ex._jobs.create(job)
+    await ex.run(job, TENANT)
+
+    final = await ex._jobs.get(job.id)
+    assert [r.action for r in final.results] == ["conflict"]
+    # SINGULAR current value — stale replaced, not accreted.
+    assert _objects(n, w1, pricing) == ["0.0043 (2026-07-07)"]
+    # Provenance companions restamped to the FRESH source + date (stale gone).
+    assert _objects(n, w1, src) == ["https://new.example/price"]
+    assert _objects(n, w1, ver) == ["2026-07-07T00:00:00Z"]
+
+
+@pytest.mark.asyncio
+async def test_verify_does_not_replace_conflicting_value():
+    """The ONTA-245 contract is preserved: under `verify` the SAME conflict row does
+    NOT replace the existing value (a plain re-verify never clobbers) — the stale
+    value + its old provenance are retained. Only the EXPLICIT overwrite policy
+    replaces (asserted above)."""
+    n = PyoxiNeptune()
+    await _seed_conflict_entity(n)
+    w1 = f"{ENT}{TYPE}/w1"
+    pricing = attr_uri(TYPE, "pricing")
+    src = attr_uri(TYPE, "pricing_source_url")
+
+    ex = EnrichmentExecutor(
+        n, InMemoryJobStore(), EnrichmentCache(),
+        _FakeAdapter({("Acme Widget", "pricing"): [
+            Verdict(value="0.0043 (2026-07-07)", confidence=0.95, source="fake",
+                    source_url="https://new.example/price",
+                    source_published_at=datetime(2026, 7, 7, tzinfo=timezone.utc))
+        ]}),
+    )
+    job = EnrichJob(
+        id="vf-1", tenant_id=TENANT, kg_name=KG, type_name=TYPE,
+        attributes=["pricing"], tier=EnrichmentTier.lite, status=JobStatus.queued,
+        created_at=datetime.now(timezone.utc), conflict_policy=ConflictPolicy.verify,
+        entity_uris=[w1],
+    )
+    await ex._jobs.create(job)
+    await ex.run(job, TENANT)
+
+    final = await ex._jobs.get(job.id)
+    assert [r.action for r in final.results] == ["conflict"]
+    # Unchanged: the existing value + its old source persist (verify never clobbers).
+    assert _objects(n, w1, pricing) == ["0.0100 (2023-09-01)"]
+    assert _objects(n, w1, src) == ["https://old.example/price"]
+
+
+@pytest.mark.asyncio
+async def test_overwrite_keeps_incumbent_when_new_value_is_rejected():
+    """Data-loss guard: under `overwrite`, a conflict row whose FRESH value fails
+    validation (a non-conforming primitive → no primary triple is written) must NOT
+    clear the incumbent — clearing-without-replacing would EMPTY the attribute. The
+    old value is preserved."""
+    n = PyoxiNeptune()
+    kgg, onto = kg_graph_uri(TENANT, KG), tenant_graph_uri(TENANT)
+    xsd_int = "http://www.w3.org/2001/XMLSchema#integer"
+    stock = attr_uri(TYPE, "stock")
+    RDFS_RANGE = "http://www.w3.org/2000/01/rdf-schema#range"
+    # Declare `stock` with an INTEGER range so a non-numeric verdict is rejected.
+    await n.update(
+        f'INSERT DATA {{ GRAPH <{onto}> {{ '
+        f'<{stock}> <{RDF_TYPE}> <{RDF_PROPERTY}> ; <{RDFS_DOMAIN}> <{type_uri(TYPE)}> ; '
+        f'<{RDFS_RANGE}> <{xsd_int}> ; <{RDFS_LABEL}> "stock" . }} }}'
+    )
+    w1 = f"{ENT}{TYPE}/w1"
+    await n.update(
+        f'INSERT DATA {{ GRAPH <{kgg}> {{ '
+        f'<{w1}> <{RDF_TYPE}> <{type_uri(TYPE)}> ; <{RDFS_LABEL}> "Acme Widget" ; '
+        f'<{stock}> "42"^^<{xsd_int}> . }} }}'
+    )
+    ex = EnrichmentExecutor(
+        n, InMemoryJobStore(), EnrichmentCache(),
+        _FakeAdapter({("Acme Widget", "stock"): [
+            # Non-numeric → validate_triple rejects it for an integer range.
+            Verdict(value="lots", confidence=0.95, source="fake",
+                    source_url="https://new.example/stock")
+        ]}),
+    )
+    job = EnrichJob(
+        id="ow-rej", tenant_id=TENANT, kg_name=KG, type_name=TYPE,
+        attributes=["stock"], tier=EnrichmentTier.lite, status=JobStatus.queued,
+        created_at=datetime.now(timezone.utc), conflict_policy=ConflictPolicy.overwrite,
+        entity_uris=[w1],
+    )
+    await ex._jobs.create(job)
+    await ex.run(job, TENANT)
+
+    final = await ex._jobs.get(job.id)
+    assert [r.action for r in final.results] == ["conflict"]
+    # The incumbent integer is preserved — NOT emptied by a clear-without-replace.
+    assert _objects(n, w1, stock) == ["42"]

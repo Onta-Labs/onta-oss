@@ -208,6 +208,15 @@ class EnrichCapability:
         # verb (refresh / re-verify / re-check / update / freshness), never a
         # persona-specific field.
         refresh = _looks_like_refresh(instruction)
+        # REFRESH-REPLACE mode (pf10 persona-eval sp-refresh-pricing): an EXPLICIT
+        # "replace stale values / make every number current" ask is a refresh that
+        # REPLACES rather than re-confirms. It is a strict subset of refresh, so it
+        # implies the refresh rail (`refresh = refresh or overwrite`) but flips the
+        # conflict policy to `overwrite` at execute time. A plain "refresh /
+        # re-verify" stays `verify` (ONTA-245 default preserved). Conservative
+        # detector — a false-positive overwrite destroys data.
+        overwrite = _looks_like_overwrite(instruction)
+        refresh = refresh or overwrite
         tier = _coerce_tier(req.get("tier"))
         requested_confidence = float(
             req.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
@@ -409,9 +418,13 @@ class EnrichCapability:
                 # execute time so a re-verify advances the freshness stamp without
                 # re-minting. Only set when true → non-refresh plans unchanged.
                 **({"refresh": True} if refresh else {}),
+                # Refresh-REPLACE mode: route to the `overwrite` conflict policy so a
+                # changed value is replaced (not just re-confirmed). Only set when the
+                # explicit replace intent is present → plain-refresh plans unchanged.
+                **({"overwrite": True} if overwrite else {}),
             },
             rationale=(
-                f"{'Refresh (re-verify)' if refresh else 'Enrich'} "
+                f"{('Refresh (replace)' if overwrite else 'Refresh (re-verify)') if refresh else 'Enrich'} "
                 f"{', '.join(attributes)} on {type_name}"
                 + (
                     f" for {subset_desc}" if subset_desc
@@ -434,13 +447,23 @@ class EnrichCapability:
                         else ""
                     )
                     + (
-                        " and re-verify the existing values (advancing their "
-                        "freshness stamp)."
+                        (
+                            " and REPLACE the existing values with the latest "
+                            "(stamping each with its source and verified date)."
+                            if overwrite
+                            else " and re-verify the existing values (advancing "
+                            "their freshness stamp)."
+                        )
                         if refresh
                         else " and stage the results for review."
                     )
                 ),
                 "refresh": refresh,
+                # Surface the destructive REPLACE so the confirm UI can flag that
+                # changed values will be overwritten (not just re-verified). Only
+                # present when true → plain-refresh previews are byte-for-byte
+                # unchanged.
+                **({"overwrite": True} if overwrite else {}),
                 "scope": scope,
                 "tier": tier.value,
                 "limit": limit,
@@ -607,10 +630,15 @@ class EnrichCapability:
             tier=_coerce_tier(p.get("tier")),
             status=JobStatus.queued,
             created_at=datetime.now(timezone.utc),
-            # Refresh-existing mode re-verifies existing values (advancing the
-            # freshness stamp) via the `verify` policy; a normal enrich stages
-            # conflicts for review (`stage`). ONTA-245 F3.
-            conflict_policy=_refresh_conflict_policy()
+            # Conflict-policy selection (checked most-specific first):
+            #  * `overwrite`  — an EXPLICIT replace intent (pf10 sp-refresh-pricing):
+            #    a changed value is REPLACED with the fresh one (+ its source stamp).
+            #  * `verify`     — a plain refresh: re-confirm existing values and
+            #    advance the freshness stamp WITHOUT clobbering (ONTA-245 F3 default).
+            #  * `stage`      — a normal enrich: stage conflicts for review.
+            conflict_policy=_overwrite_conflict_policy()
+            if p.get("overwrite")
+            else _refresh_conflict_policy()
             if p.get("refresh")
             else _default_conflict_policy(),
             confidence_min=float(
@@ -1008,10 +1036,30 @@ def _refresh_conflict_policy():
     """Refresh-existing mode uses the `verify` policy: it re-confirms existing
     values and advances each fact's freshness stamp (`_verified_at`) WITHOUT
     overwriting the primary value or holding conflicts for review — the decay-
-    refresh contract (ONTA-245 F2/F3)."""
+    refresh contract (ONTA-245 F2/F3). This stays the DEFAULT for a plain
+    "refresh / re-verify / re-check / re-confirm" so ONTA-245's contract is
+    preserved; only an EXPLICIT replace intent (see `_looks_like_overwrite`)
+    escalates to `overwrite`."""
     from cograph_client.enrichment.models import ConflictPolicy
 
     return ConflictPolicy.verify
+
+
+def _overwrite_conflict_policy():
+    """Refresh-REPLACE mode uses the `overwrite` policy: it REPLACES a changed
+    existing value with the fresh one (delete-old + insert-new, the ONTA-236
+    attribute-update contract) and stamps the new value's source + `_verified_at`,
+    instead of re-confirming the stale value in place.
+
+    Reached ONLY when the instruction carries an EXPLICIT replace / update-to-
+    current intent (`_looks_like_overwrite`), NOT for a bare refresh — a
+    false-positive overwrite destroys data, so the default stays `verify`
+    (ONTA-245). Motivated by the pf10 Speko persona-eval task sp-refresh-pricing
+    ("refresh … so every number is CURRENT and sourced"), where `verify` correctly
+    fetched the fresh value but dropped it, leaving the stale one in place."""
+    from cograph_client.enrichment.models import ConflictPolicy
+
+    return ConflictPolicy.overwrite
 
 
 # Verbs that signal a REFRESH-EXISTING (re-verify a subset) intent rather than a
@@ -1034,6 +1082,58 @@ _REFRESH_RE = re.compile(
 def _looks_like_refresh(instruction: str) -> bool:
     """True when the instruction asks to REFRESH / re-verify existing values."""
     return bool(_REFRESH_RE.search(instruction or ""))
+
+
+# EXPLICIT replace/update-to-current intent — the SUBSET of refresh asks that want
+# a changed value REPLACED, not just re-confirmed. Kept deliberately CONSERVATIVE:
+# a false-positive overwrite destroys data (ONTA-245 warns the default must stay
+# `verify`), so this fires ONLY on an unmistakable replace signal and NEVER on a
+# bare "refresh / re-verify / re-check / re-confirm". Five signal shapes:
+#   (A) an explicit replace/overwrite/supersede verb;
+#   (B) "correct/fix the <stale> <data-noun>" (a value-targeted correction);
+#   (C) predicative "… is/are/stay/remain current|up-to-date|accurate" — NO
+#       article between the verb and "current", so attributive "the current
+#       price" (a plain re-verify of the *current* pricing) does NOT match;
+#   (D) "to/with (the) current|latest|newest|up-to-date|most recent" — the
+#       update-target form ("update the prices to current", "with the latest");
+#   (E) imperative "make/keep/ensure/bring [it/them/the <noun>] current|latest".
+# Grounded in the pf10 Speko persona-eval (sp-refresh-pricing: "refresh … so every
+# number is CURRENT and sourced"). Generic — no persona field is referenced.
+_REPLACE_RE = re.compile(
+    r"(?:"
+    r"\b(?:replace|replacing|replaces|overwrite|over-write|overwriting|"
+    r"supersede|supersedes|superseding)\b"
+    r"|"
+    r"\b(?:correct|correcting|corrects|corrected|fix|fixing|fixes|fixed)\s+"
+    r"(?:the\s+|these\s+|those\s+|any\s+|all\s+|our\s+)?"
+    r"(?:outdated\s+|out-of-date\s+|stale\s+|old\s+|wrong\s+|incorrect\s+|bad\s+)?"
+    r"(?:value|values|number|numbers|price|prices|figure|figures|entr\w*|"
+    r"record|records|field|fields|data|datum|rate|rates|score|scores|stat\w*|"
+    r"amount|amounts|address|addresses)\b"
+    r"|"
+    r"\b(?:is|are|be|been|being|stay|stays|staying|remain|remains|remaining)\s+"
+    r"(?:all\s+|now\s+|fully\s+|completely\s+|truly\s+|always\s+)?"
+    r"(?:current|up-?to-?date|accurate)\b"
+    r"|"
+    r"\b(?:to|with)\s+(?:the\s+|their\s+|its\s+)?"
+    r"(?:current|latest|newest|up-?to-?date|freshest|most\s+recent)\b"
+    r"|"
+    r"\b(?:make|makes|making|keep|keeps|keeping|ensure|ensures|ensuring|"
+    r"bring|brings|bringing)\s+"
+    r"(?:sure\s+)?(?:it|them|these|those|the|all|every|each|everything|our)?"
+    r"(?:\s+\w+){0,2}\s+"
+    r"(?:is\s+|are\s+|stay\s+|stays\s+|remain\s+|remains\s+|be\s+)?"
+    r"(?:current|up-?to-?date|latest|newest|freshest|accurate)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_overwrite(instruction: str) -> bool:
+    """True when the instruction EXPLICITLY asks to REPLACE existing values with
+    fresh ones (route refresh → `overwrite`), not merely re-verify them (`verify`).
+    Conservative by design — see `_REPLACE_RE`."""
+    return bool(_REPLACE_RE.search(instruction or ""))
 
 
 def _looks_composite(samples: list[str]) -> bool:
