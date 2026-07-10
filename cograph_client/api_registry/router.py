@@ -25,9 +25,14 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
 from .catalog import ApiSourceCatalog
+from .nppes_taxonomy import normalize_taxonomy
 from .spec import ApiSourceSpec
 
 logger = logging.getLogger(__name__)
+
+# NUCC-backed specialty parameter (NPPES): its bound value must be an official
+# NUCC taxonomy description, not a verbatim NL term — see ``_normalize_taxonomy``.
+_TAXONOMY_PARAM = "taxonomy_description"
 
 # Routing modes the "choose" step may emit.
 MODE_API_ONLY = "api_only"
@@ -405,6 +410,29 @@ def _guard_geo_scope(decision: RoutingDecision, query: str, by_slug: dict) -> No
         decision.mode = MODE_API_PLUS_WEB
 
 
+def _normalize_taxonomy(decision: RoutingDecision, by_slug: dict) -> None:
+    """Rewrite a `taxonomy_description` binding to its official NUCC description.
+
+    The router binds `taxonomy_description` VERBATIM from the NL query, but NPPES
+    matches only official NUCC descriptions — so "neurosurgery" / "orthopedic
+    surgeon" (or a raw NUCC code) return zero records. When a picked endpoint
+    exposes a `taxonomy_description` param, normalize its bound value through the
+    curated synonym/code map. Unmapped terms pass through verbatim, so this can
+    only CORRECT a known-wrong term, never regress a working one.
+    """
+    for pick in decision.picks:
+        current = pick.bindings.get(_TAXONOMY_PARAM)
+        if not current:
+            continue
+        spec = by_slug.get(pick.slug)
+        ep = spec.endpoint(pick.endpoint) if spec else None
+        if ep is None or not any(p.name == _TAXONOMY_PARAM for p in ep.params):
+            continue
+        normalized = normalize_taxonomy(current)
+        if normalized != current:
+            pick.bindings[_TAXONOMY_PARAM] = normalized
+
+
 def _validate_decision(
     obj: dict, candidates: list[ApiSourceSpec], *, query: str = ""
 ) -> RoutingDecision:
@@ -441,6 +469,10 @@ def _validate_decision(
     decision = RoutingDecision(
         mode=mode, picks=picks, rationale=str(obj.get("rationale", "")).strip()
     )
+    # Correct a colloquial/derived specialty term to its official NUCC
+    # description so NPPES can match it (else zero records). No-op for unmapped
+    # terms and non-taxonomy endpoints.
+    _normalize_taxonomy(decision, by_slug)
     # Deterministic backstop for the LLM's geo-scope guidance: never let a broad
     # (county/region/radius) ask silently narrow to a city/postal param.
     _guard_geo_scope(decision, query, by_slug)
