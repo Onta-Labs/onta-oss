@@ -2017,11 +2017,19 @@ class EnrichmentExecutor:
             # Default to ``string`` if a datatype somehow wasn't resolved for this
             # attribute (defensive — _declare_attributes covers every applied attr).
             datatype = resolved_datatypes.get(r.attribute, "string")
-            triples.extend(
-                self._instance_triples_for_value(
-                    r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
-                )
+            value_triples = self._instance_triples_for_value(
+                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
             )
+            # Only stamp provenance for a value that was ACTUALLY written. A rejected
+            # primitive (validate_triple → no triple) writes no primary value; for a
+            # conflict row under `overwrite` the incumbent is then RETAINED (see
+            # :meth:`_overwrite_clear_targets`), so emitting fresh `_source_url` /
+            # `_verified_at` here would falsely cite — ON THE OLD VALUE — a source
+            # that DISAGREED with it. Gate the citation on the same condition as the
+            # primary value (reviewer finding).
+            if not value_triples:
+                continue
+            triples.extend(value_triples)
             # Provenance companions are user-facing citations (URLs / free text) —
             # plain string literals — EXCEPT `<attr>_verified_at`, which
             # _provenance_triples types as xsd:dateTime so typed date FILTERs match.

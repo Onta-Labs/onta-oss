@@ -316,15 +316,18 @@ async def test_verify_does_not_replace_conflicting_value():
 
 
 @pytest.mark.asyncio
-async def test_overwrite_keeps_incumbent_when_new_value_is_rejected():
-    """Data-loss guard: under `overwrite`, a conflict row whose FRESH value fails
-    validation (a non-conforming primitive → no primary triple is written) must NOT
-    clear the incumbent — clearing-without-replacing would EMPTY the attribute. The
-    old value is preserved."""
+async def test_overwrite_keeps_incumbent_and_skips_provenance_when_value_rejected():
+    """Data-loss + citation-integrity guard: under `overwrite`, a conflict row whose
+    FRESH value fails validation (a non-conforming primitive → no primary triple is
+    written) must (1) NOT clear the incumbent — clearing-without-replacing would EMPTY
+    the attribute — and (2) NOT stamp fresh `_source_url` / `_verified_at`, which
+    would falsely cite, on the RETAINED old value, a source that DISAGREED with it."""
     n = PyoxiNeptune()
     kgg, onto = kg_graph_uri(TENANT, KG), tenant_graph_uri(TENANT)
     xsd_int = "http://www.w3.org/2001/XMLSchema#integer"
     stock = attr_uri(TYPE, "stock")
+    stock_src = attr_uri(TYPE, "stock_source_url")
+    stock_ver = attr_uri(TYPE, "stock_verified_at")
     RDFS_RANGE = "http://www.w3.org/2000/01/rdf-schema#range"
     # Declare `stock` with an INTEGER range so a non-numeric verdict is rejected.
     await n.update(
@@ -343,7 +346,8 @@ async def test_overwrite_keeps_incumbent_when_new_value_is_rejected():
         _FakeAdapter({("Acme Widget", "stock"): [
             # Non-numeric → validate_triple rejects it for an integer range.
             Verdict(value="lots", confidence=0.95, source="fake",
-                    source_url="https://new.example/stock")
+                    source_url="https://new.example/stock",
+                    source_published_at=datetime(2026, 7, 7, tzinfo=timezone.utc))
         ]}),
     )
     job = EnrichJob(
@@ -357,5 +361,8 @@ async def test_overwrite_keeps_incumbent_when_new_value_is_rejected():
 
     final = await ex._jobs.get(job.id)
     assert [r.action for r in final.results] == ["conflict"]
-    # The incumbent integer is preserved — NOT emptied by a clear-without-replace.
+    # (1) The incumbent integer is preserved — NOT emptied by a clear-without-replace.
     assert _objects(n, w1, stock) == ["42"]
+    # (2) No fresh provenance was stamped onto the retained (disagreeing) value.
+    assert _objects(n, w1, stock_src) == []
+    assert _objects(n, w1, stock_ver) == []

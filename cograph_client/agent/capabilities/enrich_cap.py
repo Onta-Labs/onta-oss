@@ -1084,26 +1084,36 @@ def _looks_like_refresh(instruction: str) -> bool:
     return bool(_REFRESH_RE.search(instruction or ""))
 
 
-# EXPLICIT replace/update-to-current intent — the SUBSET of refresh asks that want
-# a changed value REPLACED, not just re-confirmed. Kept deliberately CONSERVATIVE:
-# a false-positive overwrite destroys data (ONTA-245 warns the default must stay
-# `verify`), so this fires ONLY on an unmistakable replace signal and NEVER on a
-# bare "refresh / re-verify / re-check / re-confirm". Five signal shapes:
-#   (A) an explicit replace/overwrite/supersede verb;
-#   (B) "correct/fix the <stale> <data-noun>" (a value-targeted correction);
-#   (C) predicative "… is/are/stay/remain current|up-to-date|accurate" — NO
-#       article between the verb and "current", so attributive "the current
-#       price" (a plain re-verify of the *current* pricing) does NOT match;
-#   (D) "to/with (the) current|latest|newest|up-to-date|most recent" — the
-#       update-target form ("update the prices to current", "with the latest");
-#   (E) imperative "make/keep/ensure/bring [it/them/the <noun>] current|latest".
-# Grounded in the pf10 Speko persona-eval (sp-refresh-pricing: "refresh … so every
-# number is CURRENT and sourced"). Generic — no persona field is referenced.
-_REPLACE_RE = re.compile(
+# EXPLICIT replace intent — the SUBSET of asks that want a changed value REPLACED,
+# not merely re-confirmed or first-filled. Kept deliberately CONSERVATIVE: a
+# false-positive overwrite destroys data with no review in the auto-confirm/MCP path
+# (ONTA-245 warns the default must stay `verify`/`stage`), so `_looks_like_overwrite`
+# fires ONLY when the replace intent is UNMISTAKABLE. Two triggers (see the function):
+#
+# (A) An explicit REPLACE VERB — replace / overwrite / supersede / swap out. This
+#     names the destructive act directly, so it fires REGARDLESS of a refresh verb.
+_REPLACE_VERB_RE = re.compile(
+    r"\b(?:replace|replaces|replacing|replaced|overwrite|overwrites|overwriting|"
+    r"over-write|supersede|supersedes|superseding|superseded|"
+    r"swap(?:s|ped|ping)?\s+out)\b",
+    re.IGNORECASE,
+)
+
+# (B) An explicit replace-GOAL signal that is only trusted TOGETHER WITH a refresh
+#     verb (see `_looks_like_overwrite`), so a first-fill "enrich/fill/map/link …
+#     with the latest X" — which is a value DESCRIPTOR for a FILL, not a replace —
+#     NEVER routes to overwrite (it stays the safe non-destructive `stage`). Three
+#     goal shapes, all requiring the refresh gate:
+#       * shape B — "correct/fix the <stale> <data-noun>" (a value-targeted fix);
+#       * imperative — "update/bring/make/set <noun> TO (the) current|latest|
+#         up-to-date|most recent" (the "to <target>" is what marks a replace, not a
+#         bare "with the latest" descriptor);
+#       * purpose clause — "SO (that) … is|are|be|stay|remain current|the latest|
+#         up-to-date|most recent" (anchored on "so"/"so that", NOT a bare
+#         "that … is current" state-check — this carries the pf10 persona case
+#         "refresh … so every number is current and sourced").
+_REPLACE_GOAL_RE = re.compile(
     r"(?:"
-    r"\b(?:replace|replacing|replaces|overwrite|over-write|overwriting|"
-    r"supersede|supersedes|superseding)\b"
-    r"|"
     r"\b(?:correct|correcting|corrects|corrected|fix|fixing|fixes|fixed)\s+"
     r"(?:the\s+|these\s+|those\s+|any\s+|all\s+|our\s+)?"
     r"(?:outdated\s+|out-of-date\s+|stale\s+|old\s+|wrong\s+|incorrect\s+|bad\s+)?"
@@ -1111,19 +1121,14 @@ _REPLACE_RE = re.compile(
     r"record|records|field|fields|data|datum|rate|rates|score|scores|stat\w*|"
     r"amount|amounts|address|addresses)\b"
     r"|"
-    r"\b(?:is|are|be|been|being|stay|stays|staying|remain|remains|remaining)\s+"
-    r"(?:all\s+|now\s+|fully\s+|completely\s+|truly\s+|always\s+)?"
-    r"(?:current|up-?to-?date|accurate)\b"
+    r"\b(?:update|updates|updating|bring|brings|bringing|make|makes|making|"
+    r"set|sets|setting|reset|resets|resetting)\s+"
+    r"(?:\w+\s+){0,3}?to\s+(?:the\s+|their\s+|its\s+)?"
+    r"(?:current|latest|newest|up[-\s]?to[-\s]?date|most\s+recent)\b"
     r"|"
-    r"\b(?:to|with)\s+(?:the\s+|their\s+|its\s+)?"
-    r"(?:current|latest|newest|up-?to-?date|freshest|most\s+recent)\b"
-    r"|"
-    r"\b(?:make|makes|making|keep|keeps|keeping|ensure|ensures|ensuring|"
-    r"bring|brings|bringing)\s+"
-    r"(?:sure\s+)?(?:it|them|these|those|the|all|every|each|everything|our)?"
-    r"(?:\s+\w+){0,2}\s+"
-    r"(?:is\s+|are\s+|stay\s+|stays\s+|remain\s+|remains\s+|be\s+)?"
-    r"(?:current|up-?to-?date|latest|newest|freshest|accurate)\b"
+    r"\bso\s+(?:that\s+)?(?:\w+\s+){0,6}?"
+    r"(?:is|are|be|stay|stays|remain|remains)\s+(?:the\s+)?"
+    r"(?:current|latest|newest|up[-\s]?to[-\s]?date|most\s+recent)\b"
     r")",
     re.IGNORECASE,
 )
@@ -1131,9 +1136,17 @@ _REPLACE_RE = re.compile(
 
 def _looks_like_overwrite(instruction: str) -> bool:
     """True when the instruction EXPLICITLY asks to REPLACE existing values with
-    fresh ones (route refresh → `overwrite`), not merely re-verify them (`verify`).
-    Conservative by design — see `_REPLACE_RE`."""
-    return bool(_REPLACE_RE.search(instruction or ""))
+    fresh ones (route → `overwrite`), not merely re-verify (`verify`) or first-fill
+    (`stage`). Conservative by design — a false-positive overwrite deletes a
+    conflicting value with no review. Fires ONLY when EITHER an explicit replace
+    VERB is present (A), OR the ask is already a refresh AND carries an explicit
+    replace-GOAL signal (B). Gating the goal signals behind `_looks_like_refresh`
+    is what keeps a benign first-fill ("enrich each vendor with the latest pricing")
+    on the safe `stage` path instead of destructively overwriting."""
+    text = instruction or ""
+    if _REPLACE_VERB_RE.search(text):
+        return True
+    return bool(_looks_like_refresh(text) and _REPLACE_GOAL_RE.search(text))
 
 
 def _looks_composite(samples: list[str]) -> bool:
