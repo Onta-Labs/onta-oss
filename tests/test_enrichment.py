@@ -40,6 +40,18 @@ from cograph_client.enrichment.sources.wikidata import (
 )
 
 
+# The subclass-aware entity-type constraint the enrichment SELECT/COUNT now emits
+# (Fix B): a reflexive `a/rdfs:subClassOf*` closure instead of a bare `a`, so
+# enriching a supertype reaches its leaf-typed instances too. `*` is zero-or-more,
+# so a directly-typed entity still matches (reflexive) — same predicate IRI that
+# graph.ontology_queries.insert_subtype writes.
+_MENTOR_TYPED = (
+    "?e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/"
+    "<http://www.w3.org/2000/01/rdf-schema#subClassOf>* "
+    "<https://cograph.tech/types/Mentor> ."
+)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -478,10 +490,36 @@ def test_build_select_query_includes_limit_and_attrs():
 def test_build_select_query_no_scope_is_unchanged():
     """Neither scope nor entity_uris → no subset constraint; whole-type query."""
     q = _build_select_query("https://g/x", "Mentor", ["bio"], None)
-    assert "?e a <https://cograph.tech/types/Mentor> ." in q
+    # Subclass-aware, reflexive type constraint (Fix B): matches Mentor AND any
+    # subtype, and still matches a directly-typed Mentor (zero subClassOf hops).
+    assert _MENTOR_TYPED in q
+    assert "?e a <https://cograph.tech/types/Mentor> ." not in q  # no bare `a`
     # No subset machinery leaks in.
     assert "FILTER EXISTS" not in q
     assert "VALUES ?e" not in q
+
+
+def test_enrich_selection_is_subclass_aware():
+    """Fix B: the entity-type constraint is the reflexive subclass-closure path
+    ``a/rdfs:subClassOf*``, NOT a bare ``a``, so enriching a declared (often
+    instance-LESS) SUPERTYPE — e.g. ``Model``, whose real instances discovery
+    minted under LEAF types like ``SpeechToTextModel`` and connected up via
+    ``rdfs:subClassOf`` (insert_subtype) — reaches those leaf instances instead of
+    matching zero rows (the RCA e5 `sp-refresh-pricing` failure: "enrich all
+    Models" → total:0). ``*`` is zero-or-more, so a directly-typed entity still
+    matches (reflexive) — no regression for a leaf type. The traversal predicate
+    is the SAME ``rdfs:subClassOf`` IRI insert_subtype writes, so the edges align.
+    """
+    q = _build_select_query("https://g/x", "Model", ["pricing"], 100)
+    # Subclass-closure predicate on the type triple (not a bare `a`).
+    assert (
+        "?e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/"
+        "<http://www.w3.org/2000/01/rdf-schema#subClassOf>* "
+        "<https://cograph.tech/types/Model> ." in q
+    )
+    assert "?e a <https://cograph.tech/types/Model> ." not in q
+    # Reflexive: the `*` (zero-or-more) means a directly-typed Model still matches.
+    assert "subClassOf>* <https://cograph.tech/types/Model>" in q
 
 
 def test_build_select_query_scope_matches_bound_predicate_path():
@@ -509,7 +547,7 @@ def test_build_select_query_scope_matches_bound_predicate_path():
     # scope must NOT be wrapped in a FILTER EXISTS (the third COG-112 perf bug).
     assert "FILTER EXISTS" not in q
     assert "SELECT DISTINCT ?e WHERE {" in q
-    assert "?e a <https://cograph.tech/types/Mentor> ." in q
+    assert _MENTOR_TYPED in q  # subclass-aware, reflexive type constraint (Fix B)
     # The predicate is matched by a BOUND property-path alternation INLINED next
     # to ?e a <Type> — Neptune uses the POS index. The scope must NOT use a
     # variable predicate (?e ?p ?sv + FILTER(?p IN ...)). (The attribute-value
@@ -617,7 +655,7 @@ def test_build_select_query_entity_uris_uses_values_block():
         "https://cograph.tech/entities/Mentor/m2",
     ]
     q = _build_select_query("https://g/x", "Mentor", ["bio"], None, entity_uris=uris)
-    assert "?e a <https://cograph.tech/types/Mentor> ." in q
+    assert _MENTOR_TYPED in q  # subclass-aware, reflexive type guard (Fix B)
     assert "VALUES ?e {" in q
     assert "<https://cograph.tech/entities/Mentor/m1>" in q
     assert "<https://cograph.tech/entities/Mentor/m2>" in q
@@ -734,8 +772,8 @@ def test_scope_subselect_dedups_and_caps():
     sub = _scope_subselect("Mentor", scope, pred_iris, limit=50)
     # De-dup: a DISTINCT sub-select on ?e.
     assert "SELECT DISTINCT ?e WHERE {" in sub
-    # Typed inside the sub-select.
-    assert "?e a <https://cograph.tech/types/Mentor> ." in sub
+    # Typed inside the sub-select — subclass-aware, reflexive constraint (Fix B).
+    assert _MENTOR_TYPED in sub
     # Inline bound-predicate scope triple — no EXISTS wrapper.
     assert "FILTER EXISTS" not in sub
     assert (
@@ -2128,10 +2166,14 @@ def test_count_entities_honors_scope_and_entity_uris():
         assert "VALUES ?e {" in captured["q"]
         assert "FILTER EXISTS" not in captured["q"]
 
-        # No-subset path: bare type count, no subset machinery.
+        # No-subset path: whole-type count, no subset machinery — but the type
+        # constraint is subclass-aware (Fix B), so counting a supertype includes
+        # its leaf-typed instances (and reflexively its own directly-typed ones).
         await executor.count_entities("test-tenant", "kg", "Mentor")
         assert "FILTER EXISTS" not in captured["q"]
         assert "VALUES ?e" not in captured["q"]
+        assert _MENTOR_TYPED in captured["q"]
+        assert "?e a <https://cograph.tech/types/Mentor> ." not in captured["q"]
 
     asyncio.run(run())
 

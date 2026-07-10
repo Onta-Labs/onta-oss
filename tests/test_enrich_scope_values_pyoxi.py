@@ -33,6 +33,7 @@ from cograph_client.graph.queries import (  # noqa: E402
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
+RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
 RDFS_DOMAIN = "http://www.w3.org/2000/01/rdf-schema#domain"
 ONTO = "https://cograph.tech/onto/"
@@ -124,6 +125,41 @@ async def test_select_scope_value_uris_matches_relationship_target_label():
         TENANT, KG, TYPE, "made_by", ["deepgram"]  # lowercase; label is "Deepgram"
     )
     assert uris == [f"{ENT}{TYPE}/w1"], uris
+
+
+@pytest.mark.asyncio
+async def test_count_entities_supertype_reaches_leaf_typed_instances():
+    """Fix B (real store): enriching a declared SUPERTYPE must reach instances
+    minted under LEAF subtypes, via the reflexive ``a/rdfs:subClassOf*`` closure.
+
+    Models the RCA voice-models KG: ``Model`` is a declared, instance-LESS
+    supertype; discovery minted the real instances under LEAF types
+    (``SpeechToTextModel``, ``RealtimeModel``) and connected them up with
+    ``rdfs:subClassOf`` edges (as insert_subtype writes). A bare ``?e a <Model>``
+    counted ZERO (the e5 failure); the closure counts all 3 leaf instances. The
+    ``*`` is zero-or-more, so a directly-typed ``Model`` (m0 below) is ALSO counted
+    (reflexive) — proving the closure did not lose direct matches."""
+    n = PyoxiNeptune()
+    kgg = kg_graph_uri(TENANT, KG)
+    sup = type_uri("Model")
+    stt = type_uri("SpeechToTextModel")
+    rt = type_uri("RealtimeModel")
+    await n.update(
+        f"INSERT DATA {{ GRAPH <{kgg}> {{ "
+        # Subtype lineage: both leaves are subClassOf Model.
+        f"<{stt}> <{RDFS_SUBCLASSOF}> <{sup}> . "
+        f"<{rt}> <{RDFS_SUBCLASSOF}> <{sup}> . "
+        # 1 directly-typed Model (reflexive case) + 2 leaf-typed instances.
+        f"<{ENT}Model/m0> <{RDF_TYPE}> <{sup}> . "
+        f"<{ENT}SpeechToTextModel/s1> <{RDF_TYPE}> <{stt}> . "
+        f"<{ENT}RealtimeModel/r1> <{RDF_TYPE}> <{rt}> . "
+        f"}} }}"
+    )
+    ex = _executor(n)
+    # Enriching the supertype counts the directly-typed one AND both leaves = 3.
+    assert await ex.count_entities(TENANT, KG, "Model") == 3
+    # A leaf type still counts exactly its own instances (no over-reach upward).
+    assert await ex.count_entities(TENANT, KG, "SpeechToTextModel") == 1
 
 
 @pytest.mark.asyncio
