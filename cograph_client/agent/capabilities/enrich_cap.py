@@ -818,16 +818,6 @@ def _match_type_in_text(text: str, known_types: list[str]) -> str | None:
     return best
 
 
-def _names_type(text: str, type_name: str) -> bool:
-    """True if ``type_name`` is NAMED (as a standalone single word or a contiguous
-    CamelCase phrase) in ``text`` — the corroboration test A-1 uses to decide an
-    explicit caller ``type_name`` is authoritative. Runs the SAME attribute-guard /
-    CamelCase tokenizer as :func:`_match_type_in_text`, so a type appearing only
-    inside an attribute name / scope-qualifier substring does NOT count as named."""
-    simple_first, phrase = _tokenize_for_match(text)
-    return _type_match_index(type_name, simple_first, phrase) is not None
-
-
 def _resolve_target_type(
     instruction: str,
     known_types: list[str],
@@ -837,11 +827,6 @@ def _resolve_target_type(
     """Pick the type to enrich, PREFERRING the one named in the LIVE turn.
 
     Order:
-      0. (A-1) an explicit, KNOWN caller ``selected`` that the user ALSO NAMES in
-         the live turn is authoritative — return it before the general text match,
-         so an INCIDENTAL co-mention (a scope qualifier / negation / attribute-name
-         token) can't override the type the caller explicitly targeted. See the
-         "why corroboration, not medium" note below.
       1. a known type named in the CURRENT message wins — the user just said it,
          so it beats a stale mention still sitting in the accumulated
          ``instruction`` window (the session-context-bleed defense: without this,
@@ -851,7 +836,9 @@ def _resolve_target_type(
          the clarify-chain fallback, where the type was named an earlier turn of
          the SAME open ask and the current reply is a terse scope answer;
       3. else the selected (UI) type, when it is a real KG type OR when we
-         couldn't list types at all (preserve the legacy selection behavior);
+         couldn't list types at all (preserve the legacy selection behavior) —
+         this also honors a deliberate MCP ``type_name`` on a terse call that
+         names no type in prose;
       4. else, when the KG has exactly one type, that type;
       5. else None — the caller asks which type to enrich.
 
@@ -859,29 +846,22 @@ def _resolve_target_type(
     skipped and this collapses to the prior instruction-first behavior, so
     existing callers are unaffected.
 
-    Why corroboration (step 0), not the request ``medium``, gates A-1
-    ---------------------------------------------------------------
-    ``selected`` (``ctx.type_name``) means DIFFERENT things per interface: for the
-    Explorer it is a STICKY UI selection that can be STALE relative to what the
-    user just typed ("enrich brokers" while PropertyListing is selected — it must
-    NOT win); for the MCP/agent flow it is a DELIBERATE per-call argument the
-    calling agent constructs from the user's request each turn (the RCA `e15`
-    passed ``type_name='Model'`` explicitly, and the old code ignored it, resolving
-    Organization from a negation clause). We cannot tell sticky from deliberate by
-    the value alone, and the MCP server does not currently send a ``medium`` (so a
-    ``medium == "explorer"`` guard would leave the MCP path — the whole point —
-    unfixed, while breaking the empty-``medium`` sticky-selection unit tests).
-    CORROBORATION is the robust value-based discriminator that needs no plumbing:
-    honor ``selected`` first ONLY when the user's live turn INDEPENDENTLY names it
-    (as a head/standalone mention). A deliberate MCP ``type_name`` the user also
-    named → authoritative over an incidental co-mention; a stale sticky selection
-    the user is NOT talking about → never corroborated → never hijacks. When the
-    live turn names NO type at all, ``selected`` is still honored by the legacy
-    fallback (step 3), so a terse deliberate call is unaffected.
+    How the pf9 RCA matcher fixes land WITHOUT an explicit-type override
+    -------------------------------------------------------------------
+    The three tokenizer fixes below make first-STANDALONE-mention (steps 1-2)
+    resolve the RCA cases directly: the head type the user targets appears BEFORE
+    its scope/negation qualifiers in English, and a type named only inside an
+    attribute name ("supported_languages" → Language) or a solidly-spelled
+    CamelCase type ("RealtimeModel") is handled by the tokenizer — so
+    ``type_name='Model'`` / ``RealtimeModel`` resolve correctly from prose alone,
+    no separate "explicit arg wins" branch needed. Crucially this keeps a stale
+    sticky UI ``selected`` from hijacking: it only wins via step 3, when the live
+    turn names no type at all. (Honoring a DELIBERATE MCP ``type_name`` over a
+    scope-FIRST phrasing whose head is a different type — "for each Organization,
+    enrich its Models", type_name=Model — is a separate, plumbing-level follow-up:
+    ``selected`` alone can't be told apart from a sticky Explorer default, so we
+    don't guess. That case resolves to the head today, same as before this change.)
     """
-    live = current_message or instruction
-    if selected and selected in known_types and _names_type(live, selected):
-        return selected
     if current_message:
         named_now = _match_type_in_text(current_message, known_types)
         if named_now:
