@@ -10,9 +10,16 @@ logger = structlog.stdlib.get_logger("cograph.neptune")
 # Cap on how much of the endpoint's error body we surface, so a runaway HTML
 # error page can't blow up the retry prompt / logs.
 _MAX_ERROR_BODY_CHARS = 600
-# Scrub anything URL-shaped out of the diagnostic before it reaches the retry
-# prompt or logs — the Neptune host must never leak into user-facing text.
-_URL_RE = re.compile(r"https?://\S+")
+# Scrub anything endpoint-shaped out of the diagnostic before it reaches the
+# retry prompt or logs — the Neptune host must NEVER leak into user-facing text.
+# Covers three shapes seen in real 4xx/5xx bodies: a scheme URL, a bare
+# host:port (e.g. an Envoy/ALB upstream error `…neptune.amazonaws.com:8182` with
+# no scheme), and an AWS/Neptune hostname with no port.
+_SCRUB_RES = (
+    re.compile(r"https?://\S+"),
+    re.compile(r"\b(?:[\w-]+\.)+[\w-]+:\d+\b"),
+    re.compile(r"\b(?:[\w-]+\.)+(?:amazonaws\.com|neptune\.[\w.-]+)\b"),
+)
 
 
 class SparqlQueryError(RuntimeError):
@@ -54,7 +61,8 @@ def _extract_error_detail(response: httpx.Response) -> str:
         detail = ""
     if not detail:
         detail = (response.text or "").strip()
-    detail = _URL_RE.sub("[endpoint]", detail)
+    for _scrub in _SCRUB_RES:
+        detail = _scrub.sub("[endpoint]", detail)
     if len(detail) > _MAX_ERROR_BODY_CHARS:
         detail = detail[:_MAX_ERROR_BODY_CHARS] + "…(truncated)"
     return detail or f"{response.status_code} {response.reason_phrase}"

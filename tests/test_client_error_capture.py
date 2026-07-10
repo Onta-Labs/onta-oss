@@ -80,6 +80,33 @@ async def test_query_error_falls_back_to_raw_text_body():
 
 
 @pytest.mark.asyncio
+async def test_query_error_scrubs_scheme_less_host_port():
+    """A bare `host:port` with NO scheme (e.g. an Envoy/ALB upstream error) must
+    also be scrubbed — the Neptune host must never leak, and a scheme-only scrub
+    would miss this shape. The useful parse text around it survives."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            502,
+            text=(
+                "upstream connect error to "
+                "omnix-cluster.abc123.us-east-1.neptune.amazonaws.com:8182 "
+                "MalformedQueryException at line 5"
+            ),
+        )
+
+    client = _client_with(handler)
+    try:
+        with pytest.raises(SparqlQueryError) as ei:
+            await client.query("SELECT ?x WHERE { ?x ?p ?o }")
+    finally:
+        await client.close()
+    msg = str(ei.value)
+    assert "neptune.amazonaws.com" not in msg and "8182" not in msg
+    assert "[endpoint]" in msg
+    assert "MalformedQueryException" in msg  # useful diagnostic preserved
+
+
+@pytest.mark.asyncio
 async def test_query_success_unchanged():
     """The happy path is untouched — a 200 returns the parsed JSON as before."""
     body = {"head": {"vars": ["x"]}, "results": {"bindings": []}}
