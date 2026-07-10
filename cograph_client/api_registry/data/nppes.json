@@ -47,6 +47,7 @@
       "field_mappings": {
         "npi": "number",
         "enumeration_type": "enumeration_type",
+        "enumeration_date": "basic.enumeration_date",
         "organization_name": "basic.organization_name",
         "first_name": "basic.first_name",
         "last_name": "basic.last_name",

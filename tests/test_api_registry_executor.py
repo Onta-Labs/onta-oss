@@ -108,6 +108,28 @@ async def test_nppes_fixture_e2e_offset_pagination():
 
 
 @pytest.mark.asyncio
+async def test_nppes_projects_enumeration_date():
+    """NPPES returns the NPI enumeration date at basic.enumeration_date — the
+    recency signal the 'new-to-territory' persona ask depends on. The seed spec
+    must map it (else every enumeration_date ask returns 'No results found')."""
+    cat = make_api_source_catalog()
+    nppes = cat.get("nppes")
+    page0 = json.loads((FIXTURES / "search_cardiology_sf_skip0.json").read_text())
+    empty = json.loads((FIXTURES / "search_cardiology_sf_empty.json").read_text())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        skip = _params(request).get("skip", "0")
+        return httpx.Response(200, json=page0 if skip == "0" else empty)
+
+    res = await _src(handler).execute(
+        nppes, {"taxonomy_description": "cardiology", "state": "CA"}, max_rows=50
+    )
+    assert res.error is None
+    # The mapping is present and projects the ISO date verbatim from the body.
+    assert res.rows[0]["enumeration_date"] == "2007-05-09"
+
+
+@pytest.mark.asyncio
 async def test_nppes_request_shape_from_seed():
     cat = make_api_source_catalog()
     nppes = cat.get("nppes")
