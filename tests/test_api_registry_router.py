@@ -66,8 +66,45 @@ async def test_choose_picks_api_and_drops_bogus_binding():
     assert len(dec.picks) == 1
     pk = dec.picks[0]
     assert pk.slug == "nppes" and pk.endpoint == "search"
-    assert pk.bindings == {"taxonomy_description": "cardiology", "city": "San Francisco", "state": "CA"}
+    # "cardiology" is normalized to the official NUCC description NPPES matches
+    # on ("Cardiovascular Disease"); the bogus param is still dropped.
+    assert pk.bindings == {"taxonomy_description": "Cardiovascular Disease", "city": "San Francisco", "state": "CA"}
     assert "nppes" in dec.prefilter_slugs
+
+
+@pytest.mark.asyncio
+async def test_nppes_taxonomy_binding_normalized_to_nucc_description():
+    """Fix C: a colloquial specialty term the LLM bound VERBATIM ("neurosurgery")
+    is corrected to the official NUCC description NPPES matches on, end-to-end
+    through the router — the fix that unblocks the orthopedic/neurosurgery cohorts."""
+    dec = await route_query(
+        "neurosurgeons in Orange, CA",
+        _catalog(),
+        entity_type="healthcare_provider",
+        chat_fn=_chat({
+            "mode": "api_only",
+            "picks": [{"slug": "nppes", "endpoint": "search",
+                       "bindings": {"taxonomy_description": "neurosurgery",
+                                    "city": "Orange", "state": "CA"}}],
+        }),
+    )
+    assert dec.picks[0].bindings["taxonomy_description"] == "Neurological Surgery"
+
+
+@pytest.mark.asyncio
+async def test_nppes_unmapped_taxonomy_passes_through_unchanged():
+    """An already-working / unmapped specialty is not touched (no regression)."""
+    dec = await route_query(
+        "oncologists in Boston, MA",
+        _catalog(),
+        entity_type="healthcare_provider",
+        chat_fn=_chat({
+            "mode": "api_only",
+            "picks": [{"slug": "nppes", "endpoint": "search",
+                       "bindings": {"taxonomy_description": "oncology", "city": "Boston", "state": "MA"}}],
+        }),
+    )
+    assert dec.picks[0].bindings["taxonomy_description"] == "oncology"
 
 
 @pytest.mark.asyncio
@@ -243,9 +280,10 @@ async def test_broad_scope_ask_does_not_silently_bind_same_named_city():
     pk = dec.picks[0]
     # The greedy city binding is gone — not silently kept.
     assert "city" not in pk.bindings
-    # The bindings we CAN honor exactly are preserved.
+    # The bindings we CAN honor exactly are preserved (taxonomy normalized to
+    # the official NUCC description NPPES matches on).
     assert pk.bindings.get("state") == "CA"
-    assert pk.bindings.get("taxonomy_description") == "cardiology"
+    assert pk.bindings.get("taxonomy_description") == "Cardiovascular Disease"
     # Demoted so web search still runs over the full county.
     assert dec.mode == MODE_API_PLUS_WEB
     assert dec.uses_web and dec.uses_api
