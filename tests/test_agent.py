@@ -2350,6 +2350,108 @@ def test_resolve_target_type_backward_compatible_without_current_message():
 
 
 # --------------------------------------------------------------------------- #
+# pf9 persona-eval RCA — three matcher defects let enrichment target the WRONG
+# type (the `sp-refresh-pricing` arc on the voice-models KG):
+#   A-1  an explicit, KNOWN caller type_name the user also NAMES in the live turn
+#        must win over an incidental co-mention (a scope qualifier / negation /
+#        attribute-name token) — but a STALE sticky selection the user is not
+#        talking about must NOT hijack (corroboration, not blind authority).
+#   A-2  a solidly-spelled multi-word type ("RealtimeModel") must match when the
+#        user writes it exactly as the ontology spells it (CamelCase-split).
+#   A-3  first-STANDALONE-mention wins (head noun precedes its scope/negation
+#        qualifiers in English); a type named only INSIDE an attribute name
+#        ("supported_languages" → Language) is not a candidate; longest name only
+#        breaks a SAME-position tie.
+# --------------------------------------------------------------------------- #
+_VOICE_TYPES = [
+    "Model",
+    "Organization",
+    "RealtimeModel",
+    "GeminiModel",
+    "Language",
+]
+
+
+def test_explicit_type_name_beats_negated_comention():
+    """A-1: explicit type_name='Model' that the user ALSO names wins over an
+    incidental "(NOT Organization)" co-mention. The RCA e15 case: the persona's
+    "(NOT Organization entities)" workaround BACKFIRED — the old matcher selected
+    the very token it injected."""
+    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+
+    msg = "enrich pricing on Model entities (NOT Organization entities)"
+    assert _resolve_target_type(msg, _VOICE_TYPES, "Model", current_message=msg) == "Model"
+
+
+def test_head_type_beats_scope_qualifier_comention():
+    """A-3: with no explicit type, the head noun ("Model") the user targets wins
+    over a type named only as a scope qualifier ("…whose organization is X"). The
+    RCA e13 case (old longest-wins picked Organization(12) > Model(5))."""
+    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+
+    msg = "enrich for all Model entities whose organization is ElevenLabs"
+    assert _resolve_target_type(msg, _VOICE_TYPES, None, current_message=msg) == "Model"
+
+
+def test_type_inside_attribute_name_is_not_selected():
+    """A-3 attribute guard + A-2 CamelCase: "supported_languages for all
+    RealtimeModel …" resolves RealtimeModel, NOT the `Language` buried in the
+    attribute name. The RCA result-4 case (old matcher resolved Language and would
+    have spent ~$4.21 enriching Language nodes)."""
+    from cograph_client.agent.capabilities.enrich_cap import (
+        _match_type_in_text,
+        _resolve_target_type,
+    )
+
+    msg = "fill supported_languages for all RealtimeModel and GeminiModel entities"
+    assert (
+        _resolve_target_type(msg, _VOICE_TYPES, "RealtimeModel", current_message=msg)
+        == "RealtimeModel"
+    )
+    # The bare matcher must not mint `Language` from the attribute token alone.
+    assert (
+        _match_type_in_text("fill supported_languages for them", ["Language", "Model"])
+        is None
+    )
+
+
+def test_camelcase_solid_multiword_type_matches():
+    """A-2: a solidly-spelled multi-word type matches when written exactly as the
+    ontology spells it — the tokenizer CamelCase-splits so ['realtime','model']
+    lines up with the fused "RealtimeModel"."""
+    from cograph_client.agent.capabilities.enrich_cap import _match_type_in_text
+
+    assert _match_type_in_text("enrich RealtimeModel entities", _VOICE_TYPES) == "RealtimeModel"
+
+
+def test_stale_sticky_selection_not_named_does_not_hijack():
+    """A-1 corroboration guard: an explicit `selected` the user is NOT talking
+    about in the live turn must NOT win — it is only authoritative when the live
+    turn independently names it. Preserves the sticky-UI-selection defense while
+    fixing the deliberate-MCP-arg case."""
+    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+
+    msg = "enrich contact info for Organization entities"
+    # RealtimeModel is a stale selection the user never names → text match wins.
+    assert (
+        _resolve_target_type(msg, _VOICE_TYPES, "RealtimeModel", current_message=msg)
+        == "Organization"
+    )
+
+
+def test_same_position_tiebreak_prefers_longer_specific_type():
+    """A-3: longest name still breaks a SAME-position tie, so a specific
+    ``PropertyListing`` beats a bare ``Property`` (the behavior first-mention must
+    not regress)."""
+    from cograph_client.agent.capabilities.enrich_cap import _match_type_in_text
+
+    assert (
+        _match_type_in_text("enrich PropertyListing rows", ["Property", "PropertyListing"])
+        == "PropertyListing"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Multi-attribute parsing + schema intersection (2b)
 # --------------------------------------------------------------------------- #
 def test_validate_enrich_intersects_multi_attrs_with_schema():

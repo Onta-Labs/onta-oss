@@ -52,6 +52,7 @@ from cograph_client.graph.ontology_queries import (
     entity_uri as _entity_uri,
     get_attribute_range_query,
     upsert_attribute,
+    with_subclass_closure,
     xsd_to_datatype,
 )
 from cograph_client.graph.parser import parse_sparql_results
@@ -210,6 +211,31 @@ class _ProviderTally:
 
 def _type_uri(type_name: str) -> str:
     return f"{TYPE_URI_PREFIX}{type_name}"
+
+
+def _typed_pattern(type_name: str) -> str:
+    """The entity-type constraint for an enrich SELECT/COUNT — subclass-aware.
+
+    Emits ``?e a/rdfs:subClassOf* <types/T>`` (the reflexive subclass-closure
+    property path from :func:`with_subclass_closure`) INSTEAD of a bare
+    ``?e a <types/T>``, so enriching a SUPERTYPE reaches its leaf-typed instances
+    too. Discovery mints instance entities under LEAF types (e.g.
+    ``SpeechToTextModel``, ``RealtimeModel``) and connects them to declared —
+    often instance-LESS — supertypes (e.g. ``Model``) via ``rdfs:subClassOf``
+    edges written by :func:`graph.ontology_queries.insert_subtype`. A bare
+    ``?e a <types/Model>`` therefore matched ZERO rows for "enrich all Models";
+    the closure walks the (tiny) class hierarchy so both directly-typed AND
+    subtype-typed entities match.
+
+    ``*`` is zero-or-more, so the path is REFLEXIVE — a directly-typed entity
+    still matches with zero ``subClassOf`` hops, i.e. no behavior change for a
+    leaf type. Neptune supports SPARQL 1.1 property paths and the class hierarchy
+    is small, so the traversal cost is negligible. The traversal predicate
+    (``rdfs:subClassOf``) is the SAME IRI ``insert_subtype`` writes, so the edges
+    line up. This is a READ inside the enrichment engine — it does NOT touch the
+    ``insert_facts`` / ``refresh_after_write`` write path.
+    """
+    return f"?e {with_subclass_closure(type_name)} <{_type_uri(type_name)}> ."
 
 
 def _attr_uri(type_name: str, attr: str) -> str:
@@ -614,12 +640,11 @@ def _scope_subselect(
     is applied INSIDE the sub-select so the cap bounds the selected entities (and
     the subsequent attribute hydration), matching the no-scope ``LIMIT`` semantics.
     """
-    type_uri = _type_uri(type_name)
     limit_clause = f"\n    LIMIT {int(limit)}" if limit else ""
     scope_patterns = _scope_block(type_name, scope, pred_iris)
     return (
         f"  {{ SELECT DISTINCT ?e WHERE {{\n"
-        f"    ?e a <{type_uri}> .\n"
+        f"    {_typed_pattern(type_name)}\n"
         f"  {scope_patterns}\n"
         f"  }}{limit_clause} }}\n"
     )
@@ -709,12 +734,11 @@ def _scope_values_subselect(
     """Bounded ``SELECT DISTINCT ?e`` reducing ``?e`` to the multi-value-scoped
     (and, if ``limit`` given, capped) subset — the ``IN`` twin of
     :func:`_scope_subselect`."""
-    type_uri = _type_uri(type_name)
     limit_clause = f"\n    LIMIT {int(limit)}" if limit else ""
     scope_patterns = _scope_values_block(pred_iris, values)
     return (
         f"  {{ SELECT DISTINCT ?e WHERE {{\n"
-        f"    ?e a <{type_uri}> .\n"
+        f"    {_typed_pattern(type_name)}\n"
         f"  {scope_patterns}\n"
         f"  }}{limit_clause} }}\n"
     )
@@ -826,7 +850,6 @@ def _build_select_query(
         empty list only arises for an empty/invalid predicate, in which case the
         scope matches nothing (fast, ``FILTER(false)``, no per-entity scan).
     """
-    type_uri = _type_uri(type_name)
     attr_uris = [_attr_uri(type_name, a) for a in attributes]
     fallback_uris = [_attr_uri(type_name, a) for a in NAME_FALLBACK_ATTRS]
 
@@ -853,7 +876,9 @@ def _build_select_query(
     # `?e a <Type>` + a trailing top-level LIMIT exactly as before.
     if entity_uris:
         values = " ".join(f"<{u}>" for u in _validate_entity_uris(entity_uris))
-        type_clause = f"  ?e a <{type_uri}> .\n"
+        # Subclass-aware type guard (still constrains the VALUES set to the type
+        # or its subtypes, so a stray URI of another type is ignored).
+        type_clause = f"  {_typed_pattern(type_name)}\n"
         subset_clause = f"  VALUES ?e {{ {values} }}\n"
         limit_clause = f"\nLIMIT {int(limit)}" if limit else ""
     elif scope is not None:
@@ -865,7 +890,7 @@ def _build_select_query(
         )
         limit_clause = ""
     else:
-        type_clause = f"  ?e a <{type_uri}> .\n"
+        type_clause = f"  {_typed_pattern(type_name)}\n"
         subset_clause = ""
         limit_clause = f"\nLIMIT {int(limit)}" if limit else ""
 
@@ -1056,7 +1081,7 @@ class EnrichmentExecutor:
         graph_uri = kg_graph_uri(tenant_id, kg_name)
         if entity_uris:
             values = " ".join(f"<{u}>" for u in _validate_entity_uris(entity_uris))
-            type_clause = f"  ?e a <{_type_uri(type_name)}> .\n"
+            type_clause = f"  {_typed_pattern(type_name)}\n"
             subset_clause = f"  VALUES ?e {{ {values} }}\n"
         elif scope is not None:
             pred_iris = await self._resolve_scope_predicate_iris(
@@ -1077,7 +1102,7 @@ class EnrichmentExecutor:
             type_clause = ""
             subset_clause = _scope_subselect(type_name, scope, pred_iris)
         else:
-            type_clause = f"  ?e a <{_type_uri(type_name)}> .\n"
+            type_clause = f"  {_typed_pattern(type_name)}\n"
             subset_clause = ""
         query = (
             f"SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <{graph_uri}> WHERE {{\n"

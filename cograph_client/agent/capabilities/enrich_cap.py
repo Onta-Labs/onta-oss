@@ -654,8 +654,30 @@ class EnrichCapability:
 # (case-insensitive, CamelCase- and plural-tolerant) and fall back to the
 # selection ONLY when the message names no known type — so a missing/wrong UI
 # selection no longer bails the plan to "couldn't determine the specifics".
-
-_TYPE_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*")
+#
+# Three matcher failure modes this block defends against (grounded RCA against the
+# voice-models persona eval — the `sp-refresh-pricing` arc):
+#   1. An INCIDENTAL type that appears only as a SCOPE qualifier ("…whose
+#      organization is X") or a NEGATION ("NOT Organization entities") must not
+#      beat the HEAD type the user targeted. The old "longest name named anywhere
+#      wins" tie-break picked Organization(12) over Model(5) — and the persona's
+#      "(NOT Organization…)" workaround BACKFIRED by injecting the very token the
+#      matcher then selected. Fix (A-3): first-STANDALONE-mention wins (the head
+#      noun precedes its scope/negation qualifiers in English), longest only as a
+#      same-position tie-break (so PropertyListing still beats Property).
+#   2. A type named only INSIDE an attribute name ("supported_languages" →
+#      Language) must not be selected. Fix (A-3): a snake/kebab/CamelCase COMPOUND
+#      token contributes its parts ONLY to phrase matching, never as a standalone
+#      single-word candidate — so "supported_languages" can't mint a bare
+#      ``Language`` match (only a genuine standalone "language(s)" can).
+#   3. A solidly-spelled multi-word type the user writes EXACTLY as the ontology
+#      spells it ("RealtimeModel", "GeminiModel") must match. Fix (A-2): the text
+#      tokenizer CamelCase-splits each word into adjacent sub-tokens, so the
+#      type's phrase ['realtime','model'] matches the fused "RealtimeModel".
+#
+# A single "word" for matching keeps ``_``/``-`` joined so a snake/kebab compound
+# stays atomic (mode 2); CamelCase splitting happens per-word in _camel_words.
+_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 
 
 async def _list_types(ctx: AgentContext) -> list[str]:
@@ -696,14 +718,15 @@ def _singularize(word: str) -> str:
     return w
 
 
-def _type_tokens(text: str) -> list[str]:
-    return [w.lower() for w in _TYPE_WORD_RE.findall(text or "")]
-
-
 def _camel_words(type_name: str) -> list[str]:
     """Split a type name into lowercase words: ``PropertyListing`` -> ['property',
     'listing'], ``URL`` -> ['url'], ``real_estate_agent`` -> ['real', 'estate',
-    'agent']. Lets a multi-word type be phrase-matched against the instruction."""
+    'agent']. Lets a multi-word type be phrase-matched against the instruction.
+
+    Also used to CamelCase-/underscore-split each raw word of the instruction text
+    (A-2), so a solidly-spelled multi-word type ("RealtimeModel") matches the same
+    way the user wrote it (fused) — the text word and the type name are tokenized
+    identically, so their sub-token phrases line up."""
     parts: list[str] = []
     for chunk in re.split(r"[\s_\-]+", type_name or ""):
         parts.extend(
@@ -712,41 +735,97 @@ def _camel_words(type_name: str) -> list[str]:
     return [p.lower() for p in parts if p]
 
 
-def _phrase_in_tokens(words: list[str], tokens: list[str]) -> bool:
-    """True if ``words`` appears as a contiguous run in ``tokens`` (each compared
-    singularized, so "property listings" matches the type ``PropertyListing``)."""
+def _tokenize_for_match(text: str) -> tuple[dict[str, int], list[str]]:
+    """Tokenize ``text`` for type-name matching → (simple_first, phrase).
+
+    ``phrase`` is EVERY singularized sub-token in order, with each raw word's
+    CamelCase/compound parts kept ADJACENT — so a multi-word type's phrase
+    (``['realtime','model']``) matches a fused ``RealtimeModel`` the user typed
+    (A-2). Position in ``phrase`` preserves word order for first-mention ordering.
+
+    ``simple_first`` maps a singularized token → the earliest ``phrase`` index at
+    which it appeared as a STANDALONE SIMPLE word (a raw word that is not a
+    multi-part compound). A snake/kebab/CamelCase COMPOUND (typically an attribute
+    the user named, e.g. ``supported_languages``, or a solid multi-word type) does
+    NOT register its individual parts here — so a bare single-word type like
+    ``Language`` cannot be matched by ``supported_languages`` (the attribute-name
+    guard, A-3), only by a genuine standalone "language(s)".
+    """
+    phrase: list[str] = []
+    simple_first: dict[str, int] = {}
+    for raw in _WORD_RE.findall(text or ""):
+        parts = _camel_words(raw)
+        if not parts:
+            continue
+        singular = [_singularize(p) for p in parts]
+        start = len(phrase)
+        phrase.extend(singular)
+        if len(parts) == 1 and singular[0] not in simple_first:
+            simple_first[singular[0]] = start
+    return simple_first, phrase
+
+
+def _first_phrase_index(phrase: list[str], words: list[str]) -> int | None:
+    """The earliest start index at which ``words`` appears as a contiguous run in
+    ``phrase`` (both already singularized), or None."""
+    span = len(words)
+    if span == 0 or span > len(phrase):
+        return None
+    for i in range(len(phrase) - span + 1):
+        if phrase[i : i + span] == words:
+            return i
+    return None
+
+
+def _type_match_index(
+    name: str, simple_first: dict[str, int], phrase: list[str]
+) -> int | None:
+    """Earliest token index at which type ``name`` is NAMED in the tokenized text,
+    or None. A single-word type must appear as a STANDALONE simple word (the
+    attribute-name guard, A-3); a multi-word (CamelCase) type as a contiguous
+    phrase (A-2)."""
+    words = _camel_words(name)
     if not words:
-        return False
-    w = [_singularize(x) for x in words]
-    t = [_singularize(x) for x in tokens]
-    span = len(w)
-    return any(t[i : i + span] == w for i in range(len(t) - span + 1))
+        return None
+    if len(words) == 1:
+        return simple_first.get(_singularize(words[0]))
+    return _first_phrase_index(phrase, [_singularize(w) for w in words])
 
 
 def _match_type_in_text(text: str, known_types: list[str]) -> str | None:
     """Return the known type NAMED in ``text``, or None.
 
-    A single-word type matches a (singularized) token; a multi-word (CamelCase)
-    type matches the full phrase in order. When several types match, the LONGEST
-    name wins so a specific ``PropertyListing`` beats a bare ``Property``.
+    Selection order (A-3): the type whose STANDALONE mention appears EARLIEST in
+    the text wins — the head noun the user targets precedes the scope-qualifier
+    ("…whose organization is X") and negation ("NOT Organization") clauses that
+    follow it in English, so first-mention naturally prefers the head over an
+    incidental co-mention without a fragile clause parser. On a tie (same start
+    position) the LONGER name wins, so a specific ``PropertyListing`` still beats a
+    bare ``Property``.
     """
-    tokens = _type_tokens(text)
-    if not tokens or not known_types:
+    simple_first, phrase = _tokenize_for_match(text)
+    if not phrase or not known_types:
         return None
-    singles = {_singularize(t) for t in tokens}
     best: str | None = None
-    best_len = -1
+    best_key: tuple[int, int] | None = None
     for name in known_types:
-        words = _camel_words(name)
-        if not words:
+        idx = _type_match_index(name, simple_first, phrase)
+        if idx is None:
             continue
-        if len(words) == 1:
-            hit = _singularize(words[0]) in singles
-        else:
-            hit = _phrase_in_tokens(words, tokens)
-        if hit and len(name) > best_len:
-            best, best_len = name, len(name)
+        key = (idx, -len(name))
+        if best_key is None or key < best_key:
+            best, best_key = name, key
     return best
+
+
+def _names_type(text: str, type_name: str) -> bool:
+    """True if ``type_name`` is NAMED (as a standalone single word or a contiguous
+    CamelCase phrase) in ``text`` — the corroboration test A-1 uses to decide an
+    explicit caller ``type_name`` is authoritative. Runs the SAME attribute-guard /
+    CamelCase tokenizer as :func:`_match_type_in_text`, so a type appearing only
+    inside an attribute name / scope-qualifier substring does NOT count as named."""
+    simple_first, phrase = _tokenize_for_match(text)
+    return _type_match_index(type_name, simple_first, phrase) is not None
 
 
 def _resolve_target_type(
@@ -758,6 +837,11 @@ def _resolve_target_type(
     """Pick the type to enrich, PREFERRING the one named in the LIVE turn.
 
     Order:
+      0. (A-1) an explicit, KNOWN caller ``selected`` that the user ALSO NAMES in
+         the live turn is authoritative — return it before the general text match,
+         so an INCIDENTAL co-mention (a scope qualifier / negation / attribute-name
+         token) can't override the type the caller explicitly targeted. See the
+         "why corroboration, not medium" note below.
       1. a known type named in the CURRENT message wins — the user just said it,
          so it beats a stale mention still sitting in the accumulated
          ``instruction`` window (the session-context-bleed defense: without this,
@@ -774,7 +858,30 @@ def _resolve_target_type(
     ``current_message`` is optional: when omitted (a direct/legacy call) step 1 is
     skipped and this collapses to the prior instruction-first behavior, so
     existing callers are unaffected.
+
+    Why corroboration (step 0), not the request ``medium``, gates A-1
+    ---------------------------------------------------------------
+    ``selected`` (``ctx.type_name``) means DIFFERENT things per interface: for the
+    Explorer it is a STICKY UI selection that can be STALE relative to what the
+    user just typed ("enrich brokers" while PropertyListing is selected — it must
+    NOT win); for the MCP/agent flow it is a DELIBERATE per-call argument the
+    calling agent constructs from the user's request each turn (the RCA `e15`
+    passed ``type_name='Model'`` explicitly, and the old code ignored it, resolving
+    Organization from a negation clause). We cannot tell sticky from deliberate by
+    the value alone, and the MCP server does not currently send a ``medium`` (so a
+    ``medium == "explorer"`` guard would leave the MCP path — the whole point —
+    unfixed, while breaking the empty-``medium`` sticky-selection unit tests).
+    CORROBORATION is the robust value-based discriminator that needs no plumbing:
+    honor ``selected`` first ONLY when the user's live turn INDEPENDENTLY names it
+    (as a head/standalone mention). A deliberate MCP ``type_name`` the user also
+    named → authoritative over an incidental co-mention; a stale sticky selection
+    the user is NOT talking about → never corroborated → never hijacks. When the
+    live turn names NO type at all, ``selected`` is still honored by the legacy
+    fallback (step 3), so a terse deliberate call is unaffected.
     """
+    live = current_message or instruction
+    if selected and selected in known_types and _names_type(live, selected):
+        return selected
     if current_message:
         named_now = _match_type_in_text(current_message, known_types)
         if named_now:
