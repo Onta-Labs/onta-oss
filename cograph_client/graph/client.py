@@ -1,3 +1,4 @@
+import re
 import ssl
 import time
 
@@ -5,6 +6,58 @@ import httpx
 import structlog
 
 logger = structlog.stdlib.get_logger("cograph.neptune")
+
+# Cap on how much of the endpoint's error body we surface, so a runaway HTML
+# error page can't blow up the retry prompt / logs.
+_MAX_ERROR_BODY_CHARS = 600
+# Scrub anything URL-shaped out of the diagnostic before it reaches the retry
+# prompt or logs — the Neptune host must never leak into user-facing text.
+_URL_RE = re.compile(r"https?://\S+")
+
+
+class SparqlQueryError(RuntimeError):
+    """A SPARQL request failed at the endpoint (HTTP 4xx/5xx).
+
+    Unlike ``httpx.HTTPStatusError`` (whose message is a generic
+    ``"Client error '400 Bad Request' for url '<host>/sparql'"`` that both
+    discards the endpoint's diagnostic body AND leaks the host), this carries
+    the endpoint's *parse error* — e.g. Neptune's ``MalformedQueryException``
+    naming the offending token — with the host scrubbed out. The NL→SPARQL
+    retry loop feeds ``str(err)`` back to the generator so a malformed query can
+    self-correct instead of retrying blind.
+    """
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(f"SPARQL endpoint returned {status_code}: {detail}")
+
+
+def _extract_error_detail(response: httpx.Response) -> str:
+    """Pull a host-scrubbed, length-capped diagnostic out of an error response.
+
+    Prefers the structured Neptune fields (``detailedMessage`` / ``message`` /
+    ``code``) when the body is JSON, else falls back to the raw text. Never
+    includes the endpoint URL/host.
+    """
+    detail = ""
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            msg = str(data.get("detailedMessage") or data.get("message") or "").strip()
+            code = str(data.get("code") or "").strip()
+            if msg and code and code not in msg:
+                detail = f"{code}: {msg}"
+            else:
+                detail = msg or code
+    except Exception:
+        detail = ""
+    if not detail:
+        detail = (response.text or "").strip()
+    detail = _URL_RE.sub("[endpoint]", detail)
+    if len(detail) > _MAX_ERROR_BODY_CHARS:
+        detail = detail[:_MAX_ERROR_BODY_CHARS] + "…(truncated)"
+    return detail or f"{response.status_code} {response.reason_phrase}"
 
 
 def _build_ssl_context(endpoint: str) -> ssl.SSLContext | bool:
@@ -64,7 +117,13 @@ class NeptuneClient:
             headers={"Accept": "application/sparql-results+json"},
         )
         duration_ms = round((time.monotonic() - start) * 1000, 1)
-        response.raise_for_status()
+        if response.is_error:
+            # Capture Neptune's parse-error body (the offending token in a
+            # MalformedQueryException) so the NL→SPARQL retry can self-correct,
+            # instead of discarding it via raise_for_status() and retrying blind.
+            detail = _extract_error_detail(response)
+            logger.warning("sparql_query_error", status=response.status_code, duration_ms=duration_ms, detail=detail)
+            raise SparqlQueryError(response.status_code, detail)
         logger.info("sparql_query", duration_ms=duration_ms, status=response.status_code)
         return response.json()
 
