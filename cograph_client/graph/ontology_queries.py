@@ -81,6 +81,25 @@ def insert_attribute(graph_uri: str, type_name: str, attr_name: str, description
     return f"INSERT DATA {{\n  GRAPH <{graph_uri}> {{\n{body}\n  }}\n}}"
 
 
+def delete_attribute_declaration(graph_uri: str, type_name: str, attr_name: str) -> str:
+    """Remove one attribute's ONTOLOGY declaration (rdf:Property + label/domain/
+    range/comment — every triple whose subject is the attr URI).
+
+    Built for the attr_meta companion migration (ONTA-262): enrichment used to
+    declare per-attribute provenance companions (``<attr>_source_url`` /
+    ``_provenance`` / ``_verified_at``) as first-class schema; those declarations
+    are what rendered companions as sibling columns, and the migration purges
+    them after re-keying the instance triples. Schema-graph only — instance
+    triples are untouched (they move via ``kg_writer.rewrite_predicates``).
+    Idempotent: deleting an absent declaration is a no-op.
+    """
+    a_uri = attr_uri(type_name, attr_name)
+    return (
+        f"WITH <{graph_uri}>\n"
+        f"DELETE {{ <{a_uri}> ?p ?o }} WHERE {{ <{a_uri}> ?p ?o }}"
+    )
+
+
 def upsert_type(graph_uri: str, name: str, description: str = "", parent_type: str | None = None) -> str:
     """Atomically UPSERT a type declaration — idempotent under agent retries.
 

@@ -61,8 +61,10 @@ from cograph_client.graph.ontology_queries import (
 )
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.provenance import (
+    attr_provenance_companion_uri,
     build_attribute_provenance_companions,
     build_provenance_triples,
+    legacy_attr_companion_uri,
 )
 from cograph_client.graph.queries import (
     kg_graph_uri,
@@ -858,14 +860,22 @@ def _build_select_query(
     fallback_uris = [_attr_uri(type_name, a) for a in NAME_FALLBACK_ATTRS]
 
     # Also pull each target attribute's EXISTING provenance companions
-    # (`<attr>_source_url` / `<attr>_verified_at`) so a CONFLICT row can carry the
+    # (`…/source_url` / `…/verified_at`) so a CONFLICT row can carry the
     # incumbent value's source + as-of alongside the proposed source — "hold BOTH
-    # disagreeing sources for review" (ONTA-246). Bounded: 2 extra predicates per
-    # attribute in the same OPTIONAL, so no per-entity scan is added.
+    # disagreeing sources for review" (ONTA-246). Bounded: 4 extra predicates per
+    # attribute in the same OPTIONAL, so no per-entity scan is added. DUAL-READ
+    # (ONTA-262): companions mint on the attr_meta namespace now, but a KG
+    # written before the migration still carries them on the legacy attribute
+    # namespace (`attrs/<attr>_<suffix>`) — fetch both shapes so incumbent
+    # citations keep rendering on un-migrated data.
     companion_uris = [
-        _attr_uri(type_name, f"{a}_{suffix}")
+        u
         for a in attributes
         for suffix in ("source_url", "verified_at")
+        for u in (
+            attr_provenance_companion_uri(type_name, a, suffix),
+            legacy_attr_companion_uri(type_name, a, suffix),
+        )
     ]
     fetch_uris = attr_uris + companion_uris
     in_list = ", ".join(f"<{u}>" for u in fetch_uris) if fetch_uris else "<urn:none>"
@@ -1296,12 +1306,26 @@ class EnrichmentExecutor:
                         # same selection (fetched via the extended in_list). Carried
                         # onto a conflict row so both sources are visible for review
                         # (ONTA-246). None when the existing value has no prior
-                        # provenance (e.g. an ingested value).
+                        # provenance (e.g. an ingested value). Dual-read (ONTA-262):
+                        # the attr_meta namespace is current; the legacy attribute-
+                        # namespace shape covers KGs written before the migration.
                         existing_source_url = ent["vals"].get(
-                            _attr_uri(job.type_name, f"{attribute}_source_url")
+                            attr_provenance_companion_uri(
+                                job.type_name, attribute, "source_url"
+                            )
+                        ) or ent["vals"].get(
+                            legacy_attr_companion_uri(
+                                job.type_name, attribute, "source_url"
+                            )
                         )
                         existing_verified_at = ent["vals"].get(
-                            _attr_uri(job.type_name, f"{attribute}_verified_at")
+                            attr_provenance_companion_uri(
+                                job.type_name, attribute, "verified_at"
+                            )
+                        ) or ent["vals"].get(
+                            legacy_attr_companion_uri(
+                                job.type_name, attribute, "verified_at"
+                            )
                         )
                         attr_strategy = strategy.attributes.get(attribute)
 
@@ -1562,21 +1586,18 @@ class EnrichmentExecutor:
                 )
             elif restamp_triples:
                 # No new fills, but a decay-refresh re-confirmed existing values:
-                # write ONLY the freshness re-stamps (+ their ontology declaration so
-                # the `_verified_at` column is first-class schema) so the clock still
-                # advances. Same shared write path; no primary value is rewritten.
-                restamp_attr_values: dict[str, list[str]] = {}
-                for _s, pred, val in restamp_triples:
-                    restamp_attr_values.setdefault(_local_name(pred), []).append(val)
-                resolved_datatypes = await self._declare_attributes(
-                    tenant_id, job.type_name, restamp_attr_values
-                )
+                # write ONLY the freshness re-stamps so the clock still advances.
+                # Same shared write path; no primary value is rewritten, and
+                # NOTHING is declared — companions are attr_meta metadata, never
+                # ontology attributes (ONTA-262; this branch used to declare
+                # `_verified_at` as "first-class schema", which is exactly what
+                # rendered it as a sibling column in every schema surface).
                 await insert_facts(self._neptune, graph_uri, restamp_triples)
                 await refresh_after_write(
                     self._neptune,
                     tenant_id=tenant_id,
                     kg_name=job.kg_name,
-                    affected_types=self._affected_types(job.type_name, resolved_datatypes),
+                    affected_types={job.type_name},
                 )
             # `stage` with at least one real conflict stays in `review` — those
             # conflicts are now the ONLY thing the review queue holds (the fills
@@ -1980,12 +2001,19 @@ class EnrichmentExecutor:
                 if datatype not in PRIMITIVE_TYPES
                 else _attr_uri(type_name, r.attribute)
             )
-            for pred in (
-                primary_pred,
-                _attr_uri(type_name, f"{r.attribute}_source_url"),
-                _attr_uri(type_name, f"{r.attribute}_provenance"),
-                _attr_uri(type_name, f"{r.attribute}_verified_at"),
-            ):
+            # Clear companions on BOTH shapes (ONTA-262): the attr_meta namespace
+            # (current mint) and the legacy attribute-namespace form, so an
+            # overwrite on a KG written before the migration removes the stale
+            # legacy citations instead of leaving them beside the fresh ones.
+            companion_preds = [
+                builder(type_name, r.attribute, suffix)
+                for suffix in ("source_url", "provenance", "verified_at")
+                for builder in (
+                    attr_provenance_companion_uri,
+                    legacy_attr_companion_uri,
+                )
+            ]
+            for pred in (primary_pred, *companion_preds):
                 clear.append((r.entity_uri, pred, None))
             new_value_by_pred[(r.entity_uri, primary_pred)] = str(r.verdict.value)
         return clear, new_value_by_pred
@@ -2039,35 +2067,28 @@ class EnrichmentExecutor:
     def _applied_attribute_values(
         self, rows: list[RowResult], policy: ConflictPolicy
     ) -> dict[str, list[str]]:
-        """The attribute names (primary + their provenance companions) that
-        ACTUALLY received a written value under ``policy``, mapped to the list of
-        string VALUES applied for each — the set whose ontology declarations the
-        apply step upserts so an enriched attribute becomes first-class schema
-        (visible in the /schema view, the Explorer column schema, and the Enrich
-        dialog's predicate dropdown). Attributes that found nothing are excluded
-        so enrichment never pollutes the ontology with empty slots. Insertion-
-        ordered + value-accumulating so the caller issues one declaration per
-        attribute (not one per row) AND can infer that attribute's datatype from
-        the actual values written.
+        """The PRIMARY attribute names that ACTUALLY received a written value
+        under ``policy``, mapped to the list of string VALUES applied for each —
+        the set whose ontology declarations the apply step upserts so an enriched
+        attribute becomes first-class schema (visible in the /schema view, the
+        Explorer column schema, and the Enrich dialog's predicate dropdown).
+        Attributes that found nothing are excluded so enrichment never pollutes
+        the ontology with empty slots. Insertion-ordered + value-accumulating so
+        the caller issues one declaration per attribute (not one per row) AND can
+        infer that attribute's datatype from the actual values written.
 
-        The provenance companions (``<attr>_source_url``, ``<attr>_provenance``)
-        are declared only when :meth:`_provenance_triples` actually emitted them
-        for some applied row — matching the citation columns that were really
-        written (a verdict with no ``source_url`` writes no ``_source_url`` triple,
-        so we don't declare a phantom column). Their values are strings (URLs /
-        free text) so they naturally infer ``string``."""
+        The provenance companions are deliberately NOT here (ONTA-262): they are
+        metadata OF an attribute, minted on the attr_meta namespace and never
+        declared as ontology attributes — declaring them was exactly what made
+        `<attr>_provenance` / `<attr>_verified_at` render as sibling columns in
+        every schema surface. Their instance triples still ride the same write
+        (:meth:`_select_triples_for_policy`)."""
         out: dict[str, list[str]] = {}
 
         for r in rows:
             if not self._row_is_applied(r, policy):
                 continue
             out.setdefault(r.attribute, []).append(r.verdict.value)
-            # Mirror the companion provenance triples this row actually wrote, so
-            # the declared schema (and its inferred datatype) matches the data.
-            for _s, prov_pred, prov_val in self._provenance_triples(
-                r.entity_uri, "", r.attribute, r.verdict
-            ):
-                out.setdefault(_local_name(prov_pred), []).append(prov_val)
         return out
 
     async def _resolve_declared_datatype(
@@ -2245,12 +2266,12 @@ class EnrichmentExecutor:
             if d.decision != "accept":
                 continue
             accepted.append(d)
-            prov = self._provenance_triples(d.entity_uri, job.type_name, d.attribute, d.proposed)
-            # Track the attribute names + values (primary + provenance companions
-            # actually written) so we declare them in the ontology, mirroring run().
+            # Track the PRIMARY attribute names + values actually written so we
+            # declare them in the ontology, mirroring run(). Provenance companions
+            # are deliberately NOT declared (ONTA-262): they are attr_meta
+            # metadata, not attributes — their instance triples still ride the
+            # same write below.
             applied_attr_values.setdefault(d.attribute, []).append(d.proposed.value)
-            for _s, prov_pred, prov_val in prov:
-                applied_attr_values.setdefault(_local_name(prov_pred), []).append(prov_val)
             applied += 1
         if applied_attr_values:
             # Declare schema, THEN write data — accepted review decisions extend

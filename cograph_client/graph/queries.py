@@ -215,6 +215,24 @@ def rewrite_subject_update(graph_uri: str, old_uri: str, new_uri: str) -> str:
     )
 
 
+def rewrite_predicate_update(graph_uri: str, old_pred: str, new_pred: str) -> str:
+    """SPARQL update that re-keys every ``(s, old_pred, o)`` onto ``new_pred``.
+
+    The predicate mirror of :func:`rewrite_subject_update`: one server-side
+    ``DELETE/INSERT/WHERE`` so the object term keeps its EXACT datatype (a typed
+    ``xsd:dateTime`` freshness stamp must not degrade to a plain string on the
+    way through — the ONTA-247 lesson; a client-side read-then-reinsert through
+    ``parse_sparql_results`` would drop the datatype). Idempotent under RDF set
+    semantics. This is the single-place SPARQL for ``kg_writer.rewrite_predicates``
+    (the attr_meta companion migration, ONTA-262).
+    """
+    return (
+        f"WITH <{graph_uri}>\n"
+        f"DELETE {{ ?s <{old_pred}> ?o }} INSERT {{ ?s <{new_pred}> ?o }} "
+        f"WHERE {{ ?s <{old_pred}> ?o }}"
+    )
+
+
 def select_triples(
     graph_uri: str,
     subject: str | None = None,

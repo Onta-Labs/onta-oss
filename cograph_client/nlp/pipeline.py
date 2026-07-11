@@ -1542,8 +1542,17 @@ class NLQueryPipeline:
             if uri in valid_uri_set:
                 return m.group(0)
 
-            # Skip known system URIs
-            if any(uri.startswith(f"https://cograph.tech/{p}") for p in ("graphs/", "entities/", "functions/", "kgs/")):
+            # Skip known system URIs. attr_meta/ is load-bearing here (ONTA-262):
+            # the freshness prompt teaches the planner to CONSTRUCT
+            # attr_meta/<Type>/<attr>/verified_at from the type + attribute names
+            # — deliberately absent from the ontology summary — so the fuzzy
+            # repair below must never "fix" it into some unrelated declared
+            # attribute (measured: it cross-wired to a legacy `fax_verified_at`
+            # at ratio 0.846 before this skip).
+            if any(
+                uri.startswith(f"https://cograph.tech/{p}")
+                for p in ("graphs/", "entities/", "functions/", "kgs/", "attr_meta/")
+            ):
                 return m.group(0)
 
             # Extract the "name" part from the URI for matching
