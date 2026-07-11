@@ -157,15 +157,61 @@ async def migrate_kg(
     return summary
 
 
+async def sweep_orphaned_companion_declarations(
+    neptune, tenant_id: str, *, dry_run: bool = False
+) -> dict:
+    """Purge companion-shaped ONTOLOGY declarations that no longer have (or never
+    had) instance data behind them.
+
+    ``migrate_kg``'s purge is instance-driven, so a declaration whose instance
+    companions were already cleared some other way (e.g. a post-ONTA-262
+    overwrite retired the legacy triples first) would linger forever — and a
+    lingering ``<attr>_verified_at`` declaration keeps steering the NL planner's
+    legacy fallback at a predicate with zero rows. This sweep classifies over
+    the DECLARED leaf set per type (same ``<base>_<suffix>`` + base-present rule)
+    and purges the companion declarations outright.
+
+    Tenant-wide by nature (the ontology graph is shared across the tenant's
+    KGs), so it belongs AFTER every KG has migrated — ``migrate_tenant`` runs it
+    last; don't run it standalone while un-migrated KGs still rely on their
+    declared legacy companions."""
+    onto_graph = tenant_graph_uri(tenant_id)
+    q = (
+        f"SELECT ?attr FROM <{onto_graph}> WHERE {{\n"
+        f"  ?attr <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+        f"<http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .\n"
+        f'  FILTER(STRSTARTS(STR(?attr), "{_TYPES_PREFIX}"))\n'
+        f"}}"
+    )
+    _, rows = parse_sparql_results(await neptune.query(q))
+    declared = [r.get("attr", "") for r in rows if r.get("attr")]
+    mapping = plan_migration(declared)  # same classification, over declared URIs
+    summary = {
+        "declarations_found": len(mapping),
+        "declarations_purged": 0,
+        "dry_run": dry_run,
+        "attributes": sorted(f"{t}.{leaf}" for (_n, t, leaf) in mapping.values()),
+    }
+    if not mapping or dry_run:
+        return summary
+    for _old, (_new, type_name, leaf) in mapping.items():
+        await neptune.update(delete_attribute_declaration(onto_graph, type_name, leaf))
+    summary["declarations_purged"] = len(mapping)
+    logger.info("attr_meta_declaration_sweep_done", tenant_id=tenant_id, **summary)
+    return summary
+
+
 async def migrate_tenant(
     neptune, tenant_id: str, *, dry_run: bool = False
 ) -> list[dict]:
-    """Migrate every KG that actually has data for ``tenant_id``.
+    """Migrate every KG that actually has data for ``tenant_id``, then sweep
+    orphaned companion declarations from the shared tenant ontology.
 
     KGs are discovered from the store (same approach as the QC audit): enumerate
     named graphs and keep those whose URI parses to this tenant via the canonical
     ``parse_kg_graph_uri`` — companion graphs (provenance, history, stats) and the
-    base graph don't parse and are correctly skipped."""
+    base graph don't parse and are correctly skipped. The declaration sweep runs
+    LAST, once no KG in the tenant still relies on declared legacy companions."""
     result = await neptune.query("SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }")
     names: list[str] = []
     for binding in result.get("results", {}).get("bindings", []):
@@ -174,10 +220,14 @@ async def migrate_tenant(
         parsed = parse_kg_graph_uri(uri)
         if parsed and parsed[0] == tenant_id:
             names.append(parsed[1])
-    return [
+    out = [
         await migrate_kg(neptune, tenant_id, name, dry_run=dry_run)
         for name in sorted(names)
     ]
+    out.append(
+        await sweep_orphaned_companion_declarations(neptune, tenant_id, dry_run=dry_run)
+    )
+    return out
 
 
 def _main(argv: list[str] | None = None) -> int:
