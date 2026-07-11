@@ -46,10 +46,15 @@ Bare aggregates cause 400 errors.
 xsd:duration (NOT xsd:dayTimeDuration — Neptune does not implement dayTimeDuration/yearMonthDuration \
 arithmetic, so that form silently drops every row or 400s; xsd:duration works). Pattern: \
 `FILTER(?ts >= (NOW() - "P7D"^^<http://www.w3.org/2001/XMLSchema#duration>))` \
-for "last 7 days" (use "P14D" for 14 days, "PT48H" for 48 hours, etc.). The freshness attribute is any \
-dateTime-ranged attribute whose name ends in `_verified_at` (an enrichment/discovery per-fact freshness \
-stamp) or otherwise reads as a checked/verified/updated timestamp — bind it to ?ts via its exact attribute \
-URI from the schema and apply the NOW()-relative FILTER. This is a RELATIVE window: do NOT hardcode an \
+for "last 7 days" (use "P14D" for 14 days, "PT48H" for 48 hours, etc.). Per-fact freshness stamps \
+(enrichment/discovery/lambda) live on the attr_meta METADATA namespace, deliberately NOT listed in the \
+schema: for the attribute <https://cograph.tech/types/T/attrs/a> the stamp predicate is \
+<https://cograph.tech/attr_meta/T/a/verified_at> (typed xsd:dateTime) — construct that URI from the type \
+and attribute names, bind it to ?ts (usually inside OPTIONAL is wrong here — the freshness constraint \
+means the stamp must EXIST, so use a plain triple pattern), and apply the NOW()-relative FILTER. Older \
+graphs instead DECLARE a dateTime attribute whose name ends in `_verified_at`; when the schema lists one, \
+use its exact attribute URI. Failing both, bind any dateTime attribute that reads as a \
+checked/verified/updated timestamp. This is a RELATIVE window: do NOT hardcode an \
 absolute date. NOW() returns the current dateTime, so no server-side date substitution is needed.
 - For enum values shown in [values: ...], use the EXACT case as listed.
 - "[no instances]": a Type, attribute, or relationship marked "[no instances]" in the schema IS \

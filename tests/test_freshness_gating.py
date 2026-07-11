@@ -21,7 +21,10 @@ from cograph_client.enrichment.cache import EnrichmentCache
 from cograph_client.enrichment.executor import EnrichmentExecutor, _attr_uri, _now
 from cograph_client.enrichment.job_store import InMemoryJobStore
 from cograph_client.enrichment.models import ConflictPolicy, Verdict
-from cograph_client.graph.provenance import build_attribute_provenance_companions
+from cograph_client.graph.provenance import (
+    attr_provenance_companion_uri,
+    build_attribute_provenance_companions,
+)
 
 from tests._enrichment_prov_helpers import (
     DOMAINS,
@@ -57,7 +60,10 @@ def test_verified_at_is_typed_datetime_literal(type_name, attr, label, value, sr
         await executor.run(job, "test-tenant")
 
         writes = all_updates(neptune)
-        assert _attr_uri(type_name, f"{attr}_verified_at") in writes
+        assert attr_provenance_companion_uri(type_name, attr, "verified_at") in writes
+        # The companion is metadata (attr_meta namespace), never an attribute
+        # predicate (ONTA-262).
+        assert _attr_uri(type_name, f"{attr}_verified_at") not in writes
         assert XSD_DATETIME in writes, "verified_at must be a typed xsd:dateTime literal"
 
     asyncio.run(run())
@@ -75,7 +81,7 @@ def test_recency_filter_selects_and_excludes_by_window():
 
     store = Store()
     graph = "https://cograph.tech/graphs/test-tenant/kg/kg"
-    vpred = _attr_uri("Widget", "sku_verified_at")
+    vpred = attr_provenance_companion_uri("Widget", "sku", "verified_at")
     now = datetime.now(timezone.utc)
     fresh = (now - timedelta(days=3)).isoformat()
     stale = (now - timedelta(days=30)).isoformat()
@@ -158,9 +164,11 @@ def test_discovery_stamps_per_fact_verified_at():
         verified_at=_now(),
     )
     preds = {p for _s, p, _o in trips}
-    assert _attr_uri("Gadget", "material_verified_at") in preds
-    assert _attr_uri("Gadget", "material_source_url") in preds
-    stamp = next(o for _s, p, o in trips if p.endswith("material_verified_at"))
+    assert attr_provenance_companion_uri("Gadget", "material", "verified_at") in preds
+    assert attr_provenance_companion_uri("Gadget", "material", "source_url") in preds
+    # Companions never land on the attribute namespace (ONTA-262).
+    assert _attr_uri("Gadget", "material_verified_at") not in preds
+    stamp = next(o for _s, p, o in trips if p.endswith("material/verified_at"))
     assert stamp.endswith(f"^^{XSD_DATETIME}"), "discovery stamp must be typed xsd:dateTime"
 
 

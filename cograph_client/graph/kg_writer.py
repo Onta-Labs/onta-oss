@@ -76,6 +76,7 @@ from cograph_client.graph.queries import (
     delete_subject_predicates_query,
     delete_subjects_query,
     parse_kg_graph_uri,
+    rewrite_predicate_update,
     rewrite_subject_update,
     select_subject_predicate_objects_query,
     tenant_graph_uri,
@@ -728,6 +729,51 @@ async def rewrite_subject(
                 instance_graph=instance_graph,
                 exc_info=True,
             )
+
+
+async def rewrite_predicates(
+    neptune,
+    instance_graph: str,
+    mapping: dict[str, str],
+    *,
+    reason: str = "",
+) -> int:
+    """Re-key instance predicates in place — the predicate-rewrite primitive.
+
+    For each ``old_pred -> new_pred`` pair, moves every ``(s, old_pred, o)``
+    triple onto ``new_pred`` server-side (``rewrite_predicate_update``), so the
+    object term keeps its exact datatype — never a client-side read-then-reinsert,
+    which would strip a typed ``xsd:dateTime`` down to a plain string (the
+    ONTA-247 lesson). Idempotent: re-running on already-rewritten data is a no-op.
+
+    Built for the attr_meta companion migration (ONTA-262: legacy
+    ``attrs/<attr>_<suffix>`` provenance companions → ``attr_meta/<Type>/<attr>/
+    <suffix>``). Deliberately writes NO per-triple provenance events: companions
+    are display metadata OF a fact, not facts — a tombstone/rewrite record per
+    stamp would inflate the governance graph with zero governance value. Callers
+    moving REAL domain predicates should think hard before reusing this.
+
+    Does NOT itself refresh derived state: call :func:`refresh_after_write` with
+    the touched types once per migration so a single housekeeping pass recomputes
+    stats and invalidates the NL-planning cache. Returns the number of predicate
+    pairs rewritten.
+    """
+    done = 0
+    for old_pred, new_pred in mapping.items():
+        if not old_pred or not new_pred or old_pred == new_pred:
+            continue
+        await neptune.update(
+            rewrite_predicate_update(instance_graph, old_pred, new_pred)
+        )
+        done += 1
+    if done:
+        logger.info(
+            "predicates_rewritten",
+            instance_graph=instance_graph,
+            count=done,
+            reason=reason,
+        )
+    return done
 
 
 async def refresh_after_write(

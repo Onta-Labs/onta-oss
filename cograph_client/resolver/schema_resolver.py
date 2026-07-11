@@ -937,8 +937,9 @@ class SchemaResolver:
         # Neptune call pattern stay byte-identical.
         self._provenance_enabled = os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
         # Per-attribute DISPLAY provenance companions (ONTA-245 F1): the same
-        # `<attr>_source_url` / `<attr>_verified_at` instance companions enrichment
-        # always writes, emitted by discovery too so a DISCOVERED fact and an
+        # attr_meta `source_url` / `verified_at` instance companions enrichment
+        # always writes (metadata namespace, never ontology attributes — ONTA-262),
+        # emitted by discovery too so a DISCOVERED fact and an
         # ENRICHED fact are provenance-symmetric (attribute-level, not just the
         # per-record `onto/source`). Default OFF so bulk CSV ingest stays byte-stable
         # (it would otherwise add up to 3 companions PER attribute fact); web
