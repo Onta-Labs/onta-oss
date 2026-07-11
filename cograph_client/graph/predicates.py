@@ -39,6 +39,16 @@ ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
 ER_NS = "https://cograph.tech/er/"
 # Normalization internals (canonical-value bookkeeping) live under …/onto/norm/.
 ONTO_NORM_PREFIX = ONTO_PRED_PREFIX + "norm/"
+# Per-attribute provenance companions (`attr_meta/<Type>/<attr>/<suffix>`) —
+# metadata OF one attribute (its citation URL / human citation / freshness
+# stamp), never an attribute itself (ONTA-262). Queryable instance data (NL
+# freshness FILTERs + citation rendering read it by convention), but excluded
+# from every surface that renders predicates as domain attributes. Minted by
+# graph/provenance.py::attr_provenance_companion_uri for BOTH rails.
+ATTR_META_NS = "https://cograph.tech/attr_meta/"
+# The three companion suffixes (also the `<attr>_<suffix>` tails of the legacy
+# attrs/-namespace shape that pre-ONTA-262 graphs still carry).
+ATTR_META_SUFFIXES: tuple[str, ...] = ("source_url", "provenance", "verified_at")
 
 # Literal-valued system markers that ingest attaches to (almost) every entity.
 SYSTEM_PREDICATES: frozenset[str] = frozenset({
@@ -92,6 +102,12 @@ def is_internal_predicate(p_uri: str, is_relationship: bool = False) -> bool:
         return True
     if p_uri.startswith(ER_NS) or p_uri.startswith(ONTO_NORM_PREFIX):
         return True
+    # Per-attribute provenance companions (attr_meta/<Type>/<attr>/<suffix>) are
+    # metadata OF an attribute, never a domain attribute or relationship
+    # (ONTA-262) — excluded before the is_relationship exemption on purpose:
+    # companions are always literal-valued, so nothing legitimate is hidden.
+    if p_uri.startswith(ATTR_META_NS):
+        return True
     # A relationship is exempt from the literal-only housekeeping checks below:
     # SYSTEM_PREDICATES (rdfs:label, onto/ingested_at, onto/source) and
     # INTERNAL_ONTO_MARKERS are all literal-valued markers, so a same-named
@@ -105,3 +121,30 @@ def is_internal_predicate(p_uri: str, is_relationship: bool = False) -> bool:
     if p_uri in INTERNAL_ONTO_MARKERS:
         return True
     return False
+
+
+def companion_leaves(leaves) -> set[str]:
+    """Classify LEGACY per-attribute provenance companions among one type's
+    attribute/predicate leaf names.
+
+    Graphs written before ONTA-262 carry companions on the ATTRIBUTE namespace
+    (``attrs/<attr>_<suffix>``), indistinguishable from domain attributes by URI
+    alone. This is the deterministic read-side classifier: given ALL leaf names
+    observed/declared for ONE type, a leaf is a companion iff it is
+    ``<base>_<suffix>`` (suffix ∈ ``ATTR_META_SUFFIXES``) AND ``<base>`` is
+    itself present in the set — so a hypothetical real attribute that merely
+    ends in ``_provenance`` with no base attribute alongside it is never
+    misclassified. Callers use this to keep legacy companions off user-facing
+    attribute surfaces until the attr_meta migration rewrites them.
+
+    ``leaves`` is any iterable of leaf strings; returns the subset classified as
+    companions."""
+    ls = set(leaves)
+    out: set[str] = set()
+    for leaf in ls:
+        for sfx in ATTR_META_SUFFIXES:
+            tail = f"_{sfx}"
+            if leaf.endswith(tail) and leaf[: -len(tail)] in ls:
+                out.add(leaf)
+                break
+    return out

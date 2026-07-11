@@ -21,6 +21,10 @@ from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
 from cograph_client.graph.ontology_queries import insert_attribute
 from cograph_client.graph.parser import parse_sparql_results
+from cograph_client.graph.provenance import (
+    attr_provenance_companion_uri,
+    legacy_attr_companion_uri,
+)
 from cograph_client.graph.queries import (
     kg_graph_uri,
     list_functions_query,
@@ -294,25 +298,35 @@ async def invoke_function(
         replaced_preds.append(attr_pred)
         new_value_by_pred[(body.entity_uri, attr_pred)] = str(value)
 
-        # Per-fact freshness stamp: a QUERYABLE `<key>_verified_at` literal on the
-        # `attrs/<leaf>` namespace, mirroring enrichment's _provenance_triples. This
-        # is per-FACT (each lambda-computed attribute gets its own stamp), unlike the
-        # per-ENTITY, system-hidden `onto/lambda_refreshed_at` below — so the query
-        # layer can filter "verified in the last N days" per attribute. Written as a
-        # TYPED xsd:dateTime literal (via _typed_value): the column is declared
-        # dateTime and the NL planner emits typed comparisons, so an untyped string
-        # would be type-incompatible and the row would be silently dropped. Full
-        # value history is out of scope (a separate deferred ticket); just freshness.
-        verified_at_pred = (
-            f"https://cograph.tech/types/{entity_type}/attrs/{key}_verified_at"
+        # Per-fact freshness stamp: a QUERYABLE `verified_at` companion on the
+        # attr_meta metadata namespace, mirroring enrichment's _provenance_triples
+        # (shared shape via attr_provenance_companion_uri — ONTA-262: companions
+        # are metadata OF the attribute, never ontology-declared attributes). This
+        # is per-FACT (each lambda-computed attribute gets its own stamp), unlike
+        # the per-ENTITY, system-hidden `onto/lambda_refreshed_at` below — so the
+        # query layer can filter "verified in the last N days" per attribute.
+        # Written as a TYPED xsd:dateTime literal (via _typed_value): the NL
+        # planner emits typed comparisons, so an untyped string would be
+        # type-incompatible and the row would be silently dropped. Both the
+        # current attr_meta shape and the legacy `attrs/<key>_verified_at` shape
+        # are cleared on replace, so a re-run on a pre-migration entity retires
+        # its stale legacy stamp instead of accreting beside it. Full value
+        # history is out of scope (a separate deferred ticket); just freshness.
+        verified_at_pred = attr_provenance_companion_uri(
+            entity_type, key, "verified_at"
         )
         new_triples.append(
             (body.entity_uri, verified_at_pred, _typed_value(now_iso, "datetime"))
         )
         replaced_preds.append(verified_at_pred)
+        replaced_preds.append(
+            legacy_attr_companion_uri(entity_type, key, "verified_at")
+        )
 
         # Ensure the attribute exists in the ontology (schema graph — unrelated to
-        # the instance-fact write below; left as-is).
+        # the instance-fact write below; left as-is). Only the PRIMARY attribute
+        # is declared — the freshness companion is attr_meta metadata (ONTA-262),
+        # deliberately absent from the ontology so it never renders as a column.
         datatype = "string"
         if isinstance(value, int):
             datatype = "integer"
@@ -325,18 +339,6 @@ async def invoke_function(
         )
         try:
             await client.update(attr_sparql)
-        except Exception:
-            pass  # attribute may already exist
-
-        # Declare the freshness companion in the ontology too, so it is first-class
-        # queryable schema (dateTime range), consistent with the primary attribute.
-        verified_at_sparql = insert_attribute(
-            ontology_graph, entity_type, f"{key}_verified_at",
-            description=f"When {key} was last verified by {function_name}",
-            datatype="datetime",
-        )
-        try:
-            await client.update(verified_at_sparql)
         except Exception:
             pass  # attribute may already exist
 

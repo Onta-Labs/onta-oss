@@ -63,6 +63,7 @@ from cograph_client.graph.predicates import (  # noqa: E402
     ONTO_NORM_PREFIX,
     ONTO_PRED_PREFIX,
     SYSTEM_PREDICATES,
+    companion_leaves as _companion_leaves,
     is_internal_predicate as _is_internal_predicate,
 )
 
@@ -274,6 +275,19 @@ def _assemble_summary(
     """
     attributes = []
     relationships = []
+    # LEGACY companion classification (ONTA-262): graphs written before the
+    # attr_meta namespace carry per-attribute provenance companions on the
+    # ATTRIBUTE namespace (`attrs/<attr>_<suffix>`), indistinguishable from
+    # domain attributes by URI shape alone (is_internal_predicate can't catch
+    # them). Classify them set-wise from this type's full leaf set — a leaf is a
+    # companion iff it is `<base>_<suffix>` AND `<base>` is itself present — and
+    # keep them off the panel. Applied to literal-valued records only (below) so
+    # a real relationship can never be misclassified.
+    def _display_leaf(rec: dict) -> str:
+        p = rec.get("p", "")
+        return attr_defs.get(p, {}).get("name") or p.rstrip("/").split("/")[-1]
+
+    legacy_companions = _companion_leaves(_display_leaf(r) for r in pred_records)
     for r in pred_records:
         p_uri = r.get("p", "")
         cnt = r.get("cnt", 0)
@@ -288,6 +302,8 @@ def _assemble_summary(
         # relationship from the literal-only housekeeping markers (FIX 2).
         is_rel = rel > 0 or rng.startswith(TYPE_URI_PREFIX)
         if _is_internal_predicate(p_uri, is_relationship=is_rel):
+            continue
+        if not is_rel and name in legacy_companions:
             continue
         if is_rel:
             # Prefer the ontology-declared range; fall back to the target type
@@ -708,6 +724,31 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
     drift_enabled = drift_control.drift_control_enabled()
     rel_decls: list[tuple[str, str, int]] = []
     flag_accs: dict[str, _IndexFlagAccumulator] = {}
+    # LEGACY companion classification (ONTA-262): pre-pass building each type's
+    # literal-predicate leaf set so the loop below can skip per-attribute
+    # provenance companions written on the old ATTRIBUTE namespace
+    # (`attrs/<attr>_<suffix>` → instance predicate `onto/<attr>_<suffix>`),
+    # which URI-shape filtering can't catch. Only literal-valued rows (rel == 0)
+    # participate, so a real relationship is never misclassified. Keeps freshly
+    # recomputed stats clean of legacy companions the same way the internal-
+    # predicate filter does (assembly filters too, as a backstop).
+    type_pred_leaves: dict[str, set[str]] = {}
+    for r in rows:
+        p = r.get("p", "")
+        if not p or p == RDF_TYPE:
+            continue
+        try:
+            r_rel = int(r.get("rel", "0"))
+        except ValueError:
+            r_rel = 0
+        if r_rel > 0:
+            continue
+        type_pred_leaves.setdefault(r.get("type", ""), set()).add(
+            p.rstrip("/").split("/")[-1]
+        )
+    legacy_companions_by_type = {
+        t: _companion_leaves(leaves) for t, leaves in type_pred_leaves.items()
+    }
     for r in rows:
         type_uri_str = r.get("type", "")
         leaf = type_uri_str[len(TYPE_URI_PREFIX):] if type_uri_str.startswith(TYPE_URI_PREFIX) else ""
@@ -733,6 +774,10 @@ async def recompute_kg_stats(client: NeptuneClient, tenant_id: str, kg_name: str
         # objects (rel > 0) is a relationship, exempt from the literal-only
         # housekeeping markers (FIX 2) so a real `onto/source` edge is materialized.
         if _is_internal_predicate(p_uri, is_relationship=rel > 0):
+            continue
+        if rel == 0 and p_uri.rstrip("/").split("/")[-1] in legacy_companions_by_type.get(
+            type_uri_str, ()
+        ):
             continue
         # Per-type spatio-temporal index flags, from the same scan rows.
         try:
@@ -1428,6 +1473,18 @@ async def get_type_records(
             declared_display_set.add(label)
             declared_display.append(label)
     declared_display.sort()
+    # LEGACY companion classification (ONTA-262): enrichment used to DECLARE the
+    # per-attribute provenance companions (`<attr>_source_url` / `_provenance` /
+    # `_verified_at`) as first-class schema, so on un-migrated KGs they'd become
+    # always-shown declared columns. Classify them set-wise (`<base>_<suffix>`
+    # with `<base>` present among declared labels + "name") and keep them out of
+    # the table — they are metadata of the base attribute, not columns.
+    legacy_companion_labels = _companion_leaves([*declared_display, "name"])
+    if legacy_companion_labels:
+        declared_display = [
+            c for c in declared_display if c not in legacy_companion_labels
+        ]
+        declared_display_set -= legacy_companion_labels
 
     _, entity_rows = parse_sparql_results(entity_raw)
     entity_uris = [r.get("e", "") for r in entity_rows if r.get("e")]
@@ -1498,6 +1555,31 @@ async def get_type_records(
     col_set: set[str] = set(declared_display)
     extra_count = 0
 
+    def _display_of(p_uri: str) -> str:
+        # Resolve display name: check attr_label_by_pred (instance pred) first,
+        # then attr_label_by_onto (onto attr URI), then fall back to the URI leaf.
+        return (
+            attr_label_by_pred.get(p_uri)
+            or attr_label_by_onto.get(p_uri)
+            or p_uri.rstrip("/").split("/")[-1]
+        )
+
+    # LEGACY companion classification for OBSERVED (non-declared) predicates on
+    # this page (ONTA-262): discovery used to stamp companions as ordinary
+    # attribute-namespace instance triples, so an un-migrated KG surfaces them
+    # here as extra columns. Classify set-wise over every literal-valued display
+    # name observed on the page plus the declared labels (a companion's base may
+    # be declared while the companion is only observed, or vice versa).
+    observed_literal_displays = {
+        _display_of(r.get("p", ""))
+        for r in values_rows
+        if r.get("p", "") not in (LABEL_PRED, RDF_TYPE)
+        and not r.get("o", "").startswith(ENTITY_URI_PREFIX)
+    }
+    observed_companions = _companion_leaves(
+        observed_literal_displays | declared_display_set | {"name"}
+    )
+
     for r in values_rows:
         e_uri = r.get("e", "")
         p_uri = r.get("p", "")
@@ -1518,13 +1600,11 @@ async def get_type_records(
         is_rel = o_val.startswith(ENTITY_URI_PREFIX)
         if _is_internal_predicate(p_uri, is_relationship=is_rel):
             continue
-        # Resolve display name: check attr_label_by_pred (instance pred) first,
-        # then attr_label_by_onto (onto attr URI), then fall back to the URI leaf.
-        display = (
-            attr_label_by_pred.get(p_uri)
-            or attr_label_by_onto.get(p_uri)
-            or p_uri.rstrip("/").split("/")[-1]
-        )
+        display = _display_of(p_uri)
+        # Legacy per-attribute provenance companions are metadata, not columns
+        # (literal-valued only — a relationship can never be misclassified).
+        if not is_rel and display in observed_companions:
+            continue
         # "name" is rendered in the first column; a declared/instance predicate
         # named "name" (e.g. …/onto/name ← attrs/name) must not become a SEPARATE
         # column. But its value is the entity's real, human-readable name —

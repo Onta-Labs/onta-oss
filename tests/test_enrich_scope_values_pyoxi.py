@@ -34,6 +34,7 @@ from cograph_client.enrichment.models import (  # noqa: E402
     Verdict,
 )
 from cograph_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
+from cograph_client.graph.provenance import attr_provenance_companion_uri  # noqa: E402
 from cograph_client.graph.queries import (  # noqa: E402
     kg_graph_uri,
     tenant_graph_uri,
@@ -250,8 +251,13 @@ async def test_overwrite_replaces_conflicting_value_and_restamps_provenance():
     await _seed_conflict_entity(n)
     w1 = f"{ENT}{TYPE}/w1"
     pricing = attr_uri(TYPE, "pricing")
-    src = attr_uri(TYPE, "pricing_source_url")
-    ver = attr_uri(TYPE, "pricing_verified_at")
+    # The seeded incumbent carries LEGACY (attribute-namespace) companions; the
+    # fresh restamp lands on the attr_meta metadata namespace (ONTA-262) and the
+    # overwrite clear retires BOTH shapes.
+    legacy_src = attr_uri(TYPE, "pricing_source_url")
+    legacy_ver = attr_uri(TYPE, "pricing_verified_at")
+    src = attr_provenance_companion_uri(TYPE, "pricing", "source_url")
+    ver = attr_provenance_companion_uri(TYPE, "pricing", "verified_at")
 
     ex = EnrichmentExecutor(
         n, InMemoryJobStore(), EnrichmentCache(),
@@ -274,9 +280,13 @@ async def test_overwrite_replaces_conflicting_value_and_restamps_provenance():
     assert [r.action for r in final.results] == ["conflict"]
     # SINGULAR current value — stale replaced, not accreted.
     assert _objects(n, w1, pricing) == ["0.0043 (2026-07-07)"]
-    # Provenance companions restamped to the FRESH source + date (stale gone).
+    # Provenance companions restamped to the FRESH source + date on the
+    # attr_meta namespace; the stale LEGACY companions are cleared, not left
+    # beside the fresh citation.
     assert _objects(n, w1, src) == ["https://new.example/price"]
     assert _objects(n, w1, ver) == ["2026-07-07T00:00:00Z"]
+    assert _objects(n, w1, legacy_src) == []
+    assert _objects(n, w1, legacy_ver) == []
 
 
 @pytest.mark.asyncio
@@ -363,6 +373,9 @@ async def test_overwrite_keeps_incumbent_and_skips_provenance_when_value_rejecte
     assert [r.action for r in final.results] == ["conflict"]
     # (1) The incumbent integer is preserved — NOT emptied by a clear-without-replace.
     assert _objects(n, w1, stock) == ["42"]
-    # (2) No fresh provenance was stamped onto the retained (disagreeing) value.
+    # (2) No fresh provenance was stamped onto the retained (disagreeing) value —
+    # on either the legacy attribute-namespace shape or the attr_meta shape.
     assert _objects(n, w1, stock_src) == []
     assert _objects(n, w1, stock_ver) == []
+    assert _objects(n, w1, attr_provenance_companion_uri(TYPE, "stock", "source_url")) == []
+    assert _objects(n, w1, attr_provenance_companion_uri(TYPE, "stock", "verified_at")) == []
