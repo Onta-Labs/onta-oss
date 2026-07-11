@@ -30,7 +30,10 @@ from cograph_client.enrichment.models import (
     JobStatus,
     Verdict,
 )
-from cograph_client.graph.provenance import provenance_graph_uri
+from cograph_client.graph.provenance import (
+    attr_provenance_companion_uri,
+    provenance_graph_uri,
+)
 
 from tests._enrichment_prov_helpers import (
     DOMAINS,
@@ -67,7 +70,9 @@ def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, valu
         await executor.run(job, "test-tenant")
 
         writes = all_updates(neptune)
-        assert _attr_uri(type_name, f"{attr}_source_url") in writes
+        assert attr_provenance_companion_uri(type_name, attr, "source_url") in writes
+        # Companions are attr_meta metadata, never attribute predicates (ONTA-262).
+        assert _attr_uri(type_name, f"{attr}_source_url") not in writes
         assert src in writes
 
     asyncio.run(run())
@@ -106,8 +111,8 @@ def test_two_attributes_carry_independent_sources(monkeypatch):
         writes = all_updates(neptune)
         assert "https://a.example/sku" in writes
         assert "https://b.example/color" in writes
-        assert _attr_uri("Widget", "sku_source_url") in writes
-        assert _attr_uri("Widget", "color_source_url") in writes
+        assert attr_provenance_companion_uri("Widget", "sku", "source_url") in writes
+        assert attr_provenance_companion_uri("Widget", "color", "source_url") in writes
 
     asyncio.run(run())
 
@@ -218,7 +223,7 @@ def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeyp
         assert final.progress.verified == 1  # it was a re-verify
         writes = all_updates(neptune)
         # The freshness stamp WAS (re)written as a typed dateTime...
-        assert _attr_uri("Widget", "sku_verified_at") in writes
+        assert attr_provenance_companion_uri("Widget", "sku", "verified_at") in writes
         assert XSD_DATETIME in writes
         # ...but no NEW primary value triple was written (the value is unchanged).
         # The only occurrence of the primary predicate is inside the SELECT echoed
@@ -230,7 +235,7 @@ def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeyp
             if "INSERT DATA" in (c.args[0] if c.args else "")
         )
         assert f"<{sku_pred}>" not in insert_blob, "primary value must NOT be re-inserted"
-        assert "_verified_at" in insert_blob
+        assert "/verified_at" in insert_blob
 
     asyncio.run(run())
 
@@ -426,11 +431,14 @@ async def test_discovery_writes_companions_end_to_end(tmp_path, monkeypatch):
 
     preds = {p for _s, p, _o in collected}
     for attr in ("diameter_mm", "finish"):
-        assert _attr_uri("Sprocket", f"{attr}_source_url") in preds, attr
-        assert _attr_uri("Sprocket", f"{attr}_verified_at") in preds, attr
-    assert (sprocket_uri, _attr_uri("Sprocket", "diameter_mm_source_url"),
+        assert attr_provenance_companion_uri("Sprocket", attr, "source_url") in preds, attr
+        assert attr_provenance_companion_uri("Sprocket", attr, "verified_at") in preds, attr
+        # Companions never land on the attribute namespace (ONTA-262).
+        assert _attr_uri("Sprocket", f"{attr}_source_url") not in preds, attr
+    assert (sprocket_uri, attr_provenance_companion_uri("Sprocket", "diameter_mm", "source_url"),
             "https://catalog.example/sprocket/s1") in collected
-    stamp = next(o for _s, p, o in collected if p == _attr_uri("Sprocket", "finish_verified_at"))
+    stamp = next(o for _s, p, o in collected
+                 if p == attr_provenance_companion_uri("Sprocket", "finish", "verified_at"))
     assert stamp.endswith(f"^^{XSD_DATETIME}")
 
 
@@ -465,5 +473,5 @@ async def test_discovery_companions_off_by_default(tmp_path, monkeypatch):
         _collect_triples=collected,
     )
     preds = {p for _s, p, _o in collected}
-    assert _attr_uri("Sprocket", "finish_verified_at") not in preds
-    assert _attr_uri("Sprocket", "finish_source_url") not in preds
+    assert attr_provenance_companion_uri("Sprocket", "finish", "verified_at") not in preds
+    assert attr_provenance_companion_uri("Sprocket", "finish", "source_url") not in preds

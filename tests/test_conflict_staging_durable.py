@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock
 
 from cograph_client.enrichment.cache import EnrichmentCache
 from cograph_client.enrichment.executor import EnrichmentExecutor, _attr_uri
+from cograph_client.graph.provenance import attr_provenance_companion_uri
 from cograph_client.enrichment.job_store import (
     InMemoryJobStore,
     PostgresJobStore,
@@ -144,6 +145,9 @@ def test_conflict_survives_store_roundtrip_and_applies():
         assert n == 1
         writes = all_updates(neptune)
         assert "WX-NEW" in writes  # accepted value written via the shared path
-        assert _attr_uri("Widget", "sku_source_url") in writes  # its provenance stamped
+        # Its provenance stamped as attr_meta metadata (ONTA-262) — never on the
+        # attribute namespace.
+        assert attr_provenance_companion_uri("Widget", "sku", "source_url") in writes
+        assert _attr_uri("Widget", "sku_source_url") not in writes
 
     asyncio.run(run())

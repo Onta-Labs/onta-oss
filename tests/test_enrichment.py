@@ -2484,8 +2484,9 @@ def _declaration_updates(neptune) -> list[str]:
 def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
     """An auto-apply that writes a value for an attribute must ALSO declare that
     attribute in the TENANT (ontology) graph — rdf:Property + rdfs:domain <Type> —
-    plus its provenance companions, so the enriched attribute is first-class
-    schema (COG-112)."""
+    so the enriched attribute is first-class schema (COG-112). Its provenance
+    companions are deliberately NOT declared (ONTA-262: attr_meta metadata, never
+    sibling attributes)."""
     import cograph_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
@@ -2538,12 +2539,15 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
         assert type_uri in d
         assert xsd_string in d
 
-        # Companion provenance attrs were written for this value (source_url +
-        # provenance) → they must be declared too, into the same tenant graph.
+        # Companion provenance metadata is NEVER declared (ONTA-262): companions
+        # live on the attr_meta namespace as instance metadata, and declaring
+        # them is what rendered `<attr>_source_url` / `<attr>_provenance` as
+        # sibling columns on every schema surface.
         src_attr = "https://cograph.tech/types/Product/attrs/company_source_url"
         prov_attr = "https://cograph.tech/types/Product/attrs/company_provenance"
-        assert any(src_attr in d for d in decls), "company_source_url not declared"
-        assert any(prov_attr in d for d in decls), "company_provenance not declared"
+        assert not any(src_attr in d for d in decls), "companion must not be declared"
+        assert not any(prov_attr in d for d in decls), "companion must not be declared"
+        assert not any("attr_meta" in d for d in decls), "companion must not be declared"
         for d in decls:
             assert tenant_graph in d  # declarations go to the ontology graph only
 
@@ -4285,14 +4289,14 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
 
         joined = "\n".join(_instance_inserts(neptune))
         src_pred = (
-            "https://cograph.tech/types/Product/attrs/humanness_score_source_url"
+            "https://cograph.tech/attr_meta/Product/humanness_score/source_url"
         )
         # The source_url object is a PLAIN quoted string literal (no ^^ type),
         # written as an http(s) value → _escape_value wraps it as an <IRI>… but the
         # provenance source_url IS a URL, so it lands as an IRI object, not a typed
         # literal. The provenance text companion, however, is a plain string.
         prov_pred = (
-            "https://cograph.tech/types/Product/attrs/humanness_score_provenance"
+            "https://cograph.tech/attr_meta/Product/humanness_score/provenance"
         )
         # The provenance free-text companion is a plain string literal, no ^^ type.
         assert f"<{prov_pred}>" in joined
@@ -4304,10 +4308,11 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
         assert '"92"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
         # The source_url predicate is present (declared + written).
         assert f"<{src_pred}>" in joined
-        # And the per-fact freshness stamp landed on the queryable attrs/ namespace,
-        # written as a TYPED xsd:dateTime literal (so typed NL date FILTERs match it).
+        # And the per-fact freshness stamp landed on the queryable attr_meta
+        # namespace (metadata, not an attribute — ONTA-262), written as a TYPED
+        # xsd:dateTime literal (so typed NL date FILTERs match it).
         verified_pred = (
-            "https://cograph.tech/types/Product/attrs/humanness_score_verified_at"
+            "https://cograph.tech/attr_meta/Product/humanness_score/verified_at"
         )
         assert verified_pred in joined
         verified_lines = [ln for ln in joined.splitlines() if verified_pred in ln]
@@ -4322,8 +4327,9 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
 def test_provenance_triples_stamps_per_fact_verified_at():
     """Every enriched fact carries a per-fact ``<attr>_verified_at`` freshness
     stamp (ONTA-241): a TYPED ``xsd:dateTime`` literal on the QUERYABLE
-    ``attrs/<leaf>`` namespace (NOT the hidden ``onto/`` system-marker namespace),
-    emitted unconditionally alongside ``_source_url`` — so the query layer can
+    ``attr_meta/`` metadata namespace (NOT the hidden ``onto/`` system-marker
+    namespace, and — ONTA-262 — not the ``attrs/`` attribute namespace either),
+    emitted unconditionally alongside the ``source_url`` companion — so the query layer can
     filter "verified in the last N days" per attribute.
 
     The STORED object must be a typed dateTime, not a bare string: the column is
@@ -4345,14 +4351,15 @@ def test_provenance_triples_stamps_per_fact_verified_at():
         "https://cograph.tech/entities/Product/p1", "Product", "humanness_score", verdict
     )
     verified = [
-        (s, p, o) for (s, p, o) in triples if p.endswith("_verified_at")
+        (s, p, o) for (s, p, o) in triples if p.endswith("/verified_at")
     ]
     # Exactly one freshness stamp, and it is always emitted (no source_url needed).
     assert len(verified) == 1
     _s, pred, val = verified[0]
-    # Queryable literal on attrs/<leaf>, never on the hidden onto/ marker namespace.
-    assert pred == "https://cograph.tech/types/Product/attrs/humanness_score_verified_at"
-    assert "/onto/" not in pred
+    # Queryable literal on the attr_meta metadata namespace — never the hidden
+    # onto/ marker namespace, never the attrs/ attribute namespace (ONTA-262).
+    assert pred == "https://cograph.tech/attr_meta/Product/humanness_score/verified_at"
+    assert "/onto/" not in pred and "/attrs/" not in pred
     # The STORED object carries the xsd:dateTime type annotation (the `^^`
     # convention), so Neptune compares it as a dateTime — not an untyped string.
     assert val.endswith(f"^^{XSD_DT}"), f"verified_at must be a typed dateTime: {val!r}"
@@ -4372,7 +4379,7 @@ def test_provenance_triples_stamps_per_fact_verified_at():
     bare_triples = EnrichmentExecutor._provenance_triples(
         "https://cograph.tech/entities/Product/p2", "Product", "rating", bare
     )
-    bare_verified = [o for (_s, p, o) in bare_triples if p.endswith("/rating_verified_at")]
+    bare_verified = [o for (_s, p, o) in bare_triples if p.endswith("/rating/verified_at")]
     assert bare_verified and bare_verified[0].endswith(f"^^{XSD_DT}")
 
 

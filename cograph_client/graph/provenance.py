@@ -46,6 +46,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from cograph_client.graph.parser import parse_sparql_results
+# The companion metadata namespace + suffixes are defined canonically in
+# graph/predicates.py (the shared predicate-hygiene module every read surface
+# already imports) and re-exported here so writers and readers resolve the SAME
+# constants. predicates.py imports nothing from this module (no cycle).
+from cograph_client.graph.predicates import ATTR_META_NS, ATTR_META_SUFFIXES  # noqa: F401
 from cograph_client.graph.queries import _escape_value
 
 PROV_NS = "https://cograph.tech/prov/"
@@ -54,12 +59,24 @@ PROV_NS = "https://cograph.tech/prov/"
 #
 # The canonical companion-provenance GRAPH above (build_provenance_triples) is the
 # governance/undo substrate. Enrichment and discovery ALSO surface a small, shared
-# set of per-attribute INSTANCE attributes on the entity itself — the user-facing
+# set of per-attribute INSTANCE triples on the entity itself — the user-facing
 # citations the Explorer + /ask render:
 #
-#   <entity> <types/<Type>/attrs/<attr>_source_url>  "https://…"        (plain string)
-#   <entity> <types/<Type>/attrs/<attr>_provenance>  "wikidata (…)"      (plain string)
-#   <entity> <types/<Type>/attrs/<attr>_verified_at> "…"^^xsd:dateTime   (TYPED date)
+#   <entity> <attr_meta/<Type>/<attr>/source_url>  "https://…"        (plain string)
+#   <entity> <attr_meta/<Type>/<attr>/provenance>  "wikidata (…)"      (plain string)
+#   <entity> <attr_meta/<Type>/<attr>/verified_at> "…"^^xsd:dateTime   (TYPED date)
+#
+# Companions are METADATA OF one attribute, not attributes themselves (ONTA-262,
+# founder decision 2026-07-10). They therefore live on their OWN top-level
+# namespace (``attr_meta/``, mirroring the ``er/`` internals namespace) — NOT on
+# ``types/<Type>/attrs/`` — and are NEVER declared in the ontology. The shared
+# predicate-hygiene rule (graph/predicates.py::is_internal_predicate) excludes the
+# whole namespace, so companions are structurally invisible to the Explorer's
+# Attributes/Relationships panels, type-stats, the records table, and NL answer
+# dumps, while remaining ordinary queryable instance triples for freshness
+# FILTERs and citation rendering. (Graphs written before this convention carry
+# companions on ``attrs/<attr>_<suffix>``; predicates.companion_leaves classifies
+# those read-side, and the attr_meta migration rewrites them.)
 #
 # This is the deliberate dual-purpose split CLAUDE.md sanctions: the graph is the
 # governance record, these companions are the display projection. BOTH flow through
@@ -163,13 +180,25 @@ def build_provenance_triples(
 
 
 def attr_provenance_companion_uri(type_name: str, attribute: str, suffix: str) -> str:
-    """The attribute-namespace URI for one per-attribute display companion.
+    """The metadata-namespace URI for one per-attribute display companion.
 
-    ``suffix`` is ``source_url`` / ``provenance`` / ``verified_at``. This is the
-    SAME ``types/<Type>/attrs/<attr>_<suffix>`` shape the enrichment executor's
-    ``_attr_uri`` produces, defined ONCE here so discovery and enrichment mint the
-    identical companion predicate for the same fact (cross-rail symmetry — a
-    discovered fact and an enriched fact carry provenance the same way)."""
+    ``suffix`` is ``source_url`` / ``provenance`` / ``verified_at``. Companions
+    are metadata OF an attribute, not attributes (ONTA-262), so they mint on the
+    dedicated ``attr_meta/`` namespace — never on ``types/<Type>/attrs/``, whose
+    predicates every user-facing surface renders as domain attributes. Defined
+    ONCE here so discovery and enrichment mint the identical companion predicate
+    for the same fact (cross-rail symmetry — a discovered fact and an enriched
+    fact carry provenance the same way)."""
+    return f"{ATTR_META_NS}{type_name}/{attribute}/{suffix}"
+
+
+def legacy_attr_companion_uri(type_name: str, attribute: str, suffix: str) -> str:
+    """The PRE-ONTA-262 companion shape: ``types/<Type>/attrs/<attr>_<suffix>``.
+
+    Graphs written before the attr_meta namespace carry companions here (and, for
+    enrichment, matching ontology declarations). Kept only for the read-side
+    dual-read of un-migrated data and for the migration that rewrites it — never
+    mint new companions with this."""
     return f"{_TYPES_PREFIX}{type_name}/attrs/{attribute}_{suffix}"
 
 
