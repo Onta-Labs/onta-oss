@@ -86,8 +86,11 @@ export interface AskOptions {
 }
 
 function envVar(name: string, fallback?: string): string | undefined {
-  // Prefer COGRAPH_, fall back to OMNIX_ so old configs keep working.
+  // Precedence: ONTA_ (current brand) → COGRAPH_ → OMNIX_ (legacy) so old
+  // configs keep working. The brand renamed Cograph → Onta; ONTA_* wins, but
+  // the older prefixes are still honored for back-compat.
   return (
+    process.env[`ONTA_${name}`] ||
     process.env[`COGRAPH_${name}`] ||
     process.env[`OMNIX_${name}`] ||
     fallback
@@ -196,7 +199,7 @@ export class Client {
     const cfg = readConfig();
     this.apiKey = opts.apiKey ?? envVar("API_KEY") ?? cfg.apiKey;
     const url =
-      opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.cograph.cloud";
+      opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.onta.sh";
     this.baseUrl = url.replace(/\/+$/, "");
     this.tenant = opts.tenant ?? envVar("TENANT") ?? cfg.tenant ?? "demo-tenant";
     this.raw = new RawApi(this);
