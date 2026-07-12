@@ -1,6 +1,6 @@
 {
   "name": "cograph-mcp",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "description": "Onta (formerly Cograph) MCP server — expose context graph tools to AI agents",
   "type": "module",
   "main": "./dist/index.js",
