@@ -7,6 +7,7 @@
     "onta-mcp": "./bin.mjs"
   },
   "files": [
+    "LICENSE",
     "bin.mjs",
     "README.md"
   ],
@@ -37,7 +38,7 @@
     "url": "https://github.com/git-moeen/onta-oss/issues"
   },
   "dependencies": {
-    "cograph-mcp": "^0.1.0"
+    "cograph-mcp": "^0.1.27"
   },
   "engines": {
     "node": ">=20"
