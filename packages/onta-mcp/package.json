@@ -1,22 +1,19 @@
 {
-  "name": "cograph-mcp",
-  "version": "0.1.27",
-  "description": "Onta (formerly Cograph) MCP server — expose context graph tools to AI agents",
+  "name": "onta-mcp",
+  "version": "0.1.26",
+  "description": "Onta MCP server (alias of cograph-mcp)",
   "type": "module",
-  "main": "./dist/index.js",
   "bin": {
-    "cograph-mcp": "./dist/index.js"
+    "onta-mcp": "./bin.mjs"
   },
   "files": [
-    "dist",
+    "LICENSE",
+    "bin.mjs",
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepack": "node ../../scripts/chmod-bin.js packages/cograph-mcp/dist/index.js"
+    "build": "node -e 0",
+    "prepack": "node ../../scripts/chmod-bin.js packages/onta-mcp/bin.mjs"
   },
   "keywords": [
     "knowledge-graph",
@@ -35,15 +32,13 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/git-moeen/onta-oss.git",
-    "directory": "packages/cograph-mcp"
+    "directory": "packages/onta-mcp"
   },
   "bugs": {
     "url": "https://github.com/git-moeen/onta-oss/issues"
   },
   "dependencies": {
-    "cograph": "^0.1.0",
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "zod": "^3.23.8"
+    "cograph-mcp": "^0.1.27"
   },
   "engines": {
     "node": ">=20"

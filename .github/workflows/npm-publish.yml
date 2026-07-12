@@ -6,6 +6,7 @@ on:
     paths:
       - "packages/cograph/**"
       - "packages/cograph-mcp/**"
+      - "packages/onta-mcp/**"
   workflow_dispatch:
 
 jobs:
@@ -74,6 +75,28 @@ jobs:
           git commit -m "chore(release): bump cograph-mcp to v${NEW_VERSION} [skip ci]"
           git push
           cd packages/cograph-mcp
+          npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # onta-mcp is a thin alias of cograph-mcp (new brand, same server). Publish
+      # it alongside so `npx -y onta-mcp` resolves. It depends on cograph-mcp via
+      # a `^0.1.0` range, so it picks up whatever cograph-mcp version was just
+      # published above.
+      - name: Bump and publish onta-mcp
+        working-directory: packages/onta-mcp
+        run: |
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump onta-mcp"; then
+            echo "Version bump commit detected — skipping onta-mcp publish."
+            exit 0
+          fi
+          npm version patch --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          cd ../..
+          git add packages/onta-mcp/package.json package-lock.json
+          git commit -m "chore(release): bump onta-mcp to v${NEW_VERSION} [skip ci]"
+          git push
+          cd packages/onta-mcp
           npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
