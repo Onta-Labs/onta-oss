@@ -5,7 +5,9 @@ import { spawn } from "node:child_process";
 import { stdout } from "node:process";
 import { writeConfig, configPathForDisplay } from "./config.js";
 
-const WEB_URL = process.env.COGRAPH_WEB_URL || "https://cograph.cloud";
+// Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at onta.sh.
+const WEB_URL =
+  process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://onta.sh";
 
 interface CallbackPayload {
   state?: string;
@@ -87,7 +89,7 @@ function handleRequest(
   expectedState: string,
   resolve: (value: CallbackPayload | { error: string }) => void,
 ): void {
-  // CORS — the page is on cograph.cloud, posting to localhost.
+  // CORS — the page is on the web app (onta.sh by default), posting to localhost.
   res.setHeader("Access-Control-Allow-Origin", WEB_URL);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");

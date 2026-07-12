@@ -1154,12 +1154,23 @@ export async function runShell(opts: {
   local?: boolean;
   noLogin?: boolean;
 }): Promise<void> {
-  const CLOUD_DEFAULT = "https://api.cograph.cloud";
-  // Detection precedence: --local > --no-login > COGRAPH_API_URL pointing
-  // anywhere besides the cloud default. When self-hosted we never trigger
-  // login and tenant defaults to "default" (open-access backend behavior).
-  const envUrl = process.env.COGRAPH_API_URL || process.env.OMNIX_API_URL;
-  const envIsSelfHosted = !!envUrl && envUrl !== CLOUD_DEFAULT;
+  // These hosts all resolve to the SAME hosted backend (verified: identical
+  // openapi.json). api.onta.sh is canonical after the Cograph → Onta rename;
+  // the older hosts still work, so any of them counts as "cloud" (not self-hosted).
+  const CLOUD_HOSTS = new Set([
+    "https://api.onta.sh",
+    "https://api.getonta.com",
+    "https://api.cograph.cloud",
+  ]);
+  // Detection precedence: --local > --no-login > ONTA_API_URL → COGRAPH_API_URL →
+  // OMNIX_API_URL pointing anywhere besides a known cloud host. When self-hosted
+  // we never trigger login and tenant defaults to "default" (open-access backend
+  // behavior).
+  const envUrl =
+    process.env.ONTA_API_URL ||
+    process.env.COGRAPH_API_URL ||
+    process.env.OMNIX_API_URL;
+  const envIsSelfHosted = !!envUrl && !CLOUD_HOSTS.has(envUrl);
   const selfHostedHint = !!opts.local || !!opts.noLogin || envIsSelfHosted;
 
   // `let` rather than `const` so /login can swap in a fresh Client after

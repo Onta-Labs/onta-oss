@@ -1,4 +1,4 @@
-# Cograph
+# Onta (formerly Cograph)
 
 Turn any CSV into a context graph — a knowledge graph you can query in natural language.
 
