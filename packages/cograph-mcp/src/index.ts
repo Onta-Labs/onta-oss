@@ -60,8 +60,8 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Cograph is a context graph platform. Use these tools to query " +
-      "structured data across multiple context graphs using natural language.",
+      "Onta (formerly Cograph) is a context graph platform. Use these tools to " +
+      "query structured data across multiple context graphs using natural language.",
   },
 );
 
@@ -78,7 +78,7 @@ function textResult(text: string) {
 function errorResult(err: unknown) {
   const msg =
     err instanceof CographError
-      ? `Cograph error: ${err.message}`
+      ? `Onta error: ${err.message}`
       : err instanceof Error
         ? err.message
         : String(err);
@@ -591,7 +591,7 @@ server.registerTool(
   "agent",
   {
     description:
-      "Talk to the Cograph Ask-AI agent — the single conversational front door " +
+      "Talk to the Onta Ask-AI agent — the single conversational front door " +
       "to a context graph. Send a natural-language message and the agent " +
       "classifies your intent and either ANSWERS a question directly, asks a " +
       "CLARIFYing question, or proposes a PLAN of actions (enrich attributes, " +
@@ -958,7 +958,11 @@ server.registerTool(
   },
 );
 
-async function main(): Promise<void> {
+// Exported so a thin alias package (e.g. `onta-mcp`) can start the SAME server
+// without re-implementing it: that wrapper imports this package as a library, so
+// the `isEntrypoint` guard below is (correctly) false there and it calls main()
+// explicitly. Direct `npx cograph-mcp` still auto-starts via the guard.
+export async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
