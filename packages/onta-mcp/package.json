@@ -1,6 +1,6 @@
 {
   "name": "onta-mcp",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "Onta MCP server (alias of cograph-mcp)",
   "type": "module",
   "bin": {
