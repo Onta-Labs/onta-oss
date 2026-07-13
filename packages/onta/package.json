@@ -1,6 +1,6 @@
 {
   "name": "onta",
-  "version": "0.1.48",
+  "version": "0.1.49",
   "description": "Onta SDK and CLI — context graph platform for structured data (alias of cograph)",
   "type": "module",
   "main": "./index.mjs",
@@ -50,7 +50,7 @@
     "url": "https://github.com/git-moeen/onta-oss/issues"
   },
   "dependencies": {
-    "cograph": "^0.1.48"
+    "cograph": "^0.1.49"
   },
   "engines": {
     "node": ">=20"

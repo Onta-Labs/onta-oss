@@ -172,20 +172,10 @@ Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 }
 ```
 
-Running from a checkout of this repo, the Python server is equivalent:
-
-```json
-{
-  "mcpServers": {
-    "onta": {
-      "command": "python",
-      "args": ["-m", "cograph_client.mcp_server"]
-    }
-  }
-}
-```
-
-Tools: `ask`, `list_knowledge_graphs`, `ingest_csv`, `view_ontology`, `evolve_ontology`, `apply_ontology_change`.
+Tools: `ask`, `search`, `agent`, `ingest_csv`, `list_knowledge_graphs`,
+`create_knowledge_graph`, `delete_knowledge_graph`, `view_ontology`,
+`evolve_ontology`, `apply_ontology_change(s)`, `list_jobs`, `get_job`.
+See the [onta-mcp README](packages/cograph-mcp/README.md) for configuration.
 
 ## API
 
