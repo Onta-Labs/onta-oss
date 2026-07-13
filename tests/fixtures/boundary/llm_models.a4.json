@@ -1,0 +1,530 @@
+{
+  "rejections": [],
+  "verified_facts": [
+    {
+      "object": "200000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "3.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "aurora-large-v2",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "15.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "128000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "0.25^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "aurora-mini-v2",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "1.25^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "128000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "2.5^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "aurora-vision",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "10.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "64000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "0.3^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "cinder-base-15b",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "0.4^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "64000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "0.3^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "cinder-coder-15b",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "0.4^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "8192^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "0.1^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "driftwood-7b",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "0.1^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "32000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "1.2^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "halcyon-audio",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "2.4^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "32000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "0.9^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "meridian-70b",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "0.9^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "32000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "0.2^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "meridian-8b",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "0.2^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "16000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "0.5^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "meridian-vision-34b",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "0.5^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "256000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "5.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "quillstar-opus",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "25.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "256000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "1.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "quillstar-sonnet",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "5.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "1000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "0.15^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "solstice-flash",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "0.6^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "1000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "7.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "solstice-pro",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "21.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "16000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/context_length",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    },
+    {
+      "object": "0.05^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/input_price",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    },
+    {
+      "object": "tessellate-mini",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/model_id",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/open_source",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    },
+    {
+      "object": "0.15^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Model/attrs/output_price",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    }
+  ]
+}

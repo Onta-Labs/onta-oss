@@ -1,0 +1,521 @@
+{
+  "attribute_declarations": [
+    {
+      "kind": "literal",
+      "name": "context_length",
+      "range": "http://www.w3.org/2001/XMLSchema#integer",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/context_length"
+    },
+    {
+      "kind": "relationship",
+      "name": "developed_by",
+      "range": "https://cograph.tech/types/Organization",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/developed_by"
+    },
+    {
+      "kind": "literal",
+      "name": "input_price",
+      "range": "http://www.w3.org/2001/XMLSchema#float",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/input_price"
+    },
+    {
+      "kind": "literal",
+      "name": "model_id",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/model_id"
+    },
+    {
+      "kind": "literal",
+      "name": "open_source",
+      "range": "http://www.w3.org/2001/XMLSchema#boolean",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/open_source"
+    },
+    {
+      "kind": "literal",
+      "name": "output_price",
+      "range": "http://www.w3.org/2001/XMLSchema#float",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/output_price"
+    },
+    {
+      "kind": "relationship",
+      "name": "supports_modality",
+      "range": "https://cograph.tech/types/Modality",
+      "type": "Model",
+      "uri": "https://cograph.tech/types/Model/attrs/supports_modality"
+    }
+  ],
+  "entities": [
+    {
+      "also_types": [],
+      "id": "audio",
+      "label": "audio",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "type": "Modality",
+      "uri": "https://cograph.tech/entities/Modality/audio"
+    },
+    {
+      "also_types": [],
+      "id": "image",
+      "label": "image",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "type": "Modality",
+      "uri": "https://cograph.tech/entities/Modality/image"
+    },
+    {
+      "also_types": [],
+      "id": "text",
+      "label": "text",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "type": "Modality",
+      "uri": "https://cograph.tech/entities/Modality/text"
+    },
+    {
+      "also_types": [],
+      "id": "video",
+      "label": "video",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "type": "Modality",
+      "uri": "https://cograph.tech/entities/Modality/video"
+    },
+    {
+      "also_types": [],
+      "id": "Aurora Large v2",
+      "label": "Aurora Large v2",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "also_types": [],
+      "id": "Aurora Mini v2",
+      "label": "Aurora Mini v2",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "also_types": [],
+      "id": "Aurora Vision",
+      "label": "Aurora Vision",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "also_types": [],
+      "id": "Cinder Base 15B",
+      "label": "Cinder Base 15B",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "also_types": [],
+      "id": "Cinder Coder 15B",
+      "label": "Cinder Coder 15B",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "also_types": [],
+      "id": "Driftwood 7B",
+      "label": "Driftwood 7B",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "also_types": [],
+      "id": "Halcyon Audio",
+      "label": "Halcyon Audio",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "also_types": [],
+      "id": "Meridian 70B",
+      "label": "Meridian 70B",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "also_types": [],
+      "id": "Meridian 8B",
+      "label": "Meridian 8B",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "also_types": [],
+      "id": "Meridian Vision 34B",
+      "label": "Meridian Vision 34B",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "also_types": [],
+      "id": "Quillstar Opus",
+      "label": "Quillstar Opus",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "also_types": [],
+      "id": "Quillstar Sonnet",
+      "label": "Quillstar Sonnet",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "also_types": [],
+      "id": "Solstice Flash",
+      "label": "Solstice Flash",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "also_types": [],
+      "id": "Solstice Pro",
+      "label": "Solstice Pro",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "also_types": [],
+      "id": "Tessellate Mini",
+      "label": "Tessellate Mini",
+      "rdf_type": "https://cograph.tech/types/Model",
+      "type": "Model",
+      "uri": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    },
+    {
+      "also_types": [],
+      "id": "Emberform Research",
+      "label": "Emberform Research",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Emberform_Research"
+    },
+    {
+      "also_types": [],
+      "id": "Helios Systems",
+      "label": "Helios Systems",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Helios_Systems"
+    },
+    {
+      "also_types": [],
+      "id": "Lantern Intelligence",
+      "label": "Lantern Intelligence",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Lantern_Intelligence"
+    },
+    {
+      "also_types": [],
+      "id": "Nimbus AI",
+      "label": "Nimbus AI",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Nimbus_AI"
+    },
+    {
+      "also_types": [],
+      "id": "Vantage Labs",
+      "label": "Vantage Labs",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Vantage_Labs"
+    }
+  ],
+  "node_materializations": [
+    {
+      "label": "audio",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "uri": "https://cograph.tech/entities/Modality/audio"
+    },
+    {
+      "label": "image",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "uri": "https://cograph.tech/entities/Modality/image"
+    },
+    {
+      "label": "text",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "uri": "https://cograph.tech/entities/Modality/text"
+    },
+    {
+      "label": "video",
+      "rdf_type": "https://cograph.tech/types/Modality",
+      "uri": "https://cograph.tech/entities/Modality/video"
+    },
+    {
+      "label": "Emberform Research",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Emberform_Research"
+    },
+    {
+      "label": "Helios Systems",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Helios_Systems"
+    },
+    {
+      "label": "Lantern Intelligence",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Lantern_Intelligence"
+    },
+    {
+      "label": "Nimbus AI",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Nimbus_AI"
+    },
+    {
+      "label": "Vantage Labs",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Vantage_Labs"
+    }
+  ],
+  "relationship_edges": [
+    {
+      "object": "https://cograph.tech/entities/Organization/Nimbus_AI",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Large_v2"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Nimbus_AI",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Mini_v2"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Nimbus_AI",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/audio",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Aurora_Vision"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Emberform_Research",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Base_15B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Emberform_Research",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Cinder_Coder_15B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Emberform_Research",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Driftwood_7B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Helios_Systems",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/audio",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Halcyon_Audio"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Vantage_Labs",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Meridian_70B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Vantage_Labs",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Meridian_8B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Vantage_Labs",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Meridian_Vision_34B"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Lantern_Intelligence",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Opus"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Lantern_Intelligence",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Quillstar_Sonnet"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Helios_Systems",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Flash"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Helios_Systems",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/audio",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/image",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/video",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Solstice_Pro"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Nimbus_AI",
+      "predicate": "https://cograph.tech/onto/developed_by",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    },
+    {
+      "object": "https://cograph.tech/entities/Modality/text",
+      "predicate": "https://cograph.tech/onto/supports_modality",
+      "subject": "https://cograph.tech/entities/Model/Tessellate_Mini"
+    }
+  ],
+  "types": [
+    {
+      "kind": "primary",
+      "name": "Modality",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Modality"
+    },
+    {
+      "kind": "primary",
+      "name": "Model",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Model"
+    },
+    {
+      "kind": "primary",
+      "name": "Organization",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Organization"
+    }
+  ]
+}
