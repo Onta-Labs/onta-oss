@@ -655,6 +655,7 @@
       "uri": "https://cograph.tech/entities/Sector/Utilities"
     }
   ],
+  "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
       "object": "https://cograph.tech/entities/Industry/Financial_Exchanges",
