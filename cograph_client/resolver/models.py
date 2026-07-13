@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from cograph_client.api_registry.spec import AuthorityLevel
+
 _URI_SCHEME = "://"
 
 
@@ -367,13 +369,45 @@ class ValidationOutcome(str, Enum):
 
 
 class ValidatedTriple(BaseModel):
-    """A triple that passed schema-on-write validation."""
+    """A triple that passed schema-on-write validation — the A4 (Verified) fact.
+
+    ONTA-276: a verified fact optionally carries the trust signals the write-time
+    conflict policy (``pipeline/conflict.py``) arbitrates on when this fact
+    collides with an existing value on a FUNCTIONAL attribute. Source-of-truth
+    priority is set upstream (P1) but dies before the conflict point unless it is
+    carried on the fact through A4 — these fields are that carrier. All are
+    OPTIONAL with defaults, so every existing ``ValidatedTriple(...)`` construction
+    parses and validates unchanged; a fact with no explicit ``authority`` /
+    ``confidence`` simply falls to the policy's neutral defaults.
+    """
 
     subject: str
     predicate: str
     object: str
     outcome: ValidationOutcome = ValidationOutcome.OK
     original_value: str | None = None  # set when coerced
+    # Trust signals carried through A4 for write-time conflict resolution (ONTA-276).
+    authority: AuthorityLevel | None = Field(
+        default=None,
+        description=(
+            "Source-authority level this fact was verified under (reuses the "
+            "AuthorityLevel scale: source_of_truth > authoritative > "
+            "supplementary). None = authority unknown; the conflict policy ranks "
+            "it weakest."
+        ),
+    )
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0,
+        description=(
+            "Verification confidence in this fact's value (0-1). None lets the "
+            "conflict policy fall back to the calibrated confidence implied by "
+            "``authority``."
+        ),
+    )
+    source: str = Field(
+        default="",
+        description="Provenance source label this fact was verified from (carried onto its provenance record).",
+    )
 
 
 class RejectedValue(BaseModel):
