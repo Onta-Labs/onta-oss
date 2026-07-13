@@ -14,7 +14,7 @@ import { ingestCsvHandler } from "../src/index.js";
 function stubClient(ingestImpl: (...args: unknown[]) => unknown) {
   const ingest = vi.fn(ingestImpl);
   // Only the `ingest` method is exercised by the handler.
-  const client = { ingest } as unknown as import("cograph").Client;
+  const client = { ingest } as unknown as import("@onta/cli").Client;
   return { client, ingest };
 }
 

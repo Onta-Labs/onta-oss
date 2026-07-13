@@ -1,11 +1,11 @@
-# cograph
+# @onta/cli
 
-Node.js SDK and CLI for [Onta](https://onta.sh) (formerly Cograph) — turn raw data into a queryable context graph (a knowledge graph you query in natural language). Also published as [`onta`](https://www.npmjs.com/package/onta), the current brand name — same SDK, same CLI; new projects should install that one.
+Node.js SDK and CLI for [Onta](https://onta.sh) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
 ## Quickstart
 
 ```bash
-npx cograph
+npx @onta/cli
 ```
 
 That's it. The first run opens your browser to sign in, saves a key to `~/.cograph/config.json`, and drops you into the interactive shell:
@@ -25,19 +25,19 @@ That's it. The first run opens your browser to sign in, saves a key to `~/.cogra
   /quit
 ```
 
-Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [cograph.cloud/docs/quickstart](https://cograph.cloud/docs/quickstart).
+Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [onta.sh/docs/quickstart](https://onta.sh/docs/quickstart).
 
 ## Self-hosted mode
 
 Pointing the CLI at your own backend skips the browser sign-in:
 
 ```bash
-cograph --local                         # defaults to http://localhost:8000
-cograph --no-login                      # uses COGRAPH_API_URL env var
-COGRAPH_API_URL=http://my-host:8000 cograph
+onta --local                          # defaults to http://localhost:8000
+onta --no-login                       # uses COGRAPH_API_URL env var
+COGRAPH_API_URL=http://my-host:8000 onta
 ```
 
-When self-hosted, the prompt shows the host suffix: `cograph@localhost:8000 (kg) ▸`. Bare `cograph` still triggers the hosted-version login flow.
+When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. Bare `onta` still triggers the hosted-version login flow.
 
 ## Auto-enrichment
 
@@ -56,23 +56,23 @@ Use `/enrich watch <job_id>` for live progress, `/enrich jobs` to list recent jo
 ## Install
 
 ```bash
-npm install cograph        # or: npm install -g cograph
+npm install @onta/cli        # or: npm install -g @onta/cli
 ```
 
-Requires Node 20+.
+Requires Node 20+. The global install exposes the `onta` command.
 
 ## Browsing what got ingested
 
 After ingest, look around before asking questions:
 
 ```text
-cograph (mentors) [37,715] ▸ /types
+onta (mentors) [37,715] ▸ /types
   Type           Entities
   Mentor              988
   Skill               412
   Industry             38
 
-cograph (mentors) [37,715] ▸ /type Mentor
+onta (mentors) [37,715] ▸ /type Mentor
   Mentor  1,000 entities
 
   Attributes (6)
@@ -91,7 +91,7 @@ cograph (mentors) [37,715] ▸ /type Mentor
 ## SDK
 
 ```ts
-import { Client, CographError } from "cograph";
+import { Client, CographError } from "@onta/cli";
 
 const client = new Client({ apiKey: process.env.COGRAPH_API_KEY });
 
@@ -105,7 +105,7 @@ console.log(result.answer);
 ```ts
 new Client({
   apiKey?: string,    // env: COGRAPH_API_KEY
-  baseUrl?: string,   // env: COGRAPH_API_URL (default: https://api.cograph.cloud)
+  baseUrl?: string,   // env: COGRAPH_API_URL (default: https://api.onta.sh)
   tenant?: string,    // env: COGRAPH_TENANT (default: demo-tenant)
 })
 ```
@@ -161,27 +161,27 @@ For scripts and CI — every command is a single HTTP round-trip:
 
 ```bash
 # List / create / delete context graphs
-npx cograph kg list
-npx cograph kg create my-data --description "demo"
-npx cograph kg delete my-data
+npx @onta/cli kg list
+npx @onta/cli kg create my-data --description "demo"
+npx @onta/cli kg delete my-data
 
 # Ingest data
-npx cograph ingest data.csv --kg my-data
-npx cograph ingest --text "Alice works at Acme" --kg my-data
+npx @onta/cli ingest data.csv --kg my-data
+npx @onta/cli ingest --text "Alice works at Acme" --kg my-data
 
 # Ask questions
-npx cograph ask "How many companies?" --kg my-data
-npx cograph ask "Top 5 deals" --kg my-data --debug
+npx @onta/cli ask "How many companies?" --kg my-data
+npx @onta/cli ask "Top 5 deals" --kg my-data --debug
 
 # Ontology + clear
-npx cograph ontology types
-npx cograph clear --kg my-data --yes
+npx @onta/cli ontology types
+npx @onta/cli clear --kg my-data --yes
 ```
 
 ### Environment
 
-- `COGRAPH_API_KEY` — required for headless / CI use; interactive `cograph login` writes one to `~/.cograph/config.json` automatically.
-- `COGRAPH_API_URL` — default `https://api.cograph.cloud`.
+- `COGRAPH_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.cograph/config.json` automatically.
+- `COGRAPH_API_URL` — default `https://api.onta.sh`.
 - `COGRAPH_TENANT` — default `demo-tenant`. The login flow sets this to your user ID.
 
 Legacy `OMNIX_*` vars are also accepted.
@@ -190,4 +190,4 @@ Legacy `OMNIX_*` vars are also accepted.
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE](./LICENSE).

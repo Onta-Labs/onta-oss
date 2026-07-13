@@ -1,7 +1,7 @@
 {
-  "name": "cograph",
+  "name": "@onta/cli",
   "version": "0.1.50",
-  "description": "Cograph SDK and CLI — context graph platform for structured data",
+  "description": "Onta SDK and CLI — context graph platform for structured data",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,7 +15,10 @@
     }
   },
   "bin": {
-    "cograph": "./dist/cli.js"
+    "onta": "./dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",
@@ -31,7 +34,7 @@
   "keywords": [
     "knowledge-graph",
     "context-graph",
-    "cograph",
+    "onta",
     "sdk",
     "cli",
     "rdf",
@@ -40,16 +43,16 @@
     "ai",
     "llm"
   ],
-  "author": "Cograph",
+  "author": "Onta",
   "license": "Apache-2.0",
   "homepage": "https://onta.sh",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/git-moeen/onta-oss.git",
+    "url": "git+https://github.com/Onta-Labs/onta-oss.git",
     "directory": "packages/cograph"
   },
   "bugs": {
-    "url": "https://github.com/git-moeen/onta-oss/issues"
+    "url": "https://github.com/Onta-Labs/onta-oss/issues"
   },
   "dependencies": {
     "commander": "^12.1.0"

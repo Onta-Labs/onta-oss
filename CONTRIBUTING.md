@@ -1,15 +1,15 @@
-# Contributing to Cograph
+# Contributing to Onta
 
 ## What can ship here (OSS boundary — read first)
 
-`cograph-oss` is published publicly to npm (and PyPI). **Public publication is a
+`onta-oss` is published publicly to npm (and PyPI). **Public publication is a
 one-way door** — once code ships, it's in mirrors, archives, and forks within
 hours. Everything in this repo must be OSS-safe.
 
 **Ships here (OSS):**
 - `cograph_client/` — ingest, resolver, **core ER engine** (normalize, block,
   score, merge), REST API surface, embedding service
-- `packages/cograph` (TS SDK + CLI) and `packages/cograph-mcp` (MCP server)
+- `packages/cograph` (TS SDK + CLI, published as `@onta/cli`) and `packages/cograph-mcp` (MCP server, published as `@onta/mcp`)
 - Plugin **protocols**: `register_external_verifier` (auth),
   `register_adapter` (enrichment)
 - Default OSS adapters: Wikidata enrichment, static-keys auth
@@ -23,7 +23,7 @@ hours. Everything in this repo must be OSS-safe.
 - Advanced ER tooling (review-queue UI, embedding matchers, active learning)
 
 The canonical, fuller table with reasoning lives in the parent repo at
-[`docs/oss_proprietary_boundary.md`](https://github.com/git-moeen/cograph/blob/main/docs/oss_proprietary_boundary.md).
+[`docs/oss_proprietary_boundary.md`](https://github.com/Onta-Labs/onta/blob/main/docs/oss_proprietary_boundary.md).
 When in doubt, surface the question before writing code.
 
 **Entitlement gating is NOT done in OSS (incl. the MCP server).** The MCP server
@@ -71,8 +71,8 @@ retroactive — and you keep the copyright to your contribution.
 
 ```bash
 # Clone
-git clone https://github.com/git-moeen/cograph-oss.git
-cd cograph-oss
+git clone https://github.com/Onta-Labs/onta-oss.git
+cd onta-oss
 
 # Start graph DB
 docker compose up -d
@@ -111,8 +111,8 @@ cograph_client/
   eval.py       Eval framework
 
 packages/
-  cograph/      Node SDK + CLI (published as `onta` and legacy `cograph`)
-  cograph-mcp/  MCP server for AI agents (published as `onta-mcp` too)
+  cograph/      Node SDK + CLI (published as `@onta/cli`)
+  cograph-mcp/  MCP server for AI agents (published as `@onta/mcp`)
 ```
 
 ## Code Style

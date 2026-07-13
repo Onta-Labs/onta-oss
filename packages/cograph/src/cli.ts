@@ -980,11 +980,11 @@ program
 
 // ---------------------------------------------------------------------------
 
-/** True when this module is the process entry point (run as `cograph …`), not
+/** True when this module is the process entry point (run as `onta …`), not
  *  when it's imported (e.g. by the unit tests that exercise `runAgentCommand`).
  *  Guards the auto-parse so importing the module has no side effects.
  *
- *  npm installs the `bin` as a SYMLINK (node_modules/.bin/cograph →
+ *  npm installs the `bin` as a SYMLINK (node_modules/.bin/onta →
  *  dist/cli.js). Node sets import.meta.url to the *realpath* of the entry file
  *  while process.argv[1] keeps the *symlink* path, so a naive href comparison
  *  never matches and the CLI silently does nothing. Resolve the symlink first:
@@ -1000,11 +1000,10 @@ function isMainModule(): boolean {
   }
 }
 
-/** Run the CLI. Exported so the `onta` alias package (packages/onta) can
- *  launch the same program under the new brand — the same pattern onta-mcp
- *  uses to wrap cograph-mcp. Reached externally via the `"./cli"` subpath
- *  export in package.json; the isMainModule() guard stays false in that case
- *  because the process entry point is the alias's bin, not this file. */
+/** Run the CLI. Exported (and reachable via the `"./cli"` subpath export in
+ *  package.json) so a caller can launch the same program programmatically — the
+ *  isMainModule() guard stays false in that case because the process entry point
+ *  is the caller, not this file. */
 export async function main(argv: string[] = process.argv): Promise<void> {
   await program.parseAsync(argv).catch((err) => {
     fail(`Error: ${err instanceof Error ? err.message : String(err)}`);
