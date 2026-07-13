@@ -174,7 +174,8 @@ Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 
 Tools: `ask`, `search`, `agent`, `ingest_csv`, `list_knowledge_graphs`,
 `create_knowledge_graph`, `delete_knowledge_graph`, `view_ontology`,
-`evolve_ontology`, `apply_ontology_change(s)`, `list_jobs`, `get_job`.
+`evolve_ontology`, `apply_ontology_change(s)`, `schedule`, `list_jobs`,
+`get_job`, `wait_for_job`.
 See the [onta-mcp README](packages/cograph-mcp/README.md) for configuration.
 
 ## API
