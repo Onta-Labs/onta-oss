@@ -1,0 +1,425 @@
+{
+  "rejections": [],
+  "verified_facts": [
+    {
+      "object": "8900^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "Chicago, Illinois",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "68100000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "ARGX",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "18500^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "Columbus, Ohio",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "44100000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "CBLT",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "15000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "South San Francisco, California",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "47800000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "CRSD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "145000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "Boise, Idaho",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "33200000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "GRNF",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "22000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "Battle Creek, Michigan",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "29800000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "HRVM",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "42000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "Cambridge, Massachusetts",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "132500000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "HLXP",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "17000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "Santa Clara, California",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "98600000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "LMNX",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "34000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "Charlotte, North Carolina",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "55700000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "MRDN",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "61000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "Wichita, Kansas",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "84200000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "NMBS",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "12500^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "Houston, Texas",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "39400000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "PTNC",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "29000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "Santa Clara, California",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "210800000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "SLST",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "6100^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "Santa Clara, California",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "18900000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "SLSC",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "3200^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "Indianapolis, Indiana",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "26700000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "STNH",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "27000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "Houston, Texas",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "76300000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "TDWT",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "88000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/employees",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    },
+    {
+      "object": "Dearborn, Michigan",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/headquarters",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    },
+    {
+      "object": "51900000000^^http://www.w3.org/2001/XMLSchema#integer",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/market_cap",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    },
+    {
+      "object": "VLDR",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Company/attrs/ticker",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    }
+  ]
+}
