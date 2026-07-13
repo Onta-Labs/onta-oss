@@ -35,6 +35,7 @@ from cograph_client.graph.ontology_queries import (
     insert_attribute,
     insert_subtype,
     insert_type,
+    ontology_version,
     parent_map_query,
     set_object_property_range,
     type_uri,
@@ -50,7 +51,8 @@ from cograph_client.graph.text_markers import (
     invalidate_for_graph as invalidate_text_marker_cache,
 )
 from cograph_client.graph.parser import parse_sparql_results
-from cograph_client.graph.kg_writer import insert_facts
+from cograph_client.graph.kg_writer import build_graph_delta, insert_facts
+from cograph_client.pipeline.envelope import derive_fact_id
 from cograph_client.graph.provenance import (
     build_attribute_provenance_companions,
     build_provenance_triples,
@@ -65,6 +67,7 @@ from cograph_client.resolver.attribute_resolver import (
 )
 from cograph_client.resolver.models import (
     AttrAction,
+    ColumnMapping,
     ColumnRole,
     CSVSchemaMapping,
     ExtractionConstraint,
@@ -78,6 +81,9 @@ from cograph_client.resolver.models import (
     RejectedValue,
     ValidatedTriple,
     ValidationOutcome,
+    assert_soft_a2,
+    soft_a2_from_structured_rows,
+    validate_soft_a2,
 )
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.predicate_normalizer import normalize_predicate
@@ -894,6 +900,42 @@ def _is_fabricated_placeholder(value: str | None) -> bool:
     return False
 
 
+def _structured_rows_mapping(
+    rows: list[dict], type_name: str, key_field: str
+) -> CSVSchemaMapping:
+    """Build the fixed :class:`CSVSchemaMapping` for PRE-STRUCTURED rows (ONTA-272).
+
+    Every distinct field (first-seen order across the rows) becomes a literal
+    ATTRIBUTE column of ``type_name`` except the key field, which is the TYPE_ID
+    (URI + label + key-as-attribute, per ADR 0003 §2). ``source_url`` is typed
+    ``uri`` so its per-record citation renders as a link; every other field is a
+    plain ``string`` literal — pre-structured sources deliver clean scalar cells,
+    so there is no LLM datatype guessing. A degenerate ``key_field`` that never
+    appears in the rows falls back to the first field so ``apply_mapping`` always
+    has a TYPE_ID (an all-empty key still mints via its synthetic-key path)."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for k in row:
+            if k not in seen:
+                seen.add(k)
+                ordered.append(k)
+    if key_field not in seen and ordered:
+        key_field = ordered[0]
+    columns = [
+        ColumnMapping(
+            column_name=k,
+            role=ColumnRole.TYPE_ID if k == key_field else ColumnRole.ATTRIBUTE,
+            target_type=type_name,
+            datatype="uri" if k == "source_url" else "string",
+        )
+        for k in ordered
+    ]
+    return CSVSchemaMapping(entity_type=type_name, columns=columns)
+
+
 class SchemaResolver:
     # Primary extraction model, routed through OpenRouter with the configured
     # fallback. Defaults to the shared primary.
@@ -921,10 +963,24 @@ class SchemaResolver:
         anthropic_key: str,
         verdict_cache: JsonVerdictCache,
         embedding_service: object | None = None,
+        ontology_lock: asyncio.Lock | None = None,
     ):
         self._neptune = neptune
         self._anthropic = anthropic.AsyncAnthropic(api_key=anthropic_key)
         self._embedding_service = embedding_service
+        # ONTA-268: ontology-write lock. Serializes the read-decide-write of
+        # ontology EXISTENCE (type/subtype/attribute/range creation) so several
+        # per-sub-query resolvers ingesting concurrently can't race on
+        # type-creation (which fragments the ontology). SHAREABLE: pass ONE lock
+        # to every per-sub-query resolver in a discovery job (web_ingest_cap) and
+        # their ontology mutations serialize against each other; default is a
+        # private lock so a standalone resolver still guards its own critical
+        # sections. Only the ontology existence read-decide-write is guarded —
+        # NOT the LLM extraction (`_extract`), and NOT the instance-data write
+        # (which is per-sub-query by construction). asyncio.Lock is NOT reentrant,
+        # so the guarded methods never nest a second acquisition (see `_resolve_type`
+        # / `_locked_ontology_update`).
+        self._ontology_lock = ontology_lock or asyncio.Lock()
         from cograph_client.config import settings
         self._openrouter_key = settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self._type_matcher = TypeMatcher(self._openrouter_key, verdict_cache, embedding_service)
@@ -966,7 +1022,22 @@ class SchemaResolver:
         # child->parent (type-name) map for subclass-chain walks. Built once per
         # ingest from parent_map_query and mutated in-place as new subtypes are
         # created so later entities in the same batch can climb the chain.
+        # ONTA-268: on the reentrant ingest path this is threaded call-locally
+        # (see `ingest`/`_resolve_and_insert` `parent_of=` params); the instance
+        # attribute remains the fallback for legacy direct-call sites (the
+        # `/ingest/csv/rows` route and unit tests that seed it directly).
         self._parent_of: dict[str, str] = {}
+
+    async def _locked_ontology_update(self, sparql: str) -> None:
+        """Run a single ontology-mutating SPARQL update under the ontology-write
+        lock (ONTA-268).
+
+        Used for the scattered pass-2 ontology writes (attribute/range/promotion
+        type creation) that are NOT already inside a lock-guarded region. MUST NOT
+        be called from within `_resolve_type` (which already holds the lock —
+        `asyncio.Lock` is not reentrant, so that would deadlock)."""
+        async with self._ontology_lock:
+            await self._neptune.update(sparql)
 
     async def ingest(
         self,
@@ -978,6 +1049,8 @@ class SchemaResolver:
         constrain_types: list[str] | None = None,
         constrain_attributes: dict[str, list[str]] | None = None,
         constrain_soft: bool = False,
+        run_id: str | None = None,
+        observed_at: datetime | None = None,
     ) -> IngestResult:
         """Full ingestion pipeline: extract → resolve → validate → insert.
 
@@ -985,6 +1058,15 @@ class SchemaResolver:
             instance_graph: If set, instance data goes into this graph while
                 ontology updates go into the tenant's base graph. This enables
                 multiple KGs sharing one ontology.
+            run_id: STABLE identity of this logical ingest run (ONTA-271). Every
+                fact_id + the batch_id + the A6 Graph Delta derive from it, so a
+                retry/replay that PRESERVES the run_id reproduces a byte-identical
+                graph (P6 dedupes the replay instead of duplicating). Defaults to
+                a fresh ``uuid4`` per call — today's behavior, and the "no stable
+                id" control (each call is a distinct run, so nothing dedupes).
+            observed_at: The run's ``onto/ingested_at`` timestamp (ONTA-271). A
+                nonce if left to wall-clock, so it is threaded from the envelope
+                and a replay REUSES it to stay byte-identical. Defaults to now.
             constrain_types: OPT-IN, DISCOVERY-ONLY (ONTA-199). When set, extraction
                 is constrained to emit ONLY entities of these confirmed type(s).
                 ``None`` (the default, and every document/CSV/text caller) keeps
@@ -1007,17 +1089,37 @@ class SchemaResolver:
             )
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph
-        # Instance data goes to instance_graph if specified, otherwise base graph
-        self._instance_graph = instance_graph or graph_uri
-        # Set graph URI on type matcher so embedding pre-filter can find the right store
+        # Instance data goes to instance_graph if specified, otherwise base graph.
+        # ONTA-268 (reentrancy): the target instance graph is CALL-LOCAL and
+        # threaded down the write path so two ingest() calls interleaving on ONE
+        # shared resolver can't clobber each other's target (the leak
+        # `qc/isolation.py::check_isolation` catches). The `self.` attribute is
+        # written too, but only as the fallback legacy direct-call sites read; the
+        # reentrant path below never reads it.
+        target_instance_graph = instance_graph or graph_uri
+        self._instance_graph = target_instance_graph
+        # Set graph URI on type matcher so embedding pre-filter can find the right
+        # store — threaded per-call to `match(graph_uri=...)` below; the attribute
+        # stays a fallback only.
         self._type_matcher._graph_uri = graph_uri
 
         # Step 1: Fetch existing ontology (needed for extraction context)
         existing_types, existing_attrs = await self._fetch_ontology(graph_uri)
         # Build the child->parent subclass map once per ingest. Used to climb the
         # hierarchy for ER config selection and ancestor synthesis. Mutated
-        # in-place as new subtypes are created during this ingest.
-        self._parent_of = await self._fetch_parent_map(graph_uri)
+        # in-place as new subtypes are created during this ingest. CALL-LOCAL and
+        # threaded (ONTA-268): a fresh dict per ingest, so concurrent ingests each
+        # mutate their own map; `self._parent_of` remains the legacy fallback.
+        parent_of = await self._fetch_parent_map(graph_uri)
+        self._parent_of = parent_of
+
+        # ONTA-270: fingerprint the ontology snapshot THIS run (P5) planned
+        # against. Stamped onto the A5 placement plan and threaded into the apply
+        # (`_resolve_and_insert`), where P6 rejects/recomputes it if a concurrent
+        # run advances the ontology during the (long, async) extraction below.
+        # Computed here, right after the snapshot read, so it captures exactly the
+        # state every downstream placement decision is made against.
+        plan_ontology_version = ontology_version(existing_types, existing_attrs, parent_of)
 
         # Stage timing (ONTA-198 follow-up): time the two heavy halves of an
         # ingest — LLM EXTRACTION vs type-RESOLUTION+insert — so a slow run reveals
@@ -1026,7 +1128,10 @@ class SchemaResolver:
 
         # CSV: use schema-inference pipeline (1 LLM call for schema, deterministic for rows)
         if content_type == "csv":
-            return await self._ingest_csv(content, graph_uri, existing_types, existing_attrs, source)
+            return await self._ingest_csv(
+                content, graph_uri, existing_types, existing_attrs, source,
+                instance_graph=target_instance_graph, parent_of=parent_of,  # ONTA-268
+            )
 
         # Text/JSON: chunk and process
         from cograph_client.resolver.chunker import (
@@ -1135,6 +1240,19 @@ class SchemaResolver:
         # metrics are off the concept nodes, this is a no-op.
         if constraint is not None and constraint.is_active and constraint.soft:
             extraction = _apply_soft_focus_floor(extraction, constraint)
+            # A2 zero-ontology-commitment contract (ONTA-272): the soft-typed
+            # candidate facts must carry NO committed ontology reference in any type
+            # slot (soft lineage is fine — it is P5's suggestion, not a commitment).
+            # OBSERVE-ONLY here: imperfect LLM output must never HARD-fail a run, so
+            # a violation is logged, not raised (the deterministic pre-structured
+            # fast path asserts the same contract FATALLY, where it can only be a bug).
+            _a2_violations = validate_soft_a2(extraction)
+            if _a2_violations:
+                logger.warning(
+                    "soft_a2_contract_violation",
+                    count=len(_a2_violations),
+                    sample=_a2_violations[:3],
+                )
 
         logger.info(
             "extraction_complete",
@@ -1157,7 +1275,17 @@ class SchemaResolver:
             )
 
         # Step 3: Resolve types and attributes, validate, insert
-        batch_id = str(uuid4())
+        # ONTA-271: STABLE run identity. run_id defaults to a fresh uuid4 (a
+        # distinct run per call — today's behavior), but a caller that preserves
+        # it across a retry makes the whole write replay-deterministic. batch_id
+        # is DERIVED from run_id (was a bare uuid4) so a replay reuses the same
+        # batch token → the BATCH_PREDICATE triple is idempotent instead of a
+        # per-call nonce; rollback-by-batch is unchanged (still a unique token
+        # per distinct run). observed_at feeds onto/ingested_at (see
+        # _resolve_and_insert_entity), threaded so a replay reuses it.
+        run_id = run_id or str(uuid4())
+        observed_at = observed_at or datetime.now(timezone.utc)
+        batch_id = derive_fact_id(run_id=run_id, stage="A6-batch")
         result = IngestResult(
             entities_extracted=len(extraction.entities),
             batch_id=batch_id,
@@ -1176,6 +1304,18 @@ class SchemaResolver:
                 # for these modalities (extract + apply happen in one call),
                 # so free-text candidacy is decided here.
                 decide_text_candidacy=True,
+                # ONTA-268: thread the call-local target graph + parent map so
+                # the write path never reads shared `self.` state.
+                instance_graph=target_instance_graph,
+                parent_of=parent_of,
+                # ONTA-270: the version P5 stamped the plan at, so P6 (the apply
+                # inside `_resolve_and_insert`) can reject/recompute a stale plan.
+                ontology_version_stamp=plan_ontology_version,
+                # ONTA-271: stable run identity + the run's ingested_at stamp,
+                # threaded call-local (like instance_graph/parent_of) so the A6
+                # Graph Delta and every fact_id are replay-deterministic.
+                run_id=run_id,
+                observed_at=observed_at,
             )
             logger.info(
                 "stage_timing",
@@ -1202,7 +1342,7 @@ class SchemaResolver:
                 entities_so_far=result.entities_resolved,
                 exc_info=True,
             )
-            instance_graph = getattr(self, "_instance_graph", graph_uri)
+            instance_graph = target_instance_graph  # ONTA-268: call-local, not self
             try:
                 sparql = delete_batch_query(instance_graph, batch_id)
                 await self._neptune.update(sparql)
@@ -1224,6 +1364,12 @@ class SchemaResolver:
         batch_id: str,
         decide_text_candidacy: bool = False,
         key_join: KeyJoin | None = None,
+        *,
+        instance_graph: str | None = None,
+        parent_of: dict[str, str] | None = None,
+        ontology_version_stamp: str | None = None,
+        run_id: str | None = None,
+        observed_at: datetime | None = None,
     ) -> IngestResult:
         """Inner pipeline: resolve entities, insert triples. Separated for rollback.
 
@@ -1240,8 +1386,44 @@ class SchemaResolver:
         this method with a client-supplied mapping and never runs a schema
         pass — its contract is "no LLM call", and its candidacy is covered
         later by a reconciler-side default heuristic (ONTA-181).
+
+        ``instance_graph`` / ``parent_of`` (ONTA-268, reentrancy): CALL-LOCAL
+        overrides threaded from :meth:`ingest`. When ``None`` (legacy direct
+        callers — the ``/ingest/csv/rows`` route sets ``self._instance_graph``
+        and unit tests seed ``self._parent_of``) they fall back to the instance
+        attributes. On the reentrant ``ingest`` path they carry per-call state so
+        two interleaved ingests never read each other's target graph / parent map.
+
+        ``ontology_version_stamp`` (ONTA-270): the ontology fingerprint
+        :meth:`ingest` computed for the A5 placement plan. When set, the apply is
+        an optimistic-concurrency P6: before pass 1 computes any placement we
+        reconcile the stamp against the CURRENT ontology and reject-and-recompute
+        a stale plan (see :meth:`_reconcile_ontology_version`). ``None`` (legacy
+        direct callers) skips the guard, preserving today's behavior exactly.
+
+        ``run_id`` / ``observed_at`` (ONTA-271): stable run identity + the run's
+        ingested_at stamp, threaded call-local (alongside ``instance_graph`` /
+        ``parent_of``). ``observed_at`` is passed to each per-entity write so the
+        ``onto/ingested_at`` triple is replay-stable; ``run_id`` keys the A6
+        :class:`GraphDelta` receipt built on ``result.graph_delta`` at the end,
+        so a preserved-run_id replay reproduces a byte-identical delta. Both
+        ``None`` (legacy direct callers) → no delta, wall-clock ingested_at.
         """
-        instance_graph = getattr(self, "_instance_graph", graph_uri)
+        instance_graph = (
+            instance_graph if instance_graph is not None
+            else getattr(self, "_instance_graph", graph_uri)
+        )
+        parent_of = self._parent_of if parent_of is None else parent_of
+        # ONTA-270: P6 optimistic-concurrency guard. If a concurrent run advanced
+        # the ontology while we were extracting, the snapshot this plan was
+        # computed against is STALE and applying it verbatim mints duplicate
+        # terms; reconcile brings the in-place snapshot current so pass 1 resolves
+        # against the new version. No-op (single cheap read) when nothing raced.
+        if ontology_version_stamp is not None:
+            await self._reconcile_ontology_version(
+                graph_uri, ontology_version_stamp,
+                existing_types, existing_attrs, parent_of,
+            )
         # ONTA-177: (resolved_type, attr_name) -> sampled string values,
         # filled by _resolve_and_insert_entity during pass 2.
         text_values: dict[tuple[str, str], list[str]] | None = (
@@ -1265,6 +1447,7 @@ class SchemaResolver:
 
             resolved_type = await self._resolve_type(
                 entity, graph_uri, existing_types, existing_attrs, result,
+                parent_of=parent_of,
             )
             if resolved_type:
                 resolved_types[entity.id] = resolved_type
@@ -1273,6 +1456,7 @@ class SchemaResolver:
                 # type (resolved_type) still owns URI minting + ER.
                 also = await self._resolve_also_types(
                     entity, resolved_type, graph_uri, existing_types, existing_attrs, result,
+                    parent_of=parent_of,
                 )
                 if also:
                     entity_also_types[entity.id] = also
@@ -1286,12 +1470,12 @@ class SchemaResolver:
                         # Climb the subclass chain so a granular leaf (HotelGuest)
                         # inherits a configured ancestor's (Guest) ER config and
                         # ER fires on the subtype.
-                        er_config = config_for_with_hierarchy(resolved_type, self._parent_of)
+                        er_config = config_for_with_hierarchy(resolved_type, parent_of)
                         er_applies = er_config is not None
                         type_uri = f"https://cograph.tech/types/{resolved_type}"
                         decision = await self._er.find_match(
                             entity, resolved_type, type_uri, instance_graph,
-                            config=er_config, parent_of=self._parent_of,
+                            config=er_config, parent_of=parent_of,
                         )
                         if decision.action == MergeAction.AUTO_MERGE and decision.canonical_uri:
                             entity_uri = decision.canonical_uri
@@ -1409,6 +1593,8 @@ class SchemaResolver:
                 # The CSV path (`_ingest_mapped`) leaves it off: cells are
                 # authoritative and written verbatim.
                 drop_placeholder_values=True,
+                instance_graph=instance_graph,  # ONTA-268: call-local target
+                observed_at=observed_at,  # ONTA-271: replay-stable ingested_at
             )
 
         # Append ER index triples (block keys + denormalized signals) to the
@@ -1423,7 +1609,7 @@ class SchemaResolver:
         # batched INSERT per ingest, COG-46 — the exact triples a per-entity
         # write would produce; only the write pattern is batched.)
         if all_entity_triples or all_provenance_triples:
-            instance_graph = getattr(self, "_instance_graph", graph_uri)
+            # instance_graph resolved once at method top (ONTA-268 call-local).
             await insert_facts(
                 self._neptune,
                 instance_graph,
@@ -1448,7 +1634,7 @@ class SchemaResolver:
                 logger.warning("embed_new_types_failed", exc_info=True)
 
         # Step 4: Insert relationships (instance triples to instance graph, ontology to base graph)
-        instance_graph = getattr(self, "_instance_graph", graph_uri)
+        # instance_graph resolved once at method top (ONTA-268 call-local).
         rel_triples: list[tuple[str, str, str]] = []
         for rel in extraction.relationships:
             # An edge whose source or target was skipped (key-join unmatched with
@@ -1479,7 +1665,7 @@ class SchemaResolver:
                         sparql = insert_attribute(
                             graph_uri, source_type, canonical_pred, "", target_type,
                         )
-                        await self._neptune.update(sparql)
+                        await self._locked_ontology_update(sparql)  # ONTA-268
                         result.attributes_added.append(f"{source_type}.{canonical_pred}")
                         existing_attrs.setdefault(source_type, {})[canonical_pred] = AttributeSchema(
                             name=canonical_pred, datatype=target_type,
@@ -1489,7 +1675,7 @@ class SchemaResolver:
                         # entity object: upgrade its ontology range to the target
                         # type so the schema-only Explorer overview draws the edge
                         # (the detail view already shows it from instance data).
-                        await self._neptune.update(
+                        await self._locked_ontology_update(  # ONTA-268
                             set_object_property_range(
                                 graph_uri, source_type, canonical_pred, target_type,
                             )
@@ -1505,6 +1691,38 @@ class SchemaResolver:
             result.triples_inserted += len(rel_triples)
 
         result.entities_resolved = len(entity_uri_map)
+
+        # ONTA-271: emit the run's deterministic A6 Graph Delta receipt. Built
+        # over the COMPLETE set of instance facts this run wrote (entity triples
+        # + relationship triples), via the shared `build_graph_delta` — the same
+        # projection `insert_facts` returns for its own portion. We assemble it
+        # HERE rather than take `insert_facts`'s return because relationship
+        # triples are written after it (through `batched_insert_triples`, not a
+        # second `insert_facts` call), so only the run owner sees every fact.
+        # Nonces (ingested_at/batch_id) are projected out and each fact is keyed
+        # by its stable fact_id, so a preserved-run_id replay reproduces byte-
+        # identical bytes and P6 dedupes it. `fan_in` records source facts that
+        # merged onto one node (ER auto-merge, key-join, in-run same-key dedup):
+        # >1 source entity id resolving to the SAME final URI is a merge, so the
+        # non-canonical sources' natural URIs map to the shared node.
+        if run_id is not None:
+            ids_by_uri: dict[str, list[str]] = {}
+            for eid, uri in entity_uri_map.items():
+                ids_by_uri.setdefault(uri, []).append(eid)
+            fan_in: dict[str, str] = {}
+            for uri, eids in ids_by_uri.items():
+                if len(eids) > 1:
+                    for eid in eids:
+                        natural = _entity_uri(entity_type_map.get(eid, ""), eid)
+                        if natural != uri:
+                            fan_in[natural] = uri
+            result.graph_delta = build_graph_delta(
+                instance_graph,
+                all_entity_triples + rel_triples,
+                run_id=run_id,
+                fan_in=fan_in,
+            ).to_dict()
+
         logger.info(
             "ingest_complete",
             entities_resolved=result.entities_resolved,
@@ -1521,8 +1739,14 @@ class SchemaResolver:
         existing_types: dict[str, str],
         existing_attrs: dict[str, dict[str, AttributeSchema]],
         source: str,
+        *,
+        instance_graph: str | None = None,
+        parent_of: dict[str, str] | None = None,
     ) -> IngestResult:
-        """CSV ingestion: 1 LLM call for schema inference, deterministic mapping for all rows."""
+        """CSV ingestion: 1 LLM call for schema inference, deterministic mapping for all rows.
+
+        ``instance_graph`` / ``parent_of`` (ONTA-268): CALL-LOCAL overrides
+        threaded from :meth:`ingest` down through :meth:`_ingest_mapped`."""
         import csv
         import io
         from cograph_client.resolver.csv_resolver import CSVResolver
@@ -1543,6 +1767,7 @@ class SchemaResolver:
         # tail (also reused by web-discovery ingest via ingest_mapped_records).
         return await self._ingest_mapped(
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
+            instance_graph=instance_graph, parent_of=parent_of,
         )
 
     async def ingest_mapped_records(
@@ -1573,13 +1798,72 @@ class SchemaResolver:
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph; instance data goes to
         # instance_graph when a specific KG is targeted, else the base graph.
-        self._instance_graph = instance_graph or graph_uri
+        # ONTA-268: CALL-LOCAL target + parent map threaded down the write path;
+        # the `self.` attributes stay as the legacy fallback only.
+        target_instance_graph = instance_graph or graph_uri
+        self._instance_graph = target_instance_graph
         self._type_matcher._graph_uri = graph_uri
         existing_types, existing_attrs = await self._fetch_ontology(graph_uri)
-        self._parent_of = await self._fetch_parent_map(graph_uri)
+        parent_of = await self._fetch_parent_map(graph_uri)
+        self._parent_of = parent_of
         return await self._ingest_mapped(
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
             key_join=key_join,
+            instance_graph=target_instance_graph, parent_of=parent_of,
+        )
+
+    async def ingest_structured_rows(
+        self,
+        rows: list[dict],
+        tenant_id: str,
+        type_name: str,
+        attributes: list[str] | None = None,
+        source: str = "",
+        instance_graph: str | None = None,
+        key_attribute: str | None = None,
+        key_join: KeyJoin | None = None,
+    ) -> IngestResult:
+        """FAST-PATH for PRE-STRUCTURED rows (ONTA-272) — no unstructured LLM ``_extract``.
+
+        Pre-structured payloads (an API-registry pull with a known field mapping, a
+        structured / extension capture) already arrive as clean rows keyed by the
+        confirmed attribute set, so running the open-ended LLM extractor over them
+        is a nonsensical, non-deterministic detour. This commits them through the
+        SAME deterministic mapping seam CSV ingest uses (:meth:`ingest_mapped_records`
+        → ``apply_mapping``, NO LLM): a fixed :class:`CSVSchemaMapping` with one
+        column per field and the key attribute as the type-id.
+
+        Before committing it materializes the SOFT-TYPED A2 witness for the rows
+        (:func:`soft_a2_from_structured_rows`) and ASSERTS the zero-ontology-
+        commitment contract (:func:`assert_soft_a2`) — pre-structured rows are
+        inherently soft (candidate type, literal attributes, evidence = the
+        per-record ``source_url``), so this can only fire on a genuine bug (fail
+        fast). ``require_evidence`` is asserted only when the rows actually carry a
+        ``source_url``, so a provenance-less structured source is not force-failed.
+        Returns the SAME :class:`IngestResult` the deterministic path produces.
+        """
+        if not rows:
+            return IngestResult(rows_in=0)
+        # The key field is the join/identity column: an explicit key_attribute, else
+        # the first confirmed attribute, else the row's natural "name".
+        key_field = key_attribute or (attributes[0] if attributes else None) or "name"
+        # A2 CONTRACT (zero ontology commitment): render the pre-structured rows as
+        # candidate facts and assert soft-typed-only (+ evidence-linked where
+        # provenance exists) at the point A2 is emitted.
+        witness = soft_a2_from_structured_rows(rows, type_name, key_field=key_field)
+        # Require evidence only when EVERY row carries a source_url — a
+        # provenance-less (or mixed) structured source must never be force-failed by
+        # the fatal assert; it still asserts soft-typed-only. Discovery micro-batches
+        # are partitioned by source_url upstream, so the common case is all-or-none.
+        require_evidence = bool(rows) and all(
+            isinstance(r, dict) and str(r.get("source_url") or "").strip()
+            for r in rows
+        )
+        assert_soft_a2(witness, require_evidence=require_evidence)
+        mapping = _structured_rows_mapping(rows, type_name, key_field)
+        return await self.ingest_mapped_records(
+            rows, mapping, tenant_id, source=source,
+            instance_graph=instance_graph, key_join=key_join,
         )
 
     async def _resolve_key_join(
@@ -1720,6 +2004,9 @@ class SchemaResolver:
         existing_attrs: dict[str, dict[str, AttributeSchema]],
         source: str,
         key_join: KeyJoin | None = None,
+        *,
+        instance_graph: str | None = None,
+        parent_of: dict[str, str] | None = None,
     ) -> IngestResult:
         """Apply a pre-inferred mapping to rows and run the resolve→insert tail.
 
@@ -1732,7 +2019,17 @@ class SchemaResolver:
         complement to signal-ER. The merge rides the SAME resolve→insert tail (the
         row's minted URI is simply rebound to the existing node's URI before the
         write), so it flows through the shared write path untouched.
+
+        ``instance_graph`` / ``parent_of`` (ONTA-268): CALL-LOCAL overrides; fall
+        back to the ``self.`` attributes for legacy direct callers.
         """
+        parent_of = self._parent_of if parent_of is None else parent_of
+        # Resolve the call-local target graph ONCE up front so it is bound for the
+        # rollback except-block too (ONTA-268).
+        instance_graph = (
+            instance_graph if instance_graph is not None
+            else getattr(self, "_instance_graph", graph_uri)
+        )
         from cograph_client.resolver.csv_resolver import CSVResolver
 
         # Step 2: Apply mapping deterministically to ALL rows (no LLM)
@@ -1768,6 +2065,7 @@ class SchemaResolver:
 
                 resolved_type = await self._resolve_type(
                     entity, graph_uri, existing_types, existing_attrs, result,
+                    parent_of=parent_of,
                 )
                 if resolved_type:
                     resolved_types[entity.id] = resolved_type
@@ -1776,7 +2074,7 @@ class SchemaResolver:
                     entity_uri_map[entity.id] = entity_uri
                     entity_type_map[entity.id] = resolved_type
 
-            instance_graph = getattr(self, "_instance_graph", graph_uri)
+            # instance_graph resolved once at method top (ONTA-268 call-local).
 
             # ONTA-250 join-by-exact-key: rebind matched rows onto the EXISTING
             # node's URI BEFORE the existence check, so a merged row's URI is seen
@@ -1824,6 +2122,7 @@ class SchemaResolver:
                 await self._resolve_and_insert_entity(
                     entity, resolved_type, entity_uri, is_duplicate,
                     graph_uri, existing_types, existing_attrs, source, result, batch_id,
+                    instance_graph=instance_graph,  # ONTA-268: call-local target
                 )
 
             # ONTA-177: persist the schema pass's free-text verdicts (the
@@ -1866,7 +2165,7 @@ class SchemaResolver:
                         existing = type_attrs.get(canonical_pred)
                         if existing is None:
                             sparql = insert_attribute(graph_uri, source_type, canonical_pred, "", target_type)
-                            await self._neptune.update(sparql)
+                            await self._locked_ontology_update(sparql)  # ONTA-268
                             result.attributes_added.append(f"{source_type}.{canonical_pred}")
                             existing_attrs.setdefault(source_type, {})[canonical_pred] = AttributeSchema(
                                 name=canonical_pred, datatype=target_type,
@@ -1875,7 +2174,7 @@ class SchemaResolver:
                             # Upgrade a primitive attribute to a relationship range
                             # so the Explorer overview draws the edge (see entity
                             # ingest path above for the full rationale).
-                            await self._neptune.update(
+                            await self._locked_ontology_update(  # ONTA-268
                                 set_object_property_range(
                                     graph_uri, source_type, canonical_pred, target_type,
                                 )
@@ -1905,7 +2204,7 @@ class SchemaResolver:
                 entities_so_far=result.entities_resolved,
                 exc_info=True,
             )
-            instance_graph = getattr(self, "_instance_graph", graph_uri)
+            # instance_graph resolved once at method top (ONTA-268 call-local).
             try:
                 sparql = delete_batch_query(instance_graph, batch_id)
                 await self._neptune.update(sparql)
@@ -2474,6 +2773,8 @@ class SchemaResolver:
         result: IngestResult,
         parent_chain: list[str] | None = None,
         emit_child_edge: bool = False,
+        *,
+        parent_of: dict[str, str] | None = None,
     ) -> None:
         """Close the rdfs:subClassOf lineage from `child_type` up to the nearest
         existing root (ADR 0001 rule 3).
@@ -2489,9 +2790,15 @@ class SchemaResolver:
         For each ancestor NOT yet in existing_types, emits insert_type +
         insert_subtype and registers it in existing_types / existing_attrs /
         result.types_created. Idempotent: ancestors already present are skipped.
+
+        ``parent_of`` (ONTA-268): the CALL-LOCAL child->parent map to read+mutate;
+        falls back to ``self._parent_of`` for legacy direct callers. Runs under the
+        caller's ontology-write lock (``_resolve_type``) — must NOT acquire it here
+        (``asyncio.Lock`` is not reentrant).
         """
         from cograph_client.resolver.er import ancestor_chain
 
+        parent_of = self._parent_of if parent_of is None else parent_of
         parent_chain = parent_chain or []
         # Immediate parent: explicit hint wins; otherwise top of the extractor chain.
         if not parent_type:
@@ -2501,13 +2808,13 @@ class SchemaResolver:
 
         # Record the child->parent edge so later entities in this batch can climb it.
         if child_type and child_type != parent_type:
-            self._parent_of[child_type] = parent_type
+            parent_of[child_type] = parent_type
         # Seed the deeper extractor lineage (ancestors of child, most-specific
         # first) without clobbering edges already recorded (setdefault).
         prev = child_type
         for anc in parent_chain:
             if prev and anc and prev != anc:
-                self._parent_of.setdefault(prev, anc)
+                parent_of.setdefault(prev, anc)
             prev = anc
 
         # Brand-new lineage: the caller couldn't link child->parent because the
@@ -2516,14 +2823,14 @@ class SchemaResolver:
             await self._neptune.update(insert_subtype(graph_uri, parent_type, child_type))
 
         # Walk root-ward from the immediate parent. ancestor_chain is cycle-guarded.
-        chain = ancestor_chain(parent_type, self._parent_of)
+        chain = ancestor_chain(parent_type, parent_of)
         for i, ancestor in enumerate(chain):
             grandparent = chain[i + 1] if i + 1 < len(chain) else None
             if ancestor not in existing_types:
                 await self._neptune.update(insert_type(graph_uri, ancestor, ""))
                 if grandparent:
                     await self._neptune.update(insert_subtype(graph_uri, grandparent, ancestor))
-                    self._parent_of[ancestor] = grandparent
+                    parent_of[ancestor] = grandparent
                 result.types_created.append(ancestor)
                 existing_types[ancestor] = ""
                 existing_attrs[ancestor] = {}
@@ -2535,6 +2842,8 @@ class SchemaResolver:
         existing_types: dict[str, str],
         existing_attrs: dict[str, dict[str, AttributeSchema]],
         result: IngestResult,
+        *,
+        parent_of: dict[str, str] | None = None,
     ) -> None:
         """Attach a freshly-created type to its parent lineage.
 
@@ -2545,7 +2854,12 @@ class SchemaResolver:
           let _synthesize_ancestors create every missing ancestor AND the
           child->parent edge (emit_child_edge=True). This closes a fully-new
           multi-level chain like Condo < Property < Asset in one row (ADR rule 3).
+
+        ``parent_of`` (ONTA-268): CALL-LOCAL child->parent map threaded to
+        `_synthesize_ancestors`; falls back to ``self._parent_of``. Runs under the
+        caller's ontology-write lock — does not acquire it.
         """
+        parent_of = self._parent_of if parent_of is None else parent_of
         pt = entity.parent_type
         linked_as_subtype = False
         if pt and pt in existing_types:
@@ -2554,7 +2868,7 @@ class SchemaResolver:
             await self._neptune.update(insert_subtype(graph_uri, pt, entity.type_name))
             await self._synthesize_ancestors(
                 entity.type_name, pt, graph_uri, existing_types, existing_attrs, result,
-                parent_chain=entity.parent_chain,
+                parent_chain=entity.parent_chain, parent_of=parent_of,
             )
             logger.info("type_new_with_parent", child=entity.type_name, parent=pt)
             linked_as_subtype = True
@@ -2564,7 +2878,7 @@ class SchemaResolver:
             # contract); the full chain comes from parent_chain instead.
             await self._synthesize_ancestors(
                 entity.type_name, None, graph_uri, existing_types, existing_attrs, result,
-                parent_chain=entity.parent_chain, emit_child_edge=True,
+                parent_chain=entity.parent_chain, emit_child_edge=True, parent_of=parent_of,
             )
             logger.info(
                 "type_new_lineage", child=entity.type_name, parent=entity.parent_chain[0],
@@ -2611,6 +2925,65 @@ class SchemaResolver:
         if added:
             logger.info("ontology_refreshed", new_types=added)
 
+    async def _reconcile_ontology_version(
+        self,
+        graph_uri: str,
+        stamped_version: str,
+        existing_types: dict[str, str],
+        existing_attrs: dict[str, dict[str, AttributeSchema]],
+        parent_of: dict[str, str],
+    ) -> str:
+        """ONTA-270 optimistic-concurrency guard: reject-and-recompute a STALE A5
+        placement plan at P6 apply time. Returns the CURRENT ontology version.
+
+        ``stamped_version`` is the fingerprint :meth:`ingest` computed at the TOP
+        of this run — the ontology state P5 planned against, read BEFORE the long,
+        async LLM extraction. Here, at the START of the apply, we re-read the
+        CURRENT ontology under the ontology-write lock (so the compare + any
+        per-type mint pass 1 then does can't interleave with a concurrent writer)
+        and fingerprint it:
+
+        * **Match** (the common case — no ontology write landed during our
+          extraction): the plan is fresh, so we return and pass 1 applies it
+          unchanged. Cost is one ontology read; nothing is mutated.
+        * **Mismatch**: a concurrent run advanced the ontology T→T+1 while we were
+          extracting, so the placement about to be applied was computed against a
+          STALE snapshot and would mint duplicate terms (a synonym of a type the
+          other run just created, a re-declared attribute). We REJECT that stale
+          basis and RECOMPUTE by refreshing the in-place snapshot to the current
+          ontology (additive merge, mirroring :meth:`_refresh_ontology`), so pass
+          1's type/attribute resolution runs against T+1 and lands on the existing
+          terms instead of duplicating them.
+
+        Complements ONTA-268: 268's ontology-write lock serializes INDIVIDUAL
+        mutations; this version stamp catches a whole PLAN computed before another
+        run advanced the ontology — the read-modify-write side of the same race.
+        """
+        async with self._ontology_lock:
+            fresh_types, fresh_attrs = await self._fetch_ontology(graph_uri)
+            fresh_parent = await self._fetch_parent_map(graph_uri)
+            current = ontology_version(fresh_types, fresh_attrs, fresh_parent)
+            if current == stamped_version:
+                return current
+            logger.info(
+                "stale_placement_plan_recomputed",
+                stamped_version=stamped_version,
+                current_version=current,
+                graph_uri=graph_uri,
+            )
+            # Additive merge (never remove — this run hasn't written yet, so the
+            # snapshot == ingest-top state; we only need the concurrent run's new
+            # terms). setdefault keeps any snapshot entry, adds the fresh ones.
+            for t, desc in fresh_types.items():
+                existing_types.setdefault(t, desc)
+            for t, attrs in fresh_attrs.items():
+                dst = existing_attrs.setdefault(t, {})
+                for a, schema in attrs.items():
+                    dst.setdefault(a, schema)
+            for child, parent in fresh_parent.items():
+                parent_of.setdefault(child, parent)
+            return current
+
     async def _resolve_also_types(
         self,
         entity: ExtractedEntity,
@@ -2619,6 +2992,8 @@ class SchemaResolver:
         existing_types: dict[str, str],
         existing_attrs: dict[str, dict[str, AttributeSchema]],
         result: IngestResult,
+        *,
+        parent_of: dict[str, str] | None = None,
     ) -> list[str]:
         """Resolve genuine co-classifications (entity.also_types) so each exists
         in the ontology (ADR rule 1). Returns the resolved co-type names, deduped.
@@ -2626,11 +3001,15 @@ class SchemaResolver:
         Skips any co-type that is actually in the primary's subClassOf lineage
         (an ancestor or descendant) — those are recovered by query-time closure,
         not asserted. Only genuinely INDEPENDENT types are returned.
+
+        ``parent_of`` (ONTA-268): CALL-LOCAL lineage map; falls back to
+        ``self._parent_of``.
         """
         if not entity.also_types:
             return []
         from cograph_client.resolver.er import ancestor_chain
 
+        parent_of = self._parent_of if parent_of is None else parent_of
         resolved: list[str] = []
         seen = {primary_resolved}
         for co in entity.also_types:
@@ -2639,12 +3018,13 @@ class SchemaResolver:
             proxy = ExtractedEntity(type_name=co, id=entity.id)
             rt = await self._resolve_type(
                 proxy, graph_uri, existing_types, existing_attrs, result,
+                parent_of=parent_of,
             )
             if not rt or rt in seen:
                 continue
             # Same-lineage guard: skip if one is an ancestor of the other.
-            if rt in ancestor_chain(primary_resolved, self._parent_of) or \
-               primary_resolved in ancestor_chain(rt, self._parent_of):
+            if rt in ancestor_chain(primary_resolved, parent_of) or \
+               primary_resolved in ancestor_chain(rt, parent_of):
                 logger.info("also_type_in_lineage_skipped", primary=primary_resolved, co_type=rt)
                 continue
             resolved.append(rt)
@@ -2678,99 +3058,130 @@ class SchemaResolver:
         existing_types: dict[str, str],
         existing_attrs: dict[str, dict[str, AttributeSchema]],
         result: IngestResult,
+        *,
+        parent_of: dict[str, str] | None = None,
     ) -> str | None:
-        """Pass 1: Resolve the type for an entity. Returns resolved type name or None."""
+        """Pass 1: Resolve the type for an entity. Returns resolved type name or None.
+
+        ``parent_of`` (ONTA-268): CALL-LOCAL lineage map, threaded to the
+        subtype/ancestor synthesis; falls back to ``self._parent_of``.
+
+        The whole read-decide-WRITE of ontology existence runs under the
+        ontology-write lock (ONTA-268) so concurrent per-sub-query resolvers
+        sharing that lock serialize type creation — no two overlap between the
+        "does this type exist / what does the matcher say" decision and the
+        insert_type/insert_subtype that acts on it, which is what fragments the
+        ontology under a raced ingest. The exact-name in-memory hit short-circuits
+        BEFORE the lock (a pure read on the hot path — every repeated row of a
+        known type — so it never contends). The lock does NOT cover the LLM
+        EXTRACTION (`_extract`, upstream); it does cover the type-MATCH decision
+        because that decision + its write must be atomic to avoid a race.
+        """
         if entity.type_name in existing_types:
             return entity.type_name
-        elif entity.same_as and entity.same_as in existing_types:
-            match = await self._type_matcher.match(entity.type_name, "", existing_types)
-            if match.verdict == MatchVerdict.SAME:
-                logger.info("type_same_as_verified", proposed=entity.type_name, resolved=match.resolved)
-                return match.resolved
-            elif match.verdict == MatchVerdict.SUBTYPE:
-                # SUBTYPE branch — subtype_description legitimately describes this
-                # NEW subtype (FIX 3). Written idempotently (FIX 4): upsert
-                # REPLACES the single-valued rdfs:comment so re-minting the same
-                # type across ingests can't accumulate duplicate comments.
-                await self._mint_subtype(graph_uri, entity.type_name, entity.subtype_description)
-                sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
-                await self._neptune.update(sparql)
-                logger.info("type_same_as_was_subtype", child=entity.type_name, parent=match.parent_type)
-                result.types_created.append(entity.type_name)
-                existing_types[entity.type_name] = ""
-                existing_attrs[entity.type_name] = {}
-                await self._synthesize_ancestors(
-                    entity.type_name, match.parent_type, graph_uri,
-                    existing_types, existing_attrs, result,
-                    parent_chain=entity.parent_chain,
-                )
-                return entity.type_name
-            elif match.inconclusive:
-                # Verifier couldn't reach a real decision (e.g. LLM unavailable).
-                # Trust the extractor's explicit same_as rather than fabricating a
-                # duplicate type — creating "Home" alongside "Property" is exactly
-                # the ontology pollution this verification step exists to prevent.
-                logger.info("type_same_as_trusted", proposed=entity.type_name, resolved=entity.same_as)
-                return entity.same_as
+        parent_of = self._parent_of if parent_of is None else parent_of
+        async with self._ontology_lock:
+            # ONTA-268: point the embedding pre-filter at THIS ingest's tenant
+            # store under the lock, right before the match, so a single shared
+            # TypeMatcher serving interleaved ingests can't read a clobbered
+            # `_graph_uri` (the lock serializes the set→match→write, and in
+            # production each per-sub-query resolver holds its own TypeMatcher).
+            self._type_matcher._graph_uri = graph_uri
+            if entity.same_as and entity.same_as in existing_types:
+                match = await self._type_matcher.match(entity.type_name, "", existing_types)
+                if match.verdict == MatchVerdict.SAME:
+                    logger.info("type_same_as_verified", proposed=entity.type_name, resolved=match.resolved)
+                    return match.resolved
+                elif match.verdict == MatchVerdict.SUBTYPE:
+                    # SUBTYPE branch — subtype_description legitimately describes this
+                    # NEW subtype (FIX 3). Written idempotently (FIX 4): upsert
+                    # REPLACES the single-valued rdfs:comment so re-minting the same
+                    # type across ingests can't accumulate duplicate comments.
+                    await self._mint_subtype(graph_uri, entity.type_name, entity.subtype_description)
+                    sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
+                    await self._neptune.update(sparql)
+                    logger.info("type_same_as_was_subtype", child=entity.type_name, parent=match.parent_type)
+                    result.types_created.append(entity.type_name)
+                    existing_types[entity.type_name] = ""
+                    existing_attrs[entity.type_name] = {}
+                    await self._synthesize_ancestors(
+                        entity.type_name, match.parent_type, graph_uri,
+                        existing_types, existing_attrs, result,
+                        parent_chain=entity.parent_chain, parent_of=parent_of,
+                    )
+                    return entity.type_name
+                elif match.inconclusive:
+                    # Verifier couldn't reach a real decision (e.g. LLM unavailable).
+                    # Trust the extractor's explicit same_as rather than fabricating a
+                    # duplicate type — creating "Home" alongside "Property" is exactly
+                    # the ontology pollution this verification step exists to prevent.
+                    logger.info("type_same_as_trusted", proposed=entity.type_name, resolved=entity.same_as)
+                    return entity.same_as
+                else:
+                    # same_as REJECTED → this is a genuine TOP-LEVEL type, not a
+                    # subtype. subtype_description must NOT be written here (FIX 3):
+                    # the field's contract is "describes a NEW SUBTYPE" only.
+                    sparql = insert_type(graph_uri, entity.type_name, "")
+                    await self._neptune.update(sparql)
+                    logger.info("type_same_as_rejected", proposed=entity.type_name, claimed=entity.same_as)
+                    result.types_created.append(entity.type_name)
+                    existing_types[entity.type_name] = ""
+                    existing_attrs[entity.type_name] = {}
+                    return entity.type_name
             else:
-                # same_as REJECTED → this is a genuine TOP-LEVEL type, not a
-                # subtype. subtype_description must NOT be written here (FIX 3):
-                # the field's contract is "describes a NEW SUBTYPE" only.
-                sparql = insert_type(graph_uri, entity.type_name, "")
-                await self._neptune.update(sparql)
-                logger.info("type_same_as_rejected", proposed=entity.type_name, claimed=entity.same_as)
-                result.types_created.append(entity.type_name)
-                existing_types[entity.type_name] = ""
-                existing_attrs[entity.type_name] = {}
-                return entity.type_name
-        else:
-            match = await self._type_matcher.match(entity.type_name, "", existing_types)
-            if match.verdict == MatchVerdict.SAME:
-                logger.info("type_matched_existing", proposed=entity.type_name, resolved=match.resolved)
-                return match.resolved
-            elif match.verdict == MatchVerdict.SUBTYPE:
-                # SUBTYPE branch — subtype_description describes this NEW subtype
-                # (FIX 3), written idempotently via upsert (FIX 4).
-                await self._mint_subtype(graph_uri, entity.type_name, entity.subtype_description)
-                sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
-                await self._neptune.update(sparql)
-                logger.info("type_subtype", child=entity.type_name, parent=match.parent_type)
-                result.types_created.append(entity.type_name)
-                existing_types[entity.type_name] = ""
-                existing_attrs[entity.type_name] = {}
-                await self._synthesize_ancestors(
-                    entity.type_name, match.parent_type, graph_uri,
-                    existing_types, existing_attrs, result,
-                    parent_chain=entity.parent_chain,
-                )
-                return entity.type_name
-            elif match.verdict == MatchVerdict.FLAGGED:
-                # Top-level mint: do NOT write subtype_description here (FIX 3).
-                # If _link_parent then establishes a parent (the entity carried a
-                # parent_type/parent_chain), it upserts the description there —
-                # the only place the type is actually a subtype.
-                sparql = insert_type(graph_uri, entity.type_name, "")
-                await self._neptune.update(sparql)
-                result.types_created.append(entity.type_name)
-                existing_types[entity.type_name] = ""
-                existing_attrs[entity.type_name] = {}
-                await self._link_parent(entity, graph_uri, existing_types, existing_attrs, result)
-                logger.warning("type_flagged_for_review", proposed=entity.type_name)
-                result.flagged_types.append(entity.type_name)
-                return entity.type_name
-            else:
-                # Top-level mint: no subtype_description here (FIX 3). _link_parent
-                # upserts it iff this turns out to be a subtype (parent_chain).
-                sparql = insert_type(graph_uri, entity.type_name, "")
-                await self._neptune.update(sparql)
-                result.types_created.append(entity.type_name)
-                existing_types[entity.type_name] = ""
-                existing_attrs[entity.type_name] = {}
-                await self._link_parent(entity, graph_uri, existing_types, existing_attrs, result)
-                # Governance seam: the genuinely-new type MAY also be proposed
-                # for the Global-Public layer. No-op unless the flag is on.
-                await self._maybe_govern_new_type(entity, graph_uri)
-                return entity.type_name
+                match = await self._type_matcher.match(entity.type_name, "", existing_types)
+                if match.verdict == MatchVerdict.SAME:
+                    logger.info("type_matched_existing", proposed=entity.type_name, resolved=match.resolved)
+                    return match.resolved
+                elif match.verdict == MatchVerdict.SUBTYPE:
+                    # SUBTYPE branch — subtype_description describes this NEW subtype
+                    # (FIX 3), written idempotently via upsert (FIX 4).
+                    await self._mint_subtype(graph_uri, entity.type_name, entity.subtype_description)
+                    sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
+                    await self._neptune.update(sparql)
+                    logger.info("type_subtype", child=entity.type_name, parent=match.parent_type)
+                    result.types_created.append(entity.type_name)
+                    existing_types[entity.type_name] = ""
+                    existing_attrs[entity.type_name] = {}
+                    await self._synthesize_ancestors(
+                        entity.type_name, match.parent_type, graph_uri,
+                        existing_types, existing_attrs, result,
+                        parent_chain=entity.parent_chain, parent_of=parent_of,
+                    )
+                    return entity.type_name
+                elif match.verdict == MatchVerdict.FLAGGED:
+                    # Top-level mint: do NOT write subtype_description here (FIX 3).
+                    # If _link_parent then establishes a parent (the entity carried a
+                    # parent_type/parent_chain), it upserts the description there —
+                    # the only place the type is actually a subtype.
+                    sparql = insert_type(graph_uri, entity.type_name, "")
+                    await self._neptune.update(sparql)
+                    result.types_created.append(entity.type_name)
+                    existing_types[entity.type_name] = ""
+                    existing_attrs[entity.type_name] = {}
+                    await self._link_parent(
+                        entity, graph_uri, existing_types, existing_attrs, result,
+                        parent_of=parent_of,
+                    )
+                    logger.warning("type_flagged_for_review", proposed=entity.type_name)
+                    result.flagged_types.append(entity.type_name)
+                    return entity.type_name
+                else:
+                    # Top-level mint: no subtype_description here (FIX 3). _link_parent
+                    # upserts it iff this turns out to be a subtype (parent_chain).
+                    sparql = insert_type(graph_uri, entity.type_name, "")
+                    await self._neptune.update(sparql)
+                    result.types_created.append(entity.type_name)
+                    existing_types[entity.type_name] = ""
+                    existing_attrs[entity.type_name] = {}
+                    await self._link_parent(
+                        entity, graph_uri, existing_types, existing_attrs, result,
+                        parent_of=parent_of,
+                    )
+                    # Governance seam: the genuinely-new type MAY also be proposed
+                    # for the Global-Public layer. No-op unless the flag is on.
+                    await self._maybe_govern_new_type(entity, graph_uri)
+                    return entity.type_name
 
     async def _maybe_govern_new_type(self, entity: ExtractedEntity, graph_uri: str) -> None:
         """Governance seam (ADR 0002 §2, COG-43): propose a brand-new type for
@@ -2865,8 +3276,20 @@ class SchemaResolver:
         also_types: list[str] | None = None,
         _collect_text_values: dict[tuple[str, str], list[str]] | None = None,
         drop_placeholder_values: bool = False,
+        *,
+        instance_graph: str | None = None,
+        observed_at: datetime | None = None,
     ) -> None:
         """Pass 2: Resolve attributes, validate, and collect triples for one entity.
+
+        ``instance_graph`` (ONTA-268): CALL-LOCAL target graph for the legacy
+        per-entity insert / provenance write; falls back to ``self._instance_graph``.
+
+        ``observed_at`` (ONTA-271): the run's ``onto/ingested_at`` timestamp. When
+        given (the reentrant ``ingest`` path) it is used verbatim so a preserved-
+        run_id replay writes the SAME ingested_at and the delta stays byte-
+        identical; ``None`` (the CSV / legacy path, unchanged) falls back to
+        wall-clock now.
 
         If _collect_triples is provided, triples are appended to that list instead of
         being inserted immediately. The caller is responsible for batch-inserting them.
@@ -2927,7 +3350,7 @@ class SchemaResolver:
         for ptype in promoted_type_names:
             if ptype not in existing_types:
                 sparql = insert_type(graph_uri, ptype, f"Promoted from {resolved_type} attributes")
-                await self._neptune.update(sparql)
+                await self._locked_ontology_update(sparql)  # ONTA-268
                 result.types_created.append(ptype)
                 existing_types[ptype] = ""
                 existing_attrs[ptype] = {}
@@ -2981,7 +3404,7 @@ class SchemaResolver:
                 p_attrs = existing_attrs.get(ptype, {})
                 if attr_name not in p_attrs:
                     sparql = insert_attribute(graph_uri, ptype, attr_name, "", attr.datatype)
-                    await self._neptune.update(sparql)
+                    await self._locked_ontology_update(sparql)  # ONTA-268
                     result.attributes_added.append(f"{ptype}.{attr_name}")
                     existing_attrs.setdefault(ptype, {})[attr_name] = AttributeSchema(
                         name=attr_name, datatype=attr.datatype,
@@ -3002,7 +3425,7 @@ class SchemaResolver:
                 resolved = resolve_attribute(attr, type_attrs)
                 if resolved.action == AttrAction.EXTEND:
                     sparql = insert_attribute(graph_uri, resolved_type, resolved.name, "", resolved.datatype)
-                    await self._neptune.update(sparql)
+                    await self._locked_ontology_update(sparql)  # ONTA-268
                     result.attributes_added.append(f"{resolved_type}.{resolved.name}")
                     type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
@@ -3023,7 +3446,7 @@ class SchemaResolver:
 
             if resolved.action == AttrAction.EXTEND:
                 sparql = insert_attribute(graph_uri, resolved_type, resolved.name, "", resolved.datatype)
-                await self._neptune.update(sparql)
+                await self._locked_ontology_update(sparql)  # ONTA-268
                 result.attributes_added.append(f"{resolved_type}.{resolved.name}")
                 type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
@@ -3050,7 +3473,7 @@ class SchemaResolver:
                 # datatype and takes the else-branch below unchanged — only an
                 # attribute EXPLICITLY typed as a relationship is minted as a node.
                 if resolved.datatype not in existing_types:
-                    await self._neptune.update(
+                    await self._locked_ontology_update(  # ONTA-268
                         insert_type(
                             graph_uri,
                             resolved.datatype,
@@ -3118,7 +3541,10 @@ class SchemaResolver:
         # without one they are inserted here per entity (legacy path).
         # Confidence is 1.0 for directly-ingested facts.
         if self._provenance_enabled and attr_facts:
-            instance_graph = getattr(self, "_instance_graph", graph_uri)
+            instance_graph = (
+                instance_graph if instance_graph is not None
+                else getattr(self, "_instance_graph", graph_uri)
+            )
             prov_ts = datetime.now(timezone.utc)
             prov_triples: list[tuple[str, str, str]] = []
             for s, p, o in attr_facts:
@@ -3159,8 +3585,11 @@ class SchemaResolver:
                     )
                 )
 
-        # Provenance triples
-        now = datetime.now(timezone.utc).isoformat()
+        # Provenance triples. ingested_at is sourced from the run's observed_at
+        # (ONTA-271) when threaded, so a preserved-run_id replay writes the
+        # identical stamp (idempotent) instead of a fresh wall-clock nonce;
+        # legacy/CSV callers pass None → wall-clock now, unchanged.
+        now = (observed_at or datetime.now(timezone.utc)).isoformat()
         triples_to_insert.append((entity_uri, "https://cograph.tech/onto/ingested_at", now))
         if source:
             triples_to_insert.append((entity_uri, "https://cograph.tech/onto/source", source))
@@ -3174,7 +3603,10 @@ class SchemaResolver:
                 result.triples_inserted += len(triples_to_insert)
             else:
                 # Legacy path: insert per-entity (used when called without collector)
-                instance_graph = getattr(self, "_instance_graph", graph_uri)
+                instance_graph = (
+                    instance_graph if instance_graph is not None
+                    else getattr(self, "_instance_graph", graph_uri)
+                )
                 for sparql in batched_insert_triples(instance_graph, triples_to_insert):
                     await self._neptune.update(sparql)
                 result.triples_inserted += len(triples_to_insert)

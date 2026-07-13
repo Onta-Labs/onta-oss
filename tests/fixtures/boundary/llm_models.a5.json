@@ -291,6 +291,7 @@
       "uri": "https://cograph.tech/entities/Organization/Vantage_Labs"
     }
   ],
+  "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
       "object": "https://cograph.tech/entities/Organization/Nimbus_AI",

@@ -49,8 +49,11 @@ non-blocking behavior the ingest routes already had.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
@@ -61,6 +64,7 @@ from cograph_client.graph.history import (
     history_graph_uri,
     lexical_value,
 )
+from cograph_client.pipeline.envelope import derive_fact_id
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.provenance import (
     build_rewrite_triples,
@@ -239,13 +243,119 @@ async def ensure_kg_registered(neptune, tenant_id: str, kg_name: str) -> None:
         logger.warning("ensure_kg_registered_failed", kg_name=kg_name, exc_info=True)
 
 
+# --- A6 Graph Delta (ONTA-271) ------------------------------------------------
+#
+# Predicates PROJECTED OUT of a deterministic Graph Delta: the write-path
+# bookkeeping NONCES that qc/boundary also omits from its byte-stable A2/A4/A5
+# fixtures. ``ingested_at`` is a wall-clock stamp and ``batch_id`` a per-run
+# token; neither is a domain fact, and including either would make a replayed
+# run's delta differ even when every real fact is identical. Excluding them is
+# what lets a byte-identical Graph Delta prove an upstream replay reproduced the
+# graph (the P6 determinism the ticket requires). The instance-graph values are
+# additionally made replay-stable at the source (batch_id derived from run_id,
+# ingested_at sourced from the run's observed_at), so the store write itself is
+# idempotent — the exclusion here is belt-and-suspenders + a clean fact-level
+# delta.
+DELTA_NONCE_PREDICATES = frozenset(
+    {
+        "https://cograph.tech/onto/ingested_at",
+        "https://cograph.tech/onto/batch_id",  # == graph.queries.BATCH_PREDICATE
+    }
+)
+
+
+@dataclass(frozen=True)
+class GraphDelta:
+    """A6 — a deterministic, replay-stable receipt of the domain facts a write applied.
+
+    Mirrors qc/boundary's determinism discipline: the de-duplicated, SORTED set
+    of instance ``(subject, predicate, object)`` triples with the bookkeeping
+    NONCES (``DELTA_NONCE_PREDICATES``) projected out, each stamped with the
+    stable per-subject ``fact_id`` (a pure function of ``run_id`` + subject URI,
+    the content-stable ``local_key`` that flows A2→A6). Two runs of the SAME
+    facts under the SAME ``run_id`` therefore produce byte-identical
+    :meth:`canonical_bytes`, so P6 can dedupe an upstream replay instead of
+    duplicating the graph (ONTA-271).
+
+    ``fan_in`` records source-fact → canonical-node merges (ER auto-merge,
+    key-join, in-run same-key dedup) as sorted ``(source_fact_id,
+    canonical_fact_id)`` pairs — the mapping is otherwise invisible once several
+    source facts collapse onto one node.
+    """
+
+    run_id: Optional[str]
+    instance_graph: str
+    facts: tuple[tuple[str, str, str, str], ...]  # (fact_id, s, p, o), sorted
+    fan_in: tuple[tuple[str, str], ...] = ()  # (source_fact_id, canonical_fact_id), sorted
+
+    def to_dict(self) -> dict:
+        return {
+            "run_id": self.run_id,
+            "instance_graph": self.instance_graph,
+            "facts": [list(f) for f in self.facts],
+            "fan_in": [list(p) for p in self.fan_in],
+        }
+
+    def canonical_bytes(self) -> bytes:
+        """Byte-stable serialization for replay comparison (sorted keys, UTF-8)."""
+        return json.dumps(self.to_dict(), sort_keys=True, ensure_ascii=False).encode(
+            "utf-8"
+        )
+
+    def digest(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
+
+def build_graph_delta(
+    instance_graph: str,
+    instance_triples: list[Triple],
+    *,
+    run_id: Optional[str] = None,
+    fan_in: Optional[dict[str, str]] = None,
+) -> GraphDelta:
+    """Project written instance triples into a deterministic A6 :class:`GraphDelta`.
+
+    Drops the bookkeeping nonces (``DELTA_NONCE_PREDICATES``), de-dups + SORTS the
+    remaining ``(s, p, o)``, and stamps each with the stable per-subject
+    ``fact_id = derive_fact_id(run_id, stage="A6", local_key=subject)``. Pure and
+    deterministic: the same triples under the same ``run_id`` always yield
+    byte-identical :meth:`GraphDelta.canonical_bytes`, so a caller can PROVE an
+    upstream replay reproduced the graph exactly (ONTA-271).
+
+    ``fan_in`` maps ``{source_subject_uri: canonical_subject_uri}`` for facts that
+    merged onto one node; both sides are resolved to their stable fact_ids and
+    recorded, sorted. ``run_id=None`` still yields a valid (run-agnostic) delta.
+    """
+
+    def _fid(subject: str) -> str:
+        return derive_fact_id(run_id=run_id or "", stage="A6", local_key=subject)
+
+    domain = {
+        (s, p, o)
+        for (s, p, o) in instance_triples
+        if s and p and p not in DELTA_NONCE_PREDICATES
+    }
+    facts = tuple(sorted((_fid(s), s, p, o) for (s, p, o) in domain))
+    fan_pairs = tuple(
+        sorted(
+            (_fid(src), _fid(dst))
+            for src, dst in (fan_in or {}).items()
+            if src and dst and src != dst
+        )
+    )
+    return GraphDelta(
+        run_id=run_id, instance_graph=instance_graph, facts=facts, fan_in=fan_pairs
+    )
+
+
 async def insert_facts(
     neptune,
     instance_graph: str,
     instance_triples: list[Triple],
     *,
     provenance_triples: Optional[list[Triple]] = None,
-) -> None:
+    run_id: Optional[str] = None,
+) -> Optional[GraphDelta]:
     """Write instance triples (and optional canonical provenance) to the KG.
 
     The ONE insertion primitive for both ingest and enrichment. Always batched
@@ -260,6 +370,14 @@ async def insert_facts(
     Pass ``None``/empty to skip (callers that surface provenance as ordinary
     instance attributes — e.g. enrichment's ``*_source_url`` citations — include
     those in ``instance_triples`` and need no separate provenance graph write).
+
+    ``run_id`` (ONTA-271): when given, returns a deterministic A6
+    :class:`GraphDelta` receipt of the domain facts written (nonce-excluded,
+    fact_id-keyed) so the caller can prove replay-determinism. Optional +
+    back-compat: the many callers that pass raw triples with no ``run_id`` get
+    ``None`` and are unaffected (RDF inserts are already idempotent, so a fact
+    whose id was applied in a prior run re-inserts to a no-op — the "dedupe" is
+    the store's, and this receipt lets P6 verify it).
     """
     if instance_triples:
         for sparql in batched_insert_triples(instance_graph, instance_triples):
@@ -271,6 +389,9 @@ async def insert_facts(
     if instance_triples:
         await _index_spatiotemporal(instance_graph, instance_triples)
         await _index_semantic(neptune, instance_graph, instance_triples)
+    if run_id is not None:
+        return build_graph_delta(instance_graph, instance_triples, run_id=run_id)
+    return None
 
 
 async def _index_spatiotemporal(

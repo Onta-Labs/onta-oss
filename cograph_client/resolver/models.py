@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+_URI_SCHEME = "://"
+
 
 # ---------------------------------------------------------------------------
 # LLM extraction output (non-deterministic, proposed)
@@ -19,6 +21,12 @@ class ExtractedAttribute(BaseModel):
     name: str
     value: str
     datatype: str = "string"
+    # ONTA-272: OPTIONAL evidence span / citation supporting this attribute value
+    # (a source URL or the source snippet it was drawn from). Default "" keeps the
+    # A2 models back-compat — existing extraction that never sets it parses and
+    # validates unchanged; the pre-structured fast path populates it from the
+    # per-record source_url so an A2 payload can be asserted EVIDENCE-LINKED.
+    evidence: str = ""
 
     @field_validator("value", mode="before")
     @classmethod
@@ -85,6 +93,11 @@ class ExtractedEntity(BaseModel):
         ),
     )
     attributes: list[ExtractedAttribute] = Field(default_factory=list)
+    # ONTA-272: OPTIONAL evidence span / citation supporting this candidate entity
+    # (the source URL / snippet it was drawn from). Default "" keeps A2 back-compat;
+    # the pre-structured fast path fills it from the per-record source_url so the
+    # zero-ontology-commitment contract can assert the payload is EVIDENCE-LINKED.
+    evidence: str = ""
 
 
 class ExtractedRelationship(BaseModel):
@@ -101,6 +114,142 @@ class ExtractionResult(BaseModel):
     entities: list[ExtractedEntity] = Field(default_factory=list)
     relationships: list[ExtractedRelationship] = Field(default_factory=list)
     source_text: str = ""
+
+
+# ---------------------------------------------------------------------------
+# A2 zero-ontology-commitment contract (ONTA-272)
+# ---------------------------------------------------------------------------
+#
+# A2 (``ExtractionResult``) is the CANDIDATE-FACTS tier of the P2/P5 seam: the
+# extractor PROPOSES soft-typed, evidence-linked candidates and the downstream
+# placement layer (P5) decides their final ontology home. "Zero ontology
+# commitment" means A2 must never HARD-commit a type TO the ontology — it emits
+# candidate NAMES (with their soft lineage suggestions), never a resolved /
+# committed ontology reference. Soft lineage (``parent_chain`` / ``also_types`` /
+# subtypes) is DELIBERATELY preserved: those are SUGGESTIONS for P5, not
+# commitments (ONTA-199 soft-seed extraction beat the hard cage precisely because
+# it keeps them). The ONE thing A2 may not do is smuggle a COMMITTED ontology IRI
+# into a type slot — a resolved reference pre-empts P5's placement decision. The
+# helpers below make that contract explicit + testable, and the pre-structured
+# fast path builds a valid A2 from already-structured rows without the LLM.
+
+
+class SoftContractViolation(ValueError):
+    """Raised when an A2 payload breaks the zero-ontology-commitment contract."""
+
+
+def _is_committed_type_ref(name: str | None) -> bool:
+    """True when a type slot carries a COMMITTED ontology reference (a URI) rather
+    than a soft candidate NAME. A candidate type is a bare identifier
+    ("Physician", "NursePractitioner"); a committed reference is a resolved IRI
+    ("https://cograph.tech/types/Physician") — the hard-commitment leak A2 must
+    never carry."""
+    return bool(name) and _URI_SCHEME in str(name)
+
+
+def validate_soft_a2(
+    result: ExtractionResult, *, require_evidence: bool = False
+) -> list[str]:
+    """Check an A2 payload (``ExtractionResult``) is SOFT-TYPED-ONLY and (opt-in)
+    EVIDENCE-LINKED. Returns a list of human-readable violations — an EMPTY list
+    means the payload honors the zero-ontology-commitment contract.
+
+    Assertions (additive + back-compat — existing extraction passes unchanged):
+      * every entity proposes a candidate ``type_name`` (a non-empty NAME);
+      * NO type slot (``type_name`` / ``same_as`` / ``parent_type`` /
+        ``parent_chain`` / ``also_types``) carries a COMMITTED ontology IRI — a
+        candidate is a bare name; a URI is a hard commitment that pre-empts P5;
+      * when ``require_evidence`` is True, every entity is evidence-linked — it
+        carries its own ``evidence`` span or at least one attribute that does.
+
+    Soft lineage is NOT a violation — it is the correct, preserved suggestion the
+    placement layer consumes. NEVER re-cage extraction to satisfy this."""
+    violations: list[str] = []
+    if not isinstance(result, ExtractionResult):
+        return [f"A2 payload is not an ExtractionResult (got {type(result).__name__})"]
+    for i, e in enumerate(result.entities):
+        if not (e.type_name or "").strip():
+            violations.append(f"entity[{i}] (id={e.id!r}) has no candidate type_name")
+        slots: list[tuple[str, str | None]] = [
+            ("type_name", e.type_name),
+            ("same_as", e.same_as),
+            ("parent_type", e.parent_type),
+        ]
+        slots += [("parent_chain", p) for p in e.parent_chain]
+        slots += [("also_types", a) for a in e.also_types]
+        for slot, val in slots:
+            if _is_committed_type_ref(val):
+                violations.append(
+                    f"entity[{i}] (id={e.id!r}) {slot}={val!r} is a committed "
+                    "ontology reference (URI), not a soft candidate — A2 must "
+                    "emit candidate type NAMES only (zero ontology commitment)"
+                )
+        if require_evidence:
+            linked = bool((e.evidence or "").strip()) or any(
+                (a.evidence or "").strip() for a in e.attributes
+            )
+            if not linked:
+                violations.append(
+                    f"entity[{i}] (id={e.id!r}) is not evidence-linked (no evidence "
+                    "span on the entity or any of its attributes)"
+                )
+    return violations
+
+
+def assert_soft_a2(
+    result: ExtractionResult, *, require_evidence: bool = False
+) -> None:
+    """Raise :class:`SoftContractViolation` if ``result`` breaks the A2 contract
+    (soft-typed-only + optionally evidence-linked). The fatal enforcement seam for
+    the DETERMINISTIC pre-structured fast path, where a violation can only mean a
+    code bug (structured rows are provably soft), so failing fast is correct. The
+    non-deterministic LLM discovery path uses :func:`validate_soft_a2` and only
+    LOGS — imperfect model output must never hard-fail a run."""
+    violations = validate_soft_a2(result, require_evidence=require_evidence)
+    if violations:
+        raise SoftContractViolation("; ".join(violations))
+
+
+def soft_a2_from_structured_rows(
+    rows: list[dict],
+    type_name: str,
+    *,
+    key_field: str | None = None,
+    source_url_field: str = "source_url",
+) -> ExtractionResult:
+    """Build a SOFT-TYPED, evidence-linked A2 (``ExtractionResult``) from
+    already-structured rows — DETERMINISTICALLY, NO LLM (ONTA-272 fast path).
+
+    Each row becomes ONE candidate entity typed ``type_name`` (a soft SUGGESTION —
+    the pre-structured source confirmed the type, but A2 still only PROPOSES it for
+    P5). Every non-empty field except the source-URL becomes a literal
+    ``ExtractedAttribute``; the row's ``source_url`` (when present) is carried as
+    the entity's + its attributes' ``evidence`` link (the per-record citation). The
+    id is the ``key_field`` value, else the row's ``name``, else its positional
+    index. Pre-structured rows are inherently soft — flat literal candidates with
+    no minted ontology commitment — so the result always passes
+    :func:`validate_soft_a2` (and passes ``require_evidence`` when the rows carry a
+    source_url)."""
+    entities: list[ExtractedEntity] = []
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        evidence = str(row.get(source_url_field) or "").strip()
+        rid_raw = (row.get(key_field) if key_field else None) or row.get("name") or str(i)
+        rid = str(rid_raw).strip() or str(i)
+        attrs: list[ExtractedAttribute] = []
+        for k, v in row.items():
+            if k == source_url_field:
+                continue
+            if v is None or str(v).strip() == "":
+                continue
+            attrs.append(ExtractedAttribute(name=str(k), value=v, evidence=evidence))
+        entities.append(
+            ExtractedEntity(
+                type_name=type_name, id=rid, attributes=attrs, evidence=evidence
+            )
+        )
+    return ExtractionResult(entities=entities)
 
 
 class ExtractionConstraint(BaseModel):
@@ -800,6 +949,13 @@ class IngestResult(BaseModel):
             "(key-join with mint_unmatched=false). Reported, never silent."
         ),
     )
+    # ONTA-271: deterministic A6 Graph Delta receipt of the instance facts this
+    # ingest wrote — the sorted, fact_id-keyed, nonce-excluded projection
+    # (kg_writer.GraphDelta.to_dict()). Byte-identical across replays of the same
+    # run_id, so P6 can prove an upstream retry reproduced the graph exactly
+    # instead of duplicating it. A JSON-able dict; None on the CSV / legacy paths
+    # (and any caller that threads no run_id). Additive + back-compat.
+    graph_delta: dict | None = None
 
     def affected_types(self) -> set[str]:
         """Types whose embeddings + Explorer stats a post-write refresh must touch

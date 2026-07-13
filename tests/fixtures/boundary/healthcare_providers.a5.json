@@ -618,6 +618,7 @@
       "uri": "https://cograph.tech/entities/State/OH"
     }
   ],
+  "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
       "object": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital",

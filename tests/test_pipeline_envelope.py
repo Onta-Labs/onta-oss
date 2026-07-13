@@ -75,6 +75,31 @@ def test_fact_id_derivation_is_deterministic_and_lineage_sensitive():
     assert d == e
 
 
+def test_fact_id_derivation_delimiter_collision_hardened():
+    """ONTA-271: a ``|`` / ``,`` inside a component must not bleed across a
+    boundary. The pre-hardening ``"|".join`` minted the SAME id for these two
+    distinct facts (``"A2|x" + "y"`` joined identically to ``"A2" + "x|y"``);
+    hashing each component before the join makes the derivation injective."""
+    # `|` in stage vs. `|` in local_key — the exact pre-fix collision.
+    a = derive_fact_id(run_id="run-1", stage="A2|x", local_key="y")
+    b = derive_fact_id(run_id="run-1", stage="A2", local_key="x|y")
+    assert a != b
+
+    # `,` (the parent-list delimiter) inside a local_key must not masquerade as
+    # two parents, nor collide across the run_id/stage/local_key boundary.
+    c = derive_fact_id(run_id="r", stage="s", local_key="p1,p2")
+    f = derive_fact_id(run_id="r", stage="s", parent_fact_ids=("p1", "p2"), local_key="")
+    assert c != f
+
+    # A `|` in run_id vs. stage must not collide either.
+    g = derive_fact_id(run_id="r|s", stage="t", local_key="")
+    h = derive_fact_id(run_id="r", stage="s|t", local_key="")
+    assert g != h
+
+    # Still fully deterministic after hardening.
+    assert derive_fact_id(run_id="r|s", stage="t", local_key="") == g
+
+
 def test_to_dict_from_dict_round_trip():
     env = ArtifactEnvelope(
         workspace_id="ws-acme",
