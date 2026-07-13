@@ -32,6 +32,8 @@ while bare-slug callers kept working.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
+from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -255,6 +257,123 @@ async def openrouter_chat(
         if return_usage:
             return content, payload.get("usage")
         return content
+
+
+@dataclass(frozen=True)
+class OpenRouterKeyStatus:
+    """The credit/usage snapshot from OpenRouter's ``GET /api/v1/key`` (ONTA-273).
+
+    This is the proactive balance diagnosis the 402 incident lacked: when a run
+    halts on ``402 Payment Required`` you can consult this to say EXACTLY how
+    exhausted the account is ("used $20.00 of $20.00; $0.00 remaining") instead of
+    guessing. OpenRouter's response nests everything under ``data``:
+
+    * ``usage``           — credits USED on this key so far (float).
+    * ``limit``           — the key's credit limit; ``None`` means *unlimited*.
+    * ``limit_remaining`` — credits remaining; ``None`` when the limit is unlimited
+      or the field is absent.
+    * ``is_free_tier``    — whether this is a free-tier key.
+
+    All optional (``None`` when OpenRouter omits them) so a partial/older response
+    never raises. ``raw`` keeps the untouched ``data`` object for logging.
+    """
+
+    usage: Optional[float] = None
+    limit: Optional[float] = None
+    limit_remaining: Optional[float] = None
+    is_free_tier: Optional[bool] = None
+    raw: dict = None  # type: ignore[assignment]
+
+    @property
+    def exhausted(self) -> bool:
+        """True when the account has no credits left. An unlimited key (``limit is
+        None``) is never exhausted. Prefer the explicit ``limit_remaining``; fall
+        back to comparing ``usage`` against ``limit``."""
+        if self.limit is None:
+            return False
+        if self.limit_remaining is not None:
+            return self.limit_remaining <= 0
+        if self.usage is not None:
+            return self.usage >= self.limit
+        return False
+
+    def summary(self) -> str:
+        """A one-line, human-readable credit summary for the halt reason."""
+
+        def _fmt(v: Optional[float]) -> str:
+            return "unlimited" if v is None else f"${v:.2f}"
+
+        remaining = (
+            "unlimited"
+            if self.limit is None
+            else _fmt(
+                self.limit_remaining
+                if self.limit_remaining is not None
+                else (
+                    (self.limit - self.usage)
+                    if (self.limit is not None and self.usage is not None)
+                    else None
+                )
+            )
+        )
+        return (
+            f"OpenRouter credits: used {_fmt(self.usage)} of {_fmt(self.limit)}, "
+            f"{remaining} remaining"
+            + (" (free tier)" if self.is_free_tier else "")
+        )
+
+
+async def openrouter_key_status(
+    api_key: str,
+    *,
+    base_url: str = OPENROUTER_BASE,
+    timeout: float = 10.0,
+) -> OpenRouterKeyStatus:
+    """Query OpenRouter ``GET /api/v1/key`` for the key's credit/usage snapshot.
+
+    Used to produce an HONEST provider-exhaustion reason on a 402 halt (ONTA-273):
+    diagnose remaining credits instead of guessing. Raises the same typed fatal
+    :class:`LLMBillingError` / :class:`LLMAuthError` as :func:`openrouter_chat` when
+    the diagnostic call itself is refused for billing/auth (so a caller can treat a
+    402 on the diagnosis identically); other HTTP errors propagate raw. Callers on
+    a failure path should wrap this best-effort — a diagnosis must never mask the
+    original error.
+    """
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.get(
+            f"{base_url}/key",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        try:
+            res.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            fatal = classify_llm_status_error(
+                exc.response.status_code,
+                detail=_error_detail(exc.response),
+                provider="openrouter",
+                host=urlparse(base_url).hostname,
+            )
+            if fatal is not None:
+                raise fatal from exc
+            raise
+        payload = res.json()
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        data = {}
+
+    def _num(key: str) -> Optional[float]:
+        v = data.get(key)
+        if isinstance(v, (int, float)):
+            return float(v)
+        return None
+
+    return OpenRouterKeyStatus(
+        usage=_num("usage"),
+        limit=_num("limit"),
+        limit_remaining=_num("limit_remaining"),
+        is_free_tier=bool(data.get("is_free_tier")) if "is_free_tier" in data else None,
+        raw=data,
+    )
 
 
 def _error_detail(response: httpx.Response) -> str:
