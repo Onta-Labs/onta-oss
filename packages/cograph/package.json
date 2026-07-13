@@ -1,6 +1,6 @@
 {
   "name": "@onta/cli",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "description": "Onta SDK and CLI — context graph platform for structured data",
   "type": "module",
   "main": "./dist/index.js",
