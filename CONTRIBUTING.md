@@ -107,10 +107,12 @@ cograph_client/
   resolver/     Schema inference, type matching, CSV mapping
   models/       Pydantic data models
   functions/    Compute function registry
-  cli.py        CLI entry point
   config.py     Settings (OMNIX_ env prefix)
   eval.py       Eval framework
-  mcp_server.py MCP server for AI agents
+
+packages/
+  cograph/      Node SDK + CLI (published as `onta` and legacy `cograph`)
+  cograph-mcp/  MCP server for AI agents (published as `onta-mcp` too)
 ```
 
 ## Code Style

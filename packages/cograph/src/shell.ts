@@ -1118,9 +1118,9 @@ function makePrompt(
   const triplePart = triples > 0 ? `${DIM}[${fmtNum(triples)}]${RESET} ` : "";
   if (mode === "self-hosted" && baseUrl) {
     const host = urlHost(baseUrl);
-    return `  ${CYAN_BOLD}cograph${RESET}${DIM}@${host}${RESET} ${kgPart} ${triplePart}${CYAN_BOLD}▸${RESET} `;
+    return `  ${CYAN_BOLD}onta${RESET}${DIM}@${host}${RESET} ${kgPart} ${triplePart}${CYAN_BOLD}▸${RESET} `;
   }
-  return `  ${CYAN_BOLD}cograph${RESET} ${kgPart} ${triplePart}${CYAN_BOLD}▸${RESET} `;
+  return `  ${CYAN_BOLD}onta${RESET} ${kgPart} ${triplePart}${CYAN_BOLD}▸${RESET} `;
 }
 
 /**

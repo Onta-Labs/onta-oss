@@ -1,6 +1,6 @@
 # cograph
 
-Node.js SDK and CLI for [Cograph](https://cograph.cloud) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
+Node.js SDK and CLI for [Onta](https://onta.sh) (formerly Cograph) — turn raw data into a queryable context graph (a knowledge graph you query in natural language). Also published as [`onta`](https://www.npmjs.com/package/onta), the current brand name — same SDK, same CLI; new projects should install that one.
 
 ## Quickstart
 
