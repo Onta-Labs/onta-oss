@@ -2,10 +2,14 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Distribution name is the public brand (PyPI `onta` is squatted by an
+# unrelated project, hence -client); the IMPORT name stays `cograph_client`
+# per the repo naming rules — hence the explicit wheel target below, since
+# hatchling can no longer infer the package dir from the project name.
 [project]
-name = "cograph-client"
+name = "onta-client"
 version = "0.1.0"
-description = "Living Knowledge Graph Platform"
+description = "Onta — living knowledge graph platform (OSS core, formerly Cograph)"
 license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -32,6 +36,9 @@ dev = [
     "pytest-cov>=6.0.0",
     "httpx",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cograph_client"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
