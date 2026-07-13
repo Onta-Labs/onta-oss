@@ -3,14 +3,14 @@ import { existsSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Client, CographError, isTerminalJobStatus } from "cograph";
+import { Client, CographError, isTerminalJobStatus } from "@onta/cli";
 import type {
   AgentResult,
   JobCategory,
   JobStatus,
   ResolvedChange,
   Schedule,
-} from "cograph";
+} from "@onta/cli";
 import { z } from "zod";
 
 const VERSION = "0.1.0";
@@ -60,7 +60,7 @@ const server = new McpServer(
   },
   {
     instructions:
-      "Onta (formerly Cograph) is a context graph platform. Use these tools to " +
+      "Onta is a context graph platform. Use these tools to " +
       "query structured data across multiple context graphs using natural language.",
   },
 );
@@ -958,10 +958,10 @@ server.registerTool(
   },
 );
 
-// Exported so a thin alias package (e.g. `onta-mcp`) can start the SAME server
-// without re-implementing it: that wrapper imports this package as a library, so
-// the `isEntrypoint` guard below is (correctly) false there and it calls main()
-// explicitly. Direct `npx cograph-mcp` still auto-starts via the guard.
+// Exported so a caller can start the SAME server without re-implementing it
+// (e.g. a test that imports this package as a library): the `isEntrypoint` guard
+// below is (correctly) false there, so it calls main() explicitly. Direct
+// `npx -y @onta/mcp` still auto-starts via the guard.
 export async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);

@@ -24,6 +24,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: '.github/signatures/cla.json'
-          path-to-document: 'https://github.com/git-moeen/onta-oss/blob/main/CLA.md'
+          path-to-document: 'https://github.com/Onta-Labs/onta-oss/blob/main/CLA.md'
           branch: 'cla-signatures'
           allowlist: 'git-moeen,dependabot[bot],*[bot]'

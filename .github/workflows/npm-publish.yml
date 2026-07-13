@@ -6,8 +6,6 @@ on:
     paths:
       - "packages/cograph/**"
       - "packages/cograph-mcp/**"
-      - "packages/onta-mcp/**"
-      - "packages/onta/**"
   workflow_dispatch:
 
 jobs:
@@ -43,84 +41,42 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump and publish cograph
+      # Publish @onta/cli (the SDK + CLI) first — @onta/mcp depends on it.
+      - name: Bump and publish @onta/cli
         working-directory: packages/cograph
         run: |
           # Skip if this commit was itself a version bump (avoids infinite loop)
-          if git log -1 --pretty=%s | grep -q "^chore(release): bump cograph"; then
-            echo "Version bump commit detected — skipping cograph publish."
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump @onta/cli"; then
+            echo "Version bump commit detected — skipping @onta/cli publish."
             exit 0
           fi
           npm version patch --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           cd ../..
           git add packages/cograph/package.json package-lock.json
-          git commit -m "chore(release): bump cograph to v${NEW_VERSION} [skip ci]"
+          git commit -m "chore(release): bump @onta/cli to v${NEW_VERSION} [skip ci]"
           git push
           cd packages/cograph
           npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Bump and publish cograph-mcp
+      # Publish @onta/mcp second — it depends on @onta/cli via a `^0.1.0` range,
+      # so it picks up whatever @onta/cli version was just published above.
+      - name: Bump and publish @onta/mcp
         working-directory: packages/cograph-mcp
         run: |
-          if git log -1 --pretty=%s | grep -q "^chore(release): bump cograph-mcp"; then
-            echo "Version bump commit detected — skipping cograph-mcp publish."
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump @onta/mcp"; then
+            echo "Version bump commit detected — skipping @onta/mcp publish."
             exit 0
           fi
           npm version patch --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           cd ../..
           git add packages/cograph-mcp/package.json package-lock.json
-          git commit -m "chore(release): bump cograph-mcp to v${NEW_VERSION} [skip ci]"
+          git commit -m "chore(release): bump @onta/mcp to v${NEW_VERSION} [skip ci]"
           git push
           cd packages/cograph-mcp
-          npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # onta-mcp is a thin alias of cograph-mcp (new brand, same server). Publish
-      # it alongside so `npx -y onta-mcp` resolves. It depends on cograph-mcp via
-      # a `^0.1.0` range, so it picks up whatever cograph-mcp version was just
-      # published above.
-      - name: Bump and publish onta-mcp
-        working-directory: packages/onta-mcp
-        run: |
-          if git log -1 --pretty=%s | grep -q "^chore(release): bump onta-mcp"; then
-            echo "Version bump commit detected — skipping onta-mcp publish."
-            exit 0
-          fi
-          npm version patch --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          cd ../..
-          git add packages/onta-mcp/package.json package-lock.json
-          git commit -m "chore(release): bump onta-mcp to v${NEW_VERSION} [skip ci]"
-          git push
-          cd packages/onta-mcp
-          npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # onta is a thin alias of cograph (new brand, same SDK + CLI). Publish it
-      # alongside so `npm install -g onta` / `npx onta` resolve. It depends on
-      # cograph via a ^ range, so it picks up whatever cograph version was just
-      # published above. Guard pattern includes the trailing " to" so it can't
-      # false-match the "bump onta-mcp" commit pushed by the previous step.
-      - name: Bump and publish onta
-        working-directory: packages/onta
-        run: |
-          if git log -1 --pretty=%s | grep -q "^chore(release): bump onta to"; then
-            echo "Version bump commit detected — skipping onta publish."
-            exit 0
-          fi
-          npm version patch --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          cd ../..
-          git add packages/onta/package.json package-lock.json
-          git commit -m "chore(release): bump onta to v${NEW_VERSION} [skip ci]"
-          git push
-          cd packages/onta
           npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
