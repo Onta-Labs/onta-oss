@@ -1,6 +1,6 @@
 {
   "name": "onta",
-  "version": "0.1.49",
+  "version": "0.1.50",
   "description": "Onta SDK and CLI — context graph platform for structured data (alias of cograph)",
   "type": "module",
   "main": "./index.mjs",
