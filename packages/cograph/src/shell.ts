@@ -3,7 +3,7 @@ import { stdin, stdout } from "node:process";
 import { randomUUID } from "node:crypto";
 import {
   Client,
-  CographError,
+  OntaError,
   type TypeCount,
   type EnrichJob,
   type ConflictReview,
@@ -261,7 +261,7 @@ async function cmdIngest(
       );
     } catch (err) {
       sp.stop();
-      if (err instanceof CographError) printError(err.message);
+      if (err instanceof OntaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -287,7 +287,7 @@ async function cmdAsk(
     stdout.write(`  ${answer}\n`);
     stdout.write("\n");
   } catch (err) {
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
   }
 }
@@ -321,7 +321,7 @@ async function cmdAgent(
     result = await client.agent({ message: msg, ...context });
   } catch (err) {
     sp.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -346,7 +346,7 @@ async function cmdAgent(
       executed = await client.agent({ confirmPlanId: planId, ...context });
     } catch (err) {
       sp2.stop();
-      if (err instanceof CographError) printError(err.message);
+      if (err instanceof OntaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
       return;
     }
@@ -382,7 +382,7 @@ async function cmdStatus(client: Client, kg: string): Promise<void> {
     }
     stdout.write("\n");
   } catch (err) {
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
   }
 }
@@ -406,7 +406,7 @@ async function cmdReset(
     stdout.write(`  ${GREEN}✓${RESET} Graph cleared.\n`);
     return true;
   } catch (err) {
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return false;
   }
@@ -425,7 +425,7 @@ async function cmdTypes(
     types = await client.typeCounts(kg);
   } catch (err) {
     sp.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -549,7 +549,7 @@ async function cmdType(
     usage = await client.typeUsage(kg, name, { includeSystem });
   } catch (err) {
     sp.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -813,7 +813,7 @@ async function queueEnrich(
     return created;
   } catch (err) {
     sp.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return null;
   }
@@ -904,7 +904,7 @@ async function watchJob(
       job = await client.enrichJob(jobId);
     } catch (err) {
       stdout.write("\r\x1b[2K");
-      if (err instanceof CographError) printError(err.message);
+      if (err instanceof OntaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
       return null;
     }
@@ -943,7 +943,7 @@ async function cmdEnrichJobs(client: Client): Promise<void> {
     jobs = await client.enrichJobs();
   } catch (err) {
     sp.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -1006,7 +1006,7 @@ async function cmdEnrichReview(
     conflicts = await client.enrichConflicts(jobId);
   } catch (err) {
     sp.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
     return;
   }
@@ -1095,7 +1095,7 @@ async function cmdEnrichReview(
     );
   } catch (err) {
     sp2.stop();
-    if (err instanceof CographError) printError(err.message);
+    if (err instanceof OntaError) printError(err.message);
     else printError(err instanceof Error ? err.message : String(err));
   }
 }
@@ -1174,7 +1174,7 @@ export async function runShell(opts: {
   const selfHostedHint = !!opts.local || !!opts.noLogin || envIsSelfHosted;
 
   // `let` rather than `const` so /login can swap in a fresh Client after
-  // ~/.cograph/config.json is rewritten with the new key.
+  // ~/.onta/config.json is rewritten with the new key.
   let client = opts.local
     ? new Client({ baseUrl: "http://localhost:8000", tenant: "default" })
     : selfHostedHint
@@ -1341,7 +1341,7 @@ export async function runShell(opts: {
       } else if (line === "/login") {
         const { runLogin } = await import("./login.js");
         await runLogin();
-        // Pick up the new key from ~/.cograph/config.json for subsequent calls.
+        // Pick up the new key from ~/.onta/config.json for subsequent calls.
         client = new Client();
         await refresh();
       } else if (line === "/tenant" || line.startsWith("/tenant ")) {
@@ -1391,7 +1391,7 @@ export async function runShell(opts: {
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            if (err instanceof CographError && err.status === 501) {
+            if (err instanceof OntaError && err.status === 501) {
               printError("Tenant management isn't configured on this backend.");
             } else {
               printError(msg);
@@ -1514,7 +1514,7 @@ export async function runShell(opts: {
         await cmdAsk(client, kg, line);
       }
     } catch (err) {
-      if (err instanceof CographError) printError(err.message);
+      if (err instanceof OntaError) printError(err.message);
       else printError(err instanceof Error ? err.message : String(err));
     }
   }

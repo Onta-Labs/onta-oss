@@ -5,9 +5,9 @@ import { spawn } from "node:child_process";
 import { stdout } from "node:process";
 import { writeConfig, configPathForDisplay } from "./config.js";
 
-// Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at onta.sh.
+// Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at getonta.com.
 const WEB_URL =
-  process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://onta.sh";
+  process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://getonta.com";
 
 interface CallbackPayload {
   state?: string;
@@ -20,7 +20,7 @@ interface CallbackPayload {
 /**
  * Browser-redirect login flow. Starts a one-shot local HTTP server, opens
  * the user's browser to /cli-login on the web app, and waits for the page
- * to POST back the API key. Saves the result to ~/.cograph/config.json.
+ * to POST back the API key. Saves the result to ~/.onta/config.json.
  */
 export async function runLogin(): Promise<void> {
   const state = randomBytes(24).toString("hex");
@@ -89,7 +89,7 @@ function handleRequest(
   expectedState: string,
   resolve: (value: CallbackPayload | { error: string }) => void,
 ): void {
-  // CORS — the page is on the web app (onta.sh by default), posting to localhost.
+  // CORS — the page is on the web app (getonta.com by default), posting to localhost.
   res.setHeader("Access-Control-Allow-Origin", WEB_URL);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
