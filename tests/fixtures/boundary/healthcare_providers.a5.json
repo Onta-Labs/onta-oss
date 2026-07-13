@@ -1,0 +1,1017 @@
+{
+  "attribute_declarations": [
+    {
+      "kind": "literal",
+      "name": "accepting_new_patients",
+      "range": "http://www.w3.org/2001/XMLSchema#boolean",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/accepting_new_patients"
+    },
+    {
+      "kind": "relationship",
+      "name": "affiliated_with",
+      "range": "https://cograph.tech/types/Organization",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/affiliated_with"
+    },
+    {
+      "kind": "literal",
+      "name": "credential",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/credential"
+    },
+    {
+      "kind": "relationship",
+      "name": "has_specialty",
+      "range": "https://cograph.tech/types/Specialty",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/has_specialty"
+    },
+    {
+      "kind": "relationship",
+      "name": "in_state",
+      "range": "https://cograph.tech/types/State",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/in_state"
+    },
+    {
+      "kind": "relationship",
+      "name": "located_in",
+      "range": "https://cograph.tech/types/City",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/located_in"
+    },
+    {
+      "kind": "literal",
+      "name": "npi",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/npi"
+    },
+    {
+      "kind": "literal",
+      "name": "phone",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/types/NursePractitioner/attrs/phone"
+    },
+    {
+      "kind": "literal",
+      "name": "accepting_new_patients",
+      "range": "http://www.w3.org/2001/XMLSchema#boolean",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/accepting_new_patients"
+    },
+    {
+      "kind": "relationship",
+      "name": "affiliated_with",
+      "range": "https://cograph.tech/types/Organization",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/affiliated_with"
+    },
+    {
+      "kind": "literal",
+      "name": "credential",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/credential"
+    },
+    {
+      "kind": "relationship",
+      "name": "has_specialty",
+      "range": "https://cograph.tech/types/Specialty",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/has_specialty"
+    },
+    {
+      "kind": "relationship",
+      "name": "in_state",
+      "range": "https://cograph.tech/types/State",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/in_state"
+    },
+    {
+      "kind": "relationship",
+      "name": "located_in",
+      "range": "https://cograph.tech/types/City",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/located_in"
+    },
+    {
+      "kind": "literal",
+      "name": "npi",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/npi"
+    },
+    {
+      "kind": "literal",
+      "name": "phone",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "Physician",
+      "uri": "https://cograph.tech/types/Physician/attrs/phone"
+    },
+    {
+      "kind": "literal",
+      "name": "accepting_new_patients",
+      "range": "http://www.w3.org/2001/XMLSchema#boolean",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/accepting_new_patients"
+    },
+    {
+      "kind": "relationship",
+      "name": "affiliated_with",
+      "range": "https://cograph.tech/types/Organization",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/affiliated_with"
+    },
+    {
+      "kind": "literal",
+      "name": "credential",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/credential"
+    },
+    {
+      "kind": "relationship",
+      "name": "has_specialty",
+      "range": "https://cograph.tech/types/Specialty",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/has_specialty"
+    },
+    {
+      "kind": "relationship",
+      "name": "in_state",
+      "range": "https://cograph.tech/types/State",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/in_state"
+    },
+    {
+      "kind": "relationship",
+      "name": "located_in",
+      "range": "https://cograph.tech/types/City",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/located_in"
+    },
+    {
+      "kind": "literal",
+      "name": "npi",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/npi"
+    },
+    {
+      "kind": "literal",
+      "name": "phone",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/types/PhysicianAssistant/attrs/phone"
+    }
+  ],
+  "entities": [
+    {
+      "also_types": [],
+      "id": "Ashcombe",
+      "label": "Ashcombe",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Ashcombe"
+    },
+    {
+      "also_types": [],
+      "id": "Elmbrook",
+      "label": "Elmbrook",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Elmbrook"
+    },
+    {
+      "also_types": [],
+      "id": "Fallingwood",
+      "label": "Fallingwood",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Fallingwood"
+    },
+    {
+      "also_types": [],
+      "id": "Marrowdale",
+      "label": "Marrowdale",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Marrowdale"
+    },
+    {
+      "also_types": [],
+      "id": "Bartholomew Quimby",
+      "label": "Bartholomew Quimby",
+      "rdf_type": "https://cograph.tech/types/NursePractitioner",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "also_types": [],
+      "id": "Rosalind Featherstone",
+      "label": "Rosalind Featherstone",
+      "rdf_type": "https://cograph.tech/types/NursePractitioner",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "also_types": [],
+      "id": "Tamsin Brightwater",
+      "label": "Tamsin Brightwater",
+      "rdf_type": "https://cograph.tech/types/NursePractitioner",
+      "type": "NursePractitioner",
+      "uri": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "also_types": [],
+      "id": "Copperfield Clinic",
+      "label": "Copperfield Clinic",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Copperfield_Clinic"
+    },
+    {
+      "also_types": [],
+      "id": "Lakeshore General Hospital",
+      "label": "Lakeshore General Hospital",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital"
+    },
+    {
+      "also_types": [],
+      "id": "Rivergate Medical Center",
+      "label": "Rivergate Medical Center",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Rivergate_Medical_Center"
+    },
+    {
+      "also_types": [],
+      "id": "Summit Ridge Hospital",
+      "label": "Summit Ridge Hospital",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "type": "Organization",
+      "uri": "https://cograph.tech/entities/Organization/Summit_Ridge_Hospital"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Constance Ilberis",
+      "label": "Dr. Constance Ilberis",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Everett Kaczmarek",
+      "label": "Dr. Everett Kaczmarek",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Horatio Blackwood",
+      "label": "Dr. Horatio Blackwood",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Ignatius Prewett",
+      "label": "Dr. Ignatius Prewett",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Marlowe Vantham",
+      "label": "Dr. Marlowe Vantham",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Percival Underhill",
+      "label": "Dr. Percival Underhill",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Priscilla Onwuka",
+      "label": "Dr. Priscilla Onwuka",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Seraphina Loxley",
+      "label": "Dr. Seraphina Loxley",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "also_types": [],
+      "id": "Dr. Yolanda Fereday",
+      "label": "Dr. Yolanda Fereday",
+      "rdf_type": "https://cograph.tech/types/Physician",
+      "type": "Physician",
+      "uri": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "also_types": [],
+      "id": "Delphine Marchetti",
+      "label": "Delphine Marchetti",
+      "rdf_type": "https://cograph.tech/types/PhysicianAssistant",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "also_types": [],
+      "id": "Gideon Sparrowhawk",
+      "label": "Gideon Sparrowhawk",
+      "rdf_type": "https://cograph.tech/types/PhysicianAssistant",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "also_types": [],
+      "id": "Ottoline Vasquez",
+      "label": "Ottoline Vasquez",
+      "rdf_type": "https://cograph.tech/types/PhysicianAssistant",
+      "type": "PhysicianAssistant",
+      "uri": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "also_types": [],
+      "id": "Addiction Medicine",
+      "label": "Addiction Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Addiction_Medicine"
+    },
+    {
+      "also_types": [],
+      "id": "Adolescent Medicine",
+      "label": "Adolescent Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Adolescent_Medicine"
+    },
+    {
+      "also_types": [],
+      "id": "Cardiology",
+      "label": "Cardiology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Cardiology"
+    },
+    {
+      "also_types": [],
+      "id": "Dermatology",
+      "label": "Dermatology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Dermatology"
+    },
+    {
+      "also_types": [],
+      "id": "Family Medicine",
+      "label": "Family Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Family_Medicine"
+    },
+    {
+      "also_types": [],
+      "id": "Gastroenterology",
+      "label": "Gastroenterology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Gastroenterology"
+    },
+    {
+      "also_types": [],
+      "id": "Geriatric Medicine",
+      "label": "Geriatric Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Geriatric_Medicine"
+    },
+    {
+      "also_types": [],
+      "id": "Internal Medicine",
+      "label": "Internal Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Internal_Medicine"
+    },
+    {
+      "also_types": [],
+      "id": "Neurology",
+      "label": "Neurology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Neurology"
+    },
+    {
+      "also_types": [],
+      "id": "Obstetrics and Gynecology",
+      "label": "Obstetrics and Gynecology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Obstetrics_and_Gynecology"
+    },
+    {
+      "also_types": [],
+      "id": "Ophthalmology",
+      "label": "Ophthalmology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Ophthalmology"
+    },
+    {
+      "also_types": [],
+      "id": "Orthopedic Surgery",
+      "label": "Orthopedic Surgery",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Orthopedic_Surgery"
+    },
+    {
+      "also_types": [],
+      "id": "Pediatrics",
+      "label": "Pediatrics",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Pediatrics"
+    },
+    {
+      "also_types": [],
+      "id": "Psychiatry",
+      "label": "Psychiatry",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Psychiatry"
+    },
+    {
+      "also_types": [],
+      "id": "Urgent Care",
+      "label": "Urgent Care",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "type": "Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Urgent_Care"
+    },
+    {
+      "also_types": [],
+      "id": "MI",
+      "label": "MI",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/MI"
+    },
+    {
+      "also_types": [],
+      "id": "OH",
+      "label": "OH",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/OH"
+    }
+  ],
+  "node_materializations": [
+    {
+      "label": "Ashcombe",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Ashcombe"
+    },
+    {
+      "label": "Elmbrook",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Elmbrook"
+    },
+    {
+      "label": "Fallingwood",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Fallingwood"
+    },
+    {
+      "label": "Marrowdale",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Marrowdale"
+    },
+    {
+      "label": "Copperfield Clinic",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Copperfield_Clinic"
+    },
+    {
+      "label": "Lakeshore General Hospital",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital"
+    },
+    {
+      "label": "Rivergate Medical Center",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Rivergate_Medical_Center"
+    },
+    {
+      "label": "Summit Ridge Hospital",
+      "rdf_type": "https://cograph.tech/types/Organization",
+      "uri": "https://cograph.tech/entities/Organization/Summit_Ridge_Hospital"
+    },
+    {
+      "label": "Addiction Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Addiction_Medicine"
+    },
+    {
+      "label": "Adolescent Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Adolescent_Medicine"
+    },
+    {
+      "label": "Cardiology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Cardiology"
+    },
+    {
+      "label": "Dermatology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Dermatology"
+    },
+    {
+      "label": "Family Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Family_Medicine"
+    },
+    {
+      "label": "Gastroenterology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Gastroenterology"
+    },
+    {
+      "label": "Geriatric Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Geriatric_Medicine"
+    },
+    {
+      "label": "Internal Medicine",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Internal_Medicine"
+    },
+    {
+      "label": "Neurology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Neurology"
+    },
+    {
+      "label": "Obstetrics and Gynecology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Obstetrics_and_Gynecology"
+    },
+    {
+      "label": "Ophthalmology",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Ophthalmology"
+    },
+    {
+      "label": "Orthopedic Surgery",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Orthopedic_Surgery"
+    },
+    {
+      "label": "Pediatrics",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Pediatrics"
+    },
+    {
+      "label": "Psychiatry",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Psychiatry"
+    },
+    {
+      "label": "Urgent Care",
+      "rdf_type": "https://cograph.tech/types/Specialty",
+      "uri": "https://cograph.tech/entities/Specialty/Urgent_Care"
+    },
+    {
+      "label": "MI",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/MI"
+    },
+    {
+      "label": "OH",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/OH"
+    }
+  ],
+  "relationship_edges": [
+    {
+      "object": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Addiction_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Psychiatry",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Marrowdale",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Geriatric_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Elmbrook",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Family_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Elmbrook",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Dermatology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Marrowdale",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Orthopedic_Surgery",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Fallingwood",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Copperfield_Clinic",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Gastroenterology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Internal_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Ashcombe",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Copperfield_Clinic",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Neurology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Ashcombe",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Family_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Geriatric_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Elmbrook",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Ophthalmology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Fallingwood",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Cardiology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Internal_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Elmbrook",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Obstetrics_and_Gynecology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Marrowdale",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Adolescent_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Pediatrics",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Fallingwood",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Copperfield_Clinic",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Family_Medicine",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Urgent_Care",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Ashcombe",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Orthopedic_Surgery",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OH",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Fallingwood",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "https://cograph.tech/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://cograph.tech/onto/affiliated_with",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "object": "https://cograph.tech/entities/Specialty/Dermatology",
+      "predicate": "https://cograph.tech/onto/has_specialty",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/MI",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Marrowdale",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    }
+  ],
+  "types": [
+    {
+      "kind": "primary",
+      "name": "City",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/City"
+    },
+    {
+      "kind": "ancestor",
+      "name": "HealthcareProvider",
+      "subclass_of": [
+        "https://cograph.tech/types/Person"
+      ],
+      "uri": "https://cograph.tech/types/HealthcareProvider"
+    },
+    {
+      "kind": "subtype",
+      "name": "NursePractitioner",
+      "subclass_of": [
+        "https://cograph.tech/types/HealthcareProvider"
+      ],
+      "uri": "https://cograph.tech/types/NursePractitioner"
+    },
+    {
+      "kind": "primary",
+      "name": "Organization",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Organization"
+    },
+    {
+      "kind": "ancestor",
+      "name": "Person",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Person"
+    },
+    {
+      "kind": "subtype",
+      "name": "Physician",
+      "subclass_of": [
+        "https://cograph.tech/types/HealthcareProvider"
+      ],
+      "uri": "https://cograph.tech/types/Physician"
+    },
+    {
+      "kind": "subtype",
+      "name": "PhysicianAssistant",
+      "subclass_of": [
+        "https://cograph.tech/types/HealthcareProvider"
+      ],
+      "uri": "https://cograph.tech/types/PhysicianAssistant"
+    },
+    {
+      "kind": "primary",
+      "name": "Specialty",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Specialty"
+    },
+    {
+      "kind": "primary",
+      "name": "State",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/State"
+    }
+  ]
+}

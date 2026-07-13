@@ -1,0 +1,425 @@
+{
+  "rejections": [],
+  "verified_facts": [
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "NP",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/credential",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "1229948013",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/npi",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "313-555-0137",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/phone",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Bartholomew_Quimby"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "NP",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/credential",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "1502238861",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/npi",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "440-555-0224",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/phone",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Rosalind_Featherstone"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "NP",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/credential",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "1558832047",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/npi",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "440-555-0210",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/NursePractitioner/attrs/phone",
+      "subject": "https://cograph.tech/entities/NursePractitioner/Tamsin_Brightwater"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "DO",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "1385561120",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "313-555-0122",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Constance_Ilberis"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "MD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "1902337761",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "216-555-0144",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Everett_Kaczmarek"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "DO",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "1815563390",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "989-555-0143",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Horatio_Blackwood"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "MD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "1071183345",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "989-555-0111",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Ignatius_Prewett"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "MD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "1841299301",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "440-555-0182",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Marlowe_Vantham"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "MD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "1338890027",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "216-555-0191",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Percival_Underhill"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "DO",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "1770458823",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "440-555-0199",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Priscilla_Onwuka"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "MD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "1994402278",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "313-555-0158",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Seraphina_Loxley"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "MD",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/credential",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "1663049928",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/npi",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "216-555-0165",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/Physician/attrs/phone",
+      "subject": "https://cograph.tech/entities/Physician/Dr__Yolanda_Fereday"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "PA-C",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/credential",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "1660027742",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/npi",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "989-555-0126",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/phone",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Delphine_Marchetti"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "PA-C",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/credential",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "1447720158",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/npi",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "216-555-0178",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/phone",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/accepting_new_patients",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "object": "PA-C",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/credential",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "object": "1247716609",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/npi",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    },
+    {
+      "object": "313-555-0169",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/PhysicianAssistant/attrs/phone",
+      "subject": "https://cograph.tech/entities/PhysicianAssistant/Ottoline_Vasquez"
+    }
+  ]
+}
