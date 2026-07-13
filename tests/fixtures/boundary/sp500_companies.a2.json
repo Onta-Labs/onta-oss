@@ -1,0 +1,910 @@
+{
+  "entities": [
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "61000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Wichita, Kansas"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "84200000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "NMBS"
+        }
+      ],
+      "id": "Nimbus Aerospace Corporation",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Industrials",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Aerospace & Defense",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Adelaide Fenwick",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "88000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Dearborn, Michigan"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "51900000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "VLDR"
+        }
+      ],
+      "id": "Valdera Motors Inc",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Consumer Discretionary",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Automobiles",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Cornelius Ashby",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "42000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Cambridge, Massachusetts"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "132500000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "HLXP"
+        }
+      ],
+      "id": "Helix Pharmaceuticals",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Health Care",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Pharmaceuticals",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Beatrix Sandoval",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "15000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "South San Francisco, California"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "47800000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "CRSD"
+        }
+      ],
+      "id": "Crestwood Biologics",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Biotechnology",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Desmond Larkspur",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "27000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Houston, Texas"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "76300000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "TDWT"
+        }
+      ],
+      "id": "Tidewater Energy Holdings",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Energy",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Oil & Gas Exploration",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Marguerite Ollivander",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "12500"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Houston, Texas"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "39400000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "PTNC"
+        }
+      ],
+      "id": "Pinnacle Refining Company",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Oil & Gas Refining",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Signature withheld",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "8900"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Chicago, Illinois"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "68100000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "ARGX"
+        }
+      ],
+      "id": "Argent Exchange Group",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Financials",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Financial Exchanges",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Thaddeus Grimwald",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "34000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Charlotte, North Carolina"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "55700000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "MRDN"
+        }
+      ],
+      "id": "Meridian Trust Bancorp",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Regional Banks",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Cassia Wetherby",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "29000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Santa Clara, California"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "210800000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "SLST"
+        }
+      ],
+      "id": "Solstice Semiconductor",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Information Technology",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Semiconductors",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Ignatius Vandermeer",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "17000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Santa Clara, California"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "98600000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "LMNX"
+        }
+      ],
+      "id": "Lumenix Software",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Application Software",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Persephone Callahan",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "145000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Boise, Idaho"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "33200000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "GRNF"
+        }
+      ],
+      "id": "Greenfield Grocers Corp",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Consumer Staples",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Food Retail",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Ambrose Tillingham",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "22000"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Battle Creek, Michigan"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "29800000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "HRVM"
+        }
+      ],
+      "id": "Harvest Mills Foods",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Packaged Foods",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Lucinda Farnsworth",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "18500"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Columbus, Ohio"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "44100000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "CBLT"
+        }
+      ],
+      "id": "Cobalt Grid Utilities",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Utilities",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Electric Utilities",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Reginald Hawksworth",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "3200"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Indianapolis, Indiana"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "26700000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "STNH"
+        }
+      ],
+      "id": "Stonehaven Realty Trust",
+      "parent_chain": [],
+      "type_name": "Company"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Real Estate",
+      "parent_chain": [],
+      "type_name": "Sector"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Retail REITs",
+      "parent_chain": [],
+      "type_name": "Industry"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Ophelia Brambleton",
+      "parent_chain": [],
+      "type_name": "Person"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "employees",
+          "value": "6100"
+        },
+        {
+          "datatype": "string",
+          "name": "headquarters",
+          "value": "Santa Clara, California"
+        },
+        {
+          "datatype": "integer",
+          "name": "market_cap",
+          "value": "18900000000"
+        },
+        {
+          "datatype": "string",
+          "name": "ticker",
+          "value": "SLSC"
+        }
+      ],
+      "id": "Solstice Semiconductor Materials",
+      "parent_chain": [],
+      "type_name": "Company"
+    }
+  ],
+  "relationships": [
+    {
+      "predicate": "in_sector",
+      "source_id": "Nimbus Aerospace Corporation",
+      "target_id": "Industrials"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Nimbus Aerospace Corporation",
+      "target_id": "Aerospace & Defense"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Nimbus Aerospace Corporation",
+      "target_id": "Adelaide Fenwick"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Valdera Motors Inc",
+      "target_id": "Consumer Discretionary"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Valdera Motors Inc",
+      "target_id": "Automobiles"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Valdera Motors Inc",
+      "target_id": "Cornelius Ashby"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Helix Pharmaceuticals",
+      "target_id": "Health Care"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Helix Pharmaceuticals",
+      "target_id": "Pharmaceuticals"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Helix Pharmaceuticals",
+      "target_id": "Beatrix Sandoval"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Crestwood Biologics",
+      "target_id": "Health Care"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Crestwood Biologics",
+      "target_id": "Biotechnology"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Crestwood Biologics",
+      "target_id": "Desmond Larkspur"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Tidewater Energy Holdings",
+      "target_id": "Energy"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Tidewater Energy Holdings",
+      "target_id": "Oil & Gas Exploration"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Tidewater Energy Holdings",
+      "target_id": "Marguerite Ollivander"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Pinnacle Refining Company",
+      "target_id": "Energy"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Pinnacle Refining Company",
+      "target_id": "Oil & Gas Refining"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Pinnacle Refining Company",
+      "target_id": "Signature withheld"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Argent Exchange Group",
+      "target_id": "Financials"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Argent Exchange Group",
+      "target_id": "Financial Exchanges"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Argent Exchange Group",
+      "target_id": "Thaddeus Grimwald"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Meridian Trust Bancorp",
+      "target_id": "Financials"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Meridian Trust Bancorp",
+      "target_id": "Regional Banks"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Meridian Trust Bancorp",
+      "target_id": "Cassia Wetherby"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Solstice Semiconductor",
+      "target_id": "Information Technology"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Solstice Semiconductor",
+      "target_id": "Semiconductors"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Solstice Semiconductor",
+      "target_id": "Ignatius Vandermeer"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Lumenix Software",
+      "target_id": "Information Technology"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Lumenix Software",
+      "target_id": "Application Software"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Lumenix Software",
+      "target_id": "Persephone Callahan"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Greenfield Grocers Corp",
+      "target_id": "Consumer Staples"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Greenfield Grocers Corp",
+      "target_id": "Food Retail"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Greenfield Grocers Corp",
+      "target_id": "Ambrose Tillingham"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Harvest Mills Foods",
+      "target_id": "Consumer Staples"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Harvest Mills Foods",
+      "target_id": "Packaged Foods"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Harvest Mills Foods",
+      "target_id": "Lucinda Farnsworth"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Cobalt Grid Utilities",
+      "target_id": "Utilities"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Cobalt Grid Utilities",
+      "target_id": "Electric Utilities"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Cobalt Grid Utilities",
+      "target_id": "Reginald Hawksworth"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Stonehaven Realty Trust",
+      "target_id": "Real Estate"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Stonehaven Realty Trust",
+      "target_id": "Retail REITs"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Stonehaven Realty Trust",
+      "target_id": "Ophelia Brambleton"
+    },
+    {
+      "predicate": "in_sector",
+      "source_id": "Solstice Semiconductor Materials",
+      "target_id": "Information Technology"
+    },
+    {
+      "predicate": "in_industry",
+      "source_id": "Solstice Semiconductor Materials",
+      "target_id": "Semiconductors"
+    },
+    {
+      "predicate": "led_by",
+      "source_id": "Solstice Semiconductor Materials",
+      "target_id": "Ignatius Vandermeer"
+    }
+  ]
+}

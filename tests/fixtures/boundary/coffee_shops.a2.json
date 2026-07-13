@@ -1,0 +1,1010 @@
+{
+  "entities": [
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "812 Alder Street"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.6"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1001"
+        }
+      ],
+      "id": "Fernwood Roasters",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Portland",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "OR",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Coffee",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Bakery",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Breakfast",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "45 Marmot Lane"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.3"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1002"
+        }
+      ],
+      "id": "The Copper Kettle",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Tea",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Cafe",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "2200 Chestnut Avenue"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.1"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1003"
+        }
+      ],
+      "id": "Fernwood Roasters",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Seattle",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "WA",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Espresso Bar",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "17 Wharfside Court"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.8"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1004"
+        }
+      ],
+      "id": "Marlowe & Bean",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "903 Seacliff Road"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.5"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1005"
+        }
+      ],
+      "id": "Driftwood Coffee Co",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Santa Cruz",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "CA",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Brunch",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "560 Juniper Boulevard"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.0"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1006"
+        }
+      ],
+      "id": "The Copper Kettle",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Denver",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "CO",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "88 Lantern Way"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.7"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1007"
+        }
+      ],
+      "id": "Gilded Portafilter",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Dessert",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "1204 Sparrow Street"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "3.9"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1008"
+        }
+      ],
+      "id": "Hollow Reed Cafe",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Austin",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "TX",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Lunch",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "330 Bluebonnet Trail"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.4"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1009"
+        }
+      ],
+      "id": "Driftwood Coffee Co",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Vegan",
+      "parent_chain": [],
+      "type_name": "Category"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "76 Foundry Street"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.2"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1010"
+        }
+      ],
+      "id": "Thimbleweed Espresso",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "410 Kingfisher Plaza"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.6"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1011"
+        }
+      ],
+      "id": "Marlowe & Bean",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Chicago",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "IL",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "9 Tinderbox Alley"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.0"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1012"
+        }
+      ],
+      "id": "Ashen Mug Coffeehouse",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "633 Meadowlark Drive"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.5"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1013"
+        }
+      ],
+      "id": "The Wandering Bean",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "1450 Harborview Terrace"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$$$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "4.9"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1014"
+        }
+      ],
+      "id": "Quillfeather Roastery",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "string",
+          "name": "address",
+          "value": "205 Cobbler Court"
+        },
+        {
+          "datatype": "boolean",
+          "name": "outdoor_seating",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "price_level",
+          "value": "$"
+        },
+        {
+          "datatype": "float",
+          "name": "rating",
+          "value": "3.8"
+        },
+        {
+          "datatype": "string",
+          "name": "shop_id",
+          "value": "CS-1015"
+        }
+      ],
+      "id": "Emberlight Cafe",
+      "parent_chain": [],
+      "type_name": "CoffeeShop"
+    }
+  ],
+  "relationships": [
+    {
+      "predicate": "located_in",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Portland"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Fernwood Roasters",
+      "target_id": "OR"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Bakery"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Breakfast"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "The Copper Kettle",
+      "target_id": "Portland"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "The Copper Kettle",
+      "target_id": "OR"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Copper Kettle",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Copper Kettle",
+      "target_id": "Tea"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Copper Kettle",
+      "target_id": "Cafe"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Seattle"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Fernwood Roasters",
+      "target_id": "WA"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Fernwood Roasters",
+      "target_id": "Espresso Bar"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Seattle"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Marlowe & Bean",
+      "target_id": "WA"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Bakery"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Santa Cruz"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "CA"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Breakfast"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Brunch"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "The Copper Kettle",
+      "target_id": "Denver"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "The Copper Kettle",
+      "target_id": "CO"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Copper Kettle",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Copper Kettle",
+      "target_id": "Tea"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Gilded Portafilter",
+      "target_id": "Denver"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Gilded Portafilter",
+      "target_id": "CO"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Gilded Portafilter",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Gilded Portafilter",
+      "target_id": "Espresso Bar"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Gilded Portafilter",
+      "target_id": "Dessert"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Hollow Reed Cafe",
+      "target_id": "Austin"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Hollow Reed Cafe",
+      "target_id": "TX"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Hollow Reed Cafe",
+      "target_id": "Cafe"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Hollow Reed Cafe",
+      "target_id": "Breakfast"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Hollow Reed Cafe",
+      "target_id": "Lunch"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Austin"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "TX"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Bakery"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Driftwood Coffee Co",
+      "target_id": "Vegan"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Thimbleweed Espresso",
+      "target_id": "Portland"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Thimbleweed Espresso",
+      "target_id": "OR"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Thimbleweed Espresso",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Thimbleweed Espresso",
+      "target_id": "Espresso Bar"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Chicago"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Marlowe & Bean",
+      "target_id": "IL"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Tea"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Marlowe & Bean",
+      "target_id": "Bakery"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Ashen Mug Coffeehouse",
+      "target_id": "Chicago"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Ashen Mug Coffeehouse",
+      "target_id": "IL"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Ashen Mug Coffeehouse",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Ashen Mug Coffeehouse",
+      "target_id": "Breakfast"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "The Wandering Bean",
+      "target_id": "Santa Cruz"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "The Wandering Bean",
+      "target_id": "CA"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Wandering Bean",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Wandering Bean",
+      "target_id": "Cafe"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "The Wandering Bean",
+      "target_id": "Brunch"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Quillfeather Roastery",
+      "target_id": "Seattle"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Quillfeather Roastery",
+      "target_id": "WA"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Quillfeather Roastery",
+      "target_id": "Coffee"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Quillfeather Roastery",
+      "target_id": "Espresso Bar"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Quillfeather Roastery",
+      "target_id": "Bakery"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Quillfeather Roastery",
+      "target_id": "Dessert"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Emberlight Cafe",
+      "target_id": "Denver"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Emberlight Cafe",
+      "target_id": "CO"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Emberlight Cafe",
+      "target_id": "Cafe"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Emberlight Cafe",
+      "target_id": "Lunch"
+    },
+    {
+      "predicate": "has_category",
+      "source_id": "Emberlight Cafe",
+      "target_id": "Coffee"
+    }
+  ]
+}
