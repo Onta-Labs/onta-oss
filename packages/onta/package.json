@@ -1,0 +1,58 @@
+{
+  "name": "onta",
+  "version": "0.1.49",
+  "description": "Onta SDK and CLI — context graph platform for structured data (alias of cograph)",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./index.d.mts",
+      "import": "./index.mjs"
+    }
+  },
+  "bin": {
+    "onta": "./bin.mjs"
+  },
+  "files": [
+    "LICENSE",
+    "bin.mjs",
+    "index.mjs",
+    "index.d.mts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node -e 0",
+    "prepack": "node ../../scripts/chmod-bin.js packages/onta/bin.mjs"
+  },
+  "keywords": [
+    "knowledge-graph",
+    "context-graph",
+    "onta",
+    "cograph",
+    "sdk",
+    "cli",
+    "rdf",
+    "sparql",
+    "ontology",
+    "ai",
+    "llm"
+  ],
+  "author": "Onta",
+  "license": "Apache-2.0",
+  "homepage": "https://onta.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/git-moeen/onta-oss.git",
+    "directory": "packages/onta"
+  },
+  "bugs": {
+    "url": "https://github.com/git-moeen/onta-oss/issues"
+  },
+  "dependencies": {
+    "cograph": "^0.1.49"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

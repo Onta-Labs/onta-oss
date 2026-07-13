@@ -264,12 +264,12 @@ async function reviewMapping(
 
 const program = new Command();
 program
-  .name("cograph")
-  .description("Cograph Context Graph CLI")
+  .name("onta")
+  .description("Onta Context Graph CLI (formerly Cograph)")
   .version(pkgVersion())
   // Default action when no subcommand is given: drop into the interactive
-  // shell. So `cograph` (or `npx cograph`) Just Works for the common case;
-  // subcommands like `cograph ingest <file>` still route to their own
+  // shell. So `onta` (or `npx onta`) Just Works for the common case;
+  // subcommands like `onta ingest <file>` still route to their own
   // actions because commander dispatches subcommands first.
   .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
   .option("--no-login", "Skip browser login (assume open-access backend)")
@@ -1000,10 +1000,19 @@ function isMainModule(): boolean {
   }
 }
 
-if (isMainModule()) {
-  program.parseAsync(process.argv).catch((err) => {
+/** Run the CLI. Exported so the `onta` alias package (packages/onta) can
+ *  launch the same program under the new brand — the same pattern onta-mcp
+ *  uses to wrap cograph-mcp. Reached externally via the `"./cli"` subpath
+ *  export in package.json; the isMainModule() guard stays false in that case
+ *  because the process entry point is the alias's bin, not this file. */
+export async function main(argv: string[] = process.argv): Promise<void> {
+  await program.parseAsync(argv).catch((err) => {
     fail(`Error: ${err instanceof Error ? err.message : String(err)}`);
   });
+}
+
+if (isMainModule()) {
+  void main();
 }
 
 // silence unused import warning if ever needed
