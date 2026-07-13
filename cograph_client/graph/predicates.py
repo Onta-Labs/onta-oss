@@ -46,6 +46,12 @@ ONTO_NORM_PREFIX = ONTO_PRED_PREFIX + "norm/"
 # from every surface that renders predicates as domain attributes. Minted by
 # graph/provenance.py::attr_provenance_companion_uri for BOTH rails.
 ATTR_META_NS = "https://cograph.tech/attr_meta/"
+# Valid-time interval predicates (ONTA-277). Live in a SEPARATE companion graph
+# (`<data-graph>/validity`, graph/validity.py) and so never actually appear on the
+# instance graph a user surface reads — but the whole namespace is classified
+# internal for defense-in-depth, so a validity predicate could never be surfaced
+# as a domain attribute even if one leaked onto the instance graph.
+VALIDITY_NS = "https://cograph.tech/validity/"
 # The three companion suffixes (also the `<attr>_<suffix>` tails of the legacy
 # attrs/-namespace shape that pre-ONTA-262 graphs still carry).
 ATTR_META_SUFFIXES: tuple[str, ...] = ("source_url", "provenance", "verified_at")
@@ -101,6 +107,10 @@ def is_internal_predicate(p_uri: str, is_relationship: bool = False) -> bool:
     if p_uri.startswith(RDF_NS) or p_uri.startswith(RDFS_NS):
         return True
     if p_uri.startswith(ER_NS) or p_uri.startswith(ONTO_NORM_PREFIX):
+        return True
+    # Valid-time interval predicates (validity/…) are governance bookkeeping in a
+    # companion graph, never a domain attribute or relationship (ONTA-277).
+    if p_uri.startswith(VALIDITY_NS):
         return True
     # Per-attribute provenance companions (attr_meta/<Type>/<attr>/<suffix>) are
     # metadata OF an attribute, never a domain attribute or relationship
