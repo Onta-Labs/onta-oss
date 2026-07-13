@@ -1,11 +1,13 @@
 """POST /graphs/{tenant}/ingest — raw data ingestion with schema resolution."""
 
+import time
 from pathlib import Path
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 
+from cograph_client.analytics import distinct_id_for, emit
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.api.rate_limit import limiter
 from cograph_client.auth.api_keys import TenantContext, get_tenant
@@ -30,6 +32,28 @@ def _get_verdict_cache() -> JsonVerdictCache:
     return JsonVerdictCache(_CACHE_PATH)
 
 
+def _emit_ingestion_completed(
+    tenant: TenantContext, kg_name: str | None, result: IngestResult, start: float
+) -> None:
+    """Product-analytics event for a completed ingest (ONTA-323).
+
+    Fire-and-forget, no-op without a registered sink, never raises. Attributed
+    to the authenticated subject (Clerk user id), else a stable system:<tenant>
+    id. Shared by ``/ingest`` and ``/ingest/csv/rows`` so both finalize points
+    emit the SAME event shape.
+    """
+    emit(
+        "ingestion_completed",
+        distinct_id=distinct_id_for(tenant.subject, tenant.tenant_id),
+        tenant=tenant.tenant_id,
+        kg=kg_name or "",
+        rows=result.rows_in,
+        entities=result.entities_resolved or result.entities_extracted,
+        triples=result.triples_inserted,
+        duration_ms=round((time.monotonic() - start) * 1000, 1),
+    )
+
+
 @router.post("/ingest", response_model=IngestResult)
 @limiter.limit("10/minute")
 async def ingest(
@@ -43,6 +67,7 @@ async def ingest(
     Runs LLM extraction, schema resolution (type matching, attribute
     resolution, validation), and inserts validated triples into Neptune.
     """
+    start = time.monotonic()
     cache = _get_verdict_cache()
     resolver = SchemaResolver(
         neptune=client,
@@ -69,6 +94,7 @@ async def ingest(
         kg_name=body.kg_name,
         affected_types=result.affected_types(),
     )
+    _emit_ingestion_completed(tenant, body.kg_name, result, start)
     return result
 
 
@@ -161,6 +187,7 @@ async def ingest_csv_rows(
     from cograph_client.resolver.csv_resolver import CSVResolver
     from cograph_client.resolver.models import ExtractionResult
 
+    start = time.monotonic()
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name) if body.kg_name else graph_uri
     cache = _get_verdict_cache()
@@ -340,6 +367,7 @@ async def ingest_csv_rows(
         kg_name=body.kg_name,
         affected_types=result.affected_types(),
     )
+    _emit_ingestion_completed(tenant, body.kg_name, result, start)
     return result
 
 
