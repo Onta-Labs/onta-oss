@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from cograph_client.analytics import distinct_id_for, emit
 from cograph_client.api.deps import (
     get_enrichment_job_store,
     get_neptune_client,
@@ -333,6 +334,19 @@ async def create_kg(
     )
 
     await client.update(sparql)
+
+    # Product-analytics event (ONTA-323). Fire-and-forget, no-op without a sink,
+    # never raises. Attributed to the authenticated subject (Clerk user id), else
+    # a stable system:<tenant> id. Emitted on a successful create POST; the route
+    # is idempotent, so a re-POST of an existing KG re-emits — a bounded,
+    # self-attributed signal, acceptable for a product funnel.
+    emit(
+        "kg_created",
+        distinct_id=distinct_id_for(tenant.subject, tenant.tenant_id),
+        tenant=tenant.tenant_id,
+        kg=body.name,
+        has_description=bool(body.description),
+    )
 
     # The INSERT is idempotent, so a re-POST no-ops it. Read the registration
     # back and report what's actually stored: a pre-existing KG keeps its real

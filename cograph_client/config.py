@@ -101,6 +101,17 @@ class Settings(BaseSettings):
     # needs only OMNIX_SECRETS_KEY; a cloud deploy points this at its KMS cipher.
     secrets_cipher_plugin: str = ""
 
+    # Optional analytics plugin (ONTA-323): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and is
+    # expected to register a product-analytics sink via
+    # cograph_client.analytics.register_analytics_sink — in our deploy the
+    # proprietary hosted-analytics sink. Without it, the OSS default no-op sink is
+    # used: emit() drops every event, so OSS stays analytics-free and standalone
+    # (no third-party analytics dependency). Keeps cograph-oss vendor-neutral:
+    # analytics that phones home to a SaaS is a proprietary concern; per-tenant
+    # usage metering (OMNIX usage/) stays OSS.
+    analytics_plugin: str = ""
+
     # Optional local symmetric key for the OSS default secret cipher
     # (LocalAesGcmCipher). When set (and no cipher plugin is registered),
     # tenant-custom API credentials are envelope-encrypted at rest with AES-256-GCM
