@@ -71,6 +71,7 @@ from cograph_client.graph.provenance import (
     build_tombstone_triples,
     provenance_graph_uri,
 )
+from cograph_client.graph.validity import reopen_interval_update, validity_graph_uri
 from cograph_client.graph.queries import (
     _escape_literal,
     batched_delete_triples,
@@ -354,9 +355,11 @@ async def insert_facts(
     instance_triples: list[Triple],
     *,
     provenance_triples: Optional[list[Triple]] = None,
+    validity_triples: Optional[list[Triple]] = None,
+    reopen_facts: Optional[list[Triple]] = None,
     run_id: Optional[str] = None,
 ) -> Optional[GraphDelta]:
-    """Write instance triples (and optional canonical provenance) to the KG.
+    """Write instance triples (and optional companion provenance / validity) to the KG.
 
     The ONE insertion primitive for both ingest and enrichment. Always batched
     (``batched_insert_triples``) so a large write is chunked into multiple
@@ -371,13 +374,39 @@ async def insert_facts(
     instance attributes — e.g. enrichment's ``*_source_url`` citations — include
     those in ``instance_triples`` and need no separate provenance graph write).
 
+    ``validity_triples`` (ONTA-277; built via ``graph/validity.py`` interval
+    builders) are written to the data graph's companion VALIDITY graph
+    (``validity_graph_uri(instance_graph)``) — the same routing as provenance, one
+    graph over. This is how the P6 supersede/retract mutation ops
+    (``pipeline/mutations.py``) record valid-time intervals: they open an interval
+    for a newly-current fact and CLOSE the old one, WITHOUT deleting or re-pointing
+    the superseded edge, so history stays queryable. Kept here (not hand-rolled in
+    the mutation ops) so validity companion writes flow through the same batched
+    seam as every other write. Pass ``None``/empty to skip.
+
+    ``reopen_facts`` (ONTA-277 value-resurrection fix): ``(s, p, o)`` facts whose
+    validity interval is being (re-)OPENED as current by this write. Because a
+    validity node is keyed by ``sha1(s|p|o)`` and closing a fact only ADDS
+    ``val:validTo`` to it, re-asserting a previously-closed value would otherwise
+    leave that stale closure in place and the "current facts" read would keep
+    excluding the value. For each such fact this CLEARS any prior closure
+    (``val:validTo`` / ``val:supersededBy`` / ``val:status``) off THAT value's
+    interval node — via ``validity.reopen_interval_update`` against the SAME
+    companion validity graph ``validity_triples`` route to, executed BEFORE the
+    open-interval ``validity_triples`` land — so a resurrected value becomes
+    genuinely current again. Only the named values' nodes are touched; other
+    values' closures are untouched. Pass ``None``/empty to skip (the common write
+    reopens nothing).
+
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
     :class:`GraphDelta` receipt of the domain facts written (nonce-excluded,
-    fact_id-keyed) so the caller can prove replay-determinism. Optional +
-    back-compat: the many callers that pass raw triples with no ``run_id`` get
-    ``None`` and are unaffected (RDF inserts are already idempotent, so a fact
-    whose id was applied in a prior run re-inserts to a no-op — the "dedupe" is
-    the store's, and this receipt lets P6 verify it).
+    fact_id-keyed) so the caller can prove replay-determinism. The receipt reflects
+    the INSTANCE facts only — the validity/provenance companions are bookkeeping,
+    not domain facts, so they never enter the delta. Optional + back-compat: the
+    many callers that pass raw triples with no ``run_id`` get ``None`` and are
+    unaffected (RDF inserts are already idempotent, so a fact whose id was applied
+    in a prior run re-inserts to a no-op — the "dedupe" is the store's, and this
+    receipt lets P6 verify it).
     """
     if instance_triples:
         for sparql in batched_insert_triples(instance_graph, instance_triples):
@@ -385,6 +414,18 @@ async def insert_facts(
     if provenance_triples:
         prov_graph = provenance_graph_uri(instance_graph)
         for sparql in batched_insert_triples(prov_graph, provenance_triples):
+            await neptune.update(sparql)
+    if reopen_facts:
+        # Clear any prior closure off each re-opened value's interval node BEFORE
+        # the open-interval triples land, so a resurrected value is genuinely
+        # current again (ONTA-277). Same companion validity graph as below.
+        for (s, p, o) in reopen_facts:
+            update = reopen_interval_update(instance_graph, s, p, o)
+            if update:
+                await neptune.update(update)
+    if validity_triples:
+        val_graph = validity_graph_uri(instance_graph)
+        for sparql in batched_insert_triples(val_graph, validity_triples):
             await neptune.update(sparql)
     if instance_triples:
         await _index_spatiotemporal(instance_graph, instance_triples)

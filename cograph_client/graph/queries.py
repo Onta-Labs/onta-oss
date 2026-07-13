@@ -156,6 +156,32 @@ def delete_subject_predicates_query(
     )
 
 
+def delete_node_predicates_query(
+    graph_uri: str, node: str, predicates: list[str]
+) -> str:
+    """One batched ``DELETE`` of the given ``predicates`` (with any objects) on a
+    single ``node`` in a graph.
+
+    Removes every object of ``(<node>, ?p)`` for each ``?p`` in ``predicates`` via a
+    ``VALUES ?p`` list, so a subset of a node's predicates is cleared in one
+    statement regardless of how many objects each carries. Idempotent — a predicate
+    the node does not carry simply matches nothing. Bounded by ``len(predicates)``.
+
+    Used by ``graph/validity.py::reopen_interval_update`` (routed through
+    ``kg_writer.insert_facts(reopen_facts=…)``) to clear a validity interval node's
+    prior CLOSURE predicates (``val:validTo`` / ``val:supersededBy`` / ``val:status``)
+    when a previously-closed value is re-asserted as current — the "value
+    resurrection" fix. ``node`` and ``predicates`` are internally-minted URIs.
+    """
+    if not predicates:
+        return ""
+    values = " ".join(f"<{p}>" for p in predicates)
+    return (
+        f"DELETE {{ GRAPH <{graph_uri}> {{ <{node}> ?p ?o }} }}\n"
+        f"WHERE {{ GRAPH <{graph_uri}> {{ VALUES ?p {{ {values} }} <{node}> ?p ?o }} }}"
+    )
+
+
 def count_subjects_query(graph_uri: str, subjects: list[str]) -> str:
     """COUNT of triples that ``delete_subjects_query`` would remove (removed-count)."""
     values = " ".join(f"<{s}>" for s in subjects)

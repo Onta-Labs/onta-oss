@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, enrich, explore, functions, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage, workspace_invites
+from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, query, schedules, search, tenants, triples, usage, workspace_invites
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.logging import setup_logging
@@ -325,6 +325,9 @@ def create_app() -> FastAPI:
     app.include_router(schedules.router, tags=["schedules"])
     app.include_router(explore.router, tags=["explore"])
     app.include_router(normalize.router, tags=["normalize"])
+    # ONTA-281: the canonical A10 user-correction write path (webapp/CLI/MCP all
+    # ride this one route — interface-convergence rule).
+    app.include_router(corrections.router, tags=["corrections"])
     app.include_router(tenants.router, tags=["tenants"])
     # ONTA-227: canonical workspace membership + invite routes (web/CLI/MCP all
     # ride these — interface-convergence rule).
