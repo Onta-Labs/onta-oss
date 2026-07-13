@@ -23,6 +23,7 @@ Boundary: OSS. Imports only stdlib.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -34,6 +35,20 @@ from typing import Any, Sequence
 # fact_id a replayed run produces, breaking the "same run replayed
 # deterministically produces the same ids" property the derivation exists for.
 FACT_ID_NAMESPACE = uuid.UUID("ff9cd070-1ae5-5c6b-998e-9e1c7d25d72d")
+
+
+def _fid_component(value: str) -> str:
+    """Hash one ``derive_fact_id`` component to a fixed-width hex digest.
+
+    The un-escaped ``"|".join(...)`` this replaced could collide across
+    component boundaries: ``local_key`` legitimately carries ``|`` / ``,`` (a
+    source URL, an attribute name), so ``stage="A2|x", local_key="y"`` joined to
+    the SAME string as ``stage="A2", local_key="x|y"`` and minted the same id for
+    two distinct facts (ONTA-271). Hashing each component to a 64-char hex digest
+    — which can contain neither delimiter — makes the join injective on the
+    component tuple, so distinct inputs can no longer collide.
+    """
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def derive_fact_id(
@@ -58,14 +73,17 @@ def derive_fact_id(
     whatever the producing stage uses to disambiguate siblings from the same
     parent(s) — a row index, an attribute name, a source URL, a split index.
     Root artifacts (A1, or a first A2 with no parent) pass ``parent_fact_ids=()``.
+
+    Collision-hardening (ONTA-271): every component is hashed via
+    :func:`_fid_component` BEFORE the ``|``-join, so a ``|`` or ``,`` inside a
+    ``local_key`` / ``stage`` (source URLs, attribute names routinely carry them)
+    can no longer bleed across a boundary and mint the same id for two distinct
+    facts. The ``FACT_ID_NAMESPACE`` seed is unchanged.
     """
+    parents = ",".join(sorted(_fid_component(str(p)) for p in parent_fact_ids))
     name = "|".join(
-        [
-            str(run_id),
-            str(stage),
-            ",".join(sorted(str(p) for p in parent_fact_ids)),
-            str(local_key),
-        ]
+        _fid_component(part)
+        for part in (str(run_id), str(stage), parents, str(local_key))
     )
     return str(uuid.uuid5(FACT_ID_NAMESPACE, name))
 

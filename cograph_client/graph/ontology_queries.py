@@ -1,5 +1,6 @@
 """SPARQL query builders for ontology management."""
 
+import hashlib
 import re
 
 OMNIX_ONTO = "https://cograph.tech/onto"
@@ -49,6 +50,53 @@ def entity_uri(type_name: str, raw_id: str) -> str:
     source of truth every write rail mints entity nodes through — keep it byte-for-
     byte stable, since the slug is the node's identity (changing it orphans data)."""
     return f"https://cograph.tech/entities/{type_name}/{_safe_id(raw_id)}"
+
+
+def ontology_version(types, attrs, parent_of=None) -> str:
+    """Deterministic content fingerprint of an ontology SNAPSHOT (ONTA-270).
+
+    A stable hash over the ontology's identity-bearing shape — the SORTED set of
+    existing type URIs, attribute declarations (type + attribute + range/datatype),
+    and ``rdfs:subClassOf`` edges — so the same ontology state always yields the
+    same version and ANY change (a new type, a new attribute, a new subclass edge)
+    yields a different one. Order-independent (everything sorted) and free of
+    timestamps / nonces, so it is safe to freeze into a characterization fixture
+    and to compare across processes.
+
+    Used as the optimistic-concurrency token stamped onto an A5 Placement Plan:
+    P5 stamps the version it READ the ontology at; P6 rejects/recomputes a plan
+    whose stamp no longer matches the current ontology (a concurrent run advanced
+    it T→T+1 between plan and apply). See
+    :attr:`cograph_client.pipeline.envelope.ArtifactEnvelope.ontology_version`.
+
+    ``types`` is any mapping keyed by type NAME (values ignored). ``attrs`` is
+    ``{type_name: {attr_name: schema}}`` where ``schema`` may carry a ``.datatype``
+    (the resolver's in-memory ``AttributeSchema``) or be a plain datatype string —
+    both hash identically for the same (type, attr, datatype). ``parent_of`` is the
+    ``{child_name: parent_name}`` subclass map (``None`` / ``{}`` = no edges). The
+    return is a short hex digest — a change-detector token, not a security hash.
+    """
+    h = hashlib.sha256()
+    for t in sorted(types or {}):
+        h.update(b"T:")
+        h.update(type_uri(t).encode("utf-8"))
+        h.update(b"\n")
+    for t in sorted(attrs or {}):
+        for a in sorted(attrs[t] or {}):
+            schema = attrs[t][a]
+            datatype = getattr(schema, "datatype", schema)
+            h.update(b"A:")
+            h.update(attr_uri(t, a).encode("utf-8"))
+            h.update(b"=")
+            h.update(str(datatype).encode("utf-8"))
+            h.update(b"\n")
+    for child in sorted(parent_of or {}):
+        h.update(b"S:")
+        h.update(type_uri(child).encode("utf-8"))
+        h.update(b"<")
+        h.update(type_uri(parent_of[child]).encode("utf-8"))
+        h.update(b"\n")
+    return h.hexdigest()[:16]
 
 
 def insert_type(graph_uri: str, name: str, description: str = "", parent_type: str | None = None) -> str:

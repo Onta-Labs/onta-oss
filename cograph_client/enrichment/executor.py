@@ -30,6 +30,7 @@ from cograph_client.enrichment.models import (
     RowResult,
     Verdict,
 )
+from cograph_client.pipeline.manifest import HaltReasonKind, RunManifest
 from cograph_client.enrichment.sources.base import (
     SourceAdapter,
     get_adapter,
@@ -1205,6 +1206,17 @@ class EnrichmentExecutor:
         # we used and a summary of the errors hit. Defined before the try so the
         # failure path can still surface whatever was recorded before the crash.
         tally = _ProviderTally()
+        # A9 Run Manifest (ONTA-273): make this enrichment run a first-class object
+        # so a run halted by provider exhaustion (a 402/sustained-429 from the LLM
+        # extraction backend) reaches a TERMINAL failed state with a user-visible
+        # reason AND honest partial coverage ("N of M items completed before halt"),
+        # instead of a silent partial. Created here if the route did not mint one;
+        # settled at every terminal path below. run_id = the job id (the job IS the
+        # run). Defined before the try so the failure path can halt it too.
+        if job.manifest is None:
+            job.manifest = RunManifest(run_id=job.id, stage="enrichment")
+        manifest = job.manifest
+        manifest.start()
         try:
             job.status = JobStatus.running
             job.started_at = _now()
@@ -1227,6 +1239,7 @@ class EnrichmentExecutor:
                 job.error = unknown_type_message(job.type_name, known_types)
                 job.completed_at = _now()
                 job.error_summary = [JobErrorItem(kind="job", message=job.error)]
+                manifest.halt(HaltReasonKind.error, job.error)
                 await self._jobs.update(job)
                 return
             if canonical and canonical != job.type_name:
@@ -1286,6 +1299,9 @@ class EnrichmentExecutor:
                 entities.append({"uri": e_uri, "label": label, "vals": vals})
 
             job.progress.total = len(entities) * len(job.attributes)
+            # A9 manifest: the planned item denominator (M) is one item per
+            # (entity, attribute) — the same unit progress counts.
+            manifest.set_total(job.progress.total)
             await self._jobs.update(job)
 
             sem = asyncio.Semaphore(WORKER_POOL_SIZE)
@@ -1410,6 +1426,12 @@ class EnrichmentExecutor:
                             elif action == "no_match":
                                 job.progress.no_match += 1
                             job.progress.processed = counter["n"]
+                            # A9 manifest: this (entity, attribute) item was
+                            # handled — record it completed so a later halt can
+                            # caveat exactly how many items finished before it.
+                            manifest.record_completed(
+                                f"{ent['uri']}#{attribute}"
+                            )
                             if counter["n"] % PROGRESS_FLUSH_EVERY == 0:
                                 await self._jobs.update(job)
                 return results
@@ -1431,6 +1453,7 @@ class EnrichmentExecutor:
             if latest and latest.status == JobStatus.cancelled:
                 job.status = JobStatus.cancelled
                 job.completed_at = _now()
+                manifest.cancel()
                 await self._jobs.update(job)
                 return
 
@@ -1608,6 +1631,9 @@ class EnrichmentExecutor:
             else:
                 job.status = JobStatus.applied
             job.completed_at = _now()
+            # A9 manifest: the run finished its work (review = parked for human
+            # decisions, applied = written) — a clean terminal COMPLETED.
+            manifest.complete()
             await self._jobs.update(job)
 
         except Exception as exc:  # noqa: BLE001
@@ -1621,6 +1647,17 @@ class EnrichmentExecutor:
             job.error_summary = tally.to_error_summary() + [
                 JobErrorItem(kind="job", message=str(exc)[:_MAX_ERROR_MSG])
             ]
+            # A9 manifest: terminal FAILED with the derived reason. A provider
+            # exhaustion (402 billing / sustained-429) is named as such and the
+            # unfinished planned items are rolled into `dropped` — so a run halted
+            # mid-flight caveats partial coverage instead of a silent partial.
+            landed = (
+                f"{job.progress.processed} of {job.progress.total} items completed "
+                "before the failure."
+                if job.progress.total
+                else ""
+            )
+            manifest.halt_from_exception(exc, landed_note=landed)
             try:
                 await self._jobs.update(job)
             except Exception:  # noqa: BLE001

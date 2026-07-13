@@ -59,6 +59,7 @@ from cograph_client.graph.ontology_queries import (
     _datatype_to_xsd,
     attr_uri,
     entity_uri,
+    ontology_version,
     type_uri,
 )
 from cograph_client.qc.scenario import Dataset, load_fixture_datasets
@@ -433,6 +434,13 @@ def capture_boundary(extraction: ExtractionResult, domain: str) -> BoundaryArtif
     entities_by_uri = {r["uri"]: r for r in entity_rows}
     edges_by_triple = {(e["subject"], e["predicate"], e["object"]): e for e in rel_edges}
     a5 = {
+        # ONTA-270: the ontology version this placement plan was computed AGAINST.
+        # `capture_boundary` always renders cold-start (into an EMPTY ontology —
+        # every proposed type is new), so P5 read the empty ontology; the stamp is
+        # therefore the empty-ontology fingerprint (a deterministic constant, no
+        # timestamp/nonce). At runtime P6 rejects/recomputes a plan whose stamp no
+        # longer matches the current ontology (see schema_resolver ONTA-270).
+        "ontology_version": ontology_version({}, {}),
         "types": [
             {"name": n, "uri": t["uri"], "subclass_of": sorted(t["subclass_of"]), "kind": t["kind"]}
             for n, t in sorted(types.items())
