@@ -81,8 +81,17 @@ from cograph_client.enrichment.models import (
 from cograph_client.graph.kg_writer import refresh_after_write
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.normalization.inference import list_type_schema
-from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
-from cograph_client.retrieval.errors import LLMError
+from cograph_client.pipeline.manifest import HaltReasonKind, RunManifest
+from cograph_client.resolver.llm_router import (
+    OPENROUTER_BASE,
+    PRIMARY_MODEL,
+    openrouter_chat,
+)
+from cograph_client.retrieval.errors import (
+    LLMError,
+    RateLimitEscalator,
+    is_rate_limit_status,
+)
 from cograph_client.web_sources.base import (
     WebSourceProvider,
     get_web_source,
@@ -172,6 +181,21 @@ _PREVIEW_GATE_USD = float(os.environ.get("COGRAPH_WEB_PREVIEW_GATE_USD", "0.50")
 # kill-switch: set COGRAPH_DISCOVERY_SOFT_EXTRACT=0 to revert without a deploy.
 _DISCOVERY_SOFT_EXTRACT = (
     os.environ.get("COGRAPH_DISCOVERY_SOFT_EXTRACT", "1") != "0"
+)
+
+# ONTA-272: pre-structured fast-path. A provider that returns ALREADY-structured
+# rows keyed by the confirmed attribute set (an API-registry pull with a known
+# field mapping, a structured capture) does not need the open-ended LLM extractor
+# — running it is a non-deterministic detour. When this flag is ON and a provider
+# self-declares ``structured=True`` (read DEFENSIVELY via getattr, so no provider
+# change is required for the default path), that provider's rows commit through the
+# deterministic mapping seam (``resolver.ingest_structured_rows`` →
+# ``ingest_mapped_records``) with NO ``_extract``. Default OFF: the ``resolver.ingest``
+# JSON path is byte-for-byte unchanged (and stays frozen by test_web_ingest_registry),
+# so this is an opt-in rollout switch with a kill-switch, mirroring
+# ``_DISCOVERY_SOFT_EXTRACT`` above.
+_DISCOVERY_STRUCTURED_FASTPATH = (
+    os.environ.get("COGRAPH_DISCOVERY_STRUCTURED_FASTPATH", "0") != "0"
 )
 
 # In-session progress observability (ONTA-243). A single (sub-query, provider)
@@ -885,7 +909,14 @@ class WebIngestCapability:
         cap = int(p.get("max_rows") or _DEFAULT_PLAN_CAP)
         kg_name = p.get("kg_name") or ctx.kg_name
         instance_graph = kg_graph_uri(ctx.tenant_id, kg_name) if kg_name else None
-        resolver = _build_resolver(ctx)
+        # ONTA-268: one ontology-write lock PER JOB, shared by every per-sub-query
+        # resolver built below. A fresh resolver is constructed inside the
+        # sub-query loop so no two sub-queries share the resolver's per-ingest
+        # state (`_instance_graph` / `_parent_of` / the TypeMatcher graph URI) —
+        # the reentrancy hazard — while the shared lock serializes their ontology
+        # mutations so concurrent (or future-parallelized) sub-queries can't race
+        # type creation and fragment the ontology.
+        ontology_lock = asyncio.Lock()
         pctx = _provider_context(ctx)
 
         # Track the discovery as a real job so the client polls a LIVE status
@@ -899,8 +930,9 @@ class WebIngestCapability:
         cost_usd, cost_note = _step_cost(step)
         job: Optional[EnrichJob] = None
         if job_store is not None:
+            job_id = str(uuid.uuid4())
             job = EnrichJob(
-                id=str(uuid.uuid4()),
+                id=job_id,
                 tenant_id=ctx.tenant_id,
                 kg_name=kg_name or "",
                 type_name=proposed_type,
@@ -912,6 +944,13 @@ class WebIngestCapability:
                 category=JobCategory.discovery,
                 cost=cost_usd,
                 cost_note=cost_note,
+                # A9 Run Manifest (ONTA-273): the run as a first-class object. The
+                # discovery run records per-batch coverage into it and settles it to
+                # a terminal state (completed / failed-with-reason) at every exit,
+                # so a run halted by provider exhaustion caveats "N of M items
+                # completed before halt" instead of a silent partial. run_id = the
+                # job id (the EnrichJob IS the run — no separate id to mint).
+                manifest=RunManifest(run_id=job_id, stage="discovery"),
                 # Chat provenance: link the job to the conversation that spawned it.
                 thread_id=getattr(ctx, "session_id", None),
             )
@@ -942,6 +981,12 @@ class WebIngestCapability:
                 # status=running.
                 job.progress.total = cap
                 job.progress.phase = "searching"
+                # A9 manifest: enter `running`, seeding the planned item total (M)
+                # with the plan cap — the honest upper bound this run intends to
+                # fill. `coverage()` then reads "N of M" from the first poll, and a
+                # halt rolls the unfilled remainder (M − N) into `dropped`.
+                if job.manifest is not None:
+                    job.manifest.start(total=cap)
                 await job_store.update(job)
             # Observability for the WRITE TARGET (ONTA-198): record the exact graph
             # this run writes into. Without it a run that reports "N filled" but whose
@@ -1007,6 +1052,13 @@ class WebIngestCapability:
             # rows-landed vs rows-lost — instead of swallowing it as one failed
             # batch and reporting "complete".
             fatal_llm_err: Optional[LLMError] = None
+            # 429 policy (ONTA-273): a single rate-limit blip is a transient the
+            # per-batch degrade retries; only SUSTAINED 429s (a run throttled to a
+            # standstill) escalate to a run-level halt. This run-scoped escalator
+            # draws that line — a non-429 outcome resets the streak, and only once
+            # it crosses the threshold does it return a fatal LLMRateLimitError we
+            # route through the SAME billing-halt machinery below.
+            rate_escalator = RateLimitEscalator()
             # Each (sub-query, provider) call is bounded to the per-sub-query row
             # share the plan PRICED (cost = n_sub × pages(cap / n_sub)). Passing
             # the whole remaining cap instead let overlapping sub-queries spend up
@@ -1017,6 +1069,12 @@ class WebIngestCapability:
                 for sub_i, sub_query in enumerate(subqueries):
                     if cap - processed <= 0:
                         break
+                    # ONTA-268: a fresh resolver PER sub-query (cheap — keeps no
+                    # cross-request state), all sharing the job's one ontology-write
+                    # lock. Per-sub-query resolvers eliminate the shared per-ingest
+                    # state that made a single reused resolver non-reentrant; the
+                    # shared lock keeps their ontology mutations serialized.
+                    resolver = _build_resolver(ctx, ontology_lock=ontology_lock)
                     for prov in ensemble:
                         remaining = cap - processed
                         if remaining <= 0:
@@ -1140,33 +1198,59 @@ class WebIngestCapability:
                                     group, _DISCOVERY_INGEST_SUBBATCH
                                 )
                             ]
+                            # ONTA-272: a provider whose rows are ALREADY structured
+                            # (keyed by the confirmed attribute set — API-registry
+                            # pulls, structured captures) commits through the
+                            # deterministic mapping seam with NO LLM extractor, when
+                            # the fast-path is enabled and the provider opts in. All
+                            # other providers keep the byte-for-byte unchanged
+                            # ``resolver.ingest`` JSON detour below.
+                            structured_fastpath = (
+                                _DISCOVERY_STRUCTURED_FASTPATH
+                                and getattr(prov, "structured", False)
+                            )
                             for micro in micro_batches:
-                                content = json.dumps(
-                                    micro, default=str, ensure_ascii=False
-                                )
-                                result = await resolver.ingest(
-                                    content,
-                                    ctx.tenant_id,
-                                    content_type="json",
-                                    source=f"web:{prov.name}:{query}",
-                                    instance_graph=instance_graph,
-                                    # Discovery CONFIRMED the target type + attribute
-                                    # set with the user, so it passes them to
-                                    # extraction as a focus. SOFT (default): a PRIOR
-                                    # that keeps extraction compact yet still
-                                    # decomposes faithfully (subtypes, real-world
-                                    # nodes, multi-valued splits) — the ONTA-199
-                                    # follow-up that fixed the flat single-type
-                                    # mis-modeling (NPs typed as Physician,
-                                    # city/specialty as literals) without the
-                                    # open-ended reifier's ~20-type blowup. HARD
-                                    # (kill-switch): the original flat cage.
-                                    constrain_types=[proposed_type],
-                                    constrain_attributes={
-                                        proposed_type: list(attributes)
-                                    },
-                                    constrain_soft=_DISCOVERY_SOFT_EXTRACT,
-                                )
+                                if structured_fastpath:
+                                    # Pre-structured rows already carry ``source_url``
+                                    # (stamped above), which becomes the per-record
+                                    # citation + the A2 evidence link. Deterministic:
+                                    # preview == commit, no ``_extract``.
+                                    result = await resolver.ingest_structured_rows(
+                                        micro,
+                                        ctx.tenant_id,
+                                        type_name=proposed_type,
+                                        attributes=list(attributes),
+                                        source=f"web:{prov.name}:{query}",
+                                        instance_graph=instance_graph,
+                                        key_attribute=key_attr,
+                                    )
+                                else:
+                                    content = json.dumps(
+                                        micro, default=str, ensure_ascii=False
+                                    )
+                                    result = await resolver.ingest(
+                                        content,
+                                        ctx.tenant_id,
+                                        content_type="json",
+                                        source=f"web:{prov.name}:{query}",
+                                        instance_graph=instance_graph,
+                                        # Discovery CONFIRMED the target type + attribute
+                                        # set with the user, so it passes them to
+                                        # extraction as a focus. SOFT (default): a PRIOR
+                                        # that keeps extraction compact yet still
+                                        # decomposes faithfully (subtypes, real-world
+                                        # nodes, multi-valued splits) — the ONTA-199
+                                        # follow-up that fixed the flat single-type
+                                        # mis-modeling (NPs typed as Physician,
+                                        # city/specialty as literals) without the
+                                        # open-ended reifier's ~20-type blowup. HARD
+                                        # (kill-switch): the original flat cage.
+                                        constrain_types=[proposed_type],
+                                        constrain_attributes={
+                                            proposed_type: list(attributes)
+                                        },
+                                        constrain_soft=_DISCOVERY_SOFT_EXTRACT,
+                                    )
                                 processed += len(micro)
                                 entities_total += int(
                                     getattr(result, "entities_resolved", 0) or 0
@@ -1174,6 +1258,15 @@ class WebIngestCapability:
                                 affected_types |= set(result.types_created)
                                 for attr_added in result.attributes_added:
                                     affected_types.add(attr_added.split(".")[0])
+                                # A9 manifest: this micro-batch's rows LANDED —
+                                # record them as completed items so a later halt can
+                                # say exactly how many of the planned cap made it in
+                                # before the failure (honest partial coverage).
+                                if job is not None and job.manifest is not None:
+                                    for _row in micro:
+                                        job.manifest.record_completed(
+                                            str(_row.get(key_attr, "")) if isinstance(_row, dict) else ""
+                                        )
                                 if job is not None and job_store is not None:
                                     # Rolling, honest total: what landed + the
                                     # average per-sub-query yield extrapolated over
@@ -1195,6 +1288,9 @@ class WebIngestCapability:
                                     job.platforms = platforms
                                     job.provider_logs = list(plogs.values())
                                     await job_store.update(job)
+                            # The batch went through end-to-end (no 429/throttle) —
+                            # a successful call breaks any pending rate-limit streak.
+                            rate_escalator.record_success()
                         except LLMError as exc:
                             # FATAL, SYSTEMIC LLM-backend failure (402 billing /
                             # 401 auth) surfaced by the extraction call inside
@@ -1216,6 +1312,36 @@ class WebIngestCapability:
                             )
                             break
                         except Exception as exc:  # noqa: BLE001 — one batch
+                            # 429 policy (ONTA-273): a rate-limit response is NOT a
+                            # per-batch failure to attribute — it is a transient the
+                            # escalator counts. A single/occasional 429 falls through
+                            # to the per-batch degrade below (retry the next batch);
+                            # only a SUSTAINED streak returns a fatal error we route
+                            # through the billing-halt machinery (fail-fast, honest
+                            # partials) instead of spinning on doomed calls.
+                            _status = getattr(
+                                getattr(exc, "response", None), "status_code", None
+                            )
+                            if _status is not None and is_rate_limit_status(_status):
+                                _rate_fatal = rate_escalator.record_rate_limited(
+                                    provider="openrouter",
+                                    host=urlparse(OPENROUTER_BASE).hostname,
+                                    detail=str(exc)[:120],
+                                )
+                                if _rate_fatal is not None:
+                                    fatal_llm_err = _rate_fatal
+                                    logger.error(
+                                        "web_ingest_llm_backend_fatal",
+                                        query=sub_query,
+                                        provider=prov.name,
+                                        phase=phase,
+                                        processed=processed,
+                                        error=str(_rate_fatal),
+                                    )
+                                    break
+                            else:
+                                # Any non-429 outcome breaks the 429 streak.
+                                rate_escalator.record_success()
                             # failing must not sink the run. Attribution follows
                             # the phase: a discover crash is the PROVIDER's; an
                             # ingest/bookkeeping crash after a clean discover is
@@ -1916,9 +2042,13 @@ def _provider_context(ctx: AgentContext) -> dict:
     }
 
 
-def _build_resolver(ctx: AgentContext):
+def _build_resolver(ctx: AgentContext, *, ontology_lock: "asyncio.Lock | None" = None):
     """Build a SchemaResolver from the agent context (same wiring the ingest
-    route uses). Constructed per call — cheap, and keeps no cross-request state."""
+    route uses). Constructed per call — cheap, and keeps no cross-request state.
+
+    ``ontology_lock`` (ONTA-268): pass ONE shared lock to every per-sub-query
+    resolver in a discovery job so their ontology mutations serialize (no
+    type-creation race). ``None`` → the resolver makes its own private lock."""
     import tempfile
     from pathlib import Path
 
@@ -1930,6 +2060,7 @@ def _build_resolver(ctx: AgentContext):
         neptune=ctx.neptune,
         anthropic_key=ctx.anthropic_key,
         verdict_cache=cache,
+        ontology_lock=ontology_lock,
     )
 
 
@@ -2319,6 +2450,11 @@ async def _finish_job(
     if platforms:
         job.platforms = platforms
     job.status = JobStatus.applied
+    # A9 manifest: settle to a terminal COMPLETED state. complete() collapses the
+    # seeded cap denominator down to what actually ran, so a clean run reads
+    # "N of N — complete", never "N of cap — dropped".
+    if job.manifest is not None:
+        job.manifest.complete()
     job.completed_at = now
     job.last_run = now
     await job_store.update(job)
@@ -2332,6 +2468,10 @@ async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
     job.status = JobStatus.failed
     job.progress.phase = "failed"
     job.error = (error or "discovery failed")[:500]
+    # A9 manifest: terminal FAILED with the reason. Any planned items not completed
+    # are rolled into `dropped`, so coverage shows the partial honestly.
+    if job.manifest is not None:
+        job.manifest.halt(HaltReasonKind.error, job.error)
     job.completed_at = now
     job.last_run = now
     await job_store.update(job)
@@ -2385,6 +2525,12 @@ async def _fail_billing_job(
     job.result_count = processed
     if platforms:
         job.platforms = platforms
+    # A9 manifest: terminal FAILED with a PROVIDER-EXHAUSTION reason (402 billing /
+    # sustained-429 rate-limit) and honest partial coverage. `completed` already
+    # tracks the landed rows (recorded per micro-batch); `halt_from_exception`
+    # rolls the unfilled planned remainder into `dropped` and stamps the reason.
+    if job.manifest is not None:
+        job.manifest.halt_from_exception(error, landed_note=landed)
     job.completed_at = now
     job.last_run = now
     await job_store.update(job)

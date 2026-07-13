@@ -72,12 +72,96 @@ class LLMAuthError(LLMError):
     fail-fast treatment as :class:`LLMBillingError`."""
 
 
+class LLMRateLimitError(LLMError):
+    """SUSTAINED rate-limiting — repeated HTTP 429 that has crossed the run-level
+    escalation threshold (ONTA-273).
+
+    Distinct from a single 429 blip: one (or a few) 429s are a normal transient the
+    caller RETRIES; this is raised ONLY by :class:`RateLimitEscalator` once a run
+    has hit ``threshold`` consecutive 429s — i.e. the account is being throttled to
+    a standstill, which is a form of PROVIDER EXHAUSTION for this run. Treated like
+    :class:`LLMBillingError`: halt the run with a user-visible reason instead of
+    burning more equally-throttled calls forever. It is NEVER returned by
+    :func:`classify_llm_status_error` (a single-call classifier can't know a 429 is
+    sustained), so a lone rate-limit still retries as before."""
+
+
 #: HTTP status → typed fatal LLM error. 402/401 are the two systemic,
-#: will-recur-immediately codes worth aborting a whole run on.
+#: will-recur-immediately codes worth aborting a whole run on. 429 is deliberately
+#: ABSENT — see :func:`classify_llm_status_error` / :class:`RateLimitEscalator`.
 _FATAL_LLM_STATUS: dict[int, type[LLMError]] = {
     402: LLMBillingError,
     401: LLMAuthError,
 }
+
+#: Default number of CONSECUTIVE 429s within ONE run that escalates from
+#: "transient, retry" to "provider exhaustion, halt". A single blip stays a
+#: transient; only a sustained streak halts (ONTA-273).
+RATE_LIMIT_HALT_THRESHOLD = 5
+
+
+def is_rate_limit_status(status_code: int) -> bool:
+    """True for HTTP 429 (Too Many Requests) — the rate-limit signal a run tracks
+    via :class:`RateLimitEscalator` to distinguish a blip from sustained
+    exhaustion."""
+    return status_code == 429
+
+
+class RateLimitEscalator:
+    """Run-scoped 429 tracker deciding when sustained rate-limiting becomes fatal.
+
+    **The 429 policy (ONTA-273).** A single / occasional 429 is a normal transient:
+    the per-call / per-batch handling already retries or degrades, so it must NOT
+    abort the run — making *every* 429 fatal would kill a run on one rate-limit
+    blip. But a run that keeps getting 429 after 429 is NOT making progress; that
+    sustained throttling is provider exhaustion for this run and should halt with a
+    user-visible reason rather than spin forever.
+
+    This tracker draws that line WITHOUT making the stateless
+    :func:`classify_llm_status_error` fatal on 429 (it can't see a streak). The run
+    owns one escalator: it calls :meth:`record_success` on any non-429 outcome
+    (resetting the streak) and :meth:`record_rate_limited` on each 429; the latter
+    returns a fatal :class:`LLMRateLimitError` ONLY once ``threshold`` consecutive
+    429s accumulate, which the run treats exactly like a 402 (halt-and-report).
+    """
+
+    def __init__(self, threshold: int = RATE_LIMIT_HALT_THRESHOLD) -> None:
+        self._threshold = max(1, int(threshold))
+        self._streak = 0
+
+    @property
+    def consecutive(self) -> int:
+        return self._streak
+
+    def reset(self) -> None:
+        self._streak = 0
+
+    def record_success(self) -> None:
+        """Any non-429 outcome (a success, or a different error) breaks the
+        streak — 429s must be CONSECUTIVE to escalate."""
+        self._streak = 0
+
+    def record_rate_limited(
+        self,
+        *,
+        provider: str | None = None,
+        host: str | None = None,
+        detail: str = "",
+    ) -> LLMRateLimitError | None:
+        """Record one 429. Returns a fatal :class:`LLMRateLimitError` once the
+        streak reaches ``threshold``, else ``None`` (keep retrying)."""
+        self._streak += 1
+        if self._streak < self._threshold:
+            return None
+        who = _provider_phrase(provider, host)
+        msg = (
+            f"LLM backend returned HTTP 429 Too Many Requests "
+            f"{self._streak} times in a row — {who} is sustained rate-limited "
+            "(provider exhaustion). Back off / raise the account's rate limit."
+        )
+        if detail:
+            msg = f"{msg} ({detail})"
+        return LLMRateLimitError(msg)
 
 #: User-facing message templates keyed by status, with a ``{who}`` slot for the
 #: PROVIDER-ACCURATE phrase (see :func:`_provider_phrase`). Surfaced verbatim on
@@ -138,6 +222,11 @@ def classify_llm_status_error(
     ``None`` so nothing is escalated to a run-level abort. ``detail`` is folded
     into the message when supplied (e.g. the provider's error body).
 
+    429 is intentionally NOT fatal here: a single rate-limit blip must still
+    retry. SUSTAINED 429 (a run that keeps getting throttled) is escalated to a
+    run-level halt separately, by :class:`RateLimitEscalator` — which the run owns
+    and which alone has the streak context a per-call classifier lacks (ONTA-273).
+
     ``provider`` (the backend slug, e.g. ``OMNIX_LLM_PROVIDER``) and ``host`` (the
     base API host, e.g. ``api.cerebras.ai``) make the message name the account
     that ACTUALLY rejected the call — a Cerebras 402 says "Cerebras", an
@@ -182,11 +271,15 @@ class FetchErrorPolicy(enum.Enum):
 
 
 __all__ = [
+    "RATE_LIMIT_HALT_THRESHOLD",
     "FetchError",
     "FetchErrorPolicy",
     "LLMAuthError",
     "LLMBillingError",
     "LLMError",
+    "LLMRateLimitError",
+    "RateLimitEscalator",
     "RetrievalError",
     "classify_llm_status_error",
+    "is_rate_limit_status",
 ]
