@@ -1,6 +1,6 @@
 # @onta/cli
 
-Node.js SDK and CLI for [Onta](https://onta.sh) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
+Node.js SDK and CLI for [Onta](https://getonta.com) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
 ## Quickstart
 
@@ -8,7 +8,7 @@ Node.js SDK and CLI for [Onta](https://onta.sh) — turn raw data into a queryab
 npx @onta/cli
 ```
 
-That's it. The first run opens your browser to sign in, saves a key to `~/.cograph/config.json`, and drops you into the interactive shell:
+That's it. The first run opens your browser to sign in, saves a key to `~/.onta/config.json`, and drops you into the interactive shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -25,7 +25,7 @@ That's it. The first run opens your browser to sign in, saves a key to `~/.cogra
   /quit
 ```
 
-Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [onta.sh/docs/quickstart](https://onta.sh/docs/quickstart).
+Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [getonta.com/docs/quickstart](https://getonta.com/docs/quickstart).
 
 ## Self-hosted mode
 
@@ -33,8 +33,8 @@ Pointing the CLI at your own backend skips the browser sign-in:
 
 ```bash
 onta --local                          # defaults to http://localhost:8000
-onta --no-login                       # uses COGRAPH_API_URL env var
-COGRAPH_API_URL=http://my-host:8000 onta
+onta --no-login                       # uses ONTA_API_URL env var
+ONTA_API_URL=http://my-host:8000 onta
 ```
 
 When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. Bare `onta` still triggers the hosted-version login flow.
@@ -91,9 +91,9 @@ onta (mentors) [37,715] ▸ /type Mentor
 ## SDK
 
 ```ts
-import { Client, CographError } from "@onta/cli";
+import { Client, OntaError } from "@onta/cli";
 
-const client = new Client({ apiKey: process.env.COGRAPH_API_KEY });
+const client = new Client({ apiKey: process.env.ONTA_API_KEY });
 
 await client.ingest("sales.csv", { kg: "sales" });
 const result = await client.ask("What's the average deal size by region?", { kg: "sales" });
@@ -104,9 +104,9 @@ console.log(result.answer);
 
 ```ts
 new Client({
-  apiKey?: string,    // env: COGRAPH_API_KEY
-  baseUrl?: string,   // env: COGRAPH_API_URL (default: https://api.onta.sh)
-  tenant?: string,    // env: COGRAPH_TENANT (default: demo-tenant)
+  apiKey?: string,    // env: ONTA_API_KEY
+  baseUrl?: string,   // env: ONTA_API_URL (default: https://api.onta.sh)
+  tenant?: string,    // env: ONTA_TENANT (default: demo-tenant)
 })
 ```
 
@@ -125,7 +125,7 @@ new Client({
 - `normalizeSuggest(kg, type)`, `normalizeRules({ kg?, status? })`, `normalizeConfirmRule(id)`, `normalizeRejectRule(id)`, `normalizeApplyRule(id)` — inferred-normalization rule lifecycle.
 - `ontologyRecommend(body?)` — recommend ontology relationships/changes for a KG.
 
-All errors throw `CographError`.
+All errors throw `OntaError`.
 
 ### Raw / passthrough API (`client.raw.*`)
 
@@ -180,11 +180,9 @@ npx @onta/cli clear --kg my-data --yes
 
 ### Environment
 
-- `COGRAPH_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.cograph/config.json` automatically.
-- `COGRAPH_API_URL` — default `https://api.onta.sh`.
-- `COGRAPH_TENANT` — default `demo-tenant`. The login flow sets this to your user ID.
-
-Legacy `OMNIX_*` vars are also accepted.
+- `ONTA_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.onta/config.json` automatically.
+- `ONTA_API_URL` — default `https://api.onta.sh`.
+- `ONTA_TENANT` — default `demo-tenant`. The login flow sets this to your user ID.
 
 > PDF ingestion is not yet supported in the Node CLI. Use the Python CLI or POST raw bytes to the API.
 

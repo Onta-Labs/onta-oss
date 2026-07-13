@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Client, CographError } from "../src/client.js";
+import { Client, OntaError } from "../src/client.js";
 
 // ONTA-253: `ingest(path, {asFile:true})` is the FILE-intent mode. A missing
-// path must reject with a CographError and issue NO HTTP POST — never degrade to
+// path must reject with a OntaError and issue NO HTTP POST — never degrade to
 // POSTing the path string as text (which makes the backend LLM-extract phantom
 // entities out of a filename). The dual-mode default (`asFile` unset) still
 // text-ingests raw text, so the CLI's `ingest <text>` path keeps working.
@@ -41,19 +41,19 @@ afterEach(() => {
 });
 
 describe("Client.ingest — asFile hard-errors on a missing path (ONTA-253)", () => {
-  it("rejects with CographError and issues NO HTTP POST for a missing file", async () => {
+  it("rejects with OntaError and issues NO HTTP POST for a missing file", async () => {
     const { calls } = installFetch(new Response("{}", { status: 200 }));
     const missing = join(dir, "nope.csv");
 
     await expect(
       makeClient().ingest(missing, { kg: "widget-catalog", asFile: true }),
-    ).rejects.toBeInstanceOf(CographError);
+    ).rejects.toBeInstanceOf(OntaError);
 
     // The load-bearing assertion: nothing was POSTed — no fabricated ingest.
     expect(calls).toHaveLength(0);
   });
 
-  it("the CographError message names the missing path", async () => {
+  it("the OntaError message names the missing path", async () => {
     installFetch(new Response("{}", { status: 200 }));
     const missing = join(dir, "referrals.csv");
     await makeClient()
@@ -63,8 +63,8 @@ describe("Client.ingest — asFile hard-errors on a missing path (ONTA-253)", ()
           throw new Error("expected a rejection");
         },
         (err: unknown) => {
-          expect(err).toBeInstanceOf(CographError);
-          expect((err as CographError).message).toContain(missing);
+          expect(err).toBeInstanceOf(OntaError);
+          expect((err as OntaError).message).toContain(missing);
         },
       );
   });

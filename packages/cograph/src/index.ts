@@ -1,6 +1,6 @@
 export {
   Client,
-  CographError,
+  OntaError,
   RawApi,
   USER_SCHEDULABLE_ACTIONS,
   // The terminal job-status set + predicate — the TS mirror of the backend's

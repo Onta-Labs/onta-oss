@@ -2,13 +2,13 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { readConfig } from "./config.js";
 
-export class CographError extends Error {
+export class OntaError extends Error {
   status?: number;
   body?: string;
 
   constructor(message: string, opts?: { status?: number; body?: string }) {
     super(message);
-    this.name = "CographError";
+    this.name = "OntaError";
     this.status = opts?.status;
     this.body = opts?.body;
   }
@@ -24,7 +24,7 @@ export interface IngestOptions {
   kg?: string;
   contentType?: "text" | "csv" | "json" | string;
   /** Treat `pathOrText` as a FILE PATH, not as raw text. When set, a path that
-   *  does not resolve to a readable file throws a `CographError` instead of
+   *  does not resolve to a readable file throws a `OntaError` instead of
    *  silently POSTing the path string itself as text content (ONTA-253: a
    *  file-intent caller — e.g. the MCP `ingest_csv` tool — must never fabricate
    *  a success by LLM-extracting entities out of a nonexistent filename). The
@@ -193,7 +193,7 @@ export class Client {
   readonly raw: RawApi;
 
   constructor(opts: ClientOptions = {}) {
-    // Resolution order for each field: explicit opts → env var → ~/.cograph/config.json
+    // Resolution order for each field: explicit opts → env var → ~/.onta/config.json
     // (written by `cograph login`) → built-in default. Reading the config eagerly
     // is cheap (small JSON file) and lets users skip env vars entirely after login.
     const cfg = readConfig();
@@ -375,7 +375,7 @@ export class Client {
    *
    * Unlike {@link request}, this does NOT inspect `res.ok` and does NOT parse or
    * reshape the body. A 4xx/5xx comes back as a resolved `Response` (the caller
-   * reads `.status`/`.headers`/`.body`), NOT a thrown {@link CographError}. The
+   * reads `.status`/`.headers`/`.body`), NOT a thrown {@link OntaError}. The
    * only rejection paths are a genuine network failure or a timeout abort —
    * exactly the cases where there is no HTTP response to hand back.
    *
@@ -411,9 +411,9 @@ export class Client {
       // so this is the one case we surface as a thrown error. A non-2xx HTTP
       // status is NOT an error here — it resolves above as a Response.
       if (err instanceof Error && err.name === "AbortError") {
-        throw new CographError(`Request to ${path} timed out after ${timeoutMs}ms`);
+        throw new OntaError(`Request to ${path} timed out after ${timeoutMs}ms`);
       }
-      throw new CographError(
+      throw new OntaError(
         `Network error contacting ${path}: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
@@ -477,9 +477,9 @@ export class Client {
     } catch (err) {
       clearTimeout(timer);
       if (err instanceof Error && err.name === "AbortError") {
-        throw new CographError(`Request to ${url} timed out after ${timeoutMs}ms`);
+        throw new OntaError(`Request to ${url} timed out after ${timeoutMs}ms`);
       }
-      throw new CographError(
+      throw new OntaError(
         `Network error contacting ${url}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
@@ -492,7 +492,7 @@ export class Client {
       } catch {
         // ignore
       }
-      throw new CographError(`HTTP ${res.status}: ${text}`, {
+      throw new OntaError(`HTTP ${res.status}: ${text}`, {
         status: res.status,
         body: text,
       });
@@ -543,7 +543,7 @@ export class Client {
     // success. The dual-mode default (asFile unset) still degrades to text for
     // the CLI's intentional `ingest <raw text>` path.
     if (opts.asFile && !isFile) {
-      throw new CographError(
+      throw new OntaError(
         `File not found or not a readable file: ${pathOrText}. ` +
           `Pass raw text without asFile to ingest it as text.`,
       );
@@ -552,7 +552,7 @@ export class Client {
     if (isFile) {
       const ext = extname(pathOrText).toLowerCase();
       if (ext === ".pdf") {
-        throw new CographError(
+        throw new OntaError(
           "PDF ingest not yet supported in the Node CLI; use the Python CLI or POST raw bytes to the API.",
         );
       }
@@ -584,7 +584,7 @@ export class Client {
     const concurrency = opts.concurrency ?? 4;
 
     const rows = parseCsv(content);
-    if (rows.length === 0) throw new CographError("CSV is empty");
+    if (rows.length === 0) throw new OntaError("CSV is empty");
     const headers = Object.keys(rows[0]!);
 
     // Send the whole file to the profiler, evenly strided across it (never the
@@ -771,7 +771,7 @@ export class Client {
 
   /** List the tenants the authenticated user can access (GET /v1/me/tenants).
    *  Keyed by the API key (X-API-Key → user), so it's independent of the active
-   *  tenant. Throws CographError with status 501 on deployments without a tenant
+   *  tenant. Throws OntaError with status 501 on deployments without a tenant
    *  provider (e.g. OSS-only). */
   async listTenants(): Promise<Array<{ id: string; label: string }>> {
     return this.request<Array<{ id: string; label: string }>>(
@@ -1081,7 +1081,7 @@ export class Client {
    * `topK` is clamped server-side to 1..50 (the response echoes the effective
    * value). An unknown `kg` yields empty hits, not an error. A deployment with
    * the semantic index disabled answers 503 naming the
-   * `COGRAPH_SEMANTIC_INDEX_ENABLED` gate (thrown here as a CographError).
+   * `COGRAPH_SEMANTIC_INDEX_ENABLED` gate (thrown here as an OntaError).
    */
   async search(
     query: string,
@@ -1834,7 +1834,7 @@ export interface SemanticSearchResponse {
  *
  *  - it does NOT throw on a non-2xx status (a 404/500 resolves as a `Response`
  *    whose `.status` the caller inspects — contrast the typed methods, which
- *    throw {@link CographError}); and
+ *    throw {@link OntaError}); and
  *  - it does NOT parse or reshape the body (the caller gets the unread stream;
  *    contrast e.g. {@link Client.listKgs}, which unwraps `{kgs:[]}`).
  *
