@@ -3,7 +3,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { Client, CographError } from "./client.js";
+import { Client, OntaError } from "./client.js";
 import { renderAgentResult } from "./agentRender.js";
 import { readConfig, writeConfig, configPathForDisplay } from "./config.js";
 
@@ -24,7 +24,7 @@ function pkgVersion(): string {
 function client(): Client {
   // Honor the global flags: --tenant overrides the saved default for this
   // command; --local points at a self-hosted backend. Both fall through to
-  // env / ~/.cograph/config.json when not passed.
+  // env / ~/.onta/config.json when not passed.
   const g = program.opts() as { tenant?: string; local?: boolean };
   return new Client({
     ...(g.tenant ? { tenant: g.tenant } : {}),
@@ -45,7 +45,7 @@ async function withErrors<T>(fn: () => Promise<T>): Promise<T | void> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof CographError) {
+    if (err instanceof OntaError) {
       fail(`Error: ${err.message}`);
     }
     fail(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -265,7 +265,7 @@ async function reviewMapping(
 const program = new Command();
 program
   .name("onta")
-  .description("Onta Context Graph CLI (formerly Cograph)")
+  .description("Onta Context Graph CLI")
   .version(pkgVersion())
   // Default action when no subcommand is given: drop into the interactive
   // shell. So `onta` (or `npx onta`) Just Works for the common case;
@@ -299,7 +299,7 @@ kg.command("list")
       const kgs = await client().listKgs();
       if (!kgs.length) {
         process.stdout.write(
-          "No context graphs. Create one with: cograph kg create <name>\n",
+          "No context graphs. Create one with: onta kg create <name>\n",
         );
         return;
       }
@@ -351,7 +351,7 @@ tenantCmd
     process.stdout.write(
       saved
         ? dim(`  saved default in ${configPathForDisplay()}\n`)
-        : dim(`  (built-in default — set one with: cograph tenant use <id>)\n`),
+        : dim(`  (built-in default — set one with: onta tenant use <id>)\n`),
     );
   });
 
@@ -365,7 +365,7 @@ tenantCmd
       try {
         tenants = await c.listTenants();
       } catch (err) {
-        if (err instanceof CographError && err.status === 501) {
+        if (err instanceof OntaError && err.status === 501) {
           fail(
             "This backend doesn't support tenant management (no tenant provider configured).",
           );
@@ -381,13 +381,13 @@ tenantCmd
         const marker = t.id === active ? "*" : " ";
         process.stdout.write(`  ${marker} ${t.id.padEnd(24)} ${dim(t.label)}\n`);
       }
-      process.stdout.write(dim(`\nSwitch with: cograph tenant use <id>\n`));
+      process.stdout.write(dim(`\nSwitch with: onta tenant use <id>\n`));
     });
   });
 
 tenantCmd
   .command("use <id>")
-  .description("Set the active tenant (saved to ~/.cograph/config.json)")
+  .description("Set the active tenant (saved to ~/.onta/config.json)")
   .action((id: string) => {
     writeConfig({ tenant: id });
     process.stdout.write(`${bold("✓")} Active tenant set to ${bold(id)}\n`);
@@ -606,7 +606,7 @@ export async function runAgentCommand(
       ]
         .filter(Boolean)
         .join(" ");
-      const hint = `cograph agent --confirm ${planId}${flags ? " " + flags : ""} ${JSON.stringify(message)}`;
+      const hint = `onta agent --confirm ${planId}${flags ? " " + flags : ""} ${JSON.stringify(message)}`;
       process.stdout.write(
         `${dim("Confirm & run:")} ${hint}\n` +
           `${dim("  or re-run with --yes to execute now.")}\n`,
@@ -800,7 +800,7 @@ program
       if (!kg) {
         const kgs = await c.listKgs();
         if (!kgs.length) {
-          fail("No context graphs found. Run 'cograph ingest' first.");
+          fail("No context graphs found. Run 'onta ingest' first.");
         }
         kg = String(kgs[0].name ?? "");
       }
@@ -842,7 +842,7 @@ program
         }
       }
 
-      const explorerUrl = `https://cograph.cloud/dashboard/explore/${encodeURIComponent(typeName)}?kg=${encodeURIComponent(kg)}`;
+      const explorerUrl = `https://getonta.com/dashboard/explore/${encodeURIComponent(typeName)}?kg=${encodeURIComponent(kg)}`;
       process.stdout.write(`\n→ Open visually at ${explorerUrl}\n`);
       process.stdout.write("  (Sign in for interactive viz, search, and click-to-enrich.)\n\n");
     });
@@ -961,9 +961,9 @@ program
   .option("--no-login", "Skip browser login (assume open-access backend)")
   .action(
     async (opts: { kg?: string; local?: boolean; login?: boolean }) => {
-      // Parent program also accepts --local/--no-login (so `cograph --local`
+      // Parent program also accepts --local/--no-login (so `onta --local`
       // works without a subcommand). When commander parses
-      // `cograph shell --local`, the parent sees --local first and the
+      // `onta shell --local`, the parent sees --local first and the
       // subcommand never gets it — so merge from program.opts() too.
       const parentOpts = program.opts() as {
         local?: boolean;

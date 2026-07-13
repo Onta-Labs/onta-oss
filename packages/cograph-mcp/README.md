@@ -1,6 +1,6 @@
 # @onta/mcp
 
-MCP (Model Context Protocol) server for [Onta](https://onta.sh). Gives AI agents tools to query, search, ingest, enrich, and manage your context graphs (knowledge graphs) in natural language.
+MCP (Model Context Protocol) server for [Onta](https://getonta.com). Gives AI agents tools to query, search, ingest, enrich, and manage your context graphs (knowledge graphs) in natural language.
 
 ## Install / run
 
@@ -59,8 +59,7 @@ The server registers **15** tools:
 - `ONTA_API_URL` — default `https://api.onta.sh`
 - `ONTA_TENANT` — default `demo-tenant`
 
-Legacy `COGRAPH_*` and `OMNIX_*` vars are also accepted. Precedence is
-`ONTA_*` → `COGRAPH_*` → `OMNIX_*`, so existing configs keep working unchanged.
+Older env-var prefixes are still accepted for back-compat, so existing configs keep working unchanged.
 
 ## License
 
