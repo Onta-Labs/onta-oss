@@ -435,6 +435,7 @@
       "uri": "https://cograph.tech/entities/State/WA"
     }
   ],
+  "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
       "object": "https://cograph.tech/entities/Category/Breakfast",

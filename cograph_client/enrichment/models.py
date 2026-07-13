@@ -9,6 +9,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from cograph_client.pipeline.manifest import RunCoverage, RunManifest
+
 
 # A safe predicate local-name: starts with a letter/underscore, then word chars
 # or hyphens. This is the ONLY shape a scope predicate may take — it is later
@@ -441,6 +443,15 @@ class EnrichJob(BaseModel):
     # job-detail route serializes them verbatim for the UI.
     provider_logs: list[ProviderLog] = Field(default_factory=list)
     error_summary: list[JobErrorItem] = Field(default_factory=list)
+    # A9 Run Manifest (ONTA-273): the run as a first-class object — per-item
+    # status, drops, retries, spend-to-date, and the terminal halt reason (e.g.
+    # provider exhaustion on a 402/sustained-429). Optional / default None so
+    # every existing job (and older persisted jobs) is unchanged; the discovery
+    # capability and the enrichment executor populate it, and it rides in the same
+    # jsonb payload the job already persists (no schema migration). Its
+    # ``coverage()`` view is what lets a partially-completed run HONESTLY caveat
+    # "N of M items completed before halt" instead of a silent partial/success.
+    manifest: Optional[RunManifest] = None
     # Chat provenance: the conversation/thread id this job was created from (when
     # kicked off from the Ask-AI chat). Optional / default None so every other
     # writer (direct API, CLI, scheduled runs) is unchanged. Echoed in the job
@@ -476,6 +487,11 @@ class JobSummary(BaseModel):
     platforms: Optional[list[str]] = None
     # Derived 0-100 completion percentage from progress.processed/total.
     progress_pct: int = 0
+    # A9 Run Manifest coverage view (ONTA-273): the one-line "N of M items
+    # completed; K dropped; <halt reason>" the Jobs list renders so a partially
+    # completed / halted run is honest at a glance, not just in the detail view.
+    # Optional / default None so a job with no manifest is unchanged.
+    coverage: Optional[RunCoverage] = None
     # Chat provenance (see EnrichJob.thread_id). Optional so a non-chat job's
     # summary is unchanged.
     thread_id: Optional[str] = None
@@ -535,5 +551,6 @@ def job_to_summary(job: EnrichJob) -> JobSummary:
         result_count=job.result_count,
         platforms=job.platforms,
         progress_pct=_progress_pct(job.progress),
+        coverage=job.manifest.coverage() if job.manifest is not None else None,
         thread_id=job.thread_id,
     )
