@@ -39,24 +39,23 @@ from ..enrichment.sources.base import register_adapter
 from ..enrichment.tiers import register_chain_prefix_provider
 from .catalog import ApiSourceCatalog, get_api_source_catalog
 from .executor import RegistryApiSource
-from .spec import ApiSourceSpec, AuthorityLevel, EndpointSpec
+from .spec import (
+    AUTHORITY_CONFIDENCE as _AUTHORITY_CONFIDENCE,
+    AUTHORITY_RANK as _AUTHORITY_RANK,
+    ApiSourceSpec,
+    AuthorityLevel,
+    EndpointSpec,
+)
 
 logger = logging.getLogger(__name__)
 
-# Calibrated confidences by authority level (compared against confidence_min,
-# default 0.85). source_of_truth + authoritative clear the bar (and, running
-# first, outrank downstream adapters); supplementary only augments a gap.
-_AUTHORITY_CONFIDENCE = {
-    AuthorityLevel.source_of_truth: 0.95,
-    AuthorityLevel.authoritative: 0.85,
-    AuthorityLevel.supplementary: 0.6,
-}
-# Chain-lead ordering: source-of-truth entries lead authoritative ones.
-_AUTHORITY_RANK = {
-    AuthorityLevel.source_of_truth: 0,
-    AuthorityLevel.authoritative: 1,
-    AuthorityLevel.supplementary: 2,
-}
+# Authority ranking + calibrated confidences now live canonically on ``spec.py``
+# next to ``AuthorityLevel`` (ONE scale, shared with the write-time conflict
+# policy — see spec.AUTHORITY_RANK / AUTHORITY_CONFIDENCE). Aliased here under
+# the original names so the chain-lead sort + confidence calibration below are
+# byte-identical: source_of_truth (rank 0, conf 0.95) leads authoritative
+# (1, 0.85) leads supplementary (2, 0.6); the first two clear the default
+# confidence bar, supplementary only augments a gap.
 _MAX_ROWS = 5
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # Generic tokens that must not, ALONE, make an entity type match an entry's
