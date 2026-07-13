@@ -9,6 +9,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./cli": {
+      "import": "./dist/cli.js"
     }
   },
   "bin": {
@@ -39,7 +42,7 @@
   ],
   "author": "Cograph",
   "license": "Apache-2.0",
-  "homepage": "https://cograph.cloud",
+  "homepage": "https://onta.sh",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/git-moeen/onta-oss.git",

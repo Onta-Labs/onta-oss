@@ -46,14 +46,17 @@ source .env && uvicorn cograph_client.api.app:create_app --factory --port 8000
 ### 5. Ingest and query
 
 ```bash
-# Ingest the sample dataset
-cograph ingest examples/bookstore.csv --kg bookstore
+# Install the CLI (Node 20+)
+npm install -g onta
+
+# Ingest the sample dataset (--local targets http://localhost:8000)
+onta --local ingest examples/bookstore.csv --kg bookstore
 
 # Ask questions
-cograph ask "How many books are there?" --kg bookstore
-cograph ask "Which genre has the most books?" --kg bookstore
-cograph ask "What is the average price of Dystopian books?" --kg bookstore
-cograph ask "List all books by J.R.R. Tolkien" --kg bookstore
+onta --local ask "How many books are there?" --kg bookstore
+onta --local ask "Which genre has the most books?" --kg bookstore
+onta --local ask "What is the average price of Dystopian books?" --kg bookstore
+onta --local ask "List all books by J.R.R. Tolkien" --kg bookstore
 ```
 
 No API key needed for local usage. No AWS account needed.
@@ -82,7 +85,7 @@ Natural Language Query -> SPARQL -> Answer
 
 ## CLI
 
-The Node CLI (`npm install -g cograph`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `cograph` to drop into the shell:
+The Node CLI (`npm install -g onta`, requires Node 20+) covers both an interactive shell and one-shot subcommands. (Also published under the legacy name [`cograph`](https://www.npmjs.com/package/cograph) — same CLI.) Run bare `onta` to drop into the shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -106,12 +109,12 @@ The Node CLI (`npm install -g cograph`, requires Node 20+) covers both an intera
 The CLI runs against a self-hosted backend without a hosted-version account — pass `--local` (or `--no-login`) to skip the browser sign-in:
 
 ```bash
-cograph --local                                   # defaults to http://localhost:8000
-cograph --no-login                                # uses COGRAPH_API_URL env var
-COGRAPH_API_URL=http://my-host:8000 cograph
+onta --local                                   # defaults to http://localhost:8000
+onta --no-login                                # uses ONTA_API_URL env var
+ONTA_API_URL=http://my-host:8000 onta
 ```
 
-When self-hosted, the prompt shows the host suffix: `cograph@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `OMNIX_API_KEYS` — empty means no auth, `tenant=default`.
+When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `OMNIX_API_KEYS` — empty means no auth, `tenant=default`.
 
 ### Auto-enrichment
 
@@ -137,34 +140,44 @@ Or one-shot, useful in scripts and CI:
 
 ```bash
 # Ingest
-cograph ingest data.csv --kg my-dataset
+onta ingest data.csv --kg my-dataset
 
 # Query
-cograph ask "How many records are there?" --kg my-dataset
+onta ask "How many records are there?" --kg my-dataset
 
 # Manage KGs
-cograph kg list
-cograph kg create my-dataset -d "Description"
-cograph kg delete my-dataset
+onta kg list
+onta kg create my-dataset -d "Description"
+onta kg delete my-dataset
 
 # View ontology (legacy — prefer /types and /type in the shell)
-cograph ontology types
+onta ontology types
 
 # Clear data
-cograph clear --kg my-dataset -y
-
-# Evaluate accuracy (Python CLI)
-cograph eval data.csv --kg my-dataset --query-only -n 20 --fast-judge
+onta clear --kg my-dataset -y
 ```
 
 ## MCP Server (AI Agent Integration)
 
-Connect Cograph to Claude, Cursor, Windsurf, or any MCP-compatible agent:
+Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 
 ```json
 {
   "mcpServers": {
-    "cograph": {
+    "onta": {
+      "command": "npx",
+      "args": ["-y", "onta-mcp"]
+    }
+  }
+}
+```
+
+Running from a checkout of this repo, the Python server is equivalent:
+
+```json
+{
+  "mcpServers": {
+    "onta": {
       "command": "python",
       "args": ["-m", "cograph_client.mcp_server"]
     }
@@ -198,19 +211,18 @@ Interactive docs at [localhost:8000/docs](http://localhost:8000/docs) when runni
 
 ## Model Configuration
 
-Works with any OpenAI-compatible API. Default: Gemini 2.5 Flash via OpenRouter.
+Query LLM is selectable per deployment: OpenRouter (any model it hosts),
+Cerebras, or Anthropic.
 
 ```bash
-# OpenRouter (default)
+# OpenRouter (recommended)
 export OPENROUTER_API_KEY=sk-or-...
+export OMNIX_QUERY_PROVIDER=openrouter
+export OMNIX_QUERY_MODEL=google/gemini-2.5-flash
 
-# Or use Ollama (free, local)
-export COGRAPH_QUERY_PROVIDER=ollama
-export COGRAPH_QUERY_MODEL=llama3.1
-
-# Or Groq, Cerebras, Anthropic, etc.
-export COGRAPH_QUERY_PROVIDER=cerebras
-export COGRAPH_CEREBRAS_API_KEY=csk-...
+# Or Cerebras (fast inference)
+export OMNIX_QUERY_PROVIDER=cerebras
+export OMNIX_CEREBRAS_API_KEY=csk-...
 ```
 
 ## Eval Results
