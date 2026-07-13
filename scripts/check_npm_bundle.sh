@@ -15,7 +15,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-PACKAGES=(packages/cograph packages/cograph-mcp packages/onta-mcp packages/onta)
+PACKAGES=(packages/cograph packages/cograph-mcp)
 
 # Paths that must never appear inside a published OSS tarball.
 FORBIDDEN='omnix-demo-tenant|cograph/auth/clerk|cograph/enrichment/(exa|perplexity|gs1)|cograph/billing|cograph/entitlement|/\.aws/|secretsmanager'

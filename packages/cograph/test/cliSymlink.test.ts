@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 // Regression guard for the symlink'd-bin bug (COG-129).
 //
-// npm installs the `cograph` bin as a SYMLINK (node_modules/.bin/cograph →
+// npm installs the `onta` bin as a SYMLINK (node_modules/.bin/onta →
 // dist/cli.js). Node then sets import.meta.url to the *realpath* of the entry
 // while process.argv[1] keeps the *symlink* path. A naive
 // `import.meta.url === pathToFileURL(process.argv[1]).href` guard therefore
@@ -39,10 +39,10 @@ beforeAll(() => {
 
 describe("cli — symlinked bin (npm .bin layout)", () => {
   it("runs --version when invoked through a symlink to dist/cli.js", () => {
-    const dir = mkdtempSync(join(tmpdir(), "cograph-bin-"));
-    const link = join(dir, "cograph");
+    const dir = mkdtempSync(join(tmpdir(), "onta-bin-"));
+    const link = join(dir, "onta");
     try {
-      // Mimic node_modules/.bin/cograph -> ../cograph/dist/cli.js
+      // Mimic node_modules/.bin/onta -> ../cograph/dist/cli.js
       symlinkSync(cliPath, link);
       const res = spawnSync("node", [link, "--version"], { encoding: "utf-8" });
 
@@ -63,8 +63,8 @@ describe("cli — symlinked bin (npm .bin layout)", () => {
   });
 
   it("dispatches subcommands through the symlink (agent --help)", () => {
-    const dir = mkdtempSync(join(tmpdir(), "cograph-bin-"));
-    const link = join(dir, "cograph");
+    const dir = mkdtempSync(join(tmpdir(), "onta-bin-"));
+    const link = join(dir, "onta");
     try {
       symlinkSync(cliPath, link);
       const res = spawnSync("node", [link, "agent", "--help"], {
