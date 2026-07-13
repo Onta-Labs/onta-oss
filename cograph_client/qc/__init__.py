@@ -19,6 +19,13 @@ from cograph_client.qc.invariants import (
     Violation,
     check_invariants,
 )
+from cograph_client.qc.isolation import (
+    IsolationViolation,
+    WorkspaceScope,
+    check_isolation,
+    format_isolation,
+    isolated,
+)
 
 __all__ = [
     "INVARIANTS",
@@ -30,4 +37,9 @@ __all__ = [
     "run_audit",
     "format_report",
     "report_to_dict",
+    "WorkspaceScope",
+    "IsolationViolation",
+    "check_isolation",
+    "isolated",
+    "format_isolation",
 ]
