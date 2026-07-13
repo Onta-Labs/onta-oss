@@ -1,6 +1,9 @@
+import time
+
 import structlog
 from fastapi import APIRouter, Depends, Request
 
+from cograph_client.analytics import distinct_id_for, emit
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.api.rate_limit import limiter
 from cograph_client.auth.api_keys import TenantContext, get_tenant
@@ -41,10 +44,13 @@ async def ask_question(
     # as a bare HTTP 500 with no body — the /ask contract is always an NLResult.
     # Log the question + traceback at the boundary and return a 200 NLResult
     # explaining that the question couldn't be answered.
+    start = time.monotonic()
     try:
-        return await pipeline.ask(
+        result = await pipeline.ask(
             body.question, ontology_graph, instance_graph, exclude_questions=body.exclude_questions
         )
+        _emit_query_executed(tenant, body.kg_name, start, ok=True)
+        return result
     except Exception:
         logger.error(
             "ask_route_unhandled_error",
@@ -53,6 +59,7 @@ async def ask_question(
             tenant=tenant.tenant_id,
             exc_info=True,
         )
+        _emit_query_executed(tenant, body.kg_name, start, ok=False)
         return NLResult(
             answer=(
                 "Could not answer this question due to an internal error. "
@@ -61,3 +68,23 @@ async def ask_question(
             sparql="",
             explanation="",
         )
+
+
+def _emit_query_executed(
+    tenant: TenantContext, kg_name: str | None, start: float, *, ok: bool
+) -> None:
+    """Product-analytics event for an executed NL query (ONTA-323).
+
+    Fire-and-forget, no-op without a registered sink, never raises. Attributed
+    to the authenticated subject (Clerk user id), else a stable system:<tenant>
+    id. ``ok`` distinguishes a normal answer from the route's graceful-degrade
+    path (an unexpected error that still returned a 200 NLResult).
+    """
+    emit(
+        "query_executed",
+        distinct_id=distinct_id_for(tenant.subject, tenant.tenant_id),
+        tenant=tenant.tenant_id,
+        kg=kg_name or "",
+        latency_ms=round((time.monotonic() - start) * 1000, 1),
+        ok=ok,
+    )
