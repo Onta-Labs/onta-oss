@@ -44,11 +44,55 @@ class AuthorityLevel(str, Enum):
     Generalizes the hardcoded ``WIKIDATA_BETTER_ATTRIBUTES`` notion into
     per-entry metadata (ONTA-194 §6). ``source_of_truth`` runs before the
     dynamic locate step (registry = Tier -1); ``supplementary`` only augments.
+
+    ``user_assertion`` is the TOP authority (ONTA-281): a human A10 correction
+    made in the Explorer. It outranks EVERY machine/scraped source — including a
+    ``source_of_truth`` registry entry — so a P6 correction can never be
+    clobbered by a later refresh/re-scrape (the ONTA-276 conflict policy ranks it
+    highest by construction). It is NOT a catalog authority level: registered API
+    sources are curated machine sources and must never author themselves as
+    ``user_assertion`` — the level is minted only by the correction write path
+    (``pipeline/corrections.py``) and stamped into provenance there.
     """
 
+    user_assertion = "user_assertion"
     source_of_truth = "source_of_truth"
     authoritative = "authoritative"
     supplementary = "supplementary"
+
+
+# Canonical authority scale — ONE ordering + ONE calibrated-confidence map shared
+# by every consumer so the authority axis is never forked (CLAUDE.md: "do not
+# invent a parallel authority scale"). The enrichment chain
+# (``api_registry/enrichment.py``) ranks adapters with these, and the write-time
+# conflict policy (``pipeline/conflict.py``, ONTA-276) ranks contradicting facts
+# with the SAME numbers, so "which source wins" is decided identically whether the
+# collision happens on the enrichment rail or at P6 write time.
+#
+# ``AUTHORITY_RANK``: LOWER rank = STRONGER authority (``user_assertion`` leads,
+# then ``source_of_truth``). Consumers default an unknown/unmapped level to a weak
+# rank (``.get(level, 9)``). ``AUTHORITY_CONFIDENCE``: the calibrated verification
+# confidence a level implies when a fact carries no explicit confidence of its own.
+#
+# ONTA-281 added the TOP slot ``user_assertion`` (rank 0) — a human correction
+# must outrank every machine source — and shifted the pre-existing machine levels
+# down one slot each. Only the RELATIVE order is load-bearing (every consumer
+# compares ranks or sorts by them; nothing depends on an absolute value, and the
+# ``.get(level, 9)`` unknown-fallback is still the weakest), so the machine
+# levels' pairwise ordering — and therefore all existing behavior — is unchanged.
+AUTHORITY_RANK: dict["AuthorityLevel", int] = {
+    AuthorityLevel.user_assertion: 0,
+    AuthorityLevel.source_of_truth: 1,
+    AuthorityLevel.authoritative: 2,
+    AuthorityLevel.supplementary: 3,
+}
+AUTHORITY_CONFIDENCE: dict["AuthorityLevel", float] = {
+    # A human correction is the most-trusted signal we have — above source_of_truth.
+    AuthorityLevel.user_assertion: 0.99,
+    AuthorityLevel.source_of_truth: 0.95,
+    AuthorityLevel.authoritative: 0.85,
+    AuthorityLevel.supplementary: 0.6,
+}
 
 
 class AuthMode(str, Enum):
@@ -739,6 +783,8 @@ __all__ = [
     "PaginationSpec",
     "EndpointSpec",
     "AuthorityLevel",
+    "AUTHORITY_RANK",
+    "AUTHORITY_CONFIDENCE",
     "AuthMode",
     "PaginationStyle",
     "Entitlement",
