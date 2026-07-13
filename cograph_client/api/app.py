@@ -198,6 +198,33 @@ def _load_secrets_cipher_plugin() -> None:
         logger.error("secrets_cipher_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_analytics_plugin() -> None:
+    """Import and invoke the configured analytics plugin, if any (ONTA-323).
+
+    Format: "module.path:callable". The callable is invoked with no arguments
+    and is expected to register a product-analytics sink via
+    cograph_client.analytics.register_analytics_sink (e.g. a proprietary
+    hosted-analytics sink). Failures are logged but do not prevent the app from
+    starting — without it the OSS default no-op sink is used, so emit() drops
+    every event and OSS stays analytics-free (no third-party analytics dependency
+    baked into OSS).
+    """
+    spec = settings.analytics_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("analytics_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("analytics_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("analytics_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 def _load_router_plugins(app: FastAPI) -> None:
     """Import and invoke the configured router plugins, if any.
 
@@ -286,6 +313,12 @@ async def lifespan(app: FastAPI):
     from cograph_client.usage.recorder import get_usage_recorder
 
     await get_usage_recorder().flush()
+    # Drain any buffered product-analytics events (ONTA-323). Best-effort +
+    # never raises: the OSS default no-op flush does nothing; a registered
+    # premium sink flushes its background batch on shutdown.
+    from cograph_client.analytics import flush_analytics
+
+    flush_analytics()
     await app.state.neptune_client.close()
     logger.info("shutdown")
 
@@ -298,6 +331,7 @@ def create_app() -> FastAPI:
     _load_api_registry_plugin()
     _load_geocoder_plugin()
     _load_secrets_cipher_plugin()
+    _load_analytics_plugin()
     app = FastAPI(
         title="Omnix",
         description="Living Knowledge Graph Platform",

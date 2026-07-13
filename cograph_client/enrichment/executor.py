@@ -16,6 +16,7 @@ from typing import Optional
 
 import structlog
 
+from cograph_client.analytics import distinct_id_for, emit
 from cograph_client.enrichment.cache import EnrichmentCache
 from cograph_client.enrichment.canonicalize import apply_canonicalizer
 from cograph_client.enrichment.job_store import JobStore
@@ -1466,6 +1467,13 @@ class EnrichmentExecutor:
             # review and applied states below). Makes the miss count visible from
             # logs so a run that simply found nothing is distinguishable from a
             # broken pipeline. NOT emitted on the cancelled/failed early-returns.
+            sources_tried = sorted(
+                {
+                    r.verdict.source
+                    for r in all_rows
+                    if r.verdict and getattr(r.verdict, "source", None)
+                }
+            )
             logger.info(
                 "enrichment_job_summary",
                 job_id=job.id,
@@ -1476,13 +1484,7 @@ class EnrichmentExecutor:
                 verified=job.progress.verified,
                 conflicts=job.progress.conflicts,
                 no_match=job.progress.no_match,
-                sources_tried=sorted(
-                    {
-                        r.verdict.source
-                        for r in all_rows
-                        if r.verdict and getattr(r.verdict, "source", None)
-                    }
-                ),
+                sources_tried=sources_tried,
             )
 
             # Apply phase
@@ -1635,6 +1637,24 @@ class EnrichmentExecutor:
             # decisions, applied = written) — a clean terminal COMPLETED.
             manifest.complete()
             await self._jobs.update(job)
+
+            # Product-analytics event (ONTA-323). run() is a background task with
+            # no request context, so there is no auth subject to attribute to →
+            # a stable system:<tenant> distinct id (never a path-named tenant).
+            # Fire-and-forget, no-op without a registered sink, never raises.
+            emit(
+                "enrichment_ran",
+                distinct_id=distinct_id_for(None, tenant_id),
+                tenant=tenant_id,
+                kg=job.kg_name or "",
+                type_name=job.type_name,
+                tier=job.tier.value if hasattr(job.tier, "value") else str(job.tier),
+                attrs_filled=job.progress.filled,
+                verified=job.progress.verified,
+                conflicts=job.progress.conflicts,
+                sources=sources_tried,
+                status=job.status.value if hasattr(job.status, "value") else str(job.status),
+            )
 
         except Exception as exc:  # noqa: BLE001
             logger.exception("enrichment_job_failed", job_id=job.id, error=str(exc))

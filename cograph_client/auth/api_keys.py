@@ -140,15 +140,21 @@ def get_tenant(
     Multi-tenant keys (verifier returned a sequence) are authorized against
     the requested path tenant.
 
-    On success the AUTHENTICATED tenant id is stashed on ``request.state`` so
-    the usage-metering middleware attributes the request to the identity auth
-    actually resolved — never to the raw URL path (which unauthenticated
-    404/405 traffic could otherwise abuse). Failed auth raises before the
-    stash, so unauthenticated requests are never attributed to anyone.
+    On success the AUTHENTICATED tenant id (and the auth subject, when the
+    provider exposes one) is stashed on ``request.state`` so the usage-metering
+    middleware and the analytics seam (ONTA-323) attribute the request to the
+    identity auth actually resolved — never to the raw URL path (which
+    unauthenticated 404/405 traffic could otherwise abuse). Failed auth raises
+    before the stash, so unauthenticated requests are never attributed to anyone.
     """
     ctx = _resolve_tenant(tenant, api_key)
     if request is not None:
         request.state.usage_tenant = ctx.tenant_id
+        # The auth subject (Clerk user id) when the provider exposes one — used
+        # as the analytics distinct_id so frontend + backend land on one person.
+        # None for static/anonymous keys; the analytics seam falls back to a
+        # stable system:<tenant> id in that case.
+        request.state.auth_subject = ctx.subject
     return ctx
 
 

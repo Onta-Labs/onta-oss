@@ -5,6 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from cograph_client.analytics import distinct_id_for, emit
 from cograph_client.usage.recorder import get_usage_recorder
 
 logger = structlog.stdlib.get_logger("cograph.api")
@@ -26,6 +27,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms = round((time.monotonic() - start) * 1000, 1)
             logger.exception("request_error", duration_ms=duration_ms)
             self._observe_usage(request, 500, duration_ms)
+            self._emit_request_error(request, duration_ms)
             raise
 
         duration_ms = round((time.monotonic() - start) * 1000, 1)
@@ -52,4 +54,24 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms=duration_ms,
             api_key=request.headers.get("x-api-key"),
             tenant=getattr(request.state, "usage_tenant", None),
+        )
+
+    @staticmethod
+    def _emit_request_error(request: Request, duration_ms: float) -> None:
+        # Product-analytics exception event (ONTA-323). Attribution mirrors
+        # usage metering: the AUTHENTICATED subject/tenant get_tenant stashed on
+        # request.state — both absent for unauthenticated traffic (401s, and
+        # 404/405s that never reached the auth dependency), so a failed request
+        # is never attributed to a path-named tenant. emit() is a no-op unless a
+        # sink is registered and never raises — see analytics/sink.py.
+        tenant = getattr(request.state, "usage_tenant", None)
+        subject = getattr(request.state, "auth_subject", None)
+        emit(
+            "backend_request_error",
+            distinct_id=distinct_id_for(subject, tenant),
+            path=request.url.path,
+            method=request.method,
+            status=500,
+            duration_ms=duration_ms,
+            tenant=tenant,
         )
