@@ -1,0 +1,791 @@
+{
+  "attribute_declarations": [
+    {
+      "kind": "literal",
+      "name": "address",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/address"
+    },
+    {
+      "kind": "relationship",
+      "name": "has_category",
+      "range": "https://cograph.tech/types/Category",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/has_category"
+    },
+    {
+      "kind": "relationship",
+      "name": "in_state",
+      "range": "https://cograph.tech/types/State",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/in_state"
+    },
+    {
+      "kind": "relationship",
+      "name": "located_in",
+      "range": "https://cograph.tech/types/City",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/located_in"
+    },
+    {
+      "kind": "literal",
+      "name": "outdoor_seating",
+      "range": "http://www.w3.org/2001/XMLSchema#boolean",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating"
+    },
+    {
+      "kind": "literal",
+      "name": "price_level",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/price_level"
+    },
+    {
+      "kind": "literal",
+      "name": "rating",
+      "range": "http://www.w3.org/2001/XMLSchema#float",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/rating"
+    },
+    {
+      "kind": "literal",
+      "name": "shop_id",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/types/CoffeeShop/attrs/shop_id"
+    }
+  ],
+  "entities": [
+    {
+      "also_types": [],
+      "id": "Bakery",
+      "label": "Bakery",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Bakery"
+    },
+    {
+      "also_types": [],
+      "id": "Breakfast",
+      "label": "Breakfast",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Breakfast"
+    },
+    {
+      "also_types": [],
+      "id": "Brunch",
+      "label": "Brunch",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Brunch"
+    },
+    {
+      "also_types": [],
+      "id": "Cafe",
+      "label": "Cafe",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Cafe"
+    },
+    {
+      "also_types": [],
+      "id": "Coffee",
+      "label": "Coffee",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Coffee"
+    },
+    {
+      "also_types": [],
+      "id": "Dessert",
+      "label": "Dessert",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Dessert"
+    },
+    {
+      "also_types": [],
+      "id": "Espresso Bar",
+      "label": "Espresso Bar",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Espresso_Bar"
+    },
+    {
+      "also_types": [],
+      "id": "Lunch",
+      "label": "Lunch",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Lunch"
+    },
+    {
+      "also_types": [],
+      "id": "Tea",
+      "label": "Tea",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Tea"
+    },
+    {
+      "also_types": [],
+      "id": "Vegan",
+      "label": "Vegan",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "type": "Category",
+      "uri": "https://cograph.tech/entities/Category/Vegan"
+    },
+    {
+      "also_types": [],
+      "id": "Austin",
+      "label": "Austin",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Austin"
+    },
+    {
+      "also_types": [],
+      "id": "Chicago",
+      "label": "Chicago",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Chicago"
+    },
+    {
+      "also_types": [],
+      "id": "Denver",
+      "label": "Denver",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Denver"
+    },
+    {
+      "also_types": [],
+      "id": "Portland",
+      "label": "Portland",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Portland"
+    },
+    {
+      "also_types": [],
+      "id": "Santa Cruz",
+      "label": "Santa Cruz",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Santa_Cruz"
+    },
+    {
+      "also_types": [],
+      "id": "Seattle",
+      "label": "Seattle",
+      "rdf_type": "https://cograph.tech/types/City",
+      "type": "City",
+      "uri": "https://cograph.tech/entities/City/Seattle"
+    },
+    {
+      "also_types": [],
+      "id": "Ashen Mug Coffeehouse",
+      "label": "Ashen Mug Coffeehouse",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "also_types": [],
+      "id": "Driftwood Coffee Co",
+      "label": "Driftwood Coffee Co",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "also_types": [],
+      "id": "Emberlight Cafe",
+      "label": "Emberlight Cafe",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "also_types": [],
+      "id": "Fernwood Roasters",
+      "label": "Fernwood Roasters",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "also_types": [],
+      "id": "Gilded Portafilter",
+      "label": "Gilded Portafilter",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "also_types": [],
+      "id": "Hollow Reed Cafe",
+      "label": "Hollow Reed Cafe",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "also_types": [],
+      "id": "Marlowe & Bean",
+      "label": "Marlowe & Bean",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "also_types": [],
+      "id": "Quillfeather Roastery",
+      "label": "Quillfeather Roastery",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "also_types": [],
+      "id": "The Copper Kettle",
+      "label": "The Copper Kettle",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "also_types": [],
+      "id": "The Wandering Bean",
+      "label": "The Wandering Bean",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "also_types": [],
+      "id": "Thimbleweed Espresso",
+      "label": "Thimbleweed Espresso",
+      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "type": "CoffeeShop",
+      "uri": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "also_types": [],
+      "id": "CA",
+      "label": "CA",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/CA"
+    },
+    {
+      "also_types": [],
+      "id": "CO",
+      "label": "CO",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/CO"
+    },
+    {
+      "also_types": [],
+      "id": "IL",
+      "label": "IL",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/IL"
+    },
+    {
+      "also_types": [],
+      "id": "OR",
+      "label": "OR",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/OR"
+    },
+    {
+      "also_types": [],
+      "id": "TX",
+      "label": "TX",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/TX"
+    },
+    {
+      "also_types": [],
+      "id": "WA",
+      "label": "WA",
+      "rdf_type": "https://cograph.tech/types/State",
+      "type": "State",
+      "uri": "https://cograph.tech/entities/State/WA"
+    }
+  ],
+  "node_materializations": [
+    {
+      "label": "Bakery",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Bakery"
+    },
+    {
+      "label": "Breakfast",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Breakfast"
+    },
+    {
+      "label": "Brunch",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Brunch"
+    },
+    {
+      "label": "Cafe",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Cafe"
+    },
+    {
+      "label": "Coffee",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Coffee"
+    },
+    {
+      "label": "Dessert",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Dessert"
+    },
+    {
+      "label": "Espresso Bar",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Espresso_Bar"
+    },
+    {
+      "label": "Lunch",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Lunch"
+    },
+    {
+      "label": "Tea",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Tea"
+    },
+    {
+      "label": "Vegan",
+      "rdf_type": "https://cograph.tech/types/Category",
+      "uri": "https://cograph.tech/entities/Category/Vegan"
+    },
+    {
+      "label": "Austin",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Austin"
+    },
+    {
+      "label": "Chicago",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Chicago"
+    },
+    {
+      "label": "Denver",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Denver"
+    },
+    {
+      "label": "Portland",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Portland"
+    },
+    {
+      "label": "Santa Cruz",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Santa_Cruz"
+    },
+    {
+      "label": "Seattle",
+      "rdf_type": "https://cograph.tech/types/City",
+      "uri": "https://cograph.tech/entities/City/Seattle"
+    },
+    {
+      "label": "CA",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/CA"
+    },
+    {
+      "label": "CO",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/CO"
+    },
+    {
+      "label": "IL",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/IL"
+    },
+    {
+      "label": "OR",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/OR"
+    },
+    {
+      "label": "TX",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/TX"
+    },
+    {
+      "label": "WA",
+      "rdf_type": "https://cograph.tech/types/State",
+      "uri": "https://cograph.tech/entities/State/WA"
+    }
+  ],
+  "relationship_edges": [
+    {
+      "object": "https://cograph.tech/entities/Category/Breakfast",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/IL",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Chicago",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Bakery",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Breakfast",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Brunch",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Vegan",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/CA",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/TX",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Austin",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Santa_Cruz",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Cafe",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Lunch",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/CO",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Denver",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Bakery",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Breakfast",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OR",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/WA",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Portland",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Seattle",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Dessert",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/CO",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Denver",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Breakfast",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Cafe",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Lunch",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/TX",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Austin",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Bakery",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Tea",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/IL",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/WA",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Chicago",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Seattle",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Bakery",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Dessert",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/WA",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Seattle",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Cafe",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Tea",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/CO",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OR",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Denver",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Portland",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Brunch",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Cafe",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/CA",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Santa_Cruz",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Coffee",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
+      "predicate": "https://cograph.tech/onto/has_category",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "https://cograph.tech/entities/State/OR",
+      "predicate": "https://cograph.tech/onto/in_state",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "https://cograph.tech/entities/City/Portland",
+      "predicate": "https://cograph.tech/onto/located_in",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    }
+  ],
+  "types": [
+    {
+      "kind": "primary",
+      "name": "Category",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Category"
+    },
+    {
+      "kind": "primary",
+      "name": "City",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/City"
+    },
+    {
+      "kind": "primary",
+      "name": "CoffeeShop",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/CoffeeShop"
+    },
+    {
+      "kind": "primary",
+      "name": "State",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/State"
+    }
+  ]
+}

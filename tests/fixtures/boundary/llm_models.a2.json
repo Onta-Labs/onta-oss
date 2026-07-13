@@ -1,0 +1,769 @@
+{
+  "entities": [
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "200000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "3.0"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "aurora-large-v2"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "15.0"
+        }
+      ],
+      "id": "Aurora Large v2",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Nimbus AI",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "text",
+      "parent_chain": [],
+      "type_name": "Modality"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "image",
+      "parent_chain": [],
+      "type_name": "Modality"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "128000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.25"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "aurora-mini-v2"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "1.25"
+        }
+      ],
+      "id": "Aurora Mini v2",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "128000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "2.5"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "aurora-vision"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "10.0"
+        }
+      ],
+      "id": "Aurora Vision",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "audio",
+      "parent_chain": [],
+      "type_name": "Modality"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "32000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.9"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "meridian-70b"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "true"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.9"
+        }
+      ],
+      "id": "Meridian 70B",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Vantage Labs",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "32000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.2"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "meridian-8b"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "true"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.2"
+        }
+      ],
+      "id": "Meridian 8B",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "16000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.5"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "meridian-vision-34b"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "true"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.5"
+        }
+      ],
+      "id": "Meridian Vision 34B",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "1000000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "7.0"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "solstice-pro"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "21.0"
+        }
+      ],
+      "id": "Solstice Pro",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Helios Systems",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "video",
+      "parent_chain": [],
+      "type_name": "Modality"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "1000000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.15"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "solstice-flash"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.6"
+        }
+      ],
+      "id": "Solstice Flash",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "64000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.3"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "cinder-coder-15b"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "true"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.4"
+        }
+      ],
+      "id": "Cinder Coder 15B",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Emberform Research",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "64000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.3"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "cinder-base-15b"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "true"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.4"
+        }
+      ],
+      "id": "Cinder Base 15B",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "256000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "5.0"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "quillstar-opus"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "25.0"
+        }
+      ],
+      "id": "Quillstar Opus",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Lantern Intelligence",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "256000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "1.0"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "quillstar-sonnet"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "5.0"
+        }
+      ],
+      "id": "Quillstar Sonnet",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "8192"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.1"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "driftwood-7b"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "true"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.1"
+        }
+      ],
+      "id": "Driftwood 7B",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "32000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "1.2"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "halcyon-audio"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "2.4"
+        }
+      ],
+      "id": "Halcyon Audio",
+      "parent_chain": [],
+      "type_name": "Model"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "integer",
+          "name": "context_length",
+          "value": "16000"
+        },
+        {
+          "datatype": "float",
+          "name": "input_price",
+          "value": "0.05"
+        },
+        {
+          "datatype": "string",
+          "name": "model_id",
+          "value": "tessellate-mini"
+        },
+        {
+          "datatype": "boolean",
+          "name": "open_source",
+          "value": "false"
+        },
+        {
+          "datatype": "float",
+          "name": "output_price",
+          "value": "0.15"
+        }
+      ],
+      "id": "Tessellate Mini",
+      "parent_chain": [],
+      "type_name": "Model"
+    }
+  ],
+  "relationships": [
+    {
+      "predicate": "developed_by",
+      "source_id": "Aurora Large v2",
+      "target_id": "Nimbus AI"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Aurora Large v2",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Aurora Large v2",
+      "target_id": "image"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Aurora Mini v2",
+      "target_id": "Nimbus AI"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Aurora Mini v2",
+      "target_id": "text"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Aurora Vision",
+      "target_id": "Nimbus AI"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Aurora Vision",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Aurora Vision",
+      "target_id": "image"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Aurora Vision",
+      "target_id": "audio"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Meridian 70B",
+      "target_id": "Vantage Labs"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Meridian 70B",
+      "target_id": "text"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Meridian 8B",
+      "target_id": "Vantage Labs"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Meridian 8B",
+      "target_id": "text"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Meridian Vision 34B",
+      "target_id": "Vantage Labs"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Meridian Vision 34B",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Meridian Vision 34B",
+      "target_id": "image"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Solstice Pro",
+      "target_id": "Helios Systems"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Solstice Pro",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Solstice Pro",
+      "target_id": "image"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Solstice Pro",
+      "target_id": "audio"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Solstice Pro",
+      "target_id": "video"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Solstice Flash",
+      "target_id": "Helios Systems"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Solstice Flash",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Solstice Flash",
+      "target_id": "image"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Cinder Coder 15B",
+      "target_id": "Emberform Research"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Cinder Coder 15B",
+      "target_id": "text"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Cinder Base 15B",
+      "target_id": "Emberform Research"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Cinder Base 15B",
+      "target_id": "text"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Quillstar Opus",
+      "target_id": "Lantern Intelligence"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Quillstar Opus",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Quillstar Opus",
+      "target_id": "image"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Quillstar Sonnet",
+      "target_id": "Lantern Intelligence"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Quillstar Sonnet",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Quillstar Sonnet",
+      "target_id": "image"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Driftwood 7B",
+      "target_id": "Emberform Research"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Driftwood 7B",
+      "target_id": "text"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Halcyon Audio",
+      "target_id": "Helios Systems"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Halcyon Audio",
+      "target_id": "text"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Halcyon Audio",
+      "target_id": "audio"
+    },
+    {
+      "predicate": "developed_by",
+      "source_id": "Tessellate Mini",
+      "target_id": "Nimbus AI"
+    },
+    {
+      "predicate": "supports_modality",
+      "source_id": "Tessellate Mini",
+      "target_id": "text"
+    }
+  ]
+}

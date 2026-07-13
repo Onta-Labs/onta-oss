@@ -1,0 +1,911 @@
+{
+  "attribute_declarations": [
+    {
+      "kind": "literal",
+      "name": "employees",
+      "range": "http://www.w3.org/2001/XMLSchema#integer",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/employees"
+    },
+    {
+      "kind": "literal",
+      "name": "headquarters",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/headquarters"
+    },
+    {
+      "kind": "relationship",
+      "name": "in_industry",
+      "range": "https://cograph.tech/types/Industry",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/in_industry"
+    },
+    {
+      "kind": "relationship",
+      "name": "in_sector",
+      "range": "https://cograph.tech/types/Sector",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/in_sector"
+    },
+    {
+      "kind": "relationship",
+      "name": "led_by",
+      "range": "https://cograph.tech/types/Person",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/led_by"
+    },
+    {
+      "kind": "literal",
+      "name": "market_cap",
+      "range": "http://www.w3.org/2001/XMLSchema#integer",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/market_cap"
+    },
+    {
+      "kind": "literal",
+      "name": "ticker",
+      "range": "http://www.w3.org/2001/XMLSchema#string",
+      "type": "Company",
+      "uri": "https://cograph.tech/types/Company/attrs/ticker"
+    }
+  ],
+  "entities": [
+    {
+      "also_types": [],
+      "id": "Argent Exchange Group",
+      "label": "Argent Exchange Group",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "also_types": [],
+      "id": "Cobalt Grid Utilities",
+      "label": "Cobalt Grid Utilities",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "also_types": [],
+      "id": "Crestwood Biologics",
+      "label": "Crestwood Biologics",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "also_types": [],
+      "id": "Greenfield Grocers Corp",
+      "label": "Greenfield Grocers Corp",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "also_types": [],
+      "id": "Harvest Mills Foods",
+      "label": "Harvest Mills Foods",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "also_types": [],
+      "id": "Helix Pharmaceuticals",
+      "label": "Helix Pharmaceuticals",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "also_types": [],
+      "id": "Lumenix Software",
+      "label": "Lumenix Software",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "also_types": [],
+      "id": "Meridian Trust Bancorp",
+      "label": "Meridian Trust Bancorp",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "also_types": [],
+      "id": "Nimbus Aerospace Corporation",
+      "label": "Nimbus Aerospace Corporation",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "also_types": [],
+      "id": "Pinnacle Refining Company",
+      "label": "Pinnacle Refining Company",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "also_types": [],
+      "id": "Solstice Semiconductor",
+      "label": "Solstice Semiconductor",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "also_types": [],
+      "id": "Solstice Semiconductor Materials",
+      "label": "Solstice Semiconductor Materials",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "also_types": [],
+      "id": "Stonehaven Realty Trust",
+      "label": "Stonehaven Realty Trust",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "also_types": [],
+      "id": "Tidewater Energy Holdings",
+      "label": "Tidewater Energy Holdings",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "also_types": [],
+      "id": "Valdera Motors Inc",
+      "label": "Valdera Motors Inc",
+      "rdf_type": "https://cograph.tech/types/Company",
+      "type": "Company",
+      "uri": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    },
+    {
+      "also_types": [],
+      "id": "Aerospace & Defense",
+      "label": "Aerospace & Defense",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Aerospace___Defense"
+    },
+    {
+      "also_types": [],
+      "id": "Application Software",
+      "label": "Application Software",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Application_Software"
+    },
+    {
+      "also_types": [],
+      "id": "Automobiles",
+      "label": "Automobiles",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Automobiles"
+    },
+    {
+      "also_types": [],
+      "id": "Biotechnology",
+      "label": "Biotechnology",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Biotechnology"
+    },
+    {
+      "also_types": [],
+      "id": "Electric Utilities",
+      "label": "Electric Utilities",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Electric_Utilities"
+    },
+    {
+      "also_types": [],
+      "id": "Financial Exchanges",
+      "label": "Financial Exchanges",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Financial_Exchanges"
+    },
+    {
+      "also_types": [],
+      "id": "Food Retail",
+      "label": "Food Retail",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Food_Retail"
+    },
+    {
+      "also_types": [],
+      "id": "Oil & Gas Exploration",
+      "label": "Oil & Gas Exploration",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Oil___Gas_Exploration"
+    },
+    {
+      "also_types": [],
+      "id": "Oil & Gas Refining",
+      "label": "Oil & Gas Refining",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Oil___Gas_Refining"
+    },
+    {
+      "also_types": [],
+      "id": "Packaged Foods",
+      "label": "Packaged Foods",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Packaged_Foods"
+    },
+    {
+      "also_types": [],
+      "id": "Pharmaceuticals",
+      "label": "Pharmaceuticals",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Pharmaceuticals"
+    },
+    {
+      "also_types": [],
+      "id": "Regional Banks",
+      "label": "Regional Banks",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Regional_Banks"
+    },
+    {
+      "also_types": [],
+      "id": "Retail REITs",
+      "label": "Retail REITs",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Retail_REITs"
+    },
+    {
+      "also_types": [],
+      "id": "Semiconductors",
+      "label": "Semiconductors",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "type": "Industry",
+      "uri": "https://cograph.tech/entities/Industry/Semiconductors"
+    },
+    {
+      "also_types": [],
+      "id": "Adelaide Fenwick",
+      "label": "Adelaide Fenwick",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Adelaide_Fenwick"
+    },
+    {
+      "also_types": [],
+      "id": "Ambrose Tillingham",
+      "label": "Ambrose Tillingham",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Ambrose_Tillingham"
+    },
+    {
+      "also_types": [],
+      "id": "Beatrix Sandoval",
+      "label": "Beatrix Sandoval",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Beatrix_Sandoval"
+    },
+    {
+      "also_types": [],
+      "id": "Cassia Wetherby",
+      "label": "Cassia Wetherby",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Cassia_Wetherby"
+    },
+    {
+      "also_types": [],
+      "id": "Cornelius Ashby",
+      "label": "Cornelius Ashby",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Cornelius_Ashby"
+    },
+    {
+      "also_types": [],
+      "id": "Desmond Larkspur",
+      "label": "Desmond Larkspur",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Desmond_Larkspur"
+    },
+    {
+      "also_types": [],
+      "id": "Ignatius Vandermeer",
+      "label": "Ignatius Vandermeer",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Ignatius_Vandermeer"
+    },
+    {
+      "also_types": [],
+      "id": "Lucinda Farnsworth",
+      "label": "Lucinda Farnsworth",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Lucinda_Farnsworth"
+    },
+    {
+      "also_types": [],
+      "id": "Marguerite Ollivander",
+      "label": "Marguerite Ollivander",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Marguerite_Ollivander"
+    },
+    {
+      "also_types": [],
+      "id": "Ophelia Brambleton",
+      "label": "Ophelia Brambleton",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Ophelia_Brambleton"
+    },
+    {
+      "also_types": [],
+      "id": "Persephone Callahan",
+      "label": "Persephone Callahan",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Persephone_Callahan"
+    },
+    {
+      "also_types": [],
+      "id": "Reginald Hawksworth",
+      "label": "Reginald Hawksworth",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Reginald_Hawksworth"
+    },
+    {
+      "also_types": [],
+      "id": "Signature withheld",
+      "label": "Signature withheld",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Signature_withheld"
+    },
+    {
+      "also_types": [],
+      "id": "Thaddeus Grimwald",
+      "label": "Thaddeus Grimwald",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "type": "Person",
+      "uri": "https://cograph.tech/entities/Person/Thaddeus_Grimwald"
+    },
+    {
+      "also_types": [],
+      "id": "Consumer Discretionary",
+      "label": "Consumer Discretionary",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Consumer_Discretionary"
+    },
+    {
+      "also_types": [],
+      "id": "Consumer Staples",
+      "label": "Consumer Staples",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Consumer_Staples"
+    },
+    {
+      "also_types": [],
+      "id": "Energy",
+      "label": "Energy",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Energy"
+    },
+    {
+      "also_types": [],
+      "id": "Financials",
+      "label": "Financials",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Financials"
+    },
+    {
+      "also_types": [],
+      "id": "Health Care",
+      "label": "Health Care",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Health_Care"
+    },
+    {
+      "also_types": [],
+      "id": "Industrials",
+      "label": "Industrials",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Industrials"
+    },
+    {
+      "also_types": [],
+      "id": "Information Technology",
+      "label": "Information Technology",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Information_Technology"
+    },
+    {
+      "also_types": [],
+      "id": "Real Estate",
+      "label": "Real Estate",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Real_Estate"
+    },
+    {
+      "also_types": [],
+      "id": "Utilities",
+      "label": "Utilities",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "type": "Sector",
+      "uri": "https://cograph.tech/entities/Sector/Utilities"
+    }
+  ],
+  "node_materializations": [
+    {
+      "label": "Aerospace & Defense",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Aerospace___Defense"
+    },
+    {
+      "label": "Application Software",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Application_Software"
+    },
+    {
+      "label": "Automobiles",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Automobiles"
+    },
+    {
+      "label": "Biotechnology",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Biotechnology"
+    },
+    {
+      "label": "Electric Utilities",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Electric_Utilities"
+    },
+    {
+      "label": "Financial Exchanges",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Financial_Exchanges"
+    },
+    {
+      "label": "Food Retail",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Food_Retail"
+    },
+    {
+      "label": "Oil & Gas Exploration",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Oil___Gas_Exploration"
+    },
+    {
+      "label": "Oil & Gas Refining",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Oil___Gas_Refining"
+    },
+    {
+      "label": "Packaged Foods",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Packaged_Foods"
+    },
+    {
+      "label": "Pharmaceuticals",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Pharmaceuticals"
+    },
+    {
+      "label": "Regional Banks",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Regional_Banks"
+    },
+    {
+      "label": "Retail REITs",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Retail_REITs"
+    },
+    {
+      "label": "Semiconductors",
+      "rdf_type": "https://cograph.tech/types/Industry",
+      "uri": "https://cograph.tech/entities/Industry/Semiconductors"
+    },
+    {
+      "label": "Adelaide Fenwick",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Adelaide_Fenwick"
+    },
+    {
+      "label": "Ambrose Tillingham",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Ambrose_Tillingham"
+    },
+    {
+      "label": "Beatrix Sandoval",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Beatrix_Sandoval"
+    },
+    {
+      "label": "Cassia Wetherby",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Cassia_Wetherby"
+    },
+    {
+      "label": "Cornelius Ashby",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Cornelius_Ashby"
+    },
+    {
+      "label": "Desmond Larkspur",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Desmond_Larkspur"
+    },
+    {
+      "label": "Ignatius Vandermeer",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Ignatius_Vandermeer"
+    },
+    {
+      "label": "Lucinda Farnsworth",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Lucinda_Farnsworth"
+    },
+    {
+      "label": "Marguerite Ollivander",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Marguerite_Ollivander"
+    },
+    {
+      "label": "Ophelia Brambleton",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Ophelia_Brambleton"
+    },
+    {
+      "label": "Persephone Callahan",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Persephone_Callahan"
+    },
+    {
+      "label": "Reginald Hawksworth",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Reginald_Hawksworth"
+    },
+    {
+      "label": "Signature withheld",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Signature_withheld"
+    },
+    {
+      "label": "Thaddeus Grimwald",
+      "rdf_type": "https://cograph.tech/types/Person",
+      "uri": "https://cograph.tech/entities/Person/Thaddeus_Grimwald"
+    },
+    {
+      "label": "Consumer Discretionary",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Consumer_Discretionary"
+    },
+    {
+      "label": "Consumer Staples",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Consumer_Staples"
+    },
+    {
+      "label": "Energy",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Energy"
+    },
+    {
+      "label": "Financials",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Financials"
+    },
+    {
+      "label": "Health Care",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Health_Care"
+    },
+    {
+      "label": "Industrials",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Industrials"
+    },
+    {
+      "label": "Information Technology",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Information_Technology"
+    },
+    {
+      "label": "Real Estate",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Real_Estate"
+    },
+    {
+      "label": "Utilities",
+      "rdf_type": "https://cograph.tech/types/Sector",
+      "uri": "https://cograph.tech/entities/Sector/Utilities"
+    }
+  ],
+  "relationship_edges": [
+    {
+      "object": "https://cograph.tech/entities/Industry/Financial_Exchanges",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Financials",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Thaddeus_Grimwald",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Argent_Exchange_Group"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Electric_Utilities",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Utilities",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Reginald_Hawksworth",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Cobalt_Grid_Utilities"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Biotechnology",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Health_Care",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Desmond_Larkspur",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Crestwood_Biologics"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Food_Retail",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Consumer_Staples",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Ambrose_Tillingham",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Greenfield_Grocers_Corp"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Packaged_Foods",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Consumer_Staples",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Lucinda_Farnsworth",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Harvest_Mills_Foods"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Pharmaceuticals",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Health_Care",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Beatrix_Sandoval",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Helix_Pharmaceuticals"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Application_Software",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Information_Technology",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Persephone_Callahan",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Lumenix_Software"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Regional_Banks",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Financials",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Cassia_Wetherby",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Meridian_Trust_Bancorp"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Aerospace___Defense",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Industrials",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Adelaide_Fenwick",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Nimbus_Aerospace_Corporation"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Oil___Gas_Refining",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Energy",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Signature_withheld",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Pinnacle_Refining_Company"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Semiconductors",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Information_Technology",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Ignatius_Vandermeer",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Semiconductors",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Information_Technology",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Ignatius_Vandermeer",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Solstice_Semiconductor_Materials"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Retail_REITs",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Real_Estate",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Ophelia_Brambleton",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Stonehaven_Realty_Trust"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Oil___Gas_Exploration",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Energy",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Marguerite_Ollivander",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Tidewater_Energy_Holdings"
+    },
+    {
+      "object": "https://cograph.tech/entities/Industry/Automobiles",
+      "predicate": "https://cograph.tech/onto/in_industry",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    },
+    {
+      "object": "https://cograph.tech/entities/Sector/Consumer_Discretionary",
+      "predicate": "https://cograph.tech/onto/in_sector",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    },
+    {
+      "object": "https://cograph.tech/entities/Person/Cornelius_Ashby",
+      "predicate": "https://cograph.tech/onto/led_by",
+      "subject": "https://cograph.tech/entities/Company/Valdera_Motors_Inc"
+    }
+  ],
+  "types": [
+    {
+      "kind": "primary",
+      "name": "Company",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Company"
+    },
+    {
+      "kind": "primary",
+      "name": "Industry",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Industry"
+    },
+    {
+      "kind": "primary",
+      "name": "Person",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Person"
+    },
+    {
+      "kind": "primary",
+      "name": "Sector",
+      "subclass_of": [],
+      "uri": "https://cograph.tech/types/Sector"
+    }
+  ]
+}
