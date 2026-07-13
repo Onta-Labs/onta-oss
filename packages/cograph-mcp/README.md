@@ -1,14 +1,13 @@
-# cograph-mcp
+# @onta/mcp
 
-MCP (Model Context Protocol) server for [Onta](https://onta.sh) (formerly Cograph). Gives AI agents tools to query, search, ingest, enrich, and manage your context graphs (knowledge graphs) in natural language.
+MCP (Model Context Protocol) server for [Onta](https://onta.sh). Gives AI agents tools to query, search, ingest, enrich, and manage your context graphs (knowledge graphs) in natural language.
 
 ## Install / run
 
-No install needed — use `npx`. Both package names run the same server:
+No install needed — use `npx`:
 
 ```bash
-npx -y onta-mcp      # new, preferred
-npx -y cograph-mcp   # still works (unchanged package name)
+npx -y @onta/mcp
 ```
 
 ## Claude Desktop / Cursor / Claude Code
@@ -18,7 +17,7 @@ npx -y cograph-mcp   # still works (unchanged package name)
   "mcpServers": {
     "onta": {
       "command": "npx",
-      "args": ["-y", "onta-mcp"],
+      "args": ["-y", "@onta/mcp"],
       "env": {
         "ONTA_API_KEY": "your-key",
         "ONTA_API_URL": "https://api.onta.sh",

@@ -1,4 +1,4 @@
-# Onta (formerly Cograph)
+# Onta
 
 Turn any CSV into a context graph — a knowledge graph you can query in natural language.
 
@@ -47,7 +47,7 @@ source .env && uvicorn cograph_client.api.app:create_app --factory --port 8000
 
 ```bash
 # Install the CLI (Node 20+)
-npm install -g onta
+npm install -g @onta/cli
 
 # Ingest the sample dataset (--local targets http://localhost:8000)
 onta --local ingest examples/bookstore.csv --kg bookstore
@@ -85,7 +85,7 @@ Natural Language Query -> SPARQL -> Answer
 
 ## CLI
 
-The Node CLI (`npm install -g onta`, requires Node 20+) covers both an interactive shell and one-shot subcommands. (Also published under the legacy name [`cograph`](https://www.npmjs.com/package/cograph) — same CLI.) Run bare `onta` to drop into the shell:
+The Node CLI (`npm install -g @onta/cli`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `onta` to drop into the shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -166,7 +166,7 @@ Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
   "mcpServers": {
     "onta": {
       "command": "npx",
-      "args": ["-y", "onta-mcp"]
+      "args": ["-y", "@onta/mcp"]
     }
   }
 }
@@ -176,7 +176,7 @@ Tools: `ask`, `search`, `agent`, `ingest_csv`, `list_knowledge_graphs`,
 `create_knowledge_graph`, `delete_knowledge_graph`, `view_ontology`,
 `evolve_ontology`, `apply_ontology_change(s)`, `schedule`, `list_jobs`,
 `get_job`, `wait_for_job`.
-See the [onta-mcp README](packages/cograph-mcp/README.md) for configuration.
+See the [@onta/mcp README](packages/cograph-mcp/README.md) for configuration.
 
 ## API
 
