@@ -1,0 +1,976 @@
+{
+  "entities": [
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "MD"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1841299301"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "440-555-0182"
+        }
+      ],
+      "id": "Dr. Marlowe Vantham",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Rivergate Medical Center",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Elmbrook",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "OH",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Family Medicine",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Geriatric Medicine",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "DO"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1770458823"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "440-555-0199"
+        }
+      ],
+      "id": "Dr. Priscilla Onwuka",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Internal Medicine",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Cardiology",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "NP"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1558832047"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "440-555-0210"
+        }
+      ],
+      "id": "Tamsin Brightwater",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "NursePractitioner"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "MD"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1902337761"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "216-555-0144"
+        }
+      ],
+      "id": "Dr. Everett Kaczmarek",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Summit Ridge Hospital",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Fallingwood",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Orthopedic Surgery",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "MD"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1663049928"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "216-555-0165"
+        }
+      ],
+      "id": "Dr. Yolanda Fereday",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Pediatrics",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Adolescent Medicine",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "PA-C"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1447720158"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "216-555-0178"
+        }
+      ],
+      "id": "Gideon Sparrowhawk",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "PhysicianAssistant"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "DO"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1385561120"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "313-555-0122"
+        }
+      ],
+      "id": "Dr. Constance Ilberis",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Lakeshore General Hospital",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Marrowdale",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "MI",
+      "parent_chain": [],
+      "type_name": "State"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Dermatology",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "NP"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1229948013"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "313-555-0137"
+        }
+      ],
+      "id": "Bartholomew Quimby",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "NursePractitioner"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Psychiatry",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Addiction Medicine",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "MD"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1994402278"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "313-555-0158"
+        }
+      ],
+      "id": "Dr. Seraphina Loxley",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Obstetrics and Gynecology",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "MD"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1071183345"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "989-555-0111"
+        }
+      ],
+      "id": "Dr. Ignatius Prewett",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Copperfield Clinic",
+      "parent_chain": [],
+      "type_name": "Organization"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Ashcombe",
+      "parent_chain": [],
+      "type_name": "City"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Neurology",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "PA-C"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1660027742"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "989-555-0126"
+        }
+      ],
+      "id": "Delphine Marchetti",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "PhysicianAssistant"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Urgent Care",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "false"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "DO"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1815563390"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "989-555-0143"
+        }
+      ],
+      "id": "Dr. Horatio Blackwood",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Gastroenterology",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "NP"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1502238861"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "440-555-0224"
+        }
+      ],
+      "id": "Rosalind Featherstone",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "NursePractitioner"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "MD"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1338890027"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "216-555-0191"
+        }
+      ],
+      "id": "Dr. Percival Underhill",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "Physician"
+    },
+    {
+      "also_types": [],
+      "attributes": [],
+      "id": "Ophthalmology",
+      "parent_chain": [],
+      "type_name": "Specialty"
+    },
+    {
+      "also_types": [],
+      "attributes": [
+        {
+          "datatype": "boolean",
+          "name": "accepting_new_patients",
+          "value": "true"
+        },
+        {
+          "datatype": "string",
+          "name": "credential",
+          "value": "PA-C"
+        },
+        {
+          "datatype": "string",
+          "name": "npi",
+          "value": "1247716609"
+        },
+        {
+          "datatype": "string",
+          "name": "phone",
+          "value": "313-555-0169"
+        }
+      ],
+      "id": "Ottoline Vasquez",
+      "parent_chain": [
+        "HealthcareProvider",
+        "Person"
+      ],
+      "type_name": "PhysicianAssistant"
+    }
+  ],
+  "relationships": [
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Marlowe Vantham",
+      "target_id": "Rivergate Medical Center"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Marlowe Vantham",
+      "target_id": "Elmbrook"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Marlowe Vantham",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Marlowe Vantham",
+      "target_id": "Family Medicine"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Marlowe Vantham",
+      "target_id": "Geriatric Medicine"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Priscilla Onwuka",
+      "target_id": "Rivergate Medical Center"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Priscilla Onwuka",
+      "target_id": "Elmbrook"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Priscilla Onwuka",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Priscilla Onwuka",
+      "target_id": "Internal Medicine"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Priscilla Onwuka",
+      "target_id": "Cardiology"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Tamsin Brightwater",
+      "target_id": "Rivergate Medical Center"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Tamsin Brightwater",
+      "target_id": "Elmbrook"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Tamsin Brightwater",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Tamsin Brightwater",
+      "target_id": "Family Medicine"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Everett Kaczmarek",
+      "target_id": "Summit Ridge Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Everett Kaczmarek",
+      "target_id": "Fallingwood"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Everett Kaczmarek",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Everett Kaczmarek",
+      "target_id": "Orthopedic Surgery"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Yolanda Fereday",
+      "target_id": "Summit Ridge Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Yolanda Fereday",
+      "target_id": "Fallingwood"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Yolanda Fereday",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Yolanda Fereday",
+      "target_id": "Pediatrics"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Yolanda Fereday",
+      "target_id": "Adolescent Medicine"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Gideon Sparrowhawk",
+      "target_id": "Summit Ridge Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Gideon Sparrowhawk",
+      "target_id": "Fallingwood"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Gideon Sparrowhawk",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Gideon Sparrowhawk",
+      "target_id": "Orthopedic Surgery"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Constance Ilberis",
+      "target_id": "Lakeshore General Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Constance Ilberis",
+      "target_id": "Marrowdale"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Constance Ilberis",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Constance Ilberis",
+      "target_id": "Dermatology"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Bartholomew Quimby",
+      "target_id": "Lakeshore General Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Bartholomew Quimby",
+      "target_id": "Marrowdale"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Bartholomew Quimby",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Bartholomew Quimby",
+      "target_id": "Psychiatry"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Bartholomew Quimby",
+      "target_id": "Addiction Medicine"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Seraphina Loxley",
+      "target_id": "Lakeshore General Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Seraphina Loxley",
+      "target_id": "Marrowdale"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Seraphina Loxley",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Seraphina Loxley",
+      "target_id": "Obstetrics and Gynecology"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Ignatius Prewett",
+      "target_id": "Copperfield Clinic"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Ignatius Prewett",
+      "target_id": "Ashcombe"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Ignatius Prewett",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Ignatius Prewett",
+      "target_id": "Neurology"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Delphine Marchetti",
+      "target_id": "Copperfield Clinic"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Delphine Marchetti",
+      "target_id": "Ashcombe"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Delphine Marchetti",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Delphine Marchetti",
+      "target_id": "Family Medicine"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Delphine Marchetti",
+      "target_id": "Urgent Care"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Horatio Blackwood",
+      "target_id": "Copperfield Clinic"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Horatio Blackwood",
+      "target_id": "Ashcombe"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Horatio Blackwood",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Horatio Blackwood",
+      "target_id": "Gastroenterology"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Horatio Blackwood",
+      "target_id": "Internal Medicine"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Rosalind Featherstone",
+      "target_id": "Rivergate Medical Center"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Rosalind Featherstone",
+      "target_id": "Elmbrook"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Rosalind Featherstone",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Rosalind Featherstone",
+      "target_id": "Geriatric Medicine"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Dr. Percival Underhill",
+      "target_id": "Summit Ridge Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Dr. Percival Underhill",
+      "target_id": "Fallingwood"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Dr. Percival Underhill",
+      "target_id": "OH"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Dr. Percival Underhill",
+      "target_id": "Ophthalmology"
+    },
+    {
+      "predicate": "affiliated_with",
+      "source_id": "Ottoline Vasquez",
+      "target_id": "Lakeshore General Hospital"
+    },
+    {
+      "predicate": "located_in",
+      "source_id": "Ottoline Vasquez",
+      "target_id": "Marrowdale"
+    },
+    {
+      "predicate": "in_state",
+      "source_id": "Ottoline Vasquez",
+      "target_id": "MI"
+    },
+    {
+      "predicate": "has_specialty",
+      "source_id": "Ottoline Vasquez",
+      "target_id": "Dermatology"
+    }
+  ]
+}

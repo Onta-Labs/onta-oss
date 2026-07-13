@@ -1,0 +1,488 @@
+{
+  "rejections": [],
+  "verified_facts": [
+    {
+      "object": "9 Tinderbox Alley",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "4.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "CS-1012",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+    },
+    {
+      "object": "330 Bluebonnet Trail",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "903 Seacliff Road",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "4.4^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "4.5^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "CS-1005",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "CS-1009",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+    },
+    {
+      "object": "205 Cobbler Court",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "3.8^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "CS-1015",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+    },
+    {
+      "object": "2200 Chestnut Avenue",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "812 Alder Street",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "4.1^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "4.6^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "CS-1001",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "CS-1003",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+    },
+    {
+      "object": "88 Lantern Way",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "$$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "4.7^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "CS-1007",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+    },
+    {
+      "object": "1204 Sparrow Street",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "3.9^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "CS-1008",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+    },
+    {
+      "object": "17 Wharfside Court",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "410 Kingfisher Plaza",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "$$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "4.6^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "4.8^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "CS-1004",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "CS-1011",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+    },
+    {
+      "object": "1450 Harborview Terrace",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "$$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "4.9^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "CS-1014",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+    },
+    {
+      "object": "45 Marmot Lane",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "560 Juniper Boulevard",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "false^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "4.0^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "4.3^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "CS-1002",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "CS-1006",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+    },
+    {
+      "object": "633 Meadowlark Drive",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "4.5^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "CS-1013",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+    },
+    {
+      "object": "76 Foundry Street",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/address",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "true^^http://www.w3.org/2001/XMLSchema#boolean",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "$$",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/price_level",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "4.2^^http://www.w3.org/2001/XMLSchema#float",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/rating",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    },
+    {
+      "object": "CS-1010",
+      "original_value": null,
+      "outcome": "OK",
+      "predicate": "https://cograph.tech/types/CoffeeShop/attrs/shop_id",
+      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+    }
+  ]
+}
