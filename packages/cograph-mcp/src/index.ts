@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Client, CographError, isTerminalJobStatus } from "@onta/cli";
+import { Client, OntaError, isTerminalJobStatus } from "@onta/cli";
 import type {
   AgentResult,
   JobCategory,
@@ -77,7 +77,7 @@ function textResult(text: string) {
 
 function errorResult(err: unknown) {
   const msg =
-    err instanceof CographError
+    err instanceof OntaError
       ? `Onta error: ${err.message}`
       : err instanceof Error
         ? err.message
@@ -684,7 +684,7 @@ async function readScheduleResponse<T>(resp: Response): Promise<T> {
     } catch {
       /* body already consumed / empty */
     }
-    throw new CographError(
+    throw new OntaError(
       `schedules request failed (HTTP ${resp.status})${detail ? `: ${detail}` : ""}`,
     );
   }
@@ -762,7 +762,7 @@ server.registerTool(
 
       if (!kg_name) {
         return errorResult(
-          new CographError("kg_name is required to create a schedule."),
+          new OntaError("kg_name is required to create a schedule."),
         );
       }
       const intervalByCadence = {
