@@ -1,0 +1,342 @@
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  6%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+..............s......................................................... [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 19%]
+...............................................ss....................... [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+.........................s.............................................. [ 27%]
+........................................................................ [ 29%]
+........................................................................ [ 31%]
+........................................................................ [ 33%]
+.........................................sssss..........s............... [ 36%]
+........................................................................ [ 38%]
+........F............................................................... [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+..........................................................FFFFF......... [ 53%]
+..............................................................F......... [ 55%]
+....................s................................................... [ 57%]
+.................ssssssss............................................... [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+.......................F................................................ [ 65%]
+........................................................................ [ 67%]
+.................s...................................................... [ 69%]
+........................................................................ [ 72%]
+.......................................s.s.s.s.s.s.s.s.s.ss............. [ 74%]
+...................ssssssssssssssssss................................... [ 76%]
+.................................................................sssssss [ 78%]
+sssssssssssss.s.s....................................................... [ 80%]
+........................................................................ [ 82%]
+.........s.............................................................. [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 89%]
+........................................................................ [ 91%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+............                                                             [100%]
+=================================== FAILURES ===================================
+____________ test_ask_with_layer_graph_uris_widens_generated_query _____________
+
+mock_neptune = <AsyncMock spec='NeptuneClient' id='139821936811792'>
+
+    @pytest.mark.asyncio
+    async def test_ask_with_layer_graph_uris_widens_generated_query(mock_neptune):
+        from cograph_client.nlp.pipeline import NLQueryPipeline
+    
+        mock_neptune.query.return_value = {
+            "head": {"vars": ["name"]},
+            "results": {"bindings": [{"name": {"type": "literal", "value": "Ritz"}}]},
+        }
+        pipeline = NLQueryPipeline(mock_neptune, "fake-key")
+        stack = LayerStack(TENANT_GRAPH, entitled=False)
+        generated = (
+            f"SELECT ?name FROM <{TENANT_GRAPH}> WHERE {{ "
+            f"?h a <https://cograph.tech/types/Hotel> . "
+            f"?h <https://cograph.tech/types/Hotel/attrs/name> ?name }}"
+        )
+        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = _mock_llm_message(generated)
+            result = await pipeline.ask(
+                "What hotels exist?", TENANT_GRAPH,
+                layer_graph_uris=stack.visible_graph_uris(),
+            )
+        # Executed query is widened to every visible layer and closure-rewritten.
+>       assert f"FROM <{public_graph_uri()}>" in result.sparql
+E       assert 'FROM <https://cograph.tech/graphs/global/public>' in ''
+E        +  where '' = NLResult(answer="Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openro..., 'ontology_source': 'full', 'ontology_fetch_ms': 0.1, 'examples_retrieved': 3.0, 'total_ms': 2734.8, 'attempts': 3.0}).sparql
+
+tests/test_layer_aware_closure.py:346: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-07-14 06:17:51 [warning  ] ask_attempt_failed             attempt=0 error="Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400" question='What hotels exist?'
+2026-07-14 06:17:52 [warning  ] ask_attempt_failed             attempt=1 error="Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400" question='What hotels exist?'
+2026-07-14 06:17:52 [warning  ] ask_attempt_failed             attempt=2 error="Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400" question='What hotels exist?'
+_______________________________ test_ask_success _______________________________
+
+pipeline = <cograph_client.nlp.pipeline.NLQueryPipeline object at 0x7f2ad50a8830>
+mock_neptune = <AsyncMock id='139821939590976'>
+
+    @pytest.mark.asyncio
+    async def test_ask_success(pipeline, mock_neptune):
+        llm_response = json.dumps({
+            "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
+            "explanation": "Finds all names",
+            "functions_needed": [],
+        })
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=llm_response)]
+    
+        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_message
+            result = await pipeline.ask("What places exist?", "https://cograph.tech/graphs/t1")
+    
+>       assert result.answer == "Central Park"
+E       AssertionError: assert 'Could not an...TP/Status/400' == 'Central Park'
+E         
+E         - Central Park
+E         + Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'
+E         + For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+tests/test_pipeline.py:42: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 0, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "What places exist?", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:15.920284Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 1, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "What places exist?", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:16.476913Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 2, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "What places exist?", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:17.639663Z"}
+___________________________ test_ask_invalid_sparql ____________________________
+
+pipeline = <cograph_client.nlp.pipeline.NLQueryPipeline object at 0x7f2ad54985f0>
+
+    @pytest.mark.asyncio
+    async def test_ask_invalid_sparql(pipeline):
+        llm_response = json.dumps({
+            "sparql": "DELETE WHERE { ?s ?p ?o }",
+            "explanation": "Tried to delete",
+            "functions_needed": [],
+        })
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=llm_response)]
+    
+        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_message
+            result = await pipeline.ask("Delete everything", "https://cograph.tech/graphs/t1")
+    
+        assert "Could not" in result.answer
+>       assert "DELETE" in result.answer or "DELETE" in result.sparql
+E       assert ('DELETE' in "Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400" or 'DELETE' in '')
+E        +  where "Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400" = NLResult(answer="Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openro..., 'ontology_source': 'full', 'ontology_fetch_ms': 0.1, 'examples_retrieved': 3.0, 'total_ms': 3361.7, 'attempts': 3.0}).answer
+E        +  and   '' = NLResult(answer="Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openro..., 'ontology_source': 'full', 'ontology_fetch_ms': 0.1, 'examples_retrieved': 3.0, 'total_ms': 3361.7, 'attempts': 3.0}).sparql
+
+tests/test_pipeline.py:62: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 0, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Delete everything", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:19.692633Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 1, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Delete everything", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:20.344146Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 2, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Delete everything", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:21.088388Z"}
+_____________________________ test_ask_no_results ______________________________
+
+pipeline = <cograph_client.nlp.pipeline.NLQueryPipeline object at 0x7f2ad53e2a20>
+mock_neptune = <AsyncMock id='139821942977936'>
+
+    @pytest.mark.asyncio
+    async def test_ask_no_results(pipeline, mock_neptune):
+        mock_neptune.query.side_effect = [
+            {"head": {"vars": ["p"]}, "results": {"bindings": []}},
+            {"head": {"vars": ["name"]}, "results": {"bindings": []}},
+        ]
+        llm_response = json.dumps({
+            "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
+            "explanation": "Search",
+            "functions_needed": [],
+        })
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=llm_response)]
+    
+        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_message
+            result = await pipeline.ask("Find something", "https://cograph.tech/graphs/t1")
+    
+>       assert result.answer == "No results found."
+E       AssertionError: assert 'Could not an...TP/Status/400' == 'No results found.'
+E         
+E         - No results found.
+E         + Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'
+E         + For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+tests/test_pipeline.py:83: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 0, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Find something", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:22.631529Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 1, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Find something", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:23.169622Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 2, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Find something", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:23.809518Z"}
+_______________________ test_ask_uses_semantic_retrieval _______________________
+
+pipeline = <cograph_client.nlp.pipeline.NLQueryPipeline object at 0x7f2ad5625c70>
+mock_neptune = <AsyncMock id='139821945354432'>
+
+    @pytest.mark.asyncio
+    async def test_ask_uses_semantic_retrieval(pipeline, mock_neptune):
+        """When embedding service returns ontology, pipeline uses it (not full fetch)."""
+        mock_svc = AsyncMock()
+        mock_svc.retrieve.return_value = "Type: Property\n  Attributes: price (integer)"
+    
+        llm_response = json.dumps({
+            "sparql": "SELECT ?price WHERE { ?s <https://cograph.tech/types/Property/attrs/price> ?price }",
+            "explanation": "Gets prices",
+            "functions_needed": [],
+        })
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=llm_response)]
+    
+        with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
+            with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_message
+                result = await pipeline.ask("What is the price?", "https://cograph.tech/graphs/t1")
+    
+>       assert result.answer == "Central Park"  # mock_neptune returns this
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'Could not an...TP/Status/400' == 'Central Park'
+E         
+E         - Central Park
+E         + Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'
+E         + For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+tests/test_pipeline.py:105: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 0, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "What is the price?", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:25.260246Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 1, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "What is the price?", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:25.990649Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 2, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "What is the price?", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:26.671812Z"}
+____________________ test_ask_falls_back_when_no_embeddings ____________________
+
+pipeline = <cograph_client.nlp.pipeline.NLQueryPipeline object at 0x7f2ad4f709e0>
+mock_neptune = <AsyncMock id='139821938320800'>
+
+    @pytest.mark.asyncio
+    async def test_ask_falls_back_when_no_embeddings(pipeline, mock_neptune):
+        """When embedding service returns None, pipeline falls back to full ontology."""
+        mock_svc = AsyncMock()
+        mock_svc.retrieve.return_value = None
+    
+        llm_response = json.dumps({
+            "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
+            "explanation": "Finds names",
+            "functions_needed": [],
+        })
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=llm_response)]
+    
+        with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
+            with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+                mock_create.return_value = mock_message
+                result = await pipeline.ask("Find something", "https://cograph.tech/graphs/t1")
+    
+        assert result.timing.get("ontology_source") == "full"
+>       assert result.answer == "Central Park"
+E       AssertionError: assert 'Could not an...TP/Status/400' == 'Central Park'
+E         
+E         - Central Park
+E         + Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'
+E         + For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+tests/test_pipeline.py:130: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 0, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Find something", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:28.235561Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 1, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Find something", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:28.828606Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 2, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "Find something", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:29.417489Z"}
+___________________ test_unbound_projection_column_reported ____________________
+
+pipeline = <cograph_client.nlp.pipeline.NLQueryPipeline object at 0x7f2ad53b6a20>
+mock_neptune = <AsyncMock id='139821946903184'>
+
+    @pytest.mark.asyncio
+    async def test_unbound_projection_column_reported(pipeline, mock_neptune):
+        """A projected var that binds in zero rows is reported, not silently omitted."""
+        mock_neptune.query.return_value = {
+            "head": {"vars": ["name", "latency"]},
+            "results": {
+                "bindings": [
+                    {"name": {"type": "literal", "value": "svc-a"}},
+                    {"name": {"type": "literal", "value": "svc-b"}},
+                ]
+            },
+        }
+        llm_response = json.dumps({
+            "sparql": "SELECT ?name ?latency WHERE { ?s <https://schema.org/name> ?name OPTIONAL { ?s <https://cograph.tech/types/Service/attrs/latency> ?latency } }",
+            "explanation": "svc",
+            "functions_needed": [],
+        })
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=llm_response)]
+        with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mc:
+            mc.return_value = mock_message
+            result = await pipeline.ask("services and latency", "https://cograph.tech/graphs/t1")
+    
+>       assert "latency" in result.answer
+E       assert 'latency' in "Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400"
+E        +  where "Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400" = NLResult(answer="Could not answer after 3 attempts. Last error: Client error '400 Bad Request' for url 'https://openro..., 'ontology_source': 'full', 'ontology_fetch_ms': 0.1, 'examples_retrieved': 3.0, 'total_ms': 2436.7, 'attempts': 3.0}).answer
+
+tests/test_pipeline_robustness.py:78: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 0, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "services and latency", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:42.328005Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 1, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "services and latency", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:42.907358Z"}
+WARNING  cograph.nlp.pipeline:pipeline.py:658 {"attempt": 2, "error": "Client error '400 Bad Request' for url 'https://openrouter.ai/api/v1/chat/completions'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400", "question": "services and latency", "event": "ask_attempt_failed", "logger": "cograph.nlp.pipeline", "level": "warning", "timestamp": "2026-07-14T06:18:43.363762Z"}
+__________ TestTypePlacementSameAs.test_same_as_maps_to_existing_type __________
+
+self = <tests.test_resolver_relationships.TestTypePlacementSameAs object at 0x7f2adecfa7e0>
+mock_neptune = <AsyncMock id='139821938426128'>
+mock_cache = <cograph_client.resolver.verdict_cache.JsonVerdictCache object at 0x7f2ad4c80740>
+
+    @pytest.mark.asyncio
+    async def test_same_as_maps_to_existing_type(self, mock_neptune, mock_cache):
+        """When LLM sets same_as, entity uses the existing type name."""
+        resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
+    
+        extraction = ExtractionResult(
+            entities=[
+                ExtractedEntity(
+                    type_name="Home",
+                    id="123-main",
+                    same_as="Property",
+                    attributes=[ExtractedAttribute(name="price", value="500000", datatype="integer")],
+                ),
+            ],
+            relationships=[],
+        )
+    
+        existing_types = {"Property": ""}
+        existing_attrs = {"Property": {}}
+    
+        with patch.object(resolver, "_extract", return_value=extraction):
+            with patch.object(resolver, "_fetch_ontology", return_value=(existing_types, existing_attrs)):
+                result = await resolver.ingest("A home at 123 Main", "test-tenant")
+    
+        # Should NOT have created a new "Home" type
+>       assert "Home" not in result.types_created
+E       AssertionError: assert 'Home' not in ['Home']
+E        +  where ['Home'] = IngestResult(batch_id='15b426e4-da72-59e8-9784-ecac92a03302', entities_extracted=1, entities_resolved=1, triples_inser...n', 'https://cograph.tech/types/Home/attrs/price', '500000^^http://www.w3.org/2001/XMLSchema#integer']], 'fan_in': []}).types_created
+
+tests/test_resolver_relationships.py:116: AssertionError
+=============================== warnings summary ===============================
+../../onta-oss/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /home/user/onta-oss/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_layer_aware_closure.py::test_ask_with_layer_graph_uris_widens_generated_query
+FAILED tests/test_pipeline.py::test_ask_success - AssertionError: assert 'Cou...
+FAILED tests/test_pipeline.py::test_ask_invalid_sparql - assert ('DELETE' in ...
+FAILED tests/test_pipeline.py::test_ask_no_results - AssertionError: assert '...
+FAILED tests/test_pipeline.py::test_ask_uses_semantic_retrieval - AssertionEr...
+FAILED tests/test_pipeline.py::test_ask_falls_back_when_no_embeddings - Asser...
+FAILED tests/test_pipeline_robustness.py::test_unbound_projection_column_reported
+FAILED tests/test_resolver_relationships.py::TestTypePlacementSameAs::test_same_as_maps_to_existing_type
+8 failed, 3316 passed, 72 skipped, 1 warning in 179.86s (0:02:59)
