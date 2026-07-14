@@ -136,6 +136,76 @@ from cograph_client.nlp.pipeline import NLQueryPipeline  # noqa: E402
 from cograph_client.pipeline.mutations import merge_entities  # noqa: E402
 
 
+# --------------------------------------------------------------------------- #
+# 1b. ONTA-278 follow-up: the sameAs rewrite must not corrupt VALUES / BIND /
+#     object-lists (a valid → INVALID SPARQL transform). When an entity IRI sits
+#     in one of those unsafe slots the rewrite BAILS OUT (returns the query
+#     unchanged); a plain triple elsewhere is still rewritten, and a plain FILTER
+#     operand is a safe slot (left untouched but does NOT trip the bail-out).
+# --------------------------------------------------------------------------- #
+def _parses(sparql: str) -> bool:
+    """True iff pyoxigraph can PARSE the query — a corrupt rewrite (a triple pattern
+    spliced into a VALUES block, a spliced BIND expression) raises here."""
+    try:
+        Store().query(sparql, use_default_graph_as_union=True)
+        return True
+    except (SyntaxError, ValueError):
+        return False
+
+
+def test_values_block_entity_ref_is_left_unchanged():
+    # A pinned entity inside a VALUES data block is NOT a triple subject/object;
+    # the old object rewrite spliced `?_sa . ?_sa (path) <E>` into `{ … }` → invalid.
+    q = (
+        f"SELECT ?e WHERE {{ GRAPH <{INSTANCE_GRAPH}> {{ ?e ?p ?o }} "
+        f"VALUES ?e {{ <{TWITTER}> }} }}"
+    )
+    out = rewrite_entity_ref_to_sameas_closure(q)
+    assert out == q, "a VALUES-block entity ref must be left untouched (bail-out)"
+    assert _parses(out), "the returned query must remain valid SPARQL"
+
+
+def test_bind_expression_entity_ref_is_left_unchanged():
+    # `BIND(<E> AS ?x)` — the old subject rewrite spliced a triple into the BIND
+    # expression (`<E> (path) ?_sa . ?_sa AS ?x`) → invalid.
+    q = (
+        f"SELECT ?x WHERE {{ GRAPH <{INSTANCE_GRAPH}> {{ "
+        f"BIND(<{TWITTER}> AS ?x) . ?x ?p ?o }} }}"
+    )
+    out = rewrite_entity_ref_to_sameas_closure(q)
+    assert out == q, "a BIND(<E> AS ?x) entity ref must be left untouched (bail-out)"
+    assert _parses(out)
+
+
+def test_object_list_entity_ref_is_left_unchanged():
+    # `?s <p> <E1>, <E2> .` — the classifier only reaches the LAST object, so it
+    # half-rewrote the group. Bail out instead of half-transforming.
+    q = (
+        f"SELECT ?s WHERE {{ GRAPH <{INSTANCE_GRAPH}> {{ "
+        f"?s <{OWNER}> <{TWITTER}>, <{XCORP}> }} }}"
+    )
+    out = rewrite_entity_ref_to_sameas_closure(q)
+    assert out == q, "a comma-continued object list must be left untouched (bail-out)"
+    assert _parses(out)
+
+
+def test_plain_triple_rewrite_survives_alongside_a_filter():
+    """ONTA-278 must NOT regress: a pinned-OBJECT plain triple is STILL rewritten even
+    when a plain FILTER operand (correctly a safe slot, left untouched) is present in
+    the same query — the FILTER must not trigger the bail-out."""
+    q = (
+        f"SELECT ?s WHERE {{ GRAPH <{INSTANCE_GRAPH}> {{ "
+        f"?s <{OWNER}> <{XCORP}> . FILTER(?s != <{TWITTER}>) }} }}"
+    )
+    out = rewrite_entity_ref_to_sameas_closure(q)
+    assert f"?s <{OWNER}> ?_sa0 . ?_sa0 {SAMEAS_PATH} <{XCORP}>" in out, (
+        "the pinned object triple must STILL gain the sameAs walk (no regression)"
+    )
+    # The FILTER operand entity IRI stays verbatim (a plain FILTER is a safe slot).
+    assert f"FILTER(?s != <{TWITTER}>)" in out
+    assert _parses(out)
+
+
 class PyoxiNeptune:
     """Minimal NeptuneClient shim over an in-process pyoxigraph Store — async
     query()/update() returning SPARQL-1.1 JSON, union-of-named-graphs default

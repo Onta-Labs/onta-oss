@@ -11,8 +11,15 @@ That reversibility is exactly WRONG for a retraction: a value a user (or an
 explicit retraction) deemed no-longer-true must NOT silently come back the next
 time a scraper re-observes it. Suppression is the complementary, *irreversible*
 signal — a value on the suppression list stays off no matter how many times a
-refresh re-scrapes it, until an explicit un-suppress (or a ``user_assertion``
-re-asserting that exact value) clears it.
+refresh re-scrapes it. The marker is cleared ONLY by an EXPLICIT un-suppress
+(:func:`clear_suppression_update`), which is provided for that purpose but is not
+yet invoked by any caller (no un-suppress endpoint is wired yet — the builder is
+kept for that future path). A ``user_assertion`` that RE-ASSERTS the exact value
+is a SEPARATE mechanism, not an implicit un-suppress: it makes the value current
+again through ``supersede_fact``'s reopen regardless of the marker, and a later
+refresh that re-scrapes a now-current value is skipped harmlessly (it is already
+the current fact). So a human re-assertion takes effect without NEEDING the mark
+cleared, and this module does not clear it on their behalf.
 
 **Why a SEPARATE companion graph (not another validity predicate).** A validity
 node is keyed by ``sha1(s|p|o)`` and ``reopen_facts`` clears its closure
@@ -168,12 +175,18 @@ def clear_suppression_update(
 ) -> str:
     """Build the update that CLEARS a value's suppression mark (un-suppress).
 
-    The ONLY way a suppression is lifted: an explicit un-suppress, or a
-    ``user_assertion`` re-asserting that exact value. Composes the
-    ``graph/queries.py`` DELETE builder against the companion suppression graph —
-    this module never hand-rolls raw SPARQL — so it stays free of write markers the
-    way ``validity.reopen_interval_update`` does. Returns ``""`` when
-    subject/predicate is missing (nothing to clear).
+    This is the ONE mechanism that lifts a suppression: an EXPLICIT un-suppress
+    built here. It is provided for that purpose but is NOT yet invoked by any caller
+    (no un-suppress endpoint is wired yet — the builder is retained for that future
+    path). A ``user_assertion`` re-asserting the exact value does NOT route through
+    here and is not an implicit un-suppress: it makes the value current again via
+    ``supersede_fact``'s reopen regardless of the marker, and a subsequent refresh
+    that re-scrapes a now-current value is skipped harmlessly — so a re-assertion
+    takes effect without the mark being cleared, and this builder is not called on
+    its behalf. Composes the ``graph/queries.py`` DELETE builder against the
+    companion suppression graph — this module never hand-rolls raw SPARQL — so it
+    stays free of write markers the way ``validity.reopen_interval_update`` does.
+    Returns ``""`` when subject/predicate is missing (nothing to clear).
     """
     if not subject or not predicate:
         return ""

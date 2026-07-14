@@ -785,6 +785,41 @@ _ENTITIES_URI = "https://cograph.tech/entities/"
 _SAMEAS_PATH = f"(<{SAME_AS}>|^<{SAME_AS}>)*"
 
 
+def _entity_ref_in_unsafe_slot(sparql: str, ent: str) -> bool:
+    """True when an ``…/entities/…`` IRI appears somewhere the sameAs rewrite cannot
+    safely transform — inside a ``VALUES`` data block, inside a ``BIND(...)``
+    expression, or adjacent to a ``,`` object-list separator. Used by
+    :func:`rewrite_entity_ref_to_sameas_closure` to DECLINE (return unchanged)
+    rather than corrupt such a query; see that function's SAFETY BAIL-OUT note.
+
+    ``ent`` is the entity-IRI regex fragment the caller already built.
+    """
+    import re
+
+    ent_re = re.compile(ent)
+
+    # (a) A `VALUES ?v { … }` / `VALUES (?a ?b) { … }` data block referencing an
+    #     entity IRI — rewriting there would splice a triple pattern into `{ … }`.
+    for m in re.finditer(r"VALUES\b.*?\{.*?\}", sparql, re.IGNORECASE | re.DOTALL):
+        if ent_re.search(m.group(0)):
+            return True
+
+    # (b) A `BIND( … )` expression referencing an entity IRI (e.g. `BIND(<E> AS ?x)`).
+    #     Non-greedy to the first `)` is sufficient for the shapes an entity IRI
+    #     appears in; over-matching would only make this guard more conservative.
+    for m in re.finditer(r"BIND\s*\(.*?\)", sparql, re.IGNORECASE | re.DOTALL):
+        if ent_re.search(m.group(0)):
+            return True
+
+    # (c) A `,`-continued object list where an entity IRI abuts the comma on either
+    #     side — the classifier can only reach the LAST object, so it half-rewrites
+    #     the group. (A plain `FILTER(?x = <E>)` has no such comma and is safe.)
+    if re.search(ent + r"\s*,", sparql) or re.search(r",\s*" + ent, sparql):
+        return True
+
+    return False
+
+
 def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
     """Expand a concrete ``…/entities/<Type>/<id>`` reference to a sameAs walk so a
     MERGED entity (ONTA-274) resolves under EITHER alias.
@@ -803,8 +838,8 @@ def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
     The read-path mirror of :func:`rewrite_type_predicate_to_closure` (subclass
     closure): a pure, deterministic SPARQL property-path rewrite — no ontology
     lookup, no Neptune round-trip, no LLM. The zero-length ``*`` step means an
-    un-merged entity still matches itself, so the rewrite is safe to apply
-    unconditionally.
+    un-merged entity still matches itself, so applying the rewrite to a plain-triple
+    query is always semantics-preserving.
 
     Scoped and idempotent by construction:
       - Only ``https://cograph.tech/entities/…`` IRIs are touched — a ``types/`` /
@@ -812,18 +847,37 @@ def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
         so this never disturbs the subclass-closure or attribute rewrites.
       - SUBJECT/OBJECT position is classified by the following token: an entity IRI
         followed by another TERM is a subject; one followed by a triple terminator
-        (``.`` / ``}`` / end) is an object. A ``,`` / ``;`` continuation object list
-        and a FILTER/VALUES operand are deliberately NOT rewritten (mis-attaching a
-        shared subject/predicate would corrupt the query) — best-effort safety net,
-        not a SPARQL parser, exactly like the closure rewriter.
-      - A reference already followed (subject) or preceded (object) by the sameAs
-        path is skipped, so running the rewrite twice equals running it once.
+        (``.`` / ``}`` / end) is an object. A reference already followed (subject)
+        or preceded (object) by the sameAs path is skipped, so running the rewrite
+        twice equals running it once.
+
+    SAFETY BAIL-OUT (this is a best-effort string transform, NOT a SPARQL parser):
+    the position classifier above only holds for an entity IRI in a plain triple
+    slot. An entity IRI sitting inside a ``VALUES`` data block, a ``BIND(...)``
+    expression, or a ``,``-continued object list is NOT in such a slot, and blindly
+    rewriting it there produces invalid or semantically-wrong SPARQL — a triple
+    pattern spliced into a ``VALUES { … }`` block, a stray ``. ?_sa .`` inside a
+    ``BIND(…)`` expression, or a half-rewritten object list where only the final
+    object gains the walk. Detecting those constructs precisely is beyond a regex,
+    so when ANY of them references an entity IRI this function DECLINES the rewrite
+    and returns the query UNCHANGED (:func:`_entity_ref_in_unsafe_slot`). That
+    degrades gracefully: the un-merged entity still matches itself, so a query with
+    an unsafe construct simply does not resolve a merged ALIAS — it is never
+    corrupted. A plain FILTER operand (``FILTER(?x = <E>)``) is left untouched by
+    the classifier itself and does NOT trigger the bail-out, so a query mixing a
+    pinned-object triple with a FILTER still gets its triple rewritten.
 
     Pure string transform — unit-testable with a plain SPARQL string.
     """
     import re
 
     ent = "<" + re.escape(_ENTITIES_URI) + r"[^>\s]+>"
+
+    # Bail out (return the query unchanged) when an entity IRI sits in a slot the
+    # position classifier below cannot safely handle — see the SAFETY BAIL-OUT note.
+    if _entity_ref_in_unsafe_slot(sparql, ent):
+        return sparql
+
     # The walk we insert always starts with ``(<…sameAs>`` — the idempotence guard.
     sameas_open = re.escape("(<" + SAME_AS + ">")
 
