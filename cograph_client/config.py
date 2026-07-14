@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     embeddings_s3_prefix: str = "omnix/embeddings"
     embeddings_top_k: int = 15
 
+    # HARD per-run spend ceiling (USD) for a discovery / enrichment run — the A9
+    # cost envelope (ONTA-282). A run whose cumulative attributable spend crosses
+    # this dollar amount HALTS CLEANLY at the ceiling: terminal `failed` with a
+    # cost-envelope reason and an honest partial-coverage A9 manifest, instead of
+    # silently continuing to overspend. 0.0 (the default) ⇒ UNLIMITED (no ceiling),
+    # so every existing run is unchanged; a per-run override (EnrichJob
+    # `spend_ceiling_usd`) wins when set. env: OMNIX_ENRICH_SPEND_CEILING_USD.
+    enrich_spend_ceiling_usd: float = 0.0
+
     # Optional Postgres DSN (env OMNIX_DATABASE_URL). When set, the durable
     # PostgresJobStore is used for tracked jobs; when empty, jobs are kept in
     # process memory. This is a GENERIC DSN — any Postgres (local, Aurora, Neon,

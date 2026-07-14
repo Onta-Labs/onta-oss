@@ -248,6 +248,15 @@ class Verdict(BaseModel):
     grounding_score: Optional[float] = None
     extraction_method: Optional[str] = None
     calibration_method: Optional[str] = None
+    # Source-authority level this verdict was produced under (an
+    # ``api_registry.spec.AuthorityLevel`` value string, e.g. ``"source_of_truth"``),
+    # threaded into P6 write-time conflict resolution (ONTA-279) so a refresh's fresh
+    # value is ranked against the existing current value on the ONE shared authority
+    # scale. Optional/None: a plain machine scrape carries no explicit authority and
+    # the executor defaults it to a sensible non-top level (never ``user_assertion``,
+    # which is minted only by the human-correction write path). A registry-backed or
+    # premium adapter MAY stamp its curated ``authority_level`` here.
+    authority: Optional[str] = None
 
 
 RowAction = Literal["filled", "verified", "conflict", "skipped", "no_match"]
@@ -428,6 +437,13 @@ class EnrichJob(BaseModel):
     next_run: Optional[datetime] = None
     cost: Optional[float] = None
     cost_note: Optional[str] = None
+    # Optional HARD per-run spend ceiling (USD) — the A9 cost envelope (ONTA-282).
+    # ``None`` ⇒ fall back to the deployment default (config
+    # ``enrich_spend_ceiling_usd``); ``0`` ⇒ unlimited. When the effective ceiling
+    # is > 0, the run HALTS CLEANLY once cumulative attributable spend reaches it
+    # (terminal ``failed`` + cost-envelope reason + honest partial coverage on the
+    # manifest). Optional / default ``None`` so every existing job is unchanged.
+    spend_ceiling_usd: Optional[float] = None
     # Discovery/web-ingest summary fields (COG — realtime job status). Both
     # optional with safe defaults so enrichment/dedupe job construction is
     # unchanged. ``result_count`` is the headline "how many records were found"
