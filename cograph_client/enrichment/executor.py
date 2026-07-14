@@ -32,7 +32,13 @@ from cograph_client.enrichment.models import (
     RowResult,
     Verdict,
 )
-from cograph_client.pipeline.manifest import HaltReasonKind, RunManifest
+from cograph_client.config import settings
+from cograph_client.pipeline.manifest import (
+    HaltReasonKind,
+    RunManifest,
+    resolve_spend_ceiling,
+)
+from cograph_client.retrieval.cost import source_cost
 from cograph_client.enrichment.sources.base import (
     SourceAdapter,
     get_adapter,
@@ -1234,6 +1240,14 @@ class EnrichmentExecutor:
         if job.manifest is None:
             job.manifest = RunManifest(run_id=job.id, stage="enrichment")
         manifest = job.manifest
+        # A9 cost envelope (ONTA-282): stamp the HARD per-run spend ceiling before
+        # work starts. A per-job override (job.spend_ceiling_usd) wins; else the
+        # deployment default (config). None/0 ⇒ unlimited (unchanged behavior). The
+        # per-item spend feed below (via _lookup_chain) + the check in
+        # process_entity then halt the run cleanly if it crosses this envelope.
+        manifest.spend_ceiling_usd = resolve_spend_ceiling(
+            getattr(job, "spend_ceiling_usd", None), settings.enrich_spend_ceiling_usd
+        )
         manifest.start()
         try:
             job.status = JobStatus.running
@@ -1404,6 +1418,7 @@ class EnrichmentExecutor:
                             effective_confidence,
                             strategy_version,
                             tally=tally,
+                            manifest=manifest,
                         )
                         best = self._pick_best(verdicts, effective_confidence)
 
@@ -1450,6 +1465,19 @@ class EnrichmentExecutor:
                             manifest.record_completed(
                                 f"{ent['uri']}#{attribute}"
                             )
+                            # A9 cost envelope (ONTA-282): the item's paid adapter
+                            # calls fed their spend into the manifest as they ran
+                            # (see _lookup_chain). If cumulative run spend has now
+                            # reached the HARD per-run ceiling, HALT CLEANLY — raise
+                            # the typed CostCeilingExceeded so it propagates to the
+                            # outer `except` → halt_from_exception, the SAME terminal
+                            # path a 402 takes (terminal `failed`, `cost_ceiling`
+                            # kind, honest partial coverage), never a silent
+                            # overspend. Checked under counter_lock so exactly one
+                            # worker trips it. None/0 ceiling ⇒ never trips.
+                            ceiling_error = manifest.check_ceiling()
+                            if ceiling_error is not None:
+                                raise ceiling_error
                             if counter["n"] % PROGRESS_FLUSH_EVERY == 0:
                                 await self._jobs.update(job)
                 return results
@@ -1776,6 +1804,7 @@ class EnrichmentExecutor:
         confidence_min: float,
         strategy_version: str = "v1",
         tally: Optional["_ProviderTally"] = None,
+        manifest: Optional[RunManifest] = None,
     ) -> list[Verdict]:
         """Walk an adapter chain, returning verdicts from the first adapter
         that yields one with confidence >= confidence_min.
@@ -1784,6 +1813,11 @@ class EnrichmentExecutor:
           around each adapter call, not an adapter itself).
         - Unregistered adapter names are skipped with a one-shot warning per
           job, never fail the job.
+        - ``manifest`` (A9 cost envelope, ONTA-282): when supplied, the cost of
+          every PAID adapter call actually ISSUED here (the non-cache branch) is
+          fed into ``manifest.add_spend`` so the per-run ceiling check in
+          ``process_entity`` can halt the run before it overspends. Cache hits are
+          free and add nothing; a free adapter adds $0.
         """
         cache_hit_counted = False
         for name in chain:
@@ -1879,6 +1913,17 @@ class EnrichmentExecutor:
                     job.type_name,
                     strategy_version,
                 )
+                # A9 cost envelope (ONTA-282): a PAID adapter call was actually
+                # issued (this is the non-cache branch) — feed its cost into the
+                # run manifest's spend-to-date so the per-run ceiling check can
+                # halt the run before it overspends. Cost is incurred whether the
+                # call matched, no-matched, timed out, or errored (the paid request
+                # went out either way). source_cost reads the adapter's cost
+                # defensively (free default), so a free adapter adds $0.
+                if manifest is not None:
+                    _is_paid, _cost_per_call = source_cost(adapter)
+                    if _cost_per_call > 0.0:
+                        manifest.add_spend(_cost_per_call)
             # URL-valued attributes (website, *_url, datatype uri): the answer is
             # a URL, and a single-pass extractor run over page text otherwise
             # lifts page chrome ("Skip to content", "Platform") or the entity

@@ -40,6 +40,25 @@ class FetchError(RetrievalError):
     host). Raised by the fetch layer only under :attr:`FetchErrorPolicy.RAISE`."""
 
 
+# --- Cost envelope (ONTA-282) ----------------------------------------------- #
+
+
+class CostCeilingExceeded(RetrievalError):
+    """The run's HARD per-run spend ceiling (the A9 cost envelope, ONTA-282) was
+    reached: cumulative attributable ``spend_usd`` crossed the run's
+    ``spend_ceiling_usd``.
+
+    This is a GOVERNANCE halt, NOT provider exhaustion — the LLM/adapter account
+    is fine; the OPERATOR-set budget for THIS run is spent. It is raised by the
+    driver loops (enrichment executor, discovery web-ingest) and routed through the
+    SAME terminal-halt machinery a 402 takes (``classify_halt`` →
+    :class:`~cograph_client.pipeline.manifest.HaltReasonKind.cost_ceiling`), so a
+    run that blows its envelope reaches terminal ``failed`` with an honest
+    partial-coverage manifest instead of silently continuing to overspend. It
+    subclasses :class:`RetrievalError` so the ONE retrieval error hierarchy stays
+    the single ``except`` a rail needs."""
+
+
 # --- LLM-backend billing / auth (ONTA-201) ---------------------------------- #
 # A 402/401 from the active LLM account is SYSTEMIC, not a per-record hiccup: the
 # prepaid balance hit $0, or the key is invalid/revoked. It will recur on the
@@ -272,6 +291,7 @@ class FetchErrorPolicy(enum.Enum):
 
 __all__ = [
     "RATE_LIMIT_HALT_THRESHOLD",
+    "CostCeilingExceeded",
     "FetchError",
     "FetchErrorPolicy",
     "LLMAuthError",
