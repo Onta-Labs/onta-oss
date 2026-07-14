@@ -2302,7 +2302,10 @@ def test_apply_decisions_writes_accepted_only(monkeypatch):
 
 def test_executor_apply_schedules_stats_recompute(monkeypatch):
     """An auto-apply that writes triples must bust the Explorer summary cache by
-    scheduling a stats recompute for the job's (tenant, kg)."""
+    scheduling a stats recompute for the job's (tenant, kg). (ONTA-279: an
+    overwrite refresh routes each value through the P6 supersession op, which
+    refreshes per fact, so the recompute may be scheduled more than once — the
+    invariant is that it IS scheduled for this (tenant, kg).)"""
     import cograph_client.api.routes.explore as explore_mod
 
     calls: list[tuple[str, str]] = []
@@ -2339,7 +2342,8 @@ def test_executor_apply_schedules_stats_recompute(monkeypatch):
         assert final.status == JobStatus.applied
 
     asyncio.run(run())
-    assert calls == [("test-tenant", "kg")]
+    assert ("test-tenant", "kg") in calls
+    assert all(c == ("test-tenant", "kg") for c in calls)
 
 
 def test_executor_no_apply_does_not_recompute(monkeypatch):
@@ -4236,15 +4240,25 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        joined = "\n".join(_instance_inserts(neptune))
+        inserts = _instance_inserts(neptune)
+        joined = "\n".join(inserts)
         rating_attr = "https://cograph.tech/types/Product/attrs/rating"
         # The conforming value IS written, typed as integer.
         assert '"5"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
         # The non-conforming value is NOT written under the rating predicate, in
         # any form (neither as a literal nor coerced).
         assert "five stars" not in joined
-        # Sanity: the rating predicate appears at most for the conforming row only.
-        assert joined.count(f"<{rating_attr}>") == 1
+        # Sanity: every write carrying the rating predicate is for the CONFORMING
+        # entity (p2); the rejected row (p1) produces NO rating write at all.
+        # (ONTA-279: the rating predicate now also appears as an OBJECT in the P6
+        # validity/provenance companion writes for p2 — the primary edge, its
+        # validity interval, and its provenance — so a bare occurrence-count is no
+        # longer 1; the invariant is that none of those writes reference p1.)
+        rating_writes = [s for s in inserts if f"<{rating_attr}>" in s]
+        assert rating_writes, "the conforming value must be written under rating"
+        assert all(
+            "https://cograph.tech/entities/Product/p1" not in s for s in rating_writes
+        ), "the rejected value's entity must produce no rating write"
 
     asyncio.run(run())
 

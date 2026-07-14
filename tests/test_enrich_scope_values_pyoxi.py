@@ -238,24 +238,29 @@ def _objects(n: PyoxiNeptune, subject: str, pred: str) -> list[str]:
     return sorted(str(row["o"].value) for row in rows)
 
 
+async def _current_objects(n: PyoxiNeptune, subject: str, pred: str) -> set[str]:
+    """The CURRENT objects of ``(subject, pred)`` — those with no CLOSED validity
+    interval (the P7 "current facts" projection)."""
+    from cograph_client.graph.validity import current_objects_query
+
+    raw = await n.query(current_objects_query(kg_graph_uri(TENANT, KG), subject, pred))
+    return {b["o"]["value"] for b in raw["results"]["bindings"]}
+
+
 @pytest.mark.asyncio
-async def test_overwrite_replaces_conflicting_value_and_restamps_provenance():
-    """pf10 sp-refresh-pricing (real store): under the `overwrite` conflict policy a
-    CONFLICT row (fresh value ≠ existing) REPLACES the stale value — the instance
-    triples hold the SINGULAR current value (delete-old + insert-new, ONTA-236), and
-    the per-attribute provenance companions are restamped to the FRESH source +
-    verified date (the stale citation is gone). This is what "every number is CURRENT
-    and sourced" requires; enrichment's pure-INSERT write path would otherwise accrete
-    the fresh value beside the stale one."""
+async def test_overwrite_supersedes_conflicting_value_and_restamps_provenance():
+    """pf10 sp-refresh-pricing (real store), ONTA-279: under `overwrite` a CONFLICT
+    row (fresh value ≠ existing) now SUPERSEDES the stale value through the P6 write
+    op — the fresh value becomes the SINGULAR CURRENT value while the stale value's
+    validity interval is CLOSED (it stays in the graph as history, never
+    hard-deleted, replacing the retired delete-old+insert-new path). The
+    per-attribute citation is restamped to the FRESH source + verified date on the
+    attr_meta namespace. This is what "every number is CURRENT and sourced"
+    requires."""
     n = PyoxiNeptune()
     await _seed_conflict_entity(n)
     w1 = f"{ENT}{TYPE}/w1"
     pricing = attr_uri(TYPE, "pricing")
-    # The seeded incumbent carries LEGACY (attribute-namespace) companions; the
-    # fresh restamp lands on the attr_meta metadata namespace (ONTA-262) and the
-    # overwrite clear retires BOTH shapes.
-    legacy_src = attr_uri(TYPE, "pricing_source_url")
-    legacy_ver = attr_uri(TYPE, "pricing_verified_at")
     src = attr_provenance_companion_uri(TYPE, "pricing", "source_url")
     ver = attr_provenance_companion_uri(TYPE, "pricing", "verified_at")
 
@@ -278,15 +283,18 @@ async def test_overwrite_replaces_conflicting_value_and_restamps_provenance():
 
     final = await ex._jobs.get(job.id)
     assert [r.action for r in final.results] == ["conflict"]
-    # SINGULAR current value — stale replaced, not accreted.
-    assert _objects(n, w1, pricing) == ["0.0043 (2026-07-07)"]
-    # Provenance companions restamped to the FRESH source + date on the
-    # attr_meta namespace; the stale LEGACY companions are cleared, not left
-    # beside the fresh citation.
+    # SUPERSESSION: the fresh value is the SINGULAR CURRENT value; the stale value's
+    # interval is CLOSED but its edge is KEPT (present in the instance graph as
+    # history) — supersession never hard-deletes (ONTA-279).
+    assert await _current_objects(n, w1, pricing) == {"0.0043 (2026-07-07)"}
+    assert _objects(n, w1, pricing) == ["0.0043 (2026-07-07)", "0.0100 (2023-09-01)"]
+    # Provenance companions restamped to the FRESH source + date on the attr_meta
+    # namespace. (The stale LEGACY companions now persist rather than being cleared —
+    # the retired _overwrite_clear_targets is what used to clear them; ONTA-279
+    # accepts that companion accretion in exchange for lineage-preserving
+    # supersession of the primary value.)
     assert _objects(n, w1, src) == ["https://new.example/price"]
     assert _objects(n, w1, ver) == ["2026-07-07T00:00:00Z"]
-    assert _objects(n, w1, legacy_src) == []
-    assert _objects(n, w1, legacy_ver) == []
 
 
 @pytest.mark.asyncio

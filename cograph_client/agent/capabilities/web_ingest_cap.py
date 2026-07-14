@@ -81,15 +81,22 @@ from cograph_client.enrichment.models import (
 from cograph_client.graph.kg_writer import refresh_after_write
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.normalization.inference import list_type_schema
-from cograph_client.pipeline.manifest import HaltReasonKind, RunManifest
+from cograph_client.config import settings
+from cograph_client.pipeline.manifest import (
+    HaltReasonKind,
+    RunManifest,
+    resolve_spend_ceiling,
+)
 from cograph_client.resolver.llm_router import (
     OPENROUTER_BASE,
     PRIMARY_MODEL,
     openrouter_chat,
 )
 from cograph_client.retrieval.errors import (
+    CostCeilingExceeded,
     LLMError,
     RateLimitEscalator,
+    RetrievalError,
     is_rate_limit_status,
 )
 from cograph_client.web_sources.base import (
@@ -954,6 +961,16 @@ class WebIngestCapability:
                 # Chat provenance: link the job to the conversation that spawned it.
                 thread_id=getattr(ctx, "session_id", None),
             )
+            # A9 cost envelope (ONTA-282): stamp the HARD per-run spend ceiling on
+            # the manifest. A per-job override wins; else the deployment default
+            # (config). None/0 ⇒ unlimited (unchanged behavior). The per-batch spend
+            # feed + ceiling check in _run_inner then halt the run cleanly if it
+            # crosses this envelope.
+            if job.manifest is not None:
+                job.manifest.spend_ceiling_usd = resolve_spend_ceiling(
+                    getattr(job, "spend_ceiling_usd", None),
+                    settings.enrich_spend_ceiling_usd,
+                )
             await job_store.create(job)
 
         # Thread the tracked job id into the provider context so a URL-targeted
@@ -1052,6 +1069,14 @@ class WebIngestCapability:
             # rows-landed vs rows-lost — instead of swallowing it as one failed
             # batch and reporting "complete".
             fatal_llm_err: Optional[LLMError] = None
+            # A9 cost envelope (ONTA-282): set when the run crosses its HARD per-run
+            # spend ceiling mid-flight. A GOVERNANCE halt (not provider exhaustion),
+            # but routed through the SAME abort-and-settle path as a 402
+            # (_fail_billing_job → halt_from_exception) so the terminal state carries
+            # an honest partial (rows-landed vs rows-dropped) instead of a silent
+            # overspend. A parallel flag (not fatal_llm_err) keeps the proven
+            # billing path untouched.
+            fatal_ceiling_err: Optional[CostCeilingExceeded] = None
             # 429 policy (ONTA-273): a single rate-limit blip is a transient the
             # per-batch degrade retries; only SUSTAINED 429s (a run throttled to a
             # standstill) escalate to a run-level halt. This run-scoped escalator
@@ -1103,6 +1128,16 @@ class WebIngestCapability:
                                 urls=urls or None,
                             )
                             any_discover_ok = True
+                            # A9 cost envelope (ONTA-282): a paid provider request
+                            # was actually issued — feed its cost into the manifest's
+                            # spend-to-date (once per discover call, matching how
+                            # _estimate_cost prices a request). The ceiling is then
+                            # checked as rows land in the micro-batch loop below. A
+                            # free provider adds $0 (provider_cost → 0.0).
+                            if job is not None and job.manifest is not None:
+                                _paid, _cost_per_call = provider_cost(prov)
+                                if _cost_per_call > 0.0:
+                                    job.manifest.add_spend(_cost_per_call)
                             phase = "ingest"
                             rows_found = list(getattr(full, "rows", None) or [])[
                                 : min(per_sub_budget, remaining)
@@ -1267,6 +1302,19 @@ class WebIngestCapability:
                                         job.manifest.record_completed(
                                             str(_row.get(key_attr, "")) if isinstance(_row, dict) else ""
                                         )
+                                    # A9 cost envelope (ONTA-282): the paid
+                                    # provider spend for this run landed on the
+                                    # manifest above; if cumulative spend has now
+                                    # reached the HARD per-run ceiling, ABORT
+                                    # CLEANLY — set the fatal flag and break out of
+                                    # the micro-batch loop. The run then settles via
+                                    # _fail_billing_job (terminal `failed`,
+                                    # `cost_ceiling` kind, honest partial coverage),
+                                    # never a silent overspend. None/0 ⇒ never trips.
+                                    _ceiling_err = job.manifest.check_ceiling()
+                                    if _ceiling_err is not None:
+                                        fatal_ceiling_err = _ceiling_err
+                                        break
                                 if job is not None and job_store is not None:
                                     # Rolling, honest total: what landed + the
                                     # average per-sub-query yield extrapolated over
@@ -1291,6 +1339,11 @@ class WebIngestCapability:
                             # The batch went through end-to-end (no 429/throttle) —
                             # a successful call breaks any pending rate-limit streak.
                             rate_escalator.record_success()
+                            # A9 cost envelope (ONTA-282): the ceiling tripped inside
+                            # the micro-batch loop — abort the provider fan-out too;
+                            # every remaining call would only spend past the envelope.
+                            if fatal_ceiling_err is not None:
+                                break
                         except LLMError as exc:
                             # FATAL, SYSTEMIC LLM-backend failure (402 billing /
                             # 401 auth) surfaced by the extraction call inside
@@ -1363,27 +1416,35 @@ class WebIngestCapability:
                                 exc_info=True,
                             )
                             continue
-                    # A fatal billing/auth error (402/401) broke the inner
-                    # provider loop — abort the whole sub-query fan-out too; every
-                    # remaining call would fail identically (ONTA-201). The
-                    # terminal FAILED state (with honest partials) is set below.
-                    if fatal_llm_err is not None:
+                    # A fatal billing/auth error (402/401) OR a cost-ceiling breach
+                    # (ONTA-282) broke the inner provider loop — abort the whole
+                    # sub-query fan-out too; every remaining call would fail
+                    # identically (402) or only overspend (ceiling). The terminal
+                    # FAILED state (with honest partials) is set below.
+                    if fatal_llm_err is not None or fatal_ceiling_err is not None:
                         break
 
-                # FATAL billing/auth failure: fail the WHOLE job with the clear,
-                # user-facing message, recording rows-landed vs rows-lost so the
-                # run is NEVER presented as complete when a batch was dropped to a
-                # systemic backend error (ONTA-201). This precedes the normal
-                # roll-up because it is a run-level abort, not a per-provider
-                # outcome.
-                if fatal_llm_err is not None:
+                # FATAL run-level abort: a billing/auth failure (402/401, ONTA-201)
+                # or a cost-ceiling breach (ONTA-282). Fail the WHOLE job with the
+                # clear, user-facing message, recording rows-landed vs rows-lost so
+                # the run is NEVER presented as complete when batches were dropped to
+                # a systemic backend error or the spend envelope. This precedes the
+                # normal roll-up because it is a run-level abort, not a per-provider
+                # outcome. Both flow through _fail_billing_job → halt_from_exception,
+                # which classifies the reason kind (billing / cost_ceiling) from the
+                # error type — so a ceiling halt reads "cost envelope exceeded", not
+                # "provider exhaustion".
+                _fatal_run_err: Optional[RetrievalError] = (
+                    fatal_llm_err or fatal_ceiling_err
+                )
+                if _fatal_run_err is not None:
                     for plog in plogs.values():
                         plog.status = (
                             "error" if plog.attempts and not plog.matches
                             else ("ok" if plog.matches else "skipped")
                         )
                     await _fail_billing_job(
-                        job, job_store, list(plogs.values()), fatal_llm_err,
+                        job, job_store, list(plogs.values()), _fatal_run_err,
                         processed=processed, platforms=platforms,
                     )
                     return
@@ -2481,18 +2542,22 @@ async def _fail_billing_job(
     job: Optional[EnrichJob],
     job_store,
     provider_logs: list[ProviderLog],
-    error: LLMError,
+    error: RetrievalError,
     *,
     processed: int,
     platforms: list[str],
 ) -> None:
-    """Fail a discovery job on a FATAL LLM billing/auth error (402/401), recording
-    HONEST PARTIALS (ONTA-201).
+    """Fail a discovery job on a FATAL run-level abort — an LLM billing/auth error
+    (402/401, ONTA-201) OR a cost-ceiling breach (ONTA-282) — recording HONEST
+    PARTIALS.
 
-    Unlike :func:`_fail_job`, this fires when the run ABORTED mid-way because the
-    shared LLM backend went unbillable/unauthorized. Some batches may already have
-    landed, so the terminal state must reflect rows-LANDED vs rows-LOST — never a
-    silent "complete". We stamp:
+    Unlike :func:`_fail_job`, this fires when the run ABORTED mid-way: the shared
+    LLM backend went unbillable/unauthorized, or the run reached its HARD per-run
+    spend envelope. Either way some batches may already have landed, so the
+    terminal state must reflect rows-LANDED vs rows-LOST — never a silent
+    "complete". ``halt_from_exception`` derives the manifest's reason KIND from the
+    error type (``billing`` / ``cost_ceiling``), so a ceiling abort reads "cost
+    envelope exceeded", not "provider exhaustion". We stamp:
 
     * the clear, user-facing ``error`` message (top up / rotate the key);
     * the per-provider logs so the run detail still shows what each source did;

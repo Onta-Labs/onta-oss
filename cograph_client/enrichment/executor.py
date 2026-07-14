@@ -17,6 +17,7 @@ from typing import Optional
 import structlog
 
 from cograph_client.analytics import distinct_id_for, emit
+from cograph_client.api_registry.spec import AuthorityLevel
 from cograph_client.enrichment.cache import EnrichmentCache
 from cograph_client.enrichment.canonicalize import apply_canonicalizer
 from cograph_client.enrichment.job_store import JobStore
@@ -31,7 +32,13 @@ from cograph_client.enrichment.models import (
     RowResult,
     Verdict,
 )
-from cograph_client.pipeline.manifest import HaltReasonKind, RunManifest
+from cograph_client.config import settings
+from cograph_client.pipeline.manifest import (
+    HaltReasonKind,
+    RunManifest,
+    resolve_spend_ceiling,
+)
+from cograph_client.retrieval.cost import source_cost
 from cograph_client.enrichment.sources.base import (
     SourceAdapter,
     get_adapter,
@@ -48,7 +55,6 @@ from cograph_client.enrichment.extraction import coerce_url_attribute_value
 from cograph_client.enrichment.tiers import get_chain
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import (
-    delete_facts,
     insert_facts,
     refresh_after_write,
 )
@@ -71,6 +77,11 @@ from cograph_client.graph.provenance import (
 from cograph_client.graph.queries import (
     kg_graph_uri,
     tenant_graph_uri,
+)
+from cograph_client.graph.suppression import is_suppressed
+from cograph_client.pipeline.mutations import (
+    DEFAULT_RECENCY_POLICY,
+    write_with_conflict_resolution,
 )
 from cograph_client.resolver.models import ValidatedTriple
 from cograph_client.resolver.validator import _to_wkt_point, validate_triple
@@ -106,6 +117,18 @@ ENRICH_ATTR_DESCRIPTION = "Added by enrichment job"
 # declared with a richer range by ingestion, the existing range is PRESERVED
 # rather than downgraded (see _declare_attributes) — so this is only the floor.
 ENRICH_ATTR_DATATYPE = "string"
+
+# Default source-authority level for a machine refresh/scrape (ONTA-279). A
+# refreshed value is routed through the P6 write-time conflict policy
+# (write_with_conflict_resolution), which ranks it against the existing current
+# value on the ONE shared authority scale. A generic scrape carries no explicit
+# authority, so it defaults HERE to a strong-but-NOT-top machine level: it beats an
+# unannotated legacy value, ties (→ recency decides) with another source_of_truth
+# scrape, and — the load-bearing property — LOSES to a human ``user_assertion``
+# correction (rank 0), which is exactly what keeps a user fix from being clobbered
+# by a refresh (completing ONTA-281's e2e). NEVER user_assertion: that top level is
+# minted only by the human-correction write path (pipeline/corrections.py).
+REFRESH_AUTHORITY = AuthorityLevel.source_of_truth
 
 # Hard ceiling on a single adapter lookup (COG-112). A misbehaving adapter — a
 # stalled TCP/TLS connect, a server that dribbles keepalive bytes (which resets
@@ -1217,6 +1240,14 @@ class EnrichmentExecutor:
         if job.manifest is None:
             job.manifest = RunManifest(run_id=job.id, stage="enrichment")
         manifest = job.manifest
+        # A9 cost envelope (ONTA-282): stamp the HARD per-run spend ceiling before
+        # work starts. A per-job override (job.spend_ceiling_usd) wins; else the
+        # deployment default (config). None/0 ⇒ unlimited (unchanged behavior). The
+        # per-item spend feed below (via _lookup_chain) + the check in
+        # process_entity then halt the run cleanly if it crosses this envelope.
+        manifest.spend_ceiling_usd = resolve_spend_ceiling(
+            getattr(job, "spend_ceiling_usd", None), settings.enrich_spend_ceiling_usd
+        )
         manifest.start()
         try:
             job.status = JobStatus.running
@@ -1387,6 +1418,7 @@ class EnrichmentExecutor:
                             effective_confidence,
                             strategy_version,
                             tally=tally,
+                            manifest=manifest,
                         )
                         best = self._pick_best(verdicts, effective_confidence)
 
@@ -1433,6 +1465,19 @@ class EnrichmentExecutor:
                             manifest.record_completed(
                                 f"{ent['uri']}#{attribute}"
                             )
+                            # A9 cost envelope (ONTA-282): the item's paid adapter
+                            # calls fed their spend into the manifest as they ran
+                            # (see _lookup_chain). If cumulative run spend has now
+                            # reached the HARD per-run ceiling, HALT CLEANLY — raise
+                            # the typed CostCeilingExceeded so it propagates to the
+                            # outer `except` → halt_from_exception, the SAME terminal
+                            # path a 402 takes (terminal `failed`, `cost_ceiling`
+                            # kind, honest partial coverage), never a silent
+                            # overspend. Checked under counter_lock so exactly one
+                            # worker trips it. None/0 ceiling ⇒ never trips.
+                            ceiling_error = manifest.check_ceiling()
+                            if ceiling_error is not None:
+                                raise ceiling_error
                             if counter["n"] % PROGRESS_FLUSH_EVERY == 0:
                                 await self._jobs.update(job)
                 return results
@@ -1552,16 +1597,6 @@ class EnrichmentExecutor:
                 resolved_datatypes = await self._declare_attributes(
                     tenant_id, job.type_name, applied_attr_values
                 )
-                # Build the instance triples USING that resolved-datatype map:
-                # primitives route through validate_triple (typed literal, or a
-                # skip on a non-conforming value); relationships write the entity
-                # IRI directly; provenance companions stay plain string literals.
-                triples = self._select_triples_for_policy(
-                    all_rows, job.type_name, write_policy, resolved_datatypes
-                )
-                # Append the verified-row freshness re-stamps (F2) so a decay-refresh
-                # advances the clock in the SAME write as the fills.
-                triples.extend(restamp_triples)
                 # Canonical companion-provenance-GRAPH records (F1) for every applied
                 # fill, dated from the verdict — flowed through the shared
                 # insert_facts provenance seam (gated by COGRAPH_PROVENANCE_ENABLED).
@@ -1569,46 +1604,80 @@ class EnrichmentExecutor:
                     [r for r in all_rows if self._row_is_applied(r, write_policy)],
                     job.type_name,
                 )
-                # OVERWRITE = true REPLACE (pf10 sp-refresh-pricing): before the
-                # insert, CLEAR each conflict row's stale value + provenance
-                # companions through the shared delete_facts (predicate-scoped
-                # delete + ONTA-236 value history) so the fresh value REPLACES the
-                # stale one instead of accreting beside it (insert_facts never
-                # removes a same-predicate value). Ordering matters — the clear runs
-                # BEFORE insert_facts, else the predicate-scoped delete would also
-                # drop the just-written fresh value; and value-history reads the old
-                # value while it is still present. No-op for non-overwrite policies
-                # and for filled/verified rows.
-                clear_triples, overwrite_new_values = self._overwrite_clear_targets(
-                    all_rows, job.type_name, write_policy, resolved_datatypes
+                # REFRESH vs. INITIAL-FILL split (ONTA-279). A refresh (write policy
+                # verify/overwrite) MUST supersede — a fresh value CLOSES the stale
+                # value's validity interval and is arbitrated (authority > confidence
+                # > recency) against the existing current value, so it can never
+                # blind-append and can never clobber a user_assertion correction.
+                # The initial-fill / skip path (write_policy=skip, from `skip`/`stage`)
+                # keeps its plain conflict-free insert unchanged.
+                is_refresh = write_policy in (
+                    ConflictPolicy.verify,
+                    ConflictPolicy.overwrite,
                 )
-                if clear_triples:
-                    await delete_facts(
+                if is_refresh:
+                    # Route each applied PRIMARY value through the P6 supersession
+                    # op (consulting the suppression list); collect node-minting +
+                    # display-companion triples for one shared insert.
+                    companion_triples = await self._apply_refresh_writes(
+                        graph_uri,
+                        all_rows,
+                        job.type_name,
+                        write_policy,
+                        resolved_datatypes,
+                        job.id,
+                    )
+                    # F2 verified-row freshness re-stamps ride the same shared insert
+                    # (verify path; empty under overwrite where verifies rewrite the
+                    # value via the op).
+                    write_triples = companion_triples + restamp_triples
+                    if write_triples or prov_graph_triples:
+                        await insert_facts(
+                            self._neptune,
+                            graph_uri,
+                            write_triples,
+                            provenance_triples=prov_graph_triples or None,
+                        )
+                    await refresh_after_write(
+                        self._neptune,
+                        tenant_id=tenant_id,
+                        kg_name=job.kg_name,
+                        affected_types=self._affected_types(
+                            job.type_name, resolved_datatypes
+                        ),
+                    )
+                else:
+                    # Initial-fill / skip path — unchanged conflict-free insert.
+                    # Build the instance triples USING that resolved-datatype map:
+                    # primitives route through validate_triple (typed literal, or a
+                    # skip on a non-conforming value); relationships write the entity
+                    # IRI directly; provenance companions stay plain string literals.
+                    triples = self._select_triples_for_policy(
+                        all_rows, job.type_name, write_policy, resolved_datatypes
+                    )
+                    # Append the verified-row freshness re-stamps (F2) so a
+                    # decay-refresh advances the clock in the SAME write as the fills.
+                    triples.extend(restamp_triples)
+                    # Single shared write path — identical to CSV/JSON ingestion
+                    # (graph/kg_writer.py): batched insert, then post-write
+                    # housekeeping (invalidate the NL-planning cache, re-embed the
+                    # enriched type so semantic retrieval doesn't serve a stale schema
+                    # embedding, and recompute the Explorer's type-stats). Only fires
+                    # when something was actually applied.
+                    await insert_facts(
                         self._neptune,
                         graph_uri,
-                        triples=clear_triples,
-                        new_values=overwrite_new_values,
-                        touched_types={job.type_name},
-                        reason="enrichment overwrite: replace stale value",
+                        triples,
+                        provenance_triples=prov_graph_triples or None,
                     )
-                # Single shared write path — identical to CSV/JSON ingestion
-                # (graph/kg_writer.py): batched insert, then post-write
-                # housekeeping (invalidate the NL-planning cache, re-embed the
-                # enriched type so semantic retrieval doesn't serve a stale schema
-                # embedding, and recompute the Explorer's type-stats). Only fires
-                # when something was actually applied.
-                await insert_facts(
-                    self._neptune,
-                    graph_uri,
-                    triples,
-                    provenance_triples=prov_graph_triples or None,
-                )
-                await refresh_after_write(
-                    self._neptune,
-                    tenant_id=tenant_id,
-                    kg_name=job.kg_name,
-                    affected_types=self._affected_types(job.type_name, resolved_datatypes),
-                )
+                    await refresh_after_write(
+                        self._neptune,
+                        tenant_id=tenant_id,
+                        kg_name=job.kg_name,
+                        affected_types=self._affected_types(
+                            job.type_name, resolved_datatypes
+                        ),
+                    )
             elif restamp_triples:
                 # No new fills, but a decay-refresh re-confirmed existing values:
                 # write ONLY the freshness re-stamps so the clock still advances.
@@ -1735,6 +1804,7 @@ class EnrichmentExecutor:
         confidence_min: float,
         strategy_version: str = "v1",
         tally: Optional["_ProviderTally"] = None,
+        manifest: Optional[RunManifest] = None,
     ) -> list[Verdict]:
         """Walk an adapter chain, returning verdicts from the first adapter
         that yields one with confidence >= confidence_min.
@@ -1743,6 +1813,11 @@ class EnrichmentExecutor:
           around each adapter call, not an adapter itself).
         - Unregistered adapter names are skipped with a one-shot warning per
           job, never fail the job.
+        - ``manifest`` (A9 cost envelope, ONTA-282): when supplied, the cost of
+          every PAID adapter call actually ISSUED here (the non-cache branch) is
+          fed into ``manifest.add_spend`` so the per-run ceiling check in
+          ``process_entity`` can halt the run before it overspends. Cache hits are
+          free and add nothing; a free adapter adds $0.
         """
         cache_hit_counted = False
         for name in chain:
@@ -1838,6 +1913,17 @@ class EnrichmentExecutor:
                     job.type_name,
                     strategy_version,
                 )
+                # A9 cost envelope (ONTA-282): a PAID adapter call was actually
+                # issued (this is the non-cache branch) — feed its cost into the
+                # run manifest's spend-to-date so the per-run ceiling check can
+                # halt the run before it overspends. Cost is incurred whether the
+                # call matched, no-matched, timed out, or errored (the paid request
+                # went out either way). source_cost reads the adapter's cost
+                # defensively (free default), so a free adapter adds $0.
+                if manifest is not None:
+                    _is_paid, _cost_per_call = source_cost(adapter)
+                    if _cost_per_call > 0.0:
+                        manifest.add_spend(_cost_per_call)
             # URL-valued attributes (website, *_url, datatype uri): the answer is
             # a URL, and a single-pass extractor run over page text otherwise
             # lifts page chrome ("Skip to content", "Platform") or the entity
@@ -1965,6 +2051,143 @@ class EnrichmentExecutor:
         return out
 
     @staticmethod
+    def _verdict_authority(verdict) -> AuthorityLevel:
+        """The source-authority level to stamp a refreshed value with (ONTA-279).
+
+        A registry-backed / premium adapter MAY carry an explicit
+        ``AuthorityLevel`` value string on the verdict (``verdict.authority``); when
+        present and valid it is threaded through verbatim so a curated
+        ``source_of_truth`` API outranks a weaker web scrape at the write-time
+        conflict point. Otherwise a plain machine scrape defaults to
+        :data:`REFRESH_AUTHORITY` — strong but never the top ``user_assertion`` slot
+        (that is the human-correction path's alone)."""
+        raw = getattr(verdict, "authority", None)
+        if raw:
+            try:
+                return AuthorityLevel(raw)
+            except ValueError:
+                pass
+        return REFRESH_AUTHORITY
+
+    @classmethod
+    def _primary_value_write(
+        cls,
+        entity_uri: str,
+        type_name: str,
+        attribute: str,
+        value: str,
+        datatype: str,
+    ) -> Optional[tuple[str, str, list[tuple[str, str, str]]]]:
+        """Split one applied value into its PRIMARY edge + any node-minting triples,
+        for the ONTA-279 refresh path (which routes the primary through the P6
+        conflict op rather than a blind insert).
+
+        Reuses :meth:`_instance_triples_for_value` (the ONE value-typing +
+        node-linking implementation) and splits its output: the FIRST triple is
+        always the primary ``(entity, predicate, term)`` — the literal value on
+        ``attrs/<leaf>`` or the relationship edge on ``onto/<leaf>`` — and the rest
+        (a relationship target's ``rdf:type`` / ``rdfs:label``) are the node-minting
+        companions that still ride the shared ``insert_facts``. Returns
+        ``(predicate, term, node_triples)`` or ``None`` when the value produced no
+        primary triple (a rejected non-conforming primitive — never clear/replace an
+        incumbent for a value that won't be written)."""
+        triples = cls._instance_triples_for_value(
+            entity_uri, type_name, attribute, value, datatype
+        )
+        if not triples:
+            return None
+        _s, predicate, term = triples[0]
+        node_triples = list(triples[1:])
+        return predicate, term, node_triples
+
+    async def _apply_refresh_writes(
+        self,
+        graph_uri: str,
+        rows: list[RowResult],
+        type_name: str,
+        write_policy: ConflictPolicy,
+        resolved_datatypes: dict[str, str],
+        run_id: str,
+    ) -> list[tuple[str, str, str]]:
+        """Apply a REFRESH job's primary values through the P6 supersession op
+        (ONTA-279) — the write half of "refresh supersedes, never blind-appends".
+
+        For each row that :meth:`_row_is_applied` under ``write_policy``
+        (verify → fills; overwrite → fills/conflicts/verifies), route the PRIMARY
+        ``(subject, predicate, value)`` through
+        :func:`pipeline.mutations.write_with_conflict_resolution` instead of a raw
+        ``insert_facts`` / ``delete_facts``+``insert_facts``. That op:
+
+          * reads the existing current value's authority back from provenance and
+            arbitrates on the ONE shared policy (authority > confidence > recency >
+            value) — so a machine refresh CLOSES a stale value's validity interval
+            (supersession, never a hard delete) but LOSES to a ``user_assertion``
+            correction (completing ONTA-281's e2e);
+          * inherits the ONTA-277 resurrection semantics for free (``reopen_facts``),
+            so an A→B→A oscillation lands A current again.
+
+        Before writing, the value is checked against the STICKY suppression list
+        (:func:`graph.suppression.is_suppressed`): a retracted/suppressed value is a
+        no-op (a refresh must never re-acquire it), which — unlike a validity
+        closure — the op's reopen cannot resurrect.
+
+        Node-minting triples (a relationship target's type/label) and the
+        per-attribute DISPLAY provenance companions are RETURNED for the caller to
+        write in ONE shared ``insert_facts`` + one ``refresh_after_write``, keeping
+        the companions on the converged write path.
+        """
+        companion_triples: list[tuple[str, str, str]] = []
+        for r in rows:
+            if not self._row_is_applied(r, write_policy) or r.verdict is None:
+                continue
+            datatype = resolved_datatypes.get(r.attribute, "string")
+            primary = self._primary_value_write(
+                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
+            )
+            if primary is None:
+                # A non-conforming primitive produced no primary triple → write
+                # nothing (never supersede an incumbent for a value we can't store).
+                continue
+            predicate, term, node_triples = primary
+            # Suppression consult: a retracted/suppressed value must NOT be
+            # re-acquired by a refresh (ONTA-279). Skip it entirely — no
+            # supersession, no reopen, no companions — so it stays off.
+            if await is_suppressed(self._neptune, graph_uri, r.entity_uri, predicate, term):
+                logger.info(
+                    "enrichment_refresh_value_suppressed",
+                    subject=r.entity_uri,
+                    predicate=predicate,
+                    value=term,
+                )
+                continue
+            # Node-minting companions (relationship target type/label) ride the
+            # shared insert_facts the caller issues; write them before the edge is
+            # arbitrated so the target node exists.
+            companion_triples.extend(node_triples)
+            await write_with_conflict_resolution(
+                self._neptune,
+                graph_uri,
+                subject=r.entity_uri,
+                predicate=predicate,
+                type_name=type_name,
+                value=term,
+                authority=self._verdict_authority(r.verdict),
+                confidence=float(r.verdict.confidence),
+                source=getattr(r.verdict, "source", "") or "",
+                observed_at=self._verdict_as_of(r.verdict),
+                run_id=run_id,
+                reason="enrichment refresh (supersede stale value)",
+                recency_policy=DEFAULT_RECENCY_POLICY,
+            )
+            # Per-attribute DISPLAY provenance companions (source_url / provenance /
+            # verified_at) for the value we just wrote — same citations as the
+            # non-refresh path, collected for one shared insert.
+            companion_triples.extend(
+                self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict)
+            )
+        return companion_triples
+
+    @staticmethod
     def _row_is_applied(r: RowResult, policy: ConflictPolicy) -> bool:
         """Whether a row's verdict actually contributes instance triples under
         ``policy``. Single source of truth shared by :meth:`_select_triples_for_policy`
@@ -1994,87 +2217,6 @@ class EnrichmentExecutor:
             dt for dt in resolved_datatypes.values() if dt not in PRIMITIVE_TYPES
         }
 
-    def _overwrite_clear_targets(
-        self,
-        rows: list[RowResult],
-        type_name: str,
-        policy: ConflictPolicy,
-        resolved_datatypes: dict[str, str],
-    ) -> tuple[list[tuple[str, str, None]], dict[tuple[str, str], str]]:
-        """Under ``overwrite``, the predicate-scoped CLEAR list + value-history map
-        that turn a CONFLICT row into a true REPLACE (delete-old + insert-new).
-
-        Enrichment's ``insert_facts`` is a pure ``INSERT DATA`` — it never removes a
-        same-``(subject, predicate)`` value. So without an explicit clear, an
-        ``overwrite`` of a CONFLICT row (fresh value ≠ existing) ACCRETES: the stale
-        value lingers next to the fresh one and the citation companions carry BOTH
-        the old and new source — defeating the persona goal "every number is CURRENT
-        and sourced" (pf10 sp-refresh-pricing). The fix mirrors the canonical
-        attribute-update contract (ONTA-236 / ADR 0007, `api/routes/lambda_functions.py`):
-        clear the prior value + its provenance companions, then insert the new ones,
-        so the instance triples hold the SINGULAR current value.
-
-        Scope is deliberately narrow:
-          * ONLY under ``overwrite`` (verify/skip/stage never replace);
-          * ONLY ``conflict`` rows — a ``filled`` row has nothing to clear (empty
-            slot) and a ``verified`` row's value is unchanged, so neither needs a
-            delete. This leaves every non-conflict path byte-for-byte as before;
-          * ONLY when the fresh value actually PRODUCES a primary triple. If the
-            new value fails ``validate_triple`` (a non-conforming primitive →
-            :meth:`_instance_triples_for_value` returns ``[]`` and the insert writes
-            nothing), we must NOT clear the old value — clearing-without-replacing
-            would EMPTY the attribute (data loss). Fail safe: keep the incumbent.
-
-        Returns ``(clear_triples, new_value_by_pred)`` for the shared
-        :func:`delete_facts`: ``clear_triples`` are predicate-scoped deletes
-        (``(subject, predicate, None)``) for the primary value AND its
-        ``_source_url`` / ``_provenance`` / ``_verified_at`` companions;
-        ``new_value_by_pred`` maps ``(subject, primary_pred) -> new value`` so
-        value-history (ONTA-236, gated) can version the genuine old→new change. Only
-        the PRIMARY attribute is tracked for history — the freshness companions
-        advance every refresh by design, so versioning them would be noise (matching
-        the lambda-update path)."""
-        clear: list[tuple[str, str, None]] = []
-        new_value_by_pred: dict[tuple[str, str], str] = {}
-        if policy != ConflictPolicy.overwrite:
-            return clear, new_value_by_pred
-        for r in rows:
-            if r.action != "conflict" or r.verdict is None:
-                continue
-            datatype = resolved_datatypes.get(r.attribute, "string")
-            # Only replace when the fresh value will actually be written — never
-            # clear the incumbent if the new value is rejected (would empty the slot).
-            new_triples = self._instance_triples_for_value(
-                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
-            )
-            if not new_triples:
-                continue
-            # The primary instance edge lives on onto/<leaf> for a relationship
-            # (node-valued range) and attrs/<leaf> for a literal — matching exactly
-            # where :meth:`_instance_triples_for_value` writes the NEW value, so the
-            # clear targets the same predicate the insert repopulates.
-            primary_pred = (
-                f"https://cograph.tech/onto/{r.attribute}"
-                if datatype not in PRIMITIVE_TYPES
-                else _attr_uri(type_name, r.attribute)
-            )
-            # Clear companions on BOTH shapes (ONTA-262): the attr_meta namespace
-            # (current mint) and the legacy attribute-namespace form, so an
-            # overwrite on a KG written before the migration removes the stale
-            # legacy citations instead of leaving them beside the fresh ones.
-            companion_preds = [
-                builder(type_name, r.attribute, suffix)
-                for suffix in ("source_url", "provenance", "verified_at")
-                for builder in (
-                    attr_provenance_companion_uri,
-                    legacy_attr_companion_uri,
-                )
-            ]
-            for pred in (primary_pred, *companion_preds):
-                clear.append((r.entity_uri, pred, None))
-            new_value_by_pred[(r.entity_uri, primary_pred)] = str(r.verdict.value)
-        return clear, new_value_by_pred
-
     def _select_triples_for_policy(
         self,
         rows: list[RowResult],
@@ -2082,9 +2224,12 @@ class EnrichmentExecutor:
         policy: ConflictPolicy,
         resolved_datatypes: dict[str, str],
     ) -> list[tuple[str, str, str]]:
-        """Build the instance triples to write for ``policy``.
+        """Build the instance triples to write for the INITIAL-FILL / skip path.
 
-        ``resolved_datatypes`` is the ``{attribute -> datatype}`` map
+        Used only for the non-refresh write policy (``skip``, from ``skip``/``stage``
+        — a conflict-free fill); a refresh (verify/overwrite) instead routes each
+        primary value through the P6 supersession op (:meth:`_apply_refresh_writes`,
+        ONTA-279). ``resolved_datatypes`` is the ``{attribute -> datatype}`` map
         :meth:`_declare_attributes` just declared, so each primary value is TYPED
         with the SAME datatype its attribute is DECLARED with (P1 fix). The primary
         value goes through :meth:`_instance_triples_for_value` (relationship → IRI;
@@ -2106,12 +2251,10 @@ class EnrichmentExecutor:
                 r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
             )
             # Only stamp provenance for a value that was ACTUALLY written. A rejected
-            # primitive (validate_triple → no triple) writes no primary value; for a
-            # conflict row under `overwrite` the incumbent is then RETAINED (see
-            # :meth:`_overwrite_clear_targets`), so emitting fresh `_source_url` /
-            # `_verified_at` here would falsely cite — ON THE OLD VALUE — a source
-            # that DISAGREED with it. Gate the citation on the same condition as the
-            # primary value (reviewer finding).
+            # primitive (validate_triple → no triple) writes no primary value, so
+            # emitting fresh `_source_url` / `_verified_at` here would falsely cite a
+            # source on a value that was never stored. Gate the citation on the same
+            # condition as the primary value (reviewer finding).
             if not value_triples:
                 continue
             triples.extend(value_triples)

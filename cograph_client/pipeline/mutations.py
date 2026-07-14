@@ -72,6 +72,7 @@ from cograph_client.graph.provenance import (
     fetch_merge_lineage,
 )
 from cograph_client.graph.queries import _escape_value, parse_kg_graph_uri
+from cograph_client.graph.suppression import build_suppression_triples
 from cograph_client.graph.validity import (
     STATUS_DEPRECATED,
     STATUS_RETRACTED,
@@ -356,6 +357,15 @@ async def retract_fact(
     sanctioned removal path. Use only when the design truly needs the triple gone;
     prefer interval-close so history stays queryable.
 
+    Either way, a retraction ALSO writes a STICKY SUPPRESSION marker (ONTA-279) for
+    each ``(subject, predicate, value)`` retracted, via
+    ``insert_facts(suppression_triples=…)`` into the companion suppression graph.
+    Unlike the validity closure (which a later re-assertion's ``reopen_facts``
+    clears), the suppression marker is reopen-PROOF: it keeps a refresh/re-scrape
+    from silently re-acquiring a value the user retracted, until an explicit
+    un-suppress. The instance triple itself is untouched (soft) or deleted (hard) —
+    suppression is an orthogonal governance signal, not a removal.
+
     Returns a :class:`MutationReceipt`; a retraction adds no facts, so its
     ``graph_delta`` is an empty-facts A6 receipt (the closure/removal is recorded
     in the validity/provenance companions and, for hard-delete, in ``removed``).
@@ -371,6 +381,22 @@ async def retract_fact(
     removed = 0
     retracted: list[Triple] = []
 
+    # Sticky, reopen-PROOF suppression marker for every retracted value (ONTA-279),
+    # written on BOTH the soft (interval-close) and hard (delete) paths so a later
+    # refresh can never silently re-acquire a retracted value.
+    sup_triples: list[Triple] = []
+    for v in targets:
+        sup_triples.extend(
+            build_suppression_triples(
+                subject,
+                predicate,
+                v,
+                suppressed_at=at,
+                reason=reason or "retract",
+                graph_uri=instance_graph,
+            )
+        )
+
     if hard_delete:
         # Genuine removal — the ONE sanctioned removal primitive (writes a tombstone).
         del_triples = [(subject, predicate, v) for v in targets]
@@ -383,6 +409,12 @@ async def retract_fact(
                 reason=reason or "retract (hard delete)",
             )
             retracted = list(del_triples)
+        # Write the suppression markers through the shared insert primitive (no
+        # instance facts) so a hard-deleted value also stays off the refresh rail.
+        if sup_triples:
+            await insert_facts(
+                neptune, instance_graph, [], suppression_triples=sup_triples
+            )
         # No instance facts added → an empty A6 receipt with the run identity.
         delta = build_graph_delta(instance_graph, [], run_id=run_id)
     else:
@@ -414,13 +446,15 @@ async def retract_fact(
                     )
                 )
         # Route the companion writes through the shared insert primitive (no
-        # instance facts) → empty-facts A6 receipt with the run identity.
+        # instance facts) → empty-facts A6 receipt with the run identity. The
+        # suppression markers ride the same write so the retraction is atomic.
         delta = await insert_facts(
             neptune,
             instance_graph,
             [],
             provenance_triples=prov_triples or None,
             validity_triples=validity_triples or None,
+            suppression_triples=sup_triples or None,
             run_id=run_id,
         )
         if delta is None:
