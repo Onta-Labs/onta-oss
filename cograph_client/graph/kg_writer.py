@@ -71,6 +71,7 @@ from cograph_client.graph.provenance import (
     build_tombstone_triples,
     provenance_graph_uri,
 )
+from cograph_client.graph.suppression import suppression_graph_uri
 from cograph_client.graph.validity import reopen_interval_update, validity_graph_uri
 from cograph_client.graph.queries import (
     _escape_literal,
@@ -356,6 +357,7 @@ async def insert_facts(
     *,
     provenance_triples: Optional[list[Triple]] = None,
     validity_triples: Optional[list[Triple]] = None,
+    suppression_triples: Optional[list[Triple]] = None,
     reopen_facts: Optional[list[Triple]] = None,
     run_id: Optional[str] = None,
 ) -> Optional[GraphDelta]:
@@ -383,6 +385,17 @@ async def insert_facts(
     the superseded edge, so history stays queryable. Kept here (not hand-rolled in
     the mutation ops) so validity companion writes flow through the same batched
     seam as every other write. Pass ``None``/empty to skip.
+
+    ``suppression_triples`` (ONTA-279; built via ``graph/suppression.py``) are
+    written to the data graph's companion SUPPRESSION graph
+    (``suppression_graph_uri(instance_graph)``) — the same routing as
+    ``validity_triples`` / ``provenance_triples``, one graph over. This is the
+    STICKY, reopen-PROOF retraction marker: unlike a validity closure (which
+    ``reopen_facts`` clears), a suppression mark lives in its own companion graph
+    that no reopen touches, so a retracted value stays off the refresh rail until an
+    explicit un-suppress. Kept here (not hand-rolled in the retract op) so
+    suppression companion writes flow through the same batched seam as every other
+    write. Pass ``None``/empty to skip.
 
     ``reopen_facts`` (ONTA-277 value-resurrection fix): ``(s, p, o)`` facts whose
     validity interval is being (re-)OPENED as current by this write. Because a
@@ -426,6 +439,13 @@ async def insert_facts(
     if validity_triples:
         val_graph = validity_graph_uri(instance_graph)
         for sparql in batched_insert_triples(val_graph, validity_triples):
+            await neptune.update(sparql)
+    if suppression_triples:
+        # Sticky retraction markers → the companion suppression graph, the same
+        # batched routing validity/provenance use (ONTA-279). No reopen ever
+        # touches this graph, so the marker survives interval resurrection.
+        sup_graph = suppression_graph_uri(instance_graph)
+        for sparql in batched_insert_triples(sup_graph, suppression_triples):
             await neptune.update(sparql)
     if instance_triples:
         await _index_spatiotemporal(instance_graph, instance_triples)
