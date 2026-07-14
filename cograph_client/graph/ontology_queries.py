@@ -766,6 +766,100 @@ def _rewrite_indirect_type_constraints(sparql: str) -> str:
     return sparql
 
 
+# --- Merged-alias (sameAs) query expansion (ONTA-278) -------------------------
+# The alias/redirect INSTANCE edge a merge writes: ``(canonical, sameAs, merged)``
+# on ``onto/`` (node-valued → visible to the NL planner, never ``attrs/``). This is
+# the SAME predicate ``pipeline/mutations.py`` mints — kept here too because the
+# read-side builder needs the constant with no import from the mutation layer. NOT
+# standard ``owl:sameAs``; the repo has no ``2002/07/owl`` namespace.
+SAME_AS = f"{OMNIX_ONTO}/sameAs"
+
+# Instance-node IRIs are the ONLY URIs a sameAs alias applies to (types/attr/onto
+# URIs are schema, never re-keyed by a merge). The rewrite is scoped narrowly to
+# these so it can never touch a type-closure or attribute reference.
+_ENTITIES_URI = "https://cograph.tech/entities/"
+
+# Bidirectional sameAs walk: from EITHER alias reach the canonical (and back), so a
+# query pinning a merged-away IRI resolves the canonical's facts and vice-versa.
+# ``*`` includes the zero-length step, so an un-merged entity still matches itself.
+_SAMEAS_PATH = f"(<{SAME_AS}>|^<{SAME_AS}>)*"
+
+
+def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
+    """Expand a concrete ``…/entities/<Type>/<id>`` reference to a sameAs walk so a
+    MERGED entity (ONTA-274) resolves under EITHER alias.
+
+    A merge re-keys all of the merged node's triples onto the canonical
+    (``kg_writer.rewrite_subject``) and records ``(canonical, <onto/sameAs>, merged)``.
+    Facts therefore live on the canonical URI; a query that PINS the merged-away
+    IRI directly (e.g. a later re-mint of ``entity_uri(Type, raw_id)`` produces the
+    same merged-away slug) would otherwise find nothing. This rewrite routes such a
+    pinned entity reference through the bidirectional walk
+    ``(<onto/sameAs>|^<onto/sameAs>)*`` so either alias reaches the same fact set:
+
+      - SUBJECT: ``<E> P O``    → ``<E> (<sameAs>|^<sameAs>)* ?_saN . ?_saN P O``
+      - OBJECT:  ``S P <E>``    → ``S P ?_saN . ?_saN (<sameAs>|^<sameAs>)* <E>``
+
+    The read-path mirror of :func:`rewrite_type_predicate_to_closure` (subclass
+    closure): a pure, deterministic SPARQL property-path rewrite — no ontology
+    lookup, no Neptune round-trip, no LLM. The zero-length ``*`` step means an
+    un-merged entity still matches itself, so the rewrite is safe to apply
+    unconditionally.
+
+    Scoped and idempotent by construction:
+      - Only ``https://cograph.tech/entities/…`` IRIs are touched — a ``types/`` /
+        ``attrs/`` / ``onto/`` URI (schema, never sameAs-aliased) is left verbatim,
+        so this never disturbs the subclass-closure or attribute rewrites.
+      - SUBJECT/OBJECT position is classified by the following token: an entity IRI
+        followed by another TERM is a subject; one followed by a triple terminator
+        (``.`` / ``}`` / end) is an object. A ``,`` / ``;`` continuation object list
+        and a FILTER/VALUES operand are deliberately NOT rewritten (mis-attaching a
+        shared subject/predicate would corrupt the query) — best-effort safety net,
+        not a SPARQL parser, exactly like the closure rewriter.
+      - A reference already followed (subject) or preceded (object) by the sameAs
+        path is skipped, so running the rewrite twice equals running it once.
+
+    Pure string transform — unit-testable with a plain SPARQL string.
+    """
+    import re
+
+    ent = "<" + re.escape(_ENTITIES_URI) + r"[^>\s]+>"
+    # The walk we insert always starts with ``(<…sameAs>`` — the idempotence guard.
+    sameas_open = re.escape("(<" + SAME_AS + ">")
+
+    counter = [0]
+
+    def _fresh() -> str:
+        v = "?_sa" + str(counter[0])
+        counter[0] += 1
+        return v
+
+    # --- Subject position: `<E> P O` -> `<E> (path) ?_saN . ?_saN P O` ---
+    # `<E>` is a subject when a TERM (not a separator) follows. The negative
+    # lookahead on the sameAs path keeps it idempotent; the char class excludes
+    # every triple/group separator so an object or a graph name is never matched.
+    def _subj(m: "re.Match[str]") -> str:
+        v = _fresh()
+        return m.group(1) + " " + _SAMEAS_PATH + " " + v + " . " + v + " "
+
+    subj_pat = "(" + ent + r")\s+(?!" + sameas_open + r")(?=[^\s.;,{}()\[\]])"
+    sparql = re.sub(subj_pat, _subj, sparql)
+
+    # --- Object position: `S P <E>` -> `S P ?_saN . ?_saN (path) <E>` ---
+    # `<E>` is a triple-final object when a `.`/`}`/end follows. `,` and `;`
+    # (object-list / predicate-object-list continuations) are intentionally left
+    # untouched — splitting them would re-attach the continuation to the wrong
+    # subject. The lookbehind skips a reference already carrying the walk.
+    def _obj(m: "re.Match[str]") -> str:
+        v = _fresh()
+        return v + " . " + v + " " + _SAMEAS_PATH + " " + m.group(1)
+
+    obj_pat = r"(?<!\)\* )(" + ent + r")(?=\s*[.}]|\s*$)"
+    sparql = re.sub(obj_pat, _obj, sparql)
+
+    return sparql
+
+
 def add_layer_from_clauses(sparql: str, graph_uris: list[str]) -> str:
     """Add FROM <g> clauses for layer graphs missing from a graph-scoped query.
 

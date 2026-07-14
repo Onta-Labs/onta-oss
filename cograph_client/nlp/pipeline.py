@@ -1666,6 +1666,12 @@ class NLQueryPipeline:
         from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         sparql = rewrite_type_predicate_to_closure(sparql)
 
+        # Fix 4b: follow sameAs so a query pinning a MERGED-away entity IRI
+        # (ONTA-274 / -278) resolves the canonical's facts under either alias.
+        # Same deterministic-property-path shape as the closure rewrite above.
+        from cograph_client.graph.ontology_queries import rewrite_entity_ref_to_sameas_closure
+        sparql = rewrite_entity_ref_to_sameas_closure(sparql)
+
         # Fix 5: resolve attribute aliases (ADR 0002 §7) — a renamed attribute
         # keeps answering through its alias until backfill retires it. A None
         # or empty map (the default) leaves the query untouched.
