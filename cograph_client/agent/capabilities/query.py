@@ -46,6 +46,12 @@ class QueryCapability:
             "answer": result.answer,
             "sparql": result.sparql,
             "narrative": getattr(result, "narrative_answer", ""),
+            # Honest-answer metadata (ONTA-280): echo per-fact citations + the
+            # coverage caveat so the agent interface has parity with /ask (empty
+            # unless COGRAPH_ANSWER_CITATIONS_ENABLED). Serialized to plain dicts
+            # so the returned payload stays JSON-friendly.
+            "citations": [c.model_dump() for c in getattr(result, "citations", [])],
+            "coverage_caveat": getattr(result, "coverage_caveat", ""),
             # The pipeline does not surface raw rows on NLResult; the formatted
             # answer + sparql are what callers render. Keep the key present (empty)
             # so the contract is stable for clients that look for it.
