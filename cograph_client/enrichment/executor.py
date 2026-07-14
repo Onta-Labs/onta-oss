@@ -2060,13 +2060,25 @@ class EnrichmentExecutor:
         ``source_of_truth`` API outranks a weaker web scrape at the write-time
         conflict point. Otherwise a plain machine scrape defaults to
         :data:`REFRESH_AUTHORITY` — strong but never the top ``user_assertion`` slot
-        (that is the human-correction path's alone)."""
+        (that is the human-correction path's alone).
+
+        The ``user_assertion`` level is CLAMPED OUT unconditionally: a machine scrape
+        must never be stamped as a human correction, even if an adapter/verdict
+        carries ``authority="user_assertion"`` (a bug or a spoofed source). Such a
+        verdict is downgraded to :data:`REFRESH_AUTHORITY`, so it can never tie or
+        beat a real user fix at the arbitration point (that would let a refresh
+        clobber the very correction it is supposed to preserve)."""
         raw = getattr(verdict, "authority", None)
         if raw:
             try:
-                return AuthorityLevel(raw)
+                level = AuthorityLevel(raw)
             except ValueError:
-                pass
+                level = None
+            if level is not None:
+                # Never let a machine verdict claim the human-correction slot.
+                if level == AuthorityLevel.user_assertion:
+                    return REFRESH_AUTHORITY
+                return level
         return REFRESH_AUTHORITY
 
     @classmethod
@@ -2178,6 +2190,11 @@ class EnrichmentExecutor:
                 run_id=run_id,
                 reason="enrichment refresh (supersede stale value)",
                 recency_policy=DEFAULT_RECENCY_POLICY,
+                # This op runs PER ROW; the caller (run()'s is_refresh branch) issues
+                # ONE final refresh_after_write for the touched types after the loop.
+                # Deferring the per-row refresh turns a bulk refresh from ~N+1
+                # housekeeping passes (Neptune query + re-embed + stats) into 1.
+                refresh=False,
             )
             # Per-attribute DISPLAY provenance companions (source_url / provenance /
             # verified_at) for the value we just wrote — same citations as the

@@ -602,6 +602,7 @@ async def write_with_conflict_resolution(
     conflict_policy: ConflictPolicy = DEFAULT_CONFLICT_POLICY,
     recency_policy: RecencyPolicy = DEFAULT_RECENCY_POLICY,
     manifest=None,
+    refresh: bool = True,
 ) -> ConflictReceipt:
     """Write ``(subject, predicate, value)`` onto a FUNCTIONAL attribute, resolving
     any collision with the existing current value deterministically (ONTA-276).
@@ -634,6 +635,16 @@ async def write_with_conflict_resolution(
     On a MULTI-VALUED attribute (``recency_policy`` marks it multivalued) there is no
     single-value collision: the value COEXISTS (append-only), written current with
     provenance, ``coexisted=True`` and ``conflict=False``.
+
+    ``refresh`` (default ``True``) controls only step 5, the post-write
+    :func:`refresh_after_write` housekeeping pass. Pass ``refresh=False`` when the
+    CALLER batches this op across many rows and issues ITS OWN single final
+    ``refresh_after_write`` for the touched type(s) — the enrichment refresh path
+    (:meth:`enrichment.executor.EnrichmentExecutor._apply_refresh_writes`) does
+    exactly this, so a per-row internal refresh here would make a bulk refresh do
+    ~N+1 housekeeping passes (Neptune query + re-embed + stats recompute) instead
+    of the one the caller already runs. The insert/arbitration is unaffected; only
+    the derived-index refresh is deferred to the caller.
     """
     at = observed_at or datetime.now(timezone.utc)
     leaf = _predicate_leaf(predicate)
@@ -685,7 +696,7 @@ async def write_with_conflict_resolution(
             run_id=run_id,
         )
         scope = _scope(instance_graph, tenant_id, kg_name)
-        if scope is not None:
+        if refresh and scope is not None:
             await refresh_after_write(
                 neptune,
                 tenant_id=scope[0],
@@ -786,9 +797,11 @@ async def write_with_conflict_resolution(
         run_id=run_id,
     )
 
-    # 5. One post-write refresh (best-effort; skipped for a non-KG stub graph).
+    # 5. One post-write refresh (best-effort; skipped for a non-KG stub graph, and
+    #    deferred to the caller when refresh=False — see the docstring's note on the
+    #    batched enrichment-refresh path, which runs one final refresh_after_write).
     scope = _scope(instance_graph, tenant_id, kg_name)
-    if scope is not None:
+    if refresh and scope is not None:
         await refresh_after_write(
             neptune,
             tenant_id=scope[0],
