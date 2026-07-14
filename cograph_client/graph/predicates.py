@@ -52,6 +52,11 @@ ATTR_META_NS = "https://cograph.tech/attr_meta/"
 # internal for defense-in-depth, so a validity predicate could never be surfaced
 # as a domain attribute even if one leaked onto the instance graph.
 VALIDITY_NS = "https://cograph.tech/validity/"
+# Suppression-list predicates (ONTA-279). The sticky, reopen-proof retraction
+# marker; like validity, lives in a SEPARATE companion graph
+# (`<data-graph>/suppression`, graph/suppression.py) and is classified internal
+# whole-namespace for the same defense-in-depth reason.
+SUPPRESSION_NS = "https://cograph.tech/suppression/"
 # The three companion suffixes (also the `<attr>_<suffix>` tails of the legacy
 # attrs/-namespace shape that pre-ONTA-262 graphs still carry).
 ATTR_META_SUFFIXES: tuple[str, ...] = ("source_url", "provenance", "verified_at")
@@ -111,6 +116,10 @@ def is_internal_predicate(p_uri: str, is_relationship: bool = False) -> bool:
     # Valid-time interval predicates (validity/…) are governance bookkeeping in a
     # companion graph, never a domain attribute or relationship (ONTA-277).
     if p_uri.startswith(VALIDITY_NS):
+        return True
+    # Suppression-list predicates (suppression/…) are governance bookkeeping in a
+    # companion graph, never a domain attribute or relationship (ONTA-279).
+    if p_uri.startswith(SUPPRESSION_NS):
         return True
     # Per-attribute provenance companions (attr_meta/<Type>/<attr>/<suffix>) are
     # metadata OF an attribute, never a domain attribute or relationship

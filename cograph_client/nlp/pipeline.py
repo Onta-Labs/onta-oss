@@ -392,6 +392,14 @@ class NLQueryPipeline:
         self._spatial_routing_enabled = (
             os.environ.get("COGRAPH_SPATIAL_ROUTING_ENABLED", "1") != "0"
         )
+        # Honest-answer per-fact metadata (ONTA-280, P7): attach per-cited-fact
+        # verdict/confidence/recency + a coverage caveat to a successful answer.
+        # Default OFF so the default answer path stays byte-identical (same gating
+        # pattern as the alias/spatial features above) — a byte-stable eval is
+        # unaffected. Purely additive, read-only, post-execution.
+        self._answer_citations_enabled = (
+            os.environ.get("COGRAPH_ANSWER_CITATIONS_ENABLED", "0") == "1"
+        )
 
     async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None, layer_graph_uris: list[str] | None = None) -> NLResult:
         """Answer a natural-language question over the graph.
@@ -628,6 +636,29 @@ class NLQueryPipeline:
                 t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
                 timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
+                # Honest-answer metadata (ONTA-280, P7): per-cited-fact
+                # verdict/confidence/recency + a coverage caveat. Read-only,
+                # post-execution, and gated OFF by default so the default answer
+                # path is byte-identical. Only the keyable rows (those exposing
+                # subject+predicate+object) are cited; the rest are legitimately
+                # uncited. No RunManifest is threaded through /ask today, so the
+                # caveat is the validity-derived "K facts stale" alone.
+                citations = []
+                coverage_caveat = ""
+                if self._answer_citations_enabled:
+                    from cograph_client.nlp.answer_meta import (
+                        build_citations,
+                        build_coverage_caveat,
+                    )
+                    citations = await build_citations(
+                        self.neptune, data_graph, variables, bindings
+                    )
+                    stale_count = sum(1 for c in citations if not c.is_current)
+                    coverage_caveat = build_coverage_caveat(
+                        None, stale_count=stale_count, total_cited=len(citations)
+                    )
+                    if citations:
+                        timing["citations"] = len(citations)
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
                 return NLResult(
@@ -638,6 +669,8 @@ class NLQueryPipeline:
                     narrative_answer=narrative_answer,
                     functions_invoked=functions_needed,
                     timing=timing,
+                    citations=citations,
+                    coverage_caveat=coverage_caveat,
                 )
             except Exception as e:
                 last_error = str(e)
@@ -1632,6 +1665,12 @@ class NLQueryPipeline:
         # Deterministic, idempotent, no ontology lookup needed.
         from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         sparql = rewrite_type_predicate_to_closure(sparql)
+
+        # Fix 4b: follow sameAs so a query pinning a MERGED-away entity IRI
+        # (ONTA-274 / -278) resolves the canonical's facts under either alias.
+        # Same deterministic-property-path shape as the closure rewrite above.
+        from cograph_client.graph.ontology_queries import rewrite_entity_ref_to_sameas_closure
+        sparql = rewrite_entity_ref_to_sameas_closure(sparql)
 
         # Fix 5: resolve attribute aliases (ADR 0002 §7) — a renamed attribute
         # keeps answering through its alias until backfill retires it. A None
