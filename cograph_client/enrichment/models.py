@@ -248,6 +248,15 @@ class Verdict(BaseModel):
     grounding_score: Optional[float] = None
     extraction_method: Optional[str] = None
     calibration_method: Optional[str] = None
+    # Source-authority level this verdict was produced under (an
+    # ``api_registry.spec.AuthorityLevel`` value string, e.g. ``"source_of_truth"``),
+    # threaded into P6 write-time conflict resolution (ONTA-279) so a refresh's fresh
+    # value is ranked against the existing current value on the ONE shared authority
+    # scale. Optional/None: a plain machine scrape carries no explicit authority and
+    # the executor defaults it to a sensible non-top level (never ``user_assertion``,
+    # which is minted only by the human-correction write path). A registry-backed or
+    # premium adapter MAY stamp its curated ``authority_level`` here.
+    authority: Optional[str] = None
 
 
 RowAction = Literal["filled", "verified", "conflict", "skipped", "no_match"]
