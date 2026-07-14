@@ -437,6 +437,13 @@ class EnrichJob(BaseModel):
     next_run: Optional[datetime] = None
     cost: Optional[float] = None
     cost_note: Optional[str] = None
+    # Optional HARD per-run spend ceiling (USD) — the A9 cost envelope (ONTA-282).
+    # ``None`` ⇒ fall back to the deployment default (config
+    # ``enrich_spend_ceiling_usd``); ``0`` ⇒ unlimited. When the effective ceiling
+    # is > 0, the run HALTS CLEANLY once cumulative attributable spend reaches it
+    # (terminal ``failed`` + cost-envelope reason + honest partial coverage on the
+    # manifest). Optional / default ``None`` so every existing job is unchanged.
+    spend_ceiling_usd: Optional[float] = None
     # Discovery/web-ingest summary fields (COG — realtime job status). Both
     # optional with safe defaults so enrichment/dedupe job construction is
     # unchanged. ``result_count`` is the headline "how many records were found"

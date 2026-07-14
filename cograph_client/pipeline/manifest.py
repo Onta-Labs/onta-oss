@@ -43,6 +43,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from cograph_client.retrieval.errors import (
+    CostCeilingExceeded,
     LLMAuthError,
     LLMBillingError,
     LLMError,
@@ -87,7 +88,11 @@ class HaltReasonKind(str, Enum):
     EXHAUSTION modes (:attr:`is_provider_exhaustion`) — the credits ran out or the
     account is being throttled to a standstill; both surface a "top up / back off"
     reason. ``auth`` (401) is a bad/revoked key. ``timeout`` is the wall-clock
-    guard. ``error`` is any other fatal. ``none`` means no halt (a clean run).
+    guard. ``cost_ceiling`` (ONTA-282) is a GOVERNANCE halt — the run reached its
+    HARD per-run spend ceiling (the operator-set cost envelope); the account is
+    fine, so it is deliberately NOT :attr:`is_provider_exhaustion` (the fix is
+    "raise the budget", not "top up / back off"). ``error`` is any other fatal.
+    ``none`` means no halt (a clean run).
     """
 
     none = "none"
@@ -95,6 +100,7 @@ class HaltReasonKind(str, Enum):
     auth = "auth"
     rate_limit = "rate_limit"
     timeout = "timeout"
+    cost_ceiling = "cost_ceiling"
     error = "error"
     cancelled = "cancelled"
 
@@ -111,10 +117,14 @@ def classify_halt(exc: BaseException) -> HaltReasonKind:
 
     Provider-exhaustion errors (:class:`LLMBillingError` 402,
     :class:`LLMRateLimitError` sustained 429) and :class:`LLMAuthError` (401) are
-    the systemic LLM-backend failures; a timeout maps to ``timeout``; everything
-    else is a generic ``error``. Kept here (not on the exceptions) so the
-    stdlib-only error module stays UI-free.
+    the systemic LLM-backend failures; a :class:`CostCeilingExceeded` maps to
+    ``cost_ceiling`` (the run's HARD spend envelope, ONTA-282 — a governance halt,
+    NOT provider exhaustion); a timeout maps to ``timeout``; everything else is a
+    generic ``error``. Kept here (not on the exceptions) so the stdlib-only error
+    module stays UI-free.
     """
+    if isinstance(exc, CostCeilingExceeded):
+        return HaltReasonKind.cost_ceiling
     if isinstance(exc, LLMBillingError):
         return HaltReasonKind.billing
     if isinstance(exc, LLMRateLimitError):
@@ -126,6 +136,26 @@ def classify_halt(exc: BaseException) -> HaltReasonKind:
     if isinstance(exc, (TimeoutError,)):
         return HaltReasonKind.timeout
     return HaltReasonKind.error
+
+
+def resolve_spend_ceiling(
+    explicit: Optional[float], default: float
+) -> Optional[float]:
+    """Pick a run's effective HARD per-run spend ceiling (USD), for both driver
+    loops (ONTA-282).
+
+    An explicit per-run value (e.g. ``EnrichJob.spend_ceiling_usd``) wins when
+    set; otherwise the deployment default (config ``enrich_spend_ceiling_usd``) is
+    used. A non-positive / unset / malformed result normalises to ``None`` —
+    UNLIMITED — so a run with no configured envelope NEVER halts on cost (every
+    existing run is unchanged). Returned value feeds ``RunManifest.spend_ceiling_usd``.
+    """
+    val = explicit if explicit is not None else default
+    try:
+        val = float(val or 0.0)
+    except (TypeError, ValueError):
+        return None
+    return val if val > 0 else None
 
 
 class ManifestItem(BaseModel):
@@ -178,6 +208,14 @@ class RunManifest(BaseModel):
     dropped: int = 0
     retries: int = 0
     spend_usd: float = 0.0
+    # HARD per-run spend ceiling in USD (the A9 cost envelope, ONTA-282). ``None``
+    # (or ``0``) ⇒ UNLIMITED — no ceiling, so a run with no configured envelope is
+    # unchanged. When set (> 0), a driver loop checks :meth:`check_ceiling` after
+    # each item's spend lands and HALTS CLEANLY (terminal ``failed``,
+    # ``HaltReasonKind.cost_ceiling``, honest partial coverage) once cumulative
+    # ``spend_usd`` reaches it — never a silent overspend. Set at mint time from
+    # :func:`resolve_spend_ceiling`.
+    spend_ceiling_usd: Optional[float] = None
     halt_reason_kind: HaltReasonKind = HaltReasonKind.none
     # The user-visible reason a run halted (surfaced on the failed job). Names
     # "provider exhaustion" for a 402/sustained-429 so the fix (top up / back off)
@@ -246,6 +284,34 @@ class RunManifest(BaseModel):
     def add_spend(self, usd: float) -> None:
         self.spend_usd += max(0.0, usd)
 
+    # -- cost envelope (ONTA-282) ------------------------------------------ #
+    def over_ceiling(self) -> bool:
+        """True when a HARD per-run ceiling is set (> 0) AND cumulative
+        ``spend_usd`` has reached it. ``None`` / ``0`` ceiling ⇒ UNLIMITED ⇒
+        always False (a run with no envelope never trips)."""
+        return (
+            self.spend_ceiling_usd is not None
+            and self.spend_ceiling_usd > 0
+            and self.spend_usd >= self.spend_ceiling_usd
+        )
+
+    def check_ceiling(self) -> Optional["CostCeilingExceeded"]:
+        """Return a typed :class:`CostCeilingExceeded` when the run has reached its
+        HARD per-run spend ceiling, else ``None`` (headroom left / no ceiling).
+
+        The driver loops call this after each item's spend lands and, on a
+        non-``None`` return, ``raise`` it (or set the fatal flag) so it flows
+        through the SAME terminal-halt machinery a 402 does — ``classify_halt`` →
+        ``cost_ceiling`` → ``halt_from_exception`` — reaching terminal ``failed``
+        with an honest partial-coverage manifest. The message names the spend and
+        the ceiling so the halt reason is self-explanatory ("top up the budget")."""
+        if not self.over_ceiling():
+            return None
+        return CostCeilingExceeded(
+            f"run spend ${self.spend_usd:.2f} reached the "
+            f"${float(self.spend_ceiling_usd):.2f} cost ceiling"
+        )
+
     # -- terminal transitions ---------------------------------------------- #
     def complete(self) -> "RunManifest":
         """Terminal ``completed`` — a clean run. Settles the total DOWN to the
@@ -289,6 +355,11 @@ class RunManifest(BaseModel):
         detail = str(exc).strip()
         if kind.is_provider_exhaustion:
             reason = f"provider exhaustion — {detail}"
+        elif kind is HaltReasonKind.cost_ceiling:
+            # A governance halt, not a provider failure: the run hit its HARD
+            # per-run spend envelope. Phrase it so the fix (raise the budget) is
+            # obvious and distinct from a 402 "top up the account".
+            reason = f"cost envelope exceeded — {detail}"
         elif kind is HaltReasonKind.auth:
             reason = f"provider authentication failure — {detail}"
         elif kind is HaltReasonKind.timeout:
@@ -331,4 +402,5 @@ __all__ = [
     "RunManifest",
     "RunState",
     "classify_halt",
+    "resolve_spend_ceiling",
 ]
