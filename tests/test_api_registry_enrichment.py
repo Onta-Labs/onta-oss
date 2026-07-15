@@ -539,3 +539,69 @@ def test_attribute_binding_flows_end_to_end_through_executor():
         assert seen.get("series_id") == "APU0000712311"
 
     asyncio.run(run())
+
+
+# --------------------------------------------------------------------------- #
+# PascalCase entity-type ↔ snake_case coverage-kind matching. Auto-ontology mints
+# PascalCase type names ("LineItem"); a registry entry declares snake_case
+# coverage kinds ("line_item"). The tokenizer must split camelCase so the two
+# reduce to the same word set — otherwise the source is silently skipped for
+# exactly those multi-word type names (the demo hit this: a "LineItem" type never
+# reached the FRED price source, only single-word "Commodity"/"Ingredient" did).
+# --------------------------------------------------------------------------- #
+def _priced_item_spec(kinds):
+    return ApiSourceSpec.from_dict({
+        "slug": "priced", "title": "Priced", "base_url": "https://api.x.test",
+        "auth": {"mode": "none"}, "authority_level": "authoritative",
+        "coverage": {"entity_kinds": kinds, "attributes": ["national_avg_price"]},
+        "endpoints": [{
+            "name": "obs", "path": "/obs", "method": "GET",
+            "params": [{"name": "series_id", "target": "series_id",
+                        "enrich_from": "attribute:bls_series_id"}],
+            "result_path": "observations",
+            "field_mappings": {"national_avg_price": "value"},
+            "pagination": {"style": "none"},
+        }],
+    })
+
+
+def test_tokens_split_camelcase():
+    from cograph_client.api_registry.enrichment import _tokens
+    # PascalCase / acronym-prefixed names split into the same words as snake_case.
+    assert _tokens("LineItem") == {"line", "item"}
+    assert _tokens("line_item") == {"line", "item"}
+    assert _tokens("BLSItem") == {"bls", "item"}
+    assert _tokens("FoodItem") == {"food", "item"}
+    # Single-word names are unaffected.
+    assert _tokens("Ingredient") == {"ingredient"}
+    assert _tokens("NPI") == {"npi"}
+
+
+def test_pascalcase_type_matches_snakecase_coverage_kind():
+    adapter = RegistrySourceAdapter(_priced_item_spec(["line_item", "food_item"]))
+    # Regression: the old tokenizer left "LineItem" as one token {"lineitem"} and
+    # never overlapped "line_item".
+    assert adapter._type_matches("LineItem") is True
+    assert adapter._type_matches("FoodItem") is True
+    assert adapter._type_matches("line_item") is True  # snake_case still matches
+    # The generic-stopword guard is intact: a bare "Item" shares only the generic
+    # "item" token with "line_item" and must NOT match (no spurious API call).
+    assert adapter._type_matches("Item") is False
+
+
+@pytest.mark.asyncio
+async def test_pascalcase_type_fires_lookup_end_to_end():
+    seen = {"n": 0}
+
+    def handler(req):
+        seen["n"] += 1
+        return httpx.Response(200, json={"observations": [{"value": "2.154"}]})
+
+    ex = RegistryApiSource(transport=httpx.MockTransport(handler))
+    adapter = RegistrySourceAdapter(_priced_item_spec(["line_item"]), executor=ex)
+    v = await adapter.lookup(
+        "Roma tomatoes", "national_avg_price",
+        {"entity_type": "LineItem", "entity_attributes": {"bls_series_id": "APU0000712311"}},
+    )
+    assert seen["n"] == 1                    # the PascalCase type reached the API
+    assert v and v[0].value == "2.154"
