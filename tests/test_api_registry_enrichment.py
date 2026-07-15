@@ -188,10 +188,11 @@ def test_register_registry_enrichment_leads_chain():
 
 
 def test_only_enrich_ready_entries_are_registered():
-    # NPPES has enrich_from params; geonames/openfoodfacts/clinicaltrials (seed)
-    # do not, so they aren't registered as enrichment adapters.
+    # NPPES + FRED have enrich_from params; geonames/openfoodfacts/clinicaltrials
+    # (seed) do not, so they aren't registered as enrichment adapters. Order is by
+    # authority rank then slug: nppes (source_of_truth) leads fred (authoritative).
     names = register_registry_enrichment(make_api_source_catalog())
-    assert names == ["api:nppes"]
+    assert names == ["api:nppes", "api:fred"]
 
 
 def test_chain_prefix_survives_a_later_register_tier_override():
@@ -200,7 +201,7 @@ def test_chain_prefix_survives_a_later_register_tier_override():
     # is recomputed per get_chain(), so the registry still leads.
     register_tier(EnrichmentTier.core, ["wikidata", "exa", "perplexity"])
     chain = get_chain(EnrichmentTier.core)
-    assert chain == ["api:nppes", "wikidata", "exa", "perplexity"]
+    assert chain == ["api:nppes", "api:fred", "wikidata", "exa", "perplexity"]
 
 
 # --------------------------------------------------------------------------- #
@@ -240,8 +241,8 @@ def test_registry_verdict_outranks_web_adapter():
                                          lambda r: httpx.Response(200, json=_NPPES_REC))))
         web = _WebFake()
         register_adapter(web)
-        register_tier(EnrichmentTier.lite, ["webfake"])   # get_chain -> [api:nppes, webfake]
-        assert get_chain(EnrichmentTier.lite) == ["api:nppes", "webfake"]
+        register_tier(EnrichmentTier.lite, ["webfake"])   # get_chain -> [api:nppes, api:fred, webfake]
+        assert get_chain(EnrichmentTier.lite) == ["api:nppes", "api:fred", "webfake"]
 
         neptune = _physician_neptune()
         store = InMemoryJobStore()
