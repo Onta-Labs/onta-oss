@@ -1330,6 +1330,56 @@ class EnrichmentExecutor:
                 vals = _parse_vals(row.get("vals", ""))
                 entities.append({"uri": e_uri, "label": label, "vals": vals})
 
+            # Pre-load binding-source attributes for the `attribute:<attr>`
+            # enrich_from recipe (ONTA-194 phase 3). A registry adapter can bind a
+            # request param FROM another of the entity's own attributes (e.g. a
+            # resolved bls_series_id feeding a FRED price lookup); its lookup()
+            # reads that value from context["entity_attributes"], but nothing
+            # populates it unless we pre-load it here. Additive + graceful: an
+            # adapter that binds nothing (the common case) leaves entities
+            # untouched and the call shape below is byte-identical.
+            #
+            # Design choice (step 2b): the adapter chain is resolved PER ATTRIBUTE
+            # inside process_entity (per-attribute ontology strategy sources >
+            # request-level job.sources override > tier default). So the precise
+            # set of adapters this job could consult is the UNION of each
+            # attribute's chain — reproduced ONCE here with that same precedence,
+            # rather than assuming a single job-wide chain (which would MISS a
+            # per-attribute strategy source) or scanning ALL registered adapters
+            # (which would over-fetch leaves for adapters this job never calls). In
+            # the common no-strategy case this collapses to the one job-level
+            # chain. Whole block is fail-safe: any error → no bind_attrs → adapters
+            # fall through exactly as before.
+            bind_leaves: set[str] = set()
+            try:
+                chain_names: set[str] = set()
+                for _attribute in job.attributes:
+                    _attr_strategy = strategy.attributes.get(_attribute)
+                    if _attr_strategy and _attr_strategy.sources:
+                        chain_names.update(_attr_strategy.sources)
+                    elif job.sources:
+                        _available = [s for s in job.sources if get_adapter(s) is not None]
+                        chain_names.update(_available if _available else get_chain(job.tier))
+                    else:
+                        chain_names.update(get_chain(job.tier))
+                for _name in chain_names:
+                    _ad = get_adapter(_name)
+                    bind_leaves |= getattr(_ad, "binding_source_attributes", frozenset())
+            except Exception:  # noqa: BLE001 - never break the job over binding setup
+                bind_leaves = set()
+            if bind_leaves and entities:
+                try:
+                    _bmap = await self._load_binding_attrs(
+                        graph_uri,
+                        [e["uri"] for e in entities],
+                        job.type_name,
+                        bind_leaves,
+                    )
+                except Exception:  # noqa: BLE001
+                    _bmap = {}
+                for e in entities:
+                    e["bind_attrs"] = _bmap.get(e["uri"], {})
+
             job.progress.total = len(entities) * len(job.attributes)
             # A9 manifest: the planned item denominator (M) is one item per
             # (entity, attribute) — the same unit progress counts.
@@ -1419,6 +1469,7 @@ class EnrichmentExecutor:
                             strategy_version,
                             tally=tally,
                             manifest=manifest,
+                            entity_attrs=ent.get("bind_attrs"),
                         )
                         best = self._pick_best(verdicts, effective_confidence)
 
@@ -1794,6 +1845,63 @@ class EnrichmentExecutor:
         )
         return verdicts
 
+    async def _load_binding_attrs(
+        self,
+        graph_uri: str,
+        entity_uris: list[str],
+        type_name: str,
+        leaves,
+    ) -> dict[str, dict[str, str]]:
+        """Fetch specific attribute LEAVES for the given entity URIs so an
+        ``attribute:<attr>`` enrich_from recipe can bind a request param FROM
+        another of the entity's own attributes (e.g. a resolved ``bls_series_id``
+        feeding a FRED price lookup — ONTA-194 phase 3).
+
+        Returns ``{entity_uri: {leaf: value}}`` for exactly the passed URIs and
+        leaves. Deliberately SEPARATE from :func:`_build_select_query` (whose
+        ``?vals`` is TARGET-attr-only, load-bearing for the conflict logic) — this
+        is a minimal, additive read that never feeds ``vals``. A literal binding
+        attribute lives on the ``…/attrs/<leaf>`` namespace (:func:`_attr_uri`),
+        so we filter to those concrete predicate IRIs and reverse-map each back to
+        its leaf. Graceful: any error → ``{}`` so the recipe simply no-ops (the
+        chain falls through) with no crash and no behavior change.
+        """
+        try:
+            leaf_list = [str(x) for x in (leaves or []) if x]
+            uris = _validate_entity_uris([u for u in (entity_uris or []) if u])
+            if not leaf_list or not uris:
+                return {}
+            # Reverse map the concrete literal-attribute predicate IRI -> leaf.
+            uri_to_leaf = {_attr_uri(type_name, leaf): leaf for leaf in leaf_list}
+            pred_in = ", ".join(f"<{u}>" for u in uri_to_leaf)
+            values = " ".join(f"<{u}>" for u in uris)
+            sparql = (
+                f"SELECT ?e\n"
+                f'  (GROUP_CONCAT(DISTINCT CONCAT(STR(?p), "::", STR(?o)); separator="||") AS ?vals)\n'
+                f"FROM <{graph_uri}> WHERE {{\n"
+                f"  VALUES ?e {{ {values} }}\n"
+                f"  OPTIONAL {{ ?e ?p ?o . FILTER(?p IN ({pred_in})) }}\n"
+                f"}} GROUP BY ?e"
+            )
+            raw = await self._neptune.query(sparql)
+            _, bindings = parse_sparql_results(raw)
+            out: dict[str, dict[str, str]] = {}
+            for row in bindings:
+                e_uri = row.get("e", "")
+                if not e_uri:
+                    continue
+                attrs: dict[str, str] = {}
+                for pred_uri, value in _parse_vals(row.get("vals", "")).items():
+                    leaf = uri_to_leaf.get(pred_uri)
+                    if leaf and value:
+                        attrs[leaf] = value
+                if attrs:
+                    out[e_uri] = attrs
+            return out
+        except Exception:  # noqa: BLE001 - never break the job over a binding read
+            logger.debug("enrichment _load_binding_attrs failed", exc_info=True)
+            return {}
+
     async def _lookup_chain(
         self,
         entity_label: str,
@@ -1805,6 +1913,7 @@ class EnrichmentExecutor:
         strategy_version: str = "v1",
         tally: Optional["_ProviderTally"] = None,
         manifest: Optional[RunManifest] = None,
+        entity_attrs: Optional[dict] = None,
     ) -> list[Verdict]:
         """Walk an adapter chain, returning verdicts from the first adapter
         that yields one with confidence >= confidence_min.
@@ -1875,6 +1984,13 @@ class EnrichmentExecutor:
                 # adapters ignore it harmlessly.
                 if job.tenant_id:
                     ctx["tenant_id"] = job.tenant_id
+                # Binding-source attributes (attribute:<attr> enrich_from): the
+                # entity's own attribute values a registry adapter binds a request
+                # param FROM (e.g. a resolved bls_series_id feeding a price
+                # lookup). Pre-loaded per entity above; only set when non-empty so
+                # the call shape is unchanged for every other adapter.
+                if entity_attrs:
+                    ctx["entity_attributes"] = entity_attrs
                 try:
                     # Bound every adapter call so one stalled lookup (e.g. a
                     # hung network call whose own client lacks a total-operation
