@@ -136,6 +136,8 @@ Accept? [a]/[r]/[s]/[A]ll/[q]uit:
 
 In this OSS build, the **lite** tier uses Wikidata as the only source (free, no API key). The `base`/`core`/`pro` tiers are scaffolded but require additional adapters (web search, LLM extraction) wired in by the hosted version.
 
+**Keyed sources are bring-your-own-key.** Built-in API-source registry entries that need authentication (e.g. FRED, GeoNames) stay **dormant until you supply your OWN key** in your environment — register for the provider's free key and set it (see `.env.example`). This OSS build never ships or implies a shared/platform key; "managed" keys — where the platform provisions, holds, meters, and bills the credential — are a hosted-only feature. Sources that need no key (NPPES, ClinicalTrials.gov, Open Food Facts) work out of the box.
+
 Or one-shot, useful in scripts and CI:
 
 ```bash
