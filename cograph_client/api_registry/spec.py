@@ -121,13 +121,36 @@ class ParamLocation(str, Enum):
 
 
 # Enrichment-rail binding recipes (ParamSpec.enrich_from): how to derive a param
-# value from an existing entity's label when filling one of its attributes.
+# value from an existing entity when filling one of its attributes. Either a
+# fixed recipe below (derived from the entity label), or the dynamic form
+# ``attribute:<attr>`` — bind the param from the value of ANOTHER attribute
+# already on the entity (e.g. a resolved ``bls_series_id`` feeding a price
+# lookup). Validate with ``is_valid_enrich_from`` (not bare set membership).
 ENRICH_FROM_VALUES = frozenset({
     "",                    # not auto-bound during enrichment
     "entity_name",         # the whole entity label
     "entity_name_first",   # first whitespace token (e.g. a person's first name)
     "entity_name_last",    # last whitespace token (e.g. a person's surname)
 })
+
+# Dynamic recipe prefix: ``attribute:<attr>`` binds the param from another of the
+# entity's own attribute values, resolved at enrichment time (see
+# ``RegistrySourceAdapter._build_bindings``). This makes ID-keyed APIs (FRED,
+# tickers, ISBNs, …) declaratively expressible: a first enrichment step resolves
+# the key attribute, a second reads it here to fill the value.
+ENRICH_FROM_ATTRIBUTE_PREFIX = "attribute:"
+_ATTRIBUTE_LEAF_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
+
+
+def is_valid_enrich_from(value: str) -> bool:
+    """True iff ``value`` is a supported ``enrich_from`` recipe: one of
+    ``ENRICH_FROM_VALUES`` or the dynamic ``attribute:<attr>`` form with a
+    well-formed attribute leaf name."""
+    if value in ENRICH_FROM_VALUES:
+        return True
+    if value.startswith(ENRICH_FROM_ATTRIBUTE_PREFIX):
+        return bool(_ATTRIBUTE_LEAF_RE.match(value[len(ENRICH_FROM_ATTRIBUTE_PREFIX):]))
+    return False
 
 AUTHORITY_LEVELS = frozenset(a.value for a in AuthorityLevel)
 AUTH_MODES = frozenset(a.value for a in AuthMode)
@@ -279,7 +302,7 @@ class ParamSpec:
     required: bool = False
     default: Optional[str] = None
     description: str = ""
-    enrich_from: str = ""                        # "" | entity_name | entity_name_first | entity_name_last
+    enrich_from: str = ""                        # "" | entity_name | entity_name_first | entity_name_last | attribute:<attr>
 
     def __post_init__(self) -> None:
         if not self.target:
@@ -735,9 +758,10 @@ def _validate_endpoint_params(ep: EndpointSpec, prefix: str) -> list[str]:
             errs.append(
                 f"{pp} is a path param but {{{p.target}}} is not in path {ep.path!r}"
             )
-        if p.enrich_from not in ENRICH_FROM_VALUES:
+        if not is_valid_enrich_from(p.enrich_from):
             errs.append(
-                f"{pp}.enrich_from {p.enrich_from!r} not in {sorted(ENRICH_FROM_VALUES)}"
+                f"{pp}.enrich_from {p.enrich_from!r} is not a valid recipe "
+                f"(one of {sorted(ENRICH_FROM_VALUES)} or 'attribute:<attr>')"
             )
     # Every path placeholder must be filled by a declared path param.
     declared_targets = {p.target for p in ep.params if p.location is ParamLocation.path}
