@@ -42,6 +42,7 @@ from .executor import RegistryApiSource
 from .spec import (
     AUTHORITY_CONFIDENCE as _AUTHORITY_CONFIDENCE,
     AUTHORITY_RANK as _AUTHORITY_RANK,
+    ENRICH_FROM_ATTRIBUTE_PREFIX,
     ApiSourceSpec,
     AuthorityLevel,
     EndpointSpec,
@@ -121,13 +122,21 @@ class RegistrySourceAdapter:
                 return True
         return False
 
-    def _build_bindings(self, ep: EndpointSpec, entity_label: str) -> dict[str, str]:
+    def _build_bindings(
+        self, ep: EndpointSpec, entity_label: str, entity_attrs: dict,
+    ) -> dict[str, str]:
         # Deterministic, no-LLM derivation. Naive token split: a label carrying a
         # title/suffix ("Dr. Jane Smith MD") yields imperfect first/last tokens;
         # it degrades gracefully (the API returns nothing → the chain falls
         # through), and richer parsing is a tracked follow-up.
+        # ``attribute:<attr>`` binds from another attribute already resolved on
+        # the entity (``entity_attrs``, keyed by attribute leaf name) — e.g. a
+        # ``bls_series_id`` resolved by a prior enrichment step feeding a price
+        # lookup. Missing/empty attr ⇒ no binding ⇒ the lookup no-ops (falls
+        # through), same graceful-degrade contract as the label recipes.
         label = (entity_label or "").strip()
         parts = label.split()
+        attrs = entity_attrs or {}
         bindings: dict[str, str] = {}
         for p in ep.params:
             ef = p.enrich_from
@@ -139,6 +148,9 @@ class RegistrySourceAdapter:
                 val = parts[0] if parts else ""
             elif ef == "entity_name_last":
                 val = parts[-1] if parts else ""
+            elif ef.startswith(ENRICH_FROM_ATTRIBUTE_PREFIX):
+                attr = ef[len(ENRICH_FROM_ATTRIBUTE_PREFIX):]
+                val = str(attrs.get(attr, "") or "").strip()
             else:
                 val = ""
             if val:
@@ -175,9 +187,10 @@ class RegistrySourceAdapter:
             ep = self._spec.endpoint()
             if ep is None:
                 return []
-            bindings = self._build_bindings(ep, entity_label)
+            entity_attrs = (context or {}).get("entity_attributes") or {}
+            bindings = self._build_bindings(ep, entity_label, entity_attrs)
             if not bindings:
-                return []  # not enrichment-configured (no enrich_from) or empty label
+                return []  # not enrichment-configured (no enrich_from) or empty binding source
             res = await self._executor.execute(
                 self._spec, bindings, endpoint_name=ep.name, max_rows=_MAX_ROWS,
                 sample=True, secret_resolver=self._secret_resolver(context),
