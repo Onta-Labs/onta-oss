@@ -977,7 +977,8 @@ export async function main(): Promise<void> {
 // through that symlink, `process.argv[1]` is the symlink path while
 // `import.meta.url` is this module's realpath, so a raw href compare NEVER
 // matches — the guard stays false and the server silently never starts (spawns,
-// connects to nothing, exits 0). Realpath'ing both sides makes the two agree for
+// connects to nothing, and exits without ever handling a request). Realpath'ing
+// both sides makes the two agree for
 // direct, symlinked, and npx invocations alike, while still staying false when a
 // different file (a test runner) is the entrypoint.
 const isEntrypoint = (() => {

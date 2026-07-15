@@ -98,6 +98,9 @@ describe("stdio entrypoint auto-start", () => {
   });
 
   it("starts when invoked DIRECTLY (node dist/index.js)", async () => {
+    if (!existsSync(distEntry)) {
+      throw new Error(`built entry missing at ${distEntry} — run \`npm run build\` first`);
+    }
     const res = await handshake(distEntry);
     expect((res.result as Record<string, unknown>) ?? {}).toMatchObject({
       serverInfo: { name: "cograph" },
