@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client, OntaError, isTerminalJobStatus } from "@onta/cli";
@@ -969,13 +969,34 @@ export async function main(): Promise<void> {
 
 // Only start the stdio server when run as the CLI entrypoint. Guarding this lets
 // a test import the module (e.g. to unit-test `ingestCsvHandler`) without opening
-// a stdio transport / hanging the test process. `import.meta.url` matches
-// `process.argv[1]` only when node executed this file directly.
-const isEntrypoint =
-  typeof process !== "undefined" &&
-  Array.isArray(process.argv) &&
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
+// a stdio transport / hanging the test process.
+//
+// The comparison MUST resolve symlinks on both sides. `npx -y @onta/mcp` and a
+// global `npm i -g @onta/mcp` install the package's `bin` as a SYMLINK (e.g.
+// /usr/local/bin/onta-mcp -> …/@onta/mcp/dist/index.js). When node runs the file
+// through that symlink, `process.argv[1]` is the symlink path while
+// `import.meta.url` is this module's realpath, so a raw href compare NEVER
+// matches — the guard stays false and the server silently never starts (spawns,
+// connects to nothing, and exits without ever handling a request). Realpath'ing
+// both sides makes the two agree for
+// direct, symlinked, and npx invocations alike, while still staying false when a
+// different file (a test runner) is the entrypoint.
+const isEntrypoint = (() => {
+  try {
+    if (
+      typeof process === "undefined" ||
+      !Array.isArray(process.argv) ||
+      process.argv[1] === undefined
+    ) {
+      return false;
+    }
+    const invoked = pathToFileURL(realpathSync(process.argv[1])).href;
+    const self = pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+    return invoked === self;
+  } catch {
+    return false;
+  }
+})();
 
 if (isEntrypoint) {
   main().catch((err) => {
