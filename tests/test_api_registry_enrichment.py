@@ -372,3 +372,169 @@ def test_attribute_binding_flows_through_lookup_context():
         assert verdicts2 == []
 
     asyncio.run(run())
+
+
+# --------------------------------------------------------------------------- #
+# binding_source_attributes: which leaves the executor must pre-load
+# --------------------------------------------------------------------------- #
+def test_binding_source_attributes_reports_attribute_recipe_leaves():
+    adapter = RegistrySourceAdapter(_attr_binding_spec())
+    assert adapter.binding_source_attributes == frozenset({"bls_series_id"})
+
+
+def test_binding_source_attributes_empty_for_label_only_bindings():
+    # The nppes seed binds only FROM the entity label (entity_name_first/last),
+    # never from another attribute -> no binding-source leaves to pre-load.
+    nppes = RegistrySourceAdapter(make_api_source_catalog().get("nppes"))
+    assert nppes.binding_source_attributes == frozenset()
+
+
+# --------------------------------------------------------------------------- #
+# Executor: pre-load entity_attributes for the attribute:<attr> recipe
+# --------------------------------------------------------------------------- #
+class _DummyAdapter:
+    """Minimal 4th-arg (wikidata) stand-in for building an EnrichmentExecutor."""
+
+    name = "dummy"
+
+    async def lookup(self, *a, **k):  # pragma: no cover - never consulted here
+        return []
+
+
+def test_load_binding_attrs_parses_leaves_scoped_to_uris():
+    async def run():
+        e1 = "https://cograph.tech/entities/ingredient/roma_tomatoes"
+        bls_uri = "https://cograph.tech/types/ingredient/attrs/bls_series_id"
+        captured = {}
+
+        def _query(sparql):
+            captured["sparql"] = sparql
+            return {"head": {"vars": ["e", "vals"]},
+                    "results": {"bindings": [{
+                        "e": {"type": "uri", "value": e1},
+                        "vals": {"type": "literal", "value": f"{bls_uri}::APU0000712311"}}]}}
+
+        neptune = AsyncMock()
+        neptune.query.side_effect = _query
+        ex = EnrichmentExecutor(neptune, InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
+        out = await ex._load_binding_attrs(
+            "https://omnix.dev/graphs/test", [e1], "ingredient", {"bls_series_id"})
+        assert out == {e1: {"bls_series_id": "APU0000712311"}}
+        # Scoped to exactly the passed URI + the concrete leaf predicate IRI.
+        assert e1 in captured["sparql"]
+        assert bls_uri in captured["sparql"]
+
+    asyncio.run(run())
+
+
+def test_load_binding_attrs_is_graceful_on_query_error():
+    async def run():
+        neptune = AsyncMock()
+        neptune.query.side_effect = RuntimeError("neptune down")
+        ex = EnrichmentExecutor(neptune, InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
+        out = await ex._load_binding_attrs(
+            "https://omnix.dev/graphs/test",
+            ["https://cograph.tech/entities/ingredient/x"], "ingredient", {"bls_series_id"})
+        assert out == {}
+
+    asyncio.run(run())
+
+
+def test_lookup_chain_threads_entity_attributes_into_context():
+    async def run():
+        class _SpyAdapter:
+            def __init__(self):
+                self.name = "spy"
+                self.seen_ctx = None
+
+            async def lookup(self, entity_label, attribute, context):
+                self.seen_ctx = dict(context)
+                return [Verdict(value="v", confidence=0.99, source="spy")]
+
+        spy = _SpyAdapter()
+        register_adapter(spy)
+        ex = EnrichmentExecutor(AsyncMock(), InMemoryJobStore(), EnrichmentCache(), _DummyAdapter())
+        job = EnrichJob(
+            id="j", tenant_id="t", kg_name="kg", type_name="ingredient",
+            attributes=["national_avg_price"], tier=EnrichmentTier.lite,
+            status=JobStatus.queued, created_at=datetime.now(timezone.utc),
+            conflict_policy=ConflictPolicy.stage, confidence_min=0.85,
+        )
+        # With bind attrs -> context carries entity_attributes.
+        verdicts = await ex._lookup_chain(
+            "Roma tomatoes", "national_avg_price", ["spy"], job, set(), 0.85,
+            entity_attrs={"bls_series_id": "APU0000712311"})
+        assert verdicts and verdicts[0].value == "v"
+        assert spy.seen_ctx.get("entity_attributes") == {"bls_series_id": "APU0000712311"}
+        # Without bind attrs (different label avoids the verdict cache) -> the key
+        # is absent, so the call shape is unchanged for every non-binding adapter.
+        spy.seen_ctx = None
+        await ex._lookup_chain(
+            "Green beans", "national_avg_price", ["spy"], job, set(), 0.85,
+            entity_attrs=None)
+        assert "entity_attributes" not in spy.seen_ctx
+
+    asyncio.run(run())
+
+
+def test_attribute_binding_flows_end_to_end_through_executor():
+    async def run():
+        seen = {}
+
+        def handler(req):
+            from urllib.parse import parse_qs, urlparse
+            seen.update({k: v[0] for k, v in parse_qs(urlparse(str(req.url)).query).items()})
+            return httpx.Response(200, json={"observations": [{"value": "2.489"}]})
+
+        # A FRED-like source_of_truth entry that fills national_avg_price by
+        # binding its request param FROM the entity's own bls_series_id attribute.
+        spec = _attr_binding_spec()
+        adapter = RegistrySourceAdapter(
+            spec, executor=RegistryApiSource(transport=httpx.MockTransport(handler)))
+        register_adapter(adapter)                       # name == "api:fredlike"
+        register_tier(EnrichmentTier.lite, ["api:fredlike"])
+        assert get_chain(EnrichmentTier.lite) == ["api:fredlike"]
+
+        entity_uri = "https://cograph.tech/entities/ingredient/roma_tomatoes"
+        bls_uri = "https://cograph.tech/types/ingredient/attrs/bls_series_id"
+
+        def _query(sparql):
+            if "bls_series_id" in sparql:
+                # The separate _load_binding_attrs read: the entity's key attr.
+                return {"head": {"vars": ["e", "vals"]},
+                        "results": {"bindings": [{
+                            "e": {"type": "uri", "value": entity_uri},
+                            "vals": {"type": "literal", "value": f"{bls_uri}::APU0000712311"}}]}}
+            if "?nameAttr" in sparql:
+                # The target-attr entity SELECT: national_avg_price is still EMPTY.
+                return {"head": {"vars": ["e", "label", "nameAttr", "vals"]},
+                        "results": {"bindings": [{
+                            "e": {"type": "uri", "value": entity_uri},
+                            "label": {"type": "literal", "value": "Roma tomatoes"},
+                            "vals": {"type": "literal", "value": ""}}]}}
+            # Ontology / strategy / write-path reads fail-open to empty.
+            return {"head": {"vars": []}, "results": {"bindings": []}}
+
+        neptune = AsyncMock()
+        neptune.query.side_effect = _query
+        neptune.update.return_value = None
+
+        store = InMemoryJobStore()
+        job = EnrichJob(
+            id="job-fred", tenant_id="test-tenant", kg_name="kg",
+            type_name="ingredient", attributes=["national_avg_price"],
+            tier=EnrichmentTier.lite, status=JobStatus.queued,
+            created_at=datetime.now(timezone.utc),
+            conflict_policy=ConflictPolicy.stage, confidence_min=0.85,
+        )
+        await store.create(job)
+        executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), adapter)
+        await executor.run(job, "test-tenant")
+
+        final = await store.get(job.id)
+        assert final.progress.filled == 1
+        # The attribute binding reached the actual HTTP request param — proof the
+        # executor pre-loaded entity_attributes and threaded it into lookup().
+        assert seen.get("series_id") == "APU0000712311"
+
+    asyncio.run(run())
