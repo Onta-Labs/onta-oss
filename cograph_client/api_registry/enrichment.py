@@ -59,6 +59,14 @@ logger = logging.getLogger(__name__)
 # confidence bar, supplementary only augments a gap.
 _MAX_ROWS = 5
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Word boundaries INSIDE a camelCase / PascalCase identifier: a lower/digit→upper
+# transition ("LineItem" → "Line|Item"), and an acronym→word transition
+# ("BLSItem" → "BLS|Item"). Split on these BEFORE lowercasing so a PascalCase
+# ontology type name tokenizes to the same words a snake_case coverage kind does
+# — otherwise "LineItem" collapses to the single token {"lineitem"}, never
+# overlaps "line_item"/"food_item"/…, and the registry source is silently skipped
+# for exactly the multi-word type names auto-ontology tends to mint.
+_CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 # Generic tokens that must not, ALONE, make an entity type match an entry's
 # coverage — otherwise a bare "Organization" would match "health_organization"
 # on the shared "organization" token and fire a spurious API call.
@@ -73,7 +81,11 @@ def _norm(s: str) -> str:
 
 
 def _tokens(s: str) -> set[str]:
-    return set(_TOKEN_RE.findall((s or "").lower()))
+    # Insert spaces at camelCase/PascalCase word boundaries first, so both a
+    # PascalCase entity type ("LineItem") and a snake_case coverage kind
+    # ("line_item") reduce to the same word set {"line", "item"}.
+    split = _CAMEL_BOUNDARY_RE.sub(" ", s or "")
+    return set(_TOKEN_RE.findall(split.lower()))
 
 
 def _has_enrich_params(spec: ApiSourceSpec) -> bool:
