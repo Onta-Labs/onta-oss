@@ -285,3 +285,90 @@ def test_nppes_seed_enrich_from_roundtrips():
     rebuilt = ApiSourceSpec.from_dict(spec.to_dict())
     fn = {p.name: p.enrich_from for p in rebuilt.endpoint().params if p.enrich_from}
     assert fn == {"first_name": "entity_name_first", "last_name": "entity_name_last"}
+
+
+# --------------------------------------------------------------------------- #
+# enrich_from: attribute:<attr> — bind a param from another entity attribute
+# (the ID-keyed-API recipe: e.g. a resolved bls_series_id feeds a FRED price
+# lookup). Two enrichment steps: step 1 resolves the key attribute, step 2
+# reads it here.
+# --------------------------------------------------------------------------- #
+def _attr_binding_spec() -> ApiSourceSpec:
+    return ApiSourceSpec.from_dict({
+        "slug": "fredlike", "title": "FRED-like", "base_url": "https://api.x.test",
+        "auth": {"mode": "none"}, "authority_level": "authoritative",
+        "coverage": {"entity_kinds": ["ingredient"], "attributes": ["national_avg_price"]},
+        "endpoints": [{
+            "name": "obs", "path": "/obs", "method": "GET",
+            "params": [{"name": "series_id", "target": "series_id",
+                        "enrich_from": "attribute:bls_series_id"}],
+            "result_path": "observations",
+            "field_mappings": {"national_avg_price": "value"},
+            "pagination": {"style": "none"},
+            "smoke_bindings": {"series_id": "APU0000712311"},
+        }],
+    })
+
+
+def test_attribute_enrich_from_is_accepted():
+    # The dynamic attribute:<attr> recipe validates (was rejected before the feature).
+    assert not validate_spec(_attr_binding_spec())
+
+
+def test_malformed_attribute_enrich_from_is_rejected():
+    for bad in ("attribute:", "attribute:bad!", "attribute: x"):
+        d = {"slug": "x", "title": "X", "base_url": "https://api.x.test", "auth": {"mode": "none"},
+             "endpoints": [{"name": "s", "path": "/s", "field_mappings": {"id": "id"},
+                            "params": [{"name": "q", "target": "q", "enrich_from": bad}],
+                            "pagination": {"style": "none"}}]}
+        errs = validate_spec(ApiSourceSpec.from_dict(d))
+        assert any("enrich_from" in e for e in errs), f"{bad!r} should be rejected"
+
+
+def test_attribute_binding_resolves_from_entity_attrs():
+    spec = _attr_binding_spec()
+    adapter = RegistrySourceAdapter(spec)
+    ep = spec.endpoint()
+    # The series id comes from the entity's attribute, NOT the label.
+    bindings = adapter._build_bindings(ep, "Roma tomatoes", {"bls_series_id": "APU0000712311"})
+    assert bindings == {"series_id": "APU0000712311"}
+    # Missing/empty attribute -> no binding -> graceful no-op (chain falls through).
+    assert adapter._build_bindings(ep, "Roma tomatoes", {}) == {}
+    assert adapter._build_bindings(ep, "Roma tomatoes", {"bls_series_id": ""}) == {}
+
+
+def test_attribute_binding_flows_through_lookup_context():
+    spec = _attr_binding_spec()
+
+    class _Result:
+        dormant = False
+        error = None
+        rows = [{"national_avg_price": "2.489"}]
+        sources = ["https://api.x.test/obs?series_id=APU0000712311"]
+        provenance: dict = {}
+
+    class _FakeExec:
+        def __init__(self):
+            self.bindings = None
+
+        async def execute(self, spec_, bindings, **kw):
+            self.bindings = bindings
+            return _Result()
+
+    fake = _FakeExec()
+    adapter = RegistrySourceAdapter(spec, executor=fake)
+
+    async def run():
+        ctx = {"entity_type": "ingredient",
+               "entity_attributes": {"bls_series_id": "APU0000712311"}}
+        verdicts = await adapter.lookup("Roma tomatoes", "national_avg_price", ctx)
+        # The executor received the attribute-derived binding.
+        assert fake.bindings == {"series_id": "APU0000712311"}
+        assert len(verdicts) == 1
+        assert verdicts[0].value == "2.489"
+        assert verdicts[0].source == "api:fredlike"
+        # No entity_attributes in context -> binding empty -> lookup no-ops.
+        verdicts2 = await adapter.lookup("Roma tomatoes", "national_avg_price", {"entity_type": "ingredient"})
+        assert verdicts2 == []
+
+    asyncio.run(run())
