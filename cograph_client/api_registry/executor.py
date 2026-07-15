@@ -277,6 +277,15 @@ class RegistryApiSource:
         Returns ONLY the auth material (never the base UA/Accept headers), so the
         caller attaches it per-host. Missing key => dormant (no network).
 
+        Bring-your-own-key (ONTA-340): the credential ALWAYS originates from the
+        USER — their env var or their own per-tenant secret — never a platform /
+        shared key baked into OSS. These two are the ONLY resolution origins; a
+        keyed source with neither present goes dormant, never authenticating on
+        the platform's behalf and never falling back to an un-authenticated call.
+        "Managed" keys (the platform provisions/meters/bills a credential) are a
+        premium concern and plug in only via the injected ``secret_resolver`` /
+        the ``register_secret_cipher`` seam — they never live in this OSS core.
+
         The secret comes from ONE of two places, per the spec's ``AuthSpec``:
         * ``secret_ref`` set → the per-tenant encrypted store, via
           ``secret_resolver`` (decrypted at THIS call). Absent resolver or absent
