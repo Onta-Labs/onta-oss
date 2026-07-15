@@ -99,6 +99,21 @@ class RegistrySourceAdapter:
     def authority_level(self) -> AuthorityLevel:
         return self._spec.authority_level
 
+    @property
+    def binding_source_attributes(self) -> frozenset[str]:
+        """Attribute leaves this adapter binds a request param FROM (the
+        `attribute:<attr>` enrich_from recipe) — the executor pre-loads these
+        onto the entity so lookup() can read them from context."""
+        out = set()
+        for ep in self._spec.endpoints:
+            for p in ep.params:
+                ef = p.enrich_from or ""
+                if ef.startswith(ENRICH_FROM_ATTRIBUTE_PREFIX):
+                    leaf = ef[len(ENRICH_FROM_ATTRIBUTE_PREFIX):]
+                    if leaf:
+                        out.add(leaf)
+        return frozenset(out)
+
     def _confidence(self) -> float:
         return _AUTHORITY_CONFIDENCE.get(self._spec.authority_level, 0.6)
 
