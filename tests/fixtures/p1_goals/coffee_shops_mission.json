@@ -1,0 +1,39 @@
+{
+  "id": "coffee_shops_mission",
+  "goal": "specialty coffee shops in the Mission district",
+  "entity_type": "CoffeeShop",
+  "key_attribute": "name",
+  "query": "specialty coffee shops in the Mission San Francisco",
+  "confirmed_attributes": ["address"],
+  "suggested_attributes": ["address", "neighborhood"],
+  "membership_rule": null,
+  "alias_table": null,
+  "gold_roster": [
+    "Ritual Coffee Roasters",
+    "Four Barrel Coffee",
+    "Blue Bottle Coffee",
+    "Philz Coffee",
+    "Sightglass Coffee",
+    "Andytown Coffee",
+    "Stanza Coffee",
+    "La Colombe"
+  ],
+  "provider": {
+    "is_paid": true,
+    "cost_per_call": 0.02
+  },
+  "expect_pass": true,
+  "notes": "Closed-roster fixture with SUB-CEILING noise: one near-duplicate ('blue bottle coffee' restates 'Blue Bottle Coffee' under key-normalization) and one off-membership row ('McDonald's', not a specialty shop). Both stay under the ceilings, so the fixture PASSES while exercising counters (a) and (b).",
+  "rows": [
+    {"name": "Ritual Coffee Roasters", "address": "1026 Valencia St", "neighborhood": "Mission"},
+    {"name": "Four Barrel Coffee", "address": "375 Valencia St", "neighborhood": "Mission"},
+    {"name": "Blue Bottle Coffee", "address": "2 S Park Ave", "neighborhood": "Mission"},
+    {"name": "Philz Coffee", "address": "3101 24th St", "neighborhood": "Mission"},
+    {"name": "Sightglass Coffee", "address": "270 7th St", "neighborhood": "Mission"},
+    {"name": "Andytown Coffee", "address": "3629 Taraval St", "neighborhood": "Mission"},
+    {"name": "Stanza Coffee", "address": "3126 16th St", "neighborhood": "Mission"},
+    {"name": "La Colombe", "address": "400 Valencia St", "neighborhood": "Mission"},
+    {"name": "blue bottle coffee", "address": "66 Mint St", "neighborhood": "Mission"},
+    {"name": "McDonald's", "address": "1500 Van Ness Ave", "neighborhood": "Mission"}
+  ]
+}
