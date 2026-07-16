@@ -307,6 +307,53 @@ def build_attribute_provenance_companions(
     return out
 
 
+# --- Per-attribute SURFACE-FORM companion (ONTA-347) ---------------------------
+#
+# When the A3 clean stage COERCES or CANONICALIZES a value
+# (``CleanOutcome.TRANSFORMED``, i.e. ``raw_value != clean_value``), the writer
+# persists only the CANONICAL value as the attribute — the ORIGINAL surface form
+# the source actually carried (``"12/31/2020"`` before it became
+# ``2020-12-31T00:00:00``, ``"yes"`` before ``true``) survives only in a log. P4
+# (Verify, next wave) must compare the stored canonical value against evidence and
+# needs the original preserved IN THE GRAPH. This companion preserves it as a
+# per-attribute metadata triple on the SAME ``attr_meta/`` namespace as the display
+# companions above, so it is structurally invisible to Explorer chips/columns +
+# type-stats (``predicates.is_internal_predicate`` excludes the whole namespace)
+# yet stays an ordinary queryable instance triple. Minted via the SAME
+# ``attr_provenance_companion_uri`` minter so every rail agrees on the URI, and it
+# rides the shared write path in ``instance_triples`` exactly like the display
+# companions — never a separate writer.
+SURFACE_FORM_SUFFIX = "surface_form"
+
+
+def build_surface_form_companion(
+    entity_uri: str, type_name: str, attribute: str, surface_form: str,
+) -> list[tuple[str, str, str]]:
+    """Build the per-attribute SURFACE-FORM companion preserving the ORIGINAL
+    pre-clean value (ONTA-347).
+
+    Emitted ONLY when the A3 clean stage transformed the value (the CALLER decides
+    that — see ``normalization/clean.py::surface_form_companion_triples``); a value
+    written verbatim has no surface-form divergence to record. One plain-string
+    instance triple::
+
+        <entity> <attr_meta/<Type>/<attr>/surface_form> "<original value>"
+
+    Returns ``[]`` when any component is empty (nothing to preserve), so a caller
+    can unconditionally ``extend`` with the result. The companion is metadata OF the
+    attribute — never itself an attribute (ONTA-262) — so it is invisible to every
+    user-facing surface while staying queryable for P4 Verify."""
+    if not (entity_uri and type_name and attribute and surface_form):
+        return []
+    return [
+        (
+            entity_uri,
+            attr_provenance_companion_uri(type_name, attribute, SURFACE_FORM_SUFFIX),
+            surface_form,
+        )
+    ]
+
+
 def _event_uri(event: str, subject: str, obj: str, ts: str) -> str:
     """Metadata node URI for one removal/rename event.
 

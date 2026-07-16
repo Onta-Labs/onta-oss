@@ -27,10 +27,17 @@ Reuses the primitives in ``resolver/validator.py`` (``validate_value`` /
 """
 from __future__ import annotations
 
+from cograph_client.graph.provenance import build_surface_form_companion
 from cograph_client.resolver.models import CleanFact, CleanOutcome, CleanReport
 from cograph_client.resolver.validator import coerce_value, validate_value
 
-__all__ = ["clean_value", "CleanFact", "CleanOutcome", "CleanReport"]
+__all__ = [
+    "clean_value",
+    "surface_form_companion_triples",
+    "CleanFact",
+    "CleanOutcome",
+    "CleanReport",
+]
 
 # Datatypes whose CONFORMING lexical form can still be non-canonical, so a value
 # that already passes ``validate_value`` may still need canonicalization (boolean
@@ -121,4 +128,30 @@ def clean_value(
         reason=f"Cannot coerce '{value}' to {datatype}",
         entity_id=entity_id,
         attribute=attribute,
+    )
+
+
+def surface_form_companion_triples(
+    fact: CleanFact, *, subject: str, type_name: str,
+) -> list[tuple[str, str, str]]:
+    """A3→P4 bridge: the per-attribute SURFACE-FORM companion for a TRANSFORMED fact.
+
+    When A3 coerced or canonicalized a value (:attr:`CleanOutcome.TRANSFORMED`, i.e.
+    ``raw_value != clean_value``), the writer persists only the CANONICAL value; the
+    original surface form would otherwise survive only in a log. This preserves it in
+    the graph as an ``attr_meta`` companion (via the shared
+    :func:`cograph_client.graph.provenance.build_surface_form_companion` minter) so P4
+    Verify can compare the stored canonical value against evidence in its ORIGINAL
+    form (ONTA-347).
+
+    Emits NOTHING for PASSED facts (written verbatim — no divergence to record) or
+    DROPPED facts (nothing was written). ``subject`` is the entity URI the fact was
+    asserted on and ``type_name`` its ontology type — both known to the WRITER, not
+    to the pure clean stage, so the caller threads them in. The attribute leaf comes
+    from ``fact.attribute``. Returns ``[]`` when the fact was not transformed (or any
+    component is empty), so a caller can unconditionally ``extend`` with the result."""
+    if fact.outcome is not CleanOutcome.TRANSFORMED:
+        return []
+    return build_surface_form_companion(
+        subject, type_name, fact.attribute, fact.raw_value,
     )

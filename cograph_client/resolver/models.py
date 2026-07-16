@@ -386,6 +386,18 @@ class ValidatedTriple(BaseModel):
     object: str
     outcome: ValidationOutcome = ValidationOutcome.OK
     original_value: str | None = None  # set when coerced
+    # ONTA-347: the per-attribute SURFACE-FORM companion triple
+    # (``<entity> <attr_meta/<Type>/<attr>/surface_form> "<original>"``) built when
+    # the A3 clean stage COERCED or CANONICALIZED this value (raw != canonical),
+    # else None. It preserves the ORIGINAL pre-clean value in the graph — metadata
+    # OF the attribute on the attr_meta namespace, structurally invisible to every
+    # user surface (is_internal_predicate) yet queryable — so P4 Verify can compare
+    # the stored canonical value against evidence in its original form. The writer
+    # threads it into the SAME insert_facts call as ``object`` (never a domain fact
+    # about the subject, so it gets no provenance record of its own). Optional +
+    # back-compat: every existing ``ValidatedTriple(...)`` construction (and the
+    # frozen a4/a5 boundary fixtures, which read explicit fields) is unchanged.
+    surface_form_companion: tuple[str, str, str] | None = None
     # Trust signals carried through A4 for write-time conflict resolution (ONTA-276).
     authority: AuthorityLevel | None = Field(
         default=None,
