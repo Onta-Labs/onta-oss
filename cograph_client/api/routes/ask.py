@@ -49,7 +49,7 @@ async def ask_question(
         result = await pipeline.ask(
             body.question, ontology_graph, instance_graph, exclude_questions=body.exclude_questions
         )
-        _emit_query_executed(tenant, body.kg_name, start, ok=True)
+        _emit_query_executed(tenant, body.kg_name, start, result, ok=True)
         return result
     except Exception:
         logger.error(
@@ -59,8 +59,7 @@ async def ask_question(
             tenant=tenant.tenant_id,
             exc_info=True,
         )
-        _emit_query_executed(tenant, body.kg_name, start, ok=False)
-        return NLResult(
+        degraded = NLResult(
             answer=(
                 "Could not answer this question due to an internal error. "
                 "Please try rephrasing or narrowing the question, or try again shortly."
@@ -68,23 +67,41 @@ async def ask_question(
             sparql="",
             explanation="",
         )
+        _emit_query_executed(tenant, body.kg_name, start, degraded, ok=False)
+        return degraded
 
 
 def _emit_query_executed(
-    tenant: TenantContext, kg_name: str | None, start: float, *, ok: bool
+    tenant: TenantContext,
+    kg_name: str | None,
+    start: float,
+    result: NLResult,
+    *,
+    ok: bool,
 ) -> None:
-    """Product-analytics event for an executed NL query (ONTA-323).
+    """Product-analytics event for an executed NL query (ONTA-323, ONTA-355).
 
     Fire-and-forget, no-op without a registered sink, never raises. Attributed
     to the authenticated subject (Clerk user id), else a stable system:<tenant>
     id. ``ok`` distinguishes a normal answer from the route's graceful-degrade
     path (an unexpected error that still returned a 200 NLResult).
+
+    ONTA-355 adds cheap result-quality signal derived from the answer payload's
+    existing ``timing`` metadata (no row data, no PII): ``result_count`` (rows
+    the query returned) and ``returned_rows`` (did it return anything). ``mode``
+    tags this as the NL (``/ask``) path so events separate cleanly from any
+    future agent route in the same stream.
     """
+    rows = result.timing.get("rows")
+    result_count = int(rows) if isinstance(rows, (int, float)) else 0
     emit(
         "query_executed",
         distinct_id=distinct_id_for(tenant.subject, tenant.tenant_id),
         tenant=tenant.tenant_id,
         kg=kg_name or "",
+        mode="nl",
         latency_ms=round((time.monotonic() - start) * 1000, 1),
         ok=ok,
+        result_count=result_count,
+        returned_rows=result_count > 0,
     )

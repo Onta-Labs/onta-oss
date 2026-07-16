@@ -32,11 +32,23 @@ and no proprietary identifiers.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional, Protocol, runtime_checkable
+from types import TracebackType
+from typing import Any, Mapping, Optional, Protocol, Tuple, Union, runtime_checkable
 
 import structlog
 
 logger = structlog.stdlib.get_logger("cograph.analytics")
+
+# A generic, sink-agnostic exception carrier (ONTA-358). Either a caught
+# exception instance or a ``sys.exc_info()``-style ``(type, value, traceback)``
+# tuple. The OSS seam NEVER inspects it — it is only passed through so a
+# downstream (premium) sink CAN forward a real stack trace to error tracking.
+# Deliberately a plain Python object and names no provider: the sink decides
+# what, if anything, to do with it; the OSS no-op default ignores it.
+ExcInfo = Union[
+    BaseException,
+    Tuple[Optional[type], Optional[BaseException], Optional[TracebackType]],
+]
 
 
 @runtime_checkable
@@ -50,7 +62,9 @@ class AnalyticsSink(Protocol):
 
     * ``capture`` — record one event for ``distinct_id`` (the identified user, or
       ``None`` for an anonymous/unattributed event) with a flat ``properties``
-      mapping.
+      mapping. The optional ``exc_info`` carries a raw exception / ``sys.exc_info``
+      tuple (ONTA-358) so an error-event sink CAN attach a real stack trace; the
+      OSS seam never inspects it and the no-op default ignores it.
     * ``flush`` — best-effort drain of any buffered events (called on app
       shutdown).
     """
@@ -61,6 +75,7 @@ class AnalyticsSink(Protocol):
         event: str,
         distinct_id: Optional[str],
         properties: Mapping[str, Any],
+        exc_info: Optional[ExcInfo] = None,
     ) -> None: ...
 
     def flush(self) -> None: ...
@@ -80,7 +95,9 @@ class NoOpSink:
         event: str,
         distinct_id: Optional[str],
         properties: Mapping[str, Any],
+        exc_info: Optional[ExcInfo] = None,
     ) -> None:
+        # The OSS default drops everything, including any exc carrier.
         return None
 
     def flush(self) -> None:
@@ -126,6 +143,7 @@ def emit(
     event: str,
     *,
     distinct_id: Optional[str] = None,
+    exc_info: Optional[ExcInfo] = None,
     **properties: Any,
 ) -> None:
     """Emit one product-analytics event. No-op unless a sink is registered.
@@ -134,12 +152,19 @@ def emit(
     as ``UsageRecorder.observe``). Any error from the sink is swallowed and
     logged at ``debug`` — analytics must never break or slow a request. The sink
     owns non-blocking delivery.
+
+    ``exc_info`` (ONTA-358) is an OPTIONAL generic exception carrier — a raw
+    exception instance or a ``sys.exc_info()``-style tuple — passed straight
+    through to the sink so an error-event sink CAN forward a real stack trace to
+    error tracking. The seam never interprets it and never names a provider; the
+    OSS no-op default ignores it.
     """
     try:
         get_analytics_sink().capture(
             event=event,
             distinct_id=distinct_id,
             properties=properties,
+            exc_info=exc_info,
         )
     except Exception:  # noqa: BLE001 — analytics must never break a request
         # NB: structlog reserves ``event`` for the log message, so the emitted
@@ -177,6 +202,7 @@ def distinct_id_for(
 
 __all__ = [
     "AnalyticsSink",
+    "ExcInfo",
     "NoOpSink",
     "distinct_id_for",
     "emit",
