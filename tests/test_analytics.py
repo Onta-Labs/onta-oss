@@ -29,9 +29,14 @@ class RecordingSink:
         self.captured: list[dict] = []
         self.flushes = 0
 
-    def capture(self, *, event, distinct_id, properties):
+    def capture(self, *, event, distinct_id, properties, exc_info=None):
         self.captured.append(
-            {"event": event, "distinct_id": distinct_id, "properties": dict(properties)}
+            {
+                "event": event,
+                "distinct_id": distinct_id,
+                "properties": dict(properties),
+                "exc_info": exc_info,
+            }
         )
 
     def flush(self):
@@ -43,7 +48,7 @@ class ThrowingSink:
 
     name = "throwing"
 
-    def capture(self, *, event, distinct_id, properties):
+    def capture(self, *, event, distinct_id, properties, exc_info=None):
         raise RuntimeError("sink boom")
 
     def flush(self):
@@ -112,6 +117,60 @@ def test_emit_never_raises_even_if_sink_throws():
     emit("backend_request_error", distinct_id=None, path="/x", status=500)
 
 
+# --- ONTA-358: optional generic exception carrier through the seam ----------- #
+
+
+def test_exc_info_defaults_to_none_and_reaches_the_sink():
+    """No exc_info given → the sink still receives the keyword, valued None."""
+    sink = RecordingSink()
+    register_analytics_sink(sink)
+
+    emit("kg_created", distinct_id="u", tenant="t", kg="g")
+
+    assert sink.captured[0]["exc_info"] is None
+
+
+def test_exc_info_exception_instance_passed_through_unchanged():
+    """A raw exception is handed to the sink AS-IS — the seam never inspects it."""
+    sink = RecordingSink()
+    register_analytics_sink(sink)
+    boom = ValueError("kaboom")
+
+    emit("backend_request_error", distinct_id=None, path="/x", exc_info=boom)
+
+    assert sink.captured[0]["exc_info"] is boom
+    # The carrier is out-of-band — it must NOT leak into the flat properties.
+    assert "exc_info" not in sink.captured[0]["properties"]
+
+
+def test_exc_info_tuple_passed_through_unchanged():
+    """A sys.exc_info()-style (type, value, tb) tuple passes through verbatim."""
+    import sys
+
+    sink = RecordingSink()
+    register_analytics_sink(sink)
+
+    try:
+        raise RuntimeError("tuple boom")
+    except RuntimeError:
+        info = sys.exc_info()
+        emit("backend_request_error", exc_info=info)
+
+    assert sink.captured[0]["exc_info"] is info
+
+
+def test_emit_with_exc_info_never_raises_when_sink_throws():
+    """Passing exc_info to a hostile sink is still swallowed — never raises."""
+    register_analytics_sink(ThrowingSink())
+    # Must not raise even though the sink blows up on capture.
+    emit("backend_request_error", exc_info=ValueError("x"), path="/x")
+
+
+def test_emit_with_exc_info_is_noop_without_a_sink():
+    """exc_info with the no-op default is dropped and never raises."""
+    emit("backend_request_error", exc_info=ValueError("x"), path="/x")  # must not raise
+
+
 def test_emit_distinct_id_defaults_to_none():
     """distinct_id is optional and defaults to None (anonymous/unattributed)."""
     sink = RecordingSink()
@@ -174,6 +233,82 @@ def test_no_posthog_import_in_oss_analytics():
     import cograph_client.analytics  # noqa: F401
 
     assert "posthog" not in sys.modules
+
+
+# --- ONTA-355: query_executed result-quality metadata ---------------------- #
+
+
+def _tenant(subject="user_9", tenant_id="acme"):
+    from cograph_client.auth.api_keys import TenantContext
+
+    return TenantContext(tenant_id=tenant_id, api_key="k", subject=subject)
+
+
+def test_query_executed_emits_result_count_and_returned_rows():
+    """The /ask emit carries cheap result-quality signal + the NL mode tag."""
+    import time
+
+    from cograph_client.api.routes.ask import _emit_query_executed
+    from cograph_client.models.query import NLResult
+
+    sink = RecordingSink()
+    register_analytics_sink(sink)
+
+    result = NLResult(answer="3 rows", sparql="SELECT ...", explanation="", timing={"rows": 3})
+    _emit_query_executed(_tenant(), "people", time.monotonic(), result, ok=True)
+
+    call = sink.captured[0]
+    assert call["event"] == "query_executed"
+    assert call["distinct_id"] == "user_9"
+    props = call["properties"]
+    assert props["result_count"] == 3
+    assert props["returned_rows"] is True
+    assert props["ok"] is True
+    assert props["mode"] == "nl"
+    assert props["kg"] == "people"
+    assert props["tenant"] == "acme"
+    assert "latency_ms" in props
+    # Counts/booleans only — no row data, no answer text, no PII.
+    assert "answer" not in props
+    assert "sparql" not in props
+
+
+def test_query_executed_zero_rows_reports_returned_rows_false():
+    """A query that returned nothing → result_count 0, returned_rows False."""
+    import time
+
+    from cograph_client.api.routes.ask import _emit_query_executed
+    from cograph_client.models.query import NLResult
+
+    sink = RecordingSink()
+    register_analytics_sink(sink)
+
+    result = NLResult(answer="no results", sparql="SELECT ...", explanation="", timing={"rows": 0})
+    _emit_query_executed(_tenant(), None, time.monotonic(), result, ok=True)
+
+    props = sink.captured[0]["properties"]
+    assert props["result_count"] == 0
+    assert props["returned_rows"] is False
+    assert props["kg"] == ""
+
+
+def test_query_executed_degraded_result_without_rows_metadata_is_zero():
+    """The graceful-degrade NLResult (empty timing) reports 0 rows, not a crash."""
+    import time
+
+    from cograph_client.api.routes.ask import _emit_query_executed
+    from cograph_client.models.query import NLResult
+
+    sink = RecordingSink()
+    register_analytics_sink(sink)
+
+    degraded = NLResult(answer="internal error", sparql="", explanation="")
+    _emit_query_executed(_tenant(), "people", time.monotonic(), degraded, ok=False)
+
+    props = sink.captured[0]["properties"]
+    assert props["result_count"] == 0
+    assert props["returned_rows"] is False
+    assert props["ok"] is False
 
 
 # --- OMNIX_ANALYTICS_PLUGIN loader (mirrors the router/enrichment loaders) --- #
