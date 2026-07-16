@@ -1,0 +1,685 @@
+{
+  "clean_facts": [
+    {
+      "attribute": "address",
+      "clean_value": "9 Tinderbox Alley",
+      "datatype": "string",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "outcome": "passed",
+      "raw_value": "9 Tinderbox Alley",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$",
+      "datatype": "string",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "outcome": "passed",
+      "raw_value": "$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.0",
+      "datatype": "float",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "outcome": "passed",
+      "raw_value": "4.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1012",
+      "datatype": "string",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "outcome": "passed",
+      "raw_value": "CS-1012",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "330 Bluebonnet Trail",
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "330 Bluebonnet Trail",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "903 Seacliff Road",
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "903 Seacliff Road",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.4",
+      "datatype": "float",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "4.4",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.5",
+      "datatype": "float",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "4.5",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1005",
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "CS-1005",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1009",
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "outcome": "passed",
+      "raw_value": "CS-1009",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "205 Cobbler Court",
+      "datatype": "string",
+      "entity_id": "Emberlight Cafe",
+      "outcome": "passed",
+      "raw_value": "205 Cobbler Court",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Emberlight Cafe",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$",
+      "datatype": "string",
+      "entity_id": "Emberlight Cafe",
+      "outcome": "passed",
+      "raw_value": "$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "3.8",
+      "datatype": "float",
+      "entity_id": "Emberlight Cafe",
+      "outcome": "passed",
+      "raw_value": "3.8",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1015",
+      "datatype": "string",
+      "entity_id": "Emberlight Cafe",
+      "outcome": "passed",
+      "raw_value": "CS-1015",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "2200 Chestnut Avenue",
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "2200 Chestnut Avenue",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "812 Alder Street",
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "812 Alder Street",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.1",
+      "datatype": "float",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "4.1",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.6",
+      "datatype": "float",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "4.6",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1001",
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "CS-1001",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1003",
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "outcome": "passed",
+      "raw_value": "CS-1003",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "88 Lantern Way",
+      "datatype": "string",
+      "entity_id": "Gilded Portafilter",
+      "outcome": "passed",
+      "raw_value": "88 Lantern Way",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Gilded Portafilter",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$$",
+      "datatype": "string",
+      "entity_id": "Gilded Portafilter",
+      "outcome": "passed",
+      "raw_value": "$$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.7",
+      "datatype": "float",
+      "entity_id": "Gilded Portafilter",
+      "outcome": "passed",
+      "raw_value": "4.7",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1007",
+      "datatype": "string",
+      "entity_id": "Gilded Portafilter",
+      "outcome": "passed",
+      "raw_value": "CS-1007",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "1204 Sparrow Street",
+      "datatype": "string",
+      "entity_id": "Hollow Reed Cafe",
+      "outcome": "passed",
+      "raw_value": "1204 Sparrow Street",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Hollow Reed Cafe",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$",
+      "datatype": "string",
+      "entity_id": "Hollow Reed Cafe",
+      "outcome": "passed",
+      "raw_value": "$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "3.9",
+      "datatype": "float",
+      "entity_id": "Hollow Reed Cafe",
+      "outcome": "passed",
+      "raw_value": "3.9",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1008",
+      "datatype": "string",
+      "entity_id": "Hollow Reed Cafe",
+      "outcome": "passed",
+      "raw_value": "CS-1008",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "17 Wharfside Court",
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "17 Wharfside Court",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "410 Kingfisher Plaza",
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "410 Kingfisher Plaza",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$$",
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "$$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$$",
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "$$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.6",
+      "datatype": "float",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "4.6",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.8",
+      "datatype": "float",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "4.8",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1004",
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "CS-1004",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1011",
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "outcome": "passed",
+      "raw_value": "CS-1011",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "1450 Harborview Terrace",
+      "datatype": "string",
+      "entity_id": "Quillfeather Roastery",
+      "outcome": "passed",
+      "raw_value": "1450 Harborview Terrace",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Quillfeather Roastery",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$$",
+      "datatype": "string",
+      "entity_id": "Quillfeather Roastery",
+      "outcome": "passed",
+      "raw_value": "$$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.9",
+      "datatype": "float",
+      "entity_id": "Quillfeather Roastery",
+      "outcome": "passed",
+      "raw_value": "4.9",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1014",
+      "datatype": "string",
+      "entity_id": "Quillfeather Roastery",
+      "outcome": "passed",
+      "raw_value": "CS-1014",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "45 Marmot Lane",
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "45 Marmot Lane",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "560 Juniper Boulevard",
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "560 Juniper Boulevard",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$",
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.0",
+      "datatype": "float",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "4.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.3",
+      "datatype": "float",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "4.3",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1002",
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "CS-1002",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1006",
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "outcome": "passed",
+      "raw_value": "CS-1006",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "633 Meadowlark Drive",
+      "datatype": "string",
+      "entity_id": "The Wandering Bean",
+      "outcome": "passed",
+      "raw_value": "633 Meadowlark Drive",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "The Wandering Bean",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "The Wandering Bean",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.5",
+      "datatype": "float",
+      "entity_id": "The Wandering Bean",
+      "outcome": "passed",
+      "raw_value": "4.5",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1013",
+      "datatype": "string",
+      "entity_id": "The Wandering Bean",
+      "outcome": "passed",
+      "raw_value": "CS-1013",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "address",
+      "clean_value": "76 Foundry Street",
+      "datatype": "string",
+      "entity_id": "Thimbleweed Espresso",
+      "outcome": "passed",
+      "raw_value": "76 Foundry Street",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Thimbleweed Espresso",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "price_level",
+      "clean_value": "$$",
+      "datatype": "string",
+      "entity_id": "Thimbleweed Espresso",
+      "outcome": "passed",
+      "raw_value": "$$",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "rating",
+      "clean_value": "4.2",
+      "datatype": "float",
+      "entity_id": "Thimbleweed Espresso",
+      "outcome": "passed",
+      "raw_value": "4.2",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "shop_id",
+      "clean_value": "CS-1010",
+      "datatype": "string",
+      "entity_id": "Thimbleweed Espresso",
+      "outcome": "passed",
+      "raw_value": "CS-1010",
+      "reason": "conforms as string"
+    }
+  ],
+  "report": {
+    "dropped": 0,
+    "passed": 75,
+    "total": 75,
+    "transformed": 0
+  }
+}
