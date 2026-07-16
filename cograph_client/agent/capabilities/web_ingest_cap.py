@@ -79,7 +79,9 @@ from cograph_client.enrichment.models import (
     ProviderLog,
 )
 from cograph_client.graph.kg_writer import refresh_after_write
+from cograph_client.graph.ontology_queries import entity_uri
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from cograph_client.graph.suppression import fetch_suppressed_entities
 from cograph_client.normalization.inference import list_type_schema
 from cograph_client.config import settings
 from cograph_client.pipeline.manifest import (
@@ -275,6 +277,49 @@ def _group_rows_by_source_url(rows: list) -> list[list]:
     if current:
         groups.append(current)
     return groups
+
+
+def _drop_suppressed_rows(
+    rows: list,
+    proposed_type: str,
+    key_attr: str,
+    suppressed_entities: set[str],
+    *,
+    provider: str = "",
+    job_id: Optional[str] = None,
+) -> list:
+    """Drop discovered rows whose would-be canonical subject is on the ENTITY-level
+    suppression list (ONTA-345) — the FIND-path re-acquisition guard.
+
+    For each surviving (post-dedupe) row this computes the SAME canonical instance
+    IRI the resolver would mint for it — ``entity_uri(proposed_type,
+    row[key_attr])`` — and DROPS the row when that subject is entity-suppressed
+    (erased / tombstoned). So an ERASED entity is never re-minted by discovery or a
+    refresh (the P1 'never re-acquire erased data' rule; GDPR erasure blast
+    radius). Membership is a set check against ``suppressed_entities`` — fetched
+    ONCE per run (:func:`fetch_suppressed_entities`) — so this is O(1) per row, no
+    per-row query. Each drop is logged (structured). A no-op returning ``rows``
+    unchanged when the suppression set is empty (the common case), so the happy
+    path pays only one set-emptiness check.
+    """
+    if not suppressed_entities or not rows:
+        return rows
+    kept: list = []
+    for row in rows:
+        raw_id = row.get(key_attr) if isinstance(row, dict) else None
+        subject = entity_uri(proposed_type, str(raw_id)) if raw_id else None
+        if subject is not None and subject in suppressed_entities:
+            logger.info(
+                "web_ingest_suppressed_entity_dropped",
+                subject=subject,
+                type=proposed_type,
+                key=str(raw_id),
+                provider=provider,
+                job_id=job_id,
+            )
+            continue
+        kept.append(row)
+    return kept
 
 
 def _spawn(coro) -> None:
@@ -1122,6 +1167,19 @@ class WebIngestCapability:
             # structured) row wins; the general provider only contributes NEW keys.
             seen_keys: set[str] = set()
             key_attr = (attributes[0] if attributes else "name") or "name"
+            # ONTA-345: entity-level RE-ACQUISITION guard. Consult the STICKY
+            # suppression / tombstone list ONCE per run (batched — one query, then
+            # an O(1) set-membership check per row below), so an ERASED entity is
+            # never silently re-minted by discovery/refresh (the P1 'never
+            # re-acquire erased data' rule; GDPR erasure blast radius). A row whose
+            # would-be canonical subject is on this list is DROPPED post-dedupe,
+            # BEFORE the SourceBundle is built and BEFORE resolver.ingest*, so a
+            # suppressed entity never enters the bundle and never reaches the
+            # writer. Best-effort + empty when there is no target KG — a suppression
+            # read must never fail the run.
+            suppressed_entities = await fetch_suppressed_entities(
+                ctx.neptune, instance_graph
+            )
             last_provider_err: Optional[str] = None
             last_err_provider: Optional[str] = None
             errors_total = 0
@@ -1240,8 +1298,25 @@ class WebIngestCapability:
                                 seen_keys,
                                 getattr(full, "provenance", None) or {},
                             )
+                            # ONTA-345: entity-level re-acquisition guard. DROP any
+                            # row whose would-be canonical subject
+                            # (entity_uri(proposed_type, row[key_attr])) is on the
+                            # entity-suppression list fetched once per run above —
+                            # BEFORE the SourceBundle is built and BEFORE
+                            # resolver.ingest*, so an ERASED entity never enters the
+                            # bundle and never reaches the writer. Each drop is
+                            # logged. No-op (returns `batch` unchanged) when the run
+                            # has nothing suppressed.
+                            batch = _drop_suppressed_rows(
+                                batch,
+                                proposed_type,
+                                key_attr,
+                                suppressed_entities,
+                                provider=prov.name,
+                                job_id=job.id if job is not None else None,
+                            )
                             if not batch:
-                                continue  # found rows; all already contributed
+                                continue  # found rows; all deduped or suppressed
                             # A1 SOURCE BUNDLE (ONTA-346): materialize the
                             # Find→Extract boundary artifact from THIS provider's
                             # post-dedupe batch, BEFORE the extract/write below.
