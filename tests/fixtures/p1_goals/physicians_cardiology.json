@@ -1,0 +1,43 @@
+{
+  "id": "physicians_cardiology",
+  "goal": "board-certified cardiologists practising in Austin",
+  "entity_type": "Physician",
+  "key_attribute": "npi",
+  "query": "board-certified cardiologists in Austin TX",
+  "confirmed_attributes": ["specialty", "board_certified"],
+  "suggested_attributes": ["specialty", "board_certified", "city", "name"],
+  "membership_rule": {
+    "all": [
+      {"field": "specialty", "equals": "Cardiology"},
+      {"field": "board_certified", "equals": "true"}
+    ]
+  },
+  "alias_table": null,
+  "gold_roster": [
+    "1023011178",
+    "1467560003",
+    "1548363738",
+    "1730101267",
+    "1902876541",
+    "1245319587",
+    "1356789023",
+    "1699887761"
+  ],
+  "provider": {
+    "is_paid": true,
+    "cost_per_call": 0.02
+  },
+  "expect_pass": true,
+  "notes": "OPEN-goal fixture: membership_rule (specialty=Cardiology AND board_certified=true) decides precision membership; gold_roster (real, non-sequential NPIs the fabrication backstop KEEPS) drives coverage. One off-membership row (a dermatologist) is sub-ceiling. fabricated_rows must be 0 — proving the backstop is conservative on real NPIs.",
+  "rows": [
+    {"npi": "1023011178", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. A. Reyes"},
+    {"npi": "1467560003", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. B. Okafor"},
+    {"npi": "1548363738", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. C. Nguyen"},
+    {"npi": "1730101267", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. D. Patel"},
+    {"npi": "1902876541", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. E. Cohen"},
+    {"npi": "1245319587", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. F. Mbeki"},
+    {"npi": "1356789023", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. G. Ito"},
+    {"npi": "1699887761", "specialty": "Cardiology", "board_certified": "true", "city": "Austin", "name": "Dr. H. Silva"},
+    {"npi": "1811224409", "specialty": "Dermatology", "board_certified": "true", "city": "Austin", "name": "Dr. I. Marsh"}
+  ]
+}
