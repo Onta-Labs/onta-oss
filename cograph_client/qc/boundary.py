@@ -7,10 +7,15 @@ artifact?"** It snapshots the three inter-stage artifacts of the ingestion pipel
 freezes them as CHARACTERIZATION fixtures, so a later refactor can assert *same input →
 same artifact out* and a diff test flags any drift.
 
-The three boundary artifacts (the P0–P9 stage contract's A2/A4/A5):
+The four boundary artifacts (the P0–P9 stage contract's A2/A3/A4/A5):
 
   * **A2 — candidate facts** (extraction output): the ``ExtractionResult`` the LLM
     extractor hands the resolver — typed entities, their attributes, and relationships.
+  * **A3 — clean facts** (ONTA-344): every candidate literal value after the explicit
+    Clean stage (``normalization/clean.py``) — partitioned into passed / transformed /
+    dropped with a reason each (the zero-silent-drops ``CleanReport`` ledger). A4
+    consumes this stage, so A3 surfaces the coercion/canonicalization A4 was already
+    doing silently.
   * **A4 — verified facts**: every literal attribute value after the REAL
     schema-on-write ``validate_triple`` — the typed, canonicalized, coerced-or-rejected
     triples the writer is allowed to persist.
@@ -62,9 +67,11 @@ from cograph_client.graph.ontology_queries import (
     ontology_version,
     type_uri,
 )
+from cograph_client.normalization.clean import clean_value
 from cograph_client.qc.scenario import Dataset, load_fixture_datasets
 from cograph_client.resolver.attribute_resolver import resolve_attribute
 from cograph_client.resolver.models import (
+    CleanReport,
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
@@ -78,8 +85,10 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 ONTO_PREFIX = "https://cograph.tech/onto/"
 
-# Artifact tiers, named for the stage-contract slots they characterize.
-TIERS = ("a2", "a4", "a5")
+# Artifact tiers, named for the stage-contract slots they characterize. A3 (the
+# explicit Clean stage, ONTA-344) sits between A2 (candidate facts) and A4 (verified
+# facts): it partitions every candidate literal value into passed/transformed/dropped.
+TIERS = ("a2", "a3", "a4", "a5")
 
 
 # --------------------------------------------------------------------------- #
@@ -251,15 +260,16 @@ def render_extraction(rows: list[dict], spec: BoundarySpec) -> ExtractionResult:
 # --------------------------------------------------------------------------- #
 @dataclass
 class BoundaryArtifacts:
-    """The three frozen boundary artifacts for one domain, each a JSON-ready dict."""
+    """The frozen boundary artifacts for one domain, each a JSON-ready dict."""
 
     domain: str
     a2: dict
+    a3: dict
     a4: dict
     a5: dict
 
     def tier(self, name: str) -> dict:
-        return {"a2": self.a2, "a4": self.a4, "a5": self.a5}[name]
+        return {"a2": self.a2, "a3": self.a3, "a4": self.a4, "a5": self.a5}[name]
 
 
 def _a2_dict(extraction: ExtractionResult) -> dict:
@@ -312,6 +322,9 @@ def capture_boundary(extraction: ExtractionResult, domain: str) -> BoundaryArtif
     attr_decls: dict[tuple[str, str], dict] = {}   # (type, attr) -> declaration
     rel_edges: list[dict] = []             # onto/<leaf> instance edges
     node_materializations: dict[str, dict] = {}    # target uri -> {rdf_type, label}
+    # ---- clean accumulators (A3) ----
+    clean_report = CleanReport()  # partitions every literal value passed/transformed/dropped
+    clean_facts: list[dict] = []
     # ---- verification accumulators (A4) ----
     verified: list[dict] = []
     rejections: list[dict] = []
@@ -371,6 +384,23 @@ def capture_boundary(extraction: ExtractionResult, domain: str) -> BoundaryArtif
                 "range": _datatype_to_xsd(r.datatype),
                 "kind": "literal",
             }
+            # A3 (Clean): partition the candidate value BEFORE A4 types it. Reads
+            # from the SAME resolved (name, value, datatype) A4 consumes, so a value
+            # A4 rejects is a DROPPED CleanFact here — never a silent loss.
+            cf = clean_report.record(
+                clean_value(r.value, r.datatype, entity_id=e.id, attribute=r.name)
+            )
+            clean_facts.append(
+                {
+                    "entity_id": cf.entity_id,
+                    "attribute": cf.attribute,
+                    "datatype": cf.datatype,
+                    "raw_value": cf.raw_value,
+                    "clean_value": cf.clean_value,
+                    "outcome": cf.outcome.value,
+                    "reason": cf.reason,
+                }
+            )
             v = validate_triple(
                 uri, pred_uri, r.value, r.datatype, entity_id=e.id, attribute_name=r.name
             )
@@ -463,7 +493,18 @@ def capture_boundary(extraction: ExtractionResult, domain: str) -> BoundaryArtif
             rejections, key=lambda r: (r["entity_id"], r["attribute"], r["value"])
         ),
     }
-    return BoundaryArtifacts(domain=domain, a2=_a2_dict(extraction), a4=a4, a5=a5)
+    # A3 = the clean ledger: every candidate literal value partitioned exactly once.
+    # `report` conserves — total == len(clean_facts) == passed + transformed + dropped.
+    a3 = {
+        "clean_facts": sorted(
+            clean_facts,
+            key=lambda f: (f["entity_id"], f["attribute"], f["raw_value"], f["datatype"]),
+        ),
+        "report": clean_report.counts(),
+    }
+    return BoundaryArtifacts(
+        domain=domain, a2=_a2_dict(extraction), a3=a3, a4=a4, a5=a5
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -581,9 +622,11 @@ def _summarize_diff(frozen: dict, rendered: dict) -> str:
 # CLI — python -m cograph_client.qc.boundary
 # --------------------------------------------------------------------------- #
 def _summarize_domain(arts: BoundaryArtifacts) -> str:
+    r = arts.a3["report"]
     return (
         f"  {arts.domain}: "
         f"A2[entities={len(arts.a2['entities'])}, rels={len(arts.a2['relationships'])}]  "
+        f"A3[passed={r['passed']}, transformed={r['transformed']}, dropped={r['dropped']}]  "
         f"A4[verified={len(arts.a4['verified_facts'])}, rejected={len(arts.a4['rejections'])}]  "
         f"A5[types={len(arts.a5['types'])}, edges={len(arts.a5['relationship_edges'])}]"
     )
@@ -629,7 +672,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     # Default action is --check.
     diffs = check(domains, out_dir=args.out_dir)
     if not diffs:
-        print(f"boundary fixtures OK — {len(domains)} domain(s) match their frozen A2/A4/A5.")
+        print(f"boundary fixtures OK — {len(domains)} domain(s) match their frozen A2/A3/A4/A5.")
         for d in domains:
             print(_summarize_domain(render_domain(d)))
         return 0
