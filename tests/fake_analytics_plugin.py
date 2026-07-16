@@ -14,9 +14,14 @@ CAPTURED: list[dict] = []
 class _FixtureSink:
     name = "fake-analytics"
 
-    def capture(self, *, event, distinct_id, properties):
+    def capture(self, *, event, distinct_id, properties, exc_info=None):
         CAPTURED.append(
-            {"event": event, "distinct_id": distinct_id, "properties": dict(properties)}
+            {
+                "event": event,
+                "distinct_id": distinct_id,
+                "properties": dict(properties),
+                "exc_info": exc_info,
+            }
         )
 
     def flush(self):  # pragma: no cover - not exercised by the loader test
