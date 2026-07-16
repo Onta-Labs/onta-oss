@@ -1,0 +1,33 @@
+{
+  "id": "models_openrouter",
+  "goal": "the chat models offered by OpenRouter",
+  "entity_type": "OpenRouterModel",
+  "key_attribute": "name",
+  "query": "OpenRouter chat models",
+  "confirmed_attributes": ["context_length"],
+  "suggested_attributes": ["provider", "context_length"],
+  "membership_rule": null,
+  "alias_table": {
+    "Claude Opus 4.8": "anthropic/claude-opus-4-8"
+  },
+  "gold_roster": [
+    "anthropic/claude-opus-4-8",
+    "openai/gpt-5",
+    "google/gemini-2.5-flash",
+    "meta/llama-4",
+    "mistral/mistral-large"
+  ],
+  "provider": {
+    "is_paid": false,
+    "cost_per_call": 0.0
+  },
+  "expect_pass": true,
+  "notes": "Pristine closed-roster fixture. One row uses the alias spelling 'Claude Opus 4.8' to exercise the per-fixture alias table; every row is a distinct gold member so coverage=1.0, precision=1.0, all counters=0.",
+  "rows": [
+    {"name": "Claude Opus 4.8", "context_length": "200000", "provider": "anthropic"},
+    {"name": "openai/gpt-5", "context_length": "400000", "provider": "openai"},
+    {"name": "google/gemini-2.5-flash", "context_length": "1000000", "provider": "google"},
+    {"name": "meta/llama-4", "context_length": "128000", "provider": "meta"},
+    {"name": "mistral/mistral-large", "context_length": "128000", "provider": "mistral"}
+  ]
+}
