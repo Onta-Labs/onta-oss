@@ -215,6 +215,7 @@ def validate_triple(
     expected_datatype: str,
     entity_id: str = "",
     attribute_name: str = "",
+    type_name: str = "",
 ) -> ValidatedTriple | RejectedValue:
     """Validate a single triple value against the expected datatype.
 
@@ -228,11 +229,22 @@ def validate_triple(
     cleaned lexical value. ``clean_value`` hands back exactly the lexical form this
     step was already typing (the raw value when it conforms, the coerced value when
     it does not) and ``conformed`` reproduces the OK-vs-COERCED split, so the
-    typed output is byte-identical to the pre-A3 behavior."""
+    typed output is byte-identical to the pre-A3 behavior.
+
+    ``type_name`` (ONTA-347, OPTIONAL): when given AND the A3 clean stage TRANSFORMED
+    the value (coerced/canonicalized, ``raw != clean``), the returned
+    ``ValidatedTriple`` also carries a per-attribute SURFACE-FORM companion triple
+    (``surface_form_companion``) preserving the ORIGINAL pre-clean value so P4 Verify
+    can read it back from the graph. The writer threads that companion into the SAME
+    ``insert_facts`` call. Default ``""`` (every non-ingest caller — enrichment,
+    ``qc/boundary``) → no companion, so A4 output is byte-identical to pre-347."""
     # Lazy import: A4 (resolver) consuming A3 (normalization) would otherwise close
     # a resolver<->normalization import cycle (clean.py imports this module's
     # primitives). Importing at call time keeps module load order clean.
-    from cograph_client.normalization.clean import clean_value
+    from cograph_client.normalization.clean import (
+        clean_value,
+        surface_form_companion_triples,
+    )
 
     fact = clean_value(
         value, expected_datatype, entity_id=entity_id, attribute=attribute_name
@@ -255,6 +267,18 @@ def validate_triple(
         )
 
     typed = _typed_value(fact.clean_value, expected_datatype)
+    # ONTA-347: preserve the ORIGINAL surface form when A3 transformed the value.
+    # Empty (no companion) for a PASSED value or when the caller passes no
+    # ``type_name`` — the mint needs the entity's ontology type. Same for both the
+    # conformed-canonicalized (OK) and the coerced (COERCED) branches: the single
+    # condition is "was this value transformed", which ``surface_form_companion_triples``
+    # reads off ``fact.outcome`` (so the conformed-yet-canonicalized case, which does
+    # NOT set ``original_value``, still records its surface form).
+    companions = surface_form_companion_triples(
+        fact, subject=subject, type_name=type_name
+    )
+    surface_form_companion = companions[0] if companions else None
+
     if fact.conformed:
         # Conformed as-is → OK (even if A3 lexically canonicalized it; _typed_value
         # canonicalizes idempotently, so the stamped literal is unchanged).
@@ -263,6 +287,7 @@ def validate_triple(
             predicate=predicate,
             object=typed,
             outcome=ValidationOutcome.OK,
+            surface_form_companion=surface_form_companion,
         )
 
     # Did not conform but coerced → COERCED, carrying the original value.
@@ -280,4 +305,5 @@ def validate_triple(
         object=typed,
         outcome=ValidationOutcome.COERCED,
         original_value=value,
+        surface_form_companion=surface_form_companion,
     )
