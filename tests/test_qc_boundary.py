@@ -16,8 +16,11 @@ import json
 
 import pytest
 
+from cograph_client.normalization.clean import clean_value
 from cograph_client.qc import boundary as b
 from cograph_client.resolver.models import (
+    CleanOutcome,
+    CleanReport,
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
@@ -97,7 +100,9 @@ def test_diff_flags_divergence_when_frozen_file_mutated(tmp_path):
 
 def test_check_flags_missing_fixture(tmp_path):
     diffs = b.check(["llm_models"], out_dir=tmp_path)  # nothing frozen here
-    assert {(d.tier, "missing" in d.reason) for d in diffs} == {("a2", True), ("a4", True), ("a5", True)}
+    assert {(d.tier, "missing" in d.reason) for d in diffs} == {
+        ("a2", True), ("a3", True), ("a4", True), ("a5", True)
+    }
 
 
 def test_freeze_roundtrips(tmp_path):
@@ -261,3 +266,97 @@ def test_a2_decomposes_rows_into_typed_entities_and_edges():
     assert len(cat_edges) > len(primaries)
     # the key column stayed a literal attribute on the primary entity.
     assert any(a.name == "shop_id" for a in primaries[0].attributes)
+
+
+# --------------------------------------------------------------------------- #
+# A3 (Clean) — the explicit clean stage + CleanReport ledger (ONTA-344).
+# --------------------------------------------------------------------------- #
+# Every raw candidate value maps to exactly one clean value + outcome. The
+# canonicalizations here are the ones A4 was already applying silently; A3 makes
+# them (and every drop) an explicit, recorded ledger entry.
+_ACCURACY_CASES = [
+    # (raw, datatype, expected_clean_value, expected_outcome)
+    # -- passed: conforms AND already canonical → written verbatim --
+    ("hello", "string", "hello", CleanOutcome.PASSED),
+    ("42", "integer", "42", CleanOutcome.PASSED),
+    ("3.14", "float", "3.14", CleanOutcome.PASSED),
+    ("true", "boolean", "true", CleanOutcome.PASSED),
+    ("POINT(-122.4194 37.7749)", "geo", "POINT(-122.4194 37.7749)", CleanOutcome.PASSED),
+    # -- transformed: coerced and/or lexically canonicalized to fit --
+    ("4.6", "integer", "4", CleanOutcome.TRANSFORMED),  # float → int coercion
+    ("yes", "boolean", "true", CleanOutcome.TRANSFORMED),  # synonym → canonical
+    ("True", "boolean", "true", CleanOutcome.TRANSFORMED),  # conforms yet case-folded
+    ("2020-01-15", "datetime", "2020-01-15T00:00:00", CleanOutcome.TRANSFORMED),
+    ("4/5/2020", "datetime", "2020-04-05T00:00:00", CleanOutcome.TRANSFORMED),
+    ("37.7749,-122.4194", "geo", "POINT(-122.4194 37.7749)", CleanOutcome.TRANSFORMED),  # lat,lon → WKT
+    # -- dropped: cannot be coerced to the datatype → not written --
+    ("not-a-date", "datetime", None, CleanOutcome.DROPPED),
+    ("banana", "integer", None, CleanOutcome.DROPPED),
+]
+
+
+@pytest.mark.parametrize("raw,datatype,expected_clean,expected_outcome", _ACCURACY_CASES)
+def test_a3_normalization_accuracy(raw, datatype, expected_clean, expected_outcome):
+    """Fixture-based normalization accuracy: a raw candidate value cleans to the
+    expected canonical lexical value, byte-compared, with the expected outcome."""
+    fact = clean_value(raw, datatype)
+    assert fact.clean_value == expected_clean
+    assert fact.outcome is expected_outcome
+    assert fact.raw_value == raw and fact.datatype == datatype
+    # A dropped value carries a reason and no clean value; a kept value carries one.
+    if expected_outcome is CleanOutcome.DROPPED:
+        assert fact.clean_value is None and fact.reason
+
+
+def test_clean_report_conserves_value_count():
+    """Value COUNT-CONSERVATION across a CleanReport: every input value lands in
+    exactly one partition, so total == passed + transformed + dropped == len(inputs)
+    (the zero-silent-drops ledger; mirrors ADR 0003 §2 row conservation)."""
+    inputs = [(raw, dt) for raw, dt, _, _ in _ACCURACY_CASES]
+    report = CleanReport()
+    for raw, datatype in inputs:
+        report.record(clean_value(raw, datatype))
+
+    counts = report.counts()
+    assert counts["total"] == len(inputs)
+    assert counts["passed"] + counts["transformed"] + counts["dropped"] == len(inputs)
+    assert report.total == len(inputs)
+    # No value silently vanished: the sum of the three partitions IS every input.
+    kept_plus_dropped = report.passed + report.transformed + report.dropped
+    assert len(kept_plus_dropped) == len(inputs)
+    assert {f.raw_value for f in kept_plus_dropped} == {raw for raw, _ in inputs}
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_a3_report_conserves_per_domain(domain):
+    """Each frozen a3 fixture conserves: report.total == len(clean_facts) ==
+    passed + transformed + dropped, so no candidate value is dropped silently."""
+    a3 = b.render_domain(domain).a3
+    r = a3["report"]
+    assert r["total"] == len(a3["clean_facts"])
+    assert r["passed"] + r["transformed"] + r["dropped"] == r["total"]
+
+
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_a3_dropped_facts_match_a4_rejections(domain):
+    """Every A3 DROPPED value is exactly an A4 rejection (and vice-versa): the two
+    stages agree on which values cannot be written — A3 never hides a drop A4 makes."""
+    arts = b.render_domain(domain)
+    dropped = {
+        (f["entity_id"], f["attribute"], f["raw_value"])
+        for f in arts.a3["clean_facts"]
+        if f["outcome"] == "dropped"
+    }
+    rejected = {
+        (r["entity_id"], r["attribute"], r["value"]) for r in arts.a4["rejections"]
+    }
+    assert dropped == rejected
+
+
+def test_a3_is_a_tier_between_a2_and_a4():
+    """The harness exposes a3 as a first-class tier, ordered between a2 and a4."""
+    assert "a3" in TIERS
+    assert TIERS.index("a2") < TIERS.index("a3") < TIERS.index("a4")
+    arts = b.render_domain("coffee_shops")
+    assert arts.tier("a3") == arts.a3
+    assert set(arts.a3) == {"clean_facts", "report"}
