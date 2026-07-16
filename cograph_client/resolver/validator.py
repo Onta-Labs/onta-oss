@@ -10,7 +10,12 @@ from datetime import datetime
 
 import structlog
 
-from cograph_client.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
+from cograph_client.resolver.models import (
+    CleanOutcome,
+    RejectedValue,
+    ValidatedTriple,
+    ValidationOutcome,
+)
 
 logger = structlog.stdlib.get_logger("cograph.resolver.validator")
 
@@ -215,47 +220,64 @@ def validate_triple(
 
     Returns ValidatedTriple (OK or COERCED) or RejectedValue.
     Values are annotated with XSD types for non-string datatypes.
-    """
-    # Check if value conforms as-is
-    if validate_value(value, expected_datatype):
+
+    A4 (verify + type) CONSUMES the A3 clean stage (ONTA-344): the
+    coerce/canonicalize/reject DECISION is delegated to
+    ``normalization.clean.clean_value`` — the ONE cleaner that also feeds the A3
+    ``CleanReport`` ledger — and this function only stamps the XSD type onto the
+    cleaned lexical value. ``clean_value`` hands back exactly the lexical form this
+    step was already typing (the raw value when it conforms, the coerced value when
+    it does not) and ``conformed`` reproduces the OK-vs-COERCED split, so the
+    typed output is byte-identical to the pre-A3 behavior."""
+    # Lazy import: A4 (resolver) consuming A3 (normalization) would otherwise close
+    # a resolver<->normalization import cycle (clean.py imports this module's
+    # primitives). Importing at call time keeps module load order clean.
+    from cograph_client.normalization.clean import clean_value
+
+    fact = clean_value(
+        value, expected_datatype, entity_id=entity_id, attribute=attribute_name
+    )
+
+    if fact.outcome is CleanOutcome.DROPPED:
+        logger.warning(
+            "value_rejected",
+            entity=entity_id,
+            attr=attribute_name,
+            value=value,
+            expected=expected_datatype,
+        )
+        return RejectedValue(
+            entity_id=entity_id,
+            attribute=attribute_name,
+            value=value,
+            expected_datatype=expected_datatype,
+            reason=fact.reason,
+        )
+
+    typed = _typed_value(fact.clean_value, expected_datatype)
+    if fact.conformed:
+        # Conformed as-is → OK (even if A3 lexically canonicalized it; _typed_value
+        # canonicalizes idempotently, so the stamped literal is unchanged).
         return ValidatedTriple(
             subject=subject,
             predicate=predicate,
-            object=_typed_value(value, expected_datatype),
+            object=typed,
             outcome=ValidationOutcome.OK,
         )
 
-    # Try coercion
-    coerced = coerce_value(value, expected_datatype)
-    if coerced is not None:
-        logger.info(
-            "value_coerced",
-            entity=entity_id,
-            attr=attribute_name,
-            original=value,
-            coerced=coerced,
-            datatype=expected_datatype,
-        )
-        return ValidatedTriple(
-            subject=subject,
-            predicate=predicate,
-            object=_typed_value(coerced, expected_datatype),
-            outcome=ValidationOutcome.COERCED,
-            original_value=value,
-        )
-
-    # Reject
-    logger.warning(
-        "value_rejected",
+    # Did not conform but coerced → COERCED, carrying the original value.
+    logger.info(
+        "value_coerced",
         entity=entity_id,
         attr=attribute_name,
-        value=value,
-        expected=expected_datatype,
+        original=value,
+        coerced=fact.clean_value,
+        datatype=expected_datatype,
     )
-    return RejectedValue(
-        entity_id=entity_id,
-        attribute=attribute_name,
-        value=value,
-        expected_datatype=expected_datatype,
-        reason=f"Cannot coerce '{value}' to {expected_datatype}",
+    return ValidatedTriple(
+        subject=subject,
+        predicate=predicate,
+        object=typed,
+        outcome=ValidationOutcome.COERCED,
+        original_value=value,
     )

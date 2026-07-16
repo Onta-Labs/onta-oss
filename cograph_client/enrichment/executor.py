@@ -83,7 +83,8 @@ from cograph_client.pipeline.mutations import (
     DEFAULT_RECENCY_POLICY,
     write_with_conflict_resolution,
 )
-from cograph_client.resolver.models import ValidatedTriple
+from cograph_client.normalization.clean import clean_value
+from cograph_client.resolver.models import CleanReport, ValidatedTriple
 from cograph_client.resolver.validator import _to_wkt_point, validate_triple
 
 logger = structlog.stdlib.get_logger("cograph.enrichment")
@@ -2374,6 +2375,7 @@ class EnrichmentExecutor:
         NL planner's typed date FILTERs match it (an untyped string would be
         type-incompatible and silently drop the row)."""
         triples: list[tuple[str, str, str]] = []
+        clean_report = CleanReport()  # A3 ledger: partitions every primitive fill value
         for r in rows:
             if not self._row_is_applied(r, policy):
                 continue
@@ -2381,7 +2383,8 @@ class EnrichmentExecutor:
             # attribute (defensive — _declare_attributes covers every applied attr).
             datatype = resolved_datatypes.get(r.attribute, "string")
             value_triples = self._instance_triples_for_value(
-                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype
+                r.entity_uri, type_name, r.attribute, r.verdict.value, datatype,
+                clean_report=clean_report,
             )
             # Only stamp provenance for a value that was ACTUALLY written. A rejected
             # primitive (validate_triple → no triple) writes no primary value, so
@@ -2395,6 +2398,7 @@ class EnrichmentExecutor:
             # plain string literals — EXCEPT `<attr>_verified_at`, which
             # _provenance_triples types as xsd:dateTime so typed date FILTERs match.
             triples.extend(self._provenance_triples(r.entity_uri, type_name, r.attribute, r.verdict))
+        self._log_clean_report(clean_report, type_name=type_name, phase="fill")
         return triples
 
     def _applied_attribute_values(
@@ -2508,6 +2512,7 @@ class EnrichmentExecutor:
         attribute: str,
         value: str,
         datatype: str,
+        clean_report: Optional[CleanReport] = None,
     ) -> list[tuple[str, str, str]]:
         """Build the instance triple(s) for ONE applied attribute value, typed with
         the SAME resolved ``datatype`` the attribute is DECLARED with (P1 fix).
@@ -2533,7 +2538,14 @@ class EnrichmentExecutor:
           would then miss (validate_triple already logs the rejection).
 
         Returns ``[]`` when a primitive value is rejected; otherwise the single
-        instance triple."""
+        instance triple.
+
+        ONTA-344: when a ``clean_report`` is supplied, every PRIMITIVE value is
+        recorded into the A3 clean ledger (passed / transformed / dropped) — so a
+        non-conforming value that yields no triple is a RECORDED ``dropped`` entry
+        with a reason, not a silent skip. Additive: this changes nothing about which
+        triples are written (relationship edges are not datatype-cleaned literals, so
+        they are outside the clean ledger's scope and are not recorded)."""
         attr_uri_str = _attr_uri(type_name, attribute)
         # Relationship: a non-primitive datatype names an entity TYPE (a node range).
         if datatype not in PRIMITIVE_TYPES:
@@ -2569,6 +2581,12 @@ class EnrichmentExecutor:
         # Primitive: type the literal exactly as ingestion does. validate_triple
         # returns a ValidatedTriple (typed object) on conform/coerce, else a
         # RejectedValue (skip — never write a literal that mismatches the range).
+        # Record the A3 clean outcome (passed/transformed/DROPPED) into the ledger so
+        # a non-conforming value is a recorded drop, not a silent skip (ONTA-344).
+        if clean_report is not None:
+            clean_report.record(
+                clean_value(value, datatype, entity_id=entity_uri, attribute=attribute)
+            )
         validated = validate_triple(
             entity_uri,
             attr_uri_str,
@@ -2580,6 +2598,30 @@ class EnrichmentExecutor:
         if isinstance(validated, ValidatedTriple):
             return [(validated.subject, validated.predicate, validated.object)]
         return []
+
+    @staticmethod
+    def _log_clean_report(report: CleanReport, *, type_name: str, phase: str) -> None:
+        """Surface the A3 clean ledger for one enrichment write (ONTA-344).
+
+        Emits the partition COUNTS, and — the point of the ledger — a structured
+        record of every DROPPED value (non-conforming primitives enrichment used to
+        skip silently), so a caller can see WHAT was not written and WHY. No-op when
+        nothing was cleaned."""
+        if report.total == 0:
+            return
+        counts = report.counts()
+        logger.info("enrichment_clean_report", type=type_name, phase=phase, **counts)
+        for fact in report.dropped:
+            logger.warning(
+                "enrichment_value_dropped",
+                type=type_name,
+                phase=phase,
+                entity=fact.entity_id,
+                attr=fact.attribute,
+                value=fact.raw_value,
+                datatype=fact.datatype,
+                reason=fact.reason,
+            )
 
     async def apply_decisions(
         self, job_id: str, decisions: list[ConflictReview]
@@ -2621,11 +2663,13 @@ class EnrichmentExecutor:
             # relationships write the entity IRI directly; provenance companions
             # stay plain string literals.
             triples: list[tuple[str, str, str]] = []
+            clean_report = CleanReport()  # A3 ledger: partition every applied primitive value
             for d in accepted:
                 datatype = resolved_datatypes.get(d.attribute, "string")
                 triples.extend(
                     self._instance_triples_for_value(
-                        d.entity_uri, job.type_name, d.attribute, d.proposed.value, datatype
+                        d.entity_uri, job.type_name, d.attribute, d.proposed.value, datatype,
+                        clean_report=clean_report,
                     )
                 )
                 triples.extend(
@@ -2633,6 +2677,7 @@ class EnrichmentExecutor:
                         d.entity_uri, job.type_name, d.attribute, d.proposed
                     )
                 )
+            self._log_clean_report(clean_report, type_name=job.type_name, phase="apply_decisions")
             # Canonical companion-provenance-GRAPH records (F1) for the accepted
             # decisions, dated from the verdict — same seam as the auto-apply path
             # (gated by COGRAPH_PROVENANCE_ENABLED).

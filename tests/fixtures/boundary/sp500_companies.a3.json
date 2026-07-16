@@ -1,0 +1,550 @@
+{
+  "clean_facts": [
+    {
+      "attribute": "employees",
+      "clean_value": "8900",
+      "datatype": "integer",
+      "entity_id": "Argent Exchange Group",
+      "outcome": "passed",
+      "raw_value": "8900",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Chicago, Illinois",
+      "datatype": "string",
+      "entity_id": "Argent Exchange Group",
+      "outcome": "passed",
+      "raw_value": "Chicago, Illinois",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "68100000000",
+      "datatype": "integer",
+      "entity_id": "Argent Exchange Group",
+      "outcome": "passed",
+      "raw_value": "68100000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "ARGX",
+      "datatype": "string",
+      "entity_id": "Argent Exchange Group",
+      "outcome": "passed",
+      "raw_value": "ARGX",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "18500",
+      "datatype": "integer",
+      "entity_id": "Cobalt Grid Utilities",
+      "outcome": "passed",
+      "raw_value": "18500",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Columbus, Ohio",
+      "datatype": "string",
+      "entity_id": "Cobalt Grid Utilities",
+      "outcome": "passed",
+      "raw_value": "Columbus, Ohio",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "44100000000",
+      "datatype": "integer",
+      "entity_id": "Cobalt Grid Utilities",
+      "outcome": "passed",
+      "raw_value": "44100000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "CBLT",
+      "datatype": "string",
+      "entity_id": "Cobalt Grid Utilities",
+      "outcome": "passed",
+      "raw_value": "CBLT",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "15000",
+      "datatype": "integer",
+      "entity_id": "Crestwood Biologics",
+      "outcome": "passed",
+      "raw_value": "15000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "South San Francisco, California",
+      "datatype": "string",
+      "entity_id": "Crestwood Biologics",
+      "outcome": "passed",
+      "raw_value": "South San Francisco, California",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "47800000000",
+      "datatype": "integer",
+      "entity_id": "Crestwood Biologics",
+      "outcome": "passed",
+      "raw_value": "47800000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "CRSD",
+      "datatype": "string",
+      "entity_id": "Crestwood Biologics",
+      "outcome": "passed",
+      "raw_value": "CRSD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "145000",
+      "datatype": "integer",
+      "entity_id": "Greenfield Grocers Corp",
+      "outcome": "passed",
+      "raw_value": "145000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Boise, Idaho",
+      "datatype": "string",
+      "entity_id": "Greenfield Grocers Corp",
+      "outcome": "passed",
+      "raw_value": "Boise, Idaho",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "33200000000",
+      "datatype": "integer",
+      "entity_id": "Greenfield Grocers Corp",
+      "outcome": "passed",
+      "raw_value": "33200000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "GRNF",
+      "datatype": "string",
+      "entity_id": "Greenfield Grocers Corp",
+      "outcome": "passed",
+      "raw_value": "GRNF",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "22000",
+      "datatype": "integer",
+      "entity_id": "Harvest Mills Foods",
+      "outcome": "passed",
+      "raw_value": "22000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Battle Creek, Michigan",
+      "datatype": "string",
+      "entity_id": "Harvest Mills Foods",
+      "outcome": "passed",
+      "raw_value": "Battle Creek, Michigan",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "29800000000",
+      "datatype": "integer",
+      "entity_id": "Harvest Mills Foods",
+      "outcome": "passed",
+      "raw_value": "29800000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "HRVM",
+      "datatype": "string",
+      "entity_id": "Harvest Mills Foods",
+      "outcome": "passed",
+      "raw_value": "HRVM",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "42000",
+      "datatype": "integer",
+      "entity_id": "Helix Pharmaceuticals",
+      "outcome": "passed",
+      "raw_value": "42000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Cambridge, Massachusetts",
+      "datatype": "string",
+      "entity_id": "Helix Pharmaceuticals",
+      "outcome": "passed",
+      "raw_value": "Cambridge, Massachusetts",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "132500000000",
+      "datatype": "integer",
+      "entity_id": "Helix Pharmaceuticals",
+      "outcome": "passed",
+      "raw_value": "132500000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "HLXP",
+      "datatype": "string",
+      "entity_id": "Helix Pharmaceuticals",
+      "outcome": "passed",
+      "raw_value": "HLXP",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "17000",
+      "datatype": "integer",
+      "entity_id": "Lumenix Software",
+      "outcome": "passed",
+      "raw_value": "17000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Santa Clara, California",
+      "datatype": "string",
+      "entity_id": "Lumenix Software",
+      "outcome": "passed",
+      "raw_value": "Santa Clara, California",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "98600000000",
+      "datatype": "integer",
+      "entity_id": "Lumenix Software",
+      "outcome": "passed",
+      "raw_value": "98600000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "LMNX",
+      "datatype": "string",
+      "entity_id": "Lumenix Software",
+      "outcome": "passed",
+      "raw_value": "LMNX",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "34000",
+      "datatype": "integer",
+      "entity_id": "Meridian Trust Bancorp",
+      "outcome": "passed",
+      "raw_value": "34000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Charlotte, North Carolina",
+      "datatype": "string",
+      "entity_id": "Meridian Trust Bancorp",
+      "outcome": "passed",
+      "raw_value": "Charlotte, North Carolina",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "55700000000",
+      "datatype": "integer",
+      "entity_id": "Meridian Trust Bancorp",
+      "outcome": "passed",
+      "raw_value": "55700000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "MRDN",
+      "datatype": "string",
+      "entity_id": "Meridian Trust Bancorp",
+      "outcome": "passed",
+      "raw_value": "MRDN",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "61000",
+      "datatype": "integer",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "outcome": "passed",
+      "raw_value": "61000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Wichita, Kansas",
+      "datatype": "string",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "outcome": "passed",
+      "raw_value": "Wichita, Kansas",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "84200000000",
+      "datatype": "integer",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "outcome": "passed",
+      "raw_value": "84200000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "NMBS",
+      "datatype": "string",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "outcome": "passed",
+      "raw_value": "NMBS",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "12500",
+      "datatype": "integer",
+      "entity_id": "Pinnacle Refining Company",
+      "outcome": "passed",
+      "raw_value": "12500",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Houston, Texas",
+      "datatype": "string",
+      "entity_id": "Pinnacle Refining Company",
+      "outcome": "passed",
+      "raw_value": "Houston, Texas",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "39400000000",
+      "datatype": "integer",
+      "entity_id": "Pinnacle Refining Company",
+      "outcome": "passed",
+      "raw_value": "39400000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "PTNC",
+      "datatype": "string",
+      "entity_id": "Pinnacle Refining Company",
+      "outcome": "passed",
+      "raw_value": "PTNC",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "29000",
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor",
+      "outcome": "passed",
+      "raw_value": "29000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Santa Clara, California",
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor",
+      "outcome": "passed",
+      "raw_value": "Santa Clara, California",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "210800000000",
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor",
+      "outcome": "passed",
+      "raw_value": "210800000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "SLST",
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor",
+      "outcome": "passed",
+      "raw_value": "SLST",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "6100",
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor Materials",
+      "outcome": "passed",
+      "raw_value": "6100",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Santa Clara, California",
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor Materials",
+      "outcome": "passed",
+      "raw_value": "Santa Clara, California",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "18900000000",
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor Materials",
+      "outcome": "passed",
+      "raw_value": "18900000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "SLSC",
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor Materials",
+      "outcome": "passed",
+      "raw_value": "SLSC",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "3200",
+      "datatype": "integer",
+      "entity_id": "Stonehaven Realty Trust",
+      "outcome": "passed",
+      "raw_value": "3200",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Indianapolis, Indiana",
+      "datatype": "string",
+      "entity_id": "Stonehaven Realty Trust",
+      "outcome": "passed",
+      "raw_value": "Indianapolis, Indiana",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "26700000000",
+      "datatype": "integer",
+      "entity_id": "Stonehaven Realty Trust",
+      "outcome": "passed",
+      "raw_value": "26700000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "STNH",
+      "datatype": "string",
+      "entity_id": "Stonehaven Realty Trust",
+      "outcome": "passed",
+      "raw_value": "STNH",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "27000",
+      "datatype": "integer",
+      "entity_id": "Tidewater Energy Holdings",
+      "outcome": "passed",
+      "raw_value": "27000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Houston, Texas",
+      "datatype": "string",
+      "entity_id": "Tidewater Energy Holdings",
+      "outcome": "passed",
+      "raw_value": "Houston, Texas",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "76300000000",
+      "datatype": "integer",
+      "entity_id": "Tidewater Energy Holdings",
+      "outcome": "passed",
+      "raw_value": "76300000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "TDWT",
+      "datatype": "string",
+      "entity_id": "Tidewater Energy Holdings",
+      "outcome": "passed",
+      "raw_value": "TDWT",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "employees",
+      "clean_value": "88000",
+      "datatype": "integer",
+      "entity_id": "Valdera Motors Inc",
+      "outcome": "passed",
+      "raw_value": "88000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "headquarters",
+      "clean_value": "Dearborn, Michigan",
+      "datatype": "string",
+      "entity_id": "Valdera Motors Inc",
+      "outcome": "passed",
+      "raw_value": "Dearborn, Michigan",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "market_cap",
+      "clean_value": "51900000000",
+      "datatype": "integer",
+      "entity_id": "Valdera Motors Inc",
+      "outcome": "passed",
+      "raw_value": "51900000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "ticker",
+      "clean_value": "VLDR",
+      "datatype": "string",
+      "entity_id": "Valdera Motors Inc",
+      "outcome": "passed",
+      "raw_value": "VLDR",
+      "reason": "conforms as string"
+    }
+  ],
+  "report": {
+    "dropped": 0,
+    "passed": 60,
+    "total": 60,
+    "transformed": 0
+  }
+}

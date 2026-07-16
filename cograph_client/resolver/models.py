@@ -421,6 +421,80 @@ class RejectedValue(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# A3 — the explicit Clean stage (ONTA-344)
+# ---------------------------------------------------------------------------
+
+
+class CleanOutcome(str, Enum):
+    """How one A2 candidate value fared in the A3 clean stage — the three-way
+    partition every consumed value lands in EXACTLY once (the zero-silent-drops
+    ledger).
+
+    Distinct from :class:`ValidationOutcome` (the A4 typing outcome): a value that
+    conforms yet is lexically canonicalized (``"True"`` -> ``"true"``) is A3
+    ``TRANSFORMED`` but still A4 ``OK`` — A3 records the cleaning A4's typing
+    silently hides."""
+
+    PASSED = "passed"  # conforms as-is AND already canonical → written verbatim
+    TRANSFORMED = "transformed"  # coerced and/or lexically canonicalized to fit
+    DROPPED = "dropped"  # cannot be coerced to the datatype → not written
+
+
+class CleanFact(BaseModel):
+    """One A3 clean fact: a single A2 candidate value after the clean stage.
+
+    ``clean_value`` is the canonical lexical form the A4 typing step
+    (``validate_triple``) will stamp with an XSD datatype (``None`` when DROPPED).
+    ``conformed`` records whether the value passed ``validate_value`` as-is (no
+    coercion needed) — it drives A4's OK vs COERCED outcome, so A3 owns the
+    coerce/canonicalize/reject DECISION while A4 owns the typing. Every consumed
+    value yields exactly one CleanFact."""
+
+    datatype: str
+    raw_value: str
+    clean_value: str | None
+    outcome: CleanOutcome
+    conformed: bool = True
+    reason: str = ""
+    entity_id: str = ""
+    attribute: str = ""
+
+
+class CleanReport(BaseModel):
+    """The A3 ledger: every value the clean stage consumed, partitioned exactly
+    once into ``passed`` / ``transformed`` / ``dropped`` — the zero-silent-drops
+    guarantee (mirrors ADR 0003 §2 row conservation). ``total`` conserves:
+    ``len(inputs) == passed + transformed + dropped``."""
+
+    passed: list[CleanFact] = Field(default_factory=list)
+    transformed: list[CleanFact] = Field(default_factory=list)
+    dropped: list[CleanFact] = Field(default_factory=list)
+
+    def record(self, fact: CleanFact) -> CleanFact:
+        """File one clean fact into its outcome partition and return it."""
+        bucket = {
+            CleanOutcome.PASSED: self.passed,
+            CleanOutcome.TRANSFORMED: self.transformed,
+            CleanOutcome.DROPPED: self.dropped,
+        }[fact.outcome]
+        bucket.append(fact)
+        return fact
+
+    @property
+    def total(self) -> int:
+        return len(self.passed) + len(self.transformed) + len(self.dropped)
+
+    def counts(self) -> dict[str, int]:
+        """Partition sizes + total — the count-conservation summary."""
+        return {
+            "passed": len(self.passed),
+            "transformed": len(self.transformed),
+            "dropped": len(self.dropped),
+            "total": self.total,
+        }
+
+
+# ---------------------------------------------------------------------------
 # CSV schema inference
 # ---------------------------------------------------------------------------
 
