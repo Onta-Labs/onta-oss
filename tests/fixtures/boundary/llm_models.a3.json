@@ -1,0 +1,685 @@
+{
+  "clean_facts": [
+    {
+      "attribute": "context_length",
+      "clean_value": "200000",
+      "datatype": "integer",
+      "entity_id": "Aurora Large v2",
+      "outcome": "passed",
+      "raw_value": "200000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "3.0",
+      "datatype": "float",
+      "entity_id": "Aurora Large v2",
+      "outcome": "passed",
+      "raw_value": "3.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "aurora-large-v2",
+      "datatype": "string",
+      "entity_id": "Aurora Large v2",
+      "outcome": "passed",
+      "raw_value": "aurora-large-v2",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Aurora Large v2",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "15.0",
+      "datatype": "float",
+      "entity_id": "Aurora Large v2",
+      "outcome": "passed",
+      "raw_value": "15.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "128000",
+      "datatype": "integer",
+      "entity_id": "Aurora Mini v2",
+      "outcome": "passed",
+      "raw_value": "128000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.25",
+      "datatype": "float",
+      "entity_id": "Aurora Mini v2",
+      "outcome": "passed",
+      "raw_value": "0.25",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "aurora-mini-v2",
+      "datatype": "string",
+      "entity_id": "Aurora Mini v2",
+      "outcome": "passed",
+      "raw_value": "aurora-mini-v2",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Aurora Mini v2",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "1.25",
+      "datatype": "float",
+      "entity_id": "Aurora Mini v2",
+      "outcome": "passed",
+      "raw_value": "1.25",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "128000",
+      "datatype": "integer",
+      "entity_id": "Aurora Vision",
+      "outcome": "passed",
+      "raw_value": "128000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "2.5",
+      "datatype": "float",
+      "entity_id": "Aurora Vision",
+      "outcome": "passed",
+      "raw_value": "2.5",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "aurora-vision",
+      "datatype": "string",
+      "entity_id": "Aurora Vision",
+      "outcome": "passed",
+      "raw_value": "aurora-vision",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Aurora Vision",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "10.0",
+      "datatype": "float",
+      "entity_id": "Aurora Vision",
+      "outcome": "passed",
+      "raw_value": "10.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "64000",
+      "datatype": "integer",
+      "entity_id": "Cinder Base 15B",
+      "outcome": "passed",
+      "raw_value": "64000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.3",
+      "datatype": "float",
+      "entity_id": "Cinder Base 15B",
+      "outcome": "passed",
+      "raw_value": "0.3",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "cinder-base-15b",
+      "datatype": "string",
+      "entity_id": "Cinder Base 15B",
+      "outcome": "passed",
+      "raw_value": "cinder-base-15b",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Cinder Base 15B",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.4",
+      "datatype": "float",
+      "entity_id": "Cinder Base 15B",
+      "outcome": "passed",
+      "raw_value": "0.4",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "64000",
+      "datatype": "integer",
+      "entity_id": "Cinder Coder 15B",
+      "outcome": "passed",
+      "raw_value": "64000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.3",
+      "datatype": "float",
+      "entity_id": "Cinder Coder 15B",
+      "outcome": "passed",
+      "raw_value": "0.3",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "cinder-coder-15b",
+      "datatype": "string",
+      "entity_id": "Cinder Coder 15B",
+      "outcome": "passed",
+      "raw_value": "cinder-coder-15b",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Cinder Coder 15B",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.4",
+      "datatype": "float",
+      "entity_id": "Cinder Coder 15B",
+      "outcome": "passed",
+      "raw_value": "0.4",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "8192",
+      "datatype": "integer",
+      "entity_id": "Driftwood 7B",
+      "outcome": "passed",
+      "raw_value": "8192",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.1",
+      "datatype": "float",
+      "entity_id": "Driftwood 7B",
+      "outcome": "passed",
+      "raw_value": "0.1",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "driftwood-7b",
+      "datatype": "string",
+      "entity_id": "Driftwood 7B",
+      "outcome": "passed",
+      "raw_value": "driftwood-7b",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Driftwood 7B",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.1",
+      "datatype": "float",
+      "entity_id": "Driftwood 7B",
+      "outcome": "passed",
+      "raw_value": "0.1",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "32000",
+      "datatype": "integer",
+      "entity_id": "Halcyon Audio",
+      "outcome": "passed",
+      "raw_value": "32000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "1.2",
+      "datatype": "float",
+      "entity_id": "Halcyon Audio",
+      "outcome": "passed",
+      "raw_value": "1.2",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "halcyon-audio",
+      "datatype": "string",
+      "entity_id": "Halcyon Audio",
+      "outcome": "passed",
+      "raw_value": "halcyon-audio",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Halcyon Audio",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "2.4",
+      "datatype": "float",
+      "entity_id": "Halcyon Audio",
+      "outcome": "passed",
+      "raw_value": "2.4",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "32000",
+      "datatype": "integer",
+      "entity_id": "Meridian 70B",
+      "outcome": "passed",
+      "raw_value": "32000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.9",
+      "datatype": "float",
+      "entity_id": "Meridian 70B",
+      "outcome": "passed",
+      "raw_value": "0.9",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "meridian-70b",
+      "datatype": "string",
+      "entity_id": "Meridian 70B",
+      "outcome": "passed",
+      "raw_value": "meridian-70b",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Meridian 70B",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.9",
+      "datatype": "float",
+      "entity_id": "Meridian 70B",
+      "outcome": "passed",
+      "raw_value": "0.9",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "32000",
+      "datatype": "integer",
+      "entity_id": "Meridian 8B",
+      "outcome": "passed",
+      "raw_value": "32000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.2",
+      "datatype": "float",
+      "entity_id": "Meridian 8B",
+      "outcome": "passed",
+      "raw_value": "0.2",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "meridian-8b",
+      "datatype": "string",
+      "entity_id": "Meridian 8B",
+      "outcome": "passed",
+      "raw_value": "meridian-8b",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Meridian 8B",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.2",
+      "datatype": "float",
+      "entity_id": "Meridian 8B",
+      "outcome": "passed",
+      "raw_value": "0.2",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "16000",
+      "datatype": "integer",
+      "entity_id": "Meridian Vision 34B",
+      "outcome": "passed",
+      "raw_value": "16000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.5",
+      "datatype": "float",
+      "entity_id": "Meridian Vision 34B",
+      "outcome": "passed",
+      "raw_value": "0.5",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "meridian-vision-34b",
+      "datatype": "string",
+      "entity_id": "Meridian Vision 34B",
+      "outcome": "passed",
+      "raw_value": "meridian-vision-34b",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Meridian Vision 34B",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.5",
+      "datatype": "float",
+      "entity_id": "Meridian Vision 34B",
+      "outcome": "passed",
+      "raw_value": "0.5",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "256000",
+      "datatype": "integer",
+      "entity_id": "Quillstar Opus",
+      "outcome": "passed",
+      "raw_value": "256000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "5.0",
+      "datatype": "float",
+      "entity_id": "Quillstar Opus",
+      "outcome": "passed",
+      "raw_value": "5.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "quillstar-opus",
+      "datatype": "string",
+      "entity_id": "Quillstar Opus",
+      "outcome": "passed",
+      "raw_value": "quillstar-opus",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Quillstar Opus",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "25.0",
+      "datatype": "float",
+      "entity_id": "Quillstar Opus",
+      "outcome": "passed",
+      "raw_value": "25.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "256000",
+      "datatype": "integer",
+      "entity_id": "Quillstar Sonnet",
+      "outcome": "passed",
+      "raw_value": "256000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "1.0",
+      "datatype": "float",
+      "entity_id": "Quillstar Sonnet",
+      "outcome": "passed",
+      "raw_value": "1.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "quillstar-sonnet",
+      "datatype": "string",
+      "entity_id": "Quillstar Sonnet",
+      "outcome": "passed",
+      "raw_value": "quillstar-sonnet",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Quillstar Sonnet",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "5.0",
+      "datatype": "float",
+      "entity_id": "Quillstar Sonnet",
+      "outcome": "passed",
+      "raw_value": "5.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "1000000",
+      "datatype": "integer",
+      "entity_id": "Solstice Flash",
+      "outcome": "passed",
+      "raw_value": "1000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.15",
+      "datatype": "float",
+      "entity_id": "Solstice Flash",
+      "outcome": "passed",
+      "raw_value": "0.15",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "solstice-flash",
+      "datatype": "string",
+      "entity_id": "Solstice Flash",
+      "outcome": "passed",
+      "raw_value": "solstice-flash",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Solstice Flash",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.6",
+      "datatype": "float",
+      "entity_id": "Solstice Flash",
+      "outcome": "passed",
+      "raw_value": "0.6",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "1000000",
+      "datatype": "integer",
+      "entity_id": "Solstice Pro",
+      "outcome": "passed",
+      "raw_value": "1000000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "7.0",
+      "datatype": "float",
+      "entity_id": "Solstice Pro",
+      "outcome": "passed",
+      "raw_value": "7.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "solstice-pro",
+      "datatype": "string",
+      "entity_id": "Solstice Pro",
+      "outcome": "passed",
+      "raw_value": "solstice-pro",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Solstice Pro",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "21.0",
+      "datatype": "float",
+      "entity_id": "Solstice Pro",
+      "outcome": "passed",
+      "raw_value": "21.0",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "context_length",
+      "clean_value": "16000",
+      "datatype": "integer",
+      "entity_id": "Tessellate Mini",
+      "outcome": "passed",
+      "raw_value": "16000",
+      "reason": "conforms as integer"
+    },
+    {
+      "attribute": "input_price",
+      "clean_value": "0.05",
+      "datatype": "float",
+      "entity_id": "Tessellate Mini",
+      "outcome": "passed",
+      "raw_value": "0.05",
+      "reason": "conforms as float"
+    },
+    {
+      "attribute": "model_id",
+      "clean_value": "tessellate-mini",
+      "datatype": "string",
+      "entity_id": "Tessellate Mini",
+      "outcome": "passed",
+      "raw_value": "tessellate-mini",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "open_source",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Tessellate Mini",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "output_price",
+      "clean_value": "0.15",
+      "datatype": "float",
+      "entity_id": "Tessellate Mini",
+      "outcome": "passed",
+      "raw_value": "0.15",
+      "reason": "conforms as float"
+    }
+  ],
+  "report": {
+    "dropped": 0,
+    "passed": 75,
+    "total": 75,
+    "transformed": 0
+  }
+}

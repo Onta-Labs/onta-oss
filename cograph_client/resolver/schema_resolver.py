@@ -3413,11 +3413,17 @@ class SchemaResolver:
                 pred_uri = attr_uri(ptype, attr_name)
                 validated = validate_triple(
                     p_uri, pred_uri, attr.value, attr.datatype,
-                    entity_id=entity.id, attribute_name=attr_name,
+                    entity_id=entity.id, attribute_name=attr_name, type_name=ptype,
                 )
                 if isinstance(validated, ValidatedTriple):
                     triples_to_insert.append((validated.subject, validated.predicate, validated.object))
                     attr_facts.append((validated.subject, validated.predicate, validated.object))
+                    # ONTA-347: preserve the ORIGINAL surface form (attr_meta
+                    # companion) when A3 coerced/canonicalized it — rides the SAME
+                    # write path, but NOT attr_facts (metadata OF the attribute, not
+                    # a domain fact, so it gets no provenance record of its own).
+                    if validated.surface_form_companion:
+                        triples_to_insert.append(validated.surface_form_companion)
                     result.triples_inserted += 1
                 else:
                     result.rejections.append(validated)
@@ -3433,10 +3439,14 @@ class SchemaResolver:
                 validated = validate_triple(
                     entity_uri, pred_uri, resolved.value, resolved.datatype,
                     entity_id=entity.id, attribute_name=resolved.name,
+                    type_name=resolved_type,
                 )
                 if isinstance(validated, ValidatedTriple):
                     triples_to_insert.append((validated.subject, validated.predicate, validated.object))
                     attr_facts.append((validated.subject, validated.predicate, validated.object))
+                    # ONTA-347: preserve the ORIGINAL surface form on transform.
+                    if validated.surface_form_companion:
+                        triples_to_insert.append(validated.surface_form_companion)
                     result.triples_inserted += 1
                 else:
                     result.rejections.append(validated)
@@ -3517,10 +3527,14 @@ class SchemaResolver:
                 validated = validate_triple(
                     entity_uri, pred_uri, resolved.value, resolved.datatype,
                     entity_id=entity.id, attribute_name=resolved.name,
+                    type_name=resolved_type,
                 )
                 if isinstance(validated, ValidatedTriple):
                     triples_to_insert.append((validated.subject, validated.predicate, validated.object))
                     attr_facts.append((validated.subject, validated.predicate, validated.object))
+                    # ONTA-347: preserve the ORIGINAL surface form on transform.
+                    if validated.surface_form_companion:
+                        triples_to_insert.append(validated.surface_form_companion)
                     result.triples_inserted += 1
                     # ONTA-177: sample validated string values as free-text
                     # candidacy evidence (bounded per attribute).

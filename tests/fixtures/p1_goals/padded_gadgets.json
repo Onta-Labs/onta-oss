@@ -1,0 +1,32 @@
+{
+  "id": "padded_gadgets",
+  "goal": "the gadgets in the GX product line",
+  "entity_type": "Gadget",
+  "key_attribute": "serial",
+  "query": "GX product line gadgets",
+  "confirmed_attributes": ["model_name"],
+  "suggested_attributes": ["model_name", "_type"],
+  "membership_rule": null,
+  "alias_table": null,
+  "expected_type": "Gadget",
+  "type_key": "_type",
+  "gold_roster": ["GX-100", "GX-200", "GX-300", "GX-400"],
+  "provider": {
+    "is_paid": true,
+    "cost_per_call": 0.40
+  },
+  "expect_pass": false,
+  "notes": "THE CONTROL. Deliberately gamed to FAIL every gate: coverage (only 2 of 4 gold serials found), precision (5 of 10 rows are true members), (a) fabrication+off-membership (2 fabricated '1234567890' keys + 1 off-type Widget + 2 decoys = 0.50), (b) near-dup collapse (10 rows collapse to 6 distinct keys = 0.40), and (c) $/net-new-TP ($0.40 / 2 distinct members = $0.20 > $0.05). Proves the counters bite.",
+  "rows": [
+    {"serial": "GX-100", "model_name": "Gadget One", "_type": "Gadget"},
+    {"serial": "gx-100", "model_name": "Gadget One (dup)", "_type": "Gadget"},
+    {"serial": " GX-100 ", "model_name": "Gadget One (dup2)", "_type": "Gadget"},
+    {"serial": "GX-200", "model_name": "Gadget Two", "_type": "Gadget"},
+    {"serial": "gx-200", "model_name": "Gadget Two (dup)", "_type": "Gadget"},
+    {"serial": "WICKET-9", "model_name": "Off-type Widget", "_type": "Widget"},
+    {"serial": "DECOY-1", "model_name": "Not in roster", "_type": "Gadget"},
+    {"serial": "DECOY-2", "model_name": "Also not in roster", "_type": "Gadget"},
+    {"serial": "1234567890", "model_name": "Hallucinated A", "_type": "Gadget"},
+    {"serial": "1234567890", "model_name": "Hallucinated B", "_type": "Gadget"}
+  ]
+}
