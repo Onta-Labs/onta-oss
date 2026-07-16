@@ -1,0 +1,550 @@
+{
+  "clean_facts": [
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Bartholomew Quimby",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "NP",
+      "datatype": "string",
+      "entity_id": "Bartholomew Quimby",
+      "outcome": "passed",
+      "raw_value": "NP",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1229948013",
+      "datatype": "string",
+      "entity_id": "Bartholomew Quimby",
+      "outcome": "passed",
+      "raw_value": "1229948013",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "313-555-0137",
+      "datatype": "string",
+      "entity_id": "Bartholomew Quimby",
+      "outcome": "passed",
+      "raw_value": "313-555-0137",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Delphine Marchetti",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "PA-C",
+      "datatype": "string",
+      "entity_id": "Delphine Marchetti",
+      "outcome": "passed",
+      "raw_value": "PA-C",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1660027742",
+      "datatype": "string",
+      "entity_id": "Delphine Marchetti",
+      "outcome": "passed",
+      "raw_value": "1660027742",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "989-555-0126",
+      "datatype": "string",
+      "entity_id": "Delphine Marchetti",
+      "outcome": "passed",
+      "raw_value": "989-555-0126",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Dr. Constance Ilberis",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "DO",
+      "datatype": "string",
+      "entity_id": "Dr. Constance Ilberis",
+      "outcome": "passed",
+      "raw_value": "DO",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1385561120",
+      "datatype": "string",
+      "entity_id": "Dr. Constance Ilberis",
+      "outcome": "passed",
+      "raw_value": "1385561120",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "313-555-0122",
+      "datatype": "string",
+      "entity_id": "Dr. Constance Ilberis",
+      "outcome": "passed",
+      "raw_value": "313-555-0122",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "MD",
+      "datatype": "string",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "outcome": "passed",
+      "raw_value": "MD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1902337761",
+      "datatype": "string",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "outcome": "passed",
+      "raw_value": "1902337761",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "216-555-0144",
+      "datatype": "string",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "outcome": "passed",
+      "raw_value": "216-555-0144",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Dr. Horatio Blackwood",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "DO",
+      "datatype": "string",
+      "entity_id": "Dr. Horatio Blackwood",
+      "outcome": "passed",
+      "raw_value": "DO",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1815563390",
+      "datatype": "string",
+      "entity_id": "Dr. Horatio Blackwood",
+      "outcome": "passed",
+      "raw_value": "1815563390",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "989-555-0143",
+      "datatype": "string",
+      "entity_id": "Dr. Horatio Blackwood",
+      "outcome": "passed",
+      "raw_value": "989-555-0143",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Dr. Ignatius Prewett",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "MD",
+      "datatype": "string",
+      "entity_id": "Dr. Ignatius Prewett",
+      "outcome": "passed",
+      "raw_value": "MD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1071183345",
+      "datatype": "string",
+      "entity_id": "Dr. Ignatius Prewett",
+      "outcome": "passed",
+      "raw_value": "1071183345",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "989-555-0111",
+      "datatype": "string",
+      "entity_id": "Dr. Ignatius Prewett",
+      "outcome": "passed",
+      "raw_value": "989-555-0111",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Dr. Marlowe Vantham",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "MD",
+      "datatype": "string",
+      "entity_id": "Dr. Marlowe Vantham",
+      "outcome": "passed",
+      "raw_value": "MD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1841299301",
+      "datatype": "string",
+      "entity_id": "Dr. Marlowe Vantham",
+      "outcome": "passed",
+      "raw_value": "1841299301",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "440-555-0182",
+      "datatype": "string",
+      "entity_id": "Dr. Marlowe Vantham",
+      "outcome": "passed",
+      "raw_value": "440-555-0182",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Dr. Percival Underhill",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "MD",
+      "datatype": "string",
+      "entity_id": "Dr. Percival Underhill",
+      "outcome": "passed",
+      "raw_value": "MD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1338890027",
+      "datatype": "string",
+      "entity_id": "Dr. Percival Underhill",
+      "outcome": "passed",
+      "raw_value": "1338890027",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "216-555-0191",
+      "datatype": "string",
+      "entity_id": "Dr. Percival Underhill",
+      "outcome": "passed",
+      "raw_value": "216-555-0191",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "DO",
+      "datatype": "string",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "outcome": "passed",
+      "raw_value": "DO",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1770458823",
+      "datatype": "string",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "outcome": "passed",
+      "raw_value": "1770458823",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "440-555-0199",
+      "datatype": "string",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "outcome": "passed",
+      "raw_value": "440-555-0199",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Dr. Seraphina Loxley",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "MD",
+      "datatype": "string",
+      "entity_id": "Dr. Seraphina Loxley",
+      "outcome": "passed",
+      "raw_value": "MD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1994402278",
+      "datatype": "string",
+      "entity_id": "Dr. Seraphina Loxley",
+      "outcome": "passed",
+      "raw_value": "1994402278",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "313-555-0158",
+      "datatype": "string",
+      "entity_id": "Dr. Seraphina Loxley",
+      "outcome": "passed",
+      "raw_value": "313-555-0158",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "false",
+      "datatype": "boolean",
+      "entity_id": "Dr. Yolanda Fereday",
+      "outcome": "passed",
+      "raw_value": "false",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "MD",
+      "datatype": "string",
+      "entity_id": "Dr. Yolanda Fereday",
+      "outcome": "passed",
+      "raw_value": "MD",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1663049928",
+      "datatype": "string",
+      "entity_id": "Dr. Yolanda Fereday",
+      "outcome": "passed",
+      "raw_value": "1663049928",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "216-555-0165",
+      "datatype": "string",
+      "entity_id": "Dr. Yolanda Fereday",
+      "outcome": "passed",
+      "raw_value": "216-555-0165",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Gideon Sparrowhawk",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "PA-C",
+      "datatype": "string",
+      "entity_id": "Gideon Sparrowhawk",
+      "outcome": "passed",
+      "raw_value": "PA-C",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1447720158",
+      "datatype": "string",
+      "entity_id": "Gideon Sparrowhawk",
+      "outcome": "passed",
+      "raw_value": "1447720158",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "216-555-0178",
+      "datatype": "string",
+      "entity_id": "Gideon Sparrowhawk",
+      "outcome": "passed",
+      "raw_value": "216-555-0178",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Ottoline Vasquez",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "PA-C",
+      "datatype": "string",
+      "entity_id": "Ottoline Vasquez",
+      "outcome": "passed",
+      "raw_value": "PA-C",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1247716609",
+      "datatype": "string",
+      "entity_id": "Ottoline Vasquez",
+      "outcome": "passed",
+      "raw_value": "1247716609",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "313-555-0169",
+      "datatype": "string",
+      "entity_id": "Ottoline Vasquez",
+      "outcome": "passed",
+      "raw_value": "313-555-0169",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Rosalind Featherstone",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "NP",
+      "datatype": "string",
+      "entity_id": "Rosalind Featherstone",
+      "outcome": "passed",
+      "raw_value": "NP",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1502238861",
+      "datatype": "string",
+      "entity_id": "Rosalind Featherstone",
+      "outcome": "passed",
+      "raw_value": "1502238861",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "440-555-0224",
+      "datatype": "string",
+      "entity_id": "Rosalind Featherstone",
+      "outcome": "passed",
+      "raw_value": "440-555-0224",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "clean_value": "true",
+      "datatype": "boolean",
+      "entity_id": "Tamsin Brightwater",
+      "outcome": "passed",
+      "raw_value": "true",
+      "reason": "conforms as boolean"
+    },
+    {
+      "attribute": "credential",
+      "clean_value": "NP",
+      "datatype": "string",
+      "entity_id": "Tamsin Brightwater",
+      "outcome": "passed",
+      "raw_value": "NP",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "npi",
+      "clean_value": "1558832047",
+      "datatype": "string",
+      "entity_id": "Tamsin Brightwater",
+      "outcome": "passed",
+      "raw_value": "1558832047",
+      "reason": "conforms as string"
+    },
+    {
+      "attribute": "phone",
+      "clean_value": "440-555-0210",
+      "datatype": "string",
+      "entity_id": "Tamsin Brightwater",
+      "outcome": "passed",
+      "raw_value": "440-555-0210",
+      "reason": "conforms as string"
+    }
+  ],
+  "report": {
+    "dropped": 0,
+    "passed": 60,
+    "total": 60,
+    "transformed": 0
+  }
+}
