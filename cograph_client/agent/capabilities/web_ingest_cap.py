@@ -79,13 +79,21 @@ from cograph_client.enrichment.models import (
     ProviderLog,
 )
 from cograph_client.graph.kg_writer import refresh_after_write
+from cograph_client.graph.ontology_queries import entity_uri
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from cograph_client.graph.suppression import fetch_suppressed_entities
 from cograph_client.normalization.inference import list_type_schema
 from cograph_client.config import settings
 from cograph_client.pipeline.manifest import (
     HaltReasonKind,
     RunManifest,
     resolve_spend_ceiling,
+)
+from cograph_client.pipeline.source_bundle import (
+    TIER_AUTHORITATIVE,
+    TIER_WEB,
+    SourceBundle,
+    build_source_bundle,
 )
 from cograph_client.resolver.llm_router import (
     OPENROUTER_BASE,
@@ -271,10 +279,102 @@ def _group_rows_by_source_url(rows: list) -> list[list]:
     return groups
 
 
+def _drop_suppressed_rows(
+    rows: list,
+    proposed_type: str,
+    key_attr: str,
+    suppressed_entities: set[str],
+    *,
+    provider: str = "",
+    job_id: Optional[str] = None,
+) -> list:
+    """Drop discovered rows whose would-be canonical subject is on the ENTITY-level
+    suppression list (ONTA-345) — the FIND-path re-acquisition guard.
+
+    For each surviving (post-dedupe) row this computes the SAME canonical instance
+    IRI the resolver would mint for it — ``entity_uri(proposed_type,
+    row[key_attr])`` — and DROPS the row when that subject is entity-suppressed
+    (erased / tombstoned). So an ERASED entity is never re-minted by discovery or a
+    refresh (the P1 'never re-acquire erased data' rule; GDPR erasure blast
+    radius). Membership is a set check against ``suppressed_entities`` — fetched
+    ONCE per run (:func:`fetch_suppressed_entities`) — so this is O(1) per row, no
+    per-row query. Each drop is logged (structured). A no-op returning ``rows``
+    unchanged when the suppression set is empty (the common case), so the happy
+    path pays only one set-emptiness check.
+    """
+    if not suppressed_entities or not rows:
+        return rows
+    kept: list = []
+    for row in rows:
+        raw_id = row.get(key_attr) if isinstance(row, dict) else None
+        subject = entity_uri(proposed_type, str(raw_id)) if raw_id else None
+        if subject is not None and subject in suppressed_entities:
+            logger.info(
+                "web_ingest_suppressed_entity_dropped",
+                subject=subject,
+                type=proposed_type,
+                key=str(raw_id),
+                provider=provider,
+                job_id=job_id,
+            )
+            continue
+        kept.append(row)
+    return kept
+
+
 def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     _bg_tasks.add(task)
     task.add_done_callback(_bg_tasks.discard)
+
+
+# --------------------------------------------------------------------------- #
+# A1 Source Bundle boundary (ONTA-346)
+# --------------------------------------------------------------------------- #
+def _provider_tier(prov) -> str:
+    """The source TIER a provider's rows belong to: :data:`TIER_AUTHORITATIVE`
+    for a registry source-of-truth (Tier -1, consulted before web search), else
+    :data:`TIER_WEB`. Read DEFENSIVELY — a plain web provider declares no
+    ``is_source_of_truth`` and lands on ``web``."""
+    return TIER_AUTHORITATIVE if getattr(prov, "is_source_of_truth", False) else TIER_WEB
+
+
+def _provider_secret_refs(prov) -> tuple[str, ...]:
+    """The LOGICAL secret reference(s) a provider uses — NEVER a resolved
+    credential. A registry source carries a per-tenant ``secret_ref`` on its
+    spec's auth (decrypted only at FETCH time, inside the executor). Read it
+    defensively (a public ``secret_ref`` convention first, then the registry
+    spec's ``auth.secret_ref``); a web/free provider has none, so the bundle
+    carries an empty tuple. This reads the reference NAME only — it does not
+    touch the secret store or decrypt anything."""
+    ref = getattr(prov, "secret_ref", "") or ""
+    if not ref:
+        spec = getattr(prov, "_spec", None)
+        auth = getattr(spec, "auth", None)
+        ref = getattr(auth, "secret_ref", "") or ""
+    return (ref,) if ref else ()
+
+
+def _emit_source_bundle(ctx: AgentContext, bundle: SourceBundle) -> None:
+    """Hand the assembled A1 :class:`SourceBundle` to an optional observer on the
+    context (``ctx.extras['source_bundle_sink']`` — a callable, or a list to
+    append to). The bundle is materialized at the Find→Extract boundary
+    unconditionally; consumption is optional today (no downstream stage reads it
+    yet), so absent a sink this is a no-op. NEVER raises — an observer error must
+    not sink a discovery run."""
+    extras = getattr(ctx, "extras", None) or {}
+    sink = extras.get("source_bundle_sink")
+    if sink is None:
+        return
+    try:
+        if callable(sink):
+            sink(bundle)
+        else:
+            append = getattr(sink, "append", None)
+            if callable(append):
+                append(bundle)
+    except Exception:  # noqa: BLE001 — observability must never break the run
+        logger.warning("source_bundle_sink_failed", exc_info=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -981,6 +1081,13 @@ class WebIngestCapability:
         if job is not None:
             pctx = {**pctx, "job_id": job.id}
 
+        # A1 Source Bundle run identity (ONTA-346): ONE run_id for the whole
+        # discovery run — the tracked job id when present (the EnrichJob IS the
+        # run; its manifest already keys off job.id), else a fresh uuid for a
+        # bare/test context. workspace_id = the tenant (ADR 0011: pipeline code
+        # says workspace_id, infra keeps tenant_id — no blanket rename).
+        run_id = job.id if job is not None else str(uuid.uuid4())
+
         async def _run_inner() -> None:
             if job is not None and job_store is not None:
                 job.status = JobStatus.running
@@ -1060,6 +1167,19 @@ class WebIngestCapability:
             # structured) row wins; the general provider only contributes NEW keys.
             seen_keys: set[str] = set()
             key_attr = (attributes[0] if attributes else "name") or "name"
+            # ONTA-345: entity-level RE-ACQUISITION guard. Consult the STICKY
+            # suppression / tombstone list ONCE per run (batched — one query, then
+            # an O(1) set-membership check per row below), so an ERASED entity is
+            # never silently re-minted by discovery/refresh (the P1 'never
+            # re-acquire erased data' rule; GDPR erasure blast radius). A row whose
+            # would-be canonical subject is on this list is DROPPED post-dedupe,
+            # BEFORE the SourceBundle is built and BEFORE resolver.ingest*, so a
+            # suppressed entity never enters the bundle and never reaches the
+            # writer. Best-effort + empty when there is no target KG — a suppression
+            # read must never fail the run.
+            suppressed_entities = await fetch_suppressed_entities(
+                ctx.neptune, instance_graph
+            )
             last_provider_err: Optional[str] = None
             last_err_provider: Optional[str] = None
             errors_total = 0
@@ -1178,8 +1298,49 @@ class WebIngestCapability:
                                 seen_keys,
                                 getattr(full, "provenance", None) or {},
                             )
+                            # ONTA-345: entity-level re-acquisition guard. DROP any
+                            # row whose would-be canonical subject
+                            # (entity_uri(proposed_type, row[key_attr])) is on the
+                            # entity-suppression list fetched once per run above —
+                            # BEFORE the SourceBundle is built and BEFORE
+                            # resolver.ingest*, so an ERASED entity never enters the
+                            # bundle and never reaches the writer. Each drop is
+                            # logged. No-op (returns `batch` unchanged) when the run
+                            # has nothing suppressed.
+                            batch = _drop_suppressed_rows(
+                                batch,
+                                proposed_type,
+                                key_attr,
+                                suppressed_entities,
+                                provider=prov.name,
+                                job_id=job.id if job is not None else None,
+                            )
                             if not batch:
-                                continue  # found rows; all already contributed
+                                continue  # found rows; all deduped or suppressed
+                            # A1 SOURCE BUNDLE (ONTA-346): materialize the
+                            # Find→Extract boundary artifact from THIS provider's
+                            # post-dedupe batch, BEFORE the extract/write below.
+                            # The rows already carry their per-record `source_url`
+                            # (bound above, pre-dedupe); the bundle stamps run
+                            # identity + per-row fact-id lineage + the source tier
+                            # (registry Tier -1 = authoritative vs web) + the
+                            # provider's LOGICAL secret_ref (never a resolved
+                            # credential). This is a PRE-write artifact — it does
+                            # NOT write; the KG write stays byte-identical on
+                            # resolver.ingest* over `batch` below.
+                            _emit_source_bundle(
+                                ctx,
+                                build_source_bundle(
+                                    batch,
+                                    workspace_id=ctx.tenant_id,
+                                    run_id=run_id,
+                                    provider=prov.name,
+                                    tier=_provider_tier(prov),
+                                    secret_refs=_provider_secret_refs(prov),
+                                    key_attribute=key_attr,
+                                    bundle_key=f"{prov.name}:{sub_query}",
+                                ),
+                            )
                             platforms = list(
                                 dict.fromkeys(
                                     [

@@ -84,6 +84,16 @@ SUP_SUPPRESSED_AT = f"{SUPPRESSION_NS}suppressedAt"
 SUP_REASON = f"{SUPPRESSION_NS}reason"
 SUP_GRAPH = f"{SUPPRESSION_NS}graph"
 
+# ENTITY-LEVEL (subject-only) suppression predicate (ONTA-345). Deliberately
+# DISTINCT from ``SUP_SUBJECT``: a fact mark carries the whole ``(s, p, o)`` on
+# ``sup:subject`` / ``sup:predicate`` / ``sup:object``, whereas an ENTITY mark
+# carries ONLY the erased entity's URI on ``sup:entity`` — no predicate/object.
+# The two never collide (different predicate + a different mark-node prefix), so
+# an ENTITY suppression is never mistaken for a ``(s, p, o)`` FACT suppression and
+# vice-versa. This is the FIND-path re-acquisition guard: an erased entity whose
+# canonical subject is on this list must NOT be re-minted by discovery/refresh.
+SUP_ENTITY = f"{SUPPRESSION_NS}entity"
+
 _XSD = "http://www.w3.org/2001/XMLSchema"
 
 # The predicates an un-suppress must clear off a mark node to fully remove it.
@@ -128,6 +138,26 @@ def _mark_uri(subject: str, predicate: str, obj: str) -> str:
     return f"{SUPPRESSION_NS}mark/{statement_id(subject, predicate, obj)}"
 
 
+def entity_statement_id(subject: str) -> str:
+    """Deterministic ENTITY-mark id: sha1 over the raw subject URI only.
+
+    Distinct from :func:`statement_id` (which keys a ``(s, p, o)`` FACT mark on
+    ``sha1(s|p|o)``): an entity mark keys on ``sha1(s)`` alone, so re-suppressing
+    the same entity collides idempotently on the same node."""
+    return hashlib.sha1(subject.encode("utf-8")).hexdigest()
+
+
+def _entity_mark_uri(subject: str) -> str:
+    """Entity-suppression-mark node URI: one per ERASED entity, keyed by
+    ``sha1(subject)`` under the ``entity/`` prefix.
+
+    The ``entity/`` prefix (vs :func:`_mark_uri`'s ``mark/``) plus the distinct
+    ``sha1(subject)`` key (vs ``sha1(s|p|o)``) make it structurally impossible for
+    an entity mark and a ``(s, p, o)`` fact mark to share a node — so the two
+    suppression kinds never collide."""
+    return f"{SUPPRESSION_NS}entity/{entity_statement_id(subject)}"
+
+
 def _as_iso(ts: datetime | str) -> str:
     return ts.isoformat() if isinstance(ts, datetime) else str(ts)
 
@@ -160,6 +190,47 @@ def build_suppression_triples(
         (node, SUP_PREDICATE, predicate),
         (node, SUP_OBJECT, obj),
         (node, SUP_STATEMENT, statement_id(subject, predicate, obj)),
+    ]
+    if graph_uri:
+        triples.append((node, SUP_GRAPH, graph_uri))
+    if suppressed_at:
+        triples.append((node, SUP_SUPPRESSED_AT, f"{_as_iso(suppressed_at)}^^{_XSD}#dateTime"))
+    if reason:
+        triples.append((node, SUP_REASON, reason))
+    return triples
+
+
+def build_entity_suppression_triples(
+    subject: str,
+    *,
+    reason: str = "",
+    suppressed_at: datetime | str = "",
+    graph_uri: str = "",
+) -> list[tuple[str, str, str]]:
+    """Build the ENTITY-level (subject-only) suppression-mark triples for one
+    ERASED entity (ONTA-345).
+
+    This is the entity-level counterpart to :func:`build_suppression_triples`: it
+    marks a whole entity URI as suppressed (a GDPR erasure / tombstone), NOT a
+    single ``(s, p, o)`` fact. The mark lands on the ``sup:entity`` predicate on a
+    ``…/entity/{sha1(subject)}`` node — deliberately distinct from a fact mark's
+    ``sup:subject`` on a ``…/mark/{sha1(s|p|o)}`` node — so an entity suppression
+    and a fact suppression can never collide or be mistaken for one another.
+    Returned triples target the companion suppression graph
+    (``suppression_graph_uri`` of the data graph); the caller writes them via
+    ``kg_writer.insert_facts(suppression_triples=…)``, the same batched seam every
+    other write uses — this module never hand-rolls a raw instance-graph write.
+    The FIND path (``web_ingest_cap``) then consults this list and DROPS any
+    discovered row whose would-be canonical subject is marked here, so an erased
+    entity is never silently re-acquired. Returns an empty list when ``subject`` is
+    missing.
+    """
+    if not subject:
+        return []
+    node = _entity_mark_uri(subject)
+    triples = [
+        (node, SUP_ENTITY, subject),
+        (node, SUP_STATEMENT, entity_statement_id(subject)),
     ]
     if graph_uri:
         triples.append((node, SUP_GRAPH, graph_uri))
@@ -272,6 +343,67 @@ async def is_suppressed(
     return obj in await fetch_suppressed(neptune, instance_graph, subject, predicate)
 
 
+def suppressed_entities_query(instance_graph: str) -> str:
+    """SELECT every ENTITY-level suppressed subject in the companion graph.
+
+    Reads ONLY the ``sup:entity`` marks (the subject-only erasure tombstones), so
+    a ``(s, p, o)`` FACT mark — which carries ``sup:subject`` / ``sup:predicate`` /
+    ``sup:object``, never ``sup:entity`` — is structurally excluded. Used by
+    :func:`fetch_suppressed_entities` / :func:`is_entity_suppressed` to decide, in
+    ONE batched read per run, whether a discovered row may be (re-)acquired. Mirrors
+    :func:`suppressed_objects_query` in shape (an inline SELECT over the companion
+    suppression graph) — a READ, not a write, so it stays outside the write-path
+    convergence guard exactly as the ``(s, p, o)`` reader does.
+    """
+    sup_graph = suppression_graph_uri(instance_graph)
+    return (
+        f"SELECT ?s WHERE {{\n"
+        f"  GRAPH <{sup_graph}> {{\n"
+        f"    ?node <{SUP_ENTITY}> ?s .\n"
+        f"  }}\n"
+        f"}}"
+    )
+
+
+async def fetch_suppressed_entities(neptune, instance_graph: str) -> set[str]:
+    """The set of ENTITY subjects currently SUPPRESSED (erased/tombstoned) in a graph.
+
+    ONE query per run (the FIND-path guard checks set-membership per row, so a
+    discovery of N rows costs a single read, not N reads). Reconstructs each
+    subject term via :func:`_object_term` (a suppressed entity URI round-trips to
+    its exact URI string, comparable term-identically to a discovered row's
+    would-be ``entity_uri``). Best-effort: returns an empty set on any read failure
+    or when there is no target graph — a suppression read must never fail the
+    caller (worst case an erased entity is re-considered rather than the run
+    crashing).
+    """
+    if not instance_graph:
+        return set()
+    try:
+        raw = await neptune.query(suppressed_entities_query(instance_graph))
+    except Exception:  # noqa: BLE001 — a suppression read is best-effort
+        return set()
+    bindings = raw.get("results", {}).get("bindings", [])
+    out: set[str] = set()
+    for row in bindings:
+        s = row.get("s")
+        if s is not None:
+            out.add(_object_term(s))
+    return out
+
+
+async def is_entity_suppressed(neptune, instance_graph: str, subject: str) -> bool:
+    """True iff the ENTITY ``subject`` is on the entity-level suppression list.
+
+    Term-faithful and kind-faithful: matches only ``sup:entity`` marks, so a
+    ``(s, p, o)`` FACT suppression of the same subject does NOT make this return
+    True (and an entity suppression does not make :func:`is_suppressed` return
+    True) — the two suppression kinds are independent. Best-effort via
+    :func:`fetch_suppressed_entities`.
+    """
+    return subject in await fetch_suppressed_entities(neptune, instance_graph)
+
+
 __all__ = [
     "SUPPRESSION_NS",
     "SUP_SUBJECT",
@@ -281,11 +413,17 @@ __all__ = [
     "SUP_SUPPRESSED_AT",
     "SUP_REASON",
     "SUP_GRAPH",
+    "SUP_ENTITY",
     "suppression_graph_uri",
     "statement_id",
+    "entity_statement_id",
     "build_suppression_triples",
+    "build_entity_suppression_triples",
     "clear_suppression_update",
     "suppressed_objects_query",
+    "suppressed_entities_query",
     "fetch_suppressed",
+    "fetch_suppressed_entities",
     "is_suppressed",
+    "is_entity_suppressed",
 ]
