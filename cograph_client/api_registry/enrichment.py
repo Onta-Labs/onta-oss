@@ -103,8 +103,13 @@ def _relax_ladder(label: str) -> list[str]:
     original tokens when cleaning removed everything) — dropping qualifier words
     only helps once the numeric noise is already gone. Deduplicated, order
     preserved; the caller stops at the first query that yields candidates.
+
+    Separator-tolerant: ``_``/``-`` normalize to spaces up front, so a label
+    that arrives as an entity-id slug ("Roma_tomatoes" — e.g. a KG whose
+    entities carry no name attribute) still splits into relaxable words
+    instead of being one unbreakable token.
     """
-    original = " ".join((label or "").split())
+    original = " ".join((label or "").replace("_", " ").replace("-", " ").split())
     if not original:
         return []
     tokens = original.split()

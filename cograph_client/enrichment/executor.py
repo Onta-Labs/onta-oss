@@ -905,7 +905,6 @@ def _build_select_query(
     ]
     fetch_uris = attr_uris + companion_uris
     in_list = ", ".join(f"<{u}>" for u in fetch_uris) if fetch_uris else "<urn:none>"
-    fallback_in = ", ".join(f"<{u}>" for u in fallback_uris)
 
     # Subset constraint. entity_uris (explicit primitive) wins over scope.
     #
@@ -936,16 +935,28 @@ def _build_select_query(
 
     # GROUP_CONCAT predicate::value for all matching attribute triples.
     # Also pull a label / name fallback for entity_label.
+    # ONE row per entity: SAMPLE/COALESCE the label + name-ish vars instead of
+    # grouping by them — an entity carrying several name-ish values (name +
+    # title, or a multi-valued name) must not fan out into duplicate rows, or
+    # the run processes it twice under DIFFERENT labels (divergent lookups,
+    # doubled paid-adapter calls, and two contradictory fills for one
+    # attribute). One OPTIONAL per fallback attr keeps NAME_FALLBACK_ATTRS'
+    # priority deterministic (name beats title beats headline) — a bare
+    # SAMPLE over a FILTER-IN would pick arbitrarily.
+    fallback_optionals = "".join(
+        f"  OPTIONAL {{ ?e <{u}> ?nm{i} }}\n" for i, u in enumerate(fallback_uris)
+    )
+    name_coalesce = ", ".join(f"SAMPLE(?nm{i})" for i in range(len(fallback_uris)))
     return (
-        f"SELECT ?e ?label ?nameAttr\n"
+        f"SELECT ?e (SAMPLE(?lbl) AS ?label) (COALESCE({name_coalesce}) AS ?nameAttr)\n"
         f'  (GROUP_CONCAT(DISTINCT CONCAT(STR(?p), "::", STR(?o)); separator="||") AS ?vals)\n'
         f"FROM <{graph_uri}> WHERE {{\n"
         f"{type_clause}"
         f"{subset_clause}"
-        f"  OPTIONAL {{ ?e <{RDFS_LABEL}> ?label }}\n"
-        f"  OPTIONAL {{ ?e ?fp ?nameAttr . FILTER(?fp IN ({fallback_in})) }}\n"
+        f"  OPTIONAL {{ ?e <{RDFS_LABEL}> ?lbl }}\n"
+        f"{fallback_optionals}"
         f"  OPTIONAL {{ ?e ?p ?o . FILTER(?p IN ({in_list})) }}\n"
-        f"}} GROUP BY ?e ?label ?nameAttr"
+        f"}} GROUP BY ?e"
         f"{limit_clause}"
     )
 
@@ -1327,7 +1338,22 @@ class EnrichmentExecutor:
                 e_uri = row.get("e", "")
                 if not e_uri:
                     continue
-                label = row.get("label") or row.get("nameAttr") or _slug_from_uri(e_uri)
+                # For keyed data (CSV type_id ingest, ADP-style KGs) rdfs:label
+                # is the opaque entity-id slug ("Roma_tomatoes") while
+                # attrs/name carries the real name ("Roma tomatoes"); every
+                # adapter searches the web/APIs with this label, so a slug
+                # degrades search + breaks the whitespace relaxation ladder
+                # (ONTA-360). But the name-ish fallback attrs include title/
+                # headline, which are NOT names on many types (a Person's
+                # attrs/title is a job title) — so the fallback may only
+                # displace a MISSING or SLUG-SHAPED label (== the URI leaf),
+                # never a real human rdfs:label.
+                label = row.get("label") or ""
+                name_attr = row.get("nameAttr") or ""
+                if name_attr and (not label or label == _slug_from_uri(e_uri)):
+                    label = name_attr
+                if not label:
+                    label = _slug_from_uri(e_uri)
                 vals = _parse_vals(row.get("vals", ""))
                 entities.append({"uri": e_uri, "label": label, "vals": vals})
 
