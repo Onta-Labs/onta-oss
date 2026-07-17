@@ -34,6 +34,7 @@ import logging
 import re
 from typing import Optional
 
+from ..enrichment.extraction import ExtractorFn, extract_value
 from ..enrichment.models import Verdict
 from ..enrichment.sources.base import register_adapter
 from ..enrichment.tiers import register_chain_prefix_provider
@@ -76,6 +77,51 @@ _GENERIC_TYPE_TOKENS = frozenset({
 })
 
 
+# Candidate-select (ONTA-360): cap on the prompt text sent to the LLM selector
+# (instruction + numbered candidate lines) — keeps cost bounded and avoids
+# token-limit truncation mid-candidate.
+_CANDIDATE_TEXT_BUDGET = 8000
+# A token carrying a digit or "/" is pack-size / count / unit noise for a
+# name-search query ("Ground beef 80/20" → "80/20"): the relaxation ladder
+# drops such tokens before trying broader word-drop relaxations.
+_NOISY_QUERY_TOKEN_RE = re.compile(r"[\d/]")
+
+
+def _relax_ladder(label: str) -> list[str]:
+    """Progressive query-relaxation candidates for an ``enrich_from: entity_name``
+    search param (ONTA-360), broadest-preserving first:
+
+    (a) the original label;
+    (b) the label with digit-/slash-bearing tokens removed
+        ("Ground beef 80/20" → "Ground beef");
+    (c) the (cleaned) label minus its FIRST word when it has >= 2 words
+        ("Roma tomatoes" → "tomatoes") — the leading word is usually a
+        variety/brand qualifier a source's search index may not know;
+    (d) the last word alone.
+
+    Steps (c)/(d) operate on the digit-cleaned token list (falling back to the
+    original tokens when cleaning removed everything) — dropping qualifier words
+    only helps once the numeric noise is already gone. Deduplicated, order
+    preserved; the caller stops at the first query that yields candidates.
+    """
+    original = " ".join((label or "").split())
+    if not original:
+        return []
+    tokens = original.split()
+    clean_tokens = [t for t in tokens if not _NOISY_QUERY_TOKEN_RE.search(t)]
+    base_tokens = clean_tokens or tokens
+    ladder = [original, " ".join(clean_tokens)]
+    if len(base_tokens) >= 2:
+        ladder.append(" ".join(base_tokens[1:]))
+    ladder.append(base_tokens[-1] if base_tokens else "")
+    out: list[str] = []
+    for q in ladder:
+        q = q.strip()
+        if q and q not in out:
+            out.append(q)
+    return out
+
+
 def _norm(s: str) -> str:
     return "".join(ch for ch in (s or "").lower() if ch.isalnum())
 
@@ -95,9 +141,20 @@ def _has_enrich_params(spec: ApiSourceSpec) -> bool:
 class RegistrySourceAdapter:
     """A ``SourceAdapter`` backed by one declarative catalog entry."""
 
-    def __init__(self, spec: ApiSourceSpec, *, executor: Optional[RegistryApiSource] = None) -> None:
+    def __init__(
+        self,
+        spec: ApiSourceSpec,
+        *,
+        executor: Optional[RegistryApiSource] = None,
+        extractor: Optional[ExtractorFn] = None,
+    ) -> None:
         self._spec = spec
         self._executor = executor or RegistryApiSource()
+        # Candidate-select LLM seam (ONTA-360): None ⇒ extract_value falls back
+        # to get_default_extractor() (the OSS OpenRouter extractor when a key is
+        # configured, the deterministic offline one otherwise). Tests inject a
+        # fake here so no network / real LLM is ever needed.
+        self._extractor = extractor
         self.name = f"api:{spec.slug}"
         self.is_paid = spec.is_paid
         self.cost_per_call = spec.cost_per_call
@@ -143,6 +200,19 @@ class RegistrySourceAdapter:
         want = _tokens(entity_type)
         if not want:
             return True
+        if not (want - _GENERIC_TYPE_TOKENS):
+            # The type name is ENTIRELY generic ("Item", "Organization" — the
+            # shapes auto-ontology mints when a dataset has no domain
+            # vocabulary). It cannot supply a distinguishing token, so a
+            # partial overlap with a multi-word kind ("health_organization")
+            # stays a NON-match — the guard's whole point. It matches only a
+            # coverage kind declared at the same generic level (every token of
+            # the kind present in the type name, e.g. kind "item" for type
+            # "Item"): an explicit author opt-in to serve generic types.
+            return any(
+                kt and kt <= want
+                for kt in (_tokens(k) for k in self._spec.coverage.entity_kinds)
+            )
         for kind in self._spec.coverage.entity_kinds:
             overlap = _tokens(kind) & want
             if overlap and (overlap - _GENERIC_TYPE_TOKENS):
@@ -218,6 +288,14 @@ class RegistrySourceAdapter:
             bindings = self._build_bindings(ep, entity_label, entity_attrs)
             if not bindings:
                 return []  # not enrichment-configured (no enrich_from) or empty binding source
+            cs = ep.candidate_select or {}
+            if cs and str(cs.get("mode", "")).strip().lower() == "llm":
+                # ONTA-360: many-candidate fetch + LLM selection (+ optional
+                # query relaxation). The default single-row path below is
+                # untouched for every entry without a candidate_select recipe.
+                return await self._lookup_candidate_select(
+                    ep, entity_label, attribute, col, bindings, context or {},
+                )
             res = await self._executor.execute(
                 self._spec, bindings, endpoint_name=ep.name, max_rows=_MAX_ROWS,
                 sample=True, secret_resolver=self._secret_resolver(context),
@@ -240,6 +318,143 @@ class RegistrySourceAdapter:
                 self._spec.slug, attribute, exc_info=True,
             )
             return []
+
+    async def _lookup_candidate_select(
+        self,
+        ep: EndpointSpec,
+        entity_label: str,
+        attribute: str,
+        col: str,
+        bindings: dict[str, str],
+        context: dict,
+    ) -> list[Verdict]:
+        """Many-candidate fetch + LLM record selection (ONTA-360).
+
+        Instead of taking the first row with a value, fetch up to
+        ``max_candidates`` rows, format them as numbered lines, and ask the OSS
+        LLM extraction seam (:func:`extract_value`) to pick THE record for this
+        entity. Anti-hallucination gate: the returned value must EXACTLY equal
+        one of the fetched candidates' ``col`` values, otherwise no verdict.
+        With ``query_relax``, the :func:`_relax_ladder` for the
+        ``enrich_from: entity_name`` param is walked until a rung yields an
+        ACCEPTED selection — a rung whose fetch returns zero rows AND a rung
+        whose candidates the selector refuses (or answers off-list) both relax
+        further, because a too-specific query can return only wrong-kind records
+        (e.g. an index series for the item) that a broader query fixes.
+        """
+        cs = ep.candidate_select
+        try:
+            max_candidates = int(cs.get("max_candidates", 20))
+        except (TypeError, ValueError):
+            max_candidates = 20
+        max_candidates = max(1, max_candidates)
+
+        # Only a param bound from the whole entity label is relaxable.
+        name_params = [p.name for p in ep.params if p.enrich_from == "entity_name"]
+        queries: list[str] = [""]  # sentinel: use the bindings exactly as built
+        if cs.get("query_relax") and name_params:
+            queries = _relax_ladder(entity_label) or [""]
+
+        for q in queries:
+            attempt = dict(bindings)
+            if q:
+                for pn in name_params:
+                    attempt[pn] = q
+            res = await self._executor.execute(
+                self._spec, attempt, endpoint_name=ep.name, max_rows=max_candidates,
+                sample=True, secret_resolver=self._secret_resolver(context),
+            )
+            if res.dormant or res.error:
+                return []
+            if not res.rows:
+                continue
+            verdicts = await self._select_from_candidates(
+                cs, res, entity_label, attribute, col,
+            )
+            if verdicts:
+                return verdicts
+            # No accepted selection on this rung: relax further. (A single
+            # iteration when relaxation is disabled.)
+        return []
+
+    async def _select_from_candidates(
+        self, cs: dict, res, entity_label: str, attribute: str, col: str,
+    ) -> list[Verdict]:
+        """LLM-select one record out of ``res.rows``; [] when nothing qualifies."""
+        # The values the LLM is allowed to answer with (anti-hallucination set).
+        allowed = {
+            str(row.get(col)).strip()
+            for row in res.rows
+            if str(row.get(col, "") or "").strip()
+        }
+        if not allowed:
+            return []
+
+        # Numbered candidate lines from the recipe's display fields (the
+        # fillable column is always included so the selector can quote it).
+        fields = [f for f in (cs.get("fields") or []) if isinstance(f, str) and f]
+        if col not in fields:
+            fields = [col, *fields]
+        lines: list[str] = []
+        for i, row in enumerate(res.rows, start=1):
+            parts = [
+                f"{f}={str(row.get(f)).strip()}"
+                for f in fields
+                if str(row.get(f, "") or "").strip()
+            ]
+            if parts:
+                lines.append(f"{i}. " + " · ".join(parts))
+        if not lines:
+            return []
+
+        source_title = self._spec.title or self._spec.slug
+        # The selection criterion comes from the RECIPE (catalog data), never
+        # hardcoded here — this adapter is generic; only the entry knows what
+        # "the right record" means for its API (e.g. FRED: the national/U.S.
+        # city average series). The default is a source-neutral best-match ask.
+        criterion = str(cs.get("instruction") or "").strip() or (
+            "Pick the single record that clearly refers to this exact entity"
+        )
+        header = (
+            f"These are candidate records from {source_title} for the entity "
+            f'"{entity_label}". {criterion}; return its '
+            f"{attribute} value copied exactly from that record; return null if "
+            f"none clearly matches.\n\nCandidates:\n"
+        )
+        budget = _CANDIDATE_TEXT_BUDGET - len(header)
+        kept: list[str] = []
+        used = 0
+        for line in lines:
+            if used + len(line) + 1 > budget:
+                break
+            kept.append(line)
+            used += len(line) + 1
+        if not kept:
+            return []
+        text = header + "\n".join(kept)
+
+        verdict = await extract_value(
+            text, attribute, entity_label,
+            source=self.name, extractor=self._extractor,
+        )
+        if verdict is None:
+            return []
+        value = (verdict.value or "").strip()
+        if value not in allowed:
+            logger.debug(
+                "api_registry candidate-select rejected non-candidate value "
+                "slug=%s attr=%s", self._spec.slug, attribute,
+            )
+            return []
+        # Preserve the LLM's calibrated confidence, capped at this entry's
+        # authority confidence — a curated source stays more trusted than the
+        # selector's self-report, never less trusted than its own ceiling allows.
+        return [verdict.model_copy(update={
+            "value": value,
+            "confidence": min(verdict.confidence, self._confidence()),
+            "source": self.name,
+            "source_url": self._source_url(res),
+        })]
 
 
 # --------------------------------------------------------------------------- #

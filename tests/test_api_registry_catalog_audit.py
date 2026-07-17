@@ -30,7 +30,10 @@ from cograph_client.api_registry.catalog import (
 from cograph_client.api_registry.catalog_audit import _needs_review, main
 from cograph_client.retrieval import safety as safety_mod
 
-TODAY = date(2026, 7, 4)
+# Pinned "today" for deterministic freshness math. Must be >= the newest seed
+# verified_at (a future-dated stamp is flagged as a typo and gates) — advance
+# this whenever a seed entry is added / re-verified with a newer stamp.
+TODAY = date(2026, 7, 16)
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +92,7 @@ def _cat(*specs: ApiSourceSpec) -> ApiSourceCatalog:
 # Offline freshness
 # --------------------------------------------------------------------------- #
 async def test_fresh_entry_has_no_flags():
-    [f] = await audit_catalog(today=TODAY, catalog=_cat(_mk("a", verified_at="2026-07-01")))
+    [f] = await audit_catalog(today=TODAY, catalog=_cat(_mk("a", verified_at="2026-07-13")))
     assert f["flags"] == []
     assert f["unverified"] is False and f["stale"] is False
     assert f["age_days"] == 3
@@ -119,9 +122,9 @@ async def test_stale_entry_flagged():
 
 async def test_boundary_exactly_at_threshold_is_not_stale():
     # age == max_age_days is fresh; age == max_age_days + 1 is stale.
-    on = await audit_catalog(today=TODAY, max_age_days=10, catalog=_cat(_mk("a", verified_at="2026-06-24")))
+    on = await audit_catalog(today=TODAY, max_age_days=10, catalog=_cat(_mk("a", verified_at="2026-07-06")))
     assert on[0]["age_days"] == 10 and on[0]["stale"] is False
-    over = await audit_catalog(today=TODAY, max_age_days=10, catalog=_cat(_mk("a", verified_at="2026-06-23")))
+    over = await audit_catalog(today=TODAY, max_age_days=10, catalog=_cat(_mk("a", verified_at="2026-07-05")))
     assert over[0]["age_days"] == 11 and over[0]["stale"] is True
 
 

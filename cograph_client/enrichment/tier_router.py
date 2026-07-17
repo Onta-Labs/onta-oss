@@ -92,9 +92,10 @@ def chain_has_paid(tier: EnrichmentTier) -> bool:
 class TierDecision:
     """Outcome of :func:`resolve_auto_tier`.
 
-    ``resolved_tier`` is ``"lite"`` or ``"core"`` when a tier was chosen; it is
-    ``None`` only when ``needs_clarification`` is True (genuinely ambiguous —
-    the caller should ask the user rather than create a job).
+    ``resolved_tier`` is ``"base"`` (a registered data source covers the
+    attribute — registry-aware routing), ``"lite"`` or ``"core"`` when a tier
+    was chosen; it is ``None`` only when ``needs_clarification`` is True
+    (genuinely ambiguous — the caller should ask rather than create a job).
     """
 
     resolved_tier: str | None
@@ -189,6 +190,21 @@ async def resolve_auto_tier(
     Always returns a ``routing_note`` explaining the choice. Never raises.
     """
     attrs = [a for a in (attributes or []) if a]
+    # Registry first (task_b44154d9): when a registered data source declares
+    # coverage for one of these attributes on this entity type, `auto` resolves
+    # to `base` — the cheapest tier whose chain the registry adapters LEAD — so
+    # an authoritative API answers instead of generic web search. Deterministic,
+    # no LLM call. Falls through to the lite/core classification otherwise.
+    covered_by = _registry_covers(attrs, type_name)
+    if covered_by:
+        return TierDecision(
+            resolved_tier="base",
+            needs_clarification=False,
+            routing_note=(
+                f"Auto-routed to 'base': registered data source '{covered_by}' "
+                f"covers {', '.join(attrs)} for {type_name or 'this type'}."
+            ),
+        )
     if openrouter_key:
         try:
             user = _CLASSIFY_USER_TEMPLATE.format(
@@ -213,6 +229,37 @@ async def resolve_auto_tier(
             logger.warning("auto_tier_llm_failed", exc_info=True)
     # Fallback: deterministic heuristic. Never needs_clarification.
     return _heuristic_decision(attrs, type_name, had_key=bool(openrouter_key))
+
+
+def _registry_covers(attributes: list[str], type_name: str) -> str | None:
+    """Slug of the first ENABLED api-registry source whose declared coverage
+    can fill one of ``attributes`` for ``type_name``, else ``None``.
+
+    Reuses the registry enrichment adapter's own coverage matching (fillable
+    column + entity-kind token match) so the router and the chain agree on
+    what "covers" means. Global layers only for now (tenant-custom sources
+    require the async tenant catalog load); never raises — any failure means
+    "not covered" and the router falls through to lite/core classification.
+    """
+    try:
+        from cograph_client.api_registry.catalog import get_api_source_catalog
+        from cograph_client.api_registry.enrichment import (
+            RegistrySourceAdapter,
+            _has_enrich_params,
+        )
+
+        for spec in get_api_source_catalog().enabled():
+            if not _has_enrich_params(spec):
+                continue
+            adapter = RegistrySourceAdapter(spec)
+            if not adapter._type_matches(type_name or ""):
+                continue
+            for a in attributes:
+                if adapter._fillable_column(a) is not None:
+                    return spec.slug
+    except Exception:  # noqa: BLE001 — coverage probe must never break routing
+        logger.debug("auto_tier_registry_probe_failed", exc_info=True)
+    return None
 
 
 def _decision_from_llm(parsed: dict | None) -> TierDecision | None:

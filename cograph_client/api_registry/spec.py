@@ -411,6 +411,20 @@ class EndpointSpec:
     # query that should return at least one row. Empty ⇒ the entry is not
     # live-smoke-tested.
     smoke_bindings: dict[str, str] = field(default_factory=dict)
+    # LLM candidate-selection recipe (ONTA-360). Empty ⇒ the enrichment adapter
+    # keeps its default first-row-with-a-value behavior. Non-empty with
+    # ``mode == "llm"`` ⇒ the adapter fetches up to ``max_candidates`` rows,
+    # formats them using ``fields`` (field-mapping out-columns to show the
+    # selector), and asks the OSS LLM extraction seam to pick the single best
+    # record — anti-hallucination-gated so the returned value must be one of
+    # the fetched candidates. ``instruction`` is the entry-authored selection
+    # criterion sentence (what "the right record" means for THIS api — e.g.
+    # FRED: the national/U.S. city average series); when absent, a
+    # source-neutral best-match default is used. ``query_relax`` additionally
+    # enables the progressive query-relaxation ladder for the
+    # ``enrich_from: entity_name`` param when the initial fetch yields zero
+    # rows or an off-list/refused selection.
+    candidate_select: dict[str, Any] = field(default_factory=dict)
 
     def param(self, name: str) -> Optional[ParamSpec]:
         for p in self.params:
@@ -431,6 +445,8 @@ class EndpointSpec:
         }
         if self.smoke_bindings:
             out["smoke_bindings"] = dict(self.smoke_bindings)
+        if self.candidate_select:
+            out["candidate_select"] = dict(self.candidate_select)
         return out
 
     @classmethod
@@ -447,6 +463,8 @@ class EndpointSpec:
             _as_str(k): _as_str(v)
             for k, v in (d.get("smoke_bindings") or {}).items()
         }
+        raw_cs = d.get("candidate_select")
+        candidate_select = dict(raw_cs) if isinstance(raw_cs, dict) else {}
         return cls(
             name=_as_str(d.get("name"), "default").strip() or "default",
             method=_as_str(d.get("method"), "GET").strip().upper() or "GET",
@@ -457,6 +475,7 @@ class EndpointSpec:
             field_mappings=mappings,
             pagination=PaginationSpec.from_dict(d.get("pagination")),
             smoke_bindings=smoke,
+            candidate_select=candidate_select,
         )
 
 
