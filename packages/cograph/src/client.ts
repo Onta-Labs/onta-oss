@@ -58,6 +58,15 @@ export interface IngestOptions {
     mapping: Record<string, unknown>,
     info: { totalRows: number; rowsProfiled: number },
   ) => Promise<Record<string, unknown> | null>;
+  /** CSV only. Deterministic ingest: skip LLM schema inference entirely and
+   *  map columns VERBATIM under this entity type — the first column becomes
+   *  the entity name (`type_id`), every other column a literal attribute named
+   *  exactly like its header. The predictable counterpart to the inferred flow
+   *  for when column names are load-bearing (e.g. an attribute another rail
+   *  binds on, like an external series/id column an enrichment source joins
+   *  against). `onSchemaInferred` is not called in this mode — there is
+   *  nothing inferred to review. */
+  typeName?: string;
 }
 
 export interface IngestProgress {
@@ -587,38 +596,61 @@ export class Client {
     if (rows.length === 0) throw new OntaError("CSV is empty");
     const headers = Object.keys(rows[0]!);
 
-    // Send the whole file to the profiler, evenly strided across it (never the
-    // head — head-of-file bias, e.g. a key column that goes sparse later, is
-    // exactly what evidence-grounded inference fixes). Profile fidelity =
-    // decision quality. Mirrors the Explorer's upload flow.
-    const sampleRows = stridedSample(rows);
+    let mappingToPost: Record<string, unknown>;
+    if (opts.typeName) {
+      // Deterministic --type mode: no inference round-trip, no review gate.
+      // Columns map verbatim so downstream consumers that bind on exact
+      // attribute names (enrichment sources, joins) are never broken by a
+      // model renaming a column.
+      const T = opts.typeName;
+      mappingToPost = {
+        entity_type: T,
+        columns: headers.map((h, i) => ({
+          column_name: h,
+          role: i === 0 ? "type_id" : "attribute",
+          attribute_name: i === 0 ? "name" : h,
+          entity: T,
+        })),
+        entities: [
+          { name: T, type_name: T, id_column: headers[0], key_strategy: "column" },
+        ],
+        relationships: null,
+        violations: [],
+      };
+    } else {
+      // Send the whole file to the profiler, evenly strided across it (never the
+      // head — head-of-file bias, e.g. a key column that goes sparse later, is
+      // exactly what evidence-grounded inference fixes). Profile fidelity =
+      // decision quality. Mirrors the Explorer's upload flow.
+      const sampleRows = stridedSample(rows);
 
-    const schemaBody = {
-      headers,
-      sample_rows: sampleRows,
-      total_rows: rows.length,
-    };
-    const mapping = await this.request<Record<string, unknown>>(
-      "POST",
-      `${this.base()}/ingest/csv/schema`,
-      schemaBody,
-      300_000,
-    );
+      const schemaBody = {
+        headers,
+        sample_rows: sampleRows,
+        total_rows: rows.length,
+      };
+      const mapping = await this.request<Record<string, unknown>>(
+        "POST",
+        `${this.base()}/ingest/csv/schema`,
+        schemaBody,
+        300_000,
+      );
 
-    // Confirm/override gate (same contract as the Explorer's review step): the
-    // caller inspects the inferred mapping and returns what to ingest, or null
-    // to cancel before any rows are written. /ingest/csv/rows applies exactly
-    // what we post back. When no hook is given, apply the inference as-is.
-    let mappingToPost: Record<string, unknown> = mapping;
-    if (opts.onSchemaInferred) {
-      const reviewed = await opts.onSchemaInferred(mapping, {
-        totalRows: rows.length,
-        rowsProfiled: sampleRows.length,
-      });
-      if (reviewed == null) {
-        return { cancelled: true, message: "Ingest cancelled before any rows were written." };
+      // Confirm/override gate (same contract as the Explorer's review step): the
+      // caller inspects the inferred mapping and returns what to ingest, or null
+      // to cancel before any rows are written. /ingest/csv/rows applies exactly
+      // what we post back. When no hook is given, apply the inference as-is.
+      mappingToPost = mapping;
+      if (opts.onSchemaInferred) {
+        const reviewed = await opts.onSchemaInferred(mapping, {
+          totalRows: rows.length,
+          rowsProfiled: sampleRows.length,
+        });
+        if (reviewed == null) {
+          return { cancelled: true, message: "Ingest cancelled before any rows were written." };
+        }
+        mappingToPost = reviewed;
       }
-      mappingToPost = reviewed;
     }
 
     // Slice rows into batches up front so we can fire them off in a
@@ -707,7 +739,7 @@ export class Client {
     return {
       entities_resolved: totalEntities,
       triples_inserted: totalTriples,
-      mapping,
+      mapping: mappingToPost,
     };
   }
 

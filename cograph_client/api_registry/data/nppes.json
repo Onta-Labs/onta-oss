@@ -5,7 +5,7 @@
   "description": "The official U.S. government registry of every healthcare provider and organization issued a National Provider Identifier (NPI). Authoritative for a clinician's or health organization's NPI number, provider taxonomy (specialty, e.g. cardiology, pediatrics), practice and mailing addresses, and phone number. Prefer this over generic web search for any question about who a U.S. doctor, nurse, hospital, clinic, pharmacy, or other healthcare provider is, where they practice, or what their specialty is. Search by taxonomy/specialty description, city, state, name, or NPI number.",
   "docs_url": "https://npiregistry.cms.hhs.gov/api-page",
   "coverage": {
-    "entity_kinds": ["healthcare_provider", "physician", "doctor", "clinician", "nurse", "dentist", "provider", "health_organization", "clinic", "hospital", "pharmacy"],
+    "entity_kinds": ["healthcare_provider", "physician", "doctor", "clinician", "nurse", "dentist", "health_organization", "clinic", "hospital", "pharmacy"],
     "attributes": ["npi", "taxonomy", "specialty", "address", "city", "state", "postal_code", "phone", "credential"],
     "geo": "United States (all 50 states + territories)",
     "temporal": "current registry snapshot",
