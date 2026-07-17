@@ -757,7 +757,41 @@ def validate_spec(spec: ApiSourceSpec) -> list[str]:
                 errs.append(f"{prefix}.field_mappings[{col!r}] path {src!r} is not a valid dotted path")
         errs.extend(_validate_endpoint_params(ep, prefix))
         errs.extend(_validate_pagination(ep.pagination, prefix))
+        errs.extend(_validate_candidate_select(ep, prefix))
 
+    return errs
+
+
+# candidate_select bounds (ONTA-360). ``instruction`` is entry-authored DATA fed
+# into an LLM prompt — same prompt-injection hygiene stance as ``description``
+# ("data to the router LLM, never instructions"): cap it at authoring time so a
+# tenant_custom entry can't silently disable itself at runtime (an over-long
+# instruction eats the whole candidate text budget) or balloon the prompt.
+_MAX_CANDIDATES_CAP = 50
+
+
+def _validate_candidate_select(ep: EndpointSpec, prefix: str) -> list[str]:
+    cs = ep.candidate_select
+    if not cs:
+        return []
+    errs: list[str] = []
+    pp = f"{prefix}.candidate_select"
+    mode = cs.get("mode")
+    if mode != "llm":
+        errs.append(f"{pp}.mode must be 'llm' (got {mode!r})")
+    instruction = cs.get("instruction", "")
+    if not isinstance(instruction, str):
+        errs.append(f"{pp}.instruction must be a string")
+    elif len(instruction) > _MAX_DESCRIPTION:
+        errs.append(f"{pp}.instruction exceeds {_MAX_DESCRIPTION} chars")
+    fields = cs.get("fields", [])
+    if not isinstance(fields, list) or any(not isinstance(f, str) for f in fields):
+        errs.append(f"{pp}.fields must be a list of strings")
+    mc = cs.get("max_candidates", 20)
+    if isinstance(mc, bool) or not isinstance(mc, int) or not (1 <= mc <= _MAX_CANDIDATES_CAP):
+        errs.append(
+            f"{pp}.max_candidates must be an int in [1, {_MAX_CANDIDATES_CAP}] (got {mc!r})"
+        )
     return errs
 
 

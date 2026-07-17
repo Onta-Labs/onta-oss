@@ -712,6 +712,28 @@ def test_candidate_select_spec_roundtrips():
     assert ApiSourceSpec.from_dict(plain.to_dict()).endpoint().candidate_select == {}
 
 
+def test_candidate_select_is_validated_at_authoring_time():
+    # A non-empty recipe is bounds-checked by validate_spec so a bad (or
+    # prompt-bloating) tenant_custom entry fails at SAVE, not silently at
+    # runtime: mode allowlist, instruction length cap, fields shape, and
+    # max_candidates bounds.
+    def errs(cs):
+        return validate_spec(_series_search_spec(candidate_select=cs))
+
+    base = dict(_CANDIDATE_SELECT)
+    assert not errs(base)
+    assert not errs({**base, "instruction": "Pick the national series"})
+
+    assert any(".mode" in e for e in errs({**base, "mode": "first_row"}))
+    assert any(".mode" in e for e in errs({k: v for k, v in base.items() if k != "mode"}))
+    assert any(".instruction" in e for e in errs({**base, "instruction": "x" * 2001}))
+    assert any(".instruction" in e for e in errs({**base, "instruction": 42}))
+    assert any(".fields" in e for e in errs({**base, "fields": "bls_series_id"}))
+    assert any(".fields" in e for e in errs({**base, "fields": ["ok", 3]}))
+    for bad_mc in (0, 51, "20", True):
+        assert any(".max_candidates" in e for e in errs({**base, "max_candidates": bad_mc}))
+
+
 def test_seed_fred_series_search_is_valid_and_roundtrips():
     spec = make_api_source_catalog().get("fred_series_search")
     assert spec is not None
