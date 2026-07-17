@@ -1,0 +1,58 @@
+{
+  "id": "healthcare_providers",
+  "goal": "Verify facts ingested for healthcare providers against independent directories, where two providers share the name 'Dr. Sarah Smith'.",
+  "description": "The SAME-NAME-COLLISION gold set. Two distinct providers are both named 'Dr. Sarah Smith' (disambiguated only by NPI in their entity_id). Independent evidence names 'Dr. Sarah Smith' without pinning down WHICH one, so the correct verdict for each entity-relative fact is IDENTITY_CONDITIONAL, not SUPPORTED — the fact is supported ONLY IF the evidence's Dr. Smith is this Dr. Smith. A well-behaved verifier returns IDENTITY_CONDITIONAL for the 3 collision facts; a rubber-stamp verifier blindly returns SUPPORTED, which is both wrong (accuracy) and maximally identity-blind (anti-gaming).",
+  "budget_usd": 0.30,
+  "thresholds": {
+    "accuracy_floor": 0.80,
+    "false_supported_ceiling": 0.10,
+    "identity_blindness_ceiling": 0.10
+  },
+  "facts": [
+    {
+      "entity_id": "Dr. Sarah Smith (NPI 1003001)",
+      "attribute": "specialty",
+      "value": "Cardiology",
+      "gold_verdict": "identity_conditional",
+      "cost_usd": 0.03,
+      "note": "Evidence names 'Dr. Sarah Smith, Cardiology' but cannot distinguish the two Dr. Smiths."
+    },
+    {
+      "entity_id": "Dr. Sarah Smith (NPI 1003002)",
+      "attribute": "specialty",
+      "value": "Dermatology",
+      "gold_verdict": "identity_conditional",
+      "cost_usd": 0.03,
+      "note": "A second, distinct Dr. Sarah Smith — evidence is ambiguous between the two."
+    },
+    {
+      "entity_id": "Dr. Sarah Smith (NPI 1003001)",
+      "attribute": "city",
+      "value": "San Jose",
+      "gold_verdict": "identity_conditional",
+      "cost_usd": 0.02,
+      "note": "City depends on which Dr. Smith is meant."
+    },
+    {
+      "entity_id": "Dr. James Okoro (NPI 2005110)",
+      "attribute": "specialty",
+      "value": "Pediatrics",
+      "gold_verdict": "supported",
+      "cost_usd": 0.03
+    },
+    {
+      "entity_id": "Dr. James Okoro (NPI 2005110)",
+      "attribute": "phone",
+      "value": "+1-408-555-0172",
+      "gold_verdict": "refuted",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Riverbend Clinic",
+      "attribute": "address",
+      "value": "88 Willow Bend Road",
+      "gold_verdict": "supported",
+      "cost_usd": 0.02
+    }
+  ]
+}
