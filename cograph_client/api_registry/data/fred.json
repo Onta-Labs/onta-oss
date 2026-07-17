@@ -13,7 +13,8 @@
       "dairy",
       "food_item",
       "grocery_item",
-      "line_item"
+      "line_item",
+      "item"
     ],
     "attributes": [
       "national_avg_price",

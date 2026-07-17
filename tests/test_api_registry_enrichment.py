@@ -188,11 +188,12 @@ def test_register_registry_enrichment_leads_chain():
 
 
 def test_only_enrich_ready_entries_are_registered():
-    # NPPES + FRED have enrich_from params; geonames/openfoodfacts/clinicaltrials
-    # (seed) do not, so they aren't registered as enrichment adapters. Order is by
-    # authority rank then slug: nppes (source_of_truth) leads fred (authoritative).
+    # NPPES + the two FRED entries have enrich_from params; geonames/openfoodfacts/
+    # clinicaltrials (seed) do not, so they aren't registered as enrichment
+    # adapters. Order is by authority rank then slug: nppes (source_of_truth)
+    # leads the authoritative fred entries (alphabetical within rank).
     names = register_registry_enrichment(make_api_source_catalog())
-    assert names == ["api:nppes", "api:fred"]
+    assert names == ["api:nppes", "api:fred", "api:fred_series_search"]
 
 
 def test_chain_prefix_survives_a_later_register_tier_override():
@@ -201,7 +202,10 @@ def test_chain_prefix_survives_a_later_register_tier_override():
     # is recomputed per get_chain(), so the registry still leads.
     register_tier(EnrichmentTier.core, ["wikidata", "exa", "perplexity"])
     chain = get_chain(EnrichmentTier.core)
-    assert chain == ["api:nppes", "api:fred", "wikidata", "exa", "perplexity"]
+    assert chain == [
+        "api:nppes", "api:fred", "api:fred_series_search",
+        "wikidata", "exa", "perplexity",
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -241,8 +245,10 @@ def test_registry_verdict_outranks_web_adapter():
                                          lambda r: httpx.Response(200, json=_NPPES_REC))))
         web = _WebFake()
         register_adapter(web)
-        register_tier(EnrichmentTier.lite, ["webfake"])   # get_chain -> [api:nppes, api:fred, webfake]
-        assert get_chain(EnrichmentTier.lite) == ["api:nppes", "api:fred", "webfake"]
+        register_tier(EnrichmentTier.lite, ["webfake"])   # get_chain -> [registry…, webfake]
+        assert get_chain(EnrichmentTier.lite) == [
+            "api:nppes", "api:fred", "api:fred_series_search", "webfake",
+        ]
 
         neptune = _physician_neptune()
         store = InMemoryJobStore()
@@ -589,6 +595,19 @@ def test_pascalcase_type_matches_snakecase_coverage_kind():
     assert adapter._type_matches("Item") is False
 
 
+def test_all_generic_type_matches_only_explicitly_declared_generic_kind():
+    # An auto-minted, signal-free type name ("Item") matches ONLY when the entry
+    # explicitly declares that same generic kind in its coverage — an author
+    # opt-in — never via partial overlap with a multi-word kind. Bare
+    # "Organization" therefore still can't ride the "organization" token into
+    # "health_organization" (see test_generic_organization_type_does_not_match…).
+    opted_in = RegistrySourceAdapter(_priced_item_spec(["line_item", "item"]))
+    assert opted_in._type_matches("Item") is True
+    assert opted_in._type_matches("Items") is False   # no stemming: exact tokens
+    not_opted_in = RegistrySourceAdapter(_priced_item_spec(["line_item", "food_item"]))
+    assert not_opted_in._type_matches("Item") is False
+
+
 @pytest.mark.asyncio
 async def test_pascalcase_type_fires_lookup_end_to_end():
     seen = {"n": 0}
@@ -605,3 +624,232 @@ async def test_pascalcase_type_fires_lookup_end_to_end():
     )
     assert seen["n"] == 1                    # the PascalCase type reached the API
     assert v and v[0].value == "2.154"
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-360: candidate_select — spec round-trip, LLM record selection with an
+# anti-hallucination gate, and the query-relaxation ladder.
+# --------------------------------------------------------------------------- #
+_CANDIDATE_SELECT = {
+    "mode": "llm",
+    "fields": ["bls_series_id", "series_title"],
+    "max_candidates": 20,
+    "query_relax": True,
+}
+
+_SERIES_ROWS = [
+    {"bls_series_id": "APU0000703112",
+     "series_title": "Average Price: Ground Beef, 100% Beef (Cost per Pound) in U.S. City Average"},
+    {"bls_series_id": "APU0300703112",
+     "series_title": "Average Price: Ground Beef, 100% Beef (Cost per Pound) in South Urban"},
+]
+
+
+def _series_search_spec(candidate_select=None, *, authority="authoritative") -> ApiSourceSpec:
+    return ApiSourceSpec.from_dict({
+        "slug": "series_search", "title": "Series search", "base_url": "https://api.x.test",
+        "auth": {"mode": "none"}, "authority_level": authority,
+        "coverage": {"entity_kinds": ["commodity"], "attributes": ["bls_series_id"]},
+        "endpoints": [{
+            "name": "search", "path": "/search", "method": "GET",
+            "params": [{"name": "search_text", "target": "search_text",
+                        "enrich_from": "entity_name"}],
+            "result_path": "seriess",
+            "field_mappings": {"bls_series_id": "id", "series_title": "title"},
+            "pagination": {"style": "none"},
+            "candidate_select": (
+                dict(_CANDIDATE_SELECT) if candidate_select is None else candidate_select
+            ),
+        }],
+    })
+
+
+class _CandidateExec:
+    """Fake executor: rows keyed by the attempted search_text (default: none).
+    Records every attempted query + max_rows so tests can assert the ladder."""
+
+    def __init__(self, rows_by_query=None, default_rows=None):
+        self.rows_by_query = dict(rows_by_query or {})
+        self.default_rows = list(default_rows or [])
+        self.queries: list[str] = []
+        self.max_rows_seen: list[int] = []
+
+    async def execute(self, spec, bindings, **kw):
+        q = bindings.get("search_text", "")
+        self.queries.append(q)
+        self.max_rows_seen.append(kw.get("max_rows"))
+
+        class _R:
+            dormant = False
+            error = None
+            provenance: dict = {}
+
+        r = _R()
+        r.rows = [dict(x) for x in self.rows_by_query.get(q, self.default_rows)]
+        r.sources = [f"https://api.x.test/search?search_text={q}"]
+        return r
+
+
+def _fake_extractor(value, confidence=0.9, capture=None):
+    async def fn(raw_text, attribute, entity_label):
+        if capture is not None:
+            capture.update(text=raw_text, attribute=attribute, entity_label=entity_label)
+        return {"value": value, "confidence": confidence}
+
+    return fn
+
+
+def test_candidate_select_spec_roundtrips():
+    spec = _series_search_spec()
+    assert not validate_spec(spec)
+    rebuilt = ApiSourceSpec.from_dict(spec.to_dict())
+    assert rebuilt.endpoint().candidate_select == _CANDIDATE_SELECT
+    # Empty recipe: omitted from to_dict (same style as smoke_bindings) and
+    # tolerated as absent by from_dict.
+    plain = _series_search_spec(candidate_select={})
+    assert plain.endpoint().candidate_select == {}
+    assert "candidate_select" not in plain.endpoint().to_dict()
+    assert ApiSourceSpec.from_dict(plain.to_dict()).endpoint().candidate_select == {}
+
+
+def test_candidate_select_is_validated_at_authoring_time():
+    # A non-empty recipe is bounds-checked by validate_spec so a bad (or
+    # prompt-bloating) tenant_custom entry fails at SAVE, not silently at
+    # runtime: mode allowlist, instruction length cap, fields shape, and
+    # max_candidates bounds.
+    def errs(cs):
+        return validate_spec(_series_search_spec(candidate_select=cs))
+
+    base = dict(_CANDIDATE_SELECT)
+    assert not errs(base)
+    assert not errs({**base, "instruction": "Pick the national series"})
+
+    assert any(".mode" in e for e in errs({**base, "mode": "first_row"}))
+    assert any(".mode" in e for e in errs({k: v for k, v in base.items() if k != "mode"}))
+    assert any(".instruction" in e for e in errs({**base, "instruction": "x" * 2001}))
+    assert any(".instruction" in e for e in errs({**base, "instruction": 42}))
+    assert any(".fields" in e for e in errs({**base, "fields": "bls_series_id"}))
+    assert any(".fields" in e for e in errs({**base, "fields": ["ok", 3]}))
+    for bad_mc in (0, 51, "20", True):
+        assert any(".max_candidates" in e for e in errs({**base, "max_candidates": bad_mc}))
+
+
+def test_seed_fred_series_search_is_valid_and_roundtrips():
+    spec = make_api_source_catalog().get("fred_series_search")
+    assert spec is not None
+    assert not validate_spec(spec)
+    ep = ApiSourceSpec.from_dict(spec.to_dict()).endpoint()
+    assert ep.candidate_select["mode"] == "llm"
+    assert ep.candidate_select["query_relax"] is True
+    assert ep.field_mappings == {"bls_series_id": "id", "series_title": "title"}
+
+
+@pytest.mark.asyncio
+async def test_candidate_select_llm_picks_matching_row():
+    capture: dict = {}
+    ex = _CandidateExec(default_rows=_SERIES_ROWS)
+    adapter = RegistrySourceAdapter(
+        _series_search_spec(), executor=ex,
+        extractor=_fake_extractor("APU0000703112", 0.9, capture),
+    )
+    v = await adapter.lookup("Ground beef", "bls_series_id", {"entity_type": "Commodity"})
+    assert len(v) == 1
+    assert v[0].value == "APU0000703112"
+    assert v[0].source == "api:series_search"
+    assert v[0].source_url.startswith("https://api.x.test/search")
+    # A gate-verified selection is calibrated by the ENTRY's authority level
+    # (authoritative = 0.85), exactly like the first-row path — NOT the
+    # selector's self-report, whose calibration ceiling (0.8) sits strictly
+    # below the 0.85 default confidence bar and would mean the rail silently
+    # writes nothing on every surface that keeps the default.
+    assert v[0].confidence == pytest.approx(0.85)
+    # The recipe fetched the full candidate window, not the first-row default.
+    assert ex.max_rows_seen == [20]
+    # The selector prompt carried the numbered candidate lines + display fields.
+    assert capture["attribute"] == "bls_series_id"
+    assert capture["entity_label"] == "Ground beef"
+    assert "1. bls_series_id=APU0000703112" in capture["text"]
+    assert "2. bls_series_id=APU0300703112" in capture["text"]
+    assert "series_title=Average Price: Ground Beef" in capture["text"]
+
+
+@pytest.mark.asyncio
+async def test_candidate_select_rejects_hallucinated_value():
+    # The LLM answers with an id that is NOT among the fetched candidates — the
+    # anti-hallucination gate must refuse it.
+    adapter = RegistrySourceAdapter(
+        _series_search_spec(), executor=_CandidateExec(default_rows=_SERIES_ROWS),
+        extractor=_fake_extractor("APU9999999999"),
+    )
+    assert await adapter.lookup("Ground beef", "bls_series_id", {"entity_type": "Commodity"}) == []
+
+
+@pytest.mark.asyncio
+async def test_candidate_select_confidence_follows_authority_level():
+    # The entry's authority level IS the verdict confidence — a supplementary
+    # entry's selection carries 0.6, a source_of_truth entry's 0.95. The
+    # selector's self-report never leaks through.
+    for authority, expected in (("supplementary", 0.6), ("source_of_truth", 0.95)):
+        adapter = RegistrySourceAdapter(
+            _series_search_spec(authority=authority),
+            executor=_CandidateExec(default_rows=_SERIES_ROWS),
+            extractor=_fake_extractor("APU0000703112", 0.9),
+        )
+        v = await adapter.lookup("Ground beef", "bls_series_id", {"entity_type": "Commodity"})
+        assert v and v[0].confidence == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_candidate_select_canonicalizes_case_mismatched_echo():
+    # A case-normalized echo of a REAL candidate is canonicalized to the API's
+    # own spelling, not rejected (fail-closed stays: an off-list value is still
+    # refused — see test_candidate_select_rejects_hallucinated_value).
+    adapter = RegistrySourceAdapter(
+        _series_search_spec(), executor=_CandidateExec(default_rows=_SERIES_ROWS),
+        extractor=_fake_extractor("apu0000703112"),
+    )
+    v = await adapter.lookup("Ground beef", "bls_series_id", {"entity_type": "Commodity"})
+    assert v and v[0].value == "APU0000703112"
+
+
+def test_relax_ladder_sequences():
+    from cograph_client.api_registry.enrichment import _relax_ladder
+    # digit-/slash-bearing tokens drop first, then the leading word, then last-word-only.
+    assert _relax_ladder("Ground beef 80/20") == ["Ground beef 80/20", "Ground beef", "beef"]
+    assert _relax_ladder("Roma tomatoes") == ["Roma tomatoes", "tomatoes"]
+    assert _relax_ladder("Bananas") == ["Bananas"]
+    assert _relax_ladder("") == []
+
+
+@pytest.mark.asyncio
+async def test_query_relaxation_walks_ladder_until_rows():
+    # Zero rows until the ladder reaches "beef".
+    ex = _CandidateExec(rows_by_query={"beef": _SERIES_ROWS})
+    adapter = RegistrySourceAdapter(
+        _series_search_spec(), executor=ex, extractor=_fake_extractor("APU0000703112"),
+    )
+    v = await adapter.lookup("Ground beef 80/20", "bls_series_id", {"entity_type": "Commodity"})
+    assert ex.queries == ["Ground beef 80/20", "Ground beef", "beef"]
+    assert v and v[0].value == "APU0000703112"
+
+
+@pytest.mark.asyncio
+async def test_query_relaxation_gives_up_after_ladder():
+    ex = _CandidateExec()  # every query returns zero rows
+    adapter = RegistrySourceAdapter(
+        _series_search_spec(), executor=ex, extractor=_fake_extractor("APU0000703112"),
+    )
+    assert await adapter.lookup("Roma tomatoes", "bls_series_id", {"entity_type": "Commodity"}) == []
+    assert ex.queries == ["Roma tomatoes", "tomatoes"]
+
+
+@pytest.mark.asyncio
+async def test_no_relaxation_when_disabled():
+    cs = dict(_CANDIDATE_SELECT)
+    cs["query_relax"] = False
+    ex = _CandidateExec()
+    adapter = RegistrySourceAdapter(
+        _series_search_spec(cs), executor=ex, extractor=_fake_extractor("x"),
+    )
+    assert await adapter.lookup("Ground beef 80/20", "bls_series_id", {"entity_type": "Commodity"}) == []
+    assert ex.queries == ["Ground beef 80/20"]  # a single attempt, no ladder

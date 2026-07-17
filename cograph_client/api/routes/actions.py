@@ -176,6 +176,42 @@ def _new_job(
 # and awaits it; the routes are unchanged.
 
 
+async def _resolve_scheduled_auto_tier(job: EnrichJob) -> None:
+    """Resolve the ``auto`` meta-tier for a SCHEDULED enrich job, in place.
+
+    The manual route resolves ``auto`` before creating a job (COG-124) and can
+    bounce an ambiguous request back to the user; a scheduled firing has no
+    user to ask, so dispatch previously ran the literal ``auto`` chain — the
+    defensive wikidata fallback — silently different from the same request
+    made interactively. Mirror the route: resolve via the shared router; on
+    the (rare) ambiguous outcome re-resolve with no LLM key, which forces the
+    deterministic heuristic that always lands on a concrete tier. Also mirror
+    the route's confidence handling (COG-121 web floor) for the resolved tier
+    when the schedule didn't pin an explicit confidence.
+    """
+    if job.tier is not EnrichmentTier.auto:
+        return
+    # Lazy import: enrich.py imports the executor machinery this module also
+    # feeds; importing at call time keeps module import order irrelevant.
+    from cograph_client.api.routes.enrich import (
+        _effective_confidence_min,
+        _openrouter_key,
+    )
+    from cograph_client.enrichment.tier_router import resolve_auto_tier
+
+    decision = await resolve_auto_tier(job.attributes, job.type_name, _openrouter_key())
+    if decision.needs_clarification or not decision.resolved_tier:
+        decision = await resolve_auto_tier(job.attributes, job.type_name, None)
+    job.tier = EnrichmentTier(decision.resolved_tier)
+    job.confidence_min = _effective_confidence_min(job.tier, job.confidence_min)
+    logger.info(
+        "scheduled_auto_tier_resolved",
+        job_id=job.id,
+        resolved_tier=job.tier.value,
+        routing_note=decision.routing_note,
+    )
+
+
 def _job_from_schedule(schedule) -> EnrichJob:
     """Build an ``EnrichJob`` for a scheduled firing of ``schedule``.
 
@@ -265,6 +301,7 @@ async def dispatch_scheduled_action(
     job = _job_from_schedule(schedule)
 
     if action == "enrich":
+        await _resolve_scheduled_auto_tier(job)
         await job_store.create(job)
         await executor.run(job, schedule.tenant_id)
         return job

@@ -7,6 +7,9 @@ export interface OntaConfig {
   apiUrl?: string;
   tenant?: string;
   email?: string;
+  /** Working context graph, set by `onta use <kg>`; commands fall back to it
+   *  when `--kg` is not passed. */
+  defaultKg?: string;
 }
 
 /** Canonical config dir — the write target. */

@@ -1,0 +1,82 @@
+{
+  "slug": "fred_series_search",
+  "title": "FRED series search (BLS/FRED series-id resolution)",
+  "publisher": "Federal Reserve Bank of St. Louis",
+  "description": "The St. Louis Fed's series-search endpoint over the FRED catalog, used to RESOLVE a food/household item to its BLS/FRED Average Price (AP) series id (stage 1 of the price rail). Given an item name (e.g. 'ground beef', 'cheddar cheese') it returns candidate series; the enrichment adapter's LLM candidate-selection picks the single national/U.S. city average Average-Price series and fills the item's bls_series_id. The companion 'fred' source then reads the latest price observation for that id (stage 2). Prefer this over hand-curating series-id maps: it makes the FRED price benchmark work for any item BLS tracks.",
+  "docs_url": "https://fred.stlouisfed.org/docs/api/fred/series_search.html",
+  "coverage": {
+    "entity_kinds": [
+      "ingredient",
+      "commodity",
+      "produce",
+      "meat",
+      "dairy",
+      "food_item",
+      "grocery_item",
+      "line_item",
+      "item"
+    ],
+    "attributes": [
+      "bls_series_id"
+    ],
+    "geo": "United States (national/city-average retail)",
+    "temporal": "current series catalog",
+    "example_asks": [
+      "which BLS series tracks the national average price of ground beef",
+      "resolve the FRED series id for cheddar cheese",
+      "find the average-price series for a dozen large eggs",
+      "what series id benchmarks the U.S. city average price of whole milk"
+    ]
+  },
+  "authority_level": "authoritative",
+  "base_url": "https://api.stlouisfed.org",
+  "auth": {
+    "mode": "api_key_query",
+    "key_env": "FRED_API_KEY",
+    "query_key": "api_key"
+  },
+  "cost_per_call": 0.0,
+  "rate_limit_per_min": 120,
+  "persist_ok": true,
+  "tos_note": "Public U.S. government / Federal Reserve data. Free FRED API key required (register at https://fredaccount.stlouisfed.org/apikeys). Full-text search over the FRED series catalog (which mirrors BLS Average Price (AP) series); ~120 requests/min per key. Resolution quality depends on the search ranking — the adapter's candidate-selection gate only accepts an id that appeared in the results.",
+  "enabled": true,
+  "entitlement": "free",
+  "verified_at": "2026-07-16",
+  "endpoints": [
+    {
+      "name": "series_search",
+      "method": "GET",
+      "path": "/fred/series/search",
+      "query": {
+        "file_type": "json",
+        "limit": "20"
+      },
+      "params": [
+        {
+          "name": "search_text",
+          "target": "search_text",
+          "enrich_from": "entity_name",
+          "description": "Full-text search over series titles, e.g. 'ground beef' or 'cheddar cheese'. Bound from the entity's label; the adapter's query-relaxation ladder progressively simplifies it when a query returns no series."
+        }
+      ],
+      "result_path": "seriess",
+      "field_mappings": {
+        "bls_series_id": "id",
+        "series_title": "title"
+      },
+      "candidate_select": {
+        "mode": "llm",
+        "fields": [
+          "bls_series_id",
+          "series_title"
+        ],
+        "instruction": "Pick the single record whose title is THE national/U.S. city average Average-Price series for this item. BLS prices generic commodity categories, not brands or varieties: a variety-specific item (e.g. 'Roma tomatoes', 'Russet potatoes') matches its generic category series ('Tomatoes, field grown', 'Potatoes, white'). Prefer the most specific matching series over a broad 'All ...' aggregate. Never pick a CPI/index series or a regional (non-U.S.-city-average) series",
+        "max_candidates": 20,
+        "query_relax": true
+      },
+      "smoke_bindings": {
+        "search_text": "average price cheddar cheese"
+      }
+    }
+  ]
+}
