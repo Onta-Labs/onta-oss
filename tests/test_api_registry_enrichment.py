@@ -757,9 +757,12 @@ async def test_candidate_select_llm_picks_matching_row():
     assert v[0].value == "APU0000703112"
     assert v[0].source == "api:series_search"
     assert v[0].source_url.startswith("https://api.x.test/search")
-    # Calibrated LLM confidence preserved (0.6*0.9 + 0.2 = 0.74), under the
-    # authoritative cap (0.85).
-    assert v[0].confidence == pytest.approx(0.74)
+    # A gate-verified selection is calibrated by the ENTRY's authority level
+    # (authoritative = 0.85), exactly like the first-row path — NOT the
+    # selector's self-report, whose calibration ceiling (0.8) sits strictly
+    # below the 0.85 default confidence bar and would mean the rail silently
+    # writes nothing on every surface that keeps the default.
+    assert v[0].confidence == pytest.approx(0.85)
     # The recipe fetched the full candidate window, not the first-row default.
     assert ex.max_rows_seen == [20]
     # The selector prompt carried the numbered candidate lines + display fields.
@@ -782,16 +785,31 @@ async def test_candidate_select_rejects_hallucinated_value():
 
 
 @pytest.mark.asyncio
-async def test_candidate_select_confidence_capped_at_authority():
-    # A supplementary entry caps even a confident selection at 0.6 — the curated
-    # authority scale stays the ceiling.
+async def test_candidate_select_confidence_follows_authority_level():
+    # The entry's authority level IS the verdict confidence — a supplementary
+    # entry's selection carries 0.6, a source_of_truth entry's 0.95. The
+    # selector's self-report never leaks through.
+    for authority, expected in (("supplementary", 0.6), ("source_of_truth", 0.95)):
+        adapter = RegistrySourceAdapter(
+            _series_search_spec(authority=authority),
+            executor=_CandidateExec(default_rows=_SERIES_ROWS),
+            extractor=_fake_extractor("APU0000703112", 0.9),
+        )
+        v = await adapter.lookup("Ground beef", "bls_series_id", {"entity_type": "Commodity"})
+        assert v and v[0].confidence == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_candidate_select_canonicalizes_case_mismatched_echo():
+    # A case-normalized echo of a REAL candidate is canonicalized to the API's
+    # own spelling, not rejected (fail-closed stays: an off-list value is still
+    # refused — see test_candidate_select_rejects_hallucinated_value).
     adapter = RegistrySourceAdapter(
-        _series_search_spec(authority="supplementary"),
-        executor=_CandidateExec(default_rows=_SERIES_ROWS),
-        extractor=_fake_extractor("APU0000703112", 0.9),
+        _series_search_spec(), executor=_CandidateExec(default_rows=_SERIES_ROWS),
+        extractor=_fake_extractor("apu0000703112"),
     )
     v = await adapter.lookup("Ground beef", "bls_series_id", {"entity_type": "Commodity"})
-    assert v and v[0].confidence == pytest.approx(0.6)
+    assert v and v[0].value == "APU0000703112"
 
 
 def test_relax_ladder_sequences():

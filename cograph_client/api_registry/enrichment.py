@@ -381,31 +381,11 @@ class RegistrySourceAdapter:
         self, cs: dict, res, entity_label: str, attribute: str, col: str,
     ) -> list[Verdict]:
         """LLM-select one record out of ``res.rows``; [] when nothing qualifies."""
-        # The values the LLM is allowed to answer with (anti-hallucination set).
-        allowed = {
-            str(row.get(col)).strip()
-            for row in res.rows
-            if str(row.get(col, "") or "").strip()
-        }
-        if not allowed:
-            return []
-
         # Numbered candidate lines from the recipe's display fields (the
         # fillable column is always included so the selector can quote it).
         fields = [f for f in (cs.get("fields") or []) if isinstance(f, str) and f]
         if col not in fields:
             fields = [col, *fields]
-        lines: list[str] = []
-        for i, row in enumerate(res.rows, start=1):
-            parts = [
-                f"{f}={str(row.get(f)).strip()}"
-                for f in fields
-                if str(row.get(f, "") or "").strip()
-            ]
-            if parts:
-                lines.append(f"{i}. " + " · ".join(parts))
-        if not lines:
-            return []
 
         source_title = self._spec.title or self._spec.slug
         # The selection criterion comes from the RECIPE (catalog data), never
@@ -421,14 +401,33 @@ class RegistrySourceAdapter:
             f"{attribute} value copied exactly from that record; return null if "
             f"none clearly matches.\n\nCandidates:\n"
         )
+        # The candidate lines and the anti-hallucination set are built TOGETHER
+        # from the rows that fit the prompt budget, so the gate can never accept
+        # a value the selector was not actually shown (a budget-truncated row).
+        # ``allowed`` maps casefolded value -> canonical candidate value: a
+        # case-normalized echo of a real candidate is canonicalized, not
+        # rejected (the write always uses the API's own spelling).
         budget = _CANDIDATE_TEXT_BUDGET - len(header)
         kept: list[str] = []
+        allowed: dict[str, str] = {}
         used = 0
-        for line in lines:
+        for row in res.rows:
+            value = str(row.get(col, "") or "").strip()
+            if not value:
+                continue
+            parts = [
+                f"{f}={str(row.get(f)).strip()}"
+                for f in fields
+                if str(row.get(f, "") or "").strip()
+            ]
+            if not parts:
+                continue
+            line = f"{len(kept) + 1}. " + " · ".join(parts)
             if used + len(line) + 1 > budget:
                 break
             kept.append(line)
             used += len(line) + 1
+            allowed.setdefault(value.casefold(), value)
         if not kept:
             return []
         text = header + "\n".join(kept)
@@ -439,19 +438,22 @@ class RegistrySourceAdapter:
         )
         if verdict is None:
             return []
-        value = (verdict.value or "").strip()
-        if value not in allowed:
+        value = allowed.get((verdict.value or "").strip().casefold())
+        if value is None:
             logger.debug(
                 "api_registry candidate-select rejected non-candidate value "
                 "slug=%s attr=%s", self._spec.slug, attribute,
             )
             return []
-        # Preserve the LLM's calibrated confidence, capped at this entry's
-        # authority confidence — a curated source stays more trusted than the
-        # selector's self-report, never less trusted than its own ceiling allows.
+        # The anti-hallucination gate — not the selector's self-report — is the
+        # trust anchor: a gate-verified selection is calibrated by the ENTRY's
+        # authority level, exactly like the default first-row path. (The
+        # single-pass extraction calibration ceiling is 0.8, strictly below the
+        # 0.85 default confidence bar — echoing it would mean this rail silently
+        # writes nothing on every surface that keeps the default.)
         return [verdict.model_copy(update={
             "value": value,
-            "confidence": min(verdict.confidence, self._confidence()),
+            "confidence": self._confidence(),
             "source": self.name,
             "source_url": self._source_url(res),
         })]

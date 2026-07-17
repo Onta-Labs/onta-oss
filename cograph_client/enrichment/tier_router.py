@@ -190,19 +190,30 @@ async def resolve_auto_tier(
     Always returns a ``routing_note`` explaining the choice. Never raises.
     """
     attrs = [a for a in (attributes or []) if a]
-    # Registry first (task_b44154d9): when a registered data source declares
-    # coverage for one of these attributes on this entity type, `auto` resolves
-    # to `base` — the cheapest tier whose chain the registry adapters LEAD — so
-    # an authoritative API answers instead of generic web search. Deterministic,
-    # no LLM call. Falls through to the lite/core classification otherwise.
+    # Registry first (task_b44154d9): when registered data sources declare
+    # coverage for EVERY requested attribute on this entity type, `auto`
+    # resolves to `base` — the cheapest tier whose chain the registry adapters
+    # LEAD — so authoritative APIs answer instead of generic web search.
+    # Deterministic, no LLM call. Partial coverage falls through to the
+    # lite/core classification instead (routing the whole job to `base` would
+    # starve the UNCOVERED attributes of the web chain they need; the covered
+    # ones still hit the registry first there, since registry adapters lead
+    # every tier's chain via the chain-prefix provider).
     covered_by = _registry_covers(attrs, type_name)
     if covered_by:
+        by_source: dict[str, list[str]] = {}
+        for attr in attrs:
+            by_source.setdefault(covered_by[attr], []).append(attr)
+        detail = "; ".join(
+            f"'{slug}' covers {', '.join(a_list)}"
+            for slug, a_list in by_source.items()
+        )
         return TierDecision(
             resolved_tier="base",
             needs_clarification=False,
             routing_note=(
-                f"Auto-routed to 'base': registered data source '{covered_by}' "
-                f"covers {', '.join(attrs)} for {type_name or 'this type'}."
+                f"Auto-routed to 'base': registered data source {detail} "
+                f"for {type_name or 'this type'}."
             ),
         )
     if openrouter_key:
@@ -231,9 +242,12 @@ async def resolve_auto_tier(
     return _heuristic_decision(attrs, type_name, had_key=bool(openrouter_key))
 
 
-def _registry_covers(attributes: list[str], type_name: str) -> str | None:
-    """Slug of the first ENABLED api-registry source whose declared coverage
-    can fill one of ``attributes`` for ``type_name``, else ``None``.
+def _registry_covers(
+    attributes: list[str], type_name: str
+) -> dict[str, str] | None:
+    """``{attribute: slug}`` when EVERY attribute is covered by an ENABLED
+    api-registry source for ``type_name``; ``None`` otherwise (including any
+    partial coverage — see the caller for why partial falls through).
 
     Reuses the registry enrichment adapter's own coverage matching (fillable
     column + entity-kind token match) so the router and the chain agree on
@@ -241,6 +255,8 @@ def _registry_covers(attributes: list[str], type_name: str) -> str | None:
     require the async tenant catalog load); never raises — any failure means
     "not covered" and the router falls through to lite/core classification.
     """
+    if not attributes:
+        return None
     try:
         from cograph_client.api_registry.catalog import get_api_source_catalog
         from cograph_client.api_registry.enrichment import (
@@ -248,15 +264,26 @@ def _registry_covers(attributes: list[str], type_name: str) -> str | None:
             _has_enrich_params,
         )
 
-        for spec in get_api_source_catalog().enabled():
-            if not _has_enrich_params(spec):
-                continue
-            adapter = RegistrySourceAdapter(spec)
-            if not adapter._type_matches(type_name or ""):
-                continue
-            for a in attributes:
-                if adapter._fillable_column(a) is not None:
-                    return spec.slug
+        adapters = [
+            RegistrySourceAdapter(spec)
+            for spec in get_api_source_catalog().enabled()
+            if _has_enrich_params(spec)
+        ]
+        adapters = [a for a in adapters if a._type_matches(type_name or "")]
+        covered: dict[str, str] = {}
+        for attr in attributes:
+            slug = next(
+                (
+                    a._spec.slug
+                    for a in adapters
+                    if a._fillable_column(attr) is not None
+                ),
+                None,
+            )
+            if slug is None:
+                return None
+            covered[attr] = slug
+        return covered
     except Exception:  # noqa: BLE001 — coverage probe must never break routing
         logger.debug("auto_tier_registry_probe_failed", exc_info=True)
     return None

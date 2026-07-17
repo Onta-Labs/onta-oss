@@ -22,14 +22,27 @@ def test_registry_covers_fred_pair_for_domain_and_generic_types():
     # resolution then price fill — for domain type names AND the all-generic
     # minted "Item" (both seeds opt in via the bare "item" coverage kind).
     for type_name in ("Commodity", "LineItem", "Item", "ingredient"):
-        assert _registry_covers(["bls_series_id"], type_name) == "fred_series_search"
-        assert _registry_covers(["national_avg_price"], type_name) == "fred"
+        assert _registry_covers(["bls_series_id"], type_name) == {
+            "bls_series_id": "fred_series_search"
+        }
+        assert _registry_covers(["national_avg_price"], type_name) == {
+            "national_avg_price": "fred"
+        }
+    # Both attributes at once: every attribute covered → per-attribute map.
+    assert _registry_covers(["bls_series_id", "national_avg_price"], "Item") == {
+        "bls_series_id": "fred_series_search",
+        "national_avg_price": "fred",
+    }
 
 
 def test_registry_covers_misses_uncovered_type_and_attribute():
     assert _registry_covers(["bls_series_id"], "Widget") is None
     assert _registry_covers(["favorite_color"], "Commodity") is None
     assert _registry_covers([], "Commodity") is None
+    # PARTIAL coverage is not coverage: one covered + one uncovered attribute
+    # must fall through (routing the whole job to base would starve the
+    # uncovered attribute of the web chain).
+    assert _registry_covers(["bls_series_id", "favorite_color"], "Commodity") is None
 
 
 @pytest.mark.asyncio
@@ -48,6 +61,14 @@ async def test_auto_tier_uncovered_falls_through_to_heuristic():
     d = await resolve_auto_tier(["favorite_color"], "Widget", None)
     assert d.resolved_tier in ("lite", "core")
     assert d.needs_clarification is False  # the heuristic always lands
+
+
+@pytest.mark.asyncio
+async def test_auto_tier_partial_coverage_falls_through():
+    # A mixed attribute set (one registry-covered, one not) must NOT be routed
+    # wholesale to base — the uncovered attribute needs the lite/core chain.
+    d = await resolve_auto_tier(["bls_series_id", "favorite_color"], "Commodity", None)
+    assert d.resolved_tier in ("lite", "core")
 
 
 @pytest.mark.asyncio

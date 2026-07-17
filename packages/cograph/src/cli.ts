@@ -930,14 +930,25 @@ program
           : (scoped.find((j) => j.id === id || j.id.startsWith(id))?.id ?? id);
       if (!full) fail("No enrichment jobs found yet.");
 
-      const job = opts.wait ? await c.waitForJob(full) : await c.enrichJob(full);
+      let job = opts.wait ? await c.waitForJob(full) : await c.enrichJob(full);
+      if (opts.wait) {
+        // One waitForJob call is a single server long-poll window (~120s);
+        // a long job can outlast it, so loop to terminal (bounded, same cap
+        // as `enrich --wait`).
+        for (let i = 0; i < 40 && !JOB_TERMINAL.includes(String(job.status)); i++) {
+          job = await c.waitForJob(full);
+        }
+      }
       const p = job.progress;
       const done = JOB_TERMINAL.includes(String(job.status));
+      const stillRunning = opts.wait
+        ? "  (wait window elapsed — still running; re-run to keep waiting)"
+        : "  (still running — re-run to refresh, or pass --wait)";
       process.stdout.write(
         `job ${job.id.slice(0, 8)} · ${job.type_name}.${job.attributes?.[0] ?? "?"} in ${job.kg_name}\n`,
       );
       process.stdout.write(
-        `status: ${job.status}${done ? "" : "  (still running — re-run to refresh, or pass --wait)"}\n`,
+        `status: ${job.status}${done ? "" : stillRunning}\n`,
       );
       process.stdout.write(
         `progress: checked ${p.processed}/${p.total} · filled ${p.filled} · conflicts ${p.conflicts} · not found ${p.no_match}\n`,
