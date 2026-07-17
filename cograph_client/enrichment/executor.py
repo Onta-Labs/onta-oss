@@ -1327,7 +1327,14 @@ class EnrichmentExecutor:
                 e_uri = row.get("e", "")
                 if not e_uri:
                     continue
-                label = row.get("label") or row.get("nameAttr") or _slug_from_uri(e_uri)
+                # The human-name ATTRIBUTE wins over rdfs:label: for keyed data
+                # (CSV type_id ingest, ADP-style KGs) rdfs:label is the opaque
+                # entity-id slug ("Roma_tomatoes"), while attrs/name carries the
+                # real name ("Roma tomatoes"). Every adapter searches the web /
+                # APIs with this label, so a slug degrades search + breaks the
+                # whitespace-based query-relaxation ladder (ONTA-360). For KGs
+                # where rdfs:label IS the human name, name/label agree anyway.
+                label = row.get("nameAttr") or row.get("label") or _slug_from_uri(e_uri)
                 vals = _parse_vals(row.get("vals", ""))
                 entities.append({"uri": e_uri, "label": label, "vals": vals})
 
