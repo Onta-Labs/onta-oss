@@ -1,0 +1,1583 @@
+{
+  "total": 75,
+  "verdict_counts": {
+    "unverifiable": 75
+  },
+  "verified_facts": [
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "envelope": {
+        "fact_id": "ee029d4b-6f63-559c-bc00-7833acf0037a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d247fcc5-17d7-58b6-811e-c785b3726f02"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "9 Tinderbox Alley",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "envelope": {
+        "fact_id": "140eebdf-16c0-5785-bd24-fec627160e7f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d2f301c3-11c6-589b-95f9-a2fa75c52334"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "envelope": {
+        "fact_id": "58849921-5b4d-5e7d-89db-4f05df8ec714",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "29795a80-4cb8-5ffb-b8fb-85d93c864061"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "envelope": {
+        "fact_id": "97899add-a746-5dd6-bf36-b54db325bf1e",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3ed76573-c009-556b-98a6-3107fec24883"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Ashen Mug Coffeehouse",
+      "envelope": {
+        "fact_id": "677206a8-d262-5b6f-857d-3f153f629f3a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "801d4fc5-b4f6-56ea-99fd-94b3aa8f7cb0"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1012",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "d3406c32-a794-544f-af71-8c0e9de052e2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d34c5b87-40a8-5391-8117-6cde432970ea"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "330 Bluebonnet Trail",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "3f0cca17-d03b-5499-8f8c-ddc0a77ddc8c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d373e948-b1bc-50a7-bc0c-eae9fb402212"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "903 Seacliff Road",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "19e43b2b-c487-5278-ab66-d1695d42ddbd",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "510ad2c0-890e-5148-865b-6b2052d221ed"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "58294486-9945-51a9-982e-45868e5b3079",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4c03eb71-c117-5ade-81f8-bf5fafb3ede7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "d5536215-5488-5fa0-a78e-662c535b2871",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5852eb3d-15f2-5c1b-9104-ed76eefc4b7d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "d5536215-5488-5fa0-a78e-662c535b2871",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5852eb3d-15f2-5c1b-9104-ed76eefc4b7d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "0ad3df90-df8a-5836-83dc-35c13866b90a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a3aab403-c649-5f99-a524-de3aaa10899d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.4",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "c76ea1bd-38bd-55fa-b41a-bb4da4d013ae",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "21f52ed6-ff95-5e5b-99e1-6b79b5590d3e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.5",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "a4d8f3cc-6d73-5ac9-8743-daa1d4073027",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "eb53fc27-6f81-5740-acba-2603d8e26f29"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1005",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood Coffee Co",
+      "envelope": {
+        "fact_id": "2b4115d6-52c7-5f9f-a591-821a51cc5477",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a15ed0eb-5299-5de4-8fec-d67c62532441"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1009",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Emberlight Cafe",
+      "envelope": {
+        "fact_id": "822dc5fd-f569-5828-a650-da6ec6e3b640",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9d70beee-7e38-5a6b-9bf6-32cd93d6cd27"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "205 Cobbler Court",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Emberlight Cafe",
+      "envelope": {
+        "fact_id": "ef011d1a-7dea-52f2-8add-c176e3c200ec",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "82961e17-bf84-5892-aad7-bd99e45d2e82"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Emberlight Cafe",
+      "envelope": {
+        "fact_id": "1d40022e-88fa-5c24-82ca-2b28aea2bf7b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "b494bfc6-d788-5a37-bd0b-d2fd90deeaf7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Emberlight Cafe",
+      "envelope": {
+        "fact_id": "db3439cd-5e6e-52c3-827a-1008e18ec398",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9e022d34-e13b-546f-a54d-09be59be2278"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "3.8",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Emberlight Cafe",
+      "envelope": {
+        "fact_id": "33d4d42b-1207-5a31-978d-b3147197ded9",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "643ec30c-d6e8-513c-a3c1-77ec07b961fa"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1015",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "e33981ea-2859-5a15-b8ae-e3e544e953cc",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "18a8d626-f537-5db8-94e9-86a93b3ae279"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "2200 Chestnut Avenue",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "ed47a82f-11b4-5b69-be97-bbb2798e2a12",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "247d156e-a626-5413-8acb-59cec9d47bc0"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "812 Alder Street",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "b800392d-be24-5925-93e5-1ed9f3079358",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7bc52b5e-c45d-5782-b0aa-e475ea0d61c7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "b800392d-be24-5925-93e5-1ed9f3079358",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7bc52b5e-c45d-5782-b0aa-e475ea0d61c7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "cb77dc76-0a1b-5047-bb4a-8aa2b95e948d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "aa4fc9af-4997-56c0-98d2-1ef7cdca8e19"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "cb77dc76-0a1b-5047-bb4a-8aa2b95e948d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "aa4fc9af-4997-56c0-98d2-1ef7cdca8e19"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "154bf9c4-db03-5baa-8710-5d15cb69a96f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3fd27ab2-1f79-5c73-b1cf-2507705a513f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.1",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "500a7d1e-4ad2-50a8-8193-f06bf2e2c253",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2d62039c-446e-5a14-9c42-6d27003bb4d4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.6",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "d4964019-63b6-57f5-9721-a91ff3b0ce66",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "24493fad-54ea-52b9-b92d-233bfecf22fd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1001",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Fernwood Roasters",
+      "envelope": {
+        "fact_id": "5f5c9781-4811-5f61-ac23-9485583581ca",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9e85f4f9-d5d3-50f1-a31f-90014e1b6414"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1003",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Gilded Portafilter",
+      "envelope": {
+        "fact_id": "50b54277-2147-54da-a872-6cb912ea2814",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4d6f6f20-1235-5f98-9310-a469b4c0363f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "88 Lantern Way",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Gilded Portafilter",
+      "envelope": {
+        "fact_id": "005f28f6-e8e5-5eee-8167-0a772094681a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "bf79082b-7cce-547e-8be1-08a92c0ba5d6"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Gilded Portafilter",
+      "envelope": {
+        "fact_id": "930da462-c9b0-570d-b217-08dc74cc6cbb",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6559ecbc-aa2c-56f2-8262-8612a190ccce"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Gilded Portafilter",
+      "envelope": {
+        "fact_id": "305911a5-1fb8-5e8a-9fe3-3b1497ba9ea6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ed46e4be-4fd6-5358-8595-9e0a869d3b83"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.7",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Gilded Portafilter",
+      "envelope": {
+        "fact_id": "66bb0fbc-fa30-55f3-b889-3b91c26999d0",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "435fe0a2-2f33-57e1-96ef-fa6ca4070975"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1007",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Hollow Reed Cafe",
+      "envelope": {
+        "fact_id": "1fa214cd-920b-5991-9c0b-2eeeb2250774",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "02deef45-dc16-5f24-a41d-626b19b3f7ce"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1204 Sparrow Street",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Hollow Reed Cafe",
+      "envelope": {
+        "fact_id": "ab40e456-8397-5119-a70e-2a9ddedf02b6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e882446e-8f49-50d4-8627-e65ecd0ed813"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Hollow Reed Cafe",
+      "envelope": {
+        "fact_id": "98add531-3404-5a6e-b494-306a63c85e5c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ac6fbf3c-e930-5253-8d77-2818bc5d04a8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Hollow Reed Cafe",
+      "envelope": {
+        "fact_id": "55bfac41-b6ae-5e62-93bf-29061ebf326f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "13fc6cd5-061c-5fc5-8958-a27527e77fd7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "3.9",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Hollow Reed Cafe",
+      "envelope": {
+        "fact_id": "ebe26487-a33a-58ea-8d05-ac6f57207fee",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "29ed28ae-bbeb-5055-9d3d-5e4943642c00"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1008",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "9e364416-0a6b-571f-ad6e-dad77f3f5a15",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c91e4885-f193-5db7-8519-32f8748f9956"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "17 Wharfside Court",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "9bf0d240-58fa-5c32-9795-4b53e432e2f3",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c8a3907d-3336-540d-aa5d-75a8e1e6397f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "410 Kingfisher Plaza",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "c2ebcdfa-adb3-53e2-a1df-5c220b4ea371",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e1e49da0-ff98-5b6a-839b-fcc0072be9ee"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "c2ebcdfa-adb3-53e2-a1df-5c220b4ea371",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e1e49da0-ff98-5b6a-839b-fcc0072be9ee"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "a715803e-4cb1-5079-af45-13c8c1f0acaa",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7f97b54e-2ef2-5827-90ac-1cf4c9966002"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "a715803e-4cb1-5079-af45-13c8c1f0acaa",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7f97b54e-2ef2-5827-90ac-1cf4c9966002"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "f5a1d516-263e-564f-bfd7-450eb988f011",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c385d701-3243-525b-b998-eed6cd519b0f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.6",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "59397335-2601-547f-a439-b7a9e895727c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "437094ee-95e8-5969-b10f-3f733176faa7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.8",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "ea479f64-d922-5711-80aa-59b93c2fad88",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9b419315-0794-5fa6-9c11-efdd3d9bda67"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1004",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Marlowe & Bean",
+      "envelope": {
+        "fact_id": "65e7e4dc-b6e6-5888-938f-56241c52bf1b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "21803038-1622-57f9-8bbc-fee8c6fd3568"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1011",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Quillfeather Roastery",
+      "envelope": {
+        "fact_id": "6eb3b24a-1e01-511b-b7bb-40acbd53429d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2c859e65-99ef-53bc-bc80-220a285adcfd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1450 Harborview Terrace",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Quillfeather Roastery",
+      "envelope": {
+        "fact_id": "32e94e1b-2799-5b20-a907-5c1b0967860b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d90fc019-1a26-5511-ae59-015a4aac8235"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Quillfeather Roastery",
+      "envelope": {
+        "fact_id": "e1b15499-ff50-5764-8aaa-540f5e7a91c6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e80c69a4-8004-5fb4-83af-33d888129cb1"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Quillfeather Roastery",
+      "envelope": {
+        "fact_id": "fea80afd-4000-5514-afeb-38e729ffb617",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a434f462-5ab5-5664-ad38-fc5ace7d432d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.9",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Quillfeather Roastery",
+      "envelope": {
+        "fact_id": "78bffa9c-118d-53ac-b5fe-dfd82e0d612b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d2fb7a95-ea4a-5f11-8e8b-d1d69765dc63"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1014",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "f2991b05-87a6-55aa-9cf7-06273df59262",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0a4371a8-46b5-5edc-b246-7821039dc919"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "45 Marmot Lane",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "016af417-0a81-5906-9124-189210ec189b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "03dc104e-f86a-598e-812f-a551672ad933"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "560 Juniper Boulevard",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "1eb0d19c-3974-53f1-94ab-6cb8328f2be9",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ef3871f3-fe42-5272-9440-cf9ea938f51e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "1eb0d19c-3974-53f1-94ab-6cb8328f2be9",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ef3871f3-fe42-5272-9440-cf9ea938f51e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "af164ad1-1b88-556b-a037-88afb04cc306",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "26af81e6-634c-59f1-a66b-37918ad2bd23"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "75b60e0c-3456-5356-b65a-9068ca30b406",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "fad32464-6aed-5989-89a7-8a3b5d88b279"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "c1922e3d-cd51-5760-b62a-6c8658ef6b61",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9c905253-3236-5162-8098-aa36768289d5"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "c7ba4921-72b1-54d8-84ef-67d5a283167a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0e15b545-7734-5983-a47a-0fc05ecf5be8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.3",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "eece2fb3-303a-54e9-a8df-7ea0458f43ab",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5e5df405-43d6-5020-9f1e-8cd0e59d46ee"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1002",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Copper Kettle",
+      "envelope": {
+        "fact_id": "d7312380-357c-5661-ae85-30db8195f262",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1cbb934c-6e63-5161-b13f-a6149562af5b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1006",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Wandering Bean",
+      "envelope": {
+        "fact_id": "3be2e876-116c-5be6-924d-21aa89846781",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c0985786-8b67-5b74-9f4a-d9f50ac7632f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "633 Meadowlark Drive",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "The Wandering Bean",
+      "envelope": {
+        "fact_id": "9b4aed26-9f8a-581c-9e41-c84f633fe0f3",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "106c1e13-889b-5078-a58e-09ad23459708"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Wandering Bean",
+      "envelope": {
+        "fact_id": "9ab10839-63bb-5e09-8366-6b3f997bb65e",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "171f67f6-e73f-5207-9dc0-1afbc5a278ed"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "The Wandering Bean",
+      "envelope": {
+        "fact_id": "1468c838-6c6f-579a-81c1-3233452d8d4d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1cc0e7f9-7ca8-55c9-86ab-275bf5a6b565"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.5",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "The Wandering Bean",
+      "envelope": {
+        "fact_id": "65ac0c8b-b31a-53b7-a672-3bcfaed11e67",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0a10c2ce-bbc2-59db-aef2-0123e0a3c48e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1013",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "address",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Thimbleweed Espresso",
+      "envelope": {
+        "fact_id": "4bf83863-b219-5063-ab32-39ab211648a9",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "54d867f3-9c41-5e79-be7a-3b801c1d97ea"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "76 Foundry Street",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "outdoor_seating",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Thimbleweed Espresso",
+      "envelope": {
+        "fact_id": "6b29e48b-e76a-5e60-b98d-2cf937312e51",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "472908b6-2f82-53fd-b0ac-2e9ad8d2c753"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "price_level",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Thimbleweed Espresso",
+      "envelope": {
+        "fact_id": "920de15b-e786-5b4d-a1e3-f430bd3252b0",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "46fa5805-f6a2-5bd9-a7d2-59530cda3138"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "$$",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "rating",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Thimbleweed Espresso",
+      "envelope": {
+        "fact_id": "66922c39-2581-558d-9c02-f11d6aac36d6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f818f9ab-aa6b-5658-be3d-9172970a9694"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "4.2",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "shop_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Thimbleweed Espresso",
+      "envelope": {
+        "fact_id": "fe1ab921-7bb9-5518-a9c6-9df0d8677b96",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ed5a1389-62e9-5ce7-ba91-25eeb1ad37e6"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CS-1010",
+      "verdict": "unverifiable"
+    }
+  ]
+}

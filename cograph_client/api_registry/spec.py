@@ -53,10 +53,22 @@ class AuthorityLevel(str, Enum):
     sources are curated machine sources and must never author themselves as
     ``user_assertion`` — the level is minted only by the correction write path
     (``pipeline/corrections.py``) and stamped into provenance there.
+
+    ``machine_reverification`` is the A10 MACHINE-correction authority (ONTA-363):
+    a fresh re-verification of a fact ALREADY in the graph, emitted back into P6 as
+    a correction. It sits STRICTLY BELOW ``user_assertion`` — and below
+    ``source_of_truth`` — but ABOVE ``authoritative``/``supplementary``, so a
+    re-verify can supersede a stale scraped value yet can NEVER overrule a human's
+    fix (the ONTA-276 conflict policy enforces this by rank alone). Like
+    ``user_assertion`` it is NOT a catalog authority level: a registered source must
+    never self-author as ``machine_reverification`` — the level is minted only by
+    the machine re-verify write path (``verification/reverify.py``) and stamped into
+    provenance there.
     """
 
     user_assertion = "user_assertion"
     source_of_truth = "source_of_truth"
+    machine_reverification = "machine_reverification"
     authoritative = "authoritative"
     supplementary = "supplementary"
 
@@ -76,20 +88,26 @@ class AuthorityLevel(str, Enum):
 #
 # ONTA-281 added the TOP slot ``user_assertion`` (rank 0) — a human correction
 # must outrank every machine source — and shifted the pre-existing machine levels
-# down one slot each. Only the RELATIVE order is load-bearing (every consumer
-# compares ranks or sorts by them; nothing depends on an absolute value, and the
-# ``.get(level, 9)`` unknown-fallback is still the weakest), so the machine
-# levels' pairwise ordering — and therefore all existing behavior — is unchanged.
+# down one slot each. ONTA-363 inserts ``machine_reverification`` between
+# ``source_of_truth`` and ``authoritative`` (a machine re-verify supersedes a stale
+# scrape but never a human fix), again shifting the levels below it down one slot.
+# Only the RELATIVE order is load-bearing (every consumer compares ranks or sorts by
+# them; nothing depends on an absolute value, and the ``.get(level, 9)``
+# unknown-fallback is still the weakest), so every existing level's PAIRWISE ordering
+# — and therefore all existing behavior — is unchanged.
 AUTHORITY_RANK: dict["AuthorityLevel", int] = {
     AuthorityLevel.user_assertion: 0,
     AuthorityLevel.source_of_truth: 1,
-    AuthorityLevel.authoritative: 2,
-    AuthorityLevel.supplementary: 3,
+    AuthorityLevel.machine_reverification: 2,
+    AuthorityLevel.authoritative: 3,
+    AuthorityLevel.supplementary: 4,
 }
 AUTHORITY_CONFIDENCE: dict["AuthorityLevel", float] = {
     # A human correction is the most-trusted signal we have — above source_of_truth.
     AuthorityLevel.user_assertion: 0.99,
     AuthorityLevel.source_of_truth: 0.95,
+    # A fresh machine re-verify: calibrated between source_of_truth and authoritative.
+    AuthorityLevel.machine_reverification: 0.9,
     AuthorityLevel.authoritative: 0.85,
     AuthorityLevel.supplementary: 0.6,
 }

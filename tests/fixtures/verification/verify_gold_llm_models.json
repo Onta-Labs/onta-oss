@@ -1,0 +1,55 @@
+{
+  "id": "llm_models",
+  "goal": "Verify spec facts ingested for LLM models against independent published documentation.",
+  "description": "A plain (no same-name collision) gold set over model spec facts: 2 SUPPORTED (matches the published spec), 2 REFUTED (the ingested value contradicts the spec), 2 UNVERIFIABLE (no independent source publishes it). The rubber-stamp control falsely accepts the 4 non-supported facts.",
+  "budget_usd": 0.20,
+  "thresholds": {
+    "accuracy_floor": 0.80,
+    "false_supported_ceiling": 0.10,
+    "identity_blindness_ceiling": 0.10
+  },
+  "facts": [
+    {
+      "entity_id": "Aurora-Opus",
+      "attribute": "context_window",
+      "value": "200000",
+      "gold_verdict": "supported",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Aurora-Opus",
+      "attribute": "provider",
+      "value": "Lumen AI",
+      "gold_verdict": "supported",
+      "cost_usd": 0.01
+    },
+    {
+      "entity_id": "Nimbus-7B",
+      "attribute": "context_window",
+      "value": "128000",
+      "gold_verdict": "refuted",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Nimbus-7B",
+      "attribute": "license",
+      "value": "Apache-2.0",
+      "gold_verdict": "unverifiable",
+      "cost_usd": 0.01
+    },
+    {
+      "entity_id": "Vega-Large",
+      "attribute": "release_date",
+      "value": "2025-11-02",
+      "gold_verdict": "refuted",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Vega-Large",
+      "attribute": "parameters",
+      "value": "70B",
+      "gold_verdict": "unverifiable",
+      "cost_usd": 0.01
+    }
+  ]
+}

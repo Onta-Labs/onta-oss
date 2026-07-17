@@ -1,0 +1,1268 @@
+{
+  "total": 60,
+  "verdict_counts": {
+    "unverifiable": 60
+  },
+  "verified_facts": [
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Argent Exchange Group",
+      "envelope": {
+        "fact_id": "6d14efb3-08a3-5ad2-a5ab-13ec67e09f23",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9a62ab39-0a90-5326-a97d-507d2747f6c6"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "8900",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Argent Exchange Group",
+      "envelope": {
+        "fact_id": "1bd3ec9a-f47c-5dc2-a34c-cfa15c04a607",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "55b5949f-9cd1-5c31-99be-280ad87ef2ea"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Chicago, Illinois",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Argent Exchange Group",
+      "envelope": {
+        "fact_id": "b853aae3-cbf0-54b4-9f2e-f233ae24dccf",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "786a31b9-7634-5fe6-ba40-a42ea6d410ac"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "68100000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Argent Exchange Group",
+      "envelope": {
+        "fact_id": "96629570-67f4-588c-bef4-367538f07e7b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ce8aba14-62a7-5594-ae1c-b1c38255d5dd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "ARGX",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Cobalt Grid Utilities",
+      "envelope": {
+        "fact_id": "385e4552-2cec-53c5-af31-02f8845cca0a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f3b227d5-dddb-5d7d-8012-a65400534bec"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "18500",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Cobalt Grid Utilities",
+      "envelope": {
+        "fact_id": "b16e76f1-619b-5993-a9eb-ccb133ec5044",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4e518731-2db7-5df8-ae2e-edd398050506"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Columbus, Ohio",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Cobalt Grid Utilities",
+      "envelope": {
+        "fact_id": "51eeb19f-91d4-548a-82ec-aebe66a0ee02",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "299c3b26-ddf2-50b3-9c9a-1a34ff76889f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "44100000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Cobalt Grid Utilities",
+      "envelope": {
+        "fact_id": "d0c1d4fe-33ab-5853-b26b-3afa7b1d9639",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e2ecd7c1-123b-56f7-b6fc-a80bfe3dc5db"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CBLT",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Crestwood Biologics",
+      "envelope": {
+        "fact_id": "52604a85-8a3c-5ef1-8a10-a4aaa09a3f57",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "26efce0b-dcec-5b5f-8e2b-e1c14504b004"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "15000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Crestwood Biologics",
+      "envelope": {
+        "fact_id": "147436b4-516b-5541-8829-4c474df79f2a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0d202200-a88e-5771-a10c-b0381da33a2e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "South San Francisco, California",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Crestwood Biologics",
+      "envelope": {
+        "fact_id": "fff34b4f-25c4-59d9-8028-18f636ee4334",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a3434c6b-9aa8-5e6e-9eb9-6b816de34ff7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "47800000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Crestwood Biologics",
+      "envelope": {
+        "fact_id": "6d2469b7-8b9c-53f3-95d8-d25502e89c8b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d8a81b50-5134-534e-9ea7-e2e5eba048cb"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "CRSD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Greenfield Grocers Corp",
+      "envelope": {
+        "fact_id": "0c9c7a00-60fa-52e4-be21-da4a4a1090e5",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "fe9e608f-0f13-59f4-a39b-282b4aa076d4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "145000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Greenfield Grocers Corp",
+      "envelope": {
+        "fact_id": "c9d9690f-99df-5d93-8e40-f3daaaa66075",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "167e4367-98bf-5334-ba8e-20815c98f8de"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Boise, Idaho",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Greenfield Grocers Corp",
+      "envelope": {
+        "fact_id": "19e63611-3a2d-52d9-832e-11c3c2e76a6a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2e289e88-5417-5d33-bac5-4218a557ab7d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "33200000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Greenfield Grocers Corp",
+      "envelope": {
+        "fact_id": "c7f0b363-7cd3-5f06-bdb7-a1b93af82a5f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "91d842ff-f818-5d04-ac3d-18ca0c3f8490"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "GRNF",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Harvest Mills Foods",
+      "envelope": {
+        "fact_id": "5787d9d4-6b24-5035-a891-5f300ac23cc6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4353f19a-564d-5457-871d-38628effed5a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "22000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Harvest Mills Foods",
+      "envelope": {
+        "fact_id": "8e5b0cf8-fdb1-53b3-bbd5-9f3596f5a149",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9a21d824-1f75-52e0-8bbc-83e6022873d3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Battle Creek, Michigan",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Harvest Mills Foods",
+      "envelope": {
+        "fact_id": "f05c183f-8c85-575f-b11e-ec4179f15084",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2b2b1c2f-b25e-501b-85e9-f95c92e5db1f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "29800000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Harvest Mills Foods",
+      "envelope": {
+        "fact_id": "86130ec3-331d-57bc-a8ec-7ec0476cd298",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "030bcadb-d612-58cf-879e-b31e832d9507"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "HRVM",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Helix Pharmaceuticals",
+      "envelope": {
+        "fact_id": "439ed176-c692-51f1-8015-c788387c3aec",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c16216a6-2c0f-5199-ab41-66d9d470bc5d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "42000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Helix Pharmaceuticals",
+      "envelope": {
+        "fact_id": "3894d417-d81c-5217-a0c4-1804f6d4f845",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "75d35662-2efe-5151-b15d-24ee15eb1c96"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Cambridge, Massachusetts",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Helix Pharmaceuticals",
+      "envelope": {
+        "fact_id": "1c485407-38d9-5433-a448-41940ef4b175",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "755dddd5-7a37-5604-ab96-38a39ea575b7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "132500000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Helix Pharmaceuticals",
+      "envelope": {
+        "fact_id": "a1671786-f7ab-51f9-af0d-57063c379386",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1d3fbe19-8a15-5556-b250-f323708ada75"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "HLXP",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Lumenix Software",
+      "envelope": {
+        "fact_id": "fb56d8e7-2f76-5355-b0e1-d255195d0f3a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9d48550b-1c93-588b-ad62-b1e2e735645a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "17000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Lumenix Software",
+      "envelope": {
+        "fact_id": "8f2883b2-58c2-5541-96c7-2be6fb096431",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ccbaf57f-036b-58dc-adeb-6f49bb14ce6d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Santa Clara, California",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Lumenix Software",
+      "envelope": {
+        "fact_id": "b1ec9111-4c34-55fd-8592-41a1b08f144c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4e93b6fd-74e7-5c9a-8d13-314b27c32de8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "98600000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Lumenix Software",
+      "envelope": {
+        "fact_id": "b41705bc-b296-54a2-9df6-f4651d1bc087",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5cb72309-8994-5b52-8622-a067a8e31394"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "LMNX",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Meridian Trust Bancorp",
+      "envelope": {
+        "fact_id": "403d8018-97ba-5bc7-b434-4ee82e7d0c29",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "39044c60-a0aa-59ae-9a2a-50e6b8a719c3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "34000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Meridian Trust Bancorp",
+      "envelope": {
+        "fact_id": "c2475a8b-e31a-5443-bfc2-3a5f8e8cbcd8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1879ed3c-6267-562f-bf7b-8bf0c96ba43a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Charlotte, North Carolina",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Meridian Trust Bancorp",
+      "envelope": {
+        "fact_id": "4aa9f0ee-51cb-5b45-8f8c-3dd4393b4de6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5d760417-9ead-5b6c-8542-4d35b6fd7665"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "55700000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Meridian Trust Bancorp",
+      "envelope": {
+        "fact_id": "78c347db-ccf8-5d4f-9b55-516e50e33371",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f5a92f36-e09d-52cf-a748-c3af3130acce"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MRDN",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "envelope": {
+        "fact_id": "d8abc2cd-a0ef-5c68-9f5c-e2a23b7aacef",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "41ba92d1-bba7-501d-9260-8467590caabc"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "61000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "envelope": {
+        "fact_id": "1e1b0edf-f610-5091-8d2e-c2cfdd2fe7f0",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7c4fdf6f-836f-5b48-adef-63901245ad51"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Wichita, Kansas",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "envelope": {
+        "fact_id": "bba2d742-bbb6-5cf2-9d9f-af252a71631b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "fac5acf9-962e-5812-9bdb-c344d4157d3c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "84200000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Nimbus Aerospace Corporation",
+      "envelope": {
+        "fact_id": "fc00003f-d7e4-554d-906c-e3507fb4df00",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4cbd7118-40a6-58a8-b43a-ce7922bc7755"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "NMBS",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Pinnacle Refining Company",
+      "envelope": {
+        "fact_id": "5f789ed2-554c-5881-ab0b-5d7e3b9ac706",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "eb8dc9ab-23db-590f-b963-2c5e32180821"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "12500",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Pinnacle Refining Company",
+      "envelope": {
+        "fact_id": "963f9bfa-d1e9-5927-8600-6a4af5c4ae3c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "173e0f40-d708-57e4-8602-8cd822ba405f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Houston, Texas",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Pinnacle Refining Company",
+      "envelope": {
+        "fact_id": "a921f0e0-2f21-5f06-af39-197b3cde1538",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "b5497ba5-3dee-5081-8e23-a727ab2b1dab"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "39400000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Pinnacle Refining Company",
+      "envelope": {
+        "fact_id": "26a5f34f-c541-5387-8c82-b5bc3bf7bceb",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "75dff318-c6ab-5c89-bcce-bef0b9a2eb2a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "PTNC",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor",
+      "envelope": {
+        "fact_id": "0d9a7b08-f4ab-5680-88a4-be9b9675ecc8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e6ef3bf8-8bdc-5ec9-94f5-2eb734ecd712"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "29000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor",
+      "envelope": {
+        "fact_id": "f94dfd6f-bad7-5f7c-8b94-71cdc741d0ba",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "29d484e8-eced-5658-8828-b5a0e374c90d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Santa Clara, California",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor",
+      "envelope": {
+        "fact_id": "1fc3ed03-32f0-5c05-91a0-cc81545c44dc",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3b7f0646-7360-5051-a177-c6b2b029bf6b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "210800000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor",
+      "envelope": {
+        "fact_id": "c637338b-dcbc-5bf0-b280-82cf0a34a679",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7a0fb942-4e32-5443-9332-67094bc4993d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "SLST",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor Materials",
+      "envelope": {
+        "fact_id": "8b7baa5d-93a1-5081-8061-2ca8a0faee56",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "cfb31084-f846-5cfd-b1b5-2d37a750b74a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "6100",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor Materials",
+      "envelope": {
+        "fact_id": "96e3a855-6425-5e73-aaa3-1234dfc22bd2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5439b524-0479-5c2b-a75b-fcab398be868"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Santa Clara, California",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Solstice Semiconductor Materials",
+      "envelope": {
+        "fact_id": "5c607190-0bca-53e9-baa6-ce8588a869d8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c079632a-7045-5a9a-9bc0-ebf3b27c8c80"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "18900000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Solstice Semiconductor Materials",
+      "envelope": {
+        "fact_id": "63226578-5202-5da1-98f1-da311b1984c7",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "54f4663f-9eb1-525c-8bcb-19bb48a1d59e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "SLSC",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Stonehaven Realty Trust",
+      "envelope": {
+        "fact_id": "f06e20d6-7acf-5ff5-8c68-99c616fb4a6c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "73354e6a-01fc-5d50-87e5-2bbd8d83bf5b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "3200",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Stonehaven Realty Trust",
+      "envelope": {
+        "fact_id": "6f99a1ab-7e1f-57c3-bfab-d7cb83aeeb89",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "605846f0-1cd7-5236-881f-4e98a31d3475"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Indianapolis, Indiana",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Stonehaven Realty Trust",
+      "envelope": {
+        "fact_id": "c5ba1945-7294-5cf1-b6d8-8130d47ebbeb",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "babc80cf-c152-5ae8-8388-5506461800c0"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "26700000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Stonehaven Realty Trust",
+      "envelope": {
+        "fact_id": "926bd04a-add1-5e8a-b546-1d83df6d6ac8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e859aac9-2eda-5007-aac7-b595693103a0"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "STNH",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Tidewater Energy Holdings",
+      "envelope": {
+        "fact_id": "5bb222d1-8cee-5b34-98a7-ebd9e2709c20",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "334bafc7-2d5d-50b4-9873-8a69f5c7c91a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "27000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Tidewater Energy Holdings",
+      "envelope": {
+        "fact_id": "d756bfa4-af0b-55fd-9117-1f56f949f298",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "fd533eda-488d-5169-b3ff-50ed8b46489a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Houston, Texas",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Tidewater Energy Holdings",
+      "envelope": {
+        "fact_id": "af2d9cf6-60bb-58c6-9ea9-ed69760ce420",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a16adedd-9c9e-5a3b-9208-8bd7218adeb9"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "76300000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Tidewater Energy Holdings",
+      "envelope": {
+        "fact_id": "bff9d9c3-d936-5b5b-a141-dbf67ba230bd",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1f6e90ca-3146-5ec4-af00-daade469a7bb"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "TDWT",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "employees",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Valdera Motors Inc",
+      "envelope": {
+        "fact_id": "05eafac9-acfc-57e0-a303-c24de6d8b38e",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "91a7fc07-9a37-5b74-bbcc-9a29e823b1df"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "88000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "headquarters",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Valdera Motors Inc",
+      "envelope": {
+        "fact_id": "2b5ab518-8a5b-554a-9067-e9a9581fda14",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ff812646-6f99-5d8e-ba60-41a6a7c9a179"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "Dearborn, Michigan",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "market_cap",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Valdera Motors Inc",
+      "envelope": {
+        "fact_id": "2fd7314c-099e-5efa-b522-637756ce1d10",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c3c80325-b7fd-5bde-9636-4a53c86f075f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "51900000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "ticker",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Valdera Motors Inc",
+      "envelope": {
+        "fact_id": "1f44a5f9-c3c1-5de9-a789-d13d35b408d2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5c657e69-d465-55b4-b943-479e0969daf7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "VLDR",
+      "verdict": "unverifiable"
+    }
+  ]
+}
