@@ -1,0 +1,55 @@
+{
+  "id": "coffee_shops",
+  "goal": "Verify facts ingested for San Francisco coffee shops against independent web evidence.",
+  "description": "A plain (no same-name collision) gold set: a balanced mix of facts a good verifier should SUPPORT (corroborated by an independent source), REFUTE (contradicted), or leave UNVERIFIABLE (no independent evidence). A rubber-stamp verifier that returns SUPPORTED for everything only gets the 2 supported facts right and falsely accepts the other 4.",
+  "budget_usd": 0.20,
+  "thresholds": {
+    "accuracy_floor": 0.80,
+    "false_supported_ceiling": 0.10,
+    "identity_blindness_ceiling": 0.10
+  },
+  "facts": [
+    {
+      "entity_id": "Ashen Mug Coffeehouse",
+      "attribute": "address",
+      "value": "9 Tinderbox Alley",
+      "gold_verdict": "supported",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Ashen Mug Coffeehouse",
+      "attribute": "phone",
+      "value": "+1-415-555-0148",
+      "gold_verdict": "refuted",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Ashen Mug Coffeehouse",
+      "attribute": "outdoor_seating",
+      "value": "true",
+      "gold_verdict": "unverifiable",
+      "cost_usd": 0.01
+    },
+    {
+      "entity_id": "Emberlight Cafe",
+      "attribute": "address",
+      "value": "204 Cinder Street",
+      "gold_verdict": "supported",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Emberlight Cafe",
+      "attribute": "price_level",
+      "value": "$$$",
+      "gold_verdict": "refuted",
+      "cost_usd": 0.02
+    },
+    {
+      "entity_id": "Emberlight Cafe",
+      "attribute": "wifi",
+      "value": "true",
+      "gold_verdict": "unverifiable",
+      "cost_usd": 0.01
+    }
+  ]
+}

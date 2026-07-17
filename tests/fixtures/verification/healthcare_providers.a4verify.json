@@ -1,0 +1,1268 @@
+{
+  "total": 60,
+  "verdict_counts": {
+    "unverifiable": 60
+  },
+  "verified_facts": [
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Bartholomew Quimby",
+      "envelope": {
+        "fact_id": "877a68e4-a565-526a-88ac-dc7f90fbe545",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0be0906c-8d65-520f-b022-dd2d081911d9"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Bartholomew Quimby",
+      "envelope": {
+        "fact_id": "29b5f49b-2423-54b7-a4a8-6863dd1dc851",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "691d99ca-91ee-55a4-9ced-0e6823f5e9ee"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "NP",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Bartholomew Quimby",
+      "envelope": {
+        "fact_id": "21db71ac-bfcf-5f63-8bfa-3a86f52f0a98",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3f4f9f07-fce7-5240-8c87-9760cf420e86"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1229948013",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Bartholomew Quimby",
+      "envelope": {
+        "fact_id": "61d35635-cc1f-552a-ab36-cf3194145571",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "afab2889-644c-574a-84d4-a4a8131000cb"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "313-555-0137",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Delphine Marchetti",
+      "envelope": {
+        "fact_id": "1f7f848b-0d69-5970-9752-ad3b94c05186",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c0f26a9e-7f25-5736-818c-c673375e9450"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Delphine Marchetti",
+      "envelope": {
+        "fact_id": "4b2b4ea5-2bf9-5a1a-8987-a84d1268b441",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "8d49d1b9-432f-5ac7-9a33-0bdfcf24762b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "PA-C",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Delphine Marchetti",
+      "envelope": {
+        "fact_id": "b1e6d652-6e47-5283-bbe8-475ba39b93f7",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4fb99518-09ef-5a60-9dbf-dea1f2011382"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1660027742",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Delphine Marchetti",
+      "envelope": {
+        "fact_id": "6e9658df-e4b1-5879-86f5-e0f7c86fff12",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d7a86ddc-9a62-5952-a119-298c36c2ef80"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "989-555-0126",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Constance Ilberis",
+      "envelope": {
+        "fact_id": "29ba35ef-b782-56f0-8805-d352fb857a93",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5815e5fc-27c4-5278-931e-8c65ca13bb75"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Constance Ilberis",
+      "envelope": {
+        "fact_id": "daa3c27a-0727-512d-88a8-66d72671033f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "255ac778-1845-5754-8a36-effd2d5f3d0f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "DO",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Constance Ilberis",
+      "envelope": {
+        "fact_id": "c44ed085-afe5-512f-b9c2-e4bbdecce480",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0c374a95-0c5f-52e7-848c-682123c37043"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1385561120",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Constance Ilberis",
+      "envelope": {
+        "fact_id": "37469a23-daf9-59d8-9cf6-4ac2c16b5cd6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e72f5b24-c75f-58fa-9350-f943e1bbf661"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "313-555-0122",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "envelope": {
+        "fact_id": "8d3516db-fdec-58e3-b4bf-5e697aeb9431",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "bfe846e8-c67a-5431-8d3d-cfb6b36b44b2"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "envelope": {
+        "fact_id": "2a4ada2a-fc2c-5cca-96b1-b37f8823145b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ba207ba8-6911-54a1-8be4-68e4a3395633"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "envelope": {
+        "fact_id": "78792e72-0cf6-5971-8017-f466b5d6e8d1",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "cd35f4a7-e1d9-5860-a7bd-40112730ad8e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1902337761",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Everett Kaczmarek",
+      "envelope": {
+        "fact_id": "e6f0ad4c-e917-54ec-ac3d-9926a079d32a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f457ab6e-d36b-5a27-988a-4f329a394345"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "216-555-0144",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Horatio Blackwood",
+      "envelope": {
+        "fact_id": "2dbadb86-4100-5c8a-9ab0-6e39d8d433b2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "92ffc90f-9598-5cea-bfc4-157646264dcd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Horatio Blackwood",
+      "envelope": {
+        "fact_id": "981d7583-b68c-5a02-9f8a-06cbf13c3d27",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2882f76e-4883-541e-bfc3-12c088e9e0a4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "DO",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Horatio Blackwood",
+      "envelope": {
+        "fact_id": "8a07616c-64bd-549f-87ef-b9751fd19117",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0ea73cff-b3bd-5f17-a486-7857984dc82d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1815563390",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Horatio Blackwood",
+      "envelope": {
+        "fact_id": "6a6eddf8-bcce-54c9-92ee-f796e69f2e78",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6a3591a4-bd08-58c8-9dd8-37f6eb3a2314"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "989-555-0143",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Ignatius Prewett",
+      "envelope": {
+        "fact_id": "8378c3c2-af17-525b-85c0-2b349e7a9f80",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "b6ba45bc-dd79-5e13-a22c-57db9560a62f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Ignatius Prewett",
+      "envelope": {
+        "fact_id": "ace4d4bc-231c-5e19-936f-f53740eb62cb",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2713edd9-eb19-5268-9bce-9619ae22e49f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Ignatius Prewett",
+      "envelope": {
+        "fact_id": "70f3a450-035a-56d0-8e97-58d0ba3c593a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9fb95d5b-e1e1-5c80-bb9c-f833fcda2d9c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1071183345",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Ignatius Prewett",
+      "envelope": {
+        "fact_id": "b32e3e49-e4f8-59f3-bdcd-4e6cd59c9d85",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5bc89050-80d6-5bd4-bfdb-5f4cb3865f83"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "989-555-0111",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Marlowe Vantham",
+      "envelope": {
+        "fact_id": "9e2a5d6b-7e39-552f-a745-de02d5ff2fe8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e4ed8263-3d5c-5cac-8dc5-540b6b76155c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Marlowe Vantham",
+      "envelope": {
+        "fact_id": "1c714471-abbf-55de-8bee-4d4d9e7a8c93",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3d1f532b-4668-58a0-b9c8-4aabb4c35a7b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Marlowe Vantham",
+      "envelope": {
+        "fact_id": "a738b1c1-bd06-5539-a945-a3ab30d25ce5",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "95fbca15-aa93-550e-ba4f-3443f5b9ca23"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1841299301",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Marlowe Vantham",
+      "envelope": {
+        "fact_id": "1068e661-dbf7-5356-9576-4df02e27a696",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5ac187e3-b4c9-5793-b5fd-19572b3bd623"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "440-555-0182",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Percival Underhill",
+      "envelope": {
+        "fact_id": "de9c934d-97da-5977-ab78-ef459a69d647",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "36117c70-a3d4-5974-b910-76a85dbd2602"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Percival Underhill",
+      "envelope": {
+        "fact_id": "d03e1322-5e94-5873-8312-503d7b849e99",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a51a1b03-1905-51ea-8a45-6766105772b3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Percival Underhill",
+      "envelope": {
+        "fact_id": "b977a592-9928-5429-9e73-89d61d18643e",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "65db4c8c-aab3-582f-b6b6-d1d2f68a0b53"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1338890027",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Percival Underhill",
+      "envelope": {
+        "fact_id": "36c42f31-66ab-53fd-b67e-8688418f57fc",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3c44c61c-882a-57f5-b88e-aea3a6c36122"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "216-555-0191",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "envelope": {
+        "fact_id": "d7481fe3-00ac-575a-b3ca-85866dd07f2f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f7bdc677-740b-5cd9-9583-35a8ae63f111"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "envelope": {
+        "fact_id": "4971fade-58bc-5ca9-b70e-cf5ffe7bc3ff",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3afe63fe-2d7d-5cbf-bc93-b776f43040e9"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "DO",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "envelope": {
+        "fact_id": "a61fa264-bb82-5d2b-b4f8-ef41af2f850d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "fb96f7f1-5c65-55b4-9d90-56f0511578fe"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1770458823",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Priscilla Onwuka",
+      "envelope": {
+        "fact_id": "8f515214-3e57-5f83-b337-94447a0570d2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1ec01437-20f9-57ae-b02e-a01c3ad46d88"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "440-555-0199",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Seraphina Loxley",
+      "envelope": {
+        "fact_id": "7ea009f4-891e-5a50-b725-abd3da74edc3",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "02b3649e-7dff-5915-9d0b-004e54ba3de5"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Seraphina Loxley",
+      "envelope": {
+        "fact_id": "63cc86d7-58df-5c28-9beb-3f01e8975f6b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1d93766e-13a7-54e7-b49f-3adef628c2e4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Seraphina Loxley",
+      "envelope": {
+        "fact_id": "fdbac321-5b93-5a4a-8238-bd58038c34c2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6a14673d-e775-57cf-8e5f-49e32a283edc"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1994402278",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Seraphina Loxley",
+      "envelope": {
+        "fact_id": "2225e31e-a554-5a12-ba8c-02c910c94592",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e362ac15-ed38-52d9-91ce-047d0396fd39"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "313-555-0158",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Dr. Yolanda Fereday",
+      "envelope": {
+        "fact_id": "9afb09a3-ad78-5e76-aa2a-34629c0381a3",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "74573327-38da-5307-ad13-86061a98cab3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Yolanda Fereday",
+      "envelope": {
+        "fact_id": "c7c76c02-d154-55bd-a0ec-82a5b7f291a2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c998b8db-4a10-58ee-8f70-3082ec43a740"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "MD",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Yolanda Fereday",
+      "envelope": {
+        "fact_id": "cce0d364-4ff2-5de3-9d4c-3ed8cca9f3b3",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2dcc6012-15da-5e46-959f-af38061d4a0c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1663049928",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Dr. Yolanda Fereday",
+      "envelope": {
+        "fact_id": "d8883229-2e33-5659-b691-9d7b50847706",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c720bbf3-82d3-54fe-b3a9-e26db7040a4c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "216-555-0165",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Gideon Sparrowhawk",
+      "envelope": {
+        "fact_id": "c9397677-c69a-542c-bc37-a94513112054",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d7b04c37-43c7-5faf-9dfe-b167ae7a3228"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Gideon Sparrowhawk",
+      "envelope": {
+        "fact_id": "34546469-fada-55e5-8747-c41c7bad0c61",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "dc192b37-4f06-52ce-8770-2e0cc6f472ef"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "PA-C",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Gideon Sparrowhawk",
+      "envelope": {
+        "fact_id": "3b90e031-be33-5b06-9c22-15e8f42c7e13",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4ede5c58-3996-519c-b4ce-3c2921b7a529"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1447720158",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Gideon Sparrowhawk",
+      "envelope": {
+        "fact_id": "332a17e9-9422-5f3d-a186-76ed3bf8b593",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ff38776e-fe2a-5d77-98ea-ef72e06ec8ba"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "216-555-0178",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Ottoline Vasquez",
+      "envelope": {
+        "fact_id": "8e71ea22-aa44-5aa1-acae-12fcde98e62a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "b4c88be8-9b20-5ed8-88c0-3ea4f8dc7b10"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Ottoline Vasquez",
+      "envelope": {
+        "fact_id": "d3dd89d5-4868-5ef4-9a41-fc97e7705172",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2f91eccc-1375-541f-9c6a-5f10b5a5fa3a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "PA-C",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Ottoline Vasquez",
+      "envelope": {
+        "fact_id": "e3f5f9f6-a845-5917-95d6-d2f43b04434c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6bc2cfbf-7218-50cf-a02e-7a264bbce0c8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1247716609",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Ottoline Vasquez",
+      "envelope": {
+        "fact_id": "6c5e7f87-c876-5e7f-bd8a-d8a0664e4c1c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4b956f48-2bd6-57d2-ba0d-259c705418fa"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "313-555-0169",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Rosalind Featherstone",
+      "envelope": {
+        "fact_id": "3566bd87-5c4a-5b84-aecb-560b8f194439",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5d8e38b1-401e-55ad-afdb-bce8650644d7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Rosalind Featherstone",
+      "envelope": {
+        "fact_id": "60ac8064-735d-59e7-b9df-99ae5c9a5dea",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "eb18c695-4cc5-5674-8dcd-4baaaf517f9e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "NP",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Rosalind Featherstone",
+      "envelope": {
+        "fact_id": "4081a31e-66a0-5ba6-b505-fb1aa9caa83c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "694b2cc5-94de-5ca4-9ed5-9969791e1230"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1502238861",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Rosalind Featherstone",
+      "envelope": {
+        "fact_id": "eddab5e5-0755-5c20-879a-56144eeff8b7",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "070a1e9f-b998-5dbe-9bbf-35738f420d86"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "440-555-0224",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "accepting_new_patients",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Tamsin Brightwater",
+      "envelope": {
+        "fact_id": "61336b77-3588-5087-aa34-9f6effe3663a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c4c468e9-b42e-5ac4-952b-ea1a43f0ef0a"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "credential",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Tamsin Brightwater",
+      "envelope": {
+        "fact_id": "4453ce1e-9af8-5a30-a108-65024054f534",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6f1f372f-ba0e-5e17-9d8c-8f1fdea8228b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "NP",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "npi",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Tamsin Brightwater",
+      "envelope": {
+        "fact_id": "f42f9b00-9399-50e1-8ee2-ff06f7987bf8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9b53755e-d227-5535-95d3-3a781413b20d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1558832047",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "phone",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Tamsin Brightwater",
+      "envelope": {
+        "fact_id": "5f6b6e1c-64a2-582c-8ef9-e4e7f3e875a5",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "82b345f3-1237-59ca-a13b-6a0e93af058e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "440-555-0210",
+      "verdict": "unverifiable"
+    }
+  ]
+}
