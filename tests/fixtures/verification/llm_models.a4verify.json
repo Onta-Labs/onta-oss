@@ -1,0 +1,1583 @@
+{
+  "total": 75,
+  "verdict_counts": {
+    "unverifiable": 75
+  },
+  "verified_facts": [
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Aurora Large v2",
+      "envelope": {
+        "fact_id": "24387e9a-9c41-552a-8506-e08a830240b6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "28805480-bdd9-583f-b0c2-a9b802d7b757"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "200000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Aurora Large v2",
+      "envelope": {
+        "fact_id": "dc4e7cf9-8742-520c-8bb4-9105995be82e",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "77590979-9179-5e1b-93c9-06544daab81c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "3.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Aurora Large v2",
+      "envelope": {
+        "fact_id": "33f6c725-398c-5dbb-a11c-09ef2ebc8850",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1f845364-1c34-593d-b340-86d89ff91f56"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "aurora-large-v2",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Aurora Large v2",
+      "envelope": {
+        "fact_id": "2669cf45-9dd0-5a74-a923-cc9ac7e58673",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "617473f9-8da9-5512-ba6e-ea1934706076"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Aurora Large v2",
+      "envelope": {
+        "fact_id": "cf13b097-e1f1-56a6-8c5d-9daf2d9f3fea",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "38240f97-9f32-5723-ae3a-67b3066d6574"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "15.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Aurora Mini v2",
+      "envelope": {
+        "fact_id": "f5070b10-5969-5688-b146-47a380dbbaa6",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c23dbc03-be88-5d9a-8442-0ba0af6452f6"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "128000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Aurora Mini v2",
+      "envelope": {
+        "fact_id": "c760c4ae-b5e9-5e00-86ed-976c3b394db4",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "1d179cab-47f7-50b3-969f-16a4be6bff0b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.25",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Aurora Mini v2",
+      "envelope": {
+        "fact_id": "29423601-6cf6-571a-9bbc-f826aea58351",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d4c71331-2f8e-5042-b605-383a8b365975"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "aurora-mini-v2",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Aurora Mini v2",
+      "envelope": {
+        "fact_id": "42e0504c-7629-5c08-89d8-8a7cae6071cc",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a7b4c4e2-b044-5539-9f05-02b608e0037b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Aurora Mini v2",
+      "envelope": {
+        "fact_id": "490ca973-9a2c-56f1-ad63-f17036d2ef8a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e626797c-0ee3-5aee-b29e-4c81cc06b206"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1.25",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Aurora Vision",
+      "envelope": {
+        "fact_id": "7b35d218-2373-5b8c-9528-a3c3a1547854",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c3a74018-6387-5777-a58e-78b38d040909"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "128000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Aurora Vision",
+      "envelope": {
+        "fact_id": "d65e9547-2a42-5627-a0a8-b4d80a9a2f5a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "2f0ac0a7-b002-5c58-b542-572c36c83ca9"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "2.5",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Aurora Vision",
+      "envelope": {
+        "fact_id": "19ffe1a6-ed06-59f5-a645-96b53b593a05",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a9e2b50c-6c9c-5193-86a5-a674f6154679"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "aurora-vision",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Aurora Vision",
+      "envelope": {
+        "fact_id": "3d44fd35-3112-596b-841e-fde6c23a2bfd",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "aa4445d5-6ec6-57ce-a69e-b165c99fb36c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Aurora Vision",
+      "envelope": {
+        "fact_id": "4362f473-7a77-5afc-82ba-f7d21b7f096c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e450cdc8-c599-5507-be41-04389f7557b8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "10.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Cinder Base 15B",
+      "envelope": {
+        "fact_id": "16e645ab-8d11-5114-8687-db2ff481ea40",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "bc777b02-421a-5496-a924-3842eb73f3bd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "64000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Cinder Base 15B",
+      "envelope": {
+        "fact_id": "822140f4-82ad-5c74-be63-075a11545b63",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0efe6402-f591-5e67-811e-f8d98630d51b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.3",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Cinder Base 15B",
+      "envelope": {
+        "fact_id": "dd8639f4-5241-54a4-8614-df73f4a85048",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "66c09037-4a3c-55d4-9901-2a2fa47dc706"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "cinder-base-15b",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Cinder Base 15B",
+      "envelope": {
+        "fact_id": "724856e1-4c75-5862-ab79-9cd7fa969560",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "7f5754fb-dc50-5ec9-b669-b80d7a96649f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Cinder Base 15B",
+      "envelope": {
+        "fact_id": "6a82ae3c-434b-52ad-97c1-1ae48b43a1fb",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "a0995a97-538c-5236-a86e-81ba9e0e42c7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.4",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Cinder Coder 15B",
+      "envelope": {
+        "fact_id": "16b8d99f-6968-5bae-9a10-20803051cb99",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "009d05a0-ba4f-51e8-aea2-50ddeb7c295f"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "64000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Cinder Coder 15B",
+      "envelope": {
+        "fact_id": "1176a4d2-0e58-51ca-836f-dda56f0b3535",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "39e09907-86fc-57c4-af53-5e54359d043c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.3",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Cinder Coder 15B",
+      "envelope": {
+        "fact_id": "a02bb21e-1e37-5da6-b450-99f66bc5ce81",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d00c5500-d525-53c5-98f7-69ed3c2cf823"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "cinder-coder-15b",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Cinder Coder 15B",
+      "envelope": {
+        "fact_id": "a4b1c53e-da8c-5e37-9b6a-0cbcb48b5edd",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0f1b1c33-6a43-5cbb-8c11-51e083a7ff0b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Cinder Coder 15B",
+      "envelope": {
+        "fact_id": "91f72274-c28e-558a-ae99-ef0b36aa822e",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "02a84bb9-7314-584a-8f2c-fe122169be73"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.4",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Driftwood 7B",
+      "envelope": {
+        "fact_id": "aed324ec-462c-534b-9398-7d7262c3e7ba",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6dc694a9-1e6e-5413-a6e1-da3c73c58036"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "8192",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Driftwood 7B",
+      "envelope": {
+        "fact_id": "121a3190-9bbc-5e2c-8e47-dcd9c17f931a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5bb27373-b2f4-55f5-ab45-8864508c7fcd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.1",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Driftwood 7B",
+      "envelope": {
+        "fact_id": "5794d178-0f88-5a17-aca9-ffc552054a13",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "d7965660-83a0-5921-9e42-d879f32d7acb"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "driftwood-7b",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Driftwood 7B",
+      "envelope": {
+        "fact_id": "e921016f-c4ee-5d47-9457-69755b2ed829",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f00ec8af-52fd-5066-861a-8c24ba73db49"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Driftwood 7B",
+      "envelope": {
+        "fact_id": "8a8b75da-ce39-5c7e-83d4-1158171db86f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "57f567e1-4c3a-5cfd-92fe-6db3273dc9df"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.1",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Halcyon Audio",
+      "envelope": {
+        "fact_id": "57437739-633a-5c89-94d7-8a4a3159767c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "91e71fb8-86d4-5ea2-b398-d77c0ab93c2d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "32000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Halcyon Audio",
+      "envelope": {
+        "fact_id": "340c1491-06df-5eb3-87cb-48b5410b9740",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "9a893818-77e8-5c93-93e3-dc7168d65635"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1.2",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Halcyon Audio",
+      "envelope": {
+        "fact_id": "4e814df8-aa3c-505f-b8e6-0b4d8d25f570",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0f3f4693-b86f-5bc1-9b6a-9743261b6dc0"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "halcyon-audio",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Halcyon Audio",
+      "envelope": {
+        "fact_id": "f0fc6fd3-ba07-56b7-9033-63f044996dcd",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ee613741-cfa2-546f-b808-a9bd7be65e2c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Halcyon Audio",
+      "envelope": {
+        "fact_id": "e274658a-8616-54ba-ba34-56bf41c0a304",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c0d000c1-e864-55be-9cde-9daa4ee25a37"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "2.4",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Meridian 70B",
+      "envelope": {
+        "fact_id": "d20db818-00b9-58be-8770-842dbcaf9703",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "8d444c6c-ae44-5291-a37b-895b2cf0e705"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "32000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Meridian 70B",
+      "envelope": {
+        "fact_id": "41c828b2-2ee6-590a-b20e-af691610613d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3b7fc2e7-4fe9-5f14-a356-2c04d537315b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.9",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Meridian 70B",
+      "envelope": {
+        "fact_id": "29e3c155-793e-561b-98a7-df66a7325709",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "55ee8357-371c-58a4-a8c1-a3cd4e1f66a1"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "meridian-70b",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Meridian 70B",
+      "envelope": {
+        "fact_id": "6e17131a-0351-52bf-b9ee-50e62aa95190",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "848a9d6e-d3d2-5f3e-83c3-b3e66b3a433d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Meridian 70B",
+      "envelope": {
+        "fact_id": "84553334-d637-5d91-bf72-8d36ae33ed19",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "8b0d32d1-7aca-58ca-be4c-64db211e917d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.9",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Meridian 8B",
+      "envelope": {
+        "fact_id": "b11ad133-c1a0-5fa8-9792-d787e384501b",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "038d69d5-9278-5327-8818-1c082d9c8b10"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "32000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Meridian 8B",
+      "envelope": {
+        "fact_id": "ba95f47c-4449-56ff-bbf6-43f257c3ed26",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "cb2cbbf1-7b39-5de7-9440-5aff7ca15c05"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.2",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Meridian 8B",
+      "envelope": {
+        "fact_id": "a560e76c-c9f8-59a2-9a3b-97519efc6c76",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "8eb9b2ed-f032-532e-a473-1cfa9c8f96ba"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "meridian-8b",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Meridian 8B",
+      "envelope": {
+        "fact_id": "9e3071c2-7145-5101-96cc-6d9873e7463c",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "acf3aa3c-de4f-5b9b-8553-cc80dfe59e9d"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Meridian 8B",
+      "envelope": {
+        "fact_id": "5348c5dd-c39b-52e0-9d59-5f2944cb0d57",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "11e2e713-5666-5d02-8e90-8b26338b6b23"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.2",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Meridian Vision 34B",
+      "envelope": {
+        "fact_id": "825a10fa-6398-5a79-b30c-fbe4bf94153d",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3068c9ab-3b51-52f9-9210-27516582c845"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "16000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Meridian Vision 34B",
+      "envelope": {
+        "fact_id": "9cd1bd05-afd8-5b12-bf57-91253fe45b96",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "20e1c5c6-8ec0-55a6-931d-39a1c1cf829b"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.5",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Meridian Vision 34B",
+      "envelope": {
+        "fact_id": "69e2b28b-d12e-56c4-badd-ff13e9ea1b46",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "68a810ab-4b5a-5bbc-b7d9-566c920fa5e3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "meridian-vision-34b",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Meridian Vision 34B",
+      "envelope": {
+        "fact_id": "54feabf6-dd51-543e-bbd1-a05c903d77e9",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "af150cd5-bfcb-580e-951c-c23d03a76fe3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "true",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Meridian Vision 34B",
+      "envelope": {
+        "fact_id": "780e6412-f083-5eca-aeef-cf507f8215e0",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e691f2c4-e747-56b8-8073-2573f1394163"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.5",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Quillstar Opus",
+      "envelope": {
+        "fact_id": "1ba25c7e-e184-54b4-86a5-9602d728b7d0",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "17ed0b3a-eb7d-56ce-affb-24f1287362e4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "256000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Quillstar Opus",
+      "envelope": {
+        "fact_id": "9f92b587-5452-512a-87e9-ee39dea54600",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "baa2f9d9-c5ea-5940-8809-1fb7082395c3"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "5.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Quillstar Opus",
+      "envelope": {
+        "fact_id": "d50b62f2-6389-597b-9903-84b49c9a99ff",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "58dd28f4-3e96-5a2e-9c56-32c304630ba8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "quillstar-opus",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Quillstar Opus",
+      "envelope": {
+        "fact_id": "d40b671e-3e56-50ff-888e-610ae9550458",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3b2c2407-293e-5834-a7b8-f6b5966847d5"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Quillstar Opus",
+      "envelope": {
+        "fact_id": "00da02cc-f084-52ef-b2cf-20f8a331043f",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "48efd35a-38cb-5cfd-83d9-05ab3e3534b1"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "25.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Quillstar Sonnet",
+      "envelope": {
+        "fact_id": "0be1287b-81a1-53c4-bd52-f96f00a62a85",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f7c28d0e-88cf-54c5-a17a-1ee3c5dfa3c4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "256000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Quillstar Sonnet",
+      "envelope": {
+        "fact_id": "e26f86a6-064d-5eee-991f-af7172dca057",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f0706659-e812-53a2-a128-6f6b13f4a3ee"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Quillstar Sonnet",
+      "envelope": {
+        "fact_id": "4c6244a5-3c84-5122-8ed1-0dccd2a012cf",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "8fed9d8c-e6d2-56cf-8bd9-dea4385e824e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "quillstar-sonnet",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Quillstar Sonnet",
+      "envelope": {
+        "fact_id": "1c2757c3-9073-5e19-81d7-75814d68ec95",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f34b606c-57c7-5dea-84b4-379f3b8f7440"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Quillstar Sonnet",
+      "envelope": {
+        "fact_id": "59054a52-2959-5ed6-95ba-2c93636065bc",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "5677019e-3818-56f5-8c6e-8494c8bfd9dd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "5.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Solstice Flash",
+      "envelope": {
+        "fact_id": "0e6d7cf6-293d-5f4e-b2ac-8c743adf3556",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "8961e407-3dda-5ab7-bf54-36c1010a26e4"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Solstice Flash",
+      "envelope": {
+        "fact_id": "36e33dee-01b9-5df8-8fd4-06cc9a645bf8",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "f325b3ec-ca3e-55fe-982c-dddaf2353f83"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.15",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Solstice Flash",
+      "envelope": {
+        "fact_id": "4e667774-58a6-5242-af12-0f033b925ce9",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "0d64b2f7-71d1-5206-8f26-2766537d7530"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "solstice-flash",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Solstice Flash",
+      "envelope": {
+        "fact_id": "29e2a97e-0ba5-5664-bebd-154e2507c3ac",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "c403c476-c986-5555-9b48-1c8eb84ee049"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Solstice Flash",
+      "envelope": {
+        "fact_id": "1ba748ea-a498-5b22-be2f-5c2f037afe4a",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "908f622c-0cbd-5fd4-bdaa-e12078a32ef7"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.6",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Solstice Pro",
+      "envelope": {
+        "fact_id": "ed9f5e97-89cc-5d2f-ad21-5d217a0e62dd",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "3a3aecdc-fd1f-5ce7-95e0-7f354c7d3e4c"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "1000000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Solstice Pro",
+      "envelope": {
+        "fact_id": "3c69f112-ba2e-5d6a-92d7-8a41e941d5e1",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "6ef989ef-24e1-5608-9c91-21be580049aa"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "7.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Solstice Pro",
+      "envelope": {
+        "fact_id": "58f17765-2e0d-5890-978a-e0a9ddec1dfe",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "65d76ee8-c611-5e6b-895c-0e296c97314e"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "solstice-pro",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Solstice Pro",
+      "envelope": {
+        "fact_id": "56e2f36e-ac50-5f94-b118-7305b7674cf2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "ade2110c-9678-5756-a5c0-340e7d51dfd6"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Solstice Pro",
+      "envelope": {
+        "fact_id": "3fb90e4b-ed5d-5a83-81e8-9be38db1d656",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "eb4a1a70-39e2-59f8-ad54-ee81ebcb11d0"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "21.0",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "context_length",
+      "confidence": 0.0,
+      "datatype": "integer",
+      "entity_id": "Tessellate Mini",
+      "envelope": {
+        "fact_id": "87331f28-bbac-5656-8e0c-278e2ecf84c0",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "4c88d668-9db6-5dd4-85e8-c370632664cd"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "16000",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "input_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Tessellate Mini",
+      "envelope": {
+        "fact_id": "26999d68-9b27-549c-ab86-bf7dd7fbc253",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "16509722-33d2-56bf-a017-b28148fa3bc6"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.05",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "model_id",
+      "confidence": 0.0,
+      "datatype": "string",
+      "entity_id": "Tessellate Mini",
+      "envelope": {
+        "fact_id": "f15b58d5-4f6f-58b7-94e4-eae92f5a53de",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "168a8074-130a-5c96-b4cd-4c6e8bb254e8"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "tessellate-mini",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "open_source",
+      "confidence": 0.0,
+      "datatype": "boolean",
+      "entity_id": "Tessellate Mini",
+      "envelope": {
+        "fact_id": "eff1a1e8-f9fa-58d1-9ffe-848470558ca4",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "e0530715-0c92-5a34-9f40-bad379865ecc"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "false",
+      "verdict": "unverifiable"
+    },
+    {
+      "attribute": "output_price",
+      "confidence": 0.0,
+      "datatype": "float",
+      "entity_id": "Tessellate Mini",
+      "envelope": {
+        "fact_id": "e9b8ede7-91f9-5800-a198-4dd10a902fb2",
+        "ontology_version": null,
+        "parent_fact_ids": [
+          "30a18324-b937-549d-bcff-bfd63ae96f98"
+        ],
+        "run_id": "boundary-verify",
+        "spend_usd": 0.0,
+        "workspace_id": "boundary"
+      },
+      "evidence": [],
+      "reason": "no independent evidence available: a fact is not SUPPORTED until a source distinct from its own corroborates it, and the OSS default verifier is offline (evidence gathering pending ONTA-364)",
+      "surface_form": null,
+      "value": "0.15",
+      "verdict": "unverifiable"
+    }
+  ]
+}
