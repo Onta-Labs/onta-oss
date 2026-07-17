@@ -802,8 +802,10 @@ def test_build_select_query_scope_limit_caps_inside_subselect():
     # LIMIT appears within the sub-select, before the attribute OPTIONALs.
     sub_end = q.index("OPTIONAL")
     assert "LIMIT 25" in q[:sub_end]
-    # The GROUP BY tail must NOT carry a second top-level LIMIT.
-    assert q.rstrip().endswith("GROUP BY ?e ?label ?nameAttr")
+    # The GROUP BY tail must NOT carry a second top-level LIMIT. (Grouping is
+    # by ?e alone — label/name-ish vars are SAMPLE/COALESCE aggregates so an
+    # entity with several name-ish values can't fan out into duplicate rows.)
+    assert q.rstrip().endswith("GROUP BY ?e")
 
 
 def test_resolve_pred_iris_from_bindings_case_insensitive():
@@ -929,21 +931,35 @@ def test_executor_prefers_name_attribute_over_slug_label():
         # executor must hand adapters the HUMAN name — a slug degrades every
         # search-based lookup and breaks the whitespace relaxation ladder
         # (prod regression: 15/18, the 3 relaxation-dependent items unfindable).
-        rows = [{
-            "uri": "https://cograph.tech/entities/Item/Roma_tomatoes",
-            "label": "Roma_tomatoes",          # rdfs:label = entity-id slug
-            "nameAttr": "Roma tomatoes",       # attrs/name = human name
-            "vals": "",
-        }]
+        rows = [
+            {
+                "uri": "https://cograph.tech/entities/Item/Roma_tomatoes",
+                "label": "Roma_tomatoes",          # rdfs:label = entity-id slug
+                "nameAttr": "Roma tomatoes",       # attrs/name = human name
+                "vals": "",
+            },
+            # The gate: a REAL human rdfs:label must NOT be displaced by a
+            # name-ish fallback (title/headline are job titles/headlines on
+            # many types, not names).
+            {
+                "uri": "https://cograph.tech/entities/Person/p1",
+                "label": "Jane Smith",             # real human label
+                "nameAttr": "VP of Sales",         # attrs/title — not a name
+                "vals": "",
+            },
+        ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
         neptune.update.return_value = None
 
         store = InMemoryJobStore()
         wikidata = FakeWikidata({
-            # Keyed ONLY on the human name: the slug would yield no verdict.
+            # Keyed ONLY on the expected labels: the wrong pick yields no fill.
             ("Roma tomatoes", "manufacturer"): [
                 Verdict(value="X", confidence=0.95, source="wikidata")
+            ],
+            ("Jane Smith", "manufacturer"): [
+                Verdict(value="Y", confidence=0.95, source="wikidata")
             ],
         })
         executor = EnrichmentExecutor(neptune, store, EnrichmentCache(), wikidata)
@@ -952,7 +968,7 @@ def test_executor_prefers_name_attribute_over_slug_label():
         await executor.run(job, "test-tenant")
 
         final = await store.get(job.id)
-        assert final.progress.filled == 1
+        assert final.progress.filled == 2
 
     asyncio.run(run())
 
