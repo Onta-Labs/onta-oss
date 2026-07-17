@@ -411,6 +411,20 @@ class EndpointSpec:
     # query that should return at least one row. Empty ⇒ the entry is not
     # live-smoke-tested.
     smoke_bindings: dict[str, str] = field(default_factory=dict)
+    # LLM candidate-selection recipe (ONTA-360). Empty ⇒ the enrichment adapter
+    # keeps its default first-row-with-a-value behavior. Non-empty with
+    # ``mode == "llm"`` ⇒ the adapter fetches up to ``max_candidates`` rows,
+    # formats them using ``fields`` (field-mapping out-columns to show the
+    # selector), and asks the OSS LLM extraction seam to pick the single best
+    # record — anti-hallucination-gated so the returned value must be one of
+    # the fetched candidates. ``instruction`` is the entry-authored selection
+    # criterion sentence (what "the right record" means for THIS api — e.g.
+    # FRED: the national/U.S. city average series); when absent, a
+    # source-neutral best-match default is used. ``query_relax`` additionally
+    # enables the progressive query-relaxation ladder for the
+    # ``enrich_from: entity_name`` param when the initial fetch yields zero
+    # rows or an off-list/refused selection.
+    candidate_select: dict[str, Any] = field(default_factory=dict)
 
     def param(self, name: str) -> Optional[ParamSpec]:
         for p in self.params:
@@ -431,6 +445,8 @@ class EndpointSpec:
         }
         if self.smoke_bindings:
             out["smoke_bindings"] = dict(self.smoke_bindings)
+        if self.candidate_select:
+            out["candidate_select"] = dict(self.candidate_select)
         return out
 
     @classmethod
@@ -447,6 +463,8 @@ class EndpointSpec:
             _as_str(k): _as_str(v)
             for k, v in (d.get("smoke_bindings") or {}).items()
         }
+        raw_cs = d.get("candidate_select")
+        candidate_select = dict(raw_cs) if isinstance(raw_cs, dict) else {}
         return cls(
             name=_as_str(d.get("name"), "default").strip() or "default",
             method=_as_str(d.get("method"), "GET").strip().upper() or "GET",
@@ -457,6 +475,7 @@ class EndpointSpec:
             field_mappings=mappings,
             pagination=PaginationSpec.from_dict(d.get("pagination")),
             smoke_bindings=smoke,
+            candidate_select=candidate_select,
         )
 
 
@@ -738,7 +757,41 @@ def validate_spec(spec: ApiSourceSpec) -> list[str]:
                 errs.append(f"{prefix}.field_mappings[{col!r}] path {src!r} is not a valid dotted path")
         errs.extend(_validate_endpoint_params(ep, prefix))
         errs.extend(_validate_pagination(ep.pagination, prefix))
+        errs.extend(_validate_candidate_select(ep, prefix))
 
+    return errs
+
+
+# candidate_select bounds (ONTA-360). ``instruction`` is entry-authored DATA fed
+# into an LLM prompt — same prompt-injection hygiene stance as ``description``
+# ("data to the router LLM, never instructions"): cap it at authoring time so a
+# tenant_custom entry can't silently disable itself at runtime (an over-long
+# instruction eats the whole candidate text budget) or balloon the prompt.
+_MAX_CANDIDATES_CAP = 50
+
+
+def _validate_candidate_select(ep: EndpointSpec, prefix: str) -> list[str]:
+    cs = ep.candidate_select
+    if not cs:
+        return []
+    errs: list[str] = []
+    pp = f"{prefix}.candidate_select"
+    mode = cs.get("mode")
+    if mode != "llm":
+        errs.append(f"{pp}.mode must be 'llm' (got {mode!r})")
+    instruction = cs.get("instruction", "")
+    if not isinstance(instruction, str):
+        errs.append(f"{pp}.instruction must be a string")
+    elif len(instruction) > _MAX_DESCRIPTION:
+        errs.append(f"{pp}.instruction exceeds {_MAX_DESCRIPTION} chars")
+    fields = cs.get("fields", [])
+    if not isinstance(fields, list) or any(not isinstance(f, str) for f in fields):
+        errs.append(f"{pp}.fields must be a list of strings")
+    mc = cs.get("max_candidates", 20)
+    if isinstance(mc, bool) or not isinstance(mc, int) or not (1 <= mc <= _MAX_CANDIDATES_CAP):
+        errs.append(
+            f"{pp}.max_candidates must be an int in [1, {_MAX_CANDIDATES_CAP}] (got {mc!r})"
+        )
     return errs
 
 
