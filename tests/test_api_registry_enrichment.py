@@ -819,6 +819,12 @@ def test_relax_ladder_sequences():
     assert _relax_ladder("Roma tomatoes") == ["Roma tomatoes", "tomatoes"]
     assert _relax_ladder("Bananas") == ["Bananas"]
     assert _relax_ladder("") == []
+    # Separator-tolerant: an entity-id-slug label ("Roma_tomatoes" — a KG whose
+    # entities carry no name attribute) still splits into relaxable words. The
+    # prod 15/18 regression: slugs were one unbreakable token, so the exact
+    # three relaxation-dependent items could never relax and were not found.
+    assert _relax_ladder("Roma_tomatoes") == ["Roma tomatoes", "tomatoes"]
+    assert _relax_ladder("Ground_beef_80/20") == ["Ground beef 80/20", "Ground beef", "beef"]
 
 
 @pytest.mark.asyncio
