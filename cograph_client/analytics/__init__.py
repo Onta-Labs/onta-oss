@@ -14,6 +14,7 @@ appears under ``cograph_client/``. See docs/oss_proprietary_boundary.md
 
 from cograph_client.analytics.sink import (
     AnalyticsSink,
+    ExcInfo,
     NoOpSink,
     distinct_id_for,
     emit,
@@ -25,6 +26,7 @@ from cograph_client.analytics.sink import (
 
 __all__ = [
     "AnalyticsSink",
+    "ExcInfo",
     "NoOpSink",
     "distinct_id_for",
     "emit",

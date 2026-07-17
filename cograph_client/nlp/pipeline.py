@@ -661,6 +661,11 @@ class NLQueryPipeline:
                         timing["citations"] = len(citations)
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
+                # Result-set size surfaced in the answer payload's metadata dict
+                # (alongside attempts/citations) so downstream callers — e.g. the
+                # /ask analytics event (ONTA-355) — can report result_count without
+                # re-executing or plumbing bindings through a new field.
+                timing["rows"] = len(bindings)
                 return NLResult(
                     answer=answer,
                     sparql=sparql,
