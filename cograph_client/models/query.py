@@ -30,6 +30,14 @@ class FactCitation(BaseModel):
     ``lost_conflict``), and its ``confidence`` (from the companion provenance
     graph — ``None`` when provenance is disabled/absent). Purely additive and
     read-only: a fact with no validity node is ``current`` by convention.
+
+    ``truth_verdict`` is the SEPARATE A4 EPISTEMIC verdict (ONTA-375): whether
+    independent evidence corroborates the fact (``supported`` / ``refuted`` /
+    ``unverifiable`` / ``identity_conditional``), read from the per-attribute
+    ``attr_meta/`` truth-verdict companion the A4 Verify seam persists. This is the
+    TRUTH axis and is DISTINCT from the recency/validity ``verdict`` above — a fact
+    can be ``current`` AND ``unverifiable`` at once. Empty when no verdict companion
+    exists (verification was off at ingest, or the row is not a literal attribute).
     """
 
     subject: str = ""
@@ -41,6 +49,7 @@ class FactCitation(BaseModel):
     valid_from: str = ""
     is_current: bool = True
     source: str = ""
+    truth_verdict: str = ""
 
 
 class NLResult(BaseModel):
