@@ -1051,6 +1051,8 @@ class SchemaResolver:
         constrain_soft: bool = False,
         run_id: str | None = None,
         observed_at: datetime | None = None,
+        fact_ids: list[str] | None = None,
+        tier: str | None = None,
     ) -> IngestResult:
         """Full ingestion pipeline: extract → resolve → validate → insert.
 
@@ -1076,6 +1078,16 @@ class SchemaResolver:
                 type absent from this map is unrestricted on attributes. ``None``
                 = no attribute restriction. Only meaningful alongside
                 ``constrain_types``.
+            fact_ids: OPT-IN A1→A2 lineage handoff (ONTA-371). The per-row A1
+                ``fact_id`` of each row in this micro-batch, in row order, forwarded
+                from the discovery capability's A1 Source Bundle. Recorded for
+                lineage observability; the emitted graph is byte-identical (the A6
+                delta still keys off ``run_id``) — a PASS-THROUGH of provenance, not
+                a change to WHAT is written. ``None`` for every non-discovery
+                caller — unchanged.
+            tier: OPT-IN A1→A2 lineage (ONTA-371). The source authority tier the
+                bundle rows came from (``authoritative`` / ``web``). Pass-through
+                provenance only. ``None`` for non-discovery callers.
         """
         # Build the opt-in extraction constraint (ONTA-199). None / empty types →
         # inactive → every _extract prompt is byte-for-byte the open-ended default,
@@ -1086,6 +1098,19 @@ class SchemaResolver:
                 types=list(constrain_types),
                 attributes={k: list(v) for k, v in (constrain_attributes or {}).items()},
                 soft=constrain_soft,
+            )
+        # ONTA-371: record the A1→A2 lineage handoff (the discovery capability now
+        # drives extraction from the A1 Source Bundle and forwards each row's A1
+        # fact_id + source tier). Observability only — the emitted graph is
+        # byte-identical (the A6 delta keys off run_id). Fires only when a
+        # discovery run threads lineage; every other caller passes None → silent.
+        if fact_ids or tier is not None:
+            logger.debug(
+                "a1_a2_lineage_handoff",
+                path="ingest",
+                run_id=run_id,
+                source_fact_ids=len(fact_ids or ()),
+                source_tier=tier,
             )
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph
@@ -1831,6 +1856,8 @@ class SchemaResolver:
         key_attribute: str | None = None,
         key_join: KeyJoin | None = None,
         run_id: str | None = None,
+        fact_ids: list[str] | None = None,
+        tier: str | None = None,
     ) -> IngestResult:
         """FAST-PATH for PRE-STRUCTURED rows (ONTA-272) — no unstructured LLM ``_extract``.
 
@@ -1856,9 +1883,25 @@ class SchemaResolver:
         :meth:`ingest_mapped_records` so the structured fast-path keys its batch_id
         and A6 Graph Delta off the SAME run as the A1 Source Bundle instead of a
         fresh uuid4. ``None`` (the default) preserves today's per-call behavior.
+
+        ``fact_ids`` / ``tier`` (ONTA-371): the OPT-IN A1→A2 lineage handoff — the
+        per-row A1 ``fact_id`` (row order) + source authority tier forwarded from
+        the discovery capability's A1 Source Bundle. Recorded for lineage
+        observability; the committed graph is byte-identical (the deterministic
+        mapping seam is untouched). ``None`` for the CSV / non-discovery route.
         """
         if not rows:
             return IngestResult(rows_in=0)
+        # ONTA-371: record the A1→A2 lineage handoff for the structured fast-path.
+        # Observability only — the deterministic mapping write below is unchanged.
+        if fact_ids or tier is not None:
+            logger.debug(
+                "a1_a2_lineage_handoff",
+                path="ingest_structured_rows",
+                run_id=run_id,
+                source_fact_ids=len(fact_ids or ()),
+                source_tier=tier,
+            )
         # The key field is the join/identity column: an explicit key_attribute, else
         # the first confirmed attribute, else the row's natural "name".
         key_field = key_attribute or (attributes[0] if attributes else None) or "name"

@@ -143,7 +143,7 @@ async def test_structured_fastpath_threads_same_run_id_as_a1_bundle(monkeypatch)
 
     async def spy_structured(self, rows, tenant_id, type_name, attributes=None,
                              source="", instance_graph=None, key_attribute=None,
-                             key_join=None, run_id=None):
+                             key_join=None, run_id=None, **_kw):
         captured["run_id"] = run_id
         a6 = build_graph_delta(instance_graph or "g://kg", [], run_id=run_id)
         captured["a6_run_id"] = a6.run_id

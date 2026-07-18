@@ -267,7 +267,15 @@ def _group_rows_by_source_url(rows: list) -> list[list]:
     current: list = []
     current_key: object = object()  # sentinel: no group started yet
     for row in rows:
-        key = row.get(SOURCE_URL_ATTR) if isinstance(row, dict) else None
+        # Accept either a raw dict row OR an A1 ``SourceRow`` (ONTA-371: the
+        # extract loop now drives from bundle rows). A ``SourceRow`` groups by the
+        # SAME per-record source_url its snapshot ``data`` carries, so grouping is
+        # byte-identical whether driven from the raw batch or the bundle.
+        if isinstance(row, dict):
+            key = row.get(SOURCE_URL_ATTR)
+        else:
+            data = getattr(row, "data", None)
+            key = data.get(SOURCE_URL_ATTR) if isinstance(data, dict) else None
         if not current or key == current_key:
             current.append(row)
             current_key = key
@@ -357,12 +365,14 @@ def _provider_secret_refs(prov) -> tuple[str, ...]:
 
 
 def _emit_source_bundle(ctx: AgentContext, bundle: SourceBundle) -> None:
-    """Hand the assembled A1 :class:`SourceBundle` to an optional observer on the
+    """Hand the assembled A1 :class:`SourceBundle` to an OPTIONAL observer on the
     context (``ctx.extras['source_bundle_sink']`` — a callable, or a list to
-    append to). The bundle is materialized at the Find→Extract boundary
-    unconditionally; consumption is optional today (no downstream stage reads it
-    yet), so absent a sink this is a no-op. NEVER raises — an observer error must
-    not sink a discovery run."""
+    append to). This is a SUPPLEMENTARY observability hook only: as of ONTA-371 the
+    bundle is the LIVE extract driver — the micro-batch extract/write loop iterates
+    ``bundle.rows`` and threads each row's ``fact_id`` / ``tier`` into the resolver
+    ingest calls (the real A1→A2 handoff) — so the bundle is genuinely consumed
+    whether or not a sink is wired. Absent a sink this is a no-op. NEVER raises — an
+    observer error must not sink a discovery run."""
     extras = getattr(ctx, "extras", None) or {}
     sink = extras.get("source_bundle_sink")
     if sink is None:
@@ -1339,21 +1349,28 @@ class WebIngestCapability:
                             # (registry Tier -1 = authoritative vs web) + the
                             # provider's LOGICAL secret_ref (never a resolved
                             # credential). This is a PRE-write artifact — it does
-                            # NOT write; the KG write stays byte-identical on
-                            # resolver.ingest* over `batch` below.
-                            _emit_source_bundle(
-                                ctx,
-                                build_source_bundle(
-                                    batch,
-                                    workspace_id=ctx.tenant_id,
-                                    run_id=run_id,
-                                    provider=prov.name,
-                                    tier=_provider_tier(prov),
-                                    secret_refs=_provider_secret_refs(prov),
-                                    key_attribute=key_attr,
-                                    bundle_key=f"{prov.name}:{sub_query}",
-                                ),
+                            # NOT write; ONTA-371 makes it the extract DRIVER below
+                            # (the loop iterates `bundle.rows`), and because each
+                            # row's `data` is a snapshot copy of the batch row the
+                            # KG write stays byte-identical — lineage rides along.
+                            bundle = build_source_bundle(
+                                batch,
+                                workspace_id=ctx.tenant_id,
+                                run_id=run_id,
+                                provider=prov.name,
+                                tier=_provider_tier(prov),
+                                secret_refs=_provider_secret_refs(prov),
+                                key_attribute=key_attr,
+                                bundle_key=f"{prov.name}:{sub_query}",
                             )
+                            # ONTA-371: the bundle is now the LIVE extract driver —
+                            # the micro-batch loop below iterates ``bundle.rows``
+                            # (not the built-then-dropped raw ``batch``) and hands
+                            # each row's A1 ``fact_id`` / ``tier`` to the resolver
+                            # ingest call (the real A1→A2 handoff). The observer
+                            # sink stays as a SUPPLEMENTARY hook (a no-op when
+                            # unset); the bundle is genuinely consumed regardless.
+                            _emit_source_bundle(ctx, bundle)
                             platforms = list(
                                 dict.fromkeys(
                                     [
@@ -1400,9 +1417,17 @@ class WebIngestCapability:
                             # from page B. Groups are consecutive, so order + counts
                             # are unchanged; a batch that already shares one URL (or
                             # none) is one group — identical to the prior behavior.
+                            # ONTA-371: drive the extract loop from the A1
+                            # SourceBundle's rows (each a ``SourceRow`` carrying the
+                            # row's snapshot ``data`` + its A1 ``fact_id`` + source
+                            # ``tier``), not the built-then-dropped raw ``batch``.
+                            # ``bundle.rows`` is index-aligned with ``batch``, so
+                            # grouping/chunking (and the records extracted) are
+                            # byte-identical — the change threads lineage, it does
+                            # not change WHAT is extracted.
                             micro_batches = [
                                 micro
-                                for group in _group_rows_by_source_url(batch)
+                                for group in _group_rows_by_source_url(bundle.rows)
                                 for micro in _chunk_rows(
                                     group, _DISCOVERY_INGEST_SUBBATCH
                                 )
@@ -1419,13 +1444,23 @@ class WebIngestCapability:
                                 and getattr(prov, "structured", False)
                             )
                             for micro in micro_batches:
+                                # ONTA-371: unpack the A1 SourceRows. ``micro_rows``
+                                # is the row DATA (a snapshot copy of the batch
+                                # dicts) — byte-identical to what the extractor saw
+                                # before, so the write stays unchanged.
+                                # ``micro_fact_ids`` / ``micro_tier`` are the per-row
+                                # A1 lineage handed off to the resolver (A1→A2). All
+                                # rows in a bundle share one tier.
+                                micro_rows = [r.data for r in micro]
+                                micro_fact_ids = [r.fact_id for r in micro]
+                                micro_tier = micro[0].tier if micro else None
                                 if structured_fastpath:
                                     # Pre-structured rows already carry ``source_url``
                                     # (stamped above), which becomes the per-record
                                     # citation + the A2 evidence link. Deterministic:
                                     # preview == commit, no ``_extract``.
                                     result = await resolver.ingest_structured_rows(
-                                        micro,
+                                        micro_rows,
                                         ctx.tenant_id,
                                         type_name=proposed_type,
                                         attributes=list(attributes),
@@ -1435,10 +1470,13 @@ class WebIngestCapability:
                                         # ONTA-372: same run_id as the A1 bundle so
                                         # the A6 delta keys off ONE run lineage.
                                         run_id=run_envelope.run_id,
+                                        # ONTA-371: per-row A1 lineage handoff.
+                                        fact_ids=micro_fact_ids,
+                                        tier=micro_tier,
                                     )
                                 else:
                                     content = json.dumps(
-                                        micro, default=str, ensure_ascii=False
+                                        micro_rows, default=str, ensure_ascii=False
                                     )
                                     result = await resolver.ingest(
                                         content,
@@ -1466,6 +1504,9 @@ class WebIngestCapability:
                                         # the resolver keys the A6 Graph Delta off
                                         # ONE run lineage instead of a fresh uuid4.
                                         run_id=run_envelope.run_id,
+                                        # ONTA-371: per-row A1 lineage handoff.
+                                        fact_ids=micro_fact_ids,
+                                        tier=micro_tier,
                                     )
                                 processed += len(micro)
                                 entities_total += int(
@@ -1480,8 +1521,10 @@ class WebIngestCapability:
                                 # before the failure (honest partial coverage).
                                 if job is not None and job.manifest is not None:
                                     for _row in micro:
+                                        # ONTA-371: ``_row`` is an A1 SourceRow now;
+                                        # its snapshot ``data`` carries the key value.
                                         job.manifest.record_completed(
-                                            str(_row.get(key_attr, "")) if isinstance(_row, dict) else ""
+                                            str(_row.data.get(key_attr, ""))
                                         )
                                     # A9 cost envelope (ONTA-282): the paid
                                     # provider spend for this run landed on the

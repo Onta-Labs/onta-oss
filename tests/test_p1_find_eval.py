@@ -157,7 +157,7 @@ async def _drive_discovery(fixture: dict, monkeypatch) -> tuple[list[dict], floa
 
     async def fake_structured(self, rows, tenant_id, *, type_name, attributes=None,
                               source="", instance_graph=None, key_attribute=None,
-                              key_join=None, run_id=None):
+                              key_join=None, run_id=None, **_kw):
         return IngestResult(
             entities_extracted=len(rows), entities_resolved=len(rows)
         )
