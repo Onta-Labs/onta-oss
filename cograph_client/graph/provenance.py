@@ -354,6 +354,123 @@ def build_surface_form_companion(
     ]
 
 
+# --- Per-attribute A4 EPISTEMIC truth-verdict companion (ONTA-375) -------------
+#
+# When the A4 Verify seam (ONTA-370) runs — a `VerifyPolicy` is enabled — each
+# written fact carries an epistemic `TruthVerdict` (`supported` / `refuted` /
+# `unverifiable` / `identity_conditional`): whether INDEPENDENT evidence
+# corroborates it. This is the TRUTH axis, ENTIRELY distinct from the recency /
+# validity-interval `verdict` (`current` / `superseded` / `retracted` /
+# `lost_conflict`) the answer layer already surfaces — a fact can be `current`
+# AND `unverifiable` at once.
+#
+# The verdict is persisted as ONE per-attribute companion on the SAME `attr_meta/`
+# namespace as the surface-form / display companions above — minted via the SAME
+# `attr_provenance_companion_uri` minter (cross-rail symmetry, no bespoke triple),
+# so `predicates.is_internal_predicate` excludes it whole-namespace: it is
+# structurally invisible to Explorer chips/columns, type-stats, and NL answer
+# dumps, yet stays an ordinary QUERYABLE instance triple the P7 answer layer reads
+# by convention. It rides the shared write path (`insert_facts` via the
+# instance-triple collector) exactly like every other companion — never a separate
+# writer. Metadata OF an attribute, never itself an attribute (ONTA-262), so it is
+# NOT declared in the ontology and gets no provenance record of its own.
+TRUTH_VERDICT_SUFFIX = "truth_verdict"
+
+# The `types/<Type>/attrs/` infix (see `graph/ontology_queries.attr_uri`). A
+# literal attribute's DOMAIN predicate is `<_TYPES_PREFIX><Type>/attrs/<leaf>`, so
+# the (Type, leaf) a companion is keyed by can be recovered from it on the read
+# side (:func:`companion_predicate_for`) without threading the type separately.
+_ATTRS_INFIX = "/attrs/"
+
+
+def build_truth_verdict_companion(
+    entity_uri: str, type_name: str, attribute: str, verdict: str,
+) -> list[tuple[str, str, str]]:
+    """Build the per-attribute A4 EPISTEMIC truth-verdict companion (ONTA-375).
+
+    Emitted for each written fact the A4 Verify seam produced a verdict for. One
+    plain-string instance triple::
+
+        <entity> <attr_meta/<Type>/<attr>/truth_verdict> "<verdict>"
+
+    ``verdict`` is a :class:`~cograph_client.verification.types.TruthVerdict` VALUE
+    string (``"supported"`` / ``"refuted"`` / ``"unverifiable"`` /
+    ``"identity_conditional"``). Returns ``[]`` when any component is empty so a
+    caller can unconditionally ``extend`` with the result. The companion is
+    metadata OF the attribute (ONTA-262) — invisible to every user-facing surface
+    (``is_internal_predicate`` excludes the ``attr_meta/`` namespace) while staying
+    queryable for the answer layer."""
+    if not (entity_uri and type_name and attribute and verdict):
+        return []
+    return [
+        (
+            entity_uri,
+            attr_provenance_companion_uri(type_name, attribute, TRUTH_VERDICT_SUFFIX),
+            verdict,
+        )
+    ]
+
+
+def companion_predicate_for(attr_predicate: str, suffix: str) -> Optional[str]:
+    """The ``attr_meta/`` companion predicate for a ``types/<Type>/attrs/<leaf>``
+    DOMAIN attribute predicate + ``suffix``, or ``None`` when ``attr_predicate`` is
+    not that shape (e.g. a relationship on ``onto/<leaf>``, which carries no
+    literal-attribute companion).
+
+    The read-side inverse of how a literal attribute's companion is minted: from
+    the domain fact's predicate as it appears in a citation row, reconstruct the
+    ``(Type, leaf)`` the companion is keyed by and mint the SAME companion URI via
+    :func:`attr_provenance_companion_uri` — so the answer layer can look a companion
+    up per ``(subject, attribute-predicate)`` without carrying the type separately.
+    """
+    if not attr_predicate.startswith(_TYPES_PREFIX):
+        return None
+    rest = attr_predicate[len(_TYPES_PREFIX):]
+    type_name, sep, leaf = rest.partition(_ATTRS_INFIX)
+    if not sep or not type_name or not leaf or "/" in leaf:
+        return None
+    return attr_provenance_companion_uri(type_name, leaf, suffix)
+
+
+def truth_verdict_query(instance_graph: str, subject: str, companion_predicate: str) -> str:
+    """SELECT the A4 truth-verdict companion value for one ``(subject, companion)``
+    from the INSTANCE graph (the companion is an ordinary instance triple, NOT in
+    the provenance/validity companion graphs). ``GRAPH <…>`` (not ``FROM``) so it
+    resolves against a union-default-graph store, mirroring the validity reader."""
+    return (
+        f"SELECT ?verdict WHERE {{\n"
+        f"  GRAPH <{instance_graph}> {{ {_escape_value(subject)} <{companion_predicate}> ?verdict }}\n"
+        f"}} LIMIT 1"
+    )
+
+
+async def fetch_truth_verdict(
+    neptune, instance_graph: str, subject: str, predicate: str,
+) -> str:
+    """Read the A4 EPISTEMIC truth-verdict companion for one ``(subject, attribute
+    predicate)``; ``""`` when absent.
+
+    ``predicate`` is the DOMAIN attribute predicate as it appears in a citation row
+    (``types/<Type>/attrs/<leaf>``); the companion it is keyed by is derived from it
+    (:func:`companion_predicate_for`) — a non-attribute predicate (a relationship on
+    ``onto/<leaf>``) has no companion and yields ``""`` with no read. Best-effort:
+    any read failure degrades to ``""`` so a verdict read never breaks the answer
+    (mirrors ``answer_meta._safe_provenance``)."""
+    companion = companion_predicate_for(predicate, TRUTH_VERDICT_SUFFIX)
+    if not companion:
+        return ""
+    try:
+        raw = await neptune.query(truth_verdict_query(instance_graph, subject, companion))
+    except Exception:  # noqa: BLE001 — an epistemic-verdict read is best-effort
+        return ""
+    _, rows = parse_sparql_results(raw)
+    for row in rows:
+        verdict = row.get("verdict", "")
+        if verdict:
+            return verdict
+    return ""
+
+
 def _event_uri(event: str, subject: str, obj: str, ts: str) -> str:
     """Metadata node URI for one removal/rename event.
 

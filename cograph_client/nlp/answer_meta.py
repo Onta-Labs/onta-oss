@@ -36,7 +36,11 @@ from __future__ import annotations
 from typing import Optional
 
 from cograph_client.graph.predicates import RDF_TYPE, is_internal_predicate
-from cograph_client.graph.provenance import ProvenanceRecord, fetch_provenance
+from cograph_client.graph.provenance import (
+    ProvenanceRecord,
+    fetch_provenance,
+    fetch_truth_verdict,
+)
 from cograph_client.graph.validity import (
     STATUS_SUPERSEDED,
     ValidityInterval,
@@ -114,6 +118,20 @@ async def _safe_provenance(
         return []
 
 
+async def _safe_truth_verdict(
+    neptune, instance_graph: str, subject: str, predicate: str
+) -> str:
+    """Read the A4 EPISTEMIC truth-verdict companion (ONTA-375) for one
+    ``(subject, attribute-predicate)``; ``""`` when none is present (verification
+    was off at ingest, or the row is not a literal attribute). ``fetch_truth_verdict``
+    already degrades internally, but wrap it once more for symmetry with the other
+    readers so a verdict read can never break citation assembly."""
+    try:
+        return await fetch_truth_verdict(neptune, instance_graph, subject, predicate)
+    except Exception:  # noqa: BLE001 — the epistemic verdict is best-effort
+        return ""
+
+
 def _match_interval(
     intervals: list[ValidityInterval], obj: str
 ) -> Optional[ValidityInterval]:
@@ -180,12 +198,19 @@ async def build_citations(
     if not keyed:
         return citations
 
-    # 2. Batch the validity + provenance reads per (s, p).
+    # 2. Batch the validity + provenance + A4 verdict reads per (s, p).
     history_by_sp: dict[tuple[str, str], list[ValidityInterval]] = {}
     prov_by_sp: dict[tuple[str, str], list[ProvenanceRecord]] = {}
+    # ONTA-375: the A4 EPISTEMIC truth-verdict, read from the per-attribute
+    # attr_meta companion — SEPARATE from the recency `verdict` below; a fact can be
+    # `current` AND `unverifiable` at once. "" when no companion exists.
+    truth_verdict_by_sp: dict[tuple[str, str], str] = {}
     for (s, p) in sp_pairs:
         history_by_sp[(s, p)] = await _safe_history(neptune, instance_graph, s, p)
         prov_by_sp[(s, p)] = await _safe_provenance(neptune, instance_graph, s, p)
+        truth_verdict_by_sp[(s, p)] = await _safe_truth_verdict(
+            neptune, instance_graph, s, p
+        )
 
     # 3. Assemble one citation per keyable fact.
     for (s, p, o, label) in keyed:
@@ -215,6 +240,8 @@ async def build_citations(
                 valid_from=valid_from,
                 is_current=is_current,
                 source=(record.source if record is not None else ""),
+                # ONTA-375: the A4 epistemic verdict, DISTINCT from `verdict` above.
+                truth_verdict=truth_verdict_by_sp.get((s, p), ""),
             )
         )
     return citations

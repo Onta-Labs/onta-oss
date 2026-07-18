@@ -56,6 +56,7 @@ from cograph_client.pipeline.envelope import derive_fact_id
 from cograph_client.graph.provenance import (
     build_attribute_provenance_companions,
     build_provenance_triples,
+    build_truth_verdict_companion,
     provenance_graph_uri,
 )
 from cograph_client.graph.queries import BATCH_PREDICATE, batched_insert_triples, delete_batch_query, insert_triples, tenant_graph_uri
@@ -1115,6 +1116,47 @@ class SchemaResolver:
             # FactVerifier contract already requires fail-closed; this is defense.
             logger.warning("verify_seam_failed", exc_info=True)
 
+    def _verdict_companion_triples(
+        self,
+        result: IngestResult,
+        entity_uri_map: dict[str, str],
+        entity_type_map: dict[str, str],
+    ) -> list[tuple[str, str, str]]:
+        """A4 verdict PERSIST (ONTA-375) — stamp each verified fact's epistemic
+        ``TruthVerdict`` as a per-attribute ``attr_meta/`` companion.
+
+        DEFAULT-OFF passthrough: with no ``VerifyPolicy`` enabled the A4 seam left
+        ``result.verified_facts`` empty (the common path), so this returns ``[]`` and
+        the write is byte-identical — no companion is minted. When the seam produced
+        verdicts, each written fact's ``TruthVerdict`` is minted via the SHARED
+        companion minter (:func:`build_truth_verdict_companion`) onto an INTERNAL
+        ``attr_meta/`` predicate (``is_internal_predicate`` True), so it is invisible
+        to Explorer/type-stats/NL dumps yet stays queryable by the P7 answer layer.
+        The triples ride the SAME shared write path (they are appended to the
+        instance-triple collector) — never a bespoke insert.
+
+        Skips DROPPED facts (``value is None`` — no domain triple was written, so
+        there is nothing to attach a verdict to) and any fact whose entity did not
+        resolve to a URI/type in this batch. The verdict is a per-attribute signal
+        keyed by ``(subject, Type, attribute)`` — matching how the surface-form /
+        display companions are keyed."""
+        verified = getattr(result, "verified_facts", None)
+        if not verified:
+            return []
+        out: list[tuple[str, str, str]] = []
+        for vf in verified:
+            if vf.value is None:  # DROPPED — no domain fact to annotate.
+                continue
+            entity_uri = entity_uri_map.get(vf.entity_id)
+            type_name = entity_type_map.get(vf.entity_id)
+            if not entity_uri or not type_name:
+                continue
+            verdict = vf.verdict.value if hasattr(vf.verdict, "value") else str(vf.verdict)
+            out.extend(
+                build_truth_verdict_companion(entity_uri, type_name, vf.attribute, verdict)
+            )
+        return out
+
     async def ingest(
         self,
         content: str,
@@ -1717,6 +1759,19 @@ class SchemaResolver:
         # a policy turns it on, it stamps VerifiedFacts on the result. It sits
         # before the write and is read-only — it never forks the converged writer.
         self._verify_clean_facts(result, workspace_id=workspace_id, run_id=run_id)
+
+        # ONTA-375: PERSIST each A4 verdict as an attr_meta/ companion. DEFAULT-OFF
+        # no-op (empty verified_facts ⇒ [] ⇒ byte-identical write). When the seam ran,
+        # the verdict companions are appended to the SAME instance-triple collector,
+        # so they flow through the shared insert_facts write below (never a bespoke
+        # insert) onto an internal predicate, invisible to every user surface but
+        # queryable by the P7 answer layer.
+        verdict_companions = self._verdict_companion_triples(
+            result, entity_uri_map, entity_type_map,
+        )
+        if verdict_companions:
+            all_entity_triples.extend(verdict_companions)
+            result.triples_inserted += len(verdict_companions)
 
         # Single shared write path (graph/kg_writer.py) — the SAME function the
         # enrichment writer uses: batched instance-triple insert + the companion
