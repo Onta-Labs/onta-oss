@@ -13,6 +13,7 @@ from cograph_client.graph.queries import parse_kg_graph_uri
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
+from cograph_client.pipeline.manifest import RunCoverage, RunManifest
 from cograph_client.resolver.llm_router import model_chain
 from cograph_client.spatiotemporal.routing import (
     SPATIAL_INTENT_SCHEMA,
@@ -401,7 +402,7 @@ class NLQueryPipeline:
             os.environ.get("COGRAPH_ANSWER_CITATIONS_ENABLED", "0") == "1"
         )
 
-    async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None, layer_graph_uris: list[str] | None = None) -> NLResult:
+    async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None, layer_graph_uris: list[str] | None = None, run_manifest: "RunManifest | RunCoverage | None" = None) -> NLResult:
         """Answer a natural-language question over the graph.
 
         layer_graph_uris (ADR 0002 §1, COG-37, opt-in): a LayerStack's
@@ -410,6 +411,13 @@ class NLQueryPipeline:
         subClassOf edges living in other layer graphs; when provided, each
         generated query gains FROM clauses for every visible layer. When
         None (the default), behavior is exactly as before.
+
+        run_manifest (A9, ONTA-374, opt-in): the run's :class:`RunManifest`
+        (or its already-computed :class:`RunCoverage`). When threaded, the
+        answer's coverage caveat composes the REAL A9 "answered from N of M
+        items" fragment (the A9→A7 honest-answers contract) instead of the
+        stale-count-only caveat. When None (the default — no caller threads one
+        today), the answer + caveat are byte-identical to the prior behavior.
         """
         timing: dict[str, float] = {}
         timing["model"] = f"{self._query_provider}:{self._query_model}"
@@ -638,13 +646,27 @@ class NLQueryPipeline:
                 timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
                 # Honest-answer metadata (ONTA-280, P7): per-cited-fact
                 # verdict/confidence/recency + a coverage caveat. Read-only,
-                # post-execution, and gated OFF by default so the default answer
-                # path is byte-identical. Only the keyable rows (those exposing
-                # subject+predicate+object) are cited; the rest are legitimately
-                # uncited. No RunManifest is threaded through /ask today, so the
-                # caveat is the validity-derived "K facts stale" alone.
+                # post-execution. Citations are gated OFF by default so the default
+                # answer path is byte-identical; only the keyable rows (those
+                # exposing subject+predicate+object) are cited, the rest are
+                # legitimately uncited.
+                #
+                # A9 coverage (ONTA-374, P7): when a RunManifest/RunCoverage is
+                # threaded into /ask, compose the REAL "answered from N of M items"
+                # fragment from A9 (the A9→A7 honest-answers contract) rather than
+                # the stale-count-only caveat. `run_coverage` normalizes a manifest
+                # to its coverage view; a bare RunCoverage passes through. Absent a
+                # manifest (the default path — no caller threads one today) it stays
+                # None, so when NEITHER the citations flag is on NOR a manifest is
+                # threaded the caveat is "" and the answer is byte-identical to the
+                # pre-ONTA-374 behavior.
                 citations = []
                 coverage_caveat = ""
+                run_coverage = (
+                    run_manifest.coverage()
+                    if hasattr(run_manifest, "coverage")
+                    else run_manifest
+                )
                 if self._answer_citations_enabled:
                     from cograph_client.nlp.answer_meta import (
                         build_citations,
@@ -655,10 +677,15 @@ class NLQueryPipeline:
                     )
                     stale_count = sum(1 for c in citations if not c.is_current)
                     coverage_caveat = build_coverage_caveat(
-                        None, stale_count=stale_count, total_cited=len(citations)
+                        run_coverage, stale_count=stale_count, total_cited=len(citations)
                     )
                     if citations:
                         timing["citations"] = len(citations)
+                elif run_coverage is not None:
+                    # Citations off but A9 coverage available: still emit the honest
+                    # "answered from N of M items" caveat (no per-fact validity read).
+                    from cograph_client.nlp.answer_meta import build_coverage_caveat
+                    coverage_caveat = build_coverage_caveat(run_coverage)
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
                 # Result-set size surfaced in the answer payload's metadata dict
