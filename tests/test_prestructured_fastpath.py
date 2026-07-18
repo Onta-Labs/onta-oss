@@ -58,9 +58,9 @@ async def test_ingest_structured_rows_no_extract_valid_soft_a2(monkeypatch):
     captured: dict = {}
 
     async def fake_mapped(self, rows, mapping, tenant_id, source="",
-                          instance_graph=None, key_join=None):
+                          instance_graph=None, key_join=None, run_id=None):
         captured.update(rows=rows, mapping=mapping, tenant_id=tenant_id,
-                        source=source, instance_graph=instance_graph)
+                        source=source, instance_graph=instance_graph, run_id=run_id)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
     monkeypatch.setattr(SchemaResolver, "ingest_mapped_records", fake_mapped)

@@ -1778,6 +1778,7 @@ class SchemaResolver:
         source: str = "",
         instance_graph: str | None = None,
         key_join: KeyJoin | None = None,
+        run_id: str | None = None,
     ) -> IngestResult:
         """Ingest pre-mapped records (no schema inference) — the fixed-mapping seam.
 
@@ -1794,6 +1795,12 @@ class SchemaResolver:
         Mirrors :meth:`ingest`'s per-call setup (instance graph, type-matcher
         graph URI, ontology + parent-map fetch) so it can be called standalone,
         not only inside the CSV pipeline.
+
+        ``run_id`` (ONTA-372): the run-scoped lineage id, forwarded to
+        :meth:`_ingest_mapped`. When set (the discovery structured fast-path), the
+        batch_id is derived from it and an A6 Graph Delta keyed to it is emitted on
+        the result — the SAME run identity the A1 Source Bundle carries. ``None``
+        (the CSV route) keeps the fresh-uuid4-per-call behavior, unchanged.
         """
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph; instance data goes to
@@ -1810,6 +1817,7 @@ class SchemaResolver:
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
             key_join=key_join,
             instance_graph=target_instance_graph, parent_of=parent_of,
+            run_id=run_id,
         )
 
     async def ingest_structured_rows(
@@ -1822,6 +1830,7 @@ class SchemaResolver:
         instance_graph: str | None = None,
         key_attribute: str | None = None,
         key_join: KeyJoin | None = None,
+        run_id: str | None = None,
     ) -> IngestResult:
         """FAST-PATH for PRE-STRUCTURED rows (ONTA-272) — no unstructured LLM ``_extract``.
 
@@ -1841,6 +1850,12 @@ class SchemaResolver:
         fast). ``require_evidence`` is asserted only when the rows actually carry a
         ``source_url``, so a provenance-less structured source is not force-failed.
         Returns the SAME :class:`IngestResult` the deterministic path produces.
+
+        ``run_id`` (ONTA-372): the run-scoped lineage id threaded from the discovery
+        P1 entry (``web_ingest_cap``). Forwarded through
+        :meth:`ingest_mapped_records` so the structured fast-path keys its batch_id
+        and A6 Graph Delta off the SAME run as the A1 Source Bundle instead of a
+        fresh uuid4. ``None`` (the default) preserves today's per-call behavior.
         """
         if not rows:
             return IngestResult(rows_in=0)
@@ -1864,6 +1879,7 @@ class SchemaResolver:
         return await self.ingest_mapped_records(
             rows, mapping, tenant_id, source=source,
             instance_graph=instance_graph, key_join=key_join,
+            run_id=run_id,
         )
 
     async def _resolve_key_join(
@@ -2007,11 +2023,23 @@ class SchemaResolver:
         *,
         instance_graph: str | None = None,
         parent_of: dict[str, str] | None = None,
+        run_id: str | None = None,
     ) -> IngestResult:
         """Apply a pre-inferred mapping to rows and run the resolve→insert tail.
 
         Extracted verbatim from the former ``_ingest_csv`` body (Step 2 onward)
         so CSV ingest and web-discovery ingest commit through one code path.
+
+        ``run_id`` (ONTA-372): STABLE run identity threaded from the discovery
+        structured fast-path (``web_ingest_cap`` → :meth:`ingest_structured_rows` →
+        :meth:`ingest_mapped_records`). When set, the ``batch_id`` is DERIVED from
+        it (replay-stable, mirroring :meth:`ingest`) and an A6 :class:`GraphDelta`
+        keyed to it is emitted on ``result.graph_delta`` — the SAME run the A1
+        Source Bundle carries, so discovery lineage no longer diverges. To project
+        that delta the run's instance triples are collected and flushed in ONE
+        batched write (the same ``batched_insert_triples`` primitive the per-entity
+        path uses). ``None`` (the CSV route) keeps the fresh-uuid4 batch_id, the
+        byte-for-byte per-entity insert, and no delta — unchanged.
 
         ``key_join`` (ONTA-250): when set, each row is matched to an EXISTING
         entity by an exact key attribute and its attributes are merged ONTO that
@@ -2036,8 +2064,20 @@ class SchemaResolver:
         applied = CSVResolver.apply_mapping(mapping, rows)
         entities, relationships = applied.entities, applied.relationships
 
-        # Step 3: Resolve entities + insert in batches
-        batch_id = str(uuid4())
+        # Step 3: Resolve entities + insert in batches. ONTA-372: when a run_id is
+        # threaded (discovery structured fast-path), DERIVE the batch_id from it so
+        # a preserved-run_id replay reuses the same batch token (idempotent
+        # BATCH_PREDICATE triple), mirroring the LLM-extract `ingest` path; the CSV
+        # route (run_id=None) keeps a fresh uuid4 per call — unchanged.
+        # ``collected_entity_triples`` accumulates the run's instance triples ONLY
+        # when a run_id is threaded, so the A6 Graph Delta can be projected over
+        # them below; run_id=None leaves it None → the per-entity insert path.
+        batch_id = (
+            derive_fact_id(run_id=run_id, stage="A6-batch") if run_id else str(uuid4())
+        )
+        collected_entity_triples: list[tuple[str, str, str]] | None = (
+            [] if run_id is not None else None
+        )
         result = IngestResult(
             entities_extracted=len(entities),
             chunks_processed=1,
@@ -2122,8 +2162,22 @@ class SchemaResolver:
                 await self._resolve_and_insert_entity(
                     entity, resolved_type, entity_uri, is_duplicate,
                     graph_uri, existing_types, existing_attrs, source, result, batch_id,
+                    # ONTA-372: collect the instance triples for the A6 delta ONLY
+                    # when a run_id is threaded; None → unchanged per-entity insert.
+                    _collect_triples=collected_entity_triples,
                     instance_graph=instance_graph,  # ONTA-268: call-local target
                 )
+
+            # ONTA-372: when collecting (run_id threaded), the per-entity method
+            # appended rather than inserted — flush the run's instance triples in
+            # ONE batched write via the SAME primitive the per-entity path uses, so
+            # the written facts are byte-identical (only the batch_id keying
+            # differs). Ordering matches the per-entity path: entities land before
+            # the text markers + relationships below. The triple COUNT was already
+            # tallied inside `_resolve_and_insert_entity`, so do NOT re-increment.
+            if collected_entity_triples:
+                for sparql in batched_insert_triples(instance_graph, collected_entity_triples):
+                    await self._neptune.update(sparql)
 
             # ONTA-177: persist the schema pass's free-text verdicts (the
             # mapping's per-column text_kind, decided ONCE at schema-inference
@@ -2195,6 +2249,31 @@ class SchemaResolver:
                 triples=result.triples_inserted,
                 types=result.types_created,
             )
+            # ONTA-372: emit the run's deterministic A6 Graph Delta when a run_id
+            # was threaded (discovery structured fast-path), keyed to the SAME
+            # run_id as the A1 Source Bundle so discovery lineage no longer
+            # diverges. Built over the COMPLETE instance facts (entity triples +
+            # relationship triples) via the shared `build_graph_delta` — the same
+            # projection the LLM-extract path emits. `fan_in` records key-join
+            # merges: >1 source entity id resolving to ONE final URI is a merge, so
+            # the non-canonical sources' natural URIs map to the shared node.
+            if run_id is not None:
+                ids_by_uri: dict[str, list[str]] = {}
+                for eid, uri in entity_uri_map.items():
+                    ids_by_uri.setdefault(uri, []).append(eid)
+                fan_in: dict[str, str] = {}
+                for uri, eids in ids_by_uri.items():
+                    if len(eids) > 1:
+                        for eid in eids:
+                            natural = _entity_uri(entity_type_map.get(eid, ""), eid)
+                            if natural != uri:
+                                fan_in[natural] = uri
+                result.graph_delta = build_graph_delta(
+                    instance_graph,
+                    (collected_entity_triples or []) + rel_triples,
+                    run_id=run_id,
+                    fan_in=fan_in,
+                ).to_dict()
             return result
 
         except Exception:

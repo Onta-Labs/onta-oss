@@ -89,6 +89,7 @@ from cograph_client.pipeline.manifest import (
     RunManifest,
     resolve_spend_ceiling,
 )
+from cograph_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
 from cograph_client.pipeline.source_bundle import (
     TIER_AUTHORITATIVE,
     TIER_WEB,
@@ -1087,6 +1088,18 @@ class WebIngestCapability:
         # bare/test context. workspace_id = the tenant (ADR 0011: pipeline code
         # says workspace_id, infra keeps tenant_id — no blanket rename).
         run_id = job.id if job is not None else str(uuid.uuid4())
+        # ONTA-372 (keystone): mint ONE run-scoped ArtifactEnvelope at the P1 entry
+        # and thread ITS run_id through the WHOLE discovery pipeline — the A1
+        # Source Bundle (below) AND both resolver ingest paths, which key the A6
+        # Graph Delta off it. Before this, the resolver minted its own unrelated
+        # uuid4, so the A1 bundle's lineage and the A6 Graph Delta's lineage
+        # DIVERGED and the A6 delta was effectively dead on the discovery path.
+        # workspace_id = the tenant (ADR 0011). fact_id is the run's A1 root.
+        run_envelope = ArtifactEnvelope(
+            workspace_id=ctx.tenant_id,
+            run_id=run_id,
+            fact_id=derive_fact_id(run_id=run_id, stage="A1"),
+        )
 
         async def _run_inner() -> None:
             if job is not None and job_store is not None:
@@ -1419,6 +1432,9 @@ class WebIngestCapability:
                                         source=f"web:{prov.name}:{query}",
                                         instance_graph=instance_graph,
                                         key_attribute=key_attr,
+                                        # ONTA-372: same run_id as the A1 bundle so
+                                        # the A6 delta keys off ONE run lineage.
+                                        run_id=run_envelope.run_id,
                                     )
                                 else:
                                     content = json.dumps(
@@ -1446,6 +1462,10 @@ class WebIngestCapability:
                                             proposed_type: list(attributes)
                                         },
                                         constrain_soft=_DISCOVERY_SOFT_EXTRACT,
+                                        # ONTA-372: same run_id as the A1 bundle so
+                                        # the resolver keys the A6 Graph Delta off
+                                        # ONE run lineage instead of a fresh uuid4.
+                                        run_id=run_envelope.run_id,
                                     )
                                 processed += len(micro)
                                 entities_total += int(
