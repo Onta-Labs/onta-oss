@@ -91,6 +91,11 @@ from cograph_client.resolver.type_matcher import TypeMatcher
 from cograph_client.resolver.validator import validate_triple
 from cograph_client.normalization.clean import clean_value
 from cograph_client.resolver.verdict_cache import JsonVerdictCache
+# ONTA-370: A4 Verify seam. Reuse the Wave-6 orchestrator + its policy-enabled
+# gate AS-IS — never reimplemented. `_policy_enabled` is the SAME duck-typed
+# on/off check `verify_clean_facts` uses internally, so the seam-level gate and
+# the orchestrator can never disagree on whether verification is on.
+from cograph_client.verification.verifier import _policy_enabled, verify_clean_facts
 
 logger = structlog.stdlib.get_logger("cograph.resolver")
 
@@ -965,6 +970,7 @@ class SchemaResolver:
         verdict_cache: JsonVerdictCache,
         embedding_service: object | None = None,
         ontology_lock: asyncio.Lock | None = None,
+        verify_policy: object | None = None,
     ):
         self._neptune = neptune
         self._anthropic = anthropic.AsyncAnthropic(api_key=anthropic_key)
@@ -1028,6 +1034,16 @@ class SchemaResolver:
         # attribute remains the fallback for legacy direct-call sites (the
         # `/ingest/csv/rows` route and unit tests that seed it directly).
         self._parent_of: dict[str, str] = {}
+        # ONTA-370: A4 Verify policy — the OPT-IN gate for the verify seam wedged
+        # between the A3 clean ledger and the write. DEFAULT None => verification
+        # is OFF: the seam short-circuits with ZERO cost (no verifier, no
+        # iteration, no LLM/network) and the write stays byte-identical. A caller
+        # that resolves a `VerifyPolicy` for the tenant/type hands it in here to
+        # turn the seam on; duck-typed (`object | None`) so this module never
+        # imports the policy type — the shared `_policy_enabled` reads its
+        # `mode`/`enabled`. Mirrors the other DEFAULT-OFF opt-ins above
+        # (`_provenance_enabled` / `_attr_provenance_enabled`).
+        self._verify_policy = verify_policy
 
     async def _locked_ontology_update(self, sparql: str) -> None:
         """Run a single ontology-mutating SPARQL update under the ontology-write
@@ -1039,6 +1055,65 @@ class SchemaResolver:
         `asyncio.Lock` is not reentrant, so that would deadlock)."""
         async with self._ontology_lock:
             await self._neptune.update(sparql)
+
+    def _verify_clean_facts(
+        self,
+        result: IngestResult,
+        *,
+        workspace_id: str | None,
+        run_id: str | None,
+    ) -> None:
+        """A4 Verify seam (ONTA-370) — the OPT-IN wedge between the A3 clean
+        ledger and the write.
+
+        **DEFAULT-OFF is load-bearing.** With no ``VerifyPolicy`` configured (the
+        default, ``self._verify_policy is None``) the very FIRST check
+        short-circuits and returns: no verifier is constructed, ``result.clean_report``
+        is not iterated, no LLM / network / cost / latency is incurred, and
+        ``result.verified_facts`` stays its empty default. The written graph and
+        the rest of the returned :class:`IngestResult` are therefore byte-identical
+        to a build without this seam. Even the offline
+        :class:`~cograph_client.verification.verifier.DefaultOfflineVerifier` is NOT
+        run on the default path — "off" means the seam does nothing at all.
+        Verification is strictly OPT-IN, exactly like the ``_provenance_enabled`` /
+        ``_attr_provenance_enabled`` seams above.
+
+        When a policy turns it ON, the A3 :class:`CleanFact`\\ s the ONTA-373 ledger
+        already collected (passed + transformed + dropped) are handed to the shared
+        Wave-6 orchestrator :func:`verify_clean_facts` under the run envelope's
+        ``workspace_id`` / ``run_id`` (ONTA-372); the resulting
+        :class:`~cograph_client.verification.types.VerifiedFact`\\ s (verdict +
+        independent evidence + confidence + A4 lineage) are stamped on the result.
+        Verification is READ-ONLY and sits BEFORE the write — it never forks the
+        converged writer (:func:`insert_facts`); the facts still flow through the
+        shared write path below unchanged.
+        """
+        policy = self._verify_policy
+        # FIRST and ONLY thing evaluated on the default path. `_policy_enabled` is
+        # the SAME gate the orchestrator uses, so the seam can't drift from it.
+        if not _policy_enabled(policy):
+            return
+        # --- opt-in path only past this point ---
+        report = result.clean_report
+        a3_facts = [*report.passed, *report.transformed, *report.dropped]
+        if not a3_facts:
+            return
+        # Thread the real run scope when we have it; fall back to the
+        # orchestrator's own "local" defaults (its ArtifactEnvelope rejects an
+        # empty workspace_id/run_id) when a direct caller threaded none.
+        scope: dict[str, str] = {}
+        if workspace_id:
+            scope["workspace_id"] = workspace_id
+        if run_id:
+            scope["run_id"] = run_id
+        try:
+            result.verified_facts = verify_clean_facts(a3_facts, policy, **scope)
+        except Exception:
+            # A misbehaving verifier must never fail an otherwise-successful write:
+            # the seam sits before the write but degrades to "no verdicts", never a
+            # rollback (mirrors the best-effort embedding / free-text seams). The
+            # FactVerifier contract already requires fail-closed; this is defense.
+            logger.warning("verify_seam_failed", exc_info=True)
 
     async def ingest(
         self,
@@ -1342,6 +1417,11 @@ class SchemaResolver:
                 # Graph Delta and every fact_id are replay-deterministic.
                 run_id=run_id,
                 observed_at=observed_at,
+                # ONTA-370/372: the workspace scope for the A4 Verify seam's run
+                # envelope. `tenant_id` IS the product-facing `workspace_id`
+                # (ADR 0011 §3 — pipeline code says workspace_id). Only consumed
+                # when a VerifyPolicy turns the seam on; ignored on the default path.
+                workspace_id=tenant_id,
             )
             logger.info(
                 "stage_timing",
@@ -1396,6 +1476,7 @@ class SchemaResolver:
         ontology_version_stamp: str | None = None,
         run_id: str | None = None,
         observed_at: datetime | None = None,
+        workspace_id: str | None = None,
     ) -> IngestResult:
         """Inner pipeline: resolve entities, insert triples. Separated for rollback.
 
@@ -1627,6 +1708,15 @@ class SchemaResolver:
         # same batch so future ingests can find these entities in O(1).
         if er_index_triples:
             all_entity_triples.extend(er_index_triples)
+
+        # ONTA-370: A4 Verify seam — the OPT-IN wedge between the A3 clean ledger
+        # (`result.clean_report`, complete now that the per-entity loop above has
+        # run) and the write below. DEFAULT-OFF: with no VerifyPolicy configured
+        # this short-circuits BEFORE constructing a verifier or iterating facts, so
+        # the `insert_facts` write and the returned result are byte-identical. When
+        # a policy turns it on, it stamps VerifiedFacts on the result. It sits
+        # before the write and is read-only — it never forks the converged writer.
+        self._verify_clean_facts(result, workspace_id=workspace_id, run_id=run_id)
 
         # Single shared write path (graph/kg_writer.py) — the SAME function the
         # enrichment writer uses: batched instance-triple insert + the companion

@@ -1086,6 +1086,18 @@ class IngestResult(BaseModel):
     # (`passed + transformed + dropped`). Reuses the SAME `CleanReport` type
     # enrichment/qc use — not a parallel report.
     clean_report: CleanReport = Field(default_factory=CleanReport)
+    # ONTA-370: the A4 Verify verdicts for this ingest — one `VerifiedFact`
+    # (verdict + independent evidence + confidence + A4 lineage envelope) per A3
+    # clean fact, produced by the DEFAULT-OFF verify seam wedged between the A3
+    # clean ledger and the write (`schema_resolver._verify_clean_facts`). EMPTY
+    # by default — the seam short-circuits before verifying when no VerifyPolicy
+    # is configured (the default), so an ordinary ingest returns this empty and
+    # the written graph / rest of the result stay byte-identical to pre-370. Only
+    # an OPT-IN enabled policy (or a premium `register_fact_verifier`) populates
+    # it. Typed `list[Any]` deliberately: `VerifiedFact` lives in
+    # `verification.types`, which imports `CleanFact` from THIS module — typing it
+    # concretely here would be an import cycle, so the elements are held loosely.
+    verified_facts: list[Any] = Field(default_factory=list)
 
     def affected_types(self) -> set[str]:
         """Types whose embeddings + Explorer stats a post-write refresh must touch
