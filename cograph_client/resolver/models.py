@@ -1076,6 +1076,16 @@ class IngestResult(BaseModel):
     # instead of duplicating it. A JSON-able dict; None on the CSV / legacy paths
     # (and any caller that threads no run_id). Additive + back-compat.
     graph_delta: dict | None = None
+    # ONTA-373: the A3 clean+validate LEDGER for this ingest — every primitive
+    # value the discovery path fed through `clean_value`/`validate_triple`,
+    # partitioned exactly once into passed / transformed / dropped WITH a reason
+    # (the zero-silent-drops guarantee, mirroring how `enrichment/executor.py`
+    # assembles one). Purely observability: it records the same A3 decision the
+    # writer already made, so the set of written triples is unchanged. Empty
+    # `CleanReport` on paths that cleaned nothing; `total` conserves
+    # (`passed + transformed + dropped`). Reuses the SAME `CleanReport` type
+    # enrichment/qc use — not a parallel report.
+    clean_report: CleanReport = Field(default_factory=CleanReport)
 
     def affected_types(self) -> set[str]:
         """Types whose embeddings + Explorer stats a post-write refresh must touch

@@ -89,6 +89,7 @@ from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.predicate_normalizer import normalize_predicate
 from cograph_client.resolver.type_matcher import TypeMatcher
 from cograph_client.resolver.validator import validate_triple
+from cograph_client.normalization.clean import clean_value
 from cograph_client.resolver.verdict_cache import JsonVerdictCache
 
 logger = structlog.stdlib.get_logger("cograph.resolver")
@@ -3533,6 +3534,17 @@ class SchemaResolver:
                     )
 
                 pred_uri = attr_uri(ptype, attr_name)
+                # ONTA-373: record the A3 clean outcome (passed/transformed/dropped
+                # + reason) into the discovery ingest ledger BEFORE typing — mirrors
+                # enrichment's _instance_triples_for_value. Purely additive: the
+                # written triple is unchanged (validate_triple re-derives the same
+                # CleanFact internally), this only makes the decision non-silent.
+                result.clean_report.record(
+                    clean_value(
+                        attr.value, attr.datatype,
+                        entity_id=entity.id, attribute=attr_name,
+                    )
+                )
                 validated = validate_triple(
                     p_uri, pred_uri, attr.value, attr.datatype,
                     entity_id=entity.id, attribute_name=attr_name, type_name=ptype,
@@ -3558,6 +3570,13 @@ class SchemaResolver:
                     type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
                 pred_uri = attr_uri(resolved_type, resolved.name)
+                # ONTA-373: record the A3 clean outcome into the ingest ledger.
+                result.clean_report.record(
+                    clean_value(
+                        resolved.value, resolved.datatype,
+                        entity_id=entity.id, attribute=resolved.name,
+                    )
+                )
                 validated = validate_triple(
                     entity_uri, pred_uri, resolved.value, resolved.datatype,
                     entity_id=entity.id, attribute_name=resolved.name,
@@ -3646,6 +3665,17 @@ class SchemaResolver:
                 result.triples_inserted += 1
             else:
                 pred_uri = attr_uri(resolved_type, resolved.name)
+                # ONTA-373: record the A3 clean outcome (passed/transformed/dropped
+                # + reason) into the discovery ingest ledger. This is the primary
+                # literal path — a non-conforming value that yields NO triple below
+                # becomes a RECORDED `dropped` entry, not a silent skip. Additive:
+                # the write is unchanged.
+                result.clean_report.record(
+                    clean_value(
+                        resolved.value, resolved.datatype,
+                        entity_id=entity.id, attribute=resolved.name,
+                    )
+                )
                 validated = validate_triple(
                     entity_uri, pred_uri, resolved.value, resolved.datatype,
                     entity_id=entity.id, attribute_name=resolved.name,
