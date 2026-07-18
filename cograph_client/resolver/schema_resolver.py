@@ -56,6 +56,7 @@ from cograph_client.pipeline.envelope import derive_fact_id
 from cograph_client.graph.provenance import (
     build_attribute_provenance_companions,
     build_provenance_triples,
+    build_truth_verdict_companion,
     provenance_graph_uri,
 )
 from cograph_client.graph.queries import BATCH_PREDICATE, batched_insert_triples, delete_batch_query, insert_triples, tenant_graph_uri
@@ -89,7 +90,13 @@ from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.predicate_normalizer import normalize_predicate
 from cograph_client.resolver.type_matcher import TypeMatcher
 from cograph_client.resolver.validator import validate_triple
+from cograph_client.normalization.clean import clean_value
 from cograph_client.resolver.verdict_cache import JsonVerdictCache
+# ONTA-370: A4 Verify seam. Reuse the Wave-6 orchestrator + its policy-enabled
+# gate AS-IS — never reimplemented. `_policy_enabled` is the SAME duck-typed
+# on/off check `verify_clean_facts` uses internally, so the seam-level gate and
+# the orchestrator can never disagree on whether verification is on.
+from cograph_client.verification.verifier import _policy_enabled, verify_clean_facts
 
 logger = structlog.stdlib.get_logger("cograph.resolver")
 
@@ -964,6 +971,7 @@ class SchemaResolver:
         verdict_cache: JsonVerdictCache,
         embedding_service: object | None = None,
         ontology_lock: asyncio.Lock | None = None,
+        verify_policy: object | None = None,
     ):
         self._neptune = neptune
         self._anthropic = anthropic.AsyncAnthropic(api_key=anthropic_key)
@@ -1027,6 +1035,16 @@ class SchemaResolver:
         # attribute remains the fallback for legacy direct-call sites (the
         # `/ingest/csv/rows` route and unit tests that seed it directly).
         self._parent_of: dict[str, str] = {}
+        # ONTA-370: A4 Verify policy — the OPT-IN gate for the verify seam wedged
+        # between the A3 clean ledger and the write. DEFAULT None => verification
+        # is OFF: the seam short-circuits with ZERO cost (no verifier, no
+        # iteration, no LLM/network) and the write stays byte-identical. A caller
+        # that resolves a `VerifyPolicy` for the tenant/type hands it in here to
+        # turn the seam on; duck-typed (`object | None`) so this module never
+        # imports the policy type — the shared `_policy_enabled` reads its
+        # `mode`/`enabled`. Mirrors the other DEFAULT-OFF opt-ins above
+        # (`_provenance_enabled` / `_attr_provenance_enabled`).
+        self._verify_policy = verify_policy
 
     async def _locked_ontology_update(self, sparql: str) -> None:
         """Run a single ontology-mutating SPARQL update under the ontology-write
@@ -1038,6 +1056,106 @@ class SchemaResolver:
         `asyncio.Lock` is not reentrant, so that would deadlock)."""
         async with self._ontology_lock:
             await self._neptune.update(sparql)
+
+    def _verify_clean_facts(
+        self,
+        result: IngestResult,
+        *,
+        workspace_id: str | None,
+        run_id: str | None,
+    ) -> None:
+        """A4 Verify seam (ONTA-370) — the OPT-IN wedge between the A3 clean
+        ledger and the write.
+
+        **DEFAULT-OFF is load-bearing.** With no ``VerifyPolicy`` configured (the
+        default, ``self._verify_policy is None``) the very FIRST check
+        short-circuits and returns: no verifier is constructed, ``result.clean_report``
+        is not iterated, no LLM / network / cost / latency is incurred, and
+        ``result.verified_facts`` stays its empty default. The written graph and
+        the rest of the returned :class:`IngestResult` are therefore byte-identical
+        to a build without this seam. Even the offline
+        :class:`~cograph_client.verification.verifier.DefaultOfflineVerifier` is NOT
+        run on the default path — "off" means the seam does nothing at all.
+        Verification is strictly OPT-IN, exactly like the ``_provenance_enabled`` /
+        ``_attr_provenance_enabled`` seams above.
+
+        When a policy turns it ON, the A3 :class:`CleanFact`\\ s the ONTA-373 ledger
+        already collected (passed + transformed + dropped) are handed to the shared
+        Wave-6 orchestrator :func:`verify_clean_facts` under the run envelope's
+        ``workspace_id`` / ``run_id`` (ONTA-372); the resulting
+        :class:`~cograph_client.verification.types.VerifiedFact`\\ s (verdict +
+        independent evidence + confidence + A4 lineage) are stamped on the result.
+        Verification is READ-ONLY and sits BEFORE the write — it never forks the
+        converged writer (:func:`insert_facts`); the facts still flow through the
+        shared write path below unchanged.
+        """
+        policy = self._verify_policy
+        # FIRST and ONLY thing evaluated on the default path. `_policy_enabled` is
+        # the SAME gate the orchestrator uses, so the seam can't drift from it.
+        if not _policy_enabled(policy):
+            return
+        # --- opt-in path only past this point ---
+        report = result.clean_report
+        a3_facts = [*report.passed, *report.transformed, *report.dropped]
+        if not a3_facts:
+            return
+        # Thread the real run scope when we have it; fall back to the
+        # orchestrator's own "local" defaults (its ArtifactEnvelope rejects an
+        # empty workspace_id/run_id) when a direct caller threaded none.
+        scope: dict[str, str] = {}
+        if workspace_id:
+            scope["workspace_id"] = workspace_id
+        if run_id:
+            scope["run_id"] = run_id
+        try:
+            result.verified_facts = verify_clean_facts(a3_facts, policy, **scope)
+        except Exception:
+            # A misbehaving verifier must never fail an otherwise-successful write:
+            # the seam sits before the write but degrades to "no verdicts", never a
+            # rollback (mirrors the best-effort embedding / free-text seams). The
+            # FactVerifier contract already requires fail-closed; this is defense.
+            logger.warning("verify_seam_failed", exc_info=True)
+
+    def _verdict_companion_triples(
+        self,
+        result: IngestResult,
+        entity_uri_map: dict[str, str],
+        entity_type_map: dict[str, str],
+    ) -> list[tuple[str, str, str]]:
+        """A4 verdict PERSIST (ONTA-375) — stamp each verified fact's epistemic
+        ``TruthVerdict`` as a per-attribute ``attr_meta/`` companion.
+
+        DEFAULT-OFF passthrough: with no ``VerifyPolicy`` enabled the A4 seam left
+        ``result.verified_facts`` empty (the common path), so this returns ``[]`` and
+        the write is byte-identical — no companion is minted. When the seam produced
+        verdicts, each written fact's ``TruthVerdict`` is minted via the SHARED
+        companion minter (:func:`build_truth_verdict_companion`) onto an INTERNAL
+        ``attr_meta/`` predicate (``is_internal_predicate`` True), so it is invisible
+        to Explorer/type-stats/NL dumps yet stays queryable by the P7 answer layer.
+        The triples ride the SAME shared write path (they are appended to the
+        instance-triple collector) — never a bespoke insert.
+
+        Skips DROPPED facts (``value is None`` — no domain triple was written, so
+        there is nothing to attach a verdict to) and any fact whose entity did not
+        resolve to a URI/type in this batch. The verdict is a per-attribute signal
+        keyed by ``(subject, Type, attribute)`` — matching how the surface-form /
+        display companions are keyed."""
+        verified = getattr(result, "verified_facts", None)
+        if not verified:
+            return []
+        out: list[tuple[str, str, str]] = []
+        for vf in verified:
+            if vf.value is None:  # DROPPED — no domain fact to annotate.
+                continue
+            entity_uri = entity_uri_map.get(vf.entity_id)
+            type_name = entity_type_map.get(vf.entity_id)
+            if not entity_uri or not type_name:
+                continue
+            verdict = vf.verdict.value if hasattr(vf.verdict, "value") else str(vf.verdict)
+            out.extend(
+                build_truth_verdict_companion(entity_uri, type_name, vf.attribute, verdict)
+            )
+        return out
 
     async def ingest(
         self,
@@ -1051,6 +1169,8 @@ class SchemaResolver:
         constrain_soft: bool = False,
         run_id: str | None = None,
         observed_at: datetime | None = None,
+        fact_ids: list[str] | None = None,
+        tier: str | None = None,
     ) -> IngestResult:
         """Full ingestion pipeline: extract → resolve → validate → insert.
 
@@ -1076,6 +1196,16 @@ class SchemaResolver:
                 type absent from this map is unrestricted on attributes. ``None``
                 = no attribute restriction. Only meaningful alongside
                 ``constrain_types``.
+            fact_ids: OPT-IN A1→A2 lineage handoff (ONTA-371). The per-row A1
+                ``fact_id`` of each row in this micro-batch, in row order, forwarded
+                from the discovery capability's A1 Source Bundle. Recorded for
+                lineage observability; the emitted graph is byte-identical (the A6
+                delta still keys off ``run_id``) — a PASS-THROUGH of provenance, not
+                a change to WHAT is written. ``None`` for every non-discovery
+                caller — unchanged.
+            tier: OPT-IN A1→A2 lineage (ONTA-371). The source authority tier the
+                bundle rows came from (``authoritative`` / ``web``). Pass-through
+                provenance only. ``None`` for non-discovery callers.
         """
         # Build the opt-in extraction constraint (ONTA-199). None / empty types →
         # inactive → every _extract prompt is byte-for-byte the open-ended default,
@@ -1086,6 +1216,19 @@ class SchemaResolver:
                 types=list(constrain_types),
                 attributes={k: list(v) for k, v in (constrain_attributes or {}).items()},
                 soft=constrain_soft,
+            )
+        # ONTA-371: record the A1→A2 lineage handoff (the discovery capability now
+        # drives extraction from the A1 Source Bundle and forwards each row's A1
+        # fact_id + source tier). Observability only — the emitted graph is
+        # byte-identical (the A6 delta keys off run_id). Fires only when a
+        # discovery run threads lineage; every other caller passes None → silent.
+        if fact_ids or tier is not None:
+            logger.debug(
+                "a1_a2_lineage_handoff",
+                path="ingest",
+                run_id=run_id,
+                source_fact_ids=len(fact_ids or ()),
+                source_tier=tier,
             )
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph
@@ -1316,6 +1459,11 @@ class SchemaResolver:
                 # Graph Delta and every fact_id are replay-deterministic.
                 run_id=run_id,
                 observed_at=observed_at,
+                # ONTA-370/372: the workspace scope for the A4 Verify seam's run
+                # envelope. `tenant_id` IS the product-facing `workspace_id`
+                # (ADR 0011 §3 — pipeline code says workspace_id). Only consumed
+                # when a VerifyPolicy turns the seam on; ignored on the default path.
+                workspace_id=tenant_id,
             )
             logger.info(
                 "stage_timing",
@@ -1370,6 +1518,7 @@ class SchemaResolver:
         ontology_version_stamp: str | None = None,
         run_id: str | None = None,
         observed_at: datetime | None = None,
+        workspace_id: str | None = None,
     ) -> IngestResult:
         """Inner pipeline: resolve entities, insert triples. Separated for rollback.
 
@@ -1602,6 +1751,28 @@ class SchemaResolver:
         if er_index_triples:
             all_entity_triples.extend(er_index_triples)
 
+        # ONTA-370: A4 Verify seam — the OPT-IN wedge between the A3 clean ledger
+        # (`result.clean_report`, complete now that the per-entity loop above has
+        # run) and the write below. DEFAULT-OFF: with no VerifyPolicy configured
+        # this short-circuits BEFORE constructing a verifier or iterating facts, so
+        # the `insert_facts` write and the returned result are byte-identical. When
+        # a policy turns it on, it stamps VerifiedFacts on the result. It sits
+        # before the write and is read-only — it never forks the converged writer.
+        self._verify_clean_facts(result, workspace_id=workspace_id, run_id=run_id)
+
+        # ONTA-375: PERSIST each A4 verdict as an attr_meta/ companion. DEFAULT-OFF
+        # no-op (empty verified_facts ⇒ [] ⇒ byte-identical write). When the seam ran,
+        # the verdict companions are appended to the SAME instance-triple collector,
+        # so they flow through the shared insert_facts write below (never a bespoke
+        # insert) onto an internal predicate, invisible to every user surface but
+        # queryable by the P7 answer layer.
+        verdict_companions = self._verdict_companion_triples(
+            result, entity_uri_map, entity_type_map,
+        )
+        if verdict_companions:
+            all_entity_triples.extend(verdict_companions)
+            result.triples_inserted += len(verdict_companions)
+
         # Single shared write path (graph/kg_writer.py) — the SAME function the
         # enrichment writer uses: batched instance-triple insert + the companion
         # provenance graph, in one place, so ingestion and enrichment can never
@@ -1778,6 +1949,7 @@ class SchemaResolver:
         source: str = "",
         instance_graph: str | None = None,
         key_join: KeyJoin | None = None,
+        run_id: str | None = None,
     ) -> IngestResult:
         """Ingest pre-mapped records (no schema inference) — the fixed-mapping seam.
 
@@ -1794,6 +1966,12 @@ class SchemaResolver:
         Mirrors :meth:`ingest`'s per-call setup (instance graph, type-matcher
         graph URI, ontology + parent-map fetch) so it can be called standalone,
         not only inside the CSV pipeline.
+
+        ``run_id`` (ONTA-372): the run-scoped lineage id, forwarded to
+        :meth:`_ingest_mapped`. When set (the discovery structured fast-path), the
+        batch_id is derived from it and an A6 Graph Delta keyed to it is emitted on
+        the result — the SAME run identity the A1 Source Bundle carries. ``None``
+        (the CSV route) keeps the fresh-uuid4-per-call behavior, unchanged.
         """
         graph_uri = tenant_graph_uri(tenant_id)
         # Ontology always goes to the base tenant graph; instance data goes to
@@ -1810,6 +1988,7 @@ class SchemaResolver:
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
             key_join=key_join,
             instance_graph=target_instance_graph, parent_of=parent_of,
+            run_id=run_id,
         )
 
     async def ingest_structured_rows(
@@ -1822,6 +2001,9 @@ class SchemaResolver:
         instance_graph: str | None = None,
         key_attribute: str | None = None,
         key_join: KeyJoin | None = None,
+        run_id: str | None = None,
+        fact_ids: list[str] | None = None,
+        tier: str | None = None,
     ) -> IngestResult:
         """FAST-PATH for PRE-STRUCTURED rows (ONTA-272) — no unstructured LLM ``_extract``.
 
@@ -1841,9 +2023,31 @@ class SchemaResolver:
         fast). ``require_evidence`` is asserted only when the rows actually carry a
         ``source_url``, so a provenance-less structured source is not force-failed.
         Returns the SAME :class:`IngestResult` the deterministic path produces.
+
+        ``run_id`` (ONTA-372): the run-scoped lineage id threaded from the discovery
+        P1 entry (``web_ingest_cap``). Forwarded through
+        :meth:`ingest_mapped_records` so the structured fast-path keys its batch_id
+        and A6 Graph Delta off the SAME run as the A1 Source Bundle instead of a
+        fresh uuid4. ``None`` (the default) preserves today's per-call behavior.
+
+        ``fact_ids`` / ``tier`` (ONTA-371): the OPT-IN A1→A2 lineage handoff — the
+        per-row A1 ``fact_id`` (row order) + source authority tier forwarded from
+        the discovery capability's A1 Source Bundle. Recorded for lineage
+        observability; the committed graph is byte-identical (the deterministic
+        mapping seam is untouched). ``None`` for the CSV / non-discovery route.
         """
         if not rows:
             return IngestResult(rows_in=0)
+        # ONTA-371: record the A1→A2 lineage handoff for the structured fast-path.
+        # Observability only — the deterministic mapping write below is unchanged.
+        if fact_ids or tier is not None:
+            logger.debug(
+                "a1_a2_lineage_handoff",
+                path="ingest_structured_rows",
+                run_id=run_id,
+                source_fact_ids=len(fact_ids or ()),
+                source_tier=tier,
+            )
         # The key field is the join/identity column: an explicit key_attribute, else
         # the first confirmed attribute, else the row's natural "name".
         key_field = key_attribute or (attributes[0] if attributes else None) or "name"
@@ -1864,6 +2068,7 @@ class SchemaResolver:
         return await self.ingest_mapped_records(
             rows, mapping, tenant_id, source=source,
             instance_graph=instance_graph, key_join=key_join,
+            run_id=run_id,
         )
 
     async def _resolve_key_join(
@@ -2007,11 +2212,23 @@ class SchemaResolver:
         *,
         instance_graph: str | None = None,
         parent_of: dict[str, str] | None = None,
+        run_id: str | None = None,
     ) -> IngestResult:
         """Apply a pre-inferred mapping to rows and run the resolve→insert tail.
 
         Extracted verbatim from the former ``_ingest_csv`` body (Step 2 onward)
         so CSV ingest and web-discovery ingest commit through one code path.
+
+        ``run_id`` (ONTA-372): STABLE run identity threaded from the discovery
+        structured fast-path (``web_ingest_cap`` → :meth:`ingest_structured_rows` →
+        :meth:`ingest_mapped_records`). When set, the ``batch_id`` is DERIVED from
+        it (replay-stable, mirroring :meth:`ingest`) and an A6 :class:`GraphDelta`
+        keyed to it is emitted on ``result.graph_delta`` — the SAME run the A1
+        Source Bundle carries, so discovery lineage no longer diverges. To project
+        that delta the run's instance triples are collected and flushed in ONE
+        batched write (the same ``batched_insert_triples`` primitive the per-entity
+        path uses). ``None`` (the CSV route) keeps the fresh-uuid4 batch_id, the
+        byte-for-byte per-entity insert, and no delta — unchanged.
 
         ``key_join`` (ONTA-250): when set, each row is matched to an EXISTING
         entity by an exact key attribute and its attributes are merged ONTO that
@@ -2036,8 +2253,20 @@ class SchemaResolver:
         applied = CSVResolver.apply_mapping(mapping, rows)
         entities, relationships = applied.entities, applied.relationships
 
-        # Step 3: Resolve entities + insert in batches
-        batch_id = str(uuid4())
+        # Step 3: Resolve entities + insert in batches. ONTA-372: when a run_id is
+        # threaded (discovery structured fast-path), DERIVE the batch_id from it so
+        # a preserved-run_id replay reuses the same batch token (idempotent
+        # BATCH_PREDICATE triple), mirroring the LLM-extract `ingest` path; the CSV
+        # route (run_id=None) keeps a fresh uuid4 per call — unchanged.
+        # ``collected_entity_triples`` accumulates the run's instance triples ONLY
+        # when a run_id is threaded, so the A6 Graph Delta can be projected over
+        # them below; run_id=None leaves it None → the per-entity insert path.
+        batch_id = (
+            derive_fact_id(run_id=run_id, stage="A6-batch") if run_id else str(uuid4())
+        )
+        collected_entity_triples: list[tuple[str, str, str]] | None = (
+            [] if run_id is not None else None
+        )
         result = IngestResult(
             entities_extracted=len(entities),
             chunks_processed=1,
@@ -2122,8 +2351,22 @@ class SchemaResolver:
                 await self._resolve_and_insert_entity(
                     entity, resolved_type, entity_uri, is_duplicate,
                     graph_uri, existing_types, existing_attrs, source, result, batch_id,
+                    # ONTA-372: collect the instance triples for the A6 delta ONLY
+                    # when a run_id is threaded; None → unchanged per-entity insert.
+                    _collect_triples=collected_entity_triples,
                     instance_graph=instance_graph,  # ONTA-268: call-local target
                 )
+
+            # ONTA-372: when collecting (run_id threaded), the per-entity method
+            # appended rather than inserted — flush the run's instance triples in
+            # ONE batched write via the SAME primitive the per-entity path uses, so
+            # the written facts are byte-identical (only the batch_id keying
+            # differs). Ordering matches the per-entity path: entities land before
+            # the text markers + relationships below. The triple COUNT was already
+            # tallied inside `_resolve_and_insert_entity`, so do NOT re-increment.
+            if collected_entity_triples:
+                for sparql in batched_insert_triples(instance_graph, collected_entity_triples):
+                    await self._neptune.update(sparql)
 
             # ONTA-177: persist the schema pass's free-text verdicts (the
             # mapping's per-column text_kind, decided ONCE at schema-inference
@@ -2195,6 +2438,31 @@ class SchemaResolver:
                 triples=result.triples_inserted,
                 types=result.types_created,
             )
+            # ONTA-372: emit the run's deterministic A6 Graph Delta when a run_id
+            # was threaded (discovery structured fast-path), keyed to the SAME
+            # run_id as the A1 Source Bundle so discovery lineage no longer
+            # diverges. Built over the COMPLETE instance facts (entity triples +
+            # relationship triples) via the shared `build_graph_delta` — the same
+            # projection the LLM-extract path emits. `fan_in` records key-join
+            # merges: >1 source entity id resolving to ONE final URI is a merge, so
+            # the non-canonical sources' natural URIs map to the shared node.
+            if run_id is not None:
+                ids_by_uri: dict[str, list[str]] = {}
+                for eid, uri in entity_uri_map.items():
+                    ids_by_uri.setdefault(uri, []).append(eid)
+                fan_in: dict[str, str] = {}
+                for uri, eids in ids_by_uri.items():
+                    if len(eids) > 1:
+                        for eid in eids:
+                            natural = _entity_uri(entity_type_map.get(eid, ""), eid)
+                            if natural != uri:
+                                fan_in[natural] = uri
+                result.graph_delta = build_graph_delta(
+                    instance_graph,
+                    (collected_entity_triples or []) + rel_triples,
+                    run_id=run_id,
+                    fan_in=fan_in,
+                ).to_dict()
             return result
 
         except Exception:
@@ -3411,6 +3679,17 @@ class SchemaResolver:
                     )
 
                 pred_uri = attr_uri(ptype, attr_name)
+                # ONTA-373: record the A3 clean outcome (passed/transformed/dropped
+                # + reason) into the discovery ingest ledger BEFORE typing — mirrors
+                # enrichment's _instance_triples_for_value. Purely additive: the
+                # written triple is unchanged (validate_triple re-derives the same
+                # CleanFact internally), this only makes the decision non-silent.
+                result.clean_report.record(
+                    clean_value(
+                        attr.value, attr.datatype,
+                        entity_id=entity.id, attribute=attr_name,
+                    )
+                )
                 validated = validate_triple(
                     p_uri, pred_uri, attr.value, attr.datatype,
                     entity_id=entity.id, attribute_name=attr_name, type_name=ptype,
@@ -3436,6 +3715,13 @@ class SchemaResolver:
                     type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
                 pred_uri = attr_uri(resolved_type, resolved.name)
+                # ONTA-373: record the A3 clean outcome into the ingest ledger.
+                result.clean_report.record(
+                    clean_value(
+                        resolved.value, resolved.datatype,
+                        entity_id=entity.id, attribute=resolved.name,
+                    )
+                )
                 validated = validate_triple(
                     entity_uri, pred_uri, resolved.value, resolved.datatype,
                     entity_id=entity.id, attribute_name=resolved.name,
@@ -3524,6 +3810,17 @@ class SchemaResolver:
                 result.triples_inserted += 1
             else:
                 pred_uri = attr_uri(resolved_type, resolved.name)
+                # ONTA-373: record the A3 clean outcome (passed/transformed/dropped
+                # + reason) into the discovery ingest ledger. This is the primary
+                # literal path — a non-conforming value that yields NO triple below
+                # becomes a RECORDED `dropped` entry, not a silent skip. Additive:
+                # the write is unchanged.
+                result.clean_report.record(
+                    clean_value(
+                        resolved.value, resolved.datatype,
+                        entity_id=entity.id, attribute=resolved.name,
+                    )
+                )
                 validated = validate_triple(
                     entity_uri, pred_uri, resolved.value, resolved.datatype,
                     entity_id=entity.id, attribute_name=resolved.name,
