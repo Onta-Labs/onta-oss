@@ -96,6 +96,11 @@ from cograph_client.pipeline.source_bundle import (
     SourceBundle,
     build_source_bundle,
 )
+from cograph_client.pipeline.stage_trace import (
+    StageProjectId,
+    StageStatus,
+    attach_recorder,
+)
 from cograph_client.resolver.llm_router import (
     OPENROUTER_BASE,
     PRIMARY_MODEL,
@@ -1138,6 +1143,33 @@ class WebIngestCapability:
                     getattr(job, "spend_ceiling_usd", None),
                     settings.enrich_spend_ceiling_usd,
                 )
+            # Operator Job Trace (P0–P9): open the run + stamp P1 Find input.
+            rec = attach_recorder(job)
+            if rec is not None:
+                rec.begin(
+                    StageProjectId.p0,
+                    input={
+                        "job_id": job.id,
+                        "category": "discovery",
+                        "spend_ceiling_usd": job.spend_ceiling_usd,
+                    },
+                )
+                rec.action(StageProjectId.p0, "create_job", detail="discovery job queued")
+                rec.begin(
+                    StageProjectId.p1,
+                    input={
+                        "goal": (query or getattr(step, "instruction", None) or "")[:500],
+                        "type_name": proposed_type,
+                        "attributes": attributes,
+                        "kg_name": kg_name,
+                        "cap": cap,
+                        "subqueries": subqueries[:20],
+                        "providers": [
+                            getattr(pr, "name", str(pr)) for pr in ensemble[:10]
+                        ],
+                    },
+                )
+                rec.action(StageProjectId.p1, "plan", detail="spec resolved; ready to search")
             await job_store.create(job)
 
         # Thread the tracked job id into the provider context so a URL-targeted
@@ -1190,6 +1222,18 @@ class WebIngestCapability:
                 # halt rolls the unfilled remainder (M − N) into `dropped`.
                 if job.manifest is not None:
                     job.manifest.start(total=cap)
+                rec = attach_recorder(job)
+                if rec is not None:
+                    rec.action(
+                        StageProjectId.p0,
+                        "start_run",
+                        detail=f"status=running total_cap={cap}",
+                    )
+                    rec.action(
+                        StageProjectId.p1,
+                        "searching",
+                        detail="phase=searching",
+                    )
                 await job_store.update(job)
             # Observability for the WRITE TARGET (ONTA-198): record the exact graph
             # this run writes into. Without it a run that reports "N filled" but whose
@@ -1427,6 +1471,40 @@ class WebIngestCapability:
                             # sink stays as a SUPPLEMENTARY hook (a no-op when
                             # unset); the bundle is genuinely consumed regardless.
                             _emit_source_bundle(ctx, bundle)
+                            # Operator Job Trace: A1 Source Bundle boundary (P1→P2).
+                            if job is not None:
+                                rec = attach_recorder(job)
+                                if rec is not None:
+                                    rec.action(
+                                        StageProjectId.p1,
+                                        "source_bundle",
+                                        detail=(
+                                            f"provider={prov.name} rows={len(bundle.rows)} "
+                                            f"tier={_provider_tier(prov)}"
+                                        ),
+                                        meta={
+                                            "provider": prov.name,
+                                            "row_count": len(bundle.rows),
+                                            "tier": _provider_tier(prov),
+                                            "sub_query": (sub_query or "")[:200],
+                                        },
+                                    )
+                                    rec.begin(
+                                        StageProjectId.p2,
+                                        input={
+                                            "source_row_count": len(bundle.rows),
+                                            "provider": prov.name,
+                                        },
+                                    )
+                                    rec.action(
+                                        StageProjectId.p2,
+                                        "extract_from_bundle",
+                                        detail="A1→A2 extract driver",
+                                    )
+                                    rec.begin(
+                                        StageProjectId.p6,
+                                        input={"kg_name": kg_name, "type_name": proposed_type},
+                                    )
                             platforms = list(
                                 dict.fromkeys(
                                     [
@@ -3123,7 +3201,99 @@ async def _finish_job(
         job.manifest.complete()
     job.completed_at = now
     job.last_run = now
+    try:
+        rec = attach_recorder(job)
+        if rec is not None:
+            rec.end(
+                StageProjectId.p1,
+                output={
+                    "result_count": entities,
+                    "platforms": platforms,
+                    "processed": processed,
+                },
+            )
+            rec.end(
+                StageProjectId.p2,
+                output={"entities_written": entities, "processed": processed},
+            )
+            rec.end(
+                StageProjectId.p6,
+                output={"entities_written": entities, "status": "applied"},
+            )
+            rec.end(
+                StageProjectId.p0,
+                output={
+                    "status": "applied",
+                    "result_count": entities,
+                    "processed": processed,
+                    "platforms": platforms,
+                    "cost": job.cost,
+                },
+            )
+            # Rails not on the discovery write path stay skipped.
+            for pid, reason in (
+                (StageProjectId.p3, "clean fused into extract/write on discovery path"),
+                (StageProjectId.p4, "verify default-OFF on discovery path"),
+                (StageProjectId.p5, "type placement happens inside resolver ingest"),
+                (StageProjectId.p7, "answer rail not on discovery jobs"),
+                (StageProjectId.p8, "not a refresh-delta run"),
+                (StageProjectId.p9, "surface is the Jobs UI; no A10 on this path"),
+            ):
+                rec.skip(pid, reason=reason)
+            job.stage_trace.summary = {
+                "result_count": entities,
+                "processed": processed,
+                "platforms": platforms,
+                "type_name": job.type_name,
+                "attributes": job.attributes,
+                "cost": job.cost,
+            }
+            job.stage_trace.status = "applied"
+    except Exception:
+        logger.warning(
+            "stage_trace_finish_failed",
+            job_id=getattr(job, "id", None),
+            exc_info=True,
+        )
     await job_store.update(job)
+
+
+def _finalize_stage_trace_failed(
+    job: EnrichJob,
+    error: str,
+    *,
+    summary: Optional[dict] = None,
+) -> None:
+    """Stamp an honest terminal-failed stage_trace.
+
+    Ends every non-terminal project (not only P0/P1) so mid-run failures never
+    leave P2/P6 stuck as ``running`` on a failed job. Isolated in try/except so
+    operator observability cannot fail the discovery write path.
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        for p in list(job.stage_trace.projects if job.stage_trace else []):
+            if p.status in (
+                StageStatus.running,
+                StageStatus.pending,
+            ):
+                rec.end(p.project_id, error=error, status=StageStatus.failed)
+        # Always mark orchestration failed even if it was already completed.
+        rec.end(StageProjectId.p0, error=error, status=StageStatus.failed)
+        job.stage_trace.status = "failed"
+        job.stage_trace.summary = {
+            "error": error,
+            "type_name": job.type_name,
+            **(summary or {}),
+        }
+    except Exception:  # pragma: no cover - never block discovery on obs
+        logger.warning(
+            "stage_trace_finalize_failed",
+            job_id=getattr(job, "id", None),
+            exc_info=True,
+        )
 
 
 async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
@@ -3140,6 +3310,7 @@ async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
         job.manifest.halt(HaltReasonKind.error, job.error)
     job.completed_at = now
     job.last_run = now
+    _finalize_stage_trace_failed(job, job.error)
     await job_store.update(job)
 
 
@@ -3203,6 +3374,16 @@ async def _fail_billing_job(
         job.manifest.halt_from_exception(error, landed_note=landed)
     job.completed_at = now
     job.last_run = now
+    _finalize_stage_trace_failed(
+        job,
+        job.error or str(error),
+        summary={
+            "processed": processed,
+            "platforms": platforms,
+            "result_count": processed,
+            "halt": "billing_or_cost_ceiling",
+        },
+    )
     await job_store.update(job)
 
 
