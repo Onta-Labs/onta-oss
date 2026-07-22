@@ -6,8 +6,10 @@ import pytest
 
 from cograph_client.resolver import chunker
 from cograph_client.resolver.chunker import (
+    adaptive_completion_tokens,
     chunk_text,
     chunk_json_array,
+    estimate_tokens_per_record_from_input,
     split_json_array_chunk,
     json_array_len,
     token_budget_batch_size,
@@ -93,7 +95,7 @@ class TestChunkJsonArray:
         content = json.dumps(data)
         chunks = chunk_json_array(content)  # token-budgeted default
         expected = token_budget_batch_size(
-            int(chunker.os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "8192"))
+            int(chunker.os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "16384"))
         )
         # Batches never exceed the budgeted size (the last may be smaller).
         for c in chunks[:-1]:
@@ -228,6 +230,112 @@ class TestCalibrationHelpers:
         for chunks in (light, heavy):
             total = sum(len(json.loads(c)) for c in chunks)
             assert total == 200
+
+
+class TestInputAwareDensityAndAdaptiveBudget:
+    """ONTA-381: proactive input-density sizing + adaptive completion budget."""
+
+    def test_dense_input_raises_tokens_per_record_above_default(self):
+        """A multi-attribute dense-page record estimates ABOVE the flat default
+        so proactive batching shrinks before the first LLM call."""
+        dense = [
+            {
+                "id": i,
+                "name": f"University of Dense Example {i}",
+                "website": f"https://uni{i}.example.edu",
+                "description": "x" * 2500,
+                "fields": {f"f{j}": ("value_" + "y" * 80) for j in range(25)},
+            }
+            for i in range(5)
+        ]
+        tpr = estimate_tokens_per_record_from_input(json.dumps(dense))
+        assert tpr > chunker.EXTRACT_TOKENS_PER_RECORD
+
+    def test_light_input_stays_at_default(self):
+        """Tiny records must NOT inflate the ratio — the default floor wins."""
+        light = [{"id": i, "name": f"m{i}"} for i in range(10)]
+        tpr = estimate_tokens_per_record_from_input(json.dumps(light))
+        assert tpr == chunker.EXTRACT_TOKENS_PER_RECORD
+
+    def test_non_array_returns_default(self):
+        assert estimate_tokens_per_record_from_input("{}") == chunker.EXTRACT_TOKENS_PER_RECORD
+        assert estimate_tokens_per_record_from_input("not json") == chunker.EXTRACT_TOKENS_PER_RECORD
+        assert estimate_tokens_per_record_from_input("") == chunker.EXTRACT_TOKENS_PER_RECORD
+
+    def test_dense_five_record_page_proactively_fits_or_splits(self):
+        """Acceptance: a 5-record dense page is either kept as one batch that
+        fits the raised/adaptive budget, or proactively split BEFORE any LLM
+        call — never sized as a flat overflow past the old 8192 cap.
+
+        Emulates the live symptom (5 dense records → completion_tokens: 8192,
+        finish_reason=length) by forcing the OLD 8192 base cap + a high tpr
+        derived from dense input; the proactive sizer must then either:
+          * produce batches whose predicted output stays under the target
+            fraction of the cap, OR
+          * split the 5 into smaller first-try batches.
+        """
+        dense = [
+            {
+                "id": i,
+                "name": f"University of British Columbia Campus {i}",
+                "website": f"https://uni{i}.bc.ca",
+                "description": "x" * 3000,
+                "fields": {f"attr_{j}": ("payload_" + "z" * 100) for j in range(30)},
+            }
+            for i in range(5)
+        ]
+        content = json.dumps(dense)
+        tpr = estimate_tokens_per_record_from_input(content)
+        # Dense enough that 5 * tpr would blow past the historical 8192 cap.
+        assert 5 * tpr > 8192
+
+        chunks = chunk_json_array(content, max_tokens=8192)
+        # Either proactively split, or (if expansion is mild enough to fit under
+        # the target fraction) keep as one — but every resulting batch's
+        # PREDICTED output must stay under the target fraction of the cap.
+        for c in chunks:
+            n = json_array_len(c)
+            assert n >= 1
+            predicted = n * tpr
+            assert predicted <= 8192 * chunker.EXTRACT_BATCH_TARGET_FRAC + tpr
+            # Never larger than what token_budget_batch_size allows at this density.
+            assert n <= token_budget_batch_size(8192, tokens_per_record=tpr)
+
+        # Records conserved.
+        total = sum(json_array_len(c) for c in chunks)
+        assert total == 5
+
+    def test_adaptive_completion_tokens_floors_at_base_cap(self):
+        """Small/unknown record counts still get the base ceiling (never starved)."""
+        assert adaptive_completion_tokens(0, base_cap=16384, hard_cap=32768) == 16384
+        assert adaptive_completion_tokens(1, base_cap=16384, hard_cap=32768,
+                                          tokens_per_record=700) == 16384
+
+    def test_adaptive_completion_tokens_stretches_toward_hard_cap(self):
+        """A multi-record chunk whose predicted output exceeds base_cap stretches
+        up toward the hard cap — the ONTA-381 fix for the flat-8192 truncation."""
+        # 12 records * 1600 tpr * 1.25 headroom = 24000 → clamped to hard 32768,
+        # above base 16384.
+        budget = adaptive_completion_tokens(
+            12, base_cap=16384, hard_cap=32768, tokens_per_record=1600, headroom=1.25,
+        )
+        assert budget > 16384
+        assert budget <= 32768
+        assert budget == min(32768, int(12 * 1600 * 1.25))
+
+    def test_adaptive_completion_tokens_never_exceeds_hard_cap(self):
+        budget = adaptive_completion_tokens(
+            100, base_cap=16384, hard_cap=32768, tokens_per_record=2000, headroom=1.5,
+        )
+        assert budget == 32768
+
+    @pytest.mark.parametrize("bad", [float("inf"), float("nan"), float("-inf")])
+    def test_adaptive_non_finite_knobs_fall_back(self, bad):
+        """Pathological non-finite knobs must not raise — fall back to base."""
+        assert adaptive_completion_tokens(5, base_cap=8192, hard_cap=bad) == 8192
+        assert adaptive_completion_tokens(
+            5, base_cap=8192, hard_cap=16384, tokens_per_record=bad
+        ) == 8192
 
 
 class TestSplitJsonArrayChunk:

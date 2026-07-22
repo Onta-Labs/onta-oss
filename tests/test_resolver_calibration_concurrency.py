@@ -123,13 +123,14 @@ async def test_calibration_shrinks_call_count_for_sparse_records(
     assert result.rows_dropped == 0
     assert result.entities_resolved == 60
 
-    # The conservative default would split 60 records into ceil(60/6) = 10 chunks
-    # → at least 10 extraction calls. Calibration measures the light real density
-    # and grows the remainder batches, so the total call count is materially fewer.
+    # The conservative default would split 60 records into
+    # ceil(60 / token_budget_batch_size(cap)) chunks. Calibration measures the
+    # light real density and grows the remainder batches, so the total call
+    # count is materially fewer than that conservative split.
     conservative_chunks = -(-60 // chunker.token_budget_batch_size(
         SchemaResolver.EXTRACT_MAX_TOKENS
     ))  # ceil
-    assert conservative_chunks == 10
+    assert conservative_chunks >= 2  # enough room for calibration to shrink calls
     assert len(calls) < conservative_chunks, calls
     # And nothing truncated: every attempted chunk fit the real cap.
     assert all(
