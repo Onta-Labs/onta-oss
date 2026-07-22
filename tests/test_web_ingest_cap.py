@@ -2449,6 +2449,107 @@ async def test_type_schema_read_failure_degrades_gracefully(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# ONTA-382 — exhaustive attribute set is a CEILING (allowlist extraction)
+# ---------------------------------------------------------------------------
+
+
+async def test_explicit_user_fields_plan_is_exhaustive_and_closed(monkeypatch):
+    """User enumerated a closed field list → plan marks attributes_exhaustive and
+    the committed attributes equal the user set (+ key) — LLM may not extend."""
+    provider = FakeProvider(**RICH)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    # LLM tries to pad with many extras (the ~49-attr symptom).
+    padded_spec = {
+        "entity_type": "CoffeeShop",
+        "key_attribute": "name",
+        "query": "coffee shops",
+        "confirmed_attributes": [
+            "name",
+            "website",
+            "type",
+            "phone",
+            "rating",
+            "price_level",
+            "hours",
+            "latitude",
+            "longitude",
+            "review_count",
+        ],
+        "suggested_attributes": [
+            "phone",
+            "rating",
+            "price_level",
+            "hours",
+            "amenities",
+        ],
+    }
+    instruction = (
+        "Add coffee shops. Use these: name, website, type"
+    )
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1), instruction, parsed=padded_spec
+    )
+    assert steps[0].action == "discover_ingest"
+    params = steps[0].params
+    assert params["attributes_exhaustive"] is True
+    # Ceiling: only user-named fields (+ key already in the list).
+    assert set(params["attributes"]) == {"name", "website", "type"}
+    # Fetch hint may still be comprehensive (ceiling is at extraction, not fetch).
+    assert "rating" in params["hint_columns"] or "phone" in params["hint_columns"]
+
+
+async def test_entity_only_plan_is_illustrative_open_mode(monkeypatch):
+    """No explicit field list → attributes_exhaustive=False (open/illustrative);
+    LLM confirmed/suggested may extend. Open-mode regression for ONTA-382."""
+    provider = FakeProvider(**RICH)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1),
+        "I'm looking for a list of OpenRouter models",
+        parsed=CONFIRMED_SPEC,
+    )
+    assert steps[0].action == "discover_ingest"
+    params = steps[0].params
+    assert params.get("attributes_exhaustive") is False
+    # Illustrative: LLM confirmed fields land on the plan.
+    assert "context_length" in params["attributes"]
+    assert "name" in params["attributes"]
+
+
+async def test_exhaustive_ceiling_survives_llm_extension_attempt(monkeypatch):
+    """Acceptance: exhaustive {name, website, type} → plan attrs ⊆ requested
+    (± key). LLM-only extras never enter the committed set."""
+    provider = FakeProvider(**RICH)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    lossy_but_padded = {
+        "entity_type": "Biz",
+        "key_attribute": "name",
+        "query": "local businesses",
+        "confirmed_attributes": ["name", "website", "type", "fax", "twitter"],
+        "suggested_attributes": ["fax", "twitter", "employees"],
+    }
+    steps = await WebIngestCapability().plan(
+        _ctx(prior_clarify=1),
+        # Comma-only list (no trailing "and X") so the field parser harvests every
+        # named field; the exhaustive ceiling then closes the set to exactly these.
+        "find businesses with fields name, website, type",
+        parsed=lossy_but_padded,
+    )
+    attrs = set(steps[0].params["attributes"])
+    requested = {"name", "website", "type"}
+    assert steps[0].params["attributes_exhaustive"] is True
+    assert attrs <= requested | {"name"}  # key always allowed
+    assert attrs == requested
+    assert "fax" not in attrs and "twitter" not in attrs
+
+
+# ---------------------------------------------------------------------------
 # ONTA-238 — discovery job progress observability + verifiable completion
 # ---------------------------------------------------------------------------
 
