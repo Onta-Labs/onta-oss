@@ -214,6 +214,15 @@ class EnrichRequest(BaseModel):
     # (e.g. a direct API / CLI / scheduled call). The route copies it onto
     # ``EnrichJob.thread_id`` so a job is traceable back to its conversation.
     thread_id: Optional[str] = None
+    # Optional HARD per-run spend ceiling (USD) for THIS job — the A9 cost
+    # envelope (ONTA-282/ONTA-378). Default None → fall back to the deployment
+    # default (config ``enrich_spend_ceiling_usd``); ``0`` ⇒ unlimited. The route
+    # copies it onto ``EnrichJob.spend_ceiling_usd``, which the executor already
+    # feeds into ``resolve_spend_ceiling(...)`` so an explicit per-request value
+    # WINS over the global default and bounds this one job — letting a caller
+    # (e.g. a persona-eval disposable tenant) cap a single run without touching
+    # the global/production ceiling. Omitting it is byte-identical to today.
+    spend_ceiling_usd: Optional[float] = None
 
     _check_entity_uris = field_validator("entity_uris")(_validate_entity_uris_field)
 

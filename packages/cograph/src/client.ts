@@ -789,6 +789,10 @@ export class Client {
       context,
     };
     if (opts.sessionId) body.session_id = opts.sessionId;
+    // Per-run HARD spend ceiling (ONTA-378): forwarded only when the caller set
+    // it, so the body is byte-identical for existing callers. `!= null` keeps an
+    // explicit 0 (unlimited) while dropping undefined/null.
+    if (opts.spendCeilingUsd != null) body.spend_ceiling_usd = opts.spendCeilingUsd;
     // confirm.plan_id present → the server routes to execute_plan (mutating).
     if (opts.confirmPlanId) body.confirm = { plan_id: opts.confirmPlanId };
     return this.request<AgentResult>(
@@ -1713,6 +1717,12 @@ export interface AgentTurnOptions {
   /** When set, the server CONFIRMS + EXECUTES this previously-proposed plan
    *  (the only mutating path) instead of classifying a new message. */
   confirmPlanId?: string;
+  /** Optional HARD per-run spend ceiling (USD) for any enrichment/discovery job
+   *  this turn kicks off (ONTA-282/ONTA-378). Threaded into the request body as
+   *  `spend_ceiling_usd`; the server stamps it onto the job it creates so the
+   *  executor's ceiling override bounds that single run. Omit for the deployment
+   *  default (unchanged behavior); a value of 0 means unlimited. */
+  spendCeilingUsd?: number;
 }
 
 /**
