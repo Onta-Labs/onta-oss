@@ -1,3 +1,4 @@
+import asyncio
 import re
 import ssl
 import time
@@ -99,6 +100,28 @@ BACKENDS = {
 }
 
 
+# Transient TRANSPORT failures worth retrying on the read path. The one that bit
+# the nightly QC audit is RemoteProtocolError: Neptune drops idle keep-alive
+# connections, httpx then reuses a dead one and raises "Server disconnected
+# without sending a response" on the very next request — one such drop was
+# crashing an entire ~10-min audit sweep. These are NOT HTTP status errors (a
+# 4xx/5xx is deterministic — a malformed LLM query returns the same 400 every
+# time — so it is raised immediately, never retried) and deliberately EXCLUDE
+# ReadTimeout/WriteTimeout: a genuinely slow query must not be blindly re-issued
+# and amplify endpoint load. Writes (`update`) are intentionally NOT auto-retried
+# to keep at-most-once semantics on the mutation path.
+_RETRYABLE_TRANSPORT_ERRORS = (
+    httpx.RemoteProtocolError,  # dropped keep-alive: "Server disconnected …"
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+)
+_MAX_TRANSPORT_ATTEMPTS = 3
+_RETRY_BACKOFF_S = 0.5
+
+
 class NeptuneClient:
     """SPARQL client for Neptune, Fuseki, or any SPARQL 1.1 endpoint."""
 
@@ -117,9 +140,41 @@ class NeptuneClient:
             verify=ssl_context if ssl_context else False,
         )
 
+    async def _post_with_retry(
+        self, path: str, *, data: dict, headers: dict | None = None
+    ) -> httpx.Response:
+        """POST to the endpoint, retrying only transient TRANSPORT failures.
+
+        Bounded retry (``_MAX_TRANSPORT_ATTEMPTS``) on the connection-class errors
+        in ``_RETRYABLE_TRANSPORT_ERRORS`` — chiefly a dropped keep-alive
+        connection — so a single stale-connection blip does not abort a
+        long-running read caller (e.g. the nightly QC audit). Each retry acquires
+        a fresh connection from the pool. HTTP *status* handling stays with the
+        caller: this only re-issues the request on a transport exception, and the
+        successful ``Response`` (including 4xx/5xx) is returned unchanged for the
+        caller to interpret. Used by reads only; writes are not routed here.
+        """
+        last_exc: BaseException | None = None
+        for attempt in range(1, _MAX_TRANSPORT_ATTEMPTS + 1):
+            try:
+                return await self._client.post(path, data=data, headers=headers)
+            except _RETRYABLE_TRANSPORT_ERRORS as exc:
+                last_exc = exc
+                if attempt >= _MAX_TRANSPORT_ATTEMPTS:
+                    break
+                logger.warning(
+                    "sparql_transport_retry",
+                    attempt=attempt,
+                    max_attempts=_MAX_TRANSPORT_ATTEMPTS,
+                    error_type=type(exc).__name__,
+                )
+                await asyncio.sleep(_RETRY_BACKOFF_S * attempt)
+        assert last_exc is not None  # loop only exits via return or a caught exc
+        raise last_exc
+
     async def query(self, sparql: str) -> dict:
         start = time.monotonic()
-        response = await self._client.post(
+        response = await self._post_with_retry(
             self._query_path,
             data={"query": sparql},
             headers={"Accept": "application/sparql-results+json"},
@@ -148,7 +203,7 @@ class NeptuneClient:
     async def ask(self, sparql: str) -> bool:
         """Execute a SPARQL ASK query and return the boolean result."""
         start = time.monotonic()
-        response = await self._client.post(
+        response = await self._post_with_retry(
             self._query_path,
             data={"query": sparql},
             headers={"Accept": "application/sparql-results+json"},
@@ -161,7 +216,7 @@ class NeptuneClient:
     async def batch_exists(self, sparql: str) -> set[str]:
         """Execute a SPARQL SELECT for batch existence check. Returns set of URIs that exist."""
         start = time.monotonic()
-        response = await self._client.post(
+        response = await self._post_with_retry(
             self._query_path,
             data={"query": sparql},
             headers={"Accept": "application/sparql-results+json"},
