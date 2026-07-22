@@ -156,6 +156,31 @@ async def test_operator_route_returns_trace_for_operator():
     assert body["source"] in ("reconstructed", "live", "mixed")
 
 
+def test_resolve_trace_heals_stale_running_on_failed_job():
+    """If live left P2 running but the job is failed, don't show a frozen spinner."""
+    job = _job(status=JobStatus.failed, error="boom")
+    rec = attach_recorder(job)
+    rec.begin(StageProjectId.p2, input={"x": 1})
+    # Deliberately do NOT end p2 — simulates incomplete failure instrumentation.
+    assert next(
+        p for p in job.stage_trace.projects if p.project_id == StageProjectId.p2
+    ).status == StageStatus.running
+    trace = resolve_trace(job)
+    p2 = next(p for p in trace.projects if p.project_id == StageProjectId.p2)
+    # Must not remain live-running once the job is terminal.
+    assert p2.status != StageStatus.running
+    assert p2.status in (
+        StageStatus.failed,
+        StageStatus.reconstructed,
+        StageStatus.completed,
+        StageStatus.skipped,
+    )
+
+
+def test_attach_recorder_none():
+    assert attach_recorder(None) is None
+
+
 def test_operator_route_404_unknown_job():
     from cograph_client.api.routes import operator as operator_routes
     from cograph_client.api.deps import get_enrichment_job_store

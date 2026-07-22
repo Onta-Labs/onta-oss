@@ -3201,54 +3201,99 @@ async def _finish_job(
         job.manifest.complete()
     job.completed_at = now
     job.last_run = now
-    rec = attach_recorder(job)
-    if rec is not None:
-        rec.end(
-            StageProjectId.p1,
-            output={
+    try:
+        rec = attach_recorder(job)
+        if rec is not None:
+            rec.end(
+                StageProjectId.p1,
+                output={
+                    "result_count": entities,
+                    "platforms": platforms,
+                    "processed": processed,
+                },
+            )
+            rec.end(
+                StageProjectId.p2,
+                output={"entities_written": entities, "processed": processed},
+            )
+            rec.end(
+                StageProjectId.p6,
+                output={"entities_written": entities, "status": "applied"},
+            )
+            rec.end(
+                StageProjectId.p0,
+                output={
+                    "status": "applied",
+                    "result_count": entities,
+                    "processed": processed,
+                    "platforms": platforms,
+                    "cost": job.cost,
+                },
+            )
+            # Rails not on the discovery write path stay skipped.
+            for pid, reason in (
+                (StageProjectId.p3, "clean fused into extract/write on discovery path"),
+                (StageProjectId.p4, "verify default-OFF on discovery path"),
+                (StageProjectId.p5, "type placement happens inside resolver ingest"),
+                (StageProjectId.p7, "answer rail not on discovery jobs"),
+                (StageProjectId.p8, "not a refresh-delta run"),
+                (StageProjectId.p9, "surface is the Jobs UI; no A10 on this path"),
+            ):
+                rec.skip(pid, reason=reason)
+            job.stage_trace.summary = {
                 "result_count": entities,
-                "platforms": platforms,
-                "processed": processed,
-            },
-        )
-        rec.end(
-            StageProjectId.p2,
-            output={"entities_written": entities, "processed": processed},
-        )
-        rec.end(
-            StageProjectId.p6,
-            output={"entities_written": entities, "status": "applied"},
-        )
-        rec.end(
-            StageProjectId.p0,
-            output={
-                "status": "applied",
-                "result_count": entities,
                 "processed": processed,
                 "platforms": platforms,
+                "type_name": job.type_name,
+                "attributes": job.attributes,
                 "cost": job.cost,
-            },
+            }
+            job.stage_trace.status = "applied"
+    except Exception:
+        logger.warning(
+            "stage_trace_finish_failed",
+            job_id=getattr(job, "id", None),
+            exc_info=True,
         )
-        # Rails not on the discovery write path stay skipped.
-        for pid, reason in (
-            (StageProjectId.p3, "clean fused into extract/write on discovery path"),
-            (StageProjectId.p4, "verify default-OFF on discovery path"),
-            (StageProjectId.p5, "type placement happens inside resolver ingest"),
-            (StageProjectId.p7, "answer rail not on discovery jobs"),
-            (StageProjectId.p8, "not a refresh-delta run"),
-            (StageProjectId.p9, "surface is the Jobs UI; no A10 on this path"),
-        ):
-            rec.skip(pid, reason=reason)
-        job.stage_trace.summary = {
-            "result_count": entities,
-            "processed": processed,
-            "platforms": platforms,
-            "type_name": job.type_name,
-            "attributes": job.attributes,
-            "cost": job.cost,
-        }
-        job.stage_trace.status = "applied"
     await job_store.update(job)
+
+
+def _finalize_stage_trace_failed(
+    job: EnrichJob,
+    error: str,
+    *,
+    summary: Optional[dict] = None,
+) -> None:
+    """Stamp an honest terminal-failed stage_trace.
+
+    Ends every non-terminal project (not only P0/P1) so mid-run failures never
+    leave P2/P6 stuck as ``running`` on a failed job. Isolated in try/except so
+    operator observability cannot fail the discovery write path.
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        for p in list(job.stage_trace.projects if job.stage_trace else []):
+            if p.status in (
+                StageStatus.running,
+                StageStatus.pending,
+            ):
+                rec.end(p.project_id, error=error, status=StageStatus.failed)
+        # Always mark orchestration failed even if it was already completed.
+        rec.end(StageProjectId.p0, error=error, status=StageStatus.failed)
+        job.stage_trace.status = "failed"
+        job.stage_trace.summary = {
+            "error": error,
+            "type_name": job.type_name,
+            **(summary or {}),
+        }
+    except Exception:  # pragma: no cover - never block discovery on obs
+        logger.warning(
+            "stage_trace_finalize_failed",
+            job_id=getattr(job, "id", None),
+            exc_info=True,
+        )
 
 
 async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
@@ -3265,15 +3310,7 @@ async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:
         job.manifest.halt(HaltReasonKind.error, job.error)
     job.completed_at = now
     job.last_run = now
-    rec = attach_recorder(job)
-    if rec is not None:
-        rec.end(StageProjectId.p1, error=job.error)
-        rec.end(StageProjectId.p0, error=job.error, status=StageStatus.failed)
-        job.stage_trace.status = "failed"
-        job.stage_trace.summary = {
-            "error": job.error,
-            "type_name": job.type_name,
-        }
+    _finalize_stage_trace_failed(job, job.error)
     await job_store.update(job)
 
 
@@ -3337,6 +3374,16 @@ async def _fail_billing_job(
         job.manifest.halt_from_exception(error, landed_note=landed)
     job.completed_at = now
     job.last_run = now
+    _finalize_stage_trace_failed(
+        job,
+        job.error or str(error),
+        summary={
+            "processed": processed,
+            "platforms": platforms,
+            "result_count": processed,
+            "halt": "billing_or_cost_ceiling",
+        },
+    )
     await job_store.update(job)
 
 

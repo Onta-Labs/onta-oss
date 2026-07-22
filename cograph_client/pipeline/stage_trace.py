@@ -555,6 +555,22 @@ def resolve_trace(job: Any) -> JobStageTrace:
             return reconstruct_from_job(job)
 
     reconstructed = reconstruct_from_job(job)
+    # Job terminal state — if live instrumentation left a project as running/
+    # pending after the job already failed/applied, prefer recon (or force
+    # failed) so the operator UI never shows a frozen spinner on a settled job.
+    job_status = str(
+        getattr(getattr(job, "status", None), "value", None)
+        or getattr(job, "status", "")
+        or ""
+    ).lower()
+    job_terminal = job_status in (
+        "failed",
+        "applied",
+        "cancelled",
+        "review",
+    )
+    job_error = getattr(job, "error", None)
+
     by_live = {p.project_id: p for p in live.projects}
     by_recon = {p.project_id: p for p in reconstructed.projects}
     merged: list[StageProjectTrace] = []
@@ -563,6 +579,29 @@ def resolve_trace(job: Any) -> JobStageTrace:
     for pid in StageProjectId:
         lp = by_live.get(pid)
         rp = by_recon.get(pid)
+        # Stale live running/pending on a terminal job is not trustworthy.
+        if (
+            lp is not None
+            and job_terminal
+            and lp.status in (StageStatus.running, StageStatus.pending)
+        ):
+            if rp is not None and rp.status not in (
+                StageStatus.skipped,
+                StageStatus.pending,
+            ):
+                merged.append(rp)
+                any_recon = True
+                continue
+            fixed = lp.model_copy(deep=True)
+            if job_status == "failed":
+                fixed.status = StageStatus.failed
+                fixed.error = fixed.error or job_error
+            else:
+                fixed.status = StageStatus.completed
+            fixed.reconstructed = True
+            merged.append(fixed)
+            any_recon = True
+            continue
         if lp is not None and lp.status not in (StageStatus.skipped, StageStatus.pending):
             merged.append(lp)
             any_live = True
