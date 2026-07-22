@@ -64,6 +64,7 @@ from cograph_client.resolver.attribute_resolver import (
     AttributeSchema,
     _normalize_attr_name,
     check_promotion,
+    is_junk_type_name,
     resolve_attribute,
 )
 from cograph_client.resolver.models import (
@@ -602,6 +603,27 @@ def _is_metric_attribute(attr) -> bool:
     if (getattr(attr, "datatype", "") or "").lower() in _NUMERIC_DATATYPES:
         return True
     return bool(_LEADING_NUMBER_RE.match(str(getattr(attr, "value", "") or "")))
+
+
+def _primary_entity_ids(extraction) -> set[str]:
+    """Entity ids that are PRIMARY records vs dimension-only nodes (ONTA-383).
+
+    Domain-free structural split used when consolidating under a soft focus type:
+      * **primary** — appears as a relationship SOURCE, or has no relationships at
+        all (orphan flat record). These are the subject records the focus names.
+      * **dimension** — appears ONLY as a relationship TARGET (City, Specialty,
+        Certification, …). Free type minting stays allowed for them.
+
+    An entity that is both source and target counts as primary (it owns edges).
+    """
+    if extraction is None or not getattr(extraction, "entities", None):
+        return set()
+    sources = {r.source_id for r in (extraction.relationships or ())}
+    targets = {r.target_id for r in (extraction.relationships or ())}
+    only_targets = targets - sources
+    all_ids = {e.id for e in extraction.entities}
+    # Primary = everything that is NOT exclusively a relationship target.
+    return all_ids - only_targets
 
 
 def _apply_soft_focus_floor(result, constraint, *, allow_strip: bool = True):
@@ -1439,6 +1461,18 @@ class SchemaResolver:
         entity_type_map: dict[str, str] = {}  # entity id → resolved type name
 
         _t_resolve = time.monotonic()
+        # ONTA-383: soft-mode focus types (discovery's proposed_type) are the
+        # consolidation anchor. Threaded into resolve so subtype sprawl
+        # (University/College/PublicInstitution peers) collapses under the
+        # confirmed focus (Institution) and junk property-class types are
+        # rejected. HARD constraint / open ingest pass None (no change).
+        focus_types: list[str] | None = None
+        if (
+            constraint is not None
+            and constraint.is_active
+            and constraint.soft
+        ):
+            focus_types = list(constraint.types)
         try:
             final = await self._resolve_and_insert(
                 extraction, graph_uri, existing_types, existing_attrs,
@@ -1464,6 +1498,7 @@ class SchemaResolver:
                 # (ADR 0011 §3 — pipeline code says workspace_id). Only consumed
                 # when a VerifyPolicy turns the seam on; ignored on the default path.
                 workspace_id=tenant_id,
+                focus_types=focus_types,
             )
             logger.info(
                 "stage_timing",
@@ -1519,6 +1554,7 @@ class SchemaResolver:
         run_id: str | None = None,
         observed_at: datetime | None = None,
         workspace_id: str | None = None,
+        focus_types: list[str] | None = None,
     ) -> IngestResult:
         """Inner pipeline: resolve entities, insert triples. Separated for rollback.
 
@@ -1557,6 +1593,13 @@ class SchemaResolver:
         :class:`GraphDelta` receipt built on ``result.graph_delta`` at the end,
         so a preserved-run_id replay reproduces a byte-identical delta. Both
         ``None`` (legacy direct callers) → no delta, wall-clock ingested_at.
+
+        ``focus_types`` (ONTA-383): soft-mode discovery focus (``proposed_type``).
+        When set, each focus type is pre-seeded so the type matcher can prefer
+        SUBTYPE over free-standing peers, primary records with no parent are
+        anchored under the focus, and junk property-class types are rejected.
+        ``None`` (default, every non-soft / open path) leaves type resolution
+        unchanged.
         """
         instance_graph = (
             instance_graph if instance_graph is not None
@@ -1579,6 +1622,18 @@ class SchemaResolver:
             {} if decide_text_candidacy else None
         )
 
+        # ONTA-383: primary vs dimension entity ids. A dimension node is only a
+        # relationship TARGET (City, Specialty, …); a primary record is a source
+        # (or an orphan with no edges). Consolidation under focus_types applies
+        # only to primaries so dimension nodes keep free minting.
+        focus_types = list(focus_types) if focus_types else None
+        primary_ids: set[str] | None = None
+        if focus_types:
+            primary_ids = _primary_entity_ids(extraction)
+            await self._ensure_focus_types(
+                focus_types, graph_uri, existing_types, existing_attrs, result,
+            )
+
         # Pass 1: Resolve types and compute entity URIs
         resolved_types: dict[str, str] = {}  # entity.id → resolved_type
         pending_uris: list[str] = []
@@ -1597,6 +1652,8 @@ class SchemaResolver:
             resolved_type = await self._resolve_type(
                 entity, graph_uri, existing_types, existing_attrs, result,
                 parent_of=parent_of,
+                focus_types=focus_types,
+                is_primary=None if primary_ids is None else entity.id in primary_ids,
             )
             if resolved_type:
                 resolved_types[entity.id] = resolved_type
@@ -3319,6 +3376,40 @@ class SchemaResolver:
         else:
             await self._neptune.update(insert_type(graph_uri, type_name, ""))
 
+    async def _ensure_focus_types(
+        self,
+        focus_types: list[str],
+        graph_uri: str,
+        existing_types: dict[str, str],
+        existing_attrs: dict[str, dict[str, AttributeSchema]],
+        result: IngestResult,
+    ) -> None:
+        """Pre-seed soft-mode focus types into the ontology (ONTA-383).
+
+        Discovery's ``proposed_type`` is the consolidation anchor. Minting it
+        BEFORE pass-1 type matching means the matcher can return SUBTYPE for
+        University/College against Institution instead of free-standing peers,
+        and junk/primary retypes have a real parent to fall back to.
+        """
+        for ft in focus_types:
+            if not ft or ft in existing_types:
+                continue
+            if is_junk_type_name(ft):
+                # A junk focus is a caller bug; refuse to seed it so we don't
+                # anchor the whole batch under a property-class type.
+                logger.warning("focus_type_rejected_junk", focus_type=ft)
+                continue
+            async with self._ontology_lock:
+                if ft in existing_types:
+                    continue
+                await self._neptune.update(
+                    insert_type(graph_uri, ft, "Confirmed focus type (discovery)")
+                )
+                result.types_created.append(ft)
+                existing_types[ft] = ""
+                existing_attrs.setdefault(ft, {})
+                logger.info("focus_type_seeded", focus_type=ft)
+
     async def _resolve_type(
         self,
         entity: ExtractedEntity,
@@ -3328,11 +3419,22 @@ class SchemaResolver:
         result: IngestResult,
         *,
         parent_of: dict[str, str] | None = None,
+        focus_types: list[str] | None = None,
+        is_primary: bool | None = None,
     ) -> str | None:
         """Pass 1: Resolve the type for an entity. Returns resolved type name or None.
 
         ``parent_of`` (ONTA-268): CALL-LOCAL lineage map, threaded to the
         subtype/ancestor synthesis; falls back to ``self._parent_of``.
+
+        ``focus_types`` / ``is_primary`` (ONTA-383): soft-mode consolidation.
+        When focus types are set (discovery's proposed_type):
+          * junk property-class names on a primary record retype to the focus;
+          * a primary with no parent/same_as is anchored as a SUBTYPE of the
+            first focus type (collapses University/College peer sprawl under
+            Institution);
+          * dimension-only nodes (is_primary=False) keep free minting unless junk
+            (junk dimensions are dropped — return None so the entity is skipped).
 
         The whole read-decide-WRITE of ontology existence runs under the
         ontology-write lock (ONTA-268) so concurrent per-sub-query resolvers
@@ -3347,6 +3449,57 @@ class SchemaResolver:
         """
         if entity.type_name in existing_types:
             return entity.type_name
+
+        # ONTA-383 junk-type guard (pre-lock, pure): property-class names never
+        # become ontology types. Primary records fall back to the focus type when
+        # it is already seeded; dimension-only junk (and any junk with no usable
+        # focus) is skipped (return None).
+        if is_junk_type_name(entity.type_name):
+            focus = (focus_types or [None])[0]
+            if is_primary and focus and focus in existing_types:
+                logger.info(
+                    "type_junk_retyped_to_focus",
+                    proposed=entity.type_name,
+                    focus=focus,
+                    entity_id=entity.id,
+                )
+                return focus
+            logger.info(
+                "type_junk_rejected",
+                proposed=entity.type_name,
+                entity_id=entity.id,
+                reason=(
+                    "junk_primary_focus_missing"
+                    if is_primary and focus
+                    else "junk_dimension_or_no_focus"
+                ),
+            )
+            return None
+
+        # ONTA-383 consolidation: a primary record under soft focus with no
+        # extractor-supplied parent/same_as is a kind-of the focus, not a free-
+        # standing peer. Inject parent_type=focus so the mint path links the
+        # subtype (University → Institution) instead of minting an orphan top
+        # type. Dimension nodes and entities that already declare lineage are
+        # left alone. Does not override an explicit same_as / parent_chain.
+        if (
+            focus_types
+            and is_primary
+            and not entity.same_as
+            and not entity.parent_type
+            and not entity.parent_chain
+            and entity.type_name not in focus_types
+        ):
+            focus = focus_types[0]
+            if focus and focus in existing_types and entity.type_name != focus:
+                entity = entity.model_copy(update={"parent_type": focus})
+                logger.info(
+                    "type_anchored_under_focus",
+                    proposed=entity.type_name,
+                    focus=focus,
+                    entity_id=entity.id,
+                )
+
         parent_of = self._parent_of if parent_of is None else parent_of
         async with self._ontology_lock:
             # ONTA-268: point the embedding pre-filter at THIS ingest's tenant
@@ -3608,11 +3761,23 @@ class SchemaResolver:
 
         type_attrs = existing_attrs.get(resolved_type, {})
 
-        # Option D promotions
-        promotions = check_promotion(entity, type_attrs)
+        # Option D promotions (ONTA-383: evidence-gated; junk types rejected;
+        # weak clusters staged as flat attrs — see check_promotion).
+        promotions = check_promotion(
+            entity, type_attrs, existing_types=existing_types,
+        )
         promoted_type_names: set[str] = set()
         for promo in promotions:
             if promo.promoted_type and promo.promoted_type not in promoted_type_names:
+                # Defense-in-depth: never mint a junk type even if a caller
+                # bypassed the attribute_resolver gate.
+                if is_junk_type_name(promo.promoted_type):
+                    logger.info(
+                        "attr_promotion_skipped_junk",
+                        promoted_type=promo.promoted_type,
+                        entity_id=entity.id,
+                    )
+                    continue
                 promoted_type_names.add(promo.promoted_type)
 
         for ptype in promoted_type_names:
@@ -3768,6 +3933,45 @@ class SchemaResolver:
                 # This never OVER-PROMOTES: a plain literal attribute has a PRIMITIVE
                 # datatype and takes the else-branch below unchanged — only an
                 # attribute EXPLICITLY typed as a relationship is minted as a node.
+                #
+                # ONTA-383: refuse to mint a junk property-class type (Colour,
+                # Online, InstructionMode) as a relationship target. Fall through
+                # to the literal path so the value is kept without polluting the
+                # ontology — a single stray attribute never becomes a type.
+                if is_junk_type_name(resolved.datatype):
+                    logger.info(
+                        "relationship_target_junk_kept_literal",
+                        type_name=resolved_type,
+                        attribute=resolved.name,
+                        rejected_type=resolved.datatype,
+                        entity_id=entity.id,
+                    )
+                    resolved = resolved.model_copy(update={"datatype": "string"})
+                    pred_uri = attr_uri(resolved_type, resolved.name)
+                    result.clean_report.record(
+                        clean_value(
+                            resolved.value, resolved.datatype,
+                            entity_id=entity.id, attribute=resolved.name,
+                        )
+                    )
+                    validated = validate_triple(
+                        entity_uri, pred_uri, resolved.value, resolved.datatype,
+                        entity_id=entity.id, attribute_name=resolved.name,
+                        type_name=resolved_type,
+                    )
+                    if isinstance(validated, ValidatedTriple):
+                        triples_to_insert.append(
+                            (validated.subject, validated.predicate, validated.object)
+                        )
+                        attr_facts.append(
+                            (validated.subject, validated.predicate, validated.object)
+                        )
+                        if validated.surface_form_companion:
+                            triples_to_insert.append(validated.surface_form_companion)
+                        result.triples_inserted += 1
+                    else:
+                        result.rejections.append(validated)
+                    continue
                 if resolved.datatype not in existing_types:
                     await self._locked_ontology_update(  # ONTA-268
                         insert_type(
