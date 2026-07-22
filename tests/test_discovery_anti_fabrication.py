@@ -1,23 +1,31 @@
-"""ONTA-259: discovery/extraction must NOT fabricate placeholder attribute VALUES.
+"""ONTA-259 + ONTA-380: discovery/extraction must NOT fabricate attributes.
 
-The persona eval surfaced a UCI-health run where the NPI ``1234567890`` appeared
-on 92 distinct physicians — a hallucinated placeholder that silently breaks
-every ID-keyed join. Discovery's extraction path was the only rail missing an
-anti-fabrication contract (``research/extract.py`` and
-``enrichment/llm_extractor.py`` already had one). This adds two defenses in
-``schema_resolver``:
+ONTA-259 (values): the persona eval surfaced a UCI-health run where the NPI
+``1234567890`` appeared on 92 distinct physicians — a hallucinated placeholder
+that silently breaks every ID-keyed join. Discovery's extraction path was the
+only rail missing an anti-fabrication contract (``research/extract.py`` and
+``enrichment/llm_extractor.py`` already had one). Defenses:
 
   1. a prompt clause forbidding invented VALUES (``EXTRACTION_SYSTEM`` and the
      SOFT-mode ``EXTRACTION_TARGET_SYSTEM``); and
   2. a deterministic, model-agnostic backstop (``_is_fabricated_placeholder``)
-     that drops obvious placeholders BEFORE they are written, so a hallucinated
-     value can't reach the graph even if the prompt fails.
+     that drops obvious placeholders BEFORE they are written.
+
+ONTA-380 (names AND values): the same rail also invents whole attribute
+*families* the page never states (e.g. ``affordability_ranking``). Extended:
+
+  3. the prompt clause covers attribute NAMES as well as VALUES
+     (unknown → omit, never invent); and
+  4. a source-grounding backstop (``_attribute_grounded_in_source`` /
+     ``_drop_ungrounded_attributes``) drops attributes whose name AND value
+     both lack support in the source text.
 
 These tests assert the MECHANISM with INVENTED tokens (a ``Gadget`` /
-``serial_number``, never the literal NPI example) so they hold for ANY domain:
-an unstated value is OMITTED (never a placeholder), two value-less records never
-share a fabricated key, the backstop drops junk but KEEPS legitimate values, and
-the prompt carries the clause.
+``serial_number`` / ``Widget``, never the literal NPI / BC examples) so they
+hold for ANY domain: an unstated field is OMITTED (never a fabricated
+attribute), two value-less records never share a hallucinated value, the
+backstops drop junk but KEEP legitimate grounded data, and the prompts carry
+the clauses.
 """
 from __future__ import annotations
 
@@ -30,13 +38,18 @@ from cograph_client.resolver.attribute_resolver import AttributeSchema
 from cograph_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
+    ExtractionResult,
     IngestResult,
 )
 from cograph_client.resolver.schema_resolver import (
     EXTRACTION_SYSTEM,
     EXTRACTION_TARGET_SYSTEM,
     SchemaResolver,
+    _attribute_grounded_in_source,
+    _drop_ungrounded_attributes,
     _is_fabricated_placeholder,
+    _name_grounded_in_source,
+    _value_grounded_in_source,
 )
 from cograph_client.resolver.verdict_cache import JsonVerdictCache
 
@@ -284,7 +297,9 @@ async def test_backstop_is_off_for_the_verbatim_path(tmp_path):
 
 
 def test_open_extraction_prompt_forbids_invented_values():
-    assert "Never fabricate values" in EXTRACTION_SYSTEM
+    assert "Never fabricate attributes" in EXTRACTION_SYSTEM
+    assert "NAMES" in EXTRACTION_SYSTEM
+    assert "VALUES" in EXTRACTION_SYSTEM
     assert "NEVER invent an identifier" in EXTRACTION_SYSTEM
     # Names the concrete filler tokens so the model recognizes them.
     assert "1234567890" in EXTRACTION_SYSTEM
@@ -293,6 +308,319 @@ def test_open_extraction_prompt_forbids_invented_values():
 
 
 def test_soft_target_prompt_forbids_invented_values():
-    assert "NEVER FABRICATE A VALUE" in EXTRACTION_TARGET_SYSTEM
+    assert "NEVER FABRICATE ATTRIBUTES" in EXTRACTION_TARGET_SYSTEM
     assert "1234567890" in EXTRACTION_TARGET_SYSTEM
     assert "0000000000" in EXTRACTION_TARGET_SYSTEM
+
+
+def test_open_extraction_prompt_forbids_invented_attribute_names():
+    """ONTA-380: the open prompt forbids inventing attribute NAMES, not just values."""
+    assert "attribute NAMES" in EXTRACTION_SYSTEM or "NAMES" in EXTRACTION_SYSTEM
+    assert "Unknown → omit" in EXTRACTION_SYSTEM or "Unknown" in EXTRACTION_SYSTEM
+    # Concrete fabricated-family examples so the model recognizes the failure mode.
+    assert "affordability_ranking" in EXTRACTION_SYSTEM
+    assert "online_activity_percentage_of_summer_instruction" in EXTRACTION_SYSTEM
+    assert "hallucinated" in EXTRACTION_SYSTEM.casefold() or "share a hallucinated" in EXTRACTION_SYSTEM
+
+
+def test_soft_target_prompt_forbids_invented_attribute_names():
+    """ONTA-380: the SOFT target prompt carries the same name+value contract."""
+    assert "NAMES OR VALUES" in EXTRACTION_TARGET_SYSTEM
+    assert "affordability_ranking" in EXTRACTION_TARGET_SYSTEM
+    assert "online_activity_percentage_of_summer_instruction" in EXTRACTION_TARGET_SYSTEM
+
+
+# ---------------------------------------------------------------------------
+# 4. ONTA-380: source-grounding predicate — fabricated attr families drop;
+#    grounded facts KEEP. Anti-overfit: invented tokens, not domain fixtures.
+# ---------------------------------------------------------------------------
+
+# A BC-universities-style page (shape only — invented institution tokens so the
+# test is not locked to a live BC crawl). States name / city / year / enrollment;
+# says NOTHING about affordability rankings or online-activity percentages.
+_WIDGET_SOURCE = """
+North Cascadia Polytechnic (NCP)
+Located in Harbourview, Cascadia Territory.
+Founded in 1908. Approximately 70,000 students enrolled.
+Public research polytechnic. Main campus on the harbour.
+Website: https://example.edu/ncp
+"""
+
+
+def test_value_grounded_when_stated_in_source():
+    src = _WIDGET_SOURCE.casefold()
+    assert _value_grounded_in_source("Harbourview", src) is True
+    assert _value_grounded_in_source("1908", src) is True
+    assert _value_grounded_in_source("70,000", src) is True  # digit-normalized
+    assert _value_grounded_in_source("70000", src) is True
+    assert _value_grounded_in_source("North Cascadia Polytechnic", src) is True
+
+
+def test_value_not_grounded_when_absent_or_placeholder():
+    src = _WIDGET_SOURCE.casefold()
+    assert _value_grounded_in_source("99", src) is False           # short + absent
+    assert _value_grounded_in_source("42", src) is False
+    assert _value_grounded_in_source("affordable-tier-A", src) is False
+    assert _value_grounded_in_source("1234567890", src) is False   # placeholder
+    assert _value_grounded_in_source("N/A", src) is False
+    assert _value_grounded_in_source("", src) is False
+    assert _value_grounded_in_source(None, src) is False
+
+
+def test_name_grounded_on_distinctive_tokens_only():
+    src = _WIDGET_SOURCE.casefold()
+    # "harbour" / "cascadia" / "student" appear; pure-generic names do not count.
+    assert _name_grounded_in_source("harbour_campus", src) is True
+    assert _name_grounded_in_source("student_enrollment", src) is True
+    assert _name_grounded_in_source("cascadia_region", src) is True
+    assert _name_grounded_in_source("affordability_ranking", src) is False
+    assert _name_grounded_in_source(
+        "online_activity_percentage_of_summer_instruction", src
+    ) is False
+    assert _name_grounded_in_source("year", src) is False          # stopword-only
+    assert _name_grounded_in_source("ranking", src) is False
+    assert _name_grounded_in_source("percentage_score", src) is False
+
+
+def test_attribute_keep_when_value_or_name_grounded():
+    src = _WIDGET_SOURCE
+    # Value grounded, name paraphrased → KEEP.
+    assert _attribute_grounded_in_source("city", "Harbourview", src) is True
+    assert _attribute_grounded_in_source("founded_year", "1908", src) is True
+    # Name grounded, value short/weak → KEEP (name alone is enough evidence the
+    # concept is on the page; value filtering for placeholders is ONTA-259).
+    assert _attribute_grounded_in_source("harbour_campus", "main", src) is True
+    # BOTH ungrounded → DROP (pure fabricated attribute family).
+    assert _attribute_grounded_in_source(
+        "affordability_ranking", "7", src
+    ) is False
+    assert _attribute_grounded_in_source(
+        "online_activity_percentage_of_summer_instruction", "42", src
+    ) is False
+    # No source text → KEEP (cannot verify; conservative).
+    assert _attribute_grounded_in_source(
+        "affordability_ranking", "7", ""
+    ) is True
+
+
+def test_drop_ungrounded_attributes_on_bc_style_fixture():
+    """BC-style page: grounded facts survive; fabricated attr families vanish.
+
+    Anti-overfit: institution tokens are invented (NCP / Harbourview), not a
+    live BC university string. Mechanism under test is source grounding.
+    """
+    extraction = ExtractionResult(
+        source_text=_WIDGET_SOURCE,
+        entities=[
+            ExtractedEntity(
+                type_name="Widget",
+                id="ncp",
+                attributes=[
+                    ExtractedAttribute(
+                        name="name",
+                        value="North Cascadia Polytechnic",
+                        datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="city", value="Harbourview", datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="founded_year", value="1908", datatype="integer",
+                    ),
+                    ExtractedAttribute(
+                        name="student_count", value="70000", datatype="integer",
+                    ),
+                    # Fabricated families the page never states:
+                    ExtractedAttribute(
+                        name="affordability_ranking",
+                        value="7",
+                        datatype="integer",
+                    ),
+                    ExtractedAttribute(
+                        name="online_activity_percentage_of_summer_instruction",
+                        value="42",
+                        datatype="float",
+                    ),
+                ],
+            )
+        ],
+    )
+    filtered = _drop_ungrounded_attributes(extraction)
+    names = {a.name for a in filtered.entities[0].attributes}
+    assert "name" in names
+    assert "city" in names
+    assert "founded_year" in names
+    assert "student_count" in names
+    assert "affordability_ranking" not in names
+    assert "online_activity_percentage_of_summer_instruction" not in names
+    values = {a.value for a in filtered.entities[0].attributes}
+    assert "7" not in values
+    assert "42" not in values
+
+
+def test_unstated_field_gets_no_fabricated_attribute():
+    """Acceptance: an unstated field produces no attribute after the backstop."""
+    extraction = ExtractionResult(
+        source_text="Gadget Alpha ships with a titanium shell. SKU GA-100.",
+        entities=[
+            ExtractedEntity(
+                type_name="Gadget",
+                id="ga",
+                attributes=[
+                    ExtractedAttribute(
+                        name="name", value="Gadget Alpha", datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="sku", value="GA-100", datatype="string",
+                    ),
+                    # Unstated field the model invented:
+                    ExtractedAttribute(
+                        name="warp_flux_coefficient",
+                        value="0.91",
+                        datatype="float",
+                    ),
+                ],
+            )
+        ],
+    )
+    filtered = _drop_ungrounded_attributes(extraction)
+    names = {a.name for a in filtered.entities[0].attributes}
+    assert names == {"name", "sku"}
+    assert "warp_flux_coefficient" not in names
+
+
+def test_two_entities_do_not_share_a_hallucinated_value():
+    """Acceptance: two records that both lack a field never share a stand-in.
+
+    Both Widgets get the same invented ``affordability_ranking=99`` the page
+    never stated — after the backstop neither carries it, so no false shared key.
+    """
+    source = (
+        "Widget One is a red handheld tool.\n"
+        "Widget Two is a blue handheld tool.\n"
+    )
+    extraction = ExtractionResult(
+        source_text=source,
+        entities=[
+            ExtractedEntity(
+                type_name="Widget",
+                id="w1",
+                attributes=[
+                    ExtractedAttribute(
+                        name="name", value="Widget One", datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="color", value="red", datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="affordability_ranking",
+                        value="99",
+                        datatype="integer",
+                    ),
+                ],
+            ),
+            ExtractedEntity(
+                type_name="Widget",
+                id="w2",
+                attributes=[
+                    ExtractedAttribute(
+                        name="name", value="Widget Two", datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="color", value="blue", datatype="string",
+                    ),
+                    ExtractedAttribute(
+                        name="affordability_ranking",
+                        value="99",
+                        datatype="integer",
+                    ),
+                ],
+            ),
+        ],
+    )
+    filtered = _drop_ungrounded_attributes(extraction)
+    for ent in filtered.entities:
+        names = {a.name for a in ent.attributes}
+        assert "affordability_ranking" not in names
+        values = {a.value for a in ent.attributes}
+        assert "99" not in values
+    # Real grounded attrs survived on both records.
+    by_id = {e.id: e for e in filtered.entities}
+    assert {a.value for a in by_id["w1"].attributes} >= {"Widget One", "red"}
+    assert {a.value for a in by_id["w2"].attributes} >= {"Widget Two", "blue"}
+
+
+def test_drop_ungrounded_is_noop_without_source_text():
+    """Conservative: empty source_text leaves attributes untouched."""
+    extraction = ExtractionResult(
+        source_text="",
+        entities=[
+            ExtractedEntity(
+                type_name="Widget",
+                id="w",
+                attributes=[
+                    ExtractedAttribute(
+                        name="affordability_ranking",
+                        value="7",
+                        datatype="integer",
+                    ),
+                ],
+            )
+        ],
+    )
+    filtered = _drop_ungrounded_attributes(extraction)
+    assert filtered.entities[0].attributes[0].name == "affordability_ranking"
+    assert filtered is extraction  # same object when nothing changes
+
+
+async def test_extract_applies_grounding_backstop(tmp_path):
+    """End-to-end through ``_extract``: ungrounded attr families never leave
+    the extraction step (mocked LLM returns a mix of real + fabricated attrs).
+    """
+    import json
+
+    resolver = _resolver(tmp_path)
+    payload = {
+        "entities": [
+            {
+                "type_name": "Widget",
+                "id": "ncp",
+                "attributes": [
+                    {
+                        "name": "name",
+                        "value": "North Cascadia Polytechnic",
+                        "datatype": "string",
+                    },
+                    {
+                        "name": "city",
+                        "value": "Harbourview",
+                        "datatype": "string",
+                    },
+                    {
+                        "name": "affordability_ranking",
+                        "value": "7",
+                        "datatype": "integer",
+                    },
+                    {
+                        "name": "online_activity_percentage_of_summer_instruction",
+                        "value": "42",
+                        "datatype": "float",
+                    },
+                ],
+            }
+        ],
+        "relationships": [],
+    }
+    resolver._extract_via_openrouter = AsyncMock(
+        return_value=(json.dumps(payload), "stop", None)
+    )
+    resolver.EXTRACT_PROVIDER = "openrouter"
+    resolver._openrouter_key = "fake-key"
+
+    result = await resolver._extract(_WIDGET_SOURCE, "text")
+    assert len(result.entities) == 1
+    names = {a.name for a in result.entities[0].attributes}
+    assert "name" in names
+    assert "city" in names
+    assert "affordability_ranking" not in names
+    assert "online_activity_percentage_of_summer_instruction" not in names
