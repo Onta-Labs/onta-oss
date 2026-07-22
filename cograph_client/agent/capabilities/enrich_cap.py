@@ -658,6 +658,10 @@ class EnrichCapability:
             else None,
             # Chat provenance: link the job to the conversation that spawned it.
             thread_id=getattr(ctx, "session_id", None),
+            # Per-run HARD spend ceiling (ONTA-378): a per-turn ceiling threaded
+            # from the /agent request bounds THIS job via the executor's
+            # ``resolve_spend_ceiling(...)`` override. None → deployment default.
+            spend_ceiling_usd=getattr(ctx, "spend_ceiling_usd", None),
         )
         await job_store.create(job)
         _spawn(executor.run(job, ctx.tenant_id))

@@ -208,6 +208,11 @@ async def create_job(
         # Chat provenance: link the job to the conversation it was kicked off
         # from (None for direct-API / CLI callers).
         thread_id=body.thread_id,
+        # Per-request HARD spend ceiling (ONTA-378): an explicit per-job value
+        # that the executor feeds into ``resolve_spend_ceiling(...)`` so it WINS
+        # over the deployment default and bounds THIS job. None → deployment
+        # default (unchanged behavior).
+        spend_ceiling_usd=body.spend_ceiling_usd,
     )
     await job_store.create(job)
 

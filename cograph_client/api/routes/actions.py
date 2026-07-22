@@ -114,6 +114,10 @@ class EnrichActionRequest(BaseModel):
     # sources → adapter-chain override (unknown names fall back gracefully).
     instructions: Optional[str] = None
     sources: Optional[list[str]] = None
+    # Optional HARD per-run spend ceiling (USD) for this job (ONTA-282/ONTA-378;
+    # mirrors EnrichRequest). Default None → deployment default. An explicit value
+    # bounds THIS job via the executor's ``resolve_spend_ceiling(...)`` override.
+    spend_ceiling_usd: Optional[float] = None
 
     # Reject malformed IRIs at the API boundary with 422 (COG-112 review fix #1).
     _check_entity_uris = field_validator("entity_uris")(_validate_entity_uris_field)
@@ -144,6 +148,7 @@ def _new_job(
     entity_uris: Optional[list[str]] = None,
     instructions: Optional[str] = None,
     sources: Optional[list[str]] = None,
+    spend_ceiling_usd: Optional[float] = None,
 ) -> EnrichJob:
     return EnrichJob(
         id=str(uuid.uuid4()),
@@ -164,6 +169,8 @@ def _new_job(
         entity_uris=entity_uris,
         instructions=instructions,
         sources=sources,
+        # Per-run HARD spend ceiling (ONTA-378): None → deployment default.
+        spend_ceiling_usd=spend_ceiling_usd,
     )
 
 
@@ -244,6 +251,7 @@ def _job_from_schedule(schedule) -> EnrichJob:
         entity_uris=params.get("entity_uris"),
         instructions=params.get("instructions"),
         sources=params.get("sources"),
+        spend_ceiling_usd=params.get("spend_ceiling_usd"),
     )
     job.trigger = JobTrigger.scheduled
     return job
@@ -555,6 +563,7 @@ async def enrich_action(
         entity_uris=body.entity_uris,
         instructions=body.instructions,
         sources=body.sources,
+        spend_ceiling_usd=body.spend_ceiling_usd,
     )
     await job_store.create(job)
     _spawn(executor.run(job, tenant.tenant_id))

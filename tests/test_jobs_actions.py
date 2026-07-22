@@ -684,6 +684,168 @@ def test_scheduled_params_without_knobs_default_none():
 
 
 # ---------------------------------------------------------------------------
+# Per-run spend ceiling passthrough (ONTA-378) — an explicit per-request
+# spend_ceiling_usd lands on the job and WINS over the deployment default via
+# resolve_spend_ceiling; omitting it is byte-identical to today.
+# ---------------------------------------------------------------------------
+
+
+def test_create_job_threads_spend_ceiling(client, auth_headers, mock_neptune):
+    """POST /enrich/jobs accepts spend_ceiling_usd, persists it on the job, and
+    that value is the EXPLICIT override resolve_spend_ceiling picks over a
+    different deployment default (so it bounds THIS job, ONTA-378)."""
+    from cograph_client.pipeline.manifest import resolve_spend_ceiling
+
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "0"}}]},
+    }
+    r = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+            "tier": "lite",
+            "spend_ceiling_usd": 1.5,
+        },
+    )
+    assert r.status_code == 202
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{r.json()['job_id']}",
+        headers=auth_headers,
+    ).json()
+    assert job["spend_ceiling_usd"] == 1.5
+    # The executor feeds job.spend_ceiling_usd into resolve_spend_ceiling as the
+    # explicit arg; an explicit 1.5 WINS over a would-be 10.0 deployment default.
+    assert resolve_spend_ceiling(job["spend_ceiling_usd"], 10.0) == 1.5
+
+
+def test_action_enrich_threads_spend_ceiling(client, auth_headers, mock_neptune):
+    """The /actions/enrich body accepts spend_ceiling_usd and persists it too."""
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "0"}}]},
+    }
+    r = client.post(
+        "/graphs/test-tenant/actions/enrich",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+            "spend_ceiling_usd": 2.25,
+        },
+    )
+    assert r.status_code == 202
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{r.json()['job_id']}",
+        headers=auth_headers,
+    ).json()
+    assert job["spend_ceiling_usd"] == 2.25
+
+
+def test_spend_ceiling_defaults_to_none_when_absent(
+    client, auth_headers, mock_neptune
+):
+    """Omitting spend_ceiling_usd leaves it None on the job (behavior unchanged),
+    and resolve_spend_ceiling then falls back to the deployment default — a None
+    default meaning UNLIMITED exactly as before this feature existed."""
+    from cograph_client.pipeline.manifest import resolve_spend_ceiling
+
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "0"}}]},
+    }
+    r = client.post(
+        "/graphs/test-tenant/enrich/jobs",
+        headers=auth_headers,
+        json={
+            "type_name": "Product",
+            "attributes": ["manufacturer"],
+            "kg_name": "kg",
+        },
+    )
+    assert r.status_code == 202
+    job = client.get(
+        f"/graphs/test-tenant/enrich/jobs/{r.json()['job_id']}",
+        headers=auth_headers,
+    ).json()
+    assert job["spend_ceiling_usd"] is None
+    # None override → fall back to the default; a 0.0 default normalises to None
+    # (unlimited): today's no-ceiling behavior is preserved.
+    assert resolve_spend_ceiling(job["spend_ceiling_usd"], 0.0) is None
+
+
+def test_scheduled_params_carry_spend_ceiling():
+    """A schedule whose params include spend_ceiling_usd dispatches a job carrying
+    it; a schedule without it leaves the job's ceiling None (unchanged)."""
+    import cograph_client.api.routes.actions as actions_mod
+
+    with_ceiling = type(
+        "S",
+        (),
+        {
+            "tenant_id": "test-tenant",
+            "kg_name": "kg",
+            "category": JobCategory.enrichment,
+            "action": "enrich",
+            "params": {
+                "type_name": "Product",
+                "attributes": ["manufacturer"],
+                "spend_ceiling_usd": 4.0,
+            },
+        },
+    )()
+    assert actions_mod._job_from_schedule(with_ceiling).spend_ceiling_usd == 4.0
+
+    without = type(
+        "S",
+        (),
+        {
+            "tenant_id": "test-tenant",
+            "kg_name": "kg",
+            "category": JobCategory.enrichment,
+            "action": "enrich",
+            "params": {"type_name": "Product", "attributes": ["manufacturer"]},
+        },
+    )()
+    assert actions_mod._job_from_schedule(without).spend_ceiling_usd is None
+
+
+def test_agent_request_threads_spend_ceiling_to_context():
+    """The /agent request body's spend_ceiling_usd threads onto the AgentContext
+    every capability reads, so the enrich/discovery capability can stamp it onto
+    the job it creates (ONTA-378). Omitting it leaves the context None."""
+    from unittest.mock import MagicMock
+
+    import cograph_client.api.routes.agent as agent_mod
+    from cograph_client.auth.api_keys import TenantContext
+
+    tenant = TenantContext(tenant_id="test-tenant", api_key="test-key", subject=None)
+    body = agent_mod.AgentRequest(
+        message="enrich the manufacturer for products",
+        context=agent_mod.AgentRequestContext(kg_name="kg", type_name="Product"),
+        spend_ceiling_usd=0.75,
+    )
+    ctx = agent_mod._build_ctx(
+        tenant, body, MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    )
+    assert ctx.spend_ceiling_usd == 0.75
+
+    # Default path: omitted → None on the context (unchanged behavior).
+    body_default = agent_mod.AgentRequest(
+        message="hi",
+        context=agent_mod.AgentRequestContext(kg_name="kg"),
+    )
+    ctx_default = agent_mod._build_ctx(
+        tenant, body_default, MagicMock(), MagicMock(), MagicMock(), MagicMock()
+    )
+    assert ctx_default.spend_ceiling_usd is None
+
+
+# ---------------------------------------------------------------------------
 # COG-112 review: injection rejected at the API boundary (422)
 # ---------------------------------------------------------------------------
 
