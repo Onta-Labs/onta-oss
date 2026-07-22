@@ -52,6 +52,37 @@ EXTRACT_MIN_TOKENS_PER_RECORD = int(
 #: ample headroom and the split-and-retry recovery remains the hard safety net.
 _CHARS_PER_TOKEN = 4.0
 
+#: How many OUTPUT tokens one INPUT token expands to under the reification/lift
+#: prompt (ONTA-381). Dense multi-attribute source pages reify into many more
+#: entities + relationships than the flat :data:`EXTRACT_TOKENS_PER_RECORD`
+#: default assumed — sizing against INPUT density × this expansion catches those
+#: pages BEFORE the first call so they don't hit ``finish_reason=length``. Env:
+#: ``OMNIX_EXTRACT_OUTPUT_EXPANSION``.
+EXTRACT_OUTPUT_EXPANSION = float(os.environ.get("OMNIX_EXTRACT_OUTPUT_EXPANSION", "4.0"))
+
+#: Headroom multiplier on the adaptive completion budget (ONTA-381). The call's
+#: ``max_tokens`` is ``ceil(n_records * tokens_per_record * headroom)``, clamped
+#: between the base and hard caps — a little slack so a batch that runs slightly
+#: denser than assumed still finishes cleanly. Env:
+#: ``OMNIX_EXTRACT_COMPLETION_HEADROOM``.
+EXTRACT_COMPLETION_HEADROOM = float(
+    os.environ.get("OMNIX_EXTRACT_COMPLETION_HEADROOM", "1.25")
+)
+
+#: Default extraction completion ceiling used when a caller doesn't pass an
+#: explicit ``max_tokens`` (mirrors :attr:`SchemaResolver.EXTRACT_MAX_TOKENS`).
+#: Raised 8192 → 16384 in ONTA-381: a dense 5-record page routinely expands past
+#: the old 8192 mid-JSON. Env: ``OMNIX_EXTRACT_MAX_TOKENS``.
+_DEFAULT_EXTRACT_MAX_TOKENS = int(os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "16384"))
+
+#: Absolute hard ceiling on one extraction call's completion budget (ONTA-381).
+#: Adaptive sizing may stretch up to this when a multi-record chunk's predicted
+#: output exceeds the base cap; beyond it we rely on proactive split instead of
+#: unbounded cost. Env: ``OMNIX_EXTRACT_MAX_TOKENS_HARD``.
+_DEFAULT_EXTRACT_MAX_TOKENS_HARD = int(
+    os.environ.get("OMNIX_EXTRACT_MAX_TOKENS_HARD", "32768")
+)
+
 
 def estimate_output_tokens(text: str) -> int:
     """Cheap output-token estimate from a serialized model reply's length.
@@ -87,6 +118,94 @@ def calibrated_tokens_per_record(
         return max(1, fl)
     per_record = math.ceil(observed_output_tokens / records_in_batch)
     return max(fl, per_record)
+
+
+def estimate_tokens_per_record_from_input(
+    content: str,
+    *,
+    default: int | None = None,
+    expansion: float | None = None,
+    sample_size: int = 8,
+) -> int:
+    """Estimate OUTPUT tokens/record from INPUT JSON density (ONTA-381).
+
+    Dense multi-attribute source pages (long records) reify into far more output
+    tokens than the flat :data:`EXTRACT_TOKENS_PER_RECORD` default. Sample up to
+    ``sample_size`` records, take mean input tokens × ``expansion``, and return
+    ``max(default, that)`` so:
+
+    * light / short records stay at the conservative default (no needless
+      over-splitting);
+    * dense pages get a higher tokens-per-record → smaller proactive batches
+      BEFORE the first LLM call, so a 5-record dense page that would have hit
+      ``finish_reason=length`` at the old 8192 cap is split (or fitted under a
+      raised adaptive budget) instead of falling into reactive recovery.
+
+    Returns ``default`` for non-array / empty / unparseable content.
+    """
+    dflt = default if default is not None else EXTRACT_TOKENS_PER_RECORD
+    exp = expansion if expansion is not None else EXTRACT_OUTPUT_EXPANSION
+    if not content or not math.isfinite(exp) or exp <= 0:
+        return max(1, dflt)
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return max(1, dflt)
+    if not isinstance(data, list) or not data:
+        return max(1, dflt)
+    sample = data[: max(1, sample_size)]
+    total_chars = 0
+    for rec in sample:
+        try:
+            total_chars += len(json.dumps(rec, default=str))
+        except (TypeError, ValueError):
+            continue
+    if total_chars <= 0:
+        return max(1, dflt)
+    avg_input_tokens = (total_chars / len(sample)) / _CHARS_PER_TOKEN
+    estimated = int(math.ceil(avg_input_tokens * exp))
+    return max(1, dflt, estimated)
+
+
+def adaptive_completion_tokens(
+    n_records: int,
+    *,
+    base_cap: int | None = None,
+    hard_cap: int | None = None,
+    tokens_per_record: int | None = None,
+    headroom: float | None = None,
+) -> int:
+    """Completion-token budget for one extraction call of ``n_records`` (ONTA-381).
+
+    Scales with predicted output (``n_records * tokens_per_record * headroom``)
+    so a denser multi-record chunk gets enough room to finish clean JSON instead
+    of hitting ``finish_reason=length`` mid-stream. Clamped:
+
+    * **floor** ``base_cap`` (the comfortable default ceiling — small calls still
+      get the historical room; never starved by a tiny predicted size);
+    * **ceiling** ``hard_cap`` (absolute cost bound — beyond this, proactive
+      batch sizing / reactive split must shrink the chunk).
+
+    Non-positive / unknown record counts return ``base_cap`` unchanged. Pathological
+    non-finite knobs fall back to ``base_cap``.
+    """
+    base = base_cap if base_cap is not None else _DEFAULT_EXTRACT_MAX_TOKENS
+    hard = hard_cap if hard_cap is not None else _DEFAULT_EXTRACT_MAX_TOKENS_HARD
+    tpr = tokens_per_record if tokens_per_record is not None else EXTRACT_TOKENS_PER_RECORD
+    hr = headroom if headroom is not None else EXTRACT_COMPLETION_HEADROOM
+    if not (
+        math.isfinite(base)
+        and math.isfinite(hard)
+        and math.isfinite(tpr)
+        and math.isfinite(hr)
+    ):
+        return max(1, int(base) if math.isfinite(base) else _DEFAULT_EXTRACT_MAX_TOKENS)
+    base_i = max(1, int(base))
+    hard_i = max(base_i, int(hard))
+    if n_records is None or n_records <= 0 or tpr <= 0 or hr <= 0:
+        return base_i
+    predicted = int(math.ceil(n_records * tpr * hr))
+    return max(base_i, min(hard_i, predicted))
 
 
 def token_budget_batch_size(
@@ -196,15 +315,6 @@ def chunk_json_array(
     Returns:
         List of JSON string chunks.
     """
-    if batch_size is None:
-        # Budget against the caller's real extraction cap; when unknown, size
-        # against the same default ceiling the resolver uses (8192) so a bare
-        # call is still token-safe rather than reverting to a flat count.
-        cap = max_tokens if max_tokens is not None else int(
-            os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "8192")
-        )
-        batch_size = token_budget_batch_size(cap, tokens_per_record=tokens_per_record)
-
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
@@ -212,6 +322,20 @@ def chunk_json_array(
 
     if not isinstance(data, list):
         return [content]
+
+    if batch_size is None:
+        # Budget against the caller's real extraction cap; when unknown, size
+        # against the same default ceiling the resolver uses (16384 post-
+        # ONTA-381) so a bare call is still token-safe rather than reverting
+        # to a flat count. When the caller doesn't pass an explicit
+        # tokens_per_record, estimate from INPUT density so dense multi-
+        # attribute pages proactively shrink below the truncation zone
+        # (ONTA-381) instead of relying on reactive split-and-retry.
+        cap = max_tokens if max_tokens is not None else _DEFAULT_EXTRACT_MAX_TOKENS
+        tpr = tokens_per_record
+        if tpr is None:
+            tpr = estimate_tokens_per_record_from_input(content)
+        batch_size = token_budget_batch_size(cap, tokens_per_record=tpr)
 
     if len(data) <= batch_size:
         return [content]

@@ -39,13 +39,15 @@ def pin_batch_25(monkeypatch):
     """Pin the token-budget batch size to 25 records for the recovery tests.
 
     These tests exercise the split-and-retry RECOVERY (a dense chunk fails, its
-    halves succeed), which is orthogonal to the ONTA-196 initial batch sizing.
-    Sizing the token budget so ``floor(max_tokens * frac / tpr) == 25`` (with the
-    resolver's 8192 cap: 8192 * 0.55 / 180 ≈ 25) keeps the initial batches at the
-    historical 25 so the recovery assertions read the same, without hard-coding a
-    number the production default no longer uses."""
+    halves succeed), which is orthogonal to the ONTA-196/381 initial batch sizing.
+    Sizing the token budget so ``floor(max_tokens * frac / tpr) == 25`` (with an
+    8192 cap: 8192 * 0.55 / 180 ≈ 25) keeps the initial batches at the historical
+    25 so the recovery assertions read the same. Pins EXTRACT_MAX_TOKENS to 8192
+    because the production default rose to 16384 in ONTA-381 (which would make
+    the same tpr yield batches of 50)."""
     monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 180)
     monkeypatch.setattr(chunker, "EXTRACT_BATCH_TARGET_FRAC", 0.55)
+    monkeypatch.setattr(SchemaResolver, "EXTRACT_MAX_TOKENS", 8192)
     assert chunker.token_budget_batch_size(8192) == 25
 
 
@@ -268,8 +270,9 @@ async def test_token_budget_batching_avoids_truncation_first_try(
     budgeted batch size keeps every chunk under it, so:
       * no record is lost (rows_dropped == 0),
       * NO chunk is ever attempted above the budgeted size (no split-retry).
-    A flat 25 would have overflowed (25 * 700 = 17500 > 8192) and truncated."""
-    # Defaults: 700 tok/record, 0.55 frac, 8192 cap → batch size 6.
+    A flat 25 would have overflowed the base cap and truncated."""
+    # Defaults: 700 tok/record, 0.55 frac → batch size depends on EXTRACT_MAX_TOKENS
+    # (16384 post-ONTA-381 → 12; was 6 under the old 8192 cap).
     monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 700)
     monkeypatch.setattr(chunker, "EXTRACT_BATCH_TARGET_FRAC", 0.55)
     budget = chunker.token_budget_batch_size(SchemaResolver.EXTRACT_MAX_TOKENS)
@@ -321,6 +324,141 @@ def _capture_parse_error_truncated(monkeypatch) -> dict:
     return captured
 
 
+def _dense_page_records(n: int) -> list[dict]:
+    """5-record dense multi-attribute page fixture (ONTA-381 acceptance).
+
+    Emulates the live BC-universities-style records whose reified extraction
+    output expanded past the historical 8192 completion cap mid-JSON
+    (``completion_tokens: 8192``, ``finish_reason: length`` → parse error →
+    reactive ``extraction_chunk_split_retry``).
+    """
+    return [
+        {
+            "id": i,
+            "name": f"University of Dense Example {i}",
+            "website": f"https://uni{i}.example.edu",
+            "description": "x" * 3000,
+            "city": "Vancouver",
+            "province": "British Columbia",
+            "fields": {f"attr_{j}": ("payload_" + "z" * 100) for j in range(30)},
+        }
+        for i in range(n)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_dense_five_record_page_no_length_truncation_first_try(
+    mock_neptune, mock_cache, monkeypatch
+):
+    """ONTA-381 acceptance: a 5-record dense-page batch extracts without
+    ``finish_reason=length`` (or is proactively split before the first call so
+    each attempt stays under the adaptive budget). No parse error, no reactive
+    split-and-retry, equal-or-better yield (all 5 records land).
+
+    The mock extractor truncates (returns empty + would be length-capped) only
+    when predicted output exceeds the *adaptive* completion budget for that
+    chunk. Under the pre-ONTA-381 flat 8192 cap a 5-record dense page
+    (≈1600+ tok/record) would always overflow; with raised base + adaptive
+    budget + proactive input-aware sizing it must succeed first-try.
+    """
+    # Pin density knobs so the fixture is deterministic across env overrides.
+    monkeypatch.setattr(chunker, "EXTRACT_TOKENS_PER_RECORD", 700)
+    monkeypatch.setattr(chunker, "EXTRACT_BATCH_TARGET_FRAC", 0.55)
+    monkeypatch.setattr(chunker, "EXTRACT_OUTPUT_EXPANSION", 4.0)
+    monkeypatch.setattr(chunker, "EXTRACT_COMPLETION_HEADROOM", 1.25)
+
+    records = _dense_page_records(5)
+    content = json.dumps(records)
+    tpr = chunker.estimate_tokens_per_record_from_input(content)
+    # Sanity: this fixture is dense enough to have overflowed the old 8192 cap.
+    assert 5 * tpr > 8192, (tpr, 5 * tpr)
+
+    resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
+
+    calls: list[dict] = []
+    split_retries: list = []
+
+    # Spy on the recovery split log so we can assert it did NOT fire.
+    from cograph_client.resolver import schema_resolver as sr_mod
+
+    orig_warning = sr_mod.logger.warning
+
+    def spy_warning(event, *args, **kwargs):
+        if event == "extraction_chunk_split_retry":
+            split_retries.append(kwargs)
+        return orig_warning(event, *args, **kwargs)
+
+    monkeypatch.setattr(sr_mod.logger, "warning", spy_warning)
+
+    async def adaptive_extract(content, content_type, existing_types=None, **kwargs):
+        """Truncate only when predicted output exceeds the adaptive budget."""
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            data = []
+        n = len(data) if isinstance(data, list) else 0
+        budget = resolver._completion_budget_for(n, tokens_per_record=tpr)
+        predicted = n * tpr
+        calls.append({"n": n, "budget": budget, "predicted": predicted})
+        if 0 < n and predicted <= budget:
+            return ExtractionResult(
+                entities=[_padded_entity_for(r, min(tpr, 200)) for r in data],
+                relationships=[],
+            )
+        # Would have been finish_reason=length under a too-small flat cap.
+        return ExtractionResult(entities=[], relationships=[])
+
+    with patch.object(resolver, "_extract", side_effect=adaptive_extract):
+        with patch.object(resolver, "_fetch_ontology", return_value=({}, {})):
+            result = await resolver.ingest(content, "test-tenant", content_type="json")
+
+    # All 5 records land — equal-or-better yield vs the truncated baseline.
+    assert result.rows_in == 5
+    assert result.rows_dropped == 0
+    assert result.entities_resolved == 5
+    # First-try success: every attempt fit its adaptive budget (no empty
+    # truncation that would trigger reactive recovery).
+    assert calls, "extraction ran"
+    assert all(c["predicted"] <= c["budget"] for c in calls), calls
+    # Reactive split-and-retry must not fire — proactive sizing + adaptive
+    # budget keep the recovery path as a safety net only.
+    assert split_retries == [], split_retries
+
+
+@pytest.mark.asyncio
+async def test_extract_requests_adaptive_max_tokens_on_openrouter(
+    mock_neptune, mock_cache, monkeypatch
+):
+    """ONTA-381: ``_extract`` threads an adaptive completion budget into
+    ``_extract_via_openrouter`` (and logs it), never the stale flat 8192."""
+    resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
+    monkeypatch.setattr(resolver, "EXTRACT_PROVIDER", "openrouter")
+    monkeypatch.setattr(resolver, "_openrouter_key", "or-key")
+    # Pin the raised defaults so the assertion is stable.
+    monkeypatch.setattr(resolver, "EXTRACT_MAX_TOKENS", 16384)
+    monkeypatch.setattr(resolver, "EXTRACT_MAX_TOKENS_HARD", 32768)
+
+    captured: dict = {}
+
+    async def fake_or(user_content, system_prompt=None, **kwargs):
+        captured.update(kwargs)
+        return (
+            json.dumps({"entities": [], "relationships": []}),
+            "stop",
+            {"prompt_tokens": 10, "completion_tokens": 20},
+        )
+
+    monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
+
+    records = _dense_page_records(5)
+    await resolver._extract(json.dumps(records), "json", {})
+
+    assert "max_tokens" in captured
+    # Adaptive budget is at least the raised base ceiling (never the old 8192).
+    assert captured["max_tokens"] >= 16384
+    assert captured["max_tokens"] <= 32768
+
+
 @pytest.mark.asyncio
 async def test_extract_marks_truncated_on_openrouter_length_finish(
     mock_neptune, mock_cache, monkeypatch
@@ -335,9 +473,10 @@ async def test_extract_marks_truncated_on_openrouter_length_finish(
     monkeypatch.setattr(resolver, "EXTRACT_PROVIDER", "openrouter")
     monkeypatch.setattr(resolver, "_openrouter_key", "or-key")
 
-    async def fake_or(user_content):
+    async def fake_or(user_content, system_prompt=None, **kwargs):
         # Truncated (length) + unparseable JSON → the truncation-signal path.
         # (content, finish_reason, usage) — the ONTA-200 3-tuple contract.
+        # ``**kwargs`` absorbs ONTA-381's adaptive ``max_tokens`` kwarg.
         return '{"entities": [{"type_name": "Model", "id": "m0"', "length", None
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
@@ -360,8 +499,9 @@ async def test_extract_not_truncated_on_openrouter_clean_finish(
     monkeypatch.setattr(resolver, "EXTRACT_PROVIDER", "openrouter")
     monkeypatch.setattr(resolver, "_openrouter_key", "or-key")
 
-    async def fake_or(user_content):
+    async def fake_or(user_content, system_prompt=None, **kwargs):
         # (content, finish_reason, usage) — the ONTA-200 3-tuple contract.
+        # ``**kwargs`` absorbs ONTA-381's adaptive ``max_tokens`` kwarg.
         return "not json at all", "stop", None
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_or)
