@@ -78,8 +78,9 @@ async def test_extract_call_logged_with_usage_and_records(
     records = [{"id": i, "name": f"m{i}"} for i in range(5)]
     content = json.dumps(records)
 
-    async def fake_via_openrouter(user_content):
+    async def fake_via_openrouter(user_content, system_prompt=None, **kwargs):
         # (content, finish_reason, usage) — the new 3-tuple shape.
+        # ``**kwargs`` absorbs ONTA-381's adaptive ``max_tokens``.
         return (
             json.dumps({"entities": [], "relationships": []}),
             "stop",
@@ -100,6 +101,8 @@ async def test_extract_call_logged_with_usage_and_records(
     assert kw["records_in_chunk"] == 5
     assert isinstance(kw["duration_ms"], (int, float))
     assert kw["duration_ms"] >= 0
+    # ONTA-381: the adaptive budget actually requested is logged for diagnosis.
+    assert kw["max_tokens"] >= SchemaResolver.EXTRACT_MAX_TOKENS
 
 
 @pytest.mark.asyncio
@@ -114,7 +117,7 @@ async def test_extract_call_logs_none_tokens_when_usage_absent(
     rec = MagicMock()
     monkeypatch.setattr(sr, "logger", rec)
 
-    async def fake_via_openrouter(user_content):
+    async def fake_via_openrouter(user_content, system_prompt=None, **kwargs):
         return (json.dumps({"entities": [], "relationships": []}), "length", None)
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_via_openrouter)
@@ -128,6 +131,7 @@ async def test_extract_call_logs_none_tokens_when_usage_absent(
     assert kw["completion_tokens"] is None
     assert kw["finish_reason"] == "length"  # truncation signal still surfaced
     assert kw["records_in_chunk"] == 1
+    assert "max_tokens" in kw
 
 
 @pytest.mark.asyncio
@@ -142,7 +146,7 @@ async def test_extract_call_records_none_for_non_json(
     rec = MagicMock()
     monkeypatch.setattr(sr, "logger", rec)
 
-    async def fake_via_openrouter(user_content):
+    async def fake_via_openrouter(user_content, system_prompt=None, **kwargs):
         return (json.dumps({"entities": [], "relationships": []}), "stop", {})
 
     monkeypatch.setattr(resolver, "_extract_via_openrouter", fake_via_openrouter)

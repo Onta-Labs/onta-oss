@@ -952,11 +952,18 @@ class SchemaResolver:
     # must be a NATIVE Anthropic model id. Env-overridable.
     INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-opus-4-8")
     ONTOLOGY_REFRESH_INTERVAL = int(os.environ.get("OMNIX_ONTOLOGY_REFRESH_INTERVAL", "50"))
-    # Output ceiling for one extraction call. Raised 4096 → 8192: the
-    # reification/lift prompt makes each record emit MANY more entities +
-    # relationships, so a chunk's JSON can blow past 4096 tokens, get truncated,
-    # fail to parse, and silently drop the whole batch. Env-overridable.
-    EXTRACT_MAX_TOKENS = int(os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "8192"))
+    # Output ceiling for one extraction call. Raised 4096 → 8192 (ONTA-196) →
+    # 16384 (ONTA-381): the reification/lift prompt makes each record emit MANY
+    # more entities + relationships, and a dense multi-attribute page routinely
+    # expands past 8192 even at 5 records (``finish_reason=length`` mid-JSON →
+    # parse error → reactive split). Env-overridable.
+    EXTRACT_MAX_TOKENS = int(os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "16384"))
+    # Absolute hard ceiling adaptive completion may stretch to for a single
+    # multi-record call (ONTA-381). Beyond this we shrink the chunk instead of
+    # unbounded cost. Must be ≥ EXTRACT_MAX_TOKENS.
+    EXTRACT_MAX_TOKENS_HARD = int(
+        os.environ.get("OMNIX_EXTRACT_MAX_TOKENS_HARD", "32768")
+    )
     # Bounded concurrency for the JSON/text chunk-extraction fan-out (ONTA-197
     # item 3). Independent chunks each take ~70s sequentially; running them under
     # a semaphore overlaps the independent LLM calls while capping how many are
@@ -2531,9 +2538,25 @@ class SchemaResolver:
         # per-call log below can be read against output-token size — a slow run
         # with bloated completions is diagnosable directly (records → tokens).
         # Only JSON chunks are a records array; free text has no record count.
-        from cograph_client.resolver.chunker import json_array_len
+        from cograph_client.resolver.chunker import (
+            estimate_tokens_per_record_from_input,
+            json_array_len,
+        )
 
         records_in_chunk = json_array_len(content) if content_type == "json" else None
+        # ONTA-381: adaptive completion budget sized to this chunk's predicted
+        # reified output (input-aware tokens/record × headroom), floored at the
+        # base cap and clamped to the hard cap. Dense multi-attribute pages no
+        # longer hit finish_reason=length at a flat 8192 while still sizing
+        # batches proactively against the same density signal.
+        tokens_per_record = (
+            estimate_tokens_per_record_from_input(content)
+            if content_type == "json"
+            else None
+        )
+        completion_budget = self._completion_budget_for(
+            records_in_chunk, tokens_per_record=tokens_per_record,
+        )
 
         truncated = False
         finish_reason: str | None = None
@@ -2550,7 +2573,7 @@ class SchemaResolver:
             # ``**_sys_kw`` carries the constraint-narrowed system prompt on a
             # discovery run (ONTA-199); empty on the open-ended document path.
             text, finish_reason, usage = await self._extract_via_openrouter(
-                user_content, **_sys_kw,
+                user_content, max_tokens=completion_budget, **_sys_kw,
             )
             # Honest truncation signal on the OpenRouter path, mirroring the
             # Anthropic ``stop_reason == "max_tokens"`` check below: OpenRouter
@@ -2566,7 +2589,7 @@ class SchemaResolver:
         else:
             msg = await self._anthropic.messages.create(
                 model=self.INFER_MODEL,
-                max_tokens=self.EXTRACT_MAX_TOKENS,
+                max_tokens=completion_budget,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_content}],
             )
@@ -2588,6 +2611,8 @@ class SchemaResolver:
         # observability — no control-flow effect. Lets a slow discovery run
         # reveal output-token bloat directly (completion_tokens vs
         # records_in_chunk) instead of reconstructing it from request gaps.
+        # ONTA-381 adds max_tokens so a truncated run is diagnosable against the
+        # adaptive budget that was actually requested.
         logger.info(
             "extract_call",
             provider=provider,
@@ -2595,6 +2620,7 @@ class SchemaResolver:
             prompt_tokens=prompt_tokens,
             finish_reason=finish_reason,
             records_in_chunk=records_in_chunk,
+            max_tokens=completion_budget,
             duration_ms=duration_ms,
         )
 
@@ -2637,8 +2663,34 @@ class SchemaResolver:
             )
             return ExtractionResult(source_text=content)
 
+    def _completion_budget_for(
+        self,
+        n_records: int | None,
+        *,
+        tokens_per_record: int | None = None,
+    ) -> int:
+        """Adaptive completion-token budget for one extraction call (ONTA-381).
+
+        Scales with predicted reified output so a dense multi-record chunk gets
+        enough room to finish clean JSON (no mid-stream ``finish_reason=length``)
+        while staying under :attr:`EXTRACT_MAX_TOKENS_HARD`. Small / unknown
+        record counts still receive the base :attr:`EXTRACT_MAX_TOKENS` ceiling.
+        """
+        from cograph_client.resolver.chunker import adaptive_completion_tokens
+
+        return adaptive_completion_tokens(
+            n_records or 0,
+            base_cap=self.EXTRACT_MAX_TOKENS,
+            hard_cap=self.EXTRACT_MAX_TOKENS_HARD,
+            tokens_per_record=tokens_per_record,
+        )
+
     async def _extract_via_openrouter(
-        self, user_content: str, system_prompt: str = EXTRACTION_SYSTEM,
+        self,
+        user_content: str,
+        system_prompt: str = EXTRACTION_SYSTEM,
+        *,
+        max_tokens: int | None = None,
     ) -> tuple[str, str | None, dict | None]:
         """Extract entities via OpenRouter, with primary→fallback routing.
 
@@ -2651,6 +2703,10 @@ class SchemaResolver:
         ``system_prompt`` defaults to the open-ended :data:`EXTRACTION_SYSTEM`;
         a constrained (discovery) extraction passes the type/attribute-narrowed
         system prompt (ONTA-199).
+
+        ``max_tokens`` is the adaptive completion budget (ONTA-381); when omitted
+        the base :attr:`EXTRACT_MAX_TOKENS` ceiling is used so existing callers /
+        mocks that don't pass the kwarg keep working.
         """
         return await openrouter_chat(
             self._openrouter_key,
@@ -2658,7 +2714,9 @@ class SchemaResolver:
             user_content,
             model=self.EXTRACT_MODEL,
             temperature=0,
-            max_tokens=self.EXTRACT_MAX_TOKENS,
+            max_tokens=(
+                max_tokens if max_tokens is not None else self.EXTRACT_MAX_TOKENS
+            ),
             timeout=60,
             return_finish_reason=True,
             return_usage=True,
