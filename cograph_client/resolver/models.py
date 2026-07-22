@@ -116,6 +116,13 @@ class ExtractionResult(BaseModel):
     entities: list[ExtractedEntity] = Field(default_factory=list)
     relationships: list[ExtractedRelationship] = Field(default_factory=list)
     source_text: str = ""
+    # ONTA-382: attribute-ceiling drops collected by the post-extraction allowlist
+    # backstop (``attributes_exhaustive``). Each entry is a :class:`CleanFact`
+    # (or a dict with the same shape) ready to fold into ``IngestResult.clean_report``
+    # so a ceiling drop is never silent. Empty on the open / illustrative path —
+    # byte-identical to pre-ONTA-382. Typed ``list[Any]`` to avoid a forward-ref
+    # dance with ``CleanFact`` (defined later in this module).
+    ceiling_drops: list[Any] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -292,10 +299,25 @@ class ExtractionConstraint(BaseModel):
             "strip lineage, emit no relationships. True: a SOFT prior — the focus "
             "type + attributes are a hint, but the extractor decomposes faithfully "
             "(most-specific subtypes, real-world values as nodes, multi-valued "
-            "splits, reuse-first) and the post-extraction guard is a no-op. Soft "
+            "splits, reuse-first) and the post-extraction type guard is a no-op. Soft "
             "restores correct ontology shape on discovery while the prior keeps "
             "extraction focused + compact (measurements stay literal, no per-column "
-            "type explosion)."
+            "type explosion). Pair with ``attributes_exhaustive`` (ONTA-382) when "
+            "the listed attributes must still act as a hard CEILING even in soft "
+            "mode — soft type decomposition stays, unlisted attributes do not."
+        ),
+    )
+    attributes_exhaustive: bool = Field(
+        default=False,
+        description=(
+            "ONTA-382 — EXHAUSTIVE vs ILLUSTRATIVE attribute set. False (default): "
+            "the listed attributes are a FLOOR / prior (illustrative) — soft mode "
+            "may keep extra attributes the source justifies. True: the listed "
+            "attributes are a CEILING (allowlist) — even in soft mode, focus-type "
+            "records keep ONLY those attributes (plus name/label/title identity); "
+            "unlisted attributes are dropped and recorded on the CleanReport ledger. "
+            "Hard mode already enforces a ceiling regardless of this flag. Open when "
+            "the user never named a closed field list."
         ),
     )
 
@@ -308,6 +330,33 @@ class ExtractionConstraint(BaseModel):
         """Allowed attribute names for ``type_name``, or ``None`` = unrestricted."""
         attrs = self.attributes.get(type_name)
         return set(attrs) if attrs else None
+
+    def ceiling_attributes_for(
+        self, type_name: str, parent_chain: list[str] | None = None
+    ) -> set[str] | None:
+        """Attribute allowlist for a focus-related entity under an exhaustive ceiling.
+
+        Applies to the confirmed focus type(s) and to soft-mode subtypes of those
+        focus types (detected via ``parent_chain``). Off-type entities the soft
+        decomposer lifts out (City, Organization, …) are unrestricted — ``None``.
+        Direct map hit wins; otherwise the (single) focus type's list is inherited.
+        """
+        focus_types = set(self.types)
+        chain = list(parent_chain or [])
+        is_focus_related = type_name in focus_types or any(p in focus_types for p in chain)
+        if not is_focus_related:
+            return None
+        attrs = self.attributes.get(type_name)
+        if attrs:
+            return set(attrs)
+        for focus in self.types:
+            focus_attrs = self.attributes.get(focus)
+            if focus_attrs:
+                return set(focus_attrs)
+        if len(self.attributes) == 1:
+            only = next(iter(self.attributes.values()))
+            return set(only) if only else None
+        return None
 
 
 # ---------------------------------------------------------------------------
