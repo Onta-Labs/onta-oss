@@ -68,6 +68,8 @@ from cograph_client.resolver.attribute_resolver import (
 )
 from cograph_client.resolver.models import (
     AttrAction,
+    CleanFact,
+    CleanOutcome,
     ColumnMapping,
     ColumnRole,
     CSVSchemaMapping,
@@ -363,6 +365,20 @@ field is correct and an invented one is a bug.
 The focus type + expected attributes below say what to look for; add exactly the \
 structure the data justifies and keep it tight."""
 
+# ONTA-382: appended to EXTRACTION_TARGET_SYSTEM when attributes_exhaustive is
+# True. Soft type decomposition stays (subtypes, real-world nodes, relationships);
+# the listed attributes become a hard CEILING on focus-type records.
+EXTRACTION_TARGET_ATTR_CEILING = """\
+
+ATTRIBUTE CEILING (overrides the "guide, not a limit" reading of attributes above):
+The listed attributes for each focus type are EXHAUSTIVE — emit ONLY those \
+attributes (plus each entity's key/identifier: name/label/title) on focus-type \
+records. Do NOT invent, inventively rename, or emit extra attributes on the focus \
+type just because the source happens to carry them. Off-type nodes you lift out \
+(places, orgs, categories) may keep their own identifying attributes; measurements \
+about the focus subject still attach to the focus subject as literals from the \
+listed set only."""
+
 EXTRACTION_TARGET_USER_TEMPLATE = """\
 
 FOCUS — you are collecting records of:
@@ -372,6 +388,18 @@ real-world values (places, orgs, people, categories) into their own nodes via \
 relationships, split multi-valued fields into separate assertions, and keep pure \
 measurements / identifiers as literals. The focus type + attributes are a guide, \
 not a limit — add the structure the data justifies, reuse types, stay compact."""
+
+EXTRACTION_TARGET_USER_CEILING_TEMPLATE = """\
+
+FOCUS — you are collecting records of:
+{constraint_lines}
+Model each record with its most specific type (subtypes encouraged), lift \
+real-world values (places, orgs, people, categories) into their own nodes via \
+relationships, split multi-valued fields into separate assertions, and keep pure \
+measurements / identifiers as literals. For FOCUS-TYPE records, emit ONLY the \
+listed attributes (plus name/label/title) — that list is a CEILING, not a floor. \
+Off-type nodes you lift out keep their own identity attributes. Reuse types, \
+stay compact."""
 
 
 def _build_constraint_user_block(constraint) -> str:
@@ -389,12 +417,82 @@ def _build_constraint_user_block(constraint) -> str:
             lines.append(f"- {t}: {', '.join(attrs)}")
         else:
             lines.append(f"- {t}: (all confirmed attributes)")
-    template = (
-        EXTRACTION_TARGET_USER_TEMPLATE
-        if getattr(constraint, "soft", False)
-        else EXTRACTION_CONSTRAINT_USER_TEMPLATE
-    )
+    if getattr(constraint, "soft", False):
+        template = (
+            EXTRACTION_TARGET_USER_CEILING_TEMPLATE
+            if getattr(constraint, "attributes_exhaustive", False)
+            else EXTRACTION_TARGET_USER_TEMPLATE
+        )
+    else:
+        template = EXTRACTION_CONSTRAINT_USER_TEMPLATE
     return template.format(constraint_lines="\n".join(lines))
+
+
+# Identity attributes always retained under an attribute ceiling so a trimmed
+# record stays resolvable/displayable (mirrors the hard-constraint guard).
+_CEILING_IDENTITY_ATTRS = frozenset({"name", "label", "title"})
+
+
+def _apply_attribute_ceiling(result, constraint):
+    """ONTA-382 — allowlist focus-type attributes when the set is exhaustive.
+
+    Soft type decomposition (off-type nodes, relationships, lineage) is preserved;
+    only unlisted attributes on focus-related entities are dropped. Each drop is
+    recorded as a :class:`CleanFact` on ``result.ceiling_drops`` (folded into the
+    A3 CleanReport ledger by ``ingest``) and logged — never silent.
+    """
+    if constraint is None or not getattr(constraint, "is_active", False):
+        return result
+    if not getattr(constraint, "attributes_exhaustive", False):
+        return result
+
+    new_entities = []
+    drops: list[CleanFact] = list(getattr(result, "ceiling_drops", None) or [])
+    dropped_count = 0
+    for e in result.entities:
+        allowed = constraint.ceiling_attributes_for(
+            e.type_name, parent_chain=list(e.parent_chain or [])
+        )
+        if allowed is None:
+            new_entities.append(e)
+            continue
+        allowed = allowed | _CEILING_IDENTITY_ATTRS
+        kept = []
+        for a in e.attributes:
+            if a.name in allowed:
+                kept.append(a)
+                continue
+            dropped_count += 1
+            drops.append(
+                CleanFact(
+                    datatype=getattr(a, "datatype", None) or "string",
+                    raw_value=str(a.value) if a.value is not None else "",
+                    clean_value=None,
+                    outcome=CleanOutcome.DROPPED,
+                    conformed=False,
+                    reason="attribute_ceiling",
+                    entity_id=e.id,
+                    attribute=a.name,
+                )
+            )
+        if len(kept) != len(e.attributes):
+            new_entities.append(e.model_copy(update={"attributes": kept}))
+        else:
+            new_entities.append(e)
+
+    if dropped_count:
+        logger.info(
+            "extraction_attribute_ceiling_applied",
+            dropped_attributes=dropped_count,
+            focus_types=list(constraint.types),
+            kept_entities=len(new_entities),
+        )
+    return ExtractionResult(
+        entities=new_entities,
+        relationships=list(result.relationships),
+        source_text=result.source_text,
+        ceiling_drops=drops,
+    )
 
 
 def _apply_extraction_constraint(result, constraint):
@@ -407,6 +505,11 @@ def _apply_extraction_constraint(result, constraint):
         attribute is always kept so the record stays identifiable).
     Relationships between surviving entities are preserved. A ``None`` /
     inactive constraint returns ``result`` unchanged (document path no-op).
+
+    SOFT mode keeps off-type entities / lineage / relationships (decomposition
+    is the desired output). When ``attributes_exhaustive`` is also set
+    (ONTA-382), soft mode STILL enforces the attribute allowlist on focus-type
+    records — type decomposition stays free, attribute set is a ceiling.
 
     ``result`` is an :class:`ExtractionResult`; ``constraint`` an
     :class:`ExtractionConstraint`.
@@ -426,6 +529,11 @@ def _apply_extraction_constraint(result, constraint):
         # subject may live in another chunk. The merged full-batch pass in
         # ``ingest`` (allow_strip=True) is the only one trusted to strip / judge
         # starvation, so a cross-chunk metric survives to be re-homed there.
+        # ONTA-382 attribute ceiling is applied once over the FULLY-MERGED
+        # extraction in ``ingest`` (after the authoritative soft focus floor),
+        # not per-chunk — so a soft-floor re-home that lands a metric on the
+        # focus subject is still ceiling-checked, and drop ledgering is not
+        # doubled across chunk merges.
         return _apply_soft_focus_floor(result, constraint, allow_strip=False)
     allowed_types = set(constraint.types)
     kept_entities = []
@@ -1344,6 +1452,7 @@ class SchemaResolver:
         constrain_types: list[str] | None = None,
         constrain_attributes: dict[str, list[str]] | None = None,
         constrain_soft: bool = False,
+        constrain_attributes_exhaustive: bool = False,
         run_id: str | None = None,
         observed_at: datetime | None = None,
         fact_ids: list[str] | None = None,
@@ -1373,6 +1482,13 @@ class SchemaResolver:
                 type absent from this map is unrestricted on attributes. ``None``
                 = no attribute restriction. Only meaningful alongside
                 ``constrain_types``.
+            constrain_attributes_exhaustive: OPT-IN, DISCOVERY-ONLY (ONTA-382).
+                When True, ``constrain_attributes`` is a CEILING (allowlist) even
+                under soft extraction — unlisted attributes on focus-type records
+                are dropped and ledgered. When False (default), soft mode treats
+                the list as an illustrative prior / floor (LLM may extend). Hard
+                mode always ceilings regardless. Open default preserves pre-382
+                behavior for every non-discovery / open-mode caller.
             fact_ids: OPT-IN A1→A2 lineage handoff (ONTA-371). The per-row A1
                 ``fact_id`` of each row in this micro-batch, in row order, forwarded
                 from the discovery capability's A1 Source Bundle. Recorded for
@@ -1393,6 +1509,7 @@ class SchemaResolver:
                 types=list(constrain_types),
                 attributes={k: list(v) for k, v in (constrain_attributes or {}).items()},
                 soft=constrain_soft,
+                attributes_exhaustive=bool(constrain_attributes_exhaustive),
             )
         # ONTA-371: record the A1→A2 lineage handoff (the discovery capability now
         # drives extraction from the A1 Source Bundle and forwards each row's A1
@@ -1560,6 +1677,10 @@ class SchemaResolver:
         # metrics are off the concept nodes, this is a no-op.
         if constraint is not None and constraint.is_active and constraint.soft:
             extraction = _apply_soft_focus_floor(extraction, constraint)
+            # ONTA-382: exhaustive attribute set → ceiling on focus-type attrs
+            # after the full-batch soft focus floor (authoritative merged view).
+            if getattr(constraint, "attributes_exhaustive", False):
+                extraction = _apply_attribute_ceiling(extraction, constraint)
             # A2 zero-ontology-commitment contract (ONTA-272): the soft-typed
             # candidate facts must carry NO committed ontology reference in any type
             # slot (soft lineage is fine — it is P5's suggestion, not a commitment).
@@ -1612,6 +1733,19 @@ class SchemaResolver:
             rows_in=rows_in,
             rows_dropped=rows_dropped,
         )
+        # ONTA-382: fold attribute-ceiling drops into the A3 CleanReport ledger
+        # so unlisted attributes the extractor emitted are never silent-discarded.
+        # Each drop is a DROPPED CleanFact with reason="attribute_ceiling".
+        for drop in getattr(extraction, "ceiling_drops", None) or []:
+            if isinstance(drop, CleanFact):
+                result.clean_report.record(drop)
+            elif isinstance(drop, dict):
+                try:
+                    result.clean_report.record(CleanFact(**drop))
+                except Exception:  # noqa: BLE001 — ledger is observability-only
+                    logger.warning(
+                        "attribute_ceiling_drop_unrecordable", drop=drop, exc_info=True
+                    )
         entity_uri_map: dict[str, str] = {}  # entity id → URI
         entity_type_map: dict[str, str] = {}  # entity id → resolved type name
 
@@ -2694,12 +2828,14 @@ class SchemaResolver:
         if constraint_block:
             # SOFT (seed) → the target-schema PRIOR (decompose faithfully);
             # HARD (ONTA-199) → the flat single-type cage. Both narrow the prompt
-            # but only HARD flattens.
-            constraint_system = (
-                EXTRACTION_TARGET_SYSTEM
-                if getattr(constraint, "soft", False)
-                else EXTRACTION_CONSTRAINT_SYSTEM
-            )
+            # but only HARD flattens. ONTA-382: soft + attributes_exhaustive
+            # appends the attribute-ceiling note so the model sees the closed set.
+            if getattr(constraint, "soft", False):
+                constraint_system = EXTRACTION_TARGET_SYSTEM
+                if getattr(constraint, "attributes_exhaustive", False):
+                    constraint_system = constraint_system + EXTRACTION_TARGET_ATTR_CEILING
+            else:
+                constraint_system = EXTRACTION_CONSTRAINT_SYSTEM
             system_prompt = EXTRACTION_SYSTEM + constraint_system
             user_content = user_content + constraint_block
             _sys_kw = {"system_prompt": system_prompt}

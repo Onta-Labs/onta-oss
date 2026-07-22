@@ -619,17 +619,31 @@ class WebIngestCapability:
         # over an explicit field list, parse it straight from the accumulated
         # instruction WITHOUT the LLM, so the plan can GUARANTEE none of their named
         # fields is silently dropped or renamed by the non-deterministic spec
-        # resolver (the RCA: 18 named fields collapsed to a generic 9). The LLM's
-        # ``confirmed_attributes`` may EXTEND this floor but never shrink it.
+        # resolver (the RCA: 18 named fields collapsed to a generic 9).
+        #
+        # ONTA-382 — EXHAUSTIVE vs ILLUSTRATIVE. A non-empty explicit user list is
+        # a CLOSED set: it is both the FLOOR (ONTA-239) and the CEILING (allowlist
+        # extraction). The LLM's ``confirmed_attributes`` may NOT extend it. An
+        # empty explicit list keeps the open/illustrative default: the LLM set may
+        # extend the floor, and soft extraction may keep extra attributes.
         user_floor = _snap_to_declared(
             _explicit_user_fields(instruction), declared_attrs
         )
         llm_confirmed = _snap_to_declared(
             _as_list(spec.get("confirmed_attributes")), declared_attrs
         )
-        # Floor FIRST so the user's own names + order win over the LLM's rephrasing;
-        # the LLM set only contributes any ADDITIONAL fields it surfaced.
-        confirmed = _dedupe([key_attr, *user_floor, *llm_confirmed])
+        # Exhaustive signal: user enumerated a closed field list (chip "Use these:"
+        # or natural "with fields a, b, c"). Threaded request → plan params → A1
+        # extract handoff → ExtractionConstraint.attributes_exhaustive.
+        attributes_exhaustive = bool(user_floor)
+        if attributes_exhaustive:
+            # CEILING = FLOOR: only the user's named fields (+ key). LLM may not
+            # extend the committed attribute set.
+            confirmed = _dedupe([key_attr, *user_floor])
+        else:
+            # ILLUSTRATIVE / open: floor-first so the user's own names + order win
+            # over the LLM's rephrasing; the LLM set contributes ADDITIONAL fields.
+            confirmed = _dedupe([key_attr, *user_floor, *llm_confirmed])
         suggested = _dedupe([key_attr, *spec.get("suggested_attributes", [])])
 
         # ONTA-244 (schema fidelity) — NEVER downgrade a user-named type to the
@@ -702,7 +716,9 @@ class WebIngestCapability:
         # (the suggested set is the LLM's richer guess at web-discoverable
         # columns), so the provider returns a rich table the extractor can
         # normalize into Model/Organization/Score/etc. The confirmed set still
-        # drives naming + preview above.
+        # drives naming + preview above. ONTA-382: even under an exhaustive
+        # attribute CEILING the fetch stays comprehensive — the ceiling is
+        # enforced at extraction (allowlist), not by starving the provider.
         hint_columns = _dedupe([key_attr, *confirmed, *suggested])
 
         # Enumeration partition (fan-out, ONTA-192): for an "all X in Y and Z"
@@ -779,6 +795,8 @@ class WebIngestCapability:
                         "subqueries": subqueries,
                         "proposed_type": type_name,
                         "attributes": attributes,
+                        # ONTA-382: exhaustive (closed) vs illustrative (open) attr set.
+                        "attributes_exhaustive": attributes_exhaustive,
                         "hint_columns": hint_columns,
                         "max_rows": cap,
                         "kg_name": ctx.kg_name,
@@ -919,6 +937,8 @@ class WebIngestCapability:
                 "subqueries": subqueries,
                 "proposed_type": type_name,
                 "attributes": attributes,
+                # ONTA-382: exhaustive (closed) vs illustrative (open) attr set.
+                "attributes_exhaustive": attributes_exhaustive,
                 # Full ensemble for the execute-time fan-out (primary kept in
                 # "provider" for older persisted steps).
                 "providers": [pr.name for pr in ensemble],
@@ -1017,6 +1037,10 @@ class WebIngestCapability:
             or [query]
         )
         attributes = p.get("attributes") or []
+        # ONTA-382: exhaustive attribute set (closed allowlist). Older persisted
+        # steps predate this key → treat as illustrative (open), matching the
+        # pre-382 soft-extract default.
+        attributes_exhaustive = bool(p.get("attributes_exhaustive"))
         # COMPREHENSIVE fetch hint persisted at plan time so the full pull uses the
         # SAME rich projection the sample did — the column projection is the stable
         # part of the preview (the discovered shape was only an estimate). Older
@@ -1506,6 +1530,13 @@ class WebIngestCapability:
                                             proposed_type: list(attributes)
                                         },
                                         constrain_soft=_DISCOVERY_SOFT_EXTRACT,
+                                        # ONTA-382: exhaustive (closed) attribute
+                                        # set → extraction allowlist/ceiling even
+                                        # under soft mode. Illustrative/open keeps
+                                        # the soft prior-only behavior.
+                                        constrain_attributes_exhaustive=(
+                                            attributes_exhaustive
+                                        ),
                                         # ONTA-372: same run_id as the A1 bundle so
                                         # the resolver keys the A6 Graph Delta off
                                         # ONE run lineage instead of a fresh uuid4.
