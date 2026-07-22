@@ -1,0 +1,53 @@
+{
+  "id": "tier3-provider-registry-small",
+  "domain": "healthcare-provider-registry",
+  "goal": "Build a knowledge graph of healthcare providers, their provider type, taxonomy group, and state, then answer questions about it.",
+  "notes": "Small self-contained Tier-3 fixture in the holdout-v2 gold shape. Gold values are consistent with the bundled source CSV so a find->...->ask run is reproducible offline. Graph/predicate URIs are neutral example.org placeholders; the pure outcome grader never executes gold_sparql.",
+  "source_seed": {
+    "kind": "bundled_file",
+    "path": "sources/provider_registry_small.csv"
+  },
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "How many distinct provider types are there?",
+      "tier": "T1",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?providerType) AS ?count) FROM <https://example.org/graphs/tier3/provider-registry> WHERE {\n  ?p <https://example.org/tier3/provider-registry/pred/provider_type> ?providerType .\n}",
+      "full_expected_items": ["2"],
+      "full_result_count": 1,
+      "expected_answer": "2",
+      "reasoning": "Distinct provider_type values in the source are {Individual, Organization} = 2. Single entity, aggregation, no joins -> T1."
+    },
+    {
+      "id": "q-002",
+      "question": "List all taxonomy groups represented.",
+      "tier": "T1",
+      "gold_sparql": "SELECT DISTINCT ?taxonomyGroup FROM <https://example.org/graphs/tier3/provider-registry> WHERE {\n  ?p <https://example.org/tier3/provider-registry/pred/taxonomy_group> ?taxonomyGroup .\n}",
+      "full_expected_items": ["Cardiology", "Nursing", "Pharmacy"],
+      "full_result_count": 3,
+      "expected_answer": "Cardiology, Nursing, Pharmacy",
+      "reasoning": "Distinct taxonomy_group values. Single entity, no joins, no filters -> T1.",
+      "gold_citations": ["sources/provider_registry_small.csv"]
+    },
+    {
+      "id": "q-003",
+      "question": "How many providers are located in California (CA)?",
+      "tier": "T2",
+      "gold_sparql": "SELECT (COUNT(?p) AS ?count) FROM <https://example.org/graphs/tier3/provider-registry> WHERE {\n  ?p <https://example.org/tier3/provider-registry/pred/state> ?state .\n  FILTER(?state = \"CA\")\n}",
+      "full_expected_items": ["3"],
+      "full_result_count": 1,
+      "expected_answer": "3",
+      "reasoning": "Providers with state=CA are Ashen Clinic, Cinder Health, Tinderbox Care = 3. Filter on one attribute -> T2."
+    },
+    {
+      "id": "q-004",
+      "question": "Which providers practice under the Cardiology taxonomy group?",
+      "tier": "T3",
+      "gold_sparql": "SELECT ?name FROM <https://example.org/graphs/tier3/provider-registry> WHERE {\n  ?p <https://example.org/tier3/provider-registry/pred/taxonomy_group> \"Cardiology\" .\n  ?p <https://example.org/tier3/provider-registry/pred/provider_name> ?name .\n}",
+      "full_expected_items": ["Ashen Clinic", "Cinder Health"],
+      "full_result_count": 2,
+      "expected_answer": "Ashen Clinic, Cinder Health",
+      "reasoning": "Traversal from taxonomy group to the providers under it -> T3."
+    }
+  ]
+}
