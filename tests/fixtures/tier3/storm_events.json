@@ -1,0 +1,52 @@
+{
+  "id": "tier3-storm-events-small",
+  "domain": "noaa-storm-events",
+  "goal": "Ingest recorded storm events with their type, state, damage, and injuries, and answer analytical questions about them.",
+  "notes": "Small self-contained Tier-3 fixture in the holdout-v2 gold shape. Includes a T4 aggregation whose gold sum is consistent with the bundled CSV. Neutral example.org URIs; gold_sparql is provenance only, never executed by the pure grader.",
+  "source_seed": {
+    "kind": "bundled_file",
+    "path": "sources/storm_events_small.csv"
+  },
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "How many storm events are recorded?",
+      "tier": "T1",
+      "gold_sparql": "SELECT (COUNT(?e) AS ?count) FROM <https://example.org/graphs/tier3/storm-events> WHERE {\n  ?e a <https://example.org/tier3/storm-events/type/StormEvent> .\n}",
+      "full_expected_items": ["5"],
+      "full_result_count": 1,
+      "expected_answer": "5",
+      "reasoning": "Five rows in the source -> five StormEvent entities. Count over a single entity -> T1."
+    },
+    {
+      "id": "q-002",
+      "question": "How many events occurred in Texas (TX)?",
+      "tier": "T2",
+      "gold_sparql": "SELECT (COUNT(?e) AS ?count) FROM <https://example.org/graphs/tier3/storm-events> WHERE {\n  ?e <https://example.org/tier3/storm-events/pred/state> \"TX\" .\n}",
+      "full_expected_items": ["3"],
+      "full_result_count": 1,
+      "expected_answer": "3",
+      "reasoning": "Events with state=TX are E001, E003, E005 = 3. Single-attribute filter -> T2."
+    },
+    {
+      "id": "q-003",
+      "question": "List the distinct states with recorded storm events.",
+      "tier": "T1",
+      "gold_sparql": "SELECT DISTINCT ?state FROM <https://example.org/graphs/tier3/storm-events> WHERE {\n  ?e <https://example.org/tier3/storm-events/pred/state> ?state .\n}",
+      "full_expected_items": ["TX", "KS", "OK"],
+      "full_result_count": 3,
+      "expected_answer": "TX, KS, OK",
+      "reasoning": "Distinct state values across events. Single entity, no joins -> T1."
+    },
+    {
+      "id": "q-004",
+      "question": "What is the total damage in USD from Tornado events?",
+      "tier": "T4",
+      "gold_sparql": "SELECT (SUM(?damage) AS ?total) FROM <https://example.org/graphs/tier3/storm-events> WHERE {\n  ?e <https://example.org/tier3/storm-events/pred/event_type> \"Tornado\" .\n  ?e <https://example.org/tier3/storm-events/pred/damage_usd> ?damage .\n}",
+      "full_expected_items": ["90000"],
+      "full_result_count": 1,
+      "expected_answer": "90000",
+      "reasoning": "Tornado events E002 (50000) + E005 (40000) = 90000. Filter + aggregation over the filtered set -> T4."
+    }
+  ]
+}

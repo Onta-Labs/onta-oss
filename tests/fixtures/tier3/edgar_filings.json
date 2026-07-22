@@ -1,0 +1,52 @@
+{
+  "id": "tier3-edgar-filings-small",
+  "domain": "sec-edgar-filings",
+  "goal": "Create a knowledge graph of SEC filings with the filing company, form type, fiscal year, and revenue, and answer questions about the filings.",
+  "notes": "Small self-contained Tier-3 fixture in the holdout-v2 gold shape. Gold values track the bundled CSV. Neutral example.org URIs; gold_sparql carried for provenance only.",
+  "source_seed": {
+    "kind": "bundled_file",
+    "path": "sources/edgar_filings_small.csv"
+  },
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "How many filings are there in total?",
+      "tier": "T1",
+      "gold_sparql": "SELECT (COUNT(?f) AS ?count) FROM <https://example.org/graphs/tier3/edgar-filings> WHERE {\n  ?f a <https://example.org/tier3/edgar-filings/type/Filing> .\n}",
+      "full_expected_items": ["4"],
+      "full_result_count": 1,
+      "expected_answer": "4",
+      "reasoning": "Four rows -> four Filing entities. Count over a single entity -> T1."
+    },
+    {
+      "id": "q-002",
+      "question": "How many 10-K filings are there?",
+      "tier": "T2",
+      "gold_sparql": "SELECT (COUNT(?f) AS ?count) FROM <https://example.org/graphs/tier3/edgar-filings> WHERE {\n  ?f <https://example.org/tier3/edgar-filings/pred/form_type> \"10-K\" .\n}",
+      "full_expected_items": ["2"],
+      "full_result_count": 1,
+      "expected_answer": "2",
+      "reasoning": "Filings F001 and F002 are 10-K = 2. Single-attribute filter -> T2."
+    },
+    {
+      "id": "q-003",
+      "question": "List the distinct companies that filed.",
+      "tier": "T1",
+      "gold_sparql": "SELECT DISTINCT ?company FROM <https://example.org/graphs/tier3/edgar-filings> WHERE {\n  ?f <https://example.org/tier3/edgar-filings/pred/company> ?company .\n}",
+      "full_expected_items": ["Vantablack Corp", "Umbra Industries", "Penumbra LLC"],
+      "full_result_count": 3,
+      "expected_answer": "Vantablack Corp, Umbra Industries, Penumbra LLC",
+      "reasoning": "Distinct company values across filings. Single entity, no joins -> T1."
+    },
+    {
+      "id": "q-004",
+      "question": "Which companies filed a 10-Q?",
+      "tier": "T3",
+      "gold_sparql": "SELECT DISTINCT ?company FROM <https://example.org/graphs/tier3/edgar-filings> WHERE {\n  ?f <https://example.org/tier3/edgar-filings/pred/form_type> \"10-Q\" .\n  ?f <https://example.org/tier3/edgar-filings/pred/company> ?company .\n}",
+      "full_expected_items": ["Penumbra LLC", "Vantablack Corp"],
+      "full_result_count": 2,
+      "expected_answer": "Penumbra LLC, Vantablack Corp",
+      "reasoning": "Traversal from 10-Q filings to their companies -> T3."
+    }
+  ]
+}
