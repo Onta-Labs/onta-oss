@@ -1071,6 +1071,12 @@ class WebIngestCapability:
                 manifest=RunManifest(run_id=job_id, stage="discovery"),
                 # Chat provenance: link the job to the conversation that spawned it.
                 thread_id=getattr(ctx, "session_id", None),
+                # Per-run HARD spend ceiling (ONTA-378): a per-turn ceiling
+                # threaded from the /agent request. The resolve_spend_ceiling(...)
+                # call just below reads job.spend_ceiling_usd as the explicit
+                # override, so it WINS over the deployment default and bounds THIS
+                # discovery run. None → deployment default (unchanged behavior).
+                spend_ceiling_usd=getattr(ctx, "spend_ceiling_usd", None),
             )
             # A9 cost envelope (ONTA-282): stamp the HARD per-run spend ceiling on
             # the manifest. A per-job override wins; else the deployment default

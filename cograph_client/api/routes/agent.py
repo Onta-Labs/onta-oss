@@ -73,6 +73,14 @@ class AgentRequest(BaseModel):
     context: AgentRequestContext = Field(default_factory=AgentRequestContext)
     session_id: str | None = None
     confirm: Confirm | None = None
+    # Optional HARD per-run spend ceiling (USD) for any enrichment/discovery job
+    # this turn kicks off (ONTA-282/ONTA-378). Default None → deployment default
+    # (unchanged behavior). Threaded onto AgentContext so the enrich/discovery
+    # capability stamps it onto the job it creates, where the executor's
+    # ``resolve_spend_ceiling(...)`` lets it WIN over the global default and bound
+    # that single job — so a caller (e.g. persona-eval's disposable tenant) can
+    # cap one run without touching the global/production ceiling.
+    spend_ceiling_usd: float | None = None
 
 
 def _build_ctx(
@@ -95,6 +103,9 @@ def _build_ctx(
         # job it creates (chat → job provenance). Covers both the classify/handle
         # and the confirm/execute-plan paths since ctx is built once from body.
         session_id=body.session_id,
+        # Per-run HARD spend ceiling (ONTA-378): threaded so the enrich/discovery
+        # capability bounds the single job it creates. None → deployment default.
+        spend_ceiling_usd=body.spend_ceiling_usd,
         openrouter_key=settings.openrouter_api_key
         or os.environ.get("OPENROUTER_API_KEY", ""),
         anthropic_key=settings.anthropic_api_key,
