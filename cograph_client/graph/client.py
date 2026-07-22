@@ -127,7 +127,18 @@ _RETRY_BACKOFF_S = 0.5
 class NeptuneClient:
     """SPARQL client for Neptune, Fuseki, or any SPARQL 1.1 endpoint."""
 
-    def __init__(self, endpoint: str, backend: str = "neptune"):
+    def __init__(
+        self,
+        endpoint: str,
+        backend: str = "neptune",
+        auth: tuple[str, str] | None = None,
+    ):
+        """``auth`` is an optional (username, password) HTTP Basic credential.
+        Neptune authorizes via IAM/network and needs none, so it defaults off;
+        it exists for auth-protected SPARQL endpoints such as a Fuseki store
+        whose update endpoint is guarded (e.g. the QC disposable-store sidecar,
+        which ships with an admin password). httpx sends the credential as an
+        ``Authorization: Basic`` header; it is never logged here."""
         self.endpoint = endpoint.rstrip("/")
         self.backend = backend
         paths = BACKENDS.get(backend, BACKENDS["neptune"])
@@ -140,6 +151,7 @@ class NeptuneClient:
             base_url=self.endpoint,
             timeout=120.0,
             verify=ssl_context if ssl_context else False,
+            auth=auth,
         )
 
     async def _post_with_retry(
