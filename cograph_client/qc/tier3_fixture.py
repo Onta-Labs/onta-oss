@@ -13,6 +13,11 @@ needed to measure the compounding *goal in → gold-graded answer out* pipeline:
     ``full_expected_items`` + ``full_result_count``) at a difficulty ``tier`` ∈
     {T1, T2, T3, T4}.
 
+Optional ``enumeration_scope`` (ONTA-384) pins gold for an enumeration +
+scoped-schema ingest goal (expected entity set, requested attribute ceiling,
+allowed/forbidden types) so the profile half of the grader can score coverage /
+scope-adherence / fragmentation of the produced graph offline.
+
 This module is the *schema + loader + validation* only — it neither runs a
 pipeline nor grades an answer (that is :mod:`cograph_client.qc.tier3_grade`). It is
 **pure**: no I/O beyond reading the fixture file the caller names, no network, no
@@ -44,6 +49,7 @@ __all__ = [
     "FixtureValidationError",
     "SourceSeed",
     "Tier3GoldQuestion",
+    "EnumerationScope",
     "Tier3Fixture",
     "tier_index",
     "load_fixture",
@@ -265,12 +271,137 @@ class Tier3GoldQuestion:
 
 
 # --------------------------------------------------------------------------- #
+# Enumeration + scoped-schema gold (ONTA-384 graph-profile bar)
+# --------------------------------------------------------------------------- #
+# Structural attributes always treated as in-scope even when not listed in the
+# goal's requested field set (type/label machinery + the key itself).
+_DEFAULT_STRUCTURAL_ATTRIBUTES: tuple[str, ...] = ("name", "label", "type")
+
+
+@dataclass(frozen=True)
+class EnumerationScope:
+    """Gold for an **enumeration + scoped-schema** ingest goal (ONTA-384).
+
+    Optional on a :class:`Tier3Fixture`. When present, the profile half of the
+    Tier-3 grader (``grade_enumeration_profile``) scores the graph the pipeline
+    produced for three independent failure modes that the BC-universities
+    regression compounded:
+
+      * **coverage** (guards P1 / ONTA-379) — fraction of ``expected_entities``
+        present under key-normalization;
+      * **scope-adherence** (guards P2 / ONTA-380+382) — produced attributes
+        must be ⊆ ``requested_attributes`` ∪ structural;
+      * **fragmentation** (guards P5 / ONTA-383) — type set vs
+        ``allowed_types`` / ``forbidden_types``.
+
+    Pure schema — the scorer lives in ``tier3_grade``.
+    """
+
+    expected_entities: tuple[str, ...]
+    requested_attributes: tuple[str, ...]
+    allowed_types: tuple[str, ...] = ()
+    forbidden_types: tuple[str, ...] = ()
+    key_attribute: str = "name"
+    # Variant spelling → canonical entity name (both sides free-form; the scorer
+    # normalizes). Stored as a tuple of pairs so the dataclass stays frozen.
+    alias_table: tuple[tuple[str, str], ...] = ()
+    structural_attributes: tuple[str, ...] = _DEFAULT_STRUCTURAL_ATTRIBUTES
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "EnumerationScope":
+        if not isinstance(d, Mapping):
+            raise FixtureValidationError(
+                f"enumeration_scope must be an object, got {type(d).__name__}"
+            )
+
+        raw_entities = d.get("expected_entities")
+        if not isinstance(raw_entities, Sequence) or isinstance(raw_entities, (str, bytes)):
+            raise FixtureValidationError(
+                "enumeration_scope.expected_entities must be a non-empty list of strings"
+            )
+        entities = tuple(str(x).strip() for x in raw_entities if str(x).strip())
+        if not entities:
+            raise FixtureValidationError(
+                "enumeration_scope.expected_entities must contain at least one entity"
+            )
+
+        raw_attrs = d.get("requested_attributes")
+        if not isinstance(raw_attrs, Sequence) or isinstance(raw_attrs, (str, bytes)):
+            raise FixtureValidationError(
+                "enumeration_scope.requested_attributes must be a non-empty list of strings"
+            )
+        attrs = tuple(str(x).strip() for x in raw_attrs if str(x).strip())
+        if not attrs:
+            raise FixtureValidationError(
+                "enumeration_scope.requested_attributes must contain at least one attribute"
+            )
+
+        def _str_tuple(key: str) -> tuple[str, ...]:
+            raw = d.get(key, ())
+            if raw is None:
+                return ()
+            if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+                raise FixtureValidationError(
+                    f"enumeration_scope.{key} must be a list of strings"
+                )
+            return tuple(str(x).strip() for x in raw if str(x).strip())
+
+        allowed = _str_tuple("allowed_types")
+        forbidden = _str_tuple("forbidden_types")
+        structural = _str_tuple("structural_attributes") or _DEFAULT_STRUCTURAL_ATTRIBUTES
+
+        key_attribute = str(d.get("key_attribute", "name")).strip() or "name"
+
+        raw_aliases = d.get("alias_table") or {}
+        if not isinstance(raw_aliases, Mapping):
+            raise FixtureValidationError(
+                "enumeration_scope.alias_table must be an object of variant→canonical"
+            )
+        alias_table = tuple(
+            (str(k), str(v))
+            for k, v in raw_aliases.items()
+            if str(k).strip() and str(v).strip()
+        )
+
+        return cls(
+            expected_entities=entities,
+            requested_attributes=attrs,
+            allowed_types=allowed,
+            forbidden_types=forbidden,
+            key_attribute=key_attribute,
+            alias_table=alias_table,
+            structural_attributes=structural,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "expected_entities": list(self.expected_entities),
+            "requested_attributes": list(self.requested_attributes),
+            "key_attribute": self.key_attribute,
+        }
+        if self.allowed_types:
+            out["allowed_types"] = list(self.allowed_types)
+        if self.forbidden_types:
+            out["forbidden_types"] = list(self.forbidden_types)
+        if self.alias_table:
+            out["alias_table"] = {k: v for k, v in self.alias_table}
+        if self.structural_attributes != _DEFAULT_STRUCTURAL_ATTRIBUTES:
+            out["structural_attributes"] = list(self.structural_attributes)
+        return out
+
+
+# --------------------------------------------------------------------------- #
 # The fixture
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class Tier3Fixture:
     """One whole-product QC fixture: goal + reproducible source seed + graded gold
-    questions. Built (and validated) via :meth:`from_dict` / :func:`load_fixture`."""
+    questions. Built (and validated) via :meth:`from_dict` / :func:`load_fixture`.
+
+    Optional ``enumeration_scope`` (ONTA-384) pins the gold for an enumeration +
+    scoped-schema ingest goal so the profile grader can score coverage /
+    scope-adherence / fragmentation of the produced graph offline.
+    """
 
     id: str
     goal: str
@@ -279,6 +410,8 @@ class Tier3Fixture:
     # Optional metadata for reporting / grouping — never load-bearing.
     domain: str = ""
     notes: str = ""
+    # Optional enumeration + scoped-schema gold (ONTA-384).
+    enumeration_scope: Optional[EnumerationScope] = None
     # Directory the fixture was loaded from (for resolving a bundled source path).
     base_dir: str = field(default="", compare=False)
 
@@ -318,6 +451,10 @@ class Tier3Fixture:
                 )
             seen.add(q.id)
 
+        enumeration_scope: Optional[EnumerationScope] = None
+        if d.get("enumeration_scope") is not None:
+            enumeration_scope = EnumerationScope.from_dict(d["enumeration_scope"])
+
         return cls(
             id=fid,
             goal=goal,
@@ -325,6 +462,7 @@ class Tier3Fixture:
             questions=questions,
             domain=str(d.get("domain", "")),
             notes=str(d.get("notes", "")),
+            enumeration_scope=enumeration_scope,
             base_dir=base_dir,
         )
 
@@ -362,6 +500,8 @@ class Tier3Fixture:
             out["domain"] = self.domain
         if self.notes:
             out["notes"] = self.notes
+        if self.enumeration_scope is not None:
+            out["enumeration_scope"] = self.enumeration_scope.to_dict()
         return out
 
 
