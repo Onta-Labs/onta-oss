@@ -21,9 +21,31 @@ from cograph_client.pipeline.envelope import (
     ArtifactEnvelope,
     derive_fact_id,
 )
+from cograph_client.pipeline.stage_trace import (
+    STAGE_CATALOG,
+    JobStageTrace,
+    StageAction,
+    StageProjectId,
+    StageProjectTrace,
+    StageStatus,
+    StageTraceRecorder,
+    new_trace_for_job,
+    reconstruct_from_job,
+    resolve_trace,
+)
 
 __all__ = [
     "FACT_ID_NAMESPACE",
     "ArtifactEnvelope",
     "derive_fact_id",
+    "STAGE_CATALOG",
+    "JobStageTrace",
+    "StageAction",
+    "StageProjectId",
+    "StageProjectTrace",
+    "StageStatus",
+    "StageTraceRecorder",
+    "new_trace_for_job",
+    "reconstruct_from_job",
+    "resolve_trace",
 ]
