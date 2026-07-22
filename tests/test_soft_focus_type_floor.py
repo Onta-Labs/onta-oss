@@ -489,10 +489,16 @@ async def test_ingest_real_two_chunk_path_rehomes_across_chunks(tmp_path, monkey
     resolver._fetch_ontology = AsyncMock(return_value=({}, {}))
     resolver._fetch_parent_map = AsyncMock(return_value={})
 
-    # Force exactly two text chunks with distinctive markers.
+    # Force exactly two text chunks with distinctive markers. Chunk bodies must
+    # also carry the attribute values the mock extraction returns so the
+    # ONTA-380 source-grounding backstop keeps them (unknown → omit; a value
+    # that never appears in the chunk is treated as fabrication).
     monkeypatch.setattr(
         "cograph_client.resolver.chunker.chunk_text",
-        lambda content: ["WIDGET_CHUNK", "CERT_CHUNK"],
+        lambda content: [
+            "WIDGET_CHUNK Widget One",
+            "CERT_CHUNK SprocketSafe cost_per_unit 4.20",
+        ],
     )
 
     widget_payload = {
