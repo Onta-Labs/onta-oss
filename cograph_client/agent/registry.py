@@ -63,6 +63,14 @@ class AgentContext:
     # job is traceable back to its conversation. Read defensively
     # (``getattr(ctx, "session_id", None)``) so older contexts keep working.
     session_id: Optional[str] = None
+    # Optional HARD per-run spend ceiling (USD) for any enrichment/discovery job
+    # this turn creates (ONTA-282/ONTA-378). Threaded from the canonical /agent
+    # request body (``spend_ceiling_usd``). A capability stamps it onto the job it
+    # creates (read defensively via ``getattr(ctx, "spend_ceiling_usd", None)``),
+    # where the executor's ``resolve_spend_ceiling(...)`` lets it WIN over the
+    # deployment default and bound that single job. None → deployment default
+    # (unchanged behavior) so older contexts keep working.
+    spend_ceiling_usd: Optional[float] = None
     # Free-form extras (e.g. the enrichment executor/job-store stashed on
     # app.state) so a capability can reuse app-scoped singletons without the
     # context model needing to know about every engine.

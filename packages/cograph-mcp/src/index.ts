@@ -651,9 +651,28 @@ server.registerTool(
             "id (the only mutating path) instead of sending a new message. Use " +
             "the plan_id from a prior 'plan' result.",
         ),
+      spend_ceiling_usd: z
+        .number()
+        .min(0)
+        .optional()
+        .describe(
+          "Optional HARD per-run spend ceiling in USD for any paid " +
+            "enrichment/discovery job this turn kicks off (ONTA-282/ONTA-378). " +
+            "The job HALTS CLEANLY once its cumulative spend reaches this figure. " +
+            "Omit for the deployment default; 0 means unlimited. Lets a caller " +
+            "bound a single run without changing the global ceiling.",
+        ),
     },
   },
-  async ({ message, kg_name, type_name, urls, session_id, confirm_plan_id }) => {
+  async ({
+    message,
+    kg_name,
+    type_name,
+    urls,
+    session_id,
+    confirm_plan_id,
+    spend_ceiling_usd,
+  }) => {
     try {
       const result = await client().agent({
         message,
@@ -665,6 +684,7 @@ server.registerTool(
         // the caller does not supply its own conversation id.
         sessionId: session_id ?? DEFAULT_SESSION_ID,
         confirmPlanId: confirm_plan_id,
+        spendCeilingUsd: spend_ceiling_usd,
       });
       return textResult(describeAgentResult(result));
     } catch (err) {
