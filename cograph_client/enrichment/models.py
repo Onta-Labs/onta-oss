@@ -10,6 +10,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from cograph_client.pipeline.manifest import RunCoverage, RunManifest
+from cograph_client.pipeline.stage_trace import JobStageTrace
 
 
 # A safe predicate local-name: starts with a letter/underscore, then word chars
@@ -482,6 +483,12 @@ class EnrichJob(BaseModel):
     # writer (direct API, CLI, scheduled runs) is unchanged. Echoed in the job
     # summary + detail so a job can be traced back to its conversation.
     thread_id: Optional[str] = None
+    # Operator Job Trace (P0–P9 contract-level I/O). Optional / default None so
+    # every existing job is unchanged; web_ingest (and later enrich) populate it
+    # when live recording is wired. The operator ``GET /operator/jobs/{id}/trace``
+    # falls back to a reconstructor over manifest / provider_logs / progress when
+    # this is None. Rides in the same jsonb payload (no schema migration).
+    stage_trace: Optional[JobStageTrace] = None
 
 
 class JobSummary(BaseModel):
