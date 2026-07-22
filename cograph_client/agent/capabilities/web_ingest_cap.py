@@ -2269,11 +2269,24 @@ _POPULATION_SCOPE = re.compile(
 _COMPOUND_SPLIT = re.compile(r"\s+(?:and|&|/|or)\s+", re.IGNORECASE)
 # Short local scopes (city nicknames / neighborhoods) stay single-query —
 # Places + one directory usually cover them. Multi-token scopes
-# (``British Columbia``, ``New South Wales``, ``San Francisco``) and long
-# single-token admin regions (``California``) are treated as inventory
-# populations. ``Mission`` / ``Tustin`` / ``Ontario`` (≤7) alone stay local
-# unless the user used strong completeness language (``all`` / ``every``).
+# (``British Columbia``, ``New South Wales``) and long single-token admin
+# regions (``California``) count as broad. ``Mission`` / ``Tustin`` / ``SF``
+# alone stay local unless the user used strong completeness language.
 _SHORT_SCOPE_MAX = 8
+
+# HEAVY inventory classes — multi-page provincial/state populations that a
+# single directory almost never returns whole. Used as a DETECTION gate so
+# everyday place queries ("coffee shops in the Mission San Francisco",
+# "cardiologists in Austin TX") stay single-query even when the scope is
+# multi-token. Sibling expansion (below) may still widen coffee shops once an
+# ask is already classified as enumeration via ``all`` / compound heads.
+_HEAVY_INVENTORY = re.compile(
+    r"\b("
+    r"universit(?:y|ies)|colleges?|hospitals?|"
+    r"schools?|polytechnics?|institutes?"
+    r")\b",
+    re.IGNORECASE,
+)
 
 # Lightweight inventory siblings: when the head matches a known dual-category
 # population, expand both so one subtype's thin directory cannot cap the ask.
@@ -2359,17 +2372,27 @@ def _inventory_siblings(head: str) -> list[str]:
     return []
 
 
+def _is_heavy_inventory_head(head: str) -> bool:
+    """True for HE / hospital-style classes whose provincial inventory no single
+    page covers. Everyday place nouns (coffee shops, cardiologists, gadgets)
+    return False so multi-token city scopes don't fan out by accident."""
+    return bool(_HEAVY_INVENTORY.search(head or ""))
+
+
 def _is_enumeration_ask(instruction: str, query: str) -> bool:
     """True when the ask is a population inventory that should fan out.
 
-    Triggers on:
-    * a population over a BROAD scope (``universities in British Columbia``),
-    * a compound category head (``universities and colleges in …``),
-    * strong completeness language (``all`` / ``every`` / ``complete``) on a
-      population shape — including narrow scopes (``all coffee shops in SF``).
+    Triggers on (any one):
+    * a **compound** category head (``universities and colleges in …``),
+    * **strong** completeness language (``all`` / ``every`` / ``complete``) on
+      a population shape — including narrow scopes (``all coffee shops in SF``),
+    * a **heavy inventory class** over a broad scope (``universities in
+      British Columbia``) — HE/hospitals/schools, not everyday place finds.
 
-    Bare ``list of X`` is everyday discovery phrasing and is NOT enough alone
-    (``list of OpenRouter models``, ``S&P 500 companies`` stay single-query)."""
+    Multi-token city scopes alone are NOT enough: ``cardiologists in Austin TX``
+    and ``coffee shops in the Mission San Francisco`` stay single-query (the
+    P1 Find offline bar + Places path). Bare ``list of X`` catalogues
+    (``list of OpenRouter models``) also stay single-query."""
     text = f"{instruction or ''}\n{query or ''}".strip()
     if not text:
         return False
@@ -2391,10 +2414,12 @@ def _is_enumeration_ask(instruction: str, query: str) -> bool:
     scope = m.group("scope").strip()
     if _split_compound_head(head):
         return True
-    if _scope_is_broad(scope):
+    if has_strong:
         return True
-    # Narrow local scope only fans out when the user insisted on completeness.
-    return has_strong
+    # Broad scope alone is not enough (city+state is multi-token). Require a
+    # heavy inventory class so BC universities fan out while Austin cardiologists
+    # and Mission coffee shops do not.
+    return _scope_is_broad(scope) and _is_heavy_inventory_head(head)
 
 
 def _synthesize_enumeration_subqueries(query: str, instruction: str) -> list[str]:

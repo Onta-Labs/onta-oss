@@ -2019,10 +2019,11 @@ BC_SPEC = {
 
 
 def test_is_enumeration_ask_detects_population_and_skips_catalogues():
-    """Inventory language + broad-scope populations fan out; single catalogues
-    and short local place lists stay single-query."""
+    """Heavy inventory + broad scope / compound / strong completeness fan out;
+    everyday place finds and catalogues stay single-query (P1 Find bar)."""
     is_enum = web_ingest_cap._is_enumeration_ask
     assert is_enum(BC_INSTRUCTION, "universities in British Columbia")
+    # Heavy class + multi-token province — even without "all".
     assert is_enum("BC universities", "universities in British Columbia")
     assert is_enum(
         "list of hospitals across New South Wales",
@@ -2042,6 +2043,20 @@ def test_is_enumeration_ask_detects_population_and_skips_catalogues():
     assert not is_enum("coffee shops in SF", "coffee shops in SF")
     assert not is_enum(
         "coffee shops in the Mission", "coffee shops in the Mission"
+    )
+    # P1 Find fixtures: multi-token city scopes on non-heavy heads must NOT fan
+    # out (regression — ONTA-379 first cut multiplied their surfaced rows ×N).
+    assert not is_enum(
+        "specialty coffee shops in the Mission district",
+        "specialty coffee shops in the Mission San Francisco",
+    )
+    assert not is_enum(
+        "board-certified cardiologists practising in Austin",
+        "board-certified cardiologists in Austin TX",
+    )
+    assert not is_enum(
+        "the gadgets in the GX product line",
+        "GX product line gadgets",
     )
 
 
