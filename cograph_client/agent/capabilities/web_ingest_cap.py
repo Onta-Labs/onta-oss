@@ -721,13 +721,25 @@ class WebIngestCapability:
         # enforced at extraction (allowlist), not by starving the provider.
         hint_columns = _dedupe([key_attr, *confirmed, *suggested])
 
-        # Enumeration partition (fan-out, ONTA-192): for an "all X in Y and Z"
-        # ask the spec splits the scope into self-contained sub-queries; execute()
-        # runs one discovery per sub-query and merges (deduped) into ONE job.
+        # Enumeration partition (fan-out, ONTA-192 + ONTA-379): for a population
+        # inventory ask the scope is split into self-contained sub-queries;
+        # execute() runs one discovery per sub-query and merges (deduped) into
+        # ONE job. The LLM may already partition multi-city/category asks
+        # (ONTA-192); ONTA-379 adds a DETERMINISTIC backstop so a single-scope
+        # inventory ("universities in British Columbia") still fans out into
+        # authoritative-list angles instead of collapsing to 1 thin page.
         # Empty → classic single-query discovery. Priced below as n sub-runs.
         # NEVER in URL mode: the pages are fixed, so partitioned queries would
         # just re-scrape (and re-bill) the same URLs for fully-deduped batches.
-        subqueries = [] if urls else _norm_subqueries(spec.get("subqueries"))
+        subqueries = (
+            []
+            if urls
+            else _ensure_enumeration_partition(
+                query=query,
+                instruction=instruction,
+                llm_subqueries=_norm_subqueries(spec.get("subqueries")),
+            )
+        )
 
         # ONTA-194 phase 2: consult the API source registry. If a registered
         # authoritative API covers the ask, run it BEFORE web search (source-of-
@@ -759,6 +771,14 @@ class WebIngestCapability:
             ensemble = _merge_registry_ensemble(
                 ensemble, registry_sources, registry_decision.mode
             )
+            provider = ensemble[0]
+
+        # ONTA-379: for an enumeration fan-out, also consult nested fallback
+        # providers (e.g. source_first's Tier-1 web-search fallback). A thin
+        # Tier-0 hit alone under-collects; the ensemble's cross-batch key
+        # dedupe makes the overlap free. No-op when no nested fallback exists.
+        if subqueries:
+            ensemble = _expand_enumeration_ensemble(ensemble)
             provider = ensemble[0]
 
         # 2a. LEAN fast path — cheap providers skip the plan-time preview.
@@ -1005,6 +1025,12 @@ class WebIngestCapability:
                 for_urls=bool(urls)
             )
             web_ensemble = [single] if single is not None else []
+        # ONTA-379: nested fallbacks (e.g. source_first's Tier-1 web provider)
+        # are NOT separately registered — plan() lists them by name for the cost
+        # card, but get_web_source can't resolve them. Re-unwrap from the resolved
+        # primary so execute still consults the full enumeration ensemble.
+        if p.get("subqueries"):
+            web_ensemble = _expand_enumeration_ensemble(web_ensemble)
         # ONTA-194 phase 2: rebuild the registry providers from the picks the plan
         # persisted (no second LLM call) and splice them ahead of web, honoring the
         # persisted mode. A registry-only run (api_only, or a registry-only
@@ -1894,16 +1920,24 @@ Boston"). Otherwise set it to null. NON-place examples (null): "top LLMs", "S&P 
 500 companies", "Nobel laureates", "npm packages", "movies from 2020" — these are \
 not physical locations even when they mention an organization. When unsure, use \
 null.
-- subqueries: ONLY for an ENUMERATION ask — the user wants ALL/every instance \
-across a scope that no single search covers well (multiple cities/regions, several \
-named categories). Partition it into 2-6 SELF-CONTAINED queries, each complete on \
-its own and together covering the whole ask without overlap. "all primary care \
-physicians in Tustin and Santa Ana" -> ["primary care physicians in Tustin, CA", \
-"primary care physicians in Santa Ana, CA"]. "coffee shops and bakeries in SF" -> \
-["coffee shops in San Francisco", "bakeries in San Francisco"]. A single-list ask \
-("OpenRouter models", "S&P 500 companies", "coffee shops in SF") needs NO \
-partitioning -> []. Never split a scope the source already returns whole; when \
-unsure, use [].
+- subqueries: for an ENUMERATION / population inventory ask — the user wants \
+ALL/every instance of a class across a scope that no single search page covers \
+well. Partition into 2-6 SELF-CONTAINED queries, each complete on its own and \
+together covering the whole ask with minimal overlap. Prefer AUTHORITATIVE list \
+phrasing ("List of …") so directory/wiki/registry pages rank first. Partition by \
+(a) region/city when the scope names several places, (b) natural subtypes when the \
+class has them (universities vs colleges; coffee shops vs bakeries), and/or (c) \
+complementary inventory angles (public vs private; accredited registry vs directory) \
+when the scope is a single large region/population. Examples: "all primary care \
+physicians in Tustin and Santa Ana" -> ["List of primary care physicians in \
+Tustin, CA", "List of primary care physicians in Santa Ana, CA"]. "universities \
+in British Columbia" / "BC universities" -> ["List of universities in British \
+Columbia", "List of colleges in British Columbia", "List of public universities \
+in British Columbia"]. "coffee shops and bakeries in SF" -> ["List of coffee \
+shops in San Francisco", "List of bakeries in San Francisco"]. A non-inventory \
+ask that one catalogue already returns whole ("OpenRouter models", "S&P 500 \
+companies", a single named product line) needs NO partitioning -> []. When \
+unsure whether it is a population inventory, PARTITION (prefer recall).
 - key_attribute: the human-readable identifier (name/title), snake_case.
 - confirmed_attributes: ONLY what the user actually asked for. "models with their \
 names and pricing" -> ["name","pricing"]; "a list of models" -> []. When the user \
@@ -2189,6 +2223,291 @@ def _norm_subqueries(v) -> list[str]:
         if len(out) >= _MAX_SUBQUERIES:
             break
     return out
+
+
+# --- enumeration intent + deterministic partition (ONTA-379) ----------------- #
+#
+# ONTA-192 taught the spec LLM to fan out multi-city/category asks, but a
+# single-scope population inventory ("universities in British Columbia", "BC
+# universities") still collapsed to ONE subquery → ONE thin source page → ~5
+# rows. These helpers are the DETERMINISTIC backstop: detect inventory intent,
+# synthesize 2-6 authoritative-list angles (subtype + complementary directory
+# phrasings), and expand the provider ensemble so a thin Tier-0 hit cannot
+# single-source the whole population. LLM-provided partitions (≥2) still win.
+
+# STRONG completeness language — enough (with a class-shaped subject) to fan
+# out even without a geographic scope. Deliberately excludes bare "list of",
+# which is everyday discovery phrasing ("list of OpenRouter models") and must
+# NOT alone trigger a multi-subquery partition.
+_ENUM_STRONG = re.compile(
+    r"\b("
+    r"all|every|every\s+single|complete|entire|full\s+list|"
+    r"complete\s+list|inventory|as\s+many\s+as|comprehensive"
+    r")\b",
+    re.IGNORECASE,
+)
+# Leading inventory noise stripped before building "List of …" queries.
+# Includes an optional article so "a list of …" / "the complete …" both clean.
+_ENUM_LEAD = re.compile(
+    r"^(?:(?:the|a|an)\s+)?(?:"
+    r"list\s+of|all|every|complete|full|entire|"
+    r"complete\s+list\s+of|full\s+list\s+of|directory\s+of|"
+    r"catalogue\s+of|catalog\s+of"
+    r")\s+",
+    re.IGNORECASE,
+)
+# ``<head> in|across|within|throughout <scope>`` — the classic population shape.
+# Deliberately omits bare ``of``: "list of X" / "University of Y" are not
+# geographic partitions and would false-positive every "list of …" discovery.
+_POPULATION_SCOPE = re.compile(
+    r"^(?P<head>.+?)\s+"
+    r"(?P<prep>in|across|within|throughout)\s+"
+    r"(?P<scope>.+)$",
+    re.IGNORECASE,
+)
+# Compound category joiners inside the head: "universities and colleges".
+_COMPOUND_SPLIT = re.compile(r"\s+(?:and|&|/|or)\s+", re.IGNORECASE)
+# Short local scopes (city nicknames / neighborhoods) stay single-query —
+# Places + one directory usually cover them. Multi-token scopes
+# (``British Columbia``, ``New South Wales``, ``San Francisco``) and long
+# single-token admin regions (``California``) are treated as inventory
+# populations. ``Mission`` / ``Tustin`` / ``Ontario`` (≤7) alone stay local
+# unless the user used strong completeness language (``all`` / ``every``).
+_SHORT_SCOPE_MAX = 8
+
+# Lightweight inventory siblings: when the head matches a known dual-category
+# population, expand both so one subtype's thin directory cannot cap the ask.
+# Deliberately small + generic; unknown heads still get complementary angles.
+_INVENTORY_SIBLINGS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (
+        re.compile(r"\buniversit(?:y|ies)\b", re.IGNORECASE),
+        ("universities", "colleges", "public universities", "private universities"),
+    ),
+    (
+        re.compile(r"\bcolleges?\b", re.IGNORECASE),
+        ("colleges", "universities", "community colleges"),
+    ),
+    (
+        re.compile(r"\bhospitals?\b", re.IGNORECASE),
+        ("hospitals", "medical centers", "clinics"),
+    ),
+    (
+        re.compile(r"\b(coffee\s+shops?|cafes?|cafés?)\b", re.IGNORECASE),
+        ("coffee shops", "cafes", "bakeries"),
+    ),
+)
+
+
+def _authoritative_list_query(q: str) -> str:
+    """Prefer directory/wiki phrasing: ``List of <subject>``.
+
+    Locate/search rank official inventory pages much higher on "List of
+    universities in British Columbia" than on the bare subject, which is the
+    under-collection root cause for single-query source_first runs (ONTA-379)."""
+    s = (q or "").strip()
+    if not s:
+        return s
+    if re.match(r"(?i)^list\s+of\b", s):
+        return s
+    body = _ENUM_LEAD.sub("", s).strip() or s
+    return f"List of {body}"
+
+
+def _scope_is_broad(scope: str) -> bool:
+    """True when the geographic/organizational scope is large enough that a
+    single page rarely holds the whole population. Multi-token scopes and long
+    single tokens qualify; short nicknames (``SF``, ``NYC``) do not."""
+    s = (scope or "").strip()
+    if not s:
+        return False
+    # Drop a leading article so "the Mission" counts as one meaningful token.
+    s = re.sub(r"^(?i:the|a|an)\s+", "", s).strip()
+    tokens = [t for t in re.split(r"\s+", s) if t]
+    if len(tokens) >= 2:
+        return True
+    return bool(tokens) and len(tokens[0]) >= _SHORT_SCOPE_MAX
+
+
+def _split_compound_head(head: str) -> list[str]:
+    """Split ``universities and colleges`` → [``universities``, ``colleges``].
+
+    Only fires when every part is a short noun phrase (≤4 words) so prose
+    ("hospitals that accept Medicaid and Medicare") is not shattered."""
+    parts = [p.strip(" ,;") for p in _COMPOUND_SPLIT.split(head or "") if p.strip()]
+    if len(parts) < 2:
+        return []
+    clean: list[str] = []
+    for p in parts:
+        words = [w for w in re.split(r"\s+", p) if w]
+        if not words or len(words) > 4:
+            return []
+        clean.append(" ".join(words))
+    # Dedup case-insensitively while preserving order.
+    return _dedupe(clean)
+
+
+def _inventory_siblings(head: str) -> list[str]:
+    """Return alternate inventory labels for ``head`` (including itself when
+    matched), or ``[]`` when no sibling table applies."""
+    h = (head or "").strip()
+    if not h:
+        return []
+    for pat, siblings in _INVENTORY_SIBLINGS:
+        if pat.search(h):
+            # Prefer the caller's own wording first, then the table.
+            return _dedupe([h, *siblings])
+    return []
+
+
+def _is_enumeration_ask(instruction: str, query: str) -> bool:
+    """True when the ask is a population inventory that should fan out.
+
+    Triggers on:
+    * a population over a BROAD scope (``universities in British Columbia``),
+    * a compound category head (``universities and colleges in …``),
+    * strong completeness language (``all`` / ``every`` / ``complete``) on a
+      population shape — including narrow scopes (``all coffee shops in SF``).
+
+    Bare ``list of X`` is everyday discovery phrasing and is NOT enough alone
+    (``list of OpenRouter models``, ``S&P 500 companies`` stay single-query)."""
+    text = f"{instruction or ''}\n{query or ''}".strip()
+    if not text:
+        return False
+    has_strong = bool(_ENUM_STRONG.search(text))
+    subject = (query or "").strip() or _current_request(instruction)
+    subject = _ENUM_LEAD.sub("", subject).strip() or subject
+    m = _POPULATION_SCOPE.match(subject)
+    if not m:
+        # Also try the current request line when the cleaned query lost the scope.
+        m = _POPULATION_SCOPE.match(
+            _ENUM_LEAD.sub("", _current_request(instruction)).strip()
+        )
+    if not m:
+        # No ``head prep scope`` shape. Strong completeness alone on a bare
+        # catalogue name ("all OpenRouter models") is still a single source —
+        # do NOT fan out without a scope or compound head to partition on.
+        return False
+    head = m.group("head").strip()
+    scope = m.group("scope").strip()
+    if _split_compound_head(head):
+        return True
+    if _scope_is_broad(scope):
+        return True
+    # Narrow local scope only fans out when the user insisted on completeness.
+    return has_strong
+
+
+def _synthesize_enumeration_subqueries(query: str, instruction: str) -> list[str]:
+    """Build 2-6 complementary inventory angles for a population ask.
+
+    Prefers authoritative ``List of …`` phrasing and expands (in order):
+    compound heads → inventory siblings → complementary directory angles.
+    Always capped/deduped by :func:`_norm_subqueries`."""
+    subject = (query or "").strip() or _clean_query(instruction)
+    subject = _ENUM_LEAD.sub("", subject).strip() or subject
+    if not subject:
+        return []
+
+    m = _POPULATION_SCOPE.match(subject)
+    if m:
+        head = _ENUM_LEAD.sub("", m.group("head")).strip()
+        prep = m.group("prep")
+        scope = m.group("scope").strip()
+        compounds = _split_compound_head(head)
+        if compounds:
+            return _norm_subqueries(
+                [_authoritative_list_query(f"{c} {prep} {scope}") for c in compounds]
+            )
+        siblings = _inventory_siblings(head)
+        if siblings:
+            out = [
+                _authoritative_list_query(f"{sib} {prep} {scope}") for sib in siblings
+            ]
+            # One extra complementary angle so a 2-sibling table still reaches ≥3
+            # subqueries when the acceptance fixture needs multi-source coverage.
+            out.append(
+                f"complete directory of {head} {prep} {scope}"
+            )
+            out.append(
+                f"{head} {prep} {scope} accreditation or government registry"
+            )
+            return _norm_subqueries(out)
+        return _norm_subqueries(
+            [
+                _authoritative_list_query(f"{head} {prep} {scope}"),
+                f"complete directory of {head} {prep} {scope}",
+                f"{head} {prep} {scope} accreditation or government registry",
+                f"public {head} {prep} {scope}",
+                f"private {head} {prep} {scope}",
+            ]
+        )
+
+    # No clear ``head prep scope`` parse — still give complementary inventory
+    # angles so an explicit "list of X" / "all X" ask does not collapse to one
+    # thin page.
+    return _norm_subqueries(
+        [
+            _authoritative_list_query(subject),
+            f"complete directory of {subject}",
+            f"{subject} official registry or accreditation list",
+        ]
+    )
+
+
+def _ensure_enumeration_partition(
+    *,
+    query: str,
+    instruction: str,
+    llm_subqueries: list[str],
+) -> list[str]:
+    """Return the sub-query partition execute() should fan out over.
+
+    * LLM already partitioned (≥2) → keep it (ONTA-192 path; do not rewrite,
+      so existing multi-city plans stay byte-stable).
+    * Enumeration intent + empty/singleton LLM partition → synthesize
+      authoritative-list angles (ONTA-379 backstop).
+    * Non-enumeration → ``[]`` (classic single-query discovery)."""
+    subs = list(llm_subqueries or [])
+    if len(subs) >= 2:
+        return _norm_subqueries(subs)
+    if not _is_enumeration_ask(instruction, query):
+        return []
+    synthesized = _synthesize_enumeration_subqueries(query, instruction)
+    # Need a real partition (≥2). A singleton synthesis is not worth the
+    # fan-out overhead — fall back to single-query.
+    return synthesized if len(synthesized) >= 2 else []
+
+
+def _expand_enumeration_ensemble(ensemble: list) -> list:
+    """For enumeration goals, also consult nested fallback providers.
+
+    ``source_first`` short-circuits to a thin Tier-0 page when one JSON/HTML
+    directory validates — never reaching its web-search fallback. Unwrapping
+    that fallback into the ensemble (specialized/primary first, fallback next)
+    keeps the thin source AND the broader web harvest, with cross-batch key
+    dedupe making the overlap free. Providers without a nested fallback are
+    unchanged. Reads ``fallback`` (public) then ``_fallback`` (legacy private
+    attr on source_first) defensively so OSS stays decoupled from the premium
+    wrapper's attribute name."""
+    out: list = []
+    seen: set[int] = set()
+
+    def _add(p) -> None:
+        if p is None:
+            return
+        pid = id(p)
+        if pid in seen:
+            return
+        seen.add(pid)
+        out.append(p)
+
+    for p in ensemble or []:
+        _add(p)
+        fb = getattr(p, "fallback", None)
+        if fb is None:
+            fb = getattr(p, "_fallback", None)
+        _add(fb)
+    return out or list(ensemble or [])
 
 
 def _norm_query_kind(v) -> Optional[str]:

@@ -1993,6 +1993,238 @@ async def test_execute_all_subqueries_failing_fails_job(monkeypatch):
     assert done.error_summary and done.error_summary[0].provider == provider.name
 
 
+# --- enumeration under-collection backstop (ONTA-379) ------------------------ #
+#
+# Symptom: "BC universities" / "universities in British Columbia" planned as
+# ONE subquery against a single source_first page → ~5 rows. Acceptance: the
+# deterministic partition expands a BC-style inventory into ≥3 authoritative-
+# list subqueries, and execute collects ≥20 distinct institutions when the
+# providers return them. Fixture is designed to FAIL on the old 1-subquery /
+# 5-row behavior.
+
+BC_INSTRUCTION = (
+    "Find all universities and colleges in British Columbia and ingest them"
+)
+BC_SPEC = {
+    "entity_type": "University",
+    "key_attribute": "name",
+    "query": "universities in British Columbia",
+    "query_kind": None,
+    # Today's under-collection: the LLM left subqueries empty (treated it as a
+    # single-list ask). The ONTA-379 backstop must still partition.
+    "subqueries": [],
+    "confirmed_attributes": ["city", "type"],
+    "suggested_attributes": ["city", "type", "website"],
+}
+
+
+def test_is_enumeration_ask_detects_population_and_skips_catalogues():
+    """Inventory language + broad-scope populations fan out; single catalogues
+    and short local place lists stay single-query."""
+    is_enum = web_ingest_cap._is_enumeration_ask
+    assert is_enum(BC_INSTRUCTION, "universities in British Columbia")
+    assert is_enum("BC universities", "universities in British Columbia")
+    assert is_enum(
+        "list of hospitals across New South Wales",
+        "hospitals across New South Wales",
+    )
+    assert is_enum(
+        "coffee shops and bakeries in San Francisco",
+        "coffee shops and bakeries in San Francisco",
+    )
+    # Strong completeness on a narrow scope still fans out.
+    assert is_enum("all coffee shops in SF", "coffee shops in SF")
+    # Non-inventory catalogues / bare "list of X" / short local scopes must NOT.
+    assert not is_enum("models offered by OpenRouter", "OpenRouter models")
+    assert not is_enum("list of OpenRouter models", "OpenRouter models")
+    assert not is_enum("a list of models offered by OpenRouter", "OpenRouter models")
+    assert not is_enum("S&P 500 companies", "S&P 500 companies")
+    assert not is_enum("coffee shops in SF", "coffee shops in SF")
+    assert not is_enum(
+        "coffee shops in the Mission", "coffee shops in the Mission"
+    )
+
+
+def test_ensure_enumeration_partition_bc_style_expands_to_list_of_angles():
+    """BC-universities with empty LLM subqueries → ≥3 authoritative-list
+    subqueries covering universities + colleges (the under-collection fix)."""
+    subs = web_ingest_cap._ensure_enumeration_partition(
+        query="universities in British Columbia",
+        instruction=BC_INSTRUCTION,
+        llm_subqueries=[],
+    )
+    assert len(subs) >= 3
+    # Authoritative list phrasing preferred for locate/search ranking.
+    assert any(s.lower().startswith("list of") for s in subs)
+    blob = " | ".join(subs).lower()
+    assert "british columbia" in blob
+    assert "universit" in blob
+    assert "college" in blob
+
+
+def test_ensure_enumeration_partition_keeps_llm_partition():
+    """When the LLM already partitioned (≥2), keep it byte-stable (ONTA-192)."""
+    llm = [
+        "primary care physicians in Tustin, CA",
+        "primary care physicians in Santa Ana, CA",
+    ]
+    assert (
+        web_ingest_cap._ensure_enumeration_partition(
+            query="primary care physicians in Tustin and Santa Ana",
+            instruction="all primary care physicians in Tustin and Santa Ana",
+            llm_subqueries=llm,
+        )
+        == llm
+    )
+
+
+def test_ensure_enumeration_partition_non_enum_stays_empty():
+    assert (
+        web_ingest_cap._ensure_enumeration_partition(
+            query="OpenRouter models",
+            instruction="models offered by OpenRouter",
+            llm_subqueries=[],
+        )
+        == []
+    )
+
+
+def test_expand_enumeration_ensemble_unwraps_nested_fallback():
+    """Enumeration ensemble includes a wrapper's nested fallback so a thin
+    Tier-0 hit cannot single-source the population."""
+
+    class _Inner:
+        name = "web_fallback"
+
+    class _Wrapper:
+        name = "source_first"
+        _fallback = _Inner()
+
+    expanded = web_ingest_cap._expand_enumeration_ensemble([_Wrapper()])
+    assert [p.name for p in expanded] == ["source_first", "web_fallback"]
+    # No nested fallback → unchanged.
+    alone = FakeProvider()
+    assert web_ingest_cap._expand_enumeration_ensemble([alone]) == [alone]
+
+
+async def test_plan_bc_style_persists_at_least_three_subqueries():
+    """plan() with a BC-style inventory + empty LLM subqueries persists ≥3
+    subqueries (fails on today's 1-subquery / empty behavior)."""
+    register_web_source(FakeProvider(is_paid=True, cost_per_call=0.03))
+    steps = await WebIngestCapability().plan(
+        _ctx(), BC_INSTRUCTION, parsed=BC_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    subs = step.params["subqueries"]
+    assert len(subs) >= 3, f"expected ≥3 subqueries, got {subs!r}"
+    assert any("list of" in s.lower() for s in subs)
+
+
+async def test_execute_bc_style_collects_at_least_20_institutions(monkeypatch):
+    """Acceptance fixture: BC-style enumeration → ≥20 distinct institutions
+    across ≥3 subqueries. A 1-subquery/5-row provider would fail this."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+
+    # Build the partition the planner will produce, then stock each subquery
+    # with a disjoint batch so the merge lands ≥20 uniques.
+    subs = web_ingest_cap._ensure_enumeration_partition(
+        query=BC_SPEC["query"],
+        instruction=BC_INSTRUCTION,
+        llm_subqueries=[],
+    )
+    assert len(subs) >= 3
+
+    rows_by_query: dict = {}
+    for i, sub in enumerate(subs):
+        # 8 distinct institutions per subquery → ≥24 pre-cap, ≥20 post-dedupe.
+        rows_by_query[sub] = [
+            {
+                "name": f"Institution {i}-{j}",
+                "city": f"City{j}",
+                "type": "university" if i == 0 else "college",
+            }
+            for j in range(8)
+        ]
+
+    provider = PerQueryProvider(rows_by_query, is_paid=True, cost_per_call=0.03)
+    register_web_source(provider)
+
+    batches: list[int] = []
+
+    async def fake_ingest(
+        self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw
+    ):
+        rows = json.loads(content)
+        batches.append(len(rows))
+        return IngestResult(
+            entities_extracted=len(rows),
+            entities_resolved=len(rows),
+            types_created=["University"],
+        )
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    monkeypatch.setattr(
+        web_ingest_cap, "refresh_after_write",
+        lambda *a, **k: asyncio.sleep(0),
+    )
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), BC_INSTRUCTION, parsed=BC_SPEC)
+    )[0]
+    assert len(step.params["subqueries"]) >= 3
+
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    full_calls = [c for c in provider.calls if c[1] is False]
+    assert len(full_calls) >= 3, f"expected ≥3 subquery fetches, got {full_calls!r}"
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    # The old under-collection was ~5; acceptance needs ≥20 distinct institutions.
+    assert done.result_count >= 20, (
+        f"expected ≥20 institutions, got {done.result_count} "
+        f"(batches={batches}, subqueries={step.params['subqueries']!r})"
+    )
+
+
+async def test_plan_enumeration_includes_nested_fallback_in_providers():
+    """When the primary provider wraps a fallback, an enumeration plan lists
+    both in ``providers`` so execute consults the ensemble."""
+
+    class _Inner(FakeProvider):
+        def __init__(self):
+            super().__init__(is_paid=True, cost_per_call=0.02)
+            self.name = "web_fallback"
+
+    class _Wrapper(FakeProvider):
+        def __init__(self, inner):
+            super().__init__(is_paid=True, cost_per_call=0.03)
+            self.name = "source_first"
+            self._fallback = inner
+
+    inner = _Inner()
+    wrapper = _Wrapper(inner)
+    register_web_source(wrapper)  # only the wrapper is registered
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), BC_INSTRUCTION, parsed=BC_SPEC
+    )
+    step = steps[0]
+    assert step.params["providers"] == ["source_first", "web_fallback"]
+    # Ensemble pricing: both members billed.
+    assert step.cost["paid_calls"] >= 2
+
+
 # --- provider ensemble (kind-specialized + general together) ------------------ #
 
 
