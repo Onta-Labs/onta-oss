@@ -104,19 +104,21 @@ BACKENDS = {
 # the nightly QC audit is RemoteProtocolError: Neptune drops idle keep-alive
 # connections, httpx then reuses a dead one and raises "Server disconnected
 # without sending a response" on the very next request — one such drop was
-# crashing an entire ~10-min audit sweep. These are NOT HTTP status errors (a
-# 4xx/5xx is deterministic — a malformed LLM query returns the same 400 every
-# time — so it is raised immediately, never retried) and deliberately EXCLUDE
-# ReadTimeout/WriteTimeout: a genuinely slow query must not be blindly re-issued
-# and amplify endpoint load. Writes (`update`) are intentionally NOT auto-retried
-# to keep at-most-once semantics on the mutation path.
+# crashing an entire ~10-min audit sweep. We retry only FAST-FAILING transport
+# errors (a dropped keep-alive / refused / reset connection surfaces
+# immediately), so the worst-case added latency is just the backoff. The
+# TIMEOUT-class errors (ConnectTimeout / PoolTimeout / ReadTimeout / WriteTimeout)
+# are deliberately EXCLUDED: with the flat 120s client timeout, retrying them
+# would stack multiple 120s stalls onto a single live query, and a read timeout
+# on a genuinely slow query must not be blindly re-issued and amplify endpoint
+# load. HTTP status errors are likewise never retried here (a malformed LLM query
+# returns a deterministic 4xx, raised immediately for the NL loop to self-correct)
+# and writes (`update`) stay off this path to keep at-most-once mutation semantics.
 _RETRYABLE_TRANSPORT_ERRORS = (
     httpx.RemoteProtocolError,  # dropped keep-alive: "Server disconnected …"
-    httpx.ConnectError,
-    httpx.ConnectTimeout,
-    httpx.ReadError,
-    httpx.WriteError,
-    httpx.PoolTimeout,
+    httpx.ConnectError,         # connection refused / reset (fast-failing)
+    httpx.ReadError,            # socket read failure mid-response (fast-failing)
+    httpx.WriteError,           # socket write failure (fast-failing)
 )
 _MAX_TRANSPORT_ATTEMPTS = 3
 _RETRY_BACKOFF_S = 0.5

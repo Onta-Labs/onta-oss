@@ -123,6 +123,26 @@ async def test_read_timeout_is_not_retried():
 
 
 @pytest.mark.asyncio
+async def test_connect_timeout_is_not_retried():
+    """Timeout-class errors are excluded so retries can't stack multiple 120s
+    stalls onto one live query — only FAST-FAILING transport errors are retried.
+    ConnectTimeout must therefore surface on the first attempt."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.ConnectTimeout("connect timed out")
+
+    c = _client_with(handler)
+    try:
+        with pytest.raises(httpx.ConnectTimeout):
+            await c.query("SELECT ?x WHERE { ?x ?p ?o }")
+    finally:
+        await c.close()
+    assert calls["n"] == 1  # timeout-class errors are not retried
+
+
+@pytest.mark.asyncio
 async def test_ask_read_path_also_retries():
     """The hardening covers every read method, not just query() — ask() too."""
     calls = {"n": 0}
