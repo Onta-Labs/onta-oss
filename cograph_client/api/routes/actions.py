@@ -46,8 +46,10 @@ from cograph_client.enrichment.models import (
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.queries import kg_graph_uri
 from cograph_client.pipeline.stage_trace import (
+    ensure_job_stage_trace_open,
     finalize_job_stage_trace,
     open_job_stage_trace,
+    stamp_enrichment_job_created,
 )
 
 logger = structlog.stdlib.get_logger("cograph.actions")
@@ -317,6 +319,8 @@ async def dispatch_scheduled_action(
 
     if action == "enrich":
         await _resolve_scheduled_auto_tier(job)
+        # Operator Job Trace (ONTA-387): open live P0 at create (same as routes).
+        stamp_enrichment_job_created(job)
         await job_store.create(job)
         await executor.run(job, schedule.tenant_id)
         return job
@@ -483,8 +487,6 @@ async def _run_dedupe(
     from cograph_client.graph.kg_writer import refresh_after_write
     from cograph_client.resolver.er.rebuild import rebuild_kg
 
-    from cograph_client.pipeline.stage_trace import ensure_job_stage_trace_open
-
     job = await job_store.get(job_id)
     if job is None:
         return
@@ -523,7 +525,6 @@ async def _run_dedupe(
         now = datetime.now(timezone.utc)
         job.completed_at = now
         job.last_run = now
-        # P0/A9 finalize (ONTA-388): never leave stage projects running.
         st = getattr(getattr(job, "status", None), "value", None) or str(
             getattr(job, "status", "") or ""
         )
@@ -596,6 +597,8 @@ async def enrich_action(
         sources=body.sources,
         spend_ceiling_usd=body.spend_ceiling_usd,
     )
+    # Operator Job Trace (ONTA-387): open live P0 at create (same as /enrich/jobs).
+    stamp_enrichment_job_created(job)
     await job_store.create(job)
     _spawn(executor.run(job, tenant.tenant_id))
     return {
@@ -616,8 +619,6 @@ async def _run_suggest(
     kg_name: str,
 ) -> None:
     """Background worker for suggest-relationships when a recommender IS wired."""
-    from cograph_client.pipeline.stage_trace import ensure_job_stage_trace_open
-
     job = await job_store.get(job_id)
     if job is None:
         return
@@ -687,7 +688,6 @@ async def suggest_relationships(
         )
         job.completed_at = now
         job.last_run = now
-        # P0 was opened in _new_job; finalize so no project stays running.
         finalize_job_stage_trace(
             job,
             terminal_status="failed",

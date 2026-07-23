@@ -39,8 +39,12 @@ from cograph_client.pipeline.manifest import (
     resolve_spend_ceiling,
 )
 from cograph_client.pipeline.stage_trace import (
-    ensure_job_stage_trace_open,
-    finalize_job_stage_trace,
+    stamp_enrichment_entities_selected,
+    stamp_enrichment_run_cancelled,
+    stamp_enrichment_run_failed,
+    stamp_enrichment_run_finished,
+    stamp_enrichment_run_started,
+    stamp_enrichment_write_phase,
 )
 from cograph_client.retrieval.cost import source_cost
 from cograph_client.enrichment.sources.base import (
@@ -1268,9 +1272,8 @@ class EnrichmentExecutor:
         try:
             job.status = JobStatus.running
             job.started_at = _now()
-            # P0/A9 (ONTA-388): ensure live stage_trace is open even if the
-            # create site skipped open (scheduled / older callers).
-            ensure_job_stage_trace_open(job)
+            # Operator Job Trace (ONTA-387): open live P0/P2/P4/P6 for enrichment.
+            stamp_enrichment_run_started(job)
             await self._jobs.update(job)
 
             # Resolve the target type to the tenant's canonical declared name
@@ -1291,12 +1294,7 @@ class EnrichmentExecutor:
                 job.completed_at = _now()
                 job.error_summary = [JobErrorItem(kind="job", message=job.error)]
                 manifest.halt(HaltReasonKind.error, job.error)
-                finalize_job_stage_trace(
-                    job,
-                    terminal_status="failed",
-                    error=job.error,
-                    summary={"category": "enrichment", "phase": "type_resolve"},
-                )
+                stamp_enrichment_run_failed(job, job.error)
                 await self._jobs.update(job)
                 return
             if canonical and canonical != job.type_name:
@@ -1424,6 +1422,11 @@ class EnrichmentExecutor:
             # A9 manifest: the planned item denominator (M) is one item per
             # (entity, attribute) — the same unit progress counts.
             manifest.set_total(job.progress.total)
+            stamp_enrichment_entities_selected(
+                job,
+                entity_count=len(entities),
+                item_total=job.progress.total,
+            )
             await self._jobs.update(job)
 
             sem = asyncio.Semaphore(WORKER_POOL_SIZE)
@@ -1591,12 +1594,7 @@ class EnrichmentExecutor:
                 job.status = JobStatus.cancelled
                 job.completed_at = _now()
                 manifest.cancel()
-                finalize_job_stage_trace(
-                    job,
-                    terminal_status="cancelled",
-                    summary={"category": "enrichment"},
-                    p0_output={"status": "cancelled"},
-                )
+                stamp_enrichment_run_cancelled(job)
                 await self._jobs.update(job)
                 return
 
@@ -1802,29 +1800,18 @@ class EnrichmentExecutor:
             # A9 manifest: the run finished its work (review = parked for human
             # decisions, applied = written) — a clean terminal COMPLETED.
             manifest.complete()
-            # P0/A9 finalize (ONTA-388): end any still-running stage projects.
-            st = (
-                job.status.value
-                if hasattr(job.status, "value")
-                else str(job.status)
+            # Operator Job Trace (ONTA-387): P4/P6 write-phase actions + close
+            # P0/P2/P4/P6 live; skip P1/P3/P5/P7/P8/P9 with reasons.
+            write_policy_s = (
+                getattr(write_policy, "value", None) or str(write_policy)
             )
-            finalize_job_stage_trace(
+            stamp_enrichment_write_phase(
                 job,
-                terminal_status=st,
-                summary={
-                    "category": "enrichment",
-                    "filled": job.progress.filled,
-                    "verified": job.progress.verified,
-                    "conflicts": job.progress.conflicts,
-                    "processed": job.progress.processed,
-                    "total": job.progress.total,
-                },
-                p0_output={
-                    "status": st,
-                    "filled": job.progress.filled,
-                    "processed": job.progress.processed,
-                },
+                write_policy=write_policy_s,
+                has_conflicts=has_conflicts,
+                applied=bool(applied_attr_values) or bool(restamp_triples),
             )
+            stamp_enrichment_run_finished(job)
             await self._jobs.update(job)
 
             # Product-analytics event (ONTA-323). run() is a background task with
@@ -1867,17 +1854,7 @@ class EnrichmentExecutor:
                 else ""
             )
             manifest.halt_from_exception(exc, landed_note=landed)
-            finalize_job_stage_trace(
-                job,
-                terminal_status="failed",
-                error=job.error,
-                summary={
-                    "category": "enrichment",
-                    "processed": job.progress.processed,
-                    "total": job.progress.total,
-                },
-                p0_output={"status": "failed", "error": job.error},
-            )
+            stamp_enrichment_run_failed(job, str(exc))
             try:
                 await self._jobs.update(job)
             except Exception:  # noqa: BLE001
@@ -2780,13 +2757,34 @@ class EnrichmentExecutor:
             )
         job.status = JobStatus.applied
         job.completed_at = _now()
-        # Review → applied is terminal for the job (ONTA-388): seal stage_trace.
-        finalize_job_stage_trace(
-            job,
-            terminal_status="applied",
-            summary={"category": "enrichment", "applied_decisions": applied},
-            p0_output={"status": "applied", "applied_decisions": applied},
-        )
+        # Operator Job Trace (ONTA-387): human accept of staged conflicts is a
+        # P6 write — record an action if a live trace is present.
+        try:
+            from cograph_client.pipeline.stage_trace import (
+                StageProjectId,
+                attach_recorder,
+            )
+
+            rec = attach_recorder(job)
+            if rec is not None:
+                rec.action(
+                    StageProjectId.p6,
+                    "apply_decisions",
+                    detail=f"accepted={applied}",
+                    meta={"accepted": applied},
+                )
+                rec.end(
+                    StageProjectId.p6,
+                    output={
+                        "status": "applied",
+                        "accepted": applied,
+                        "source": "conflict_review",
+                    },
+                )
+                if job.stage_trace is not None:
+                    job.stage_trace.status = "applied"
+        except Exception:  # pragma: no cover - never block apply on obs
+            pass
         await self._jobs.update(job)
         return applied
 
