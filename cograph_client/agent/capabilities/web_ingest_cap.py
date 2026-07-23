@@ -100,6 +100,12 @@ from cograph_client.pipeline.stage_trace import (
     StageProjectId,
     StageStatus,
     attach_recorder,
+    merge_a1_summaries,
+    merge_a3_counts,
+    summarize_a1_source_bundle,
+    summarize_a2_candidates,
+    summarize_a3_clean_report,
+    summarize_a6_graph_delta,
 )
 from cograph_client.resolver.llm_router import (
     OPENROUTER_BASE,
@@ -1144,32 +1150,49 @@ class WebIngestCapability:
                     settings.enrich_spend_ceiling_usd,
                 )
             # Operator Job Trace (P0–P9): open the run + stamp P1 Find input.
-            rec = attach_recorder(job)
-            if rec is not None:
-                rec.begin(
-                    StageProjectId.p0,
-                    input={
-                        "job_id": job.id,
-                        "category": "discovery",
-                        "spend_ceiling_usd": job.spend_ceiling_usd,
-                    },
+            # try/except: observability must never block job creation.
+            try:
+                rec = attach_recorder(job)
+                if rec is not None:
+                    rec.begin(
+                        StageProjectId.p0,
+                        input={
+                            "job_id": job.id,
+                            "category": "discovery",
+                            "spend_ceiling_usd": job.spend_ceiling_usd,
+                        },
+                    )
+                    rec.action(
+                        StageProjectId.p0, "create_job", detail="discovery job queued"
+                    )
+                    rec.begin(
+                        StageProjectId.p1,
+                        input={
+                            "goal": (
+                                query or getattr(step, "instruction", None) or ""
+                            )[:500],
+                            "type_name": proposed_type,
+                            "attributes": attributes,
+                            "kg_name": kg_name,
+                            "cap": cap,
+                            "subqueries": subqueries[:20],
+                            "providers": [
+                                getattr(pr, "name", str(pr)) for pr in ensemble[:10]
+                            ],
+                            # Notion contract: P1 consumes user goal (+ A8 when refresh).
+                            "contract_consumes": "user goal · A8 Refresh Delta",
+                            "contract_emits": "A1 Source Bundle",
+                        },
+                    )
+                    rec.action(
+                        StageProjectId.p1, "plan", detail="spec resolved; ready to search"
+                    )
+            except Exception:
+                logger.warning(
+                    "stage_trace_open_failed",
+                    job_id=getattr(job, "id", None),
+                    exc_info=True,
                 )
-                rec.action(StageProjectId.p0, "create_job", detail="discovery job queued")
-                rec.begin(
-                    StageProjectId.p1,
-                    input={
-                        "goal": (query or getattr(step, "instruction", None) or "")[:500],
-                        "type_name": proposed_type,
-                        "attributes": attributes,
-                        "kg_name": kg_name,
-                        "cap": cap,
-                        "subqueries": subqueries[:20],
-                        "providers": [
-                            getattr(pr, "name", str(pr)) for pr in ensemble[:10]
-                        ],
-                    },
-                )
-                rec.action(StageProjectId.p1, "plan", detail="spec resolved; ready to search")
             await job_store.create(job)
 
         # Thread the tracked job id into the provider context so a URL-targeted
@@ -1222,17 +1245,24 @@ class WebIngestCapability:
                 # halt rolls the unfilled remainder (M − N) into `dropped`.
                 if job.manifest is not None:
                     job.manifest.start(total=cap)
-                rec = attach_recorder(job)
-                if rec is not None:
-                    rec.action(
-                        StageProjectId.p0,
-                        "start_run",
-                        detail=f"status=running total_cap={cap}",
-                    )
-                    rec.action(
-                        StageProjectId.p1,
-                        "searching",
-                        detail="phase=searching",
+                try:
+                    rec = attach_recorder(job)
+                    if rec is not None:
+                        rec.action(
+                            StageProjectId.p0,
+                            "start_run",
+                            detail=f"status=running total_cap={cap}",
+                        )
+                        rec.action(
+                            StageProjectId.p1,
+                            "searching",
+                            detail="phase=searching",
+                        )
+                except Exception:
+                    logger.warning(
+                        "stage_trace_start_failed",
+                        job_id=getattr(job, "id", None),
+                        exc_info=True,
                     )
                 await job_store.update(job)
             # Observability for the WRITE TARGET (ONTA-198): record the exact graph
@@ -1282,6 +1312,25 @@ class WebIngestCapability:
             entities_total = 0
             affected_types: set[str] = set()
             platforms: list[str] = []
+            # Live stage_trace contract accumulators (ONTA-385): A1/A2/A3/A6
+            # summaries folded across every SourceBundle + ingest micro-batch so
+            # the terminal P1/P2/P3/P6 outputs are Notion-contract-shaped.
+            a1_acc: Optional[dict] = None
+            a2_extracted = 0
+            a2_resolved = 0
+            a2_source_rows = 0
+            a2_batches = 0
+            a2_structured_batches = 0
+            a3_counts: Optional[dict] = None
+            a3_drop_reasons: list[str] = []
+            a3_transforms_sample: list[dict] = []
+            a4_verified_count = 0
+            a6_fact_count = 0
+            a6_fan_in_count = 0
+            a6_triples = 0
+            a6_facts_sample: list = []
+            a6_run_id: Optional[str] = run_envelope.run_id
+            a6_instance_graph: Optional[str] = instance_graph
             # Cross-batch dedupe on the KEY attribute (the record identifier):
             # sub-query partitions overlap ("…in Tustin" and a directory row
             # listed under both cities) and so do ENSEMBLE members (the same
@@ -1472,39 +1521,89 @@ class WebIngestCapability:
                             # unset); the bundle is genuinely consumed regardless.
                             _emit_source_bundle(ctx, bundle)
                             # Operator Job Trace: A1 Source Bundle boundary (P1→P2).
-                            if job is not None:
-                                rec = attach_recorder(job)
-                                if rec is not None:
-                                    rec.action(
-                                        StageProjectId.p1,
-                                        "source_bundle",
-                                        detail=(
-                                            f"provider={prov.name} rows={len(bundle.rows)} "
-                                            f"tier={_provider_tier(prov)}"
-                                        ),
-                                        meta={
-                                            "provider": prov.name,
-                                            "row_count": len(bundle.rows),
-                                            "tier": _provider_tier(prov),
-                                            "sub_query": (sub_query or "")[:200],
-                                        },
-                                    )
-                                    rec.begin(
-                                        StageProjectId.p2,
-                                        input={
-                                            "source_row_count": len(bundle.rows),
-                                            "provider": prov.name,
-                                        },
-                                    )
-                                    rec.action(
-                                        StageProjectId.p2,
-                                        "extract_from_bundle",
-                                        detail="A1→A2 extract driver",
-                                    )
-                                    rec.begin(
-                                        StageProjectId.p6,
-                                        input={"kg_name": kg_name, "type_name": proposed_type},
-                                    )
+                            # Contract-shaped A1 summary (ONTA-385); try/except so
+                            # observability never sinks discovery.
+                            try:
+                                a1_piece = summarize_a1_source_bundle(bundle)
+                                a1_acc = merge_a1_summaries(a1_acc, a1_piece)
+                                a2_source_rows += len(bundle.rows)
+                                if job is not None:
+                                    rec = attach_recorder(job)
+                                    if rec is not None:
+                                        rec.action(
+                                            StageProjectId.p1,
+                                            "source_bundle",
+                                            detail=(
+                                                f"A1 provider={prov.name} "
+                                                f"rows={len(bundle.rows)} "
+                                                f"tier={_provider_tier(prov)}"
+                                            ),
+                                            meta={
+                                                **{
+                                                    k: a1_piece.get(k)
+                                                    for k in (
+                                                        "artifact",
+                                                        "run_id",
+                                                        "root_fact_id",
+                                                        "row_count",
+                                                        "tiers",
+                                                        "providers",
+                                                    )
+                                                },
+                                                "provider": prov.name,
+                                                "sub_query": (sub_query or "")[:200],
+                                            },
+                                        )
+                                        # Progressive P1 output = run-level A1 aggregate.
+                                        for _p in job.stage_trace.projects:
+                                            if _p.project_id == StageProjectId.p1:
+                                                _p.output = {
+                                                    **_p.output,
+                                                    **(a1_acc or {}),
+                                                }
+                                                break
+                                        rec.begin(
+                                            StageProjectId.p2,
+                                            input={
+                                                "artifact": "A1",
+                                                "name": "Source Bundle",
+                                                "source_row_count": len(bundle.rows),
+                                                "provider": prov.name,
+                                                "run_id": a1_piece.get("run_id"),
+                                                "root_fact_id": a1_piece.get(
+                                                    "root_fact_id"
+                                                ),
+                                                "tier": _provider_tier(prov),
+                                                "contract_consumes": (
+                                                    "A1 Source Bundle (or uploaded file)"
+                                                ),
+                                                "contract_emits": "A2 Candidate Facts",
+                                            },
+                                        )
+                                        rec.action(
+                                            StageProjectId.p2,
+                                            "extract_from_bundle",
+                                            detail="A1→A2 extract driver",
+                                        )
+                                        rec.begin(
+                                            StageProjectId.p6,
+                                            input={
+                                                "artifact": "A5",
+                                                "name": "Placement Plan (fused)",
+                                                "kg_name": kg_name,
+                                                "type_name": proposed_type,
+                                                "instance_graph": instance_graph,
+                                                "run_id": run_envelope.run_id,
+                                                "contract_consumes": "A5 Placement Plan",
+                                                "contract_emits": "A6 Graph Delta",
+                                            },
+                                        )
+                            except Exception:
+                                logger.warning(
+                                    "stage_trace_a1_failed",
+                                    job_id=getattr(job, "id", None) if job else None,
+                                    exc_info=True,
+                                )
                             platforms = list(
                                 dict.fromkeys(
                                     [
@@ -1656,6 +1755,147 @@ class WebIngestCapability:
                                 affected_types |= set(result.types_created)
                                 for attr_added in result.attributes_added:
                                     affected_types.add(attr_added.split(".")[0])
+                                # Live stage_trace: fold A2/A3/A4/A6 from this
+                                # IngestResult (ONTA-385). Isolated so a ledger
+                                # shape surprise cannot fail the write path.
+                                try:
+                                    a2_batches += 1
+                                    if structured_fastpath:
+                                        a2_structured_batches += 1
+                                    a2_extracted += int(
+                                        getattr(result, "entities_extracted", 0) or 0
+                                    )
+                                    a2_resolved += int(
+                                        getattr(result, "entities_resolved", 0) or 0
+                                    )
+                                    a6_triples += int(
+                                        getattr(result, "triples_inserted", 0) or 0
+                                    )
+                                    a3_piece = summarize_a3_clean_report(
+                                        getattr(result, "clean_report", None)
+                                    )
+                                    if a3_piece is not None:
+                                        a3_counts = merge_a3_counts(a3_counts, a3_piece)
+                                        for r in a3_piece.get("drop_reasons_sample") or []:
+                                            if r not in a3_drop_reasons:
+                                                a3_drop_reasons.append(r)
+                                        for t in a3_piece.get("transforms_sample") or []:
+                                            if len(a3_transforms_sample) < 8:
+                                                a3_transforms_sample.append(t)
+                                    verified = getattr(result, "verified_facts", None) or []
+                                    a4_verified_count += len(verified)
+                                    gd = getattr(result, "graph_delta", None)
+                                    if gd is not None:
+                                        gd_d = (
+                                            gd.to_dict()
+                                            if hasattr(gd, "to_dict")
+                                            and not isinstance(gd, dict)
+                                            else gd
+                                        )
+                                        if isinstance(gd_d, dict):
+                                            facts = list(gd_d.get("facts") or [])
+                                            fan = list(gd_d.get("fan_in") or [])
+                                            a6_fact_count += len(facts)
+                                            a6_fan_in_count += len(fan)
+                                            if gd_d.get("run_id"):
+                                                a6_run_id = gd_d.get("run_id")
+                                            if gd_d.get("instance_graph"):
+                                                a6_instance_graph = gd_d.get(
+                                                    "instance_graph"
+                                                )
+                                            for f in facts:
+                                                if len(a6_facts_sample) < 3:
+                                                    a6_facts_sample.append(f)
+                                    if job is not None:
+                                        rec = attach_recorder(job)
+                                        if rec is not None:
+                                            rec.action(
+                                                StageProjectId.p2,
+                                                "extract_batch",
+                                                detail=(
+                                                    f"entities_extracted="
+                                                    f"{getattr(result, 'entities_extracted', 0)} "
+                                                    f"resolved="
+                                                    f"{getattr(result, 'entities_resolved', 0)}"
+                                                ),
+                                                meta={
+                                                    "entities_extracted": getattr(
+                                                        result, "entities_extracted", 0
+                                                    ),
+                                                    "entities_resolved": getattr(
+                                                        result, "entities_resolved", 0
+                                                    ),
+                                                    "structured_fastpath": structured_fastpath,
+                                                    "micro_rows": len(micro),
+                                                },
+                                            )
+                                            if a3_piece is not None:
+                                                rec.begin(
+                                                    StageProjectId.p3,
+                                                    input={
+                                                        "artifact": "A2",
+                                                        "name": "Candidate Facts",
+                                                        "contract_consumes": (
+                                                            "A2 Candidate Facts"
+                                                        ),
+                                                        "contract_emits": "A3 Clean Facts",
+                                                    },
+                                                )
+                                                rec.action(
+                                                    StageProjectId.p3,
+                                                    "clean_ledger",
+                                                    detail=(
+                                                        "A3 counts="
+                                                        f"{a3_piece.get('counts')}"
+                                                    ),
+                                                    meta=a3_piece.get("counts") or {},
+                                                )
+                                            if verified:
+                                                rec.begin(
+                                                    StageProjectId.p4,
+                                                    input={
+                                                        "artifact": "A3",
+                                                        "name": "Clean Facts",
+                                                        "verified_batch": len(verified),
+                                                    },
+                                                )
+                                                rec.action(
+                                                    StageProjectId.p4,
+                                                    "verify",
+                                                    detail=f"{len(verified)} A4 verdicts",
+                                                )
+                                            _gd_facts = 0
+                                            if isinstance(gd, dict):
+                                                _gd_facts = len(gd.get("facts") or [])
+                                            elif gd is not None and hasattr(gd, "facts"):
+                                                _gd_facts = len(gd.facts)
+                                            rec.action(
+                                                StageProjectId.p6,
+                                                "write_batch",
+                                                detail=(
+                                                    f"triples="
+                                                    f"{getattr(result, 'triples_inserted', 0)} "
+                                                    f"entities="
+                                                    f"{getattr(result, 'entities_resolved', 0)}"
+                                                ),
+                                                meta={
+                                                    "triples_inserted": getattr(
+                                                        result, "triples_inserted", 0
+                                                    ),
+                                                    "entities_resolved": getattr(
+                                                        result, "entities_resolved", 0
+                                                    ),
+                                                    "graph_delta_facts": _gd_facts,
+                                                },
+                                            )
+                                except Exception:
+                                    logger.warning(
+                                        "stage_trace_ingest_fold_failed",
+                                        job_id=getattr(job, "id", None)
+                                        if job is not None
+                                        else None,
+                                        exc_info=True,
+                                    )
                                 # A9 manifest: this micro-batch's rows LANDED —
                                 # record them as completed items so a later halt can
                                 # say exactly how many of the planned cap made it in
@@ -1852,8 +2092,33 @@ class WebIngestCapability:
                     if job is not None and job_store is not None:
                         job.provider_logs = list(plogs.values())
                     await _finish_job(
-                        job, job_store, processed=0, entities=0,
+                        job,
+                        job_store,
+                        processed=0,
+                        entities=0,
                         platforms=platforms,
+                        stage_contracts=_build_stage_contracts(
+                            a1_acc=a1_acc,
+                            a2_extracted=a2_extracted,
+                            a2_resolved=a2_resolved,
+                            a2_source_rows=a2_source_rows,
+                            a2_batches=a2_batches,
+                            a2_structured_batches=a2_structured_batches,
+                            a3_counts=a3_counts,
+                            a3_drop_reasons=a3_drop_reasons,
+                            a3_transforms_sample=a3_transforms_sample,
+                            a4_verified_count=a4_verified_count,
+                            a6_fact_count=a6_fact_count,
+                            a6_fan_in_count=a6_fan_in_count,
+                            a6_triples=a6_triples,
+                            a6_facts_sample=a6_facts_sample,
+                            a6_run_id=a6_run_id,
+                            a6_instance_graph=a6_instance_graph,
+                            entities_written=0,
+                            focus_type=proposed_type,
+                            focus_attributes=list(attributes),
+                            run_id=run_envelope.run_id,
+                        ),
                     )
                     return
                 logger.info(
@@ -1890,8 +2155,33 @@ class WebIngestCapability:
                     # Settle the rolling estimate to the exact final count.
                     job.progress.total = processed
                 await _finish_job(
-                    job, job_store, processed=processed, entities=entities_total,
+                    job,
+                    job_store,
+                    processed=processed,
+                    entities=entities_total,
                     platforms=platforms,
+                    stage_contracts=_build_stage_contracts(
+                        a1_acc=a1_acc,
+                        a2_extracted=a2_extracted,
+                        a2_resolved=a2_resolved,
+                        a2_source_rows=a2_source_rows,
+                        a2_batches=a2_batches,
+                        a2_structured_batches=a2_structured_batches,
+                        a3_counts=a3_counts,
+                        a3_drop_reasons=a3_drop_reasons,
+                        a3_transforms_sample=a3_transforms_sample,
+                        a4_verified_count=a4_verified_count,
+                        a6_fact_count=a6_fact_count,
+                        a6_fan_in_count=a6_fan_in_count,
+                        a6_triples=a6_triples,
+                        a6_facts_sample=a6_facts_sample,
+                        a6_run_id=a6_run_id,
+                        a6_instance_graph=a6_instance_graph,
+                        entities_written=entities_total,
+                        focus_type=proposed_type,
+                        focus_attributes=list(attributes),
+                        run_id=run_envelope.run_id,
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001 — background job self-contains errors
                 logger.error(
@@ -3162,6 +3452,88 @@ def _platforms(sources, provider) -> list[str]:
     return out
 
 
+def _build_stage_contracts(
+    *,
+    a1_acc: Optional[dict],
+    a2_extracted: int,
+    a2_resolved: int,
+    a2_source_rows: int,
+    a2_batches: int,
+    a2_structured_batches: int,
+    a3_counts: Optional[dict],
+    a3_drop_reasons: list,
+    a3_transforms_sample: list,
+    a4_verified_count: int,
+    a6_fact_count: int,
+    a6_fan_in_count: int,
+    a6_triples: int,
+    a6_facts_sample: list,
+    a6_run_id: Optional[str],
+    a6_instance_graph: Optional[str],
+    entities_written: int,
+    focus_type: Optional[str],
+    focus_attributes: list,
+    run_id: Optional[str],
+) -> dict:
+    """Assemble terminal Notion-contract-shaped I/O for P1/P2/P3/P6 (ONTA-385)."""
+    a1 = dict(a1_acc or {})
+    if a1:
+        a1.setdefault("artifact", "A1")
+        a1.setdefault("name", "Source Bundle")
+        a1.setdefault("run_id", run_id)
+    else:
+        a1 = {
+            "artifact": "A1",
+            "name": "Source Bundle",
+            "run_id": run_id,
+            "row_count": 0,
+            "bundles_emitted": 0,
+        }
+    a2 = summarize_a2_candidates(
+        entities_extracted=a2_extracted,
+        entities_resolved=a2_resolved,
+        source_row_count=a2_source_rows,
+        focus_type=focus_type,
+        focus_attributes=focus_attributes,
+        run_id=run_id,
+        soft_typed=True,
+        evidence_linked=True,
+        structured_fastpath=a2_structured_batches > 0
+        and a2_structured_batches == a2_batches
+        and a2_batches > 0,
+        batches=a2_batches,
+    )
+    a3: Optional[dict] = None
+    if a3_counts and int(a3_counts.get("total") or 0) > 0:
+        a3 = {
+            "artifact": "A3",
+            "name": "Clean Facts",
+            "counts": a3_counts,
+            "drop_reasons_sample": list(a3_drop_reasons)[:8],
+            "transforms_sample": list(a3_transforms_sample)[:8],
+        }
+    a4: Optional[dict] = None
+    if a4_verified_count > 0:
+        a4 = {
+            "artifact": "A4",
+            "name": "Verified Facts",
+            "verified_count": a4_verified_count,
+        }
+    a6 = {
+        "artifact": "A6",
+        "name": "Graph Delta",
+        "run_id": a6_run_id or run_id,
+        "instance_graph": a6_instance_graph,
+        "fact_count": a6_fact_count,
+        "fan_in_count": a6_fan_in_count,
+        "entities_written": entities_written,
+        "triples_inserted": a6_triples,
+        "status": "applied",
+        "facts_sample": list(a6_facts_sample)[:3],
+    }
+    return {"a1": a1, "a2": a2, "a3": a3, "a4": a4, "a6": a6}
+
+
 async def _finish_job(
     job: Optional[EnrichJob],
     job_store,
@@ -3169,6 +3541,7 @@ async def _finish_job(
     processed: int,
     entities: int,
     platforms: list[str],
+    stage_contracts: Optional[dict] = None,
 ) -> None:
     """Mark a discovery job applied with its result count + final progress."""
     if job is None or job_store is None:
@@ -3204,21 +3577,90 @@ async def _finish_job(
     try:
         rec = attach_recorder(job)
         if rec is not None:
+            contracts = stage_contracts or {}
+            a1 = contracts.get("a1") or {
+                "artifact": "A1",
+                "name": "Source Bundle",
+                "row_count": processed,
+            }
+            a2 = contracts.get("a2") or summarize_a2_candidates(
+                entities_resolved=entities,
+                source_row_count=processed,
+                focus_type=job.type_name,
+                focus_attributes=list(job.attributes or []),
+            )
+            a3 = contracts.get("a3")
+            a4 = contracts.get("a4")
+            a6 = contracts.get("a6") or summarize_a6_graph_delta(
+                entities_written=entities,
+                status="applied",
+            )
+
+            # P1 Find → A1 Source Bundle
             rec.end(
                 StageProjectId.p1,
                 output={
+                    **a1,
                     "result_count": entities,
                     "platforms": platforms,
                     "processed": processed,
                 },
             )
+            # P2 Extract → A2 Candidate Facts
             rec.end(
                 StageProjectId.p2,
-                output={"entities_written": entities, "processed": processed},
+                output={
+                    **a2,
+                    "processed": processed,
+                    "entities_written": entities,
+                },
             )
+            # P3 Clean → A3 Clean Facts (complete only when a clean ledger ran).
+            # Use end(..., skipped) so a mid-run begin(P3) cannot leave P3 running.
+            if a3 and int((a3.get("counts") or {}).get("total") or 0) > 0:
+                rec.end(StageProjectId.p3, output=a3)
+            else:
+                rec.end(
+                    StageProjectId.p3,
+                    status=StageStatus.skipped,
+                    output={
+                        "skip_reason": (
+                            "no A3 clean ledger on this run "
+                            "(empty ingest or clean fused with zero values)"
+                        )
+                    },
+                )
+            # P4 Verify → A4 (default-OFF; complete only when verdicts present)
+            if a4 and int(a4.get("verified_count") or 0) > 0:
+                rec.end(StageProjectId.p4, output=a4)
+            else:
+                rec.end(
+                    StageProjectId.p4,
+                    status=StageStatus.skipped,
+                    output={
+                        "skip_reason": (
+                            "verify default-OFF on discovery path (no A4 verdicts)"
+                        )
+                    },
+                )
+            # P5 Ontology / Placement stays fused into resolver ingest
+            rec.end(
+                StageProjectId.p5,
+                status=StageStatus.skipped,
+                output={
+                    "skip_reason": (
+                        "type placement happens inside resolver ingest (no separate A5)"
+                    )
+                },
+            )
+            # P6 Write → A6 Graph Delta
             rec.end(
                 StageProjectId.p6,
-                output={"entities_written": entities, "status": "applied"},
+                output={
+                    **a6,
+                    "entities_written": entities,
+                    "status": "applied",
+                },
             )
             rec.end(
                 StageProjectId.p0,
@@ -3228,13 +3670,11 @@ async def _finish_job(
                     "processed": processed,
                     "platforms": platforms,
                     "cost": job.cost,
+                    "run_id": a1.get("run_id") or a6.get("run_id"),
                 },
             )
             # Rails not on the discovery write path stay skipped.
             for pid, reason in (
-                (StageProjectId.p3, "clean fused into extract/write on discovery path"),
-                (StageProjectId.p4, "verify default-OFF on discovery path"),
-                (StageProjectId.p5, "type placement happens inside resolver ingest"),
                 (StageProjectId.p7, "answer rail not on discovery jobs"),
                 (StageProjectId.p8, "not a refresh-delta run"),
                 (StageProjectId.p9, "surface is the Jobs UI; no A10 on this path"),
@@ -3247,6 +3687,11 @@ async def _finish_job(
                 "type_name": job.type_name,
                 "attributes": job.attributes,
                 "cost": job.cost,
+                "a1_row_count": a1.get("row_count"),
+                "a2_entities_extracted": a2.get("entities_extracted"),
+                "a3_counts": (a3 or {}).get("counts") if a3 else None,
+                "a6_fact_count": a6.get("fact_count"),
+                "run_id": a1.get("run_id") or a6.get("run_id"),
             }
             job.stage_trace.status = "applied"
     except Exception:
