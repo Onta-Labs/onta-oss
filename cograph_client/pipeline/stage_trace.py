@@ -398,14 +398,16 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
             "platforms": getattr(job, "platforms", None),
             "provider_count": len(plogs),
         }
-    
     if category == "ingest":
         p1.status = StageStatus.skipped
         p1.reconstructed = True
         p1.output = {
-            "skip_reason": "file is A1-like entry (source provided); Find Data not on this rail"
+            "skip_reason": (
+                "file is A1-like entry (source provided); Find Data not on this rail"
+            ),
         }
-projects.append(p1)
+
+    projects.append(p1)
 
     # --- P2 Extract ---------------------------------------------------------
     p2 = empty_project(StageProjectId.p2, status=StageStatus.skipped)
