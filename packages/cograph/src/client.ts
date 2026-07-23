@@ -1461,12 +1461,14 @@ export function isTerminalJobStatus(status: JobStatus): boolean {
  *  categories. Existing enrichment jobs default to `enrichment` server-side.
  *  `discovery` is a web-discovery ingest (the `web_ingest` capability): it
  *  CREATES a new record set from the web rather than filling/merging an existing
- *  one. */
+ *  one. `answer` is a read-only NL ask / agent Q&A turn (P7 Answer / A7 + P0/A9
+ *  stage_trace; ONTA-389) — not every chat message, only meaningful completions. */
 export type JobCategory =
   | "dedupe"
   | "enrichment"
   | "reconciliation"
-  | "discovery";
+  | "discovery"
+  | "answer";
 /** How a job was kicked off. Today everything is `manual` (a user clicked an
  *  action); `scheduled`/`webhook` are reserved for future automation. */
 export type JobTrigger = "manual" | "scheduled" | "webhook";

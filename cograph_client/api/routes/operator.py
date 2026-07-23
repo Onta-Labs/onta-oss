@@ -42,6 +42,11 @@ async def get_job_stage_trace(
     Prefer live ``job.stage_trace`` when present; otherwise reconstruct from
     manifest / provider_logs / progress so pre-instrumentation jobs still
     render.
+
+    **Ask/agent answer runs (ONTA-389):** a completed ``/ask`` or agent
+    ``kind:answer`` turn mints a job with ``category=answer`` and returns
+    ``run_id`` (= this ``job_id``) on the answer payload. Open this endpoint with
+    that id to see live **P7 Answer (A7)** + **P0/A9** coverage on Job Trace.
     """
     job = await job_store.get(job_id)
     if job is None:
