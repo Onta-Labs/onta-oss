@@ -26,7 +26,10 @@ from cograph_client.pipeline.stage_trace import (
     StageTraceRecorder,
     attach_recorder,
     ensure_all_projects,
+    ensure_job_stage_trace_open,
+    finalize_job_stage_trace,
     new_trace_for_job,
+    open_job_stage_trace,
     reconstruct_from_job,
     resolve_trace,
 )
@@ -179,6 +182,165 @@ def test_resolve_trace_heals_stale_running_on_failed_job():
 
 def test_attach_recorder_none():
     assert attach_recorder(None) is None
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-388 — P0 open + finalize on every job category
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        JobCategory.enrichment,
+        JobCategory.dedupe,
+        JobCategory.reconciliation,
+        JobCategory.discovery,
+    ],
+)
+def test_open_job_stage_trace_starts_p0_running(category):
+    """P0 begins on create for every job category (ONTA-388)."""
+    job = _job(category=category, status=JobStatus.queued, stage_trace=None)
+    rec = open_job_stage_trace(job)
+    assert rec is not None
+    assert job.stage_trace is not None
+    p0 = next(p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0)
+    assert p0.status == StageStatus.running
+    assert p0.input.get("category") in (category.value, str(category))
+    assert any(a.name == "create_job" for a in p0.actions)
+    # Other projects stay skipped until a rail touches them.
+    for p in job.stage_trace.projects:
+        if p.project_id != StageProjectId.p0:
+            assert p.status == StageStatus.skipped
+
+
+@pytest.mark.parametrize(
+    "category,terminal,expect_fail",
+    [
+        (JobCategory.enrichment, "applied", False),
+        (JobCategory.enrichment, "failed", True),
+        (JobCategory.enrichment, "review", False),
+        (JobCategory.dedupe, "applied", False),
+        (JobCategory.dedupe, "failed", True),
+        (JobCategory.reconciliation, "review", False),
+        (JobCategory.reconciliation, "failed", True),
+        (JobCategory.discovery, "applied", False),
+        (JobCategory.discovery, "failed", True),
+        (JobCategory.enrichment, "cancelled", False),
+    ],
+)
+def test_finalize_never_leaves_running_projects(category, terminal, expect_fail):
+    """Terminal jobs must never have running stage projects (ONTA-388).
+
+    Simulates mid-run instrumentation that left P2/P6 open, then finalize.
+    """
+    job = _job(
+        category=category,
+        status=JobStatus.running,
+        stage_trace=None,
+        error="boom" if expect_fail else None,
+    )
+    rec = open_job_stage_trace(job)
+    assert rec is not None
+    # Simulate mid-run stages that would freeze as spinners without finalize.
+    rec.begin(StageProjectId.p2, input={"phase": "extract"})
+    rec.begin(StageProjectId.p6, input={"phase": "write"})
+    assert next(
+        p for p in job.stage_trace.projects if p.project_id == StageProjectId.p2
+    ).status == StageStatus.running
+    assert next(
+        p for p in job.stage_trace.projects if p.project_id == StageProjectId.p6
+    ).status == StageStatus.running
+
+    job.status = JobStatus(terminal)
+    if expect_fail:
+        job.error = job.error or "simulated failure"
+
+    finalize_job_stage_trace(
+        job,
+        terminal_status=terminal,
+        error=job.error if expect_fail else None,
+        summary={"category": category.value},
+    )
+
+    assert job.stage_trace is not None
+    assert job.stage_trace.status == terminal
+    for p in job.stage_trace.projects:
+        assert p.status != StageStatus.running, (
+            f"{p.project_id} still running on terminal {terminal} ({category.value})"
+        )
+        assert p.status != StageStatus.pending, (
+            f"{p.project_id} still pending on terminal {terminal} ({category.value})"
+        )
+
+    p0 = next(p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0)
+    if expect_fail:
+        assert p0.status == StageStatus.failed
+        assert p0.error
+    else:
+        assert p0.status == StageStatus.completed
+
+    # resolve_trace must also never surface running on a terminal job.
+    job.status = JobStatus(terminal)
+    resolved = resolve_trace(job)
+    for p in resolved.projects:
+        assert p.status != StageStatus.running
+
+
+def test_finalize_is_idempotent_and_exception_safe():
+    job = _job(category=JobCategory.dedupe, status=JobStatus.failed, error="x")
+    open_job_stage_trace(job)
+    finalize_job_stage_trace(job, terminal_status="failed", error="x")
+    finalize_job_stage_trace(job, terminal_status="failed", error="x")  # no raise
+    p0 = next(p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0)
+    assert p0.status == StageStatus.failed
+
+
+def test_ensure_job_stage_trace_open_is_noop_when_present():
+    job = _job(category=JobCategory.enrichment, status=JobStatus.queued)
+    open_job_stage_trace(job)
+    p0_before = next(
+        p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0
+    )
+    n_actions = len(p0_before.actions)
+    rec = ensure_job_stage_trace_open(job)
+    assert rec is not None
+    p0_after = next(
+        p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0
+    )
+    # Does not re-fire create_job.
+    assert len(p0_after.actions) == n_actions
+
+
+def test_ensure_job_stage_trace_open_creates_when_missing():
+    job = _job(category=JobCategory.dedupe, status=JobStatus.running, stage_trace=None)
+    assert job.stage_trace is None
+    rec = ensure_job_stage_trace_open(job)
+    assert rec is not None
+    assert job.stage_trace is not None
+    p0 = next(p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0)
+    assert p0.status == StageStatus.running
+
+
+def test_open_and_finalize_none_job_safe():
+    assert open_job_stage_trace(None) is None
+    finalize_job_stage_trace(None, terminal_status="failed")  # no raise
+    assert ensure_job_stage_trace_open(None) is None
+
+
+def test_actions_new_job_opens_p0():
+    """actions._new_job (dedupe/enrich/recon create) opens live P0."""
+    from cograph_client.api.routes.actions import _new_job
+
+    job = _new_job(
+        tenant_id="demo-tenant",
+        kg_name="kg",
+        category=JobCategory.dedupe,
+    )
+    assert job.stage_trace is not None
+    p0 = next(p for p in job.stage_trace.projects if p.project_id == StageProjectId.p0)
+    assert p0.status == StageStatus.running
+    assert p0.input.get("category") == "dedupe"
 
 
 def test_operator_route_404_unknown_job():

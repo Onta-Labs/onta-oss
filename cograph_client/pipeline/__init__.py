@@ -29,7 +29,11 @@ from cograph_client.pipeline.stage_trace import (
     StageProjectTrace,
     StageStatus,
     StageTraceRecorder,
+    attach_recorder,
+    ensure_job_stage_trace_open,
+    finalize_job_stage_trace,
     new_trace_for_job,
+    open_job_stage_trace,
     reconstruct_from_job,
     resolve_trace,
 )
@@ -45,7 +49,11 @@ __all__ = [
     "StageProjectTrace",
     "StageStatus",
     "StageTraceRecorder",
+    "attach_recorder",
+    "ensure_job_stage_trace_open",
+    "finalize_job_stage_trace",
     "new_trace_for_job",
+    "open_job_stage_trace",
     "reconstruct_from_job",
     "resolve_trace",
 ]

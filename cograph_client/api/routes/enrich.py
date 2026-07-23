@@ -35,6 +35,10 @@ from cograph_client.enrichment.tier_router import (
     chain_has_paid,
     resolve_auto_tier,
 )
+from cograph_client.pipeline.stage_trace import (
+    finalize_job_stage_trace,
+    open_job_stage_trace,
+)
 
 router = APIRouter(prefix="/graphs/{tenant}/enrich")
 
@@ -214,6 +218,8 @@ async def create_job(
         # default (unchanged behavior).
         spend_ceiling_usd=body.spend_ceiling_usd,
     )
+    # P0/A9 live open (ONTA-388): open P0 on create for every enrichment job.
+    open_job_stage_trace(job)
     await job_store.create(job)
 
     _spawn(executor.run(job, tenant.tenant_id))
@@ -411,5 +417,11 @@ async def cancel_job(
     if not job or job.tenant_id != tenant.tenant_id:
         raise HTTPException(status_code=404, detail="job not found")
     job.status = JobStatus.cancelled
+    # P0/A9 finalize (ONTA-388): cancelled is terminal — never leave stages running.
+    finalize_job_stage_trace(
+        job,
+        terminal_status="cancelled",
+        summary={"category": getattr(getattr(job, "category", None), "value", None)},
+    )
     await job_store.update(job)
     return {"status": "cancelled", "job_id": job_id}

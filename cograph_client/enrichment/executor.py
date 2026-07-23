@@ -38,6 +38,10 @@ from cograph_client.pipeline.manifest import (
     RunManifest,
     resolve_spend_ceiling,
 )
+from cograph_client.pipeline.stage_trace import (
+    ensure_job_stage_trace_open,
+    finalize_job_stage_trace,
+)
 from cograph_client.retrieval.cost import source_cost
 from cograph_client.enrichment.sources.base import (
     SourceAdapter,
@@ -1264,6 +1268,9 @@ class EnrichmentExecutor:
         try:
             job.status = JobStatus.running
             job.started_at = _now()
+            # P0/A9 (ONTA-388): ensure live stage_trace is open even if the
+            # create site skipped open (scheduled / older callers).
+            ensure_job_stage_trace_open(job)
             await self._jobs.update(job)
 
             # Resolve the target type to the tenant's canonical declared name
@@ -1284,6 +1291,12 @@ class EnrichmentExecutor:
                 job.completed_at = _now()
                 job.error_summary = [JobErrorItem(kind="job", message=job.error)]
                 manifest.halt(HaltReasonKind.error, job.error)
+                finalize_job_stage_trace(
+                    job,
+                    terminal_status="failed",
+                    error=job.error,
+                    summary={"category": "enrichment", "phase": "type_resolve"},
+                )
                 await self._jobs.update(job)
                 return
             if canonical and canonical != job.type_name:
@@ -1578,6 +1591,12 @@ class EnrichmentExecutor:
                 job.status = JobStatus.cancelled
                 job.completed_at = _now()
                 manifest.cancel()
+                finalize_job_stage_trace(
+                    job,
+                    terminal_status="cancelled",
+                    summary={"category": "enrichment"},
+                    p0_output={"status": "cancelled"},
+                )
                 await self._jobs.update(job)
                 return
 
@@ -1783,6 +1802,29 @@ class EnrichmentExecutor:
             # A9 manifest: the run finished its work (review = parked for human
             # decisions, applied = written) — a clean terminal COMPLETED.
             manifest.complete()
+            # P0/A9 finalize (ONTA-388): end any still-running stage projects.
+            st = (
+                job.status.value
+                if hasattr(job.status, "value")
+                else str(job.status)
+            )
+            finalize_job_stage_trace(
+                job,
+                terminal_status=st,
+                summary={
+                    "category": "enrichment",
+                    "filled": job.progress.filled,
+                    "verified": job.progress.verified,
+                    "conflicts": job.progress.conflicts,
+                    "processed": job.progress.processed,
+                    "total": job.progress.total,
+                },
+                p0_output={
+                    "status": st,
+                    "filled": job.progress.filled,
+                    "processed": job.progress.processed,
+                },
+            )
             await self._jobs.update(job)
 
             # Product-analytics event (ONTA-323). run() is a background task with
@@ -1825,6 +1867,17 @@ class EnrichmentExecutor:
                 else ""
             )
             manifest.halt_from_exception(exc, landed_note=landed)
+            finalize_job_stage_trace(
+                job,
+                terminal_status="failed",
+                error=job.error,
+                summary={
+                    "category": "enrichment",
+                    "processed": job.progress.processed,
+                    "total": job.progress.total,
+                },
+                p0_output={"status": "failed", "error": job.error},
+            )
             try:
                 await self._jobs.update(job)
             except Exception:  # noqa: BLE001
@@ -2727,6 +2780,13 @@ class EnrichmentExecutor:
             )
         job.status = JobStatus.applied
         job.completed_at = _now()
+        # Review → applied is terminal for the job (ONTA-388): seal stage_trace.
+        finalize_job_stage_trace(
+            job,
+            terminal_status="applied",
+            summary={"category": "enrichment", "applied_decisions": applied},
+            p0_output={"status": "applied", "applied_decisions": applied},
+        )
         await self._jobs.update(job)
         return applied
 
