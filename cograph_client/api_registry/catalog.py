@@ -287,6 +287,20 @@ def set_tenant_custom_specs(tenant_id: str, specs: list[ApiSourceSpec]) -> None:
     _tenant_custom_cache[tenant_id] = tagged
 
 
+def _reset_coverage_index() -> None:
+    """Drop the precomputed coverage-embedding index (ONTA-390) on any catalog
+    change so stale/removed entries can't be ranked. Lazy import + best-effort so
+    catalog.py takes no import-time dependency on the index (or its numpy chain)
+    and a reset never breaks a catalog mutation. The index re-warms lazily on the
+    next query (content-hash keyed, so unchanged cards don't re-embed)."""
+    try:
+        from .coverage_index import reset_coverage_index
+
+        reset_coverage_index()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def invalidate_tenant_catalog(tenant_id: str) -> None:
     """Drop a tenant's cached custom layer so the next load re-reads the store.
 
@@ -297,6 +311,7 @@ def invalidate_tenant_catalog(tenant_id: str) -> None:
     read.
     """
     _tenant_custom_cache.pop(tenant_id, None)
+    _reset_coverage_index()
 
 
 def reset_api_source_catalog() -> None:
@@ -305,6 +320,7 @@ def reset_api_source_catalog() -> None:
     global _catalog_singleton
     _catalog_singleton = None
     _tenant_custom_cache.clear()
+    _reset_coverage_index()
 
 
 __all__ = [
