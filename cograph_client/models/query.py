@@ -66,3 +66,14 @@ class NLResult(BaseModel):
     # COGRAPH_ANSWER_CITATIONS_ENABLED is set (see nlp/pipeline.py).
     citations: list[FactCitation] = Field(default_factory=list, description="Per-fact verdict/confidence/recency for the facts the answer relies on")
     coverage_caveat: str = Field(default="", description="Honest coverage caveat: 'answered from N of M sources; K facts stale'")
+    # ONTA-389: trackable answer run id (= EnrichJob id, category=answer). Empty
+    # when no job store is available. Operator path:
+    # GET /operator/jobs/{run_id}/trace → P7 Answer (A7) + P0/A9.
+    run_id: str = Field(
+        default="",
+        description=(
+            "Answer-run id for operator Job Trace (P7/A7 + P0/A9). "
+            "Look up via GET /operator/jobs/{run_id}/trace. Empty when tracking "
+            "is unavailable."
+        ),
+    )
