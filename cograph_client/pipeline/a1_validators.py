@@ -170,6 +170,39 @@ def _looks_like_url(text: str) -> bool:
     return bool(_URL_SCHEME_RE.search(text) or _DOMAIN_RE.search(text))
 
 
+# A common, non-exhaustive TLD set used ONLY by the stricter city URL check. The
+# permissive ``_looks_like_url`` accepts any ``label.tld`` shape (right for a
+# WEBSITE cell, which SHOULD be a URL), but that also matches no-space abbreviated
+# place names ("St.Louis", "Mt.Royal", "Ft.Worth") whose "TLD" is just a word — a
+# false positive for a CITY cell. Requiring a scheme, a ``www.``, or a real TLD
+# keeps genuine URLs-as-city flagged while letting those place names through.
+_KNOWN_TLD = frozenset({
+    "com", "org", "net", "edu", "gov", "mil", "int", "io", "co", "us", "ca",
+    "uk", "au", "nz", "ie", "de", "fr", "es", "it", "nl", "eu", "in", "cn",
+    "jp", "br", "mx", "za", "info", "biz", "app", "dev", "ai", "tech", "xyz",
+    "online", "site", "gov.uk", "ac.uk", "edu.au",
+})
+_DOMAIN_TLD_RE = re.compile(
+    r"\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9-]{1,63})*"
+    r"\.([a-z]{2,24})\b",
+    re.IGNORECASE,
+)
+_WWW_RE = re.compile(r"\bwww\.", re.IGNORECASE)
+
+
+def _looks_like_url_strict(text: str) -> bool:
+    """URL detection for cells that are NOT expected to be URLs (city): an explicit
+    scheme, a ``www.``, or a domain ending in a recognized TLD. Abbreviated place
+    names like ``St.Louis`` — whose trailing label is an ordinary word, not a TLD —
+    are NOT treated as URLs."""
+    if _URL_SCHEME_RE.search(text) or _WWW_RE.search(text):
+        return True
+    return any(
+        m.group(1).lower() in _KNOWN_TLD for m in _DOMAIN_TLD_RE.finditer(text)
+    )
+
+
 # Street cues — presence of any means the value is plausibly a REAL address, so an
 # enrolment phrase that also carries one is kept (a real address with extra prose).
 # Whole-word street-type tokens, a US ZIP, or a Canadian postal code.
@@ -199,7 +232,7 @@ def validate_city(value: object) -> str | None:
         return None
     if _YEAR_LIKE_RE.match(text):
         return f"city looks like a year {text!r}"
-    if _looks_like_url(text):
+    if _looks_like_url_strict(text):
         return f"city looks like a URL {text!r}"
     if _ENROLMENT_RE.search(text):
         return f"city looks like an enrolment phrase {text!r}"
