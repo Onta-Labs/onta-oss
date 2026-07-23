@@ -29,6 +29,7 @@ const JOB_CATEGORIES = [
   "dedupe",
   "reconciliation",
   "discovery",
+  "ingest",
   "answer",
 ] as const;
 

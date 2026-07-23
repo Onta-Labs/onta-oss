@@ -1049,6 +1049,17 @@ class IngestResult(BaseModel):
     """Response for the ingest endpoint."""
 
     batch_id: str = Field(default="", description="Batch ID for rollback support")
+    # ONTA-386: tracked Jobs-page id when the route opened a file-ingest job.
+    # Optional / default None so older clients and unit-constructed results stay
+    # compatible; when set, clients can poll GET /jobs or the operator trace.
+    job_id: str | None = Field(
+        default=None,
+        description=(
+            "Tracked EnrichJob id for this file ingest (category=ingest), when "
+            "the API recorded a Jobs entry with live stage_trace. None when the "
+            "job store was unavailable or the call path does not track jobs."
+        ),
+    )
     entities_extracted: int = 0
     entities_resolved: int = 0
     triples_inserted: int = 0
