@@ -1,10 +1,16 @@
 """ONTA-383 — Gate attribute→type auto-promotion + focus consolidation + junk guard.
 
 Acceptance (from the ticket brief):
-  * Small clean type set under a proposed focus (Institution) — University /
-    College land as subtypes, not free-standing peers.
+  * Small clean type set under a proposed focus (Institution).
   * No junk types (Colour, Online, InstructionMode class).
   * Fixture asserts type count ≤ K and junk set absent.
+
+ONTA-394 UPDATE: accidental subtypes now COLLAPSE into the confirmed focus by
+default (``_DISCOVERY_COLLAPSE_SUBTYPES=1``) instead of being anchored as
+subtypes — so University / College / PublicInstitution under an Institution focus
+all resolve to Institution and NO unconfirmed subtype collection is minted. The
+ONTA-383 anchor-as-subtype behavior is preserved behind
+``COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0`` and covered by the flag-off tests below.
 
 All mocked — no live Neptune, no LLM. A FakeTypeMatcher returns DIFFERENT for
 any proposed type not already in existing_types so the focus-seed + parent-
@@ -31,6 +37,7 @@ from cograph_client.resolver.models import (
     MatchVerdict,
     TypeMatch,
 )
+from cograph_client.resolver import schema_resolver
 from cograph_client.resolver.schema_resolver import (
     SchemaResolver,
     _primary_entity_ids,
@@ -186,8 +193,42 @@ async def test_instruction_mode_never_minted(resolver, mock_neptune):
 
 
 @pytest.mark.asyncio
-async def test_primary_without_parent_anchors_under_focus(resolver, mock_neptune):
-    """University with no parent under focus=Institution becomes a subtype of it."""
+async def test_primary_new_subtype_collapses_to_focus(resolver, mock_neptune):
+    """ONTA-394 default: a NEW subtype (University) under focus=Institution
+    collapses to Institution — no University collection is minted."""
+    existing_types: dict[str, str] = {"Institution": ""}
+    existing_attrs: dict[str, dict] = {"Institution": {}}
+    parent_of: dict[str, str] = {}
+    result = IngestResult(entities_extracted=1)
+    entity = ExtractedEntity(
+        type_name="University",
+        id="ubc",
+        attributes=[
+            ExtractedAttribute(name="name", value="UBC", datatype="string"),
+            ExtractedAttribute(name="website", value="https://ubc.ca", datatype="string"),
+        ],
+    )
+    resolved = await resolver._resolve_type(
+        entity, "g", existing_types, existing_attrs, result,
+        focus_types=["Institution"],
+        is_primary=True,
+        parent_of=parent_of,
+    )
+    assert resolved == "Institution"
+    assert "University" not in result.types_created
+    sparql = _update_sparql(mock_neptune)
+    assert type_uri("University") not in sparql
+    # No accidental subtype anchored.
+    assert parent_of.get("University") is None
+
+
+@pytest.mark.asyncio
+async def test_primary_without_parent_anchors_under_focus_when_collapse_off(
+    resolver, mock_neptune, monkeypatch
+):
+    """ONTA-383 fallback (COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0): University with
+    no parent under focus=Institution is anchored as a subtype of it."""
+    monkeypatch.setattr(schema_resolver, "_DISCOVERY_COLLAPSE_SUBTYPES", False)
     existing_types: dict[str, str] = {"Institution": ""}
     existing_attrs: dict[str, dict] = {"Institution": {}}
     parent_of: dict[str, str] = {}
@@ -213,6 +254,26 @@ async def test_primary_without_parent_anchors_under_focus(resolver, mock_neptune
     assert type_uri("Institution") in sparql
     # Parent linkage recorded on the call-local map.
     assert parent_of.get("University") == "Institution"
+
+
+@pytest.mark.asyncio
+async def test_existing_subtype_is_reused_not_collapsed(resolver, mock_neptune):
+    """A subtype ALREADY in the ontology (a prior confirmed College) is REUSED,
+    never collapsed — collapse only suppresses BRAND-NEW accidental subtypes."""
+    existing_types: dict[str, str] = {"Institution": "", "College": ""}
+    existing_attrs: dict[str, dict] = {"Institution": {}, "College": {}}
+    result = IngestResult(entities_extracted=1)
+    entity = ExtractedEntity(
+        type_name="College",
+        id="langara",
+        attributes=[ExtractedAttribute(name="name", value="Langara", datatype="string")],
+    )
+    resolved = await resolver._resolve_type(
+        entity, "g", existing_types, existing_attrs, result,
+        focus_types=["Institution"],
+        is_primary=True,
+    )
+    assert resolved == "College"
 
 
 @pytest.mark.asyncio
@@ -264,11 +325,12 @@ async def test_institution_batch_type_count_bound_and_junk_absent(resolver, mock
       * Colour / Online / InstructionMode junk types (must be absent)
       * City as a legitimate dimension node
 
-    Asserts:
+    Asserts (ONTA-394 collapse default):
       * no junk type in types_created / existing_types
       * total distinct types ≤ _TYPE_COUNT_BOUND
-      * focus Institution exists; University & College exist as types
-      * subtypes are anchored under Institution
+      * every accidental primary subtype collapses to Institution — no
+        University / College / PublicInstitution collections are minted
+      * City stays a legitimate dimension node
     """
     extraction = ExtractionResult(
         entities=[
@@ -354,11 +416,12 @@ async def test_institution_batch_type_count_bound_and_junk_absent(resolver, mock
     assert resolved["junk-online"] is None
     assert resolved["junk-im"] is None
 
-    # Focus + subtypes + City present.
+    # ONTA-394: every accidental primary subtype collapses to the focus; City
+    # (a dimension node) stays free-minted.
     assert "Institution" in existing_types
-    assert resolved["ubc"] == "University"
-    assert resolved["langara"] == "College"
-    assert resolved["bcit"] == "PublicInstitution"
+    assert resolved["ubc"] == "Institution"
+    assert resolved["langara"] == "Institution"
+    assert resolved["bcit"] == "Institution"
     assert resolved["vancouver"] == "City"
 
     created = set(result.types_created) | set(existing_types)
@@ -367,18 +430,14 @@ async def test_institution_batch_type_count_bound_and_junk_absent(resolver, mock
         assert junk not in created, f"junk type {junk} was minted"
         assert not any(is_junk_type_name(t) for t in created if t in _JUNK_TYPES)
 
-    # Type count bound — focus + a few subtypes + City, not 17.
+    # No unconfirmed subtype collections were minted.
+    for accidental in ("University", "College", "PublicInstitution"):
+        assert accidental not in created, (
+            f"{accidental} was minted; should have collapsed to Institution"
+        )
+
+    # Type count bound — just focus + City after collapse.
     assert len(created) <= _TYPE_COUNT_BOUND, (
         f"type count {len(created)} > bound {_TYPE_COUNT_BOUND}: {sorted(created)}"
     )
-    # Expected set is a subset of {Institution, University, College,
-    # PublicInstitution, City} — at most 5.
-    assert created <= {
-        "Institution", "University", "College", "PublicInstitution", "City",
-    }
-
-    # Subtypes anchored under Institution.
-    for child in ("University", "College", "PublicInstitution"):
-        assert parent_of.get(child) == "Institution", (
-            f"{child} was not consolidated under Institution; parent_of={parent_of}"
-        )
+    assert created == {"Institution", "City"}

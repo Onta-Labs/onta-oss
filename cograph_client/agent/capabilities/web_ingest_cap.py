@@ -244,6 +244,18 @@ _DISCOVERY_INGEST_SUBBATCH = max(
     1, int(os.environ.get("COGRAPH_DISCOVERY_INGEST_SUBBATCH", "5"))
 )
 
+# ONTA-394: entity fan-out observability. Soft extract can multiply a keyed A1
+# table (44 rows) into ~2x entities (91) by over-minting subtypes / promoting
+# skewed cells into nodes. The AC#3 (value-gated node promotion) and AC#4
+# (subtype collapse) guards bring the count back down; this ratio makes any
+# remaining amplification VISIBLE on the Job Trace instead of silent. When
+# a2_entities_extracted / a1_row_count exceeds this ratio, the run logs a warning
+# and stamps ``entity_fanout_high`` on the stage-trace summary. Observability
+# ONLY — never drops entities (a page can legitimately name several subjects).
+_DISCOVERY_FANOUT_WARN_RATIO = float(
+    os.environ.get("COGRAPH_DISCOVERY_FANOUT_WARN_RATIO", "2.0")
+)
+
 
 def _chunk_rows(rows: list, size: int) -> list[list]:
     """Split ``rows`` into consecutive sub-batches of at most ``size`` (order
@@ -3841,6 +3853,27 @@ async def _finish_job(
                 (StageProjectId.p9, "surface is the Jobs UI; no A10 on this path"),
             ):
                 rec.skip(pid, reason=reason)
+            # ONTA-394: entity fan-out ratio (a2 extracted / a1 rows). Surfaced on
+            # the trace summary + warned when high, so soft-extract amplification is
+            # never silent. Observability only — nothing is dropped here.
+            _a1_rows = a1.get("row_count") or 0
+            _a2_extracted = a2.get("entities_extracted") or 0
+            _fanout_ratio = (
+                round(_a2_extracted / _a1_rows, 2) if _a1_rows else None
+            )
+            _fanout_high = bool(
+                _fanout_ratio is not None
+                and _fanout_ratio > _DISCOVERY_FANOUT_WARN_RATIO
+            )
+            if _fanout_high:
+                logger.warning(
+                    "discovery_high_entity_fanout",
+                    job_id=getattr(job, "id", None),
+                    a1_row_count=_a1_rows,
+                    a2_entities_extracted=_a2_extracted,
+                    fanout_ratio=_fanout_ratio,
+                    threshold=_DISCOVERY_FANOUT_WARN_RATIO,
+                )
             job.stage_trace.summary = {
                 "result_count": entities,
                 "processed": processed,
@@ -3850,6 +3883,8 @@ async def _finish_job(
                 "cost": job.cost,
                 "a1_row_count": a1.get("row_count"),
                 "a2_entities_extracted": a2.get("entities_extracted"),
+                "entity_fanout_ratio": _fanout_ratio,
+                "entity_fanout_high": _fanout_high,
                 "a3_counts": (a3 or {}).get("counts") if a3 else None,
                 "a6_fact_count": a6.get("fact_count"),
                 "run_id": a1.get("run_id") or a6.get("run_id"),
