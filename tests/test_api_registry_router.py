@@ -18,19 +18,24 @@ from cograph_client.api_registry import (
     route_query,
 )
 from cograph_client.api_registry.catalog import reset_api_source_layers
+from cograph_client.api_registry.coverage_index import reset_coverage_index
+from cograph_client.api_registry.ranking import lexical_rank as _lexical_rank
 from cograph_client.api_registry.router import (
     MODE_API_ONLY as _MODE_API_ONLY,  # noqa: F401 (re-exported for readability)
     RoutingDecision,
     _candidate_block,
-    _lexical_rank,
     _param_geo_kind,
 )
 
 
 @pytest.fixture(autouse=True)
 def _no_overlays():
+    # Reset the precomputed coverage index between tests so the shared singleton's
+    # cache from one test can't perturb another's embed-call assertions (ONTA-390).
+    reset_coverage_index()
     reset_api_source_layers()
     yield
+    reset_coverage_index()
     reset_api_source_layers()
 
 
@@ -189,18 +194,14 @@ async def test_empty_query_is_web_only():
 @pytest.mark.asyncio
 async def test_prefilter_embedding_ranks_and_limits_topk():
     # Force the embedding path (top_k < catalog size) with a fake embedder that
-    # makes the query most similar to whichever entry text contains "clinic".
-    seen = {}
+    # scores each card by whether it mentions "clinical" — independent of position,
+    # since the precomputed index (ONTA-390) embeds entry cards and the query in
+    # SEPARATE batches (not one [query, *texts] call).
+    calls = []
 
     async def embed_fn(texts):
-        # texts[0] is the query; rank each entry by whether it shares a keyword.
-        q = texts[0].lower()
-        seen["n"] = len(texts)
-        vecs = []
-        for t in texts:
-            score = 1.0 if ("clinical" in t.lower() and "clinical" in q) else 0.0
-            vecs.append([score, 1.0 - score])
-        return vecs
+        calls.append(list(texts))
+        return [[1.0, 0.0] if "clinical" in t.lower() else [0.0, 1.0] for t in texts]
 
     dec = await route_query(
         "clinical trials for cancer", _catalog(), top_k=1,
@@ -208,9 +209,14 @@ async def test_prefilter_embedding_ranks_and_limits_topk():
         chat_fn=_chat({"mode": "api_only",
                        "picks": [{"slug": "clinicaltrials_gov", "bindings": {"condition": "cancer"}}]}),
     )
-    assert seen["n"] == len(_catalog().enabled()) + 1  # query + one text per entry
-    # Only the top-1 candidate was offered to choose.
+    # The clinical-trials entry (the only card mentioning "clinical") is the sole
+    # top-1 candidate offered to the LLM.
     assert dec.prefilter_slugs == ["clinicaltrials_gov"]
+    # The index embedded the entry cards (one batch) AND the query — i.e. it did
+    # rank via embeddings, not the lexical fallback.
+    embedded = [t for batch in calls for t in batch]
+    assert "clinical trials for cancer" in embedded          # the query was embedded
+    assert len(embedded) >= len(_catalog().enabled()) + 1    # entries + query
 
 
 def test_lexical_rank_prefers_overlap():

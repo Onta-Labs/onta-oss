@@ -222,6 +222,11 @@ class Coverage:
     geo: str = ""                                           # e.g. "United States"
     temporal: str = ""                                      # e.g. "current"
     example_asks: list[str] = field(default_factory=list)   # few-shot for the router
+    # Short retrieval terms an operator can curate (ONTA-390): folded into the
+    # embeddable capability-card text + the lexical fallback so a query matches
+    # an entry on a curated synonym its prose may not spell out (e.g. "npi",
+    # "physician", "geocoding"). Optional; capped like every other list field.
+    keywords: list[str] = field(default_factory=list)       # e.g. ["npi", "physician"]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -230,6 +235,7 @@ class Coverage:
             "geo": self.geo,
             "temporal": self.temporal,
             "example_asks": list(self.example_asks),
+            "keywords": list(self.keywords),
         }
 
     @classmethod
@@ -241,6 +247,7 @@ class Coverage:
             geo=_as_str(d.get("geo")).strip(),
             temporal=_as_str(d.get("temporal")).strip(),
             example_asks=_as_str_list(d.get("example_asks")),
+            keywords=_as_str_list(d.get("keywords")),
         )
 
 
@@ -698,6 +705,7 @@ def validate_spec(spec: ApiSourceSpec) -> list[str]:
         ("coverage.entity_kinds", spec.coverage.entity_kinds),
         ("coverage.attributes", spec.coverage.attributes),
         ("coverage.example_asks", spec.coverage.example_asks),
+        ("coverage.keywords", spec.coverage.keywords),
     ):
         if len(lst) > _MAX_LIST:
             errs.append(f"{lst_name} has more than {_MAX_LIST} items")

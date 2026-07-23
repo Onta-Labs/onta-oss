@@ -25,7 +25,9 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
 from .catalog import ApiSourceCatalog
+from .coverage_index import get_coverage_index, rank_lexical
 from .nppes_taxonomy import normalize_taxonomy
+from .ranking import EmbedFn
 from .spec import ApiSourceSpec
 
 logger = logging.getLogger(__name__)
@@ -43,8 +45,8 @@ _MODES = {MODE_API_ONLY, MODE_API_PLUS_WEB, MODE_WEB_ONLY}
 _DEFAULT_TOP_K = 5
 _MAX_PICKS = 3
 
-# Injectable seams (tests pass fakes; prod wires the real helpers).
-EmbedFn = Callable[[list[str]], Awaitable[list[list[float]]]]
+# Injectable seams (tests pass fakes; prod wires the real helpers). ``EmbedFn`` is
+# the shared ranking seam (imported from ranking.py); ``ChatFn`` is router-local.
 ChatFn = Callable[[str, str], Awaitable[str]]
 
 
@@ -142,12 +144,11 @@ async def route_query(
 # --------------------------------------------------------------------------- #
 # Stage 1 — prefilter
 # --------------------------------------------------------------------------- #
-def _coverage_text(spec: ApiSourceSpec) -> str:
-    c = spec.coverage
-    parts = [spec.title, spec.publisher, spec.description,
-             " ".join(c.entity_kinds), " ".join(c.attributes), c.geo, c.temporal,
-             " ".join(c.example_asks)]
-    return " \n".join(p for p in parts if p)
+# The prefilter ranks capability cards via the PRECOMPUTED coverage index
+# (ONTA-390): stored per-entry vectors + one query embed, instead of re-embedding
+# the whole catalog on every query. The embeddable text (``ranking.coverage_text``,
+# now including keywords) and the lexical fallback are shared with the enrichment
+# selector, so "relevant source" never means different things on the two rails.
 
 
 async def _prefilter(
@@ -160,59 +161,19 @@ async def _prefilter(
     embed_fn: Optional[EmbedFn],
 ) -> list[ApiSourceSpec]:
     if len(entries) <= top_k:
-        # Small catalog: skip the embedding round-trip, let the LLM choose from all.
+        # Small catalog: skip the ranking round-trip, let the LLM choose from all.
         return list(entries)
 
     q = query if not entity_type else f"{query} ({entity_type})"
-    texts = [_coverage_text(e) for e in entries]
-
-    ranked = await _embedding_rank(q, texts, openrouter_key=openrouter_key, embed_fn=embed_fn)
-    if ranked is None:
-        ranked = _lexical_rank(q, texts)  # deterministic fallback (no key / embed error)
-
-    order = sorted(range(len(entries)), key=lambda i: ranked[i], reverse=True)
-    return [entries[i] for i in order[:top_k]]
-
-
-async def _embedding_rank(
-    query: str, texts: list[str], *, openrouter_key: str, embed_fn: Optional[EmbedFn]
-) -> Optional[list[float]]:
-    fn = embed_fn
-    if fn is None:
-        if not openrouter_key:
-            return None
-        from ..nlp.embed_client import embed_texts
-
-        async def fn(items: list[str]) -> list[list[float]]:  # type: ignore[misc]
-            return await embed_texts(items, api_key=openrouter_key)
-
-    try:
-        import numpy as np
-
-        from ..nlp.embed_client import cosine_similarity
-
-        vectors = await fn([query, *texts])
-        if not vectors or len(vectors) != len(texts) + 1:
-            return None
-        q_vec = np.array(vectors[0], dtype=np.float32)
-        matrix = np.array(vectors[1:], dtype=np.float32)
-        return [float(s) for s in cosine_similarity(q_vec, matrix)]
-    except Exception as exc:
-        logger.debug("api_registry prefilter embedding failed: %s", exc)
-        return None
-
-
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _lexical_rank(query: str, texts: list[str]) -> list[float]:
-    q_tokens = set(_TOKEN_RE.findall(query.lower()))
-    scores: list[float] = []
-    for t in texts:
-        t_tokens = set(_TOKEN_RE.findall(t.lower()))
-        overlap = len(q_tokens & t_tokens)
-        scores.append(overlap / (len(q_tokens) + 1e-9))
-    return scores
+    # Semantic rank against STORED entry vectors (embeds only the query; entries
+    # were embedded once and cached). None ⇒ no key / embed failure ⇒ deterministic
+    # lexical fallback so discovery never breaks on missing embeddings.
+    ranked = await get_coverage_index().rank(
+        q, entries, top_k=top_k, openrouter_key=openrouter_key, embed_fn=embed_fn
+    )
+    if ranked is not None:
+        return ranked
+    return rank_lexical(q, entries, top_k=top_k)
 
 
 # --------------------------------------------------------------------------- #

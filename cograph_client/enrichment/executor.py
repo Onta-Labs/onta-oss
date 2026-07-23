@@ -17,6 +17,7 @@ from typing import Optional
 import structlog
 
 from cograph_client.analytics import distinct_id_for, emit
+from cograph_client.api_registry.enrichment import apply_registry_selection
 from cograph_client.api_registry.spec import AuthorityLevel
 from cograph_client.enrichment.cache import EnrichmentCache
 from cograph_client.enrichment.canonicalize import apply_canonicalizer
@@ -1484,6 +1485,12 @@ class EnrichmentExecutor:
                         #   1. per-attribute ontology strategy sources, then
                         #   2. the request-level job.sources override, then
                         #   3. the tier default chain.
+                        # ``chain_from_tier`` marks the branches derived from
+                        # get_chain(tier) — the ONLY ones whose registry lead
+                        # prefix the scalable selector (ONTA-341) may reshape. An
+                        # explicit strategy/job override is the user's exact chain
+                        # and is never reshaped.
+                        chain_from_tier = False
                         if attr_strategy and attr_strategy.sources:
                             chain = list(attr_strategy.sources)
                         elif job.sources:
@@ -1498,9 +1505,29 @@ class EnrichmentExecutor:
                             available = [
                                 s for s in job.sources if get_adapter(s) is not None
                             ]
-                            chain = available if available else get_chain(job.tier)
+                            if available:
+                                chain = available
+                            else:
+                                chain = get_chain(job.tier)
+                                chain_from_tier = True
                         else:
                             chain = get_chain(job.tier)
+                            chain_from_tier = True
+
+                        # ONTA-341: replace the O(N) linear self-gating registry
+                        # scan with retrieve-top-K → gate → arbitrate for this
+                        # (entity_type, attribute). Identity when the feature flag
+                        # is OFF (default) → byte-identical chain. Only applied to
+                        # tier-derived chains (never a user override), and it never
+                        # raises (returns the chain unchanged on any failure).
+                        if chain_from_tier and job.type_name:
+                            chain = await apply_registry_selection(
+                                chain,
+                                job.type_name,
+                                attribute,
+                                cache_scope=job.tenant_id or "",
+                                openrouter_key=settings.openrouter_api_key,
+                            )
 
                         verdicts = await self._lookup_chain(
                             ent["label"],
