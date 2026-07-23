@@ -342,6 +342,12 @@ async def dispatch_scheduled_action(
             )
             job.completed_at = now
             job.last_run = now
+            finalize_job_stage_trace(
+                job,
+                terminal_status="failed",
+                error=job.error,
+                summary={"category": "reconciliation", "premium_missing": True},
+            )
             await job_store.create(job)
             return job
         await job_store.create(job)
