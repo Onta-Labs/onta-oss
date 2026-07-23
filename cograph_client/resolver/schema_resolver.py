@@ -315,12 +315,18 @@ as you would for open ingestion:
 are specialized KINDS of the focus (e.g. a nurse practitioner or physician \
 assistant alongside physicians), mint them as distinct SUBTYPES under a shared \
 parent — never force every record into the single focus type, and never leave the \
-distinguishing role as a bare string attribute.
+distinguishing role as a bare string attribute. BUT when the confirmed focus \
+already NAMES the kind and records differ only by surface label (College / \
+University / PublicInstitution all under a confirmed Institution focus), keep them \
+ALL as the focus type — do NOT spin up near-synonym subtypes the user did not ask \
+to separate.
 - REAL-WORLD THINGS BECOME NODES. When an attribute value is itself a reusable \
 real-world entity — a place (city, state, country), an organization, a person, a \
 category / specialty / sector — model it as its OWN entity reached by a \
 relationship, so rows sharing that value share ONE node. Split a composite like \
-"City, State" into the two nodes it names.
+"City, State" into the two nodes it names. A value that is NOT a proper name of \
+that kind — a bare year or number, a URL or navigation fragment, a slug, or \
+truncated text — is NOT a real-world entity: keep it a LITERAL, never a node.
 - KEEP MEASUREMENTS LITERAL. Pure identifiers, numbers, prices, counts, ratings, \
 dates, booleans, phone numbers, and street addresses stay LITERAL attributes with \
 the right datatype. Do NOT reify a measurement / score / price / rating into its \
@@ -360,9 +366,11 @@ emit placeholder filler like "1234567890", "0000000000", "N/A", "unknown", or \
 "TBD". Do NOT mint extra attribute names for concepts the source never states \
 (no speculative families like ``online_activity_percentage_of_summer_instruction`` \
 or ``affordability_ranking`` when the page is silent). Two records that both \
-lack a field must NOT share a hallucinated stand-in. A made-up identifier or \
-fabricated attribute silently corrupts joins and the ontology, so a missing \
-field is correct and an invented one is a bug.
+lack a field must NOT share a hallucinated stand-in. Never MERGE two requested \
+fields into one compound name (e.g. ``website_city`` from ``website`` + ``city``); \
+keep each requested attribute SEPARATE. A made-up identifier or fabricated \
+attribute silently corrupts joins and the ontology, so a missing field is correct \
+and an invented one is a bug.
 The focus type + expected attributes below say what to look for; add exactly the \
 structure the data justifies and keep it tight."""
 
@@ -488,6 +496,187 @@ def _apply_attribute_ceiling(result, constraint):
             focus_types=list(constraint.types),
             kept_entities=len(new_entities),
         )
+    return ExtractionResult(
+        entities=new_entities,
+        relationships=list(result.relationships),
+        source_text=result.source_text,
+        ceiling_drops=drops,
+    )
+
+
+# ONTA-394: collapse accidental subtypes of the confirmed discovery focus into
+# the focus type itself (default ON). Soft extract labels primary rows with
+# near-synonym kinds (College / University / PublicInstitution under an
+# Institution focus); ONTA-383 anchored those as SUBTYPES, but they still surface
+# as separate Explorer collections (the dogfood's ``College (23)``) that the user
+# never confirmed. Set ``COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0`` to restore the
+# ONTA-383 anchor-as-subtype behavior without a redeploy.
+_DISCOVERY_COLLAPSE_SUBTYPES = (
+    os.environ.get("COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES", "1") != "0"
+)
+
+# ONTA-394: kill-switch for the node-label plausibility gate (default ON). The
+# gate runs on the SHARED resolver promotion branch (discovery + open ingest), so
+# a deploy-free revert is available if its conservative heuristics ever keep a
+# legitimate relationship value as a literal. Set COGRAPH_NODE_LABEL_GUARD=0 to
+# restore the pre-ONTA-394 "always mint the node" behavior.
+_NODE_LABEL_GUARD = os.environ.get("COGRAPH_NODE_LABEL_GUARD", "1") != "0"
+
+
+# ONTA-394: a value is a real numeric range like "2020-2021" / "1998–99" (a bare
+# span, not a proper name). Kept separate from the pure-digit check below.
+_YEAR_RANGE_RE = re.compile(r"^\s*\d{3,4}\s*[-–/]\s*\d{2,4}\s*$")
+# URL / navigation / calendar fragments that leak in from scraped pages. A value
+# carrying one of these is chrome, not an entity label.
+_NAV_JUNK_RE = re.compile(
+    r"(?i)(?:https?://|www\.|\.(?:com|org|net|edu|gov)\b|academic\s+calendar"
+    r"|\bcalendar\b|\bsitemap\b|\bnavigation\b|\bbreadcrumb\b|\bmenu\b"
+    r"|read\s+more|click\s+here|view\s+all|home\s*page)"
+)
+
+
+def _is_implausible_node_label(value: str | None) -> bool:
+    """True when ``value`` cannot be a real-world entity label (ONTA-394).
+
+    The VALUE-side companion to :func:`is_junk_type_name` (which guards the target
+    TYPE name). Soft extract promotes an attribute value to a first-class NODE
+    reached by a relationship edge only when the value actually names a real-world
+    thing. A skewed cell — a bare year or number, a URL / navigation fragment, a
+    slug, or truncated text — is NOT an entity label; minting it as a node
+    fabricates junk (the dogfood's ``city -> UBC_Academic_Calendar`` / years-as-
+    City edges). When this returns True the caller keeps the value as a LITERAL
+    instead of minting a node.
+
+    Deliberately CONSERVATIVE: it flags only shapes that are never a proper-noun
+    label, so real places / orgs ("San Francisco", "AcmeCorp", "New York City")
+    pass untouched.
+    """
+    if value is None:
+        return True
+    v = str(value).strip()
+    if not v:
+        return True
+    # Bare number / year: the alphanumeric content is all digits ("2020", "42").
+    alnum = re.sub(r"[^0-9A-Za-z]", "", v)
+    if alnum and alnum.isdigit():
+        return True
+    if _YEAR_RANGE_RE.match(v):
+        return True
+    # Truncated navigation text ("WCC_-_Western_Community_Colle…").
+    if "…" in v or v.endswith(".."):
+        return True
+    # URL / navigation / calendar fragments.
+    if _NAV_JUNK_RE.search(v):
+        return True
+    # Slug shape: the SURFACE form of a real label has spaces — underscore-joined
+    # tokens are a URL-derived slug (``_safe_id`` underscores belong in the URI,
+    # not the value). Two-or-more underscores, or the "_-_" separator, is a strong
+    # signal it is a scraped slug rather than a name.
+    if v.count("_") >= 2 or "_-_" in v:
+        return True
+    # Absurdly long for a proper-noun label (a paragraph of scraped nav text).
+    if len(v) > 80:
+        return True
+    return False
+
+
+def _drop_offplan_compound_attributes(result, constraint):
+    """ONTA-394 — drop compound attribute names fabricated from ≥2 plan attrs.
+
+    Soft extract sometimes invents a name by CONCATENATING two separately-
+    requested plan attributes (the dogfood's ``website_city`` from ``website`` +
+    ``city``). Soft mode is meant to SPLIT composites, never merge two requested
+    fields into a new name; such a compound is a fabrication that also spawns a
+    junk column. Runs for any ACTIVE SOFT constraint — INDEPENDENT of
+    ``attributes_exhaustive`` (ONTA-382's ceiling only fires on a user-declared
+    closed set, but a merged-plan-attr compound is wrong even when the plan attrs
+    are illustrative). Drops are ledgered on ``ceiling_drops`` (folded into the A3
+    CleanReport by ``ingest``), never silent.
+
+    Only fires when ≥2 DISTINCT tokens of the name are THEMSELVES plan attributes,
+    so a real multi-word attribute whose components are not separate plan attrs
+    (``postal_code``, ``address_line_1`` under a plan of {name, address, …}) is
+    untouched. An exact plan attribute is never treated as a compound.
+    """
+    if constraint is None or not getattr(constraint, "is_active", False):
+        return result
+    if not getattr(constraint, "soft", False):
+        return result  # hard mode already ceilings to the plan attrs
+    plan_attrs: set[str] = set()
+    for names in (getattr(constraint, "attributes", None) or {}).values():
+        for n in names or ():
+            plan_attrs.add(_normalize_attr_name(n))
+    if len(plan_attrs) < 2:
+        return result  # need ≥2 plan attrs to form a compound
+    focus_types = set(constraint.types)
+    # A PRIMARY record (a relationship source, or an orphan with no edges) is a
+    # subject the plan names — it either IS the focus type or will be collapsed /
+    # anchored under it (ONTA-394 AC#4 / ONTA-383). The dogfood's compound-bearing
+    # records are EVIDENCE-FREE near-synonym subtypes (``College`` with an EMPTY
+    # parent_chain), so a pure ``type_name in focus_types`` check would miss them
+    # here — this drop runs BEFORE type resolution/collapse. Guarding every primary
+    # (not just already-focus-typed ones) is what makes the backstop actually fire
+    # on the shape that produced ``website_city``. Dimension-only nodes (relationship
+    # TARGETS the decomposer lifts out — City, …) are NOT primary and stay
+    # unrestricted, so a lifted node keeps its own attributes.
+    primary_ids = _primary_entity_ids(result)
+
+    def _is_plan_compound(attr_name: str) -> bool:
+        norm = _normalize_attr_name(attr_name)
+        if norm in plan_attrs:
+            return False  # an exact plan attr is never a compound
+        tokens = [t for t in norm.split("_") if t]
+        distinct_plan = {t for t in tokens if t in plan_attrs}
+        return len(distinct_plan) >= 2
+
+    new_entities: list[ExtractedEntity] = []
+    drops: list[CleanFact] = list(getattr(result, "ceiling_drops", None) or [])
+    dropped = 0
+    for e in result.entities:
+        # Guard the plan's SUBJECT records: focus-typed, focus-lineaged, OR any
+        # primary record (a brand-new near-synonym subtype the collapse will fold
+        # into the focus). Off-type dimension nodes are unrestricted.
+        chain = list(getattr(e, "parent_chain", None) or [])
+        is_focus_related = (
+            e.type_name in focus_types
+            or any(p in focus_types for p in chain)
+            or e.id in primary_ids
+        )
+        if not is_focus_related or not e.attributes:
+            new_entities.append(e)
+            continue
+        kept = []
+        for a in e.attributes:
+            if _is_plan_compound(a.name):
+                dropped += 1
+                drops.append(
+                    CleanFact(
+                        datatype=getattr(a, "datatype", None) or "string",
+                        raw_value=str(a.value) if a.value is not None else "",
+                        clean_value=None,
+                        outcome=CleanOutcome.DROPPED,
+                        conformed=False,
+                        reason="compound_plan_attribute",
+                        entity_id=e.id,
+                        attribute=a.name,
+                    )
+                )
+                logger.info(
+                    "discovery_compound_plan_attribute_dropped",
+                    entity_id=e.id, type_name=e.type_name, attribute=a.name,
+                )
+            else:
+                kept.append(a)
+        if len(kept) != len(e.attributes):
+            new_entities.append(e.model_copy(update={"attributes": kept}))
+        else:
+            new_entities.append(e)
+    if not dropped:
+        return result
+    logger.info(
+        "discovery_compound_plan_attributes_filtered",
+        dropped_attributes=dropped, focus_types=list(constraint.types),
+    )
     return ExtractionResult(
         entities=new_entities,
         relationships=list(result.relationships),
@@ -1699,6 +1888,11 @@ class SchemaResolver:
         # metrics are off the concept nodes, this is a no-op.
         if constraint is not None and constraint.is_active and constraint.soft:
             extraction = _apply_soft_focus_floor(extraction, constraint)
+            # ONTA-394: drop compound-of-plan attribute fabrications (website_city
+            # from website + city) BEFORE the ceiling. Runs regardless of
+            # attributes_exhaustive — a merged pair of requested fields is wrong
+            # even when the plan attrs are only illustrative.
+            extraction = _drop_offplan_compound_attributes(extraction, constraint)
             # ONTA-382: exhaustive attribute set → ceiling on focus-type attrs
             # after the full-batch soft focus floor (authoritative merged view).
             if getattr(constraint, "attributes_exhaustive", False):
@@ -3844,29 +4038,55 @@ class SchemaResolver:
             )
             return None
 
-        # ONTA-383 consolidation: a primary record under soft focus with no
-        # extractor-supplied parent/same_as is a kind-of the focus, not a free-
-        # standing peer. Inject parent_type=focus so the mint path links the
-        # subtype (University → Institution) instead of minting an orphan top
-        # type. Dimension nodes and entities that already declare lineage are
-        # left alone. Does not override an explicit same_as / parent_chain.
+        # ONTA-394 consolidation: a PRIMARY record under a confirmed soft focus
+        # whose proposed type is a BRAND-NEW type (not already in the ontology) is
+        # an ACCIDENTAL subtype the user never confirmed. Discovery confirms
+        # exactly ONE focus type; soft extract nonetheless labels rows with near-
+        # synonym kinds (College / University / PublicInstitution under an
+        # Institution focus).
+        #   * COLLAPSE (default, ONTA-394): retype the record to the focus itself
+        #     so NO unconfirmed subtype collection is minted (kills the dogfood's
+        #     `College (23)` Explorer collection). An ALREADY-EXISTING type short-
+        #     circuits at the top of this method and is REUSED — a prior confirmed
+        #     subtype is never collapsed. Dimension-only nodes (is_primary=False)
+        #     keep free minting.
+        #   * ANCHOR (COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0, the ONTA-383 fallback):
+        #     an evidence-free primary is anchored as a SUBTYPE of the focus rather
+        #     than an orphan peer.
+        # ``same_as`` is preserved in BOTH modes: an explicit "this is the SAME AS
+        # <existing type>" is a de-dup to a confirmed type, not an accidental new
+        # subtype — it falls through to the same_as→existing-type mapping below. An
+        # extractor-guessed parent_type/parent_chain, by contrast, IS overridden by
+        # collapse (it is the LLM's guess, not user confirmation — the exact
+        # `College`-under-`Institution` case AC#4 targets).
         if (
             focus_types
             and is_primary
             and not entity.same_as
-            and not entity.parent_type
-            and not entity.parent_chain
             and entity.type_name not in focus_types
         ):
             focus = focus_types[0]
             if focus and focus in existing_types and entity.type_name != focus:
-                entity = entity.model_copy(update={"parent_type": focus})
-                logger.info(
-                    "type_anchored_under_focus",
-                    proposed=entity.type_name,
-                    focus=focus,
-                    entity_id=entity.id,
-                )
+                if _DISCOVERY_COLLAPSE_SUBTYPES:
+                    logger.info(
+                        "type_subtype_collapsed_to_focus",
+                        proposed=entity.type_name,
+                        focus=focus,
+                        entity_id=entity.id,
+                    )
+                    return focus
+                if (
+                    not entity.same_as
+                    and not entity.parent_type
+                    and not entity.parent_chain
+                ):
+                    entity = entity.model_copy(update={"parent_type": focus})
+                    logger.info(
+                        "type_anchored_under_focus",
+                        proposed=entity.type_name,
+                        focus=focus,
+                        entity_id=entity.id,
+                    )
 
         parent_of = self._parent_of if parent_of is None else parent_of
         async with self._ontology_lock:
@@ -4302,16 +4522,30 @@ class SchemaResolver:
                 # datatype and takes the else-branch below unchanged — only an
                 # attribute EXPLICITLY typed as a relationship is minted as a node.
                 #
-                # ONTA-383: refuse to mint a junk property-class type (Colour,
-                # Online, InstructionMode) as a relationship target. Fall through
-                # to the literal path so the value is kept without polluting the
-                # ontology — a single stray attribute never becomes a type.
+                # ONTA-383 + ONTA-394: do NOT mint a relationship-target node when
+                # either (a) the TARGET TYPE is a junk property-class name (Colour,
+                # Online, InstructionMode — ONTA-383), or (b) the VALUE is not a
+                # plausible entity label (a bare year/number, a URL/navigation
+                # fragment, a slug, or truncated text — ONTA-394). Case (b) is the
+                # dogfood defect: a skewed `city` cell (a year, `UBC_Academic_
+                # Calendar`, `WCC_-_Western_Community_Colle…`) was promoted into a
+                # City NODE + `city ->` edge. Fall through to the literal path so
+                # the value is kept verbatim on attrs/<leaf> without polluting the
+                # ontology or minting a junk node — a single stray/skewed cell
+                # never becomes a type or a node.
+                _rel_reject = None
                 if is_junk_type_name(resolved.datatype):
+                    _rel_reject = "junk_target_type"
+                elif _NODE_LABEL_GUARD and _is_implausible_node_label(resolved.value):
+                    _rel_reject = "implausible_node_label"
+                if _rel_reject:
                     logger.info(
-                        "relationship_target_junk_kept_literal",
+                        "relationship_target_kept_literal",
                         type_name=resolved_type,
                         attribute=resolved.name,
                         rejected_type=resolved.datatype,
+                        value=resolved.value,
+                        reason=_rel_reject,
                         entity_id=entity.id,
                     )
                     resolved = resolved.model_copy(update={"datatype": "string"})
