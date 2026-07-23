@@ -3705,14 +3705,31 @@ def _record_locate_trace(job, locate_trace, provider_name: str, sub_query: str) 
             ),
             meta={**base_meta, "urls_selected": lt.get("urls_selected", 0)},
         )
+        # ONTA-395: surface extract_mode (agent | deterministic | empty |
+        # agent_failed) + trim_chars so Job Trace shows whether the agent path
+        # ran / failed instead of only pages_fetched. Absent keys stay omitted
+        # so enumeration providers' traces are unchanged.
+        extract_mode = lt.get("extract_mode")
+        trim_chars = lt.get("trim_chars")
+        fetch_meta = {
+            **base_meta,
+            "pages_fetched": lt.get("pages_fetched", 0),
+        }
+        if extract_mode is not None:
+            fetch_meta["extract_mode"] = extract_mode
+        if trim_chars is not None:
+            fetch_meta["trim_chars"] = trim_chars
+        fetch_detail = (
+            f"pages_fetched={lt.get('pages_fetched', 0)}"
+            + (" (escalated)" if lt.get("escalated") else "")
+        )
+        if extract_mode:
+            fetch_detail += f" extract_mode={extract_mode}"
         rec.action(
             StageProjectId.p1,
             "fetch",
-            detail=(
-                f"pages_fetched={lt.get('pages_fetched', 0)}"
-                + (" (escalated)" if lt.get("escalated") else "")
-            ),
-            meta={**base_meta, "pages_fetched": lt.get("pages_fetched", 0)},
+            detail=fetch_detail,
+            meta=fetch_meta,
         )
         skip = lt.get("skip_reason")
         if skip:
