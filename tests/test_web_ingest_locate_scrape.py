@@ -127,6 +127,9 @@ def test_record_locate_trace_emits_locate_select_fetch_actions():
         "pages_fetched": 2,
         "escalated": False,
         "skip_reason": None,
+        # ONTA-395: extract path mode + trim size for Job Trace.
+        "extract_mode": "agent",
+        "trim_chars": 4200,
     }
     _record_locate_trace(job, trace, "locate_scrape", "colleges in BC")
     names = [a.name for a in _p1_actions(job)]
@@ -136,8 +139,11 @@ def test_record_locate_trace_emits_locate_select_fetch_actions():
     assert by["locate"].meta["locate_calls"] == 1
     assert by["select_urls"].meta["urls_selected"] == 3
     assert by["fetch"].meta["pages_fetched"] == 2
+    assert by["fetch"].meta["extract_mode"] == "agent"
+    assert by["fetch"].meta["trim_chars"] == 4200
     # page-minimisation is visible in the human-readable detail too
     assert "pages_fetched=2" in by["fetch"].detail
+    assert "extract_mode=agent" in by["fetch"].detail
 
 
 def test_record_locate_trace_escalation_and_miss_are_surfaced():
