@@ -190,6 +190,260 @@ def test_attach_recorder_none():
 
 
 # --------------------------------------------------------------------------- #
+# ONTA-385 — contract-shaped A1/A2/A3/A6 summaries
+# --------------------------------------------------------------------------- #
+def test_summarize_a1_source_bundle_contract_shape():
+    from cograph_client.pipeline.source_bundle import build_source_bundle
+    from cograph_client.pipeline.stage_trace import (
+        merge_a1_summaries,
+        summarize_a1_source_bundle,
+    )
+
+    bundle = build_source_bundle(
+        [{"name": "UVic", "source_url": "https://example.com/uvic"}],
+        workspace_id="ws",
+        run_id="run-uvic",
+        provider="source_first",
+        tier="web",
+        secret_refs=(),
+        key_attribute="name",
+        bundle_key="src:q",
+    )
+    s = summarize_a1_source_bundle(bundle)
+    assert s["artifact"] == "A1"
+    assert s["name"] == "Source Bundle"
+    assert s["run_id"] == "run-uvic"
+    assert s["workspace_id"] == "ws"
+    assert s["row_count"] == 1
+    assert s["providers"] == ["source_first"]
+    assert s["tiers"] == ["web"]
+    assert s["source_urls_sample"] == ["https://example.com/uvic"]
+    assert s["root_fact_id"]
+    assert s["fact_ids_sample"]
+
+    acc = merge_a1_summaries(None, s)
+    acc = merge_a1_summaries(acc, s)
+    assert acc["bundles_emitted"] == 2
+    assert acc["row_count"] == 2
+    assert acc["run_id"] == "run-uvic"
+
+
+def test_summarize_a2_a3_a6_contract_shapes():
+    from cograph_client.pipeline.stage_trace import (
+        merge_a3_counts,
+        summarize_a2_candidates,
+        summarize_a3_clean_report,
+        summarize_a6_graph_delta,
+    )
+    from cograph_client.resolver.models import CleanFact, CleanOutcome, CleanReport
+
+    a2 = summarize_a2_candidates(
+        entities_extracted=5,
+        entities_resolved=4,
+        source_row_count=5,
+        focus_type="University",
+        focus_attributes=["name", "website"],
+        run_id="run-1",
+    )
+    assert a2["artifact"] == "A2"
+    assert a2["name"] == "Candidate Facts"
+    assert a2["soft_typed"] is True
+    assert a2["entities_extracted"] == 5
+    assert a2["focus_type"] == "University"
+
+    assert summarize_a3_clean_report(None) is None
+    assert summarize_a3_clean_report(CleanReport()) is None
+
+    report = CleanReport()
+    report.record(
+        CleanFact(
+            datatype="string",
+            raw_value="UVic",
+            clean_value="UVic",
+            outcome=CleanOutcome.PASSED,
+            attribute="name",
+        )
+    )
+    report.record(
+        CleanFact(
+            datatype="integer",
+            raw_value="4.6",
+            clean_value="4",
+            outcome=CleanOutcome.TRANSFORMED,
+            attribute="rank",
+        )
+    )
+    report.record(
+        CleanFact(
+            datatype="integer",
+            raw_value="twelve",
+            clean_value=None,
+            outcome=CleanOutcome.DROPPED,
+            reason="cannot_coerce",
+            attribute="founded",
+        )
+    )
+    a3 = summarize_a3_clean_report(report)
+    assert a3 is not None
+    assert a3["artifact"] == "A3"
+    assert a3["counts"] == {"passed": 1, "transformed": 1, "dropped": 1, "total": 3}
+    assert "cannot_coerce" in a3["drop_reasons_sample"]
+    assert a3["transforms_sample"][0]["raw"] == "4.6"
+
+    merged = merge_a3_counts(None, a3)
+    merged = merge_a3_counts(merged, a3)
+    assert merged == {"passed": 2, "transformed": 2, "dropped": 2, "total": 6}
+
+    a6 = summarize_a6_graph_delta(
+        graph_delta={
+            "run_id": "run-1",
+            "instance_graph": "https://omnix.dev/graphs/demo/universities",
+            "facts": [
+                ["f1", "s1", "p1", "o1"],
+                ["f2", "s2", "p2", "o2"],
+            ],
+            "fan_in": [["src", "dst"]],
+        },
+        entities_written=2,
+        triples_inserted=4,
+        status="applied",
+    )
+    assert a6["artifact"] == "A6"
+    assert a6["name"] == "Graph Delta"
+    assert a6["fact_count"] == 2
+    assert a6["fan_in_count"] == 1
+    assert a6["entities_written"] == 2
+    assert a6["status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_discovery_finish_emits_contract_shaped_p1_p2_p3_p6():
+    """ONTA-385: terminal discovery stage_trace carries A1/A2/A3/A6 shapes."""
+    from cograph_client.agent.capabilities.web_ingest_cap import (
+        _build_stage_contracts,
+        _finish_job,
+    )
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+
+    job = _job(status=JobStatus.running, result_count=0)
+    store = InMemoryJobStore()
+    await store.create(job)
+
+    contracts = _build_stage_contracts(
+        a1_acc={
+            "artifact": "A1",
+            "name": "Source Bundle",
+            "run_id": "run-d",
+            "workspace_id": "demo-tenant",
+            "root_fact_id": "root-1",
+            "row_count": 3,
+            "providers": ["source_first"],
+            "tiers": ["web"],
+            "secret_refs": [],
+            "bundles_emitted": 1,
+            "source_urls_sample": ["https://ex.com/a"],
+            "fact_ids_sample": ["fid-1"],
+        },
+        a2_extracted=3,
+        a2_resolved=2,
+        a2_source_rows=3,
+        a2_batches=1,
+        a2_structured_batches=0,
+        a3_counts={"passed": 2, "transformed": 1, "dropped": 0, "total": 3},
+        a3_drop_reasons=[],
+        a3_transforms_sample=[{"attribute": "rank", "raw": "1.2", "clean": "1"}],
+        a4_verified_count=0,
+        a6_fact_count=5,
+        a6_fan_in_count=0,
+        a6_triples=10,
+        a6_facts_sample=[["f", "s", "p", "o"]],
+        a6_run_id="run-d",
+        a6_instance_graph="https://omnix.dev/graphs/demo-tenant/universities",
+        entities_written=2,
+        focus_type="University",
+        focus_attributes=["name", "website"],
+        run_id="run-d",
+    )
+    assert contracts["a1"]["artifact"] == "A1"
+    assert contracts["a2"]["artifact"] == "A2"
+    assert contracts["a3"]["artifact"] == "A3"
+    assert contracts["a4"] is None
+    assert contracts["a6"]["artifact"] == "A6"
+
+    await _finish_job(
+        job,
+        store,
+        processed=3,
+        entities=2,
+        platforms=["source_first"],
+        stage_contracts=contracts,
+    )
+    assert job.status == JobStatus.applied
+    assert job.stage_trace is not None
+    assert job.stage_trace.source == "live"
+    by = {p.project_id: p for p in job.stage_trace.projects}
+
+    p1 = by[StageProjectId.p1]
+    assert p1.status == StageStatus.completed
+    assert p1.output.get("artifact") == "A1"
+    assert p1.output.get("run_id") == "run-d"
+    assert p1.output.get("row_count") == 3
+
+    p2 = by[StageProjectId.p2]
+    assert p2.status == StageStatus.completed
+    assert p2.output.get("artifact") == "A2"
+    assert p2.output.get("entities_extracted") == 3
+    assert p2.output.get("soft_typed") is True
+
+    p3 = by[StageProjectId.p3]
+    assert p3.status == StageStatus.completed
+    assert p3.output.get("artifact") == "A3"
+    assert p3.output["counts"]["total"] == 3
+
+    p4 = by[StageProjectId.p4]
+    assert p4.status == StageStatus.skipped
+    assert "verify" in (p4.output.get("skip_reason") or "").lower() or p4.output.get(
+        "skip_reason"
+    )
+
+    p6 = by[StageProjectId.p6]
+    assert p6.status == StageStatus.completed
+    assert p6.output.get("artifact") == "A6"
+    assert p6.output.get("fact_count") == 5
+    assert p6.output.get("entities_written") == 2
+
+    # No clean ledger → P3 skipped
+    job2 = _job(id="job-2", status=JobStatus.running)
+    await store.create(job2)
+    empty = _build_stage_contracts(
+        a1_acc=None,
+        a2_extracted=0,
+        a2_resolved=0,
+        a2_source_rows=0,
+        a2_batches=0,
+        a2_structured_batches=0,
+        a3_counts=None,
+        a3_drop_reasons=[],
+        a3_transforms_sample=[],
+        a4_verified_count=0,
+        a6_fact_count=0,
+        a6_fan_in_count=0,
+        a6_triples=0,
+        a6_facts_sample=[],
+        a6_run_id="r2",
+        a6_instance_graph=None,
+        entities_written=0,
+        focus_type="University",
+        focus_attributes=["name"],
+        run_id="r2",
+    )
+    await _finish_job(
+        job2, store, processed=0, entities=0, platforms=[], stage_contracts=empty
+    )
+    p3b = next(
+        p for p in job2.stage_trace.projects if p.project_id == StageProjectId.p3
+    )
+    assert p3b.status == StageStatus.skipped
 # Enrichment live P0 + P2/P4/P6 (ONTA-387)
 # --------------------------------------------------------------------------- #
 
