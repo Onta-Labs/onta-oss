@@ -293,8 +293,11 @@ from cograph_client.web_sources import (  # noqa: E402
 
 
 ROWS = [
-    {"name": "a", "context_length": "1"},
-    {"name": "b", "context_length": "2"},
+    # 2+ char names so the ONTA-393 A1 validators keep these synthetic discovery
+    # rows (a length<2 key cell is dropped as chrome); this test is about the cost
+    # ceiling + partial coverage, not the entity names.
+    {"name": "aa", "context_length": "1"},
+    {"name": "bb", "context_length": "2"},
 ]
 
 SPEC = {
