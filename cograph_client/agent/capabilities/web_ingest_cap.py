@@ -106,6 +106,8 @@ from cograph_client.pipeline.stage_trace import (
     summarize_a2_candidates,
     summarize_a3_clean_report,
     summarize_a6_graph_delta,
+    finalize_job_stage_trace,
+    open_job_stage_trace,
 )
 from cograph_client.resolver.llm_router import (
     OPENROUTER_BASE,
@@ -1193,6 +1195,32 @@ class WebIngestCapability:
                     job_id=getattr(job, "id", None),
                     exc_info=True,
                 )
+            # open_job_stage_trace handles P0 begin (ONTA-388 cross-category helper).
+            rec = open_job_stage_trace(
+                job,
+                input={
+                    "job_id": job.id,
+                    "category": "discovery",
+                    "spend_ceiling_usd": job.spend_ceiling_usd,
+                },
+                action_detail="discovery job queued",
+            )
+            if rec is not None:
+                rec.begin(
+                    StageProjectId.p1,
+                    input={
+                        "goal": (query or getattr(step, "instruction", None) or "")[:500],
+                        "type_name": proposed_type,
+                        "attributes": attributes,
+                        "kg_name": kg_name,
+                        "cap": cap,
+                        "subqueries": subqueries[:20],
+                        "providers": [
+                            getattr(pr, "name", str(pr)) for pr in ensemble[:10]
+                        ],
+                    },
+                )
+                rec.action(StageProjectId.p1, "plan", detail="spec resolved; ready to search")
             await job_store.create(job)
 
         # Thread the tracked job id into the provider context so a URL-targeted
@@ -3694,6 +3722,19 @@ async def _finish_job(
                 "run_id": a1.get("run_id") or a6.get("run_id"),
             }
             job.stage_trace.status = "applied"
+            # Safety sweep (ONTA-388): end any leftover running/pending stages.
+            finalize_job_stage_trace(
+                job,
+                terminal_status="applied",
+                summary={
+                    "result_count": entities,
+                    "processed": processed,
+                    "platforms": platforms,
+                    "type_name": job.type_name,
+                    "attributes": job.attributes,
+                    "cost": job.cost,
+                },
+            )
     except Exception:
         logger.warning(
             "stage_trace_finish_failed",
@@ -3709,36 +3750,18 @@ def _finalize_stage_trace_failed(
     *,
     summary: Optional[dict] = None,
 ) -> None:
-    """Stamp an honest terminal-failed stage_trace.
+    """Stamp an honest terminal-failed stage_trace (delegates to pipeline helper).
 
-    Ends every non-terminal project (not only P0/P1) so mid-run failures never
-    leave P2/P6 stuck as ``running`` on a failed job. Isolated in try/except so
-    operator observability cannot fail the discovery write path.
+    Ends every non-terminal project so mid-run failures never leave P2/P6 stuck
+    as ``running`` on a failed job. Isolated in try/except inside the shared
+    helper so operator observability cannot fail the discovery write path.
     """
-    try:
-        rec = attach_recorder(job)
-        if rec is None:
-            return
-        for p in list(job.stage_trace.projects if job.stage_trace else []):
-            if p.status in (
-                StageStatus.running,
-                StageStatus.pending,
-            ):
-                rec.end(p.project_id, error=error, status=StageStatus.failed)
-        # Always mark orchestration failed even if it was already completed.
-        rec.end(StageProjectId.p0, error=error, status=StageStatus.failed)
-        job.stage_trace.status = "failed"
-        job.stage_trace.summary = {
-            "error": error,
-            "type_name": job.type_name,
-            **(summary or {}),
-        }
-    except Exception:  # pragma: no cover - never block discovery on obs
-        logger.warning(
-            "stage_trace_finalize_failed",
-            job_id=getattr(job, "id", None),
-            exc_info=True,
-        )
+    finalize_job_stage_trace(
+        job,
+        terminal_status="failed",
+        error=error,
+        summary={"type_name": getattr(job, "type_name", None), **(summary or {})},
+    )
 
 
 async def _fail_job(job: Optional[EnrichJob], job_store, error: str) -> None:

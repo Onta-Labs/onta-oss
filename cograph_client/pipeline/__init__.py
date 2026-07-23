@@ -21,6 +21,10 @@ from cograph_client.pipeline.envelope import (
     ArtifactEnvelope,
     derive_fact_id,
 )
+from cograph_client.pipeline.answer_run import (
+    answer_run_lookup_path,
+    record_answer_run,
+)
 from cograph_client.pipeline.stage_trace import (
     STAGE_CATALOG,
     JobStageTrace,
@@ -29,9 +33,18 @@ from cograph_client.pipeline.stage_trace import (
     StageProjectTrace,
     StageStatus,
     StageTraceRecorder,
+    attach_recorder,
+    ensure_job_stage_trace_open,
+    finalize_job_stage_trace,
     new_trace_for_job,
+    open_job_stage_trace,
     reconstruct_from_job,
     resolve_trace,
+    stamp_enrichment_job_created,
+    stamp_enrichment_run_cancelled,
+    stamp_enrichment_run_failed,
+    stamp_enrichment_run_finished,
+    stamp_enrichment_run_started,
 )
 
 __all__ = [
@@ -45,7 +58,18 @@ __all__ = [
     "StageProjectTrace",
     "StageStatus",
     "StageTraceRecorder",
+    "attach_recorder",
+    "ensure_job_stage_trace_open",
+    "finalize_job_stage_trace",
     "new_trace_for_job",
+    "open_job_stage_trace",
     "reconstruct_from_job",
     "resolve_trace",
+    "stamp_enrichment_job_created",
+    "stamp_enrichment_run_cancelled",
+    "stamp_enrichment_run_failed",
+    "stamp_enrichment_run_finished",
+    "stamp_enrichment_run_started",
+    "answer_run_lookup_path",
+    "record_answer_run",
 ]
