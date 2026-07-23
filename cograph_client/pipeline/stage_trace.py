@@ -373,7 +373,15 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P1 Find ------------------------------------------------------------
     p1 = empty_project(StageProjectId.p1, status=StageStatus.skipped)
     p1.reconstructed = True
-    if category == "discovery" or getattr(job, "platforms", None):
+    # File ingest is A1-like (source already provided) — P1 stays skipped with
+    # an explicit reason rather than being reconstructed as "find".
+    if category == "ingest":
+        p1.output = {
+            "skip_reason": (
+                "file is A1-like entry (source provided); Find Data not on this rail"
+            )
+        }
+    elif category == "discovery" or getattr(job, "platforms", None):
         p1.status = StageStatus.reconstructed
         p1.input = {
             "type_name": getattr(job, "type_name", None),
@@ -401,7 +409,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     p2 = empty_project(StageProjectId.p2, status=StageStatus.skipped)
     p2.reconstructed = True
     progress = getattr(job, "progress", None)
-    if category in ("discovery", "enrichment") or progress is not None:
+    if category in ("discovery", "enrichment", "ingest") or progress is not None:
         p2.status = StageStatus.reconstructed
         p2.input = {
             "type_name": getattr(job, "type_name", None),
@@ -467,7 +475,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P6 Write -----------------------------------------------------------
     p6 = empty_project(StageProjectId.p6, status=StageStatus.skipped)
     p6.reconstructed = True
-    if category in ("discovery", "enrichment", "dedupe", "reconciliation") or progress:
+    if category in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest") or progress:
         p6.status = StageStatus.reconstructed
         p6.input = {"kg_name": getattr(job, "kg_name", None), "category": category}
         filled = getattr(progress, "filled", None) if progress else None
@@ -486,7 +494,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     p7.reconstructed = True
     # Query/ask jobs are not always EnrichJobs; leave skipped unless thread_id
     # suggests chat-kicked work that might have answered.
-    if category not in ("discovery", "enrichment", "dedupe", "reconciliation"):
+    if category not in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest"):
         p7.status = StageStatus.reconstructed
         p7.actions = [StageAction(name="answer", detail="non-write job category")]
     projects.append(p7)

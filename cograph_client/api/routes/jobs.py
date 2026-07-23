@@ -1,10 +1,10 @@
 """Unified jobs list (COG-101).
 
 A single endpoint that lists ALL tracked jobs for a tenant — dedupe,
-enrichment, and reconciliation — from the configured job store (in-memory or
-Postgres). This complements, and does not replace, the enrichment-specific
-``/graphs/{tenant}/enrich/jobs`` routes: those remain the place to create,
-inspect conflicts for, apply, and cancel enrichment jobs.
+enrichment, reconciliation, discovery, and file ingest — from the configured
+job store (in-memory or Postgres). This complements, and does not replace, the
+enrichment-specific ``/graphs/{tenant}/enrich/jobs`` routes: those remain the
+place to create, inspect conflicts for, apply, and cancel enrichment jobs.
 """
 
 from __future__ import annotations
@@ -30,10 +30,10 @@ async def list_jobs(
 ):
     """List a tenant's jobs across all categories, newest first.
 
-    Pass ``?category=dedupe|enrichment|reconciliation`` to filter. Each item is
-    a ``JobSummary`` carrying the unified fields the Jobs page renders:
-    category, trigger, last_run, next_run, cost (+ note), status, and the
-    derived ``progress_pct``.
+    Pass ``?category=dedupe|enrichment|reconciliation|discovery|ingest`` to
+    filter. Each item is a ``JobSummary`` carrying the unified fields the Jobs
+    page renders: category, trigger, last_run, next_run, cost (+ note), status,
+    and the derived ``progress_pct``.
     """
     summaries = await job_store.list_for_tenant(tenant.tenant_id)
     if category is not None:

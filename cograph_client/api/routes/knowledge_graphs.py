@@ -279,7 +279,7 @@ async def _enriching_kgs(job_store, tenant_id: str) -> set[str]:
     except Exception:  # noqa: BLE001
         return set()
     active = {JobStatus.queued, JobStatus.running}
-    enriching = {JobCategory.enrichment, JobCategory.discovery}
+    enriching = {JobCategory.enrichment, JobCategory.discovery, JobCategory.ingest}
     return {
         j.kg_name
         for j in jobs

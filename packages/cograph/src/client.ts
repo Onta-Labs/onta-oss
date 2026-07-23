@@ -1461,12 +1461,14 @@ export function isTerminalJobStatus(status: JobStatus): boolean {
  *  categories. Existing enrichment jobs default to `enrichment` server-side.
  *  `discovery` is a web-discovery ingest (the `web_ingest` capability): it
  *  CREATES a new record set from the web rather than filling/merging an existing
- *  one. */
+ *  one. `ingest` is file CSV/JSON/text ingest (ONTA-386): an A1-like entry that
+ *  maps/extracts, places against the ontology, and writes via insert_facts. */
 export type JobCategory =
   | "dedupe"
   | "enrichment"
   | "reconciliation"
-  | "discovery";
+  | "discovery"
+  | "ingest";
 /** How a job was kicked off. Today everything is `manual` (a user clicked an
  *  action); `scheduled`/`webhook` are reserved for future automation. */
 export type JobTrigger = "manual" | "scheduled" | "webhook";

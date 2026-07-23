@@ -85,13 +85,17 @@ class JobCategory(str, Enum):
     The unified Jobs page lists jobs across all categories. Existing enrichment
     jobs default to ``enrichment`` for backward compatibility. ``discovery`` is
     web-discovery ingest (the ``web_ingest`` capability): it CREATES a new set of
-    records from the web rather than filling/merging existing ones.
+    records from the web rather than filling/merging existing ones. ``ingest``
+    is file CSV/JSON/text ingest (ONTA-386): an A1-like entry (source provided)
+    that maps/extracts (P2), places against the ontology (P5), and writes via
+    the shared ``insert_facts`` path (P6).
     """
 
     dedupe = "dedupe"
     enrichment = "enrichment"
     reconciliation = "reconciliation"
     discovery = "discovery"
+    ingest = "ingest"
 
 
 class JobTrigger(str, Enum):
