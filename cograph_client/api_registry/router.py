@@ -25,13 +25,9 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
 from .catalog import ApiSourceCatalog
+from .coverage_index import get_coverage_index, rank_lexical
 from .nppes_taxonomy import normalize_taxonomy
-from .ranking import (
-    EmbedFn,
-    coverage_text as _coverage_text,
-    embedding_rank as _embedding_rank,
-    lexical_rank as _lexical_rank,
-)
+from .ranking import EmbedFn
 from .spec import ApiSourceSpec
 
 logger = logging.getLogger(__name__)
@@ -148,10 +144,11 @@ async def route_query(
 # --------------------------------------------------------------------------- #
 # Stage 1 — prefilter
 # --------------------------------------------------------------------------- #
-# ``_coverage_text`` / ``_embedding_rank`` / ``_lexical_rank`` are the shared
-# ranking primitives (imported from ranking.py, ONTA-341) — the discovery router
-# and the enrichment selector rank capability cards with the SAME code so
-# "relevant source" never means different things on the two rails.
+# The prefilter ranks capability cards via the PRECOMPUTED coverage index
+# (ONTA-390): stored per-entry vectors + one query embed, instead of re-embedding
+# the whole catalog on every query. The embeddable text (``ranking.coverage_text``,
+# now including keywords) and the lexical fallback are shared with the enrichment
+# selector, so "relevant source" never means different things on the two rails.
 
 
 async def _prefilter(
@@ -164,18 +161,19 @@ async def _prefilter(
     embed_fn: Optional[EmbedFn],
 ) -> list[ApiSourceSpec]:
     if len(entries) <= top_k:
-        # Small catalog: skip the embedding round-trip, let the LLM choose from all.
+        # Small catalog: skip the ranking round-trip, let the LLM choose from all.
         return list(entries)
 
     q = query if not entity_type else f"{query} ({entity_type})"
-    texts = [_coverage_text(e) for e in entries]
-
-    ranked = await _embedding_rank(q, texts, openrouter_key=openrouter_key, embed_fn=embed_fn)
-    if ranked is None:
-        ranked = _lexical_rank(q, texts)  # deterministic fallback (no key / embed error)
-
-    order = sorted(range(len(entries)), key=lambda i: ranked[i], reverse=True)
-    return [entries[i] for i in order[:top_k]]
+    # Semantic rank against STORED entry vectors (embeds only the query; entries
+    # were embedded once and cached). None ⇒ no key / embed failure ⇒ deterministic
+    # lexical fallback so discovery never breaks on missing embeddings.
+    ranked = await get_coverage_index().rank(
+        q, entries, top_k=top_k, openrouter_key=openrouter_key, embed_fn=embed_fn
+    )
+    if ranked is not None:
+        return ranked
+    return rank_lexical(q, entries, top_k=top_k)
 
 
 # --------------------------------------------------------------------------- #

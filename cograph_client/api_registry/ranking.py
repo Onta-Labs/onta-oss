@@ -39,15 +39,18 @@ EmbedFn = Callable[[list[str]], Awaitable[list[list[float]]]]
 def coverage_text(spec: ApiSourceSpec) -> str:
     """The entry's capability card as one blob of prose for semantic ranking.
 
-    Concatenates the human-readable identity (title / publisher / description)
-    with the structured coverage prose (entity kinds, attributes, geo, temporal)
-    and the author-written ``example_asks`` few-shots. Empty parts are dropped so
-    a sparse entry doesn't dilute the card with blank lines."""
+    This is the SINGLE source of truth for what gets embedded/searched (ONTA-390):
+    the human-readable identity (title / publisher / description), the structured
+    coverage prose (entity kinds, attributes, geo, temporal), the author-written
+    ``example_asks`` few-shots, and the curated ``keywords`` retrieval terms.
+    Empty parts are dropped so a sparse entry doesn't dilute the card with blank
+    lines. Both the precomputed coverage index and the lexical fallback derive
+    their text from here, so "what an entry matches on" never forks."""
     c = spec.coverage
     parts = [
         spec.title, spec.publisher, spec.description,
         " ".join(c.entity_kinds), " ".join(c.attributes), c.geo, c.temporal,
-        " ".join(c.example_asks),
+        " ".join(c.example_asks), " ".join(c.keywords),
     ]
     return " \n".join(p for p in parts if p)
 

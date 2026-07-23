@@ -41,8 +41,9 @@ from ..enrichment.tiers import register_chain_prefix_provider
 from .catalog import ApiSourceCatalog, get_api_source_catalog
 from .executor import RegistryApiSource
 from .matching import (
-    fillable_column as _spec_fillable_column,
+    fillable_columns as _spec_fillable_columns,
     has_enrich_params as _has_enrich_params,
+    norm as _norm,
     type_matches as _spec_type_matches,
 )
 from .registry_selection import (
@@ -74,7 +75,7 @@ _MAX_ROWS = 5
 # The structural coverage-match gate (attribute-fillable + type-overlap) now lives
 # canonically in ``matching.py`` (ONTA-341) so the adapter's per-lookup self-gate
 # and the scalable selector's structured pre-filter share ONE implementation and
-# can never diverge. Delegated below via ``_spec_fillable_column`` /
+# can never diverge. Delegated below via ``_spec_fillable_columns`` / ``_norm`` /
 # ``_spec_type_matches`` / ``_has_enrich_params`` (imported at module top).
 
 
@@ -148,6 +149,12 @@ class RegistrySourceAdapter:
         self.name = f"api:{spec.slug}"
         self.is_paid = spec.is_paid
         self.cost_per_call = spec.cost_per_call
+        # Precompute the normalized(column) -> canonical-column map ONCE per
+        # adapter (it never changes for a fixed spec), so the per-lookup self-gate
+        # stays O(1) instead of rebuilding the map on every lookup(). Uses the
+        # shared matching.py builder so the gate implementation is still single-
+        # sourced (the selector's pre-filter calls the same predicates).
+        self._columns = _spec_fillable_columns(spec)
 
     @property
     def authority_level(self) -> AuthorityLevel:
@@ -172,10 +179,9 @@ class RegistrySourceAdapter:
         return _AUTHORITY_CONFIDENCE.get(self._spec.authority_level, 0.6)
 
     def _fillable_column(self, attribute: str) -> Optional[str]:
-        # The structural gate (attribute-declared + type-overlap) is the shared
-        # matching.py implementation — the self-gate here and the selector's
-        # structured pre-filter (ONTA-341) call the SAME predicates.
-        return _spec_fillable_column(self._spec, attribute)
+        # O(1) lookup against the precomputed column map (built in __init__ via the
+        # shared matching.py builder), matching the pre-ONTA-341 per-adapter cache.
+        return self._columns.get(_norm(attribute))
 
     def _type_matches(self, entity_type: str) -> bool:
         return _spec_type_matches(self._spec, entity_type)
@@ -440,6 +446,7 @@ async def apply_registry_selection(
     attribute: str,
     *,
     catalog: Optional[ApiSourceCatalog] = None,
+    cache_scope: str = "",
     openrouter_key: str = "",
     embed_fn=None,
     chat_fn=None,
@@ -456,6 +463,13 @@ async def apply_registry_selection(
     introduced. Never raises: any failure returns the original ``chain`` so a
     selector bug can never drop a source the chain would have consulted.
 
+    ``cache_scope`` isolates the decision cache per tenant — pass the job's
+    ``tenant_id``. Today the global ``_selection_catalog`` is used process-wide
+    (tenant_custom sources are never enrichment leads), so scoping is redundant
+    but harmless; it makes the cache correct-by-construction the moment a
+    tenant-specific ``catalog`` is ever passed, so a future tenant-aware wiring
+    can't leak tenant A's decision to tenant B.
+
     Called ONLY on chains derived from ``get_chain(tier)`` — never on an explicit
     per-attribute strategy override or a valid ``job.sources`` list (those are the
     user's exact chain and must not be reshaped)."""
@@ -468,7 +482,7 @@ async def apply_registry_selection(
         cat = catalog or _selection_catalog or get_api_source_catalog()
         need = SelectionNeed(entity_type=entity_type or "", attribute=attribute or "")
         slugs = await select_registry_slugs(
-            need, cat, openrouter_key=openrouter_key,
+            need, cat, cache_scope=cache_scope, openrouter_key=openrouter_key,
             embed_fn=embed_fn, chat_fn=chat_fn,
         )
         in_chain = set(registry_in_chain)

@@ -1525,6 +1525,7 @@ class EnrichmentExecutor:
                                 chain,
                                 job.type_name,
                                 attribute,
+                                cache_scope=job.tenant_id or "",
                                 openrouter_key=settings.openrouter_api_key,
                             )
 

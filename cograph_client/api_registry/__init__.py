@@ -30,6 +30,12 @@ from .catalog import (
     set_tenant_custom_specs,
 )
 from .catalog_audit import audit_catalog, format_markdown
+from .coverage_index import (
+    CoverageIndex,
+    get_coverage_index,
+    rank_lexical,
+    reset_coverage_index,
+)
 from .discovery import RegistryDiscoverySource, build_registry_sources
 from .enrichment import (
     RegistrySourceAdapter,
@@ -177,6 +183,11 @@ __all__ = [
     "fillable_column",
     "type_matches",
     "has_enrich_params",
+    # precomputed coverage-embedding index (ONTA-390)
+    "CoverageIndex",
+    "get_coverage_index",
+    "reset_coverage_index",
+    "rank_lexical",
     # catalog freshness audit (phase 4)
     "audit_catalog",
     "format_markdown",

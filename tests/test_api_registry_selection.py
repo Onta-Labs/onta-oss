@@ -370,6 +370,23 @@ async def test_empty_prefilter_returns_empty_and_is_cached():
     assert slugs == []
 
 
+@pytest.mark.asyncio
+async def test_cache_scope_isolates_tenants():
+    # Two tenants with DIFFERENT catalogs for the same need must not share a cached
+    # decision (the latent cross-tenant footgun). cache_scope keys them apart.
+    tenant_a = _catalog(_spec("a_private", kinds=["physician"], cols={"npi": "n"}))
+    tenant_b = _catalog(_spec("b_private", kinds=["physician"], cols={"npi": "n"}))
+    need = _need(entity_type="Physician", attribute="npi")
+    a_slugs = await rs.select_registry_slugs(need, tenant_a, cache_scope="tenant-a")
+    b_slugs = await rs.select_registry_slugs(need, tenant_b, cache_scope="tenant-b")
+    assert a_slugs == ["a_private"]
+    assert b_slugs == ["b_private"]      # NOT tenant A's cached decision
+    # Same scope re-uses the decision (cache hit): tenant B's catalog does not
+    # override tenant A's cached entry.
+    a_again = await rs.select_registry_slugs(need, tenant_b, cache_scope="tenant-a")
+    assert a_again == ["a_private"]      # scope 'tenant-a' still cached, catalog ignored on hit
+
+
 # --------------------------------------------------------------------------- #
 # Wiring — apply_registry_selection (flag-gated)
 # --------------------------------------------------------------------------- #

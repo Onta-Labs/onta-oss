@@ -40,7 +40,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from typing import Awaitable, Callable, Optional
 
@@ -339,9 +339,11 @@ def _parse_json_object(content: str) -> Optional[dict]:
 # --------------------------------------------------------------------------- #
 # Stage 3 — decision cache + the composed entry point
 # --------------------------------------------------------------------------- #
-# (entity_type, attribute, geo, allow_paid) -> ordered slugs. Process-wide; the
-# same need across every entity of a type reuses the one decision. Cleared when
-# the catalog/overlay or the success-rate provider changes.
+# (cache_scope, (entity_type, attribute, geo, allow_paid)) -> ordered slugs.
+# Process-wide; the same need across every entity of a type (within one scope)
+# reuses the one decision. ``cache_scope`` isolates tenants (see
+# select_registry_slugs). Cleared when the catalog/overlay or the success-rate
+# provider changes.
 _decision_cache: dict[tuple, list[str]] = {}
 
 
@@ -360,15 +362,26 @@ async def select_registry_slugs(
     embed_fn: Optional[EmbedFn] = None,
     chat_fn: Optional[ChatFn] = None,
     use_cache: bool = True,
+    cache_scope: str = "",
 ) -> list[str]:
     """Resolve ``need`` to an ordered list of catalog slugs (best first).
 
     Pipeline: structured pre-filter → semantic top-K rank → deterministic
-    arbitration (+ optional refute tiebreaker), memoized by :meth:`cache_key`.
+    arbitration (+ optional refute tiebreaker), memoized by
+    ``(cache_scope, need.cache_key())``.
     Returns ``[]`` when no entry structurally qualifies — a *legitimate* "consult
     no registry source" that the caller must be able to distinguish from an error.
 
-    So this does NOT swallow unexpected errors into ``[]`` (that would make a
+    ``cache_scope`` MUST distinguish any two catalogs that could yield different
+    decisions for the same ``need`` — pass the **tenant id** whenever ``catalog``
+    is (or could become) tenant-specific. The catalog itself is NOT part of the
+    key, so caching a decision computed over tenant A's catalog under a bare
+    ``need`` and returning it for tenant B — whose ``tenant_custom`` layer shadows
+    global slugs — would be a cross-tenant isolation break. Scoping by tenant makes
+    each tenant's decisions independent (the shared global-catalog wiring passes a
+    constant scope and is unaffected).
+
+    This does NOT swallow unexpected errors into ``[]`` (that would make a
     catalog/pipeline failure look like "nothing qualifies" and silently drop
     registry sources the chain should still consult). The inner rank / refute
     steps are individually fail-safe (they never raise), but a genuine error
@@ -377,7 +390,7 @@ async def select_registry_slugs(
     a fail-safe that returns the original chain on any exception, so the enrichment
     job is still protected; a direct caller gets an honest error instead of a
     false empty."""
-    key = need.cache_key()
+    key = (cache_scope, need.cache_key())
     if use_cache and key in _decision_cache:
         return list(_decision_cache[key])
     k = top_k if top_k is not None else selection_top_k()
