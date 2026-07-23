@@ -398,6 +398,15 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
             "platforms": getattr(job, "platforms", None),
             "provider_count": len(plogs),
         }
+    if category == "ingest":
+        p1.status = StageStatus.skipped
+        p1.reconstructed = True
+        p1.output = {
+            "skip_reason": (
+                "file is A1-like entry (source provided); Find Data not on this rail"
+            ),
+        }
+
     projects.append(p1)
 
     # --- P2 Extract ---------------------------------------------------------
@@ -406,7 +415,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     progress = getattr(job, "progress", None)
     # Answer runs (ONTA-389) are read-only Q&A — never reconstruct extract/write.
     if category != "answer" and (
-        category in ("discovery", "enrichment") or progress is not None
+        category in ("discovery", "enrichment", "ingest") or progress is not None
     ):
         p2.status = StageStatus.reconstructed
         p2.input = {
@@ -474,7 +483,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     p6 = empty_project(StageProjectId.p6, status=StageStatus.skipped)
     p6.reconstructed = True
     if category != "answer" and (
-        category in ("discovery", "enrichment", "dedupe", "reconciliation") or progress
+        category in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest") or progress
     ):
         p6.status = StageStatus.reconstructed
         p6.input = {"kg_name": getattr(job, "kg_name", None), "category": category}
@@ -512,7 +521,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
         if status in ("failed",):
             p7.status = StageStatus.failed
             p7.error = getattr(job, "error", None)
-    elif category not in ("discovery", "enrichment", "dedupe", "reconciliation"):
+    elif category not in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest"):
         p7.status = StageStatus.reconstructed
         p7.actions = [StageAction(name="answer", detail="non-write job category")]
     projects.append(p7)
