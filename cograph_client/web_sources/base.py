@@ -73,6 +73,16 @@ class DiscoverResult:
     # providers (the registry executor); web-search providers leave it empty. The
     # web-ingest capability projects these into the run's per-provider ProviderLog.
     calls: list[dict] = field(default_factory=list)
+    # Optional locate→select→fetch step counts a LOCATE-THEN-SCRAPE provider records
+    # so the capability can surface them as P1 stage-trace actions (ONTA-391): a
+    # provider that searches only to find list/directory PAGES and then scrapes a
+    # few sets keys like ``locate_calls`` / ``urls_located`` / ``urls_selected`` /
+    # ``pages_fetched`` / ``escalated`` (bool) / ``skip_reason`` (str|None). Read
+    # DEFENSIVELY (default None) — an enumeration provider that never locates+scrapes
+    # leaves it None and the capability records no locate/select/fetch actions. This
+    # is DISTINCT from ``calls`` (which feeds the per-provider ProviderLog): it feeds
+    # the P1 stage-trace so the operator Job Trace shows the page-minimization work.
+    locate_trace: Optional[dict] = None
 
 
 @runtime_checkable

@@ -1475,6 +1475,18 @@ class WebIngestCapability:
                             # returned zero rows is still worth showing, so this
                             # runs BEFORE the no-match continue below.
                             _record_requests(plog, getattr(full, "calls", None))
+                            # ONTA-391: surface the provider's locate→select→fetch
+                            # step counts as P1 stage-trace actions — BEFORE the
+                            # no-match continue, so even a page-minimising run that
+                            # located nothing (or pages with no rows) shows its
+                            # locate/fetch work + skip reason. A provider that doesn't
+                            # locate+scrape leaves locate_trace None → no-op.
+                            _record_locate_trace(
+                                job,
+                                getattr(full, "locate_trace", None),
+                                prov.name,
+                                sub_query,
+                            )
                             if not rows_found:
                                 plog.no_match += 1
                                 continue
@@ -3457,6 +3469,76 @@ def _record_requests(plog: ProviderLog, calls) -> None:
             )
         except Exception:  # noqa: BLE001 — a malformed trace is not fatal
             continue
+
+
+def _record_locate_trace(job, locate_trace, provider_name: str, sub_query: str) -> None:
+    """Surface a locate-then-scrape provider's ``locate → select_urls → fetch`` step
+    counts as P1 stage-trace actions (ONTA-391).
+
+    A provider that searches only to LOCATE list/directory pages and then scrapes a
+    few sets ``DiscoverResult.locate_trace`` = ``{locate_calls, urls_located,
+    urls_selected, pages_fetched, escalated, skip_reason}``. We project those into
+    the operator Job Trace so P1 shows the page-MINIMISATION work — the number of
+    search calls, candidate URLs, URLs selected, and pages actually fetched — instead
+    of only the terminal ``source_bundle rows=N``. This is the direct evidence for
+    "search located pages; we scraped a FEW", the ONTA-391 objective.
+
+    A no-op when there is no job/recorder, or when ``locate_trace`` is None (an
+    enumeration provider that never locates+scrapes). Wrapped so observability never
+    sinks discovery — the same contract as ``_record_requests``."""
+    if job is None or not isinstance(locate_trace, dict):
+        return
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        lt = locate_trace
+        sq = (sub_query or "")[:200]
+        base_meta = {"provider": provider_name, "sub_query": sq}
+        rec.action(
+            StageProjectId.p1,
+            "locate",
+            detail=(
+                f"search calls={lt.get('locate_calls', 0)} "
+                f"urls_found={lt.get('urls_located', 0)}"
+            ),
+            meta={
+                **base_meta,
+                "locate_calls": lt.get("locate_calls", 0),
+                "urls_located": lt.get("urls_located", 0),
+                "escalated": bool(lt.get("escalated", False)),
+            },
+        )
+        rec.action(
+            StageProjectId.p1,
+            "select_urls",
+            detail=(
+                f"selected={lt.get('urls_selected', 0)} of "
+                f"{lt.get('urls_located', 0)} candidate urls"
+            ),
+            meta={**base_meta, "urls_selected": lt.get("urls_selected", 0)},
+        )
+        rec.action(
+            StageProjectId.p1,
+            "fetch",
+            detail=(
+                f"pages_fetched={lt.get('pages_fetched', 0)}"
+                + (" (escalated)" if lt.get("escalated") else "")
+            ),
+            meta={**base_meta, "pages_fetched": lt.get("pages_fetched", 0)},
+        )
+        skip = lt.get("skip_reason")
+        if skip:
+            # Honest miss — located no fetchable list page (or pages had no rows).
+            # Recorded so the trace shows WHY A1 is empty, not a silent gap.
+            rec.action(
+                StageProjectId.p1,
+                "locate_miss",
+                detail=str(skip)[:200],
+                meta={**base_meta, "skip_reason": str(skip)[:200]},
+            )
+    except Exception:  # noqa: BLE001 — observability must never sink discovery
+        logger.warning("web_ingest_locate_trace_record_failed", exc_info=True)
 
 
 def _platforms(sources, provider) -> list[str]:
