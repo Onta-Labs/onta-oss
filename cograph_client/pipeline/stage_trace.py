@@ -401,7 +401,10 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     p2 = empty_project(StageProjectId.p2, status=StageStatus.skipped)
     p2.reconstructed = True
     progress = getattr(job, "progress", None)
-    if category in ("discovery", "enrichment") or progress is not None:
+    # Answer runs (ONTA-389) are read-only Q&A — never reconstruct extract/write.
+    if category != "answer" and (
+        category in ("discovery", "enrichment") or progress is not None
+    ):
         p2.status = StageStatus.reconstructed
         p2.input = {
             "type_name": getattr(job, "type_name", None),
@@ -467,7 +470,9 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P6 Write -----------------------------------------------------------
     p6 = empty_project(StageProjectId.p6, status=StageStatus.skipped)
     p6.reconstructed = True
-    if category in ("discovery", "enrichment", "dedupe", "reconciliation") or progress:
+    if category != "answer" and (
+        category in ("discovery", "enrichment", "dedupe", "reconciliation") or progress
+    ):
         p6.status = StageStatus.reconstructed
         p6.input = {"kg_name": getattr(job, "kg_name", None), "category": category}
         filled = getattr(progress, "filled", None) if progress else None
@@ -484,9 +489,27 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P7 Answer ----------------------------------------------------------
     p7 = empty_project(StageProjectId.p7, status=StageStatus.skipped)
     p7.reconstructed = True
-    # Query/ask jobs are not always EnrichJobs; leave skipped unless thread_id
-    # suggests chat-kicked work that might have answered.
-    if category not in ("discovery", "enrichment", "dedupe", "reconciliation"):
+    # Answer runs (ONTA-389, category=answer) are the P7 rail: A7 Answer from
+    # /ask or agent question turns. Other non-write categories may also carry
+    # answer-like work; leave a reconstructed breadcrumb for them.
+    if category == "answer":
+        p7.status = StageStatus.reconstructed
+        p7.input = {
+            "question": getattr(job, "instructions", None),
+            "kg_name": getattr(job, "kg_name", None),
+        }
+        p7.actions = [
+            StageAction(name="a7_answer", detail="answer job (P7 Answer emits A7)")
+        ]
+        p7.output = {
+            "status": status,
+            "result_count": getattr(job, "result_count", None),
+            "error": getattr(job, "error", None),
+        }
+        if status in ("failed",):
+            p7.status = StageStatus.failed
+            p7.error = getattr(job, "error", None)
+    elif category not in ("discovery", "enrichment", "dedupe", "reconciliation"):
         p7.status = StageStatus.reconstructed
         p7.actions = [StageAction(name="answer", detail="non-write job category")]
     projects.append(p7)

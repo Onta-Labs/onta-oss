@@ -4,7 +4,7 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 
 from cograph_client.analytics import distinct_id_for, emit
-from cograph_client.api.deps import get_neptune_client
+from cograph_client.api.deps import get_enrichment_job_store, get_neptune_client
 from cograph_client.api.rate_limit import limiter
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.config import settings
@@ -12,6 +12,7 @@ from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.models.query import NLQuery, NLResult
 from cograph_client.nlp.pipeline import NLQueryPipeline
+from cograph_client.pipeline.answer_run import record_answer_run
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ async def ask_question(
     body: NLQuery,
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
+    job_store=Depends(get_enrichment_job_store),
 ):
     # Ontology always lives in the base tenant graph
     ontology_graph = tenant_graph_uri(tenant.tenant_id)
@@ -50,6 +52,23 @@ async def ask_question(
             body.question, ontology_graph, instance_graph, exclude_questions=body.exclude_questions
         )
         _emit_query_executed(tenant, body.kg_name, start, result, ok=True)
+        # ONTA-389: mint answer run so operators can open Job Trace (P7 + P0/A9).
+        # Documented path: response.run_id → GET /operator/jobs/{run_id}/trace.
+        run_id = await record_answer_run(
+            job_store=job_store,
+            tenant_id=tenant.tenant_id,
+            kg_name=body.kg_name or "",
+            question=body.question,
+            answer=result.answer,
+            sparql=result.sparql or "",
+            citations=list(getattr(result, "citations", None) or []),
+            coverage_caveat=getattr(result, "coverage_caveat", "") or "",
+            ok=True,
+            timing=getattr(result, "timing", None) or {},
+            source="ask",
+        )
+        if run_id:
+            result.run_id = run_id
         return result
     except Exception:
         logger.error(
@@ -68,6 +87,21 @@ async def ask_question(
             explanation="",
         )
         _emit_query_executed(tenant, body.kg_name, start, degraded, ok=False)
+        run_id = await record_answer_run(
+            job_store=job_store,
+            tenant_id=tenant.tenant_id,
+            kg_name=body.kg_name or "",
+            question=body.question,
+            answer=degraded.answer,
+            sparql="",
+            citations=[],
+            coverage_caveat="",
+            ok=False,
+            error="ask_route_unhandled_error",
+            source="ask",
+        )
+        if run_id:
+            degraded.run_id = run_id
         return degraded
 
 
