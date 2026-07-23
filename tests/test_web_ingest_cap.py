@@ -894,6 +894,108 @@ async def test_run_routes_multi_type_and_refreshes(monkeypatch):
     assert refreshed["affected_types"] == {"Model", "Provider"}
 
 
+# A1 validators (ONTA-393): the spec + rows for the BC-colleges dogfood. Two chrome
+# NAMES (whole rows) and, on a real row, a year CITY + an enrolment ADDRESS (cells).
+_COLLEGE_SPEC = {
+    "entity_type": "College",
+    "key_attribute": "name",
+    "query": "public colleges in British Columbia",
+    "confirmed_attributes": ["city", "website", "address"],
+    "suggested_attributes": ["city", "website", "address"],
+}
+_BC_COLLEGE_ROWS = [
+    {
+        "name": "Langara College",
+        "city": "Vancouver",
+        "website": "https://langara.ca",
+        "address": "100 West 49th Ave, Vancouver BC",
+    },
+    {  # nav-chrome NAME → whole row dropped, never reaches the writer
+        "name": "About Us",
+        "city": "Vancouver",
+        "website": "https://langara.ca",
+        "address": "100 West 49th Ave",
+    },
+    {  # real institution, but a year CITY + enrolment ADDRESS → those cells scrubbed
+        "name": "Camosun College",
+        "city": "1971",
+        "website": "camosun.ca",
+        "address": "3,000 students annually",
+    },
+    {  # nav-chrome prefix NAME → whole row dropped
+        "name": "Skip to content",
+        "city": "Victoria",
+        "website": "https://x.ca",
+        "address": "200 Elm St",
+    },
+]
+
+
+async def test_a1_validators_drop_chrome_and_type_invalid_before_ingest(monkeypatch):
+    """ONTA-393 acceptance: nav-chrome NAMES and type-invalid CELLS are rejected at
+    the A1 boundary, so they NEVER reach the writer, and the drops are surfaced on
+    the P1 Job Trace. Directly proves the two hard criteria: zero entities named in
+    the nav blocklist, and no year stored as a city."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+    from cograph_client.pipeline.stage_trace import StageProjectId
+
+    provider = FakeProvider(rows=_BC_COLLEGE_ROWS)
+    register_web_source(provider)
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    captured: dict = {}
+
+    async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
+        captured["content"] = content
+        rows = json.loads(content)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap, "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    store = InMemoryJobStore()
+    cap = WebIngestCapability()
+    step = (
+        await cap.plan(_ctx_with_store(store), "public colleges in BC", parsed=_COLLEGE_SPEC)
+    )[0]
+    ack = await cap.execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    # --- (1) What actually reached the writer. -------------------------------
+    rows_back = json.loads(captured["content"])
+    names = [r["name"] for r in rows_back]
+    # Both chrome rows are gone; only the two real institutions survive.
+    assert names == ["Langara College", "Camosun College"]
+    assert "About Us" not in names and "Skip to content" not in names
+
+    by_name = {r["name"]: r for r in rows_back}
+    # The real row's INVALID cells were scrubbed — the year never lands as a city,
+    # the enrolment phrase never lands as an address...
+    assert "city" not in by_name["Camosun College"]
+    assert "address" not in by_name["Camosun College"]
+    # ...while its VALID cell (a real host) is untouched.
+    assert by_name["Camosun College"]["website"] == "camosun.ca"
+    # A wholly-clean row is passed through verbatim.
+    assert by_name["Langara College"]["city"] == "Vancouver"
+
+    # --- (2) The Job Trace stays honest about the rejections. ----------------
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    p1 = next(p for p in done.stage_trace.projects if p.project_id == StageProjectId.p1)
+    assert p1.output.get("rows_dropped") == 2
+    assert p1.output.get("cells_scrubbed") == 2
+    # A P1 action records the A1 validation with reasons for the operator.
+    a1_actions = [a for a in p1.actions if a.name == "a1_validate"]
+    assert a1_actions, "expected an a1_validate action on the P1 trace"
+    assert a1_actions[0].meta.get("rows_dropped") == 2
+
+
 def _ctx_with_store(store) -> AgentContext:
     """Agent context carrying a job store, as the agent route injects it."""
     return AgentContext(

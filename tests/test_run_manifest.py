@@ -326,8 +326,10 @@ from cograph_client.web_sources import (  # noqa: E402
 
 
 ROWS = [
-    {"name": "a", "context_length": "1"},
-    {"name": "b", "context_length": "2"},
+    # 2+ char names so the ONTA-393 A1 validators (which drop a length<2 key cell as
+    # chrome) keep these synthetic rows — the test is about halt/coverage, not names.
+    {"name": "aa", "context_length": "1"},
+    {"name": "bb", "context_length": "2"},
 ]
 
 SPEC = {
@@ -360,7 +362,7 @@ class _TwoPageProvider:
             page = (
                 ROWS[:2]
                 if self._page == 0
-                else [{"name": "e", "context_length": "5"}, {"name": "f", "context_length": "6"}]
+                else [{"name": "ee", "context_length": "5"}, {"name": "ff", "context_length": "6"}]
             )
             self._page += 1
         if hint_columns:
