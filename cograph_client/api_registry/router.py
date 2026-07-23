@@ -26,6 +26,12 @@ from typing import Awaitable, Callable, Optional
 
 from .catalog import ApiSourceCatalog
 from .nppes_taxonomy import normalize_taxonomy
+from .ranking import (
+    EmbedFn,
+    coverage_text as _coverage_text,
+    embedding_rank as _embedding_rank,
+    lexical_rank as _lexical_rank,
+)
 from .spec import ApiSourceSpec
 
 logger = logging.getLogger(__name__)
@@ -43,8 +49,8 @@ _MODES = {MODE_API_ONLY, MODE_API_PLUS_WEB, MODE_WEB_ONLY}
 _DEFAULT_TOP_K = 5
 _MAX_PICKS = 3
 
-# Injectable seams (tests pass fakes; prod wires the real helpers).
-EmbedFn = Callable[[list[str]], Awaitable[list[list[float]]]]
+# Injectable seams (tests pass fakes; prod wires the real helpers). ``EmbedFn`` is
+# the shared ranking seam (imported from ranking.py); ``ChatFn`` is router-local.
 ChatFn = Callable[[str, str], Awaitable[str]]
 
 
@@ -142,12 +148,10 @@ async def route_query(
 # --------------------------------------------------------------------------- #
 # Stage 1 — prefilter
 # --------------------------------------------------------------------------- #
-def _coverage_text(spec: ApiSourceSpec) -> str:
-    c = spec.coverage
-    parts = [spec.title, spec.publisher, spec.description,
-             " ".join(c.entity_kinds), " ".join(c.attributes), c.geo, c.temporal,
-             " ".join(c.example_asks)]
-    return " \n".join(p for p in parts if p)
+# ``_coverage_text`` / ``_embedding_rank`` / ``_lexical_rank`` are the shared
+# ranking primitives (imported from ranking.py, ONTA-341) — the discovery router
+# and the enrichment selector rank capability cards with the SAME code so
+# "relevant source" never means different things on the two rails.
 
 
 async def _prefilter(
@@ -172,47 +176,6 @@ async def _prefilter(
 
     order = sorted(range(len(entries)), key=lambda i: ranked[i], reverse=True)
     return [entries[i] for i in order[:top_k]]
-
-
-async def _embedding_rank(
-    query: str, texts: list[str], *, openrouter_key: str, embed_fn: Optional[EmbedFn]
-) -> Optional[list[float]]:
-    fn = embed_fn
-    if fn is None:
-        if not openrouter_key:
-            return None
-        from ..nlp.embed_client import embed_texts
-
-        async def fn(items: list[str]) -> list[list[float]]:  # type: ignore[misc]
-            return await embed_texts(items, api_key=openrouter_key)
-
-    try:
-        import numpy as np
-
-        from ..nlp.embed_client import cosine_similarity
-
-        vectors = await fn([query, *texts])
-        if not vectors or len(vectors) != len(texts) + 1:
-            return None
-        q_vec = np.array(vectors[0], dtype=np.float32)
-        matrix = np.array(vectors[1:], dtype=np.float32)
-        return [float(s) for s in cosine_similarity(q_vec, matrix)]
-    except Exception as exc:
-        logger.debug("api_registry prefilter embedding failed: %s", exc)
-        return None
-
-
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _lexical_rank(query: str, texts: list[str]) -> list[float]:
-    q_tokens = set(_TOKEN_RE.findall(query.lower()))
-    scores: list[float] = []
-    for t in texts:
-        t_tokens = set(_TOKEN_RE.findall(t.lower()))
-        overlap = len(q_tokens & t_tokens)
-        scores.append(overlap / (len(q_tokens) + 1e-9))
-    return scores
 
 
 # --------------------------------------------------------------------------- #

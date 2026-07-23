@@ -572,7 +572,10 @@ def _priced_item_spec(kinds):
 
 
 def test_tokens_split_camelcase():
-    from cograph_client.api_registry.enrichment import _tokens
+    # The tokenizer moved to the shared matching.py gate (ONTA-341); its behavior
+    # is unchanged and is what both the adapter self-gate and the selector's
+    # structured pre-filter tokenize with.
+    from cograph_client.api_registry.matching import tokens as _tokens
     # PascalCase / acronym-prefixed names split into the same words as snake_case.
     assert _tokens("LineItem") == {"line", "item"}
     assert _tokens("line_item") == {"line", "item"}

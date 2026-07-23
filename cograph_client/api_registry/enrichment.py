@@ -40,6 +40,17 @@ from ..enrichment.sources.base import register_adapter
 from ..enrichment.tiers import register_chain_prefix_provider
 from .catalog import ApiSourceCatalog, get_api_source_catalog
 from .executor import RegistryApiSource
+from .matching import (
+    fillable_column as _spec_fillable_column,
+    has_enrich_params as _has_enrich_params,
+    type_matches as _spec_type_matches,
+)
+from .registry_selection import (
+    SelectionNeed,
+    clear_selection_cache,
+    select_registry_slugs,
+    selection_enabled,
+)
 from .spec import (
     AUTHORITY_CONFIDENCE as _AUTHORITY_CONFIDENCE,
     AUTHORITY_RANK as _AUTHORITY_RANK,
@@ -59,22 +70,12 @@ logger = logging.getLogger(__name__)
 # (1, 0.85) leads supplementary (2, 0.6); the first two clear the default
 # confidence bar, supplementary only augments a gap.
 _MAX_ROWS = 5
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-# Word boundaries INSIDE a camelCase / PascalCase identifier: a lower/digit→upper
-# transition ("LineItem" → "Line|Item"), and an acronym→word transition
-# ("BLSItem" → "BLS|Item"). Split on these BEFORE lowercasing so a PascalCase
-# ontology type name tokenizes to the same words a snake_case coverage kind does
-# — otherwise "LineItem" collapses to the single token {"lineitem"}, never
-# overlaps "line_item"/"food_item"/…, and the registry source is silently skipped
-# for exactly the multi-word type names auto-ontology tends to mint.
-_CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
-# Generic tokens that must not, ALONE, make an entity type match an entry's
-# coverage — otherwise a bare "Organization" would match "health_organization"
-# on the shared "organization" token and fire a spurious API call.
-_GENERIC_TYPE_TOKENS = frozenset({
-    "organization", "org", "provider", "company", "business", "entity",
-    "person", "record", "item", "thing", "group", "service",
-})
+
+# The structural coverage-match gate (attribute-fillable + type-overlap) now lives
+# canonically in ``matching.py`` (ONTA-341) so the adapter's per-lookup self-gate
+# and the scalable selector's structured pre-filter share ONE implementation and
+# can never diverge. Delegated below via ``_spec_fillable_column`` /
+# ``_spec_type_matches`` / ``_has_enrich_params`` (imported at module top).
 
 
 # Candidate-select (ONTA-360): cap on the prompt text sent to the LLM selector
@@ -127,22 +128,6 @@ def _relax_ladder(label: str) -> list[str]:
     return out
 
 
-def _norm(s: str) -> str:
-    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
-
-
-def _tokens(s: str) -> set[str]:
-    # Insert spaces at camelCase/PascalCase word boundaries first, so both a
-    # PascalCase entity type ("LineItem") and a snake_case coverage kind
-    # ("line_item") reduce to the same word set {"line", "item"}.
-    split = _CAMEL_BOUNDARY_RE.sub(" ", s or "")
-    return set(_TOKEN_RE.findall(split.lower()))
-
-
-def _has_enrich_params(spec: ApiSourceSpec) -> bool:
-    return any(p.enrich_from for ep in spec.endpoints for p in ep.params)
-
-
 class RegistrySourceAdapter:
     """A ``SourceAdapter`` backed by one declarative catalog entry."""
 
@@ -163,11 +148,6 @@ class RegistrySourceAdapter:
         self.name = f"api:{spec.slug}"
         self.is_paid = spec.is_paid
         self.cost_per_call = spec.cost_per_call
-        # normalized(field-mapping column) -> canonical column name, across endpoints
-        self._columns: dict[str, str] = {}
-        for ep in spec.endpoints:
-            for col in ep.field_mappings:
-                self._columns.setdefault(_norm(col), col)
 
     @property
     def authority_level(self) -> AuthorityLevel:
@@ -192,37 +172,13 @@ class RegistrySourceAdapter:
         return _AUTHORITY_CONFIDENCE.get(self._spec.authority_level, 0.6)
 
     def _fillable_column(self, attribute: str) -> Optional[str]:
-        return self._columns.get(_norm(attribute))
+        # The structural gate (attribute-declared + type-overlap) is the shared
+        # matching.py implementation — the self-gate here and the selector's
+        # structured pre-filter (ONTA-341) call the SAME predicates.
+        return _spec_fillable_column(self._spec, attribute)
 
     def _type_matches(self, entity_type: str) -> bool:
-        # Missing type -> don't over-exclude (ONTA-191): rely on the attribute +
-        # binding gates. Present type -> require a token overlap with coverage on
-        # a NON-generic token, so a bare "Organization" doesn't match
-        # "health_organization" (and fire a spurious API call) on the shared
-        # generic "organization" token alone.
-        if not entity_type:
-            return True
-        want = _tokens(entity_type)
-        if not want:
-            return True
-        if not (want - _GENERIC_TYPE_TOKENS):
-            # The type name is ENTIRELY generic ("Item", "Organization" — the
-            # shapes auto-ontology mints when a dataset has no domain
-            # vocabulary). It cannot supply a distinguishing token, so a
-            # partial overlap with a multi-word kind ("health_organization")
-            # stays a NON-match — the guard's whole point. It matches only a
-            # coverage kind declared at the same generic level (every token of
-            # the kind present in the type name, e.g. kind "item" for type
-            # "Item"): an explicit author opt-in to serve generic types.
-            return any(
-                kt and kt <= want
-                for kt in (_tokens(k) for k in self._spec.coverage.entity_kinds)
-            )
-        for kind in self._spec.coverage.entity_kinds:
-            overlap = _tokens(kind) & want
-            if overlap and (overlap - _GENERIC_TYPE_TOKENS):
-                return True
-        return False
+        return _spec_type_matches(self._spec, entity_type)
 
     def _build_bindings(
         self, ep: EndpointSpec, entity_label: str, entity_attrs: dict,
@@ -468,10 +424,65 @@ class RegistrySourceAdapter:
 # Registration + authority chain-prefix
 # --------------------------------------------------------------------------- #
 _registry_lead_names: list[str] = []
+# The catalog the lead adapters were registered from — reused by the scalable
+# selector so it ranks over the SAME entries that are registered as adapters
+# (ONTA-341). Falls back to the process catalog when unset.
+_selection_catalog: Optional[ApiSourceCatalog] = None
 
 
 def _registry_prefix_provider(_tier) -> list[str]:
     return list(_registry_lead_names)
+
+
+async def apply_registry_selection(
+    chain: list[str],
+    entity_type: str,
+    attribute: str,
+    *,
+    catalog: Optional[ApiSourceCatalog] = None,
+    openrouter_key: str = "",
+    embed_fn=None,
+    chat_fn=None,
+) -> list[str]:
+    """Reshape a tier-derived ``chain`` so the registry leads are the arbitrated
+    top-K for this ``(entity_type, attribute)`` (ONTA-341) — replacing the O(N)
+    linear self-gating scan with retrieve-top-K → gate → arbitrate.
+
+    Identity when the feature flag is OFF (default): returns ``chain`` unchanged,
+    so enrichment behaves byte-for-byte as today. When ON, the ``api:<slug>``
+    lead names in ``chain`` are replaced by the selector's ordered slugs (the
+    non-registry tail — wikidata, etc. — is preserved verbatim). Only names
+    ALREADY in ``chain`` are ever emitted, so no unregistered adapter is
+    introduced. Never raises: any failure returns the original ``chain`` so a
+    selector bug can never drop a source the chain would have consulted.
+
+    Called ONLY on chains derived from ``get_chain(tier)`` — never on an explicit
+    per-attribute strategy override or a valid ``job.sources`` list (those are the
+    user's exact chain and must not be reshaped)."""
+    if not selection_enabled():
+        return chain
+    try:
+        registry_in_chain = [c for c in chain if c.startswith("api:")]
+        if not registry_in_chain:
+            return chain
+        cat = catalog or _selection_catalog or get_api_source_catalog()
+        need = SelectionNeed(entity_type=entity_type or "", attribute=attribute or "")
+        slugs = await select_registry_slugs(
+            need, cat, openrouter_key=openrouter_key,
+            embed_fn=embed_fn, chat_fn=chat_fn,
+        )
+        in_chain = set(registry_in_chain)
+        # Selected leads (arbitrated order), keeping only those actually present
+        # in this chain; then the non-registry tail in its original order.
+        lead = [n for s in slugs if (n := f"api:{s}") in in_chain]
+        tail = [c for c in chain if not c.startswith("api:")]
+        return [*lead, *tail]
+    except Exception:  # noqa: BLE001 - never break enrichment over selection
+        logger.debug(
+            "api_registry selection reshape failed type=%s attr=%s",
+            entity_type, attribute, exc_info=True,
+        )
+        return chain
 
 
 def register_registry_enrichment(
@@ -484,7 +495,7 @@ def register_registry_enrichment(
     call again to refresh after the catalog/overlay changes. Returns the ordered
     adapter names.
     """
-    global _registry_lead_names
+    global _registry_lead_names, _selection_catalog
     cat = catalog or get_api_source_catalog()
     shared = executor or RegistryApiSource()
     specs = [s for s in cat.enabled() if s.endpoints and _has_enrich_params(s)]
@@ -494,6 +505,10 @@ def register_registry_enrichment(
         register_adapter(RegistrySourceAdapter(spec, executor=shared))
         names.append(f"api:{spec.slug}")
     _registry_lead_names = names
+    # Rank the selector over the SAME catalog these adapters came from, and drop
+    # any stale (need → slugs) decisions from a previous catalog (ONTA-341).
+    _selection_catalog = cat
+    clear_selection_cache()
     register_chain_prefix_provider(_registry_prefix_provider)
     logger.info("api_registry: enrichment adapters registered: %s", names)
     return names
@@ -502,12 +517,15 @@ def register_registry_enrichment(
 def reset_registry_enrichment() -> None:
     """Clear the registry lead-names (tests). The chain-prefix provider stays
     registered but returns an empty list, so it's a no-op."""
-    global _registry_lead_names
+    global _registry_lead_names, _selection_catalog
     _registry_lead_names = []
+    _selection_catalog = None
+    clear_selection_cache()
 
 
 __all__ = [
     "RegistrySourceAdapter",
     "register_registry_enrichment",
     "reset_registry_enrichment",
+    "apply_registry_selection",
 ]

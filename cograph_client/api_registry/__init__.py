@@ -33,8 +33,21 @@ from .catalog_audit import audit_catalog, format_markdown
 from .discovery import RegistryDiscoverySource, build_registry_sources
 from .enrichment import (
     RegistrySourceAdapter,
+    apply_registry_selection,
     register_registry_enrichment,
     reset_registry_enrichment,
+)
+from .matching import covers, fillable_column, has_enrich_params, type_matches
+from .registry_selection import (
+    SelectionNeed,
+    arbitrate,
+    clear_selection_cache,
+    register_source_success_rate_provider,
+    reset_source_success_rate_provider,
+    select_registry_slugs,
+    selection_enabled,
+    selection_top_k,
+    structured_prefilter,
 )
 from .crypto import (
     LocalAesGcmCipher,
@@ -149,6 +162,21 @@ __all__ = [
     "RegistrySourceAdapter",
     "register_registry_enrichment",
     "reset_registry_enrichment",
+    # scalable discovery + selection (ONTA-341)
+    "SelectionNeed",
+    "apply_registry_selection",
+    "select_registry_slugs",
+    "structured_prefilter",
+    "arbitrate",
+    "selection_enabled",
+    "selection_top_k",
+    "clear_selection_cache",
+    "register_source_success_rate_provider",
+    "reset_source_success_rate_provider",
+    "covers",
+    "fillable_column",
+    "type_matches",
+    "has_enrich_params",
     # catalog freshness audit (phase 4)
     "audit_catalog",
     "format_markdown",
