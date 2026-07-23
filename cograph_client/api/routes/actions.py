@@ -45,7 +45,12 @@ from cograph_client.enrichment.models import (
 )
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.pipeline.stage_trace import stamp_enrichment_job_created
+from cograph_client.pipeline.stage_trace import (
+    ensure_job_stage_trace_open,
+    finalize_job_stage_trace,
+    open_job_stage_trace,
+    stamp_enrichment_job_created,
+)
 
 logger = structlog.stdlib.get_logger("cograph.actions")
 
@@ -151,7 +156,7 @@ def _new_job(
     sources: Optional[list[str]] = None,
     spend_ceiling_usd: Optional[float] = None,
 ) -> EnrichJob:
-    return EnrichJob(
+    job = EnrichJob(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         kg_name=kg_name,
@@ -173,6 +178,9 @@ def _new_job(
         # Per-run HARD spend ceiling (ONTA-378): None → deployment default.
         spend_ceiling_usd=spend_ceiling_usd,
     )
+    # P0/A9 live open (ONTA-388): every action-created job opens P0 on create.
+    open_job_stage_trace(job)
+    return job
 
 
 # --- scheduled dispatch (COG-136) ---------------------------------------------
@@ -338,6 +346,12 @@ async def dispatch_scheduled_action(
             )
             job.completed_at = now
             job.last_run = now
+            finalize_job_stage_trace(
+                job,
+                terminal_status="failed",
+                error=job.error,
+                summary={"category": "reconciliation", "premium_missing": True},
+            )
             await job_store.create(job)
             return job
         await job_store.create(job)
@@ -478,6 +492,7 @@ async def _run_dedupe(
         return
     job.status = JobStatus.running
     job.started_at = datetime.now(timezone.utc)
+    ensure_job_stage_trace_open(job)
     await job_store.update(job)
 
     try:
@@ -510,6 +525,20 @@ async def _run_dedupe(
         now = datetime.now(timezone.utc)
         job.completed_at = now
         job.last_run = now
+        st = getattr(getattr(job, "status", None), "value", None) or str(
+            getattr(job, "status", "") or ""
+        )
+        finalize_job_stage_trace(
+            job,
+            terminal_status=st,
+            error=job.error if st == "failed" else None,
+            summary={
+                "category": "dedupe",
+                "processed": getattr(job.progress, "processed", None),
+                "total": getattr(job.progress, "total", None),
+            },
+            p0_output={"status": st, "error": job.error},
+        )
         await job_store.update(job)
 
 
@@ -595,6 +624,7 @@ async def _run_suggest(
         return
     job.status = JobStatus.running
     job.started_at = datetime.now(timezone.utc)
+    ensure_job_stage_trace_open(job)
     await job_store.update(job)
     try:
         result = await _recommender(client, tenant_id, kg_name)  # type: ignore[misc]
@@ -612,6 +642,16 @@ async def _run_suggest(
         now = datetime.now(timezone.utc)
         job.completed_at = now
         job.last_run = now
+        st = getattr(getattr(job, "status", None), "value", None) or str(
+            getattr(job, "status", "") or ""
+        )
+        finalize_job_stage_trace(
+            job,
+            terminal_status=st,
+            error=job.error if st == "failed" else None,
+            summary={"category": "reconciliation"},
+            p0_output={"status": st, "error": job.error},
+        )
         await job_store.update(job)
 
 
@@ -648,6 +688,12 @@ async def suggest_relationships(
         )
         job.completed_at = now
         job.last_run = now
+        finalize_job_stage_trace(
+            job,
+            terminal_status="failed",
+            error=job.error,
+            summary={"category": "reconciliation", "premium_missing": True},
+        )
         await job_store.create(job)
         return {
             "job_id": job.id,

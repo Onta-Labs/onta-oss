@@ -48,6 +48,11 @@ from cograph_client.enrichment.models import (
     JobStatus,
     JobTrigger,
 )
+from cograph_client.pipeline.stage_trace import (
+    ensure_job_stage_trace_open,
+    finalize_job_stage_trace,
+    open_job_stage_trace,
+)
 from cograph_client.graph.queries import kg_graph_uri
 from cograph_client.resolver.er.rebuild import TYPE_URI_PREFIX
 from cograph_client.resolver.er.types import config_for
@@ -223,6 +228,8 @@ class DedupCapability:
             # Chat provenance: link the job to the conversation that spawned it.
             thread_id=getattr(ctx, "session_id", None),
         )
+        # P0/A9 live open (ONTA-388): open P0 on create for agent-kicked dedupe.
+        open_job_stage_trace(job)
         await job_store.create(job)
         _spawn(_run_dedup(ctx.neptune, job_store, job.id, ctx.tenant_id, kg_name))
         return {
@@ -267,6 +274,7 @@ async def _run_dedup(
         return
     job.status = JobStatus.running
     job.started_at = datetime.now(timezone.utc)
+    ensure_job_stage_trace_open(job)
     await job_store.update(job)
 
     try:
@@ -300,4 +308,18 @@ async def _run_dedup(
         now = datetime.now(timezone.utc)
         job.completed_at = now
         job.last_run = now
+        st = getattr(getattr(job, "status", None), "value", None) or str(
+            getattr(job, "status", "") or ""
+        )
+        finalize_job_stage_trace(
+            job,
+            terminal_status=st,
+            error=job.error if st == "failed" else None,
+            summary={
+                "category": "dedupe",
+                "processed": getattr(job.progress, "processed", None),
+                "total": getattr(job.progress, "total", None),
+            },
+            p0_output={"status": st, "error": job.error},
+        )
         await job_store.update(job)
