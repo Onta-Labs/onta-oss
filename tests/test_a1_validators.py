@@ -133,6 +133,18 @@ def test_real_cities_pass(good_city):
 def test_city_url_like_is_rejected():
     assert validate_city("https://langara.ca") is not None
     assert validate_city("www.ubc.ca") is not None
+    assert validate_city("langara.ca") is not None       # bare host w/ real TLD
+    assert validate_city("http://x") is not None
+
+
+@pytest.mark.parametrize(
+    "abbrev_city",
+    ["St.Louis", "Mt.Royal", "Ft.Worth", "Ste.Anne"],
+)
+def test_city_abbreviated_placenames_are_not_urls(abbrev_city):
+    # ONTA-393 follow-up: a no-space abbreviated place name whose trailing label is
+    # an ordinary word (not a TLD) must NOT be flagged as a URL.
+    assert validate_city(abbrev_city) is None
 
 
 def test_city_enrolment_phrase_is_rejected():
