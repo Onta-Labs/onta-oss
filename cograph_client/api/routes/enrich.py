@@ -35,6 +35,7 @@ from cograph_client.enrichment.tier_router import (
     chain_has_paid,
     resolve_auto_tier,
 )
+from cograph_client.pipeline.stage_trace import stamp_enrichment_job_created
 
 router = APIRouter(prefix="/graphs/{tenant}/enrich")
 
@@ -214,6 +215,9 @@ async def create_job(
         # default (unchanged behavior).
         spend_ceiling_usd=body.spend_ceiling_usd,
     )
+    # Operator Job Trace (ONTA-387): open live P0 so a just-queued enrich job
+    # already has contract-shaped stage_trace (not only reconstructed).
+    stamp_enrichment_job_created(job)
     await job_store.create(job)
 
     _spawn(executor.run(job, tenant.tenant_id))
