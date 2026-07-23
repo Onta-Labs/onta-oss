@@ -84,6 +84,7 @@ from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.graph.suppression import fetch_suppressed_entities
 from cograph_client.normalization.inference import list_type_schema
 from cograph_client.config import settings
+from cograph_client.pipeline.a1_validators import screen_row
 from cograph_client.pipeline.manifest import (
     HaltReasonKind,
     RunManifest,
@@ -342,6 +343,65 @@ def _drop_suppressed_rows(
             continue
         kept.append(row)
     return kept
+
+
+def _screen_a1_rows(
+    rows: list,
+    key_attr: str,
+    attributes: list[str],
+    *,
+    provider: str = "",
+    job_id: Optional[str] = None,
+) -> tuple[list, int, int, list[str]]:
+    """A1 validators (ONTA-393): reject nav-chrome NAMES and type-invalid CELLS from
+    a post-dedupe batch BEFORE the SourceBundle is built and BEFORE resolver.ingest*,
+    so garbage never becomes a graph entity.
+
+    A row whose key/name cell is chrome ("About", "Skip to content", …) is DROPPED
+    whole; a real row carrying a type-invalid cell (city that is a year, website with
+    no host, address that is an enrolment phrase) keeps the row but SCRUBS that cell.
+    Per-row decisions come from the pure :func:`screen_row`; here we only log each
+    drop and never mutate the provider's row dict (scrubbing copies).
+
+    Returns ``(kept_rows, rows_dropped, cells_scrubbed, drop_reasons)``. A no-op
+    returning ``rows`` unchanged when nothing is invalid — the happy path pays one
+    screen pass, mirroring :func:`_drop_suppressed_rows`."""
+    if not rows:
+        return rows, 0, 0, []
+    kept: list = []
+    rows_dropped = 0
+    cells_scrubbed = 0
+    reasons: list[str] = []
+    for row in rows:
+        verdict = screen_row(row, key_attr, list(attributes))
+        if verdict.drop_row:
+            rows_dropped += 1
+            reasons.append(verdict.row_reason)
+            logger.info(
+                "web_ingest_a1_row_dropped",
+                reason=verdict.row_reason,
+                key=str(row.get(key_attr)) if isinstance(row, dict) else "",
+                provider=provider,
+                job_id=job_id,
+            )
+            continue
+        if verdict.scrubbed:
+            # Copy before scrubbing — the provider's row (and its provenance) is
+            # shared; we remove only the offending cells from OUR view of it.
+            row = dict(row)
+            for attr, reason in verdict.scrubbed.items():
+                row.pop(attr, None)
+                cells_scrubbed += 1
+                reasons.append(reason)
+                logger.info(
+                    "web_ingest_a1_cell_scrubbed",
+                    attribute=attr,
+                    reason=reason,
+                    provider=provider,
+                    job_id=job_id,
+                )
+        kept.append(row)
+    return kept, rows_dropped, cells_scrubbed, reasons
 
 
 def _spawn(coro) -> None:
@@ -1344,6 +1404,12 @@ class WebIngestCapability:
             # summaries folded across every SourceBundle + ingest micro-batch so
             # the terminal P1/P2/P3/P6 outputs are Notion-contract-shaped.
             a1_acc: Optional[dict] = None
+            # A1 validators (ONTA-393): run-level tallies of nav-chrome rows dropped
+            # and type-invalid cells scrubbed at the A1 boundary, surfaced on the
+            # terminal A1 contract so the Job Trace stays honest about them.
+            a1_rows_dropped = 0
+            a1_cells_scrubbed = 0
+            a1_drop_reasons: list[str] = []
             a2_extracted = 0
             a2_resolved = 0
             a2_source_rows = 0
@@ -1554,8 +1620,66 @@ class WebIngestCapability:
                                 provider=prov.name,
                                 job_id=job.id if job is not None else None,
                             )
+                            # A1 VALIDATORS (ONTA-393): reject nav-chrome NAMES (drop
+                            # the whole row) and type-invalid CELLS (city=year,
+                            # website=no-host, address=enrolment phrase — scrub the
+                            # cell) at the A1 boundary — same seam as the suppression
+                            # guard, BEFORE the SourceBundle is built and BEFORE
+                            # resolver.ingest*, so chrome never becomes a graph
+                            # entity. Fill rate ≠ correctness: this is the gate that
+                            # keeps a non-empty-but-wrong cell out of the write.
+                            (
+                                batch,
+                                _rows_dropped,
+                                _cells_scrubbed,
+                                _drop_reasons,
+                            ) = _screen_a1_rows(
+                                batch,
+                                key_attr,
+                                attributes,
+                                provider=prov.name,
+                                job_id=job.id if job is not None else None,
+                            )
+                            if _rows_dropped or _cells_scrubbed:
+                                a1_rows_dropped += _rows_dropped
+                                a1_cells_scrubbed += _cells_scrubbed
+                                for _r in _drop_reasons:
+                                    if (
+                                        _r not in a1_drop_reasons
+                                        and len(a1_drop_reasons) < 20
+                                    ):
+                                        a1_drop_reasons.append(_r)
+                                # Keep the operator Job Trace honest: a P1 action
+                                # explaining the A1 rejections. Isolated so a trace
+                                # hiccup can never sink the write path.
+                                try:
+                                    if job is not None:
+                                        rec = attach_recorder(job)
+                                        if rec is not None:
+                                            rec.action(
+                                                StageProjectId.p1,
+                                                "a1_validate",
+                                                detail=(
+                                                    f"dropped {_rows_dropped} "
+                                                    f"nav-chrome rows, scrubbed "
+                                                    f"{_cells_scrubbed} type-invalid "
+                                                    f"cells"
+                                                ),
+                                                meta={
+                                                    "rows_dropped": _rows_dropped,
+                                                    "cells_scrubbed": _cells_scrubbed,
+                                                    "reasons": _drop_reasons[:8],
+                                                    "provider": prov.name,
+                                                },
+                                            )
+                                except Exception:  # noqa: BLE001 — trace never breaks the run
+                                    logger.warning(
+                                        "web_ingest_a1_validate_trace_failed",
+                                        job_id=job.id if job is not None else None,
+                                        exc_info=True,
+                                    )
                             if not batch:
-                                continue  # found rows; all deduped or suppressed
+                                continue  # found rows; all deduped/suppressed/chrome
                             # A1 SOURCE BUNDLE (ONTA-346): materialize the
                             # Find→Extract boundary artifact from THIS provider's
                             # post-dedupe batch, BEFORE the extract/write below.
@@ -2166,6 +2290,9 @@ class WebIngestCapability:
                         platforms=platforms,
                         stage_contracts=_build_stage_contracts(
                             a1_acc=a1_acc,
+                            a1_rows_dropped=a1_rows_dropped,
+                            a1_cells_scrubbed=a1_cells_scrubbed,
+                            a1_drop_reasons=a1_drop_reasons,
                             a2_extracted=a2_extracted,
                             a2_resolved=a2_resolved,
                             a2_source_rows=a2_source_rows,
@@ -2229,6 +2356,9 @@ class WebIngestCapability:
                     platforms=platforms,
                     stage_contracts=_build_stage_contracts(
                         a1_acc=a1_acc,
+                        a1_rows_dropped=a1_rows_dropped,
+                        a1_cells_scrubbed=a1_cells_scrubbed,
+                        a1_drop_reasons=a1_drop_reasons,
                         a2_extracted=a2_extracted,
                         a2_resolved=a2_resolved,
                         a2_source_rows=a2_source_rows,
@@ -3616,6 +3746,9 @@ def _platforms(sources, provider) -> list[str]:
 def _build_stage_contracts(
     *,
     a1_acc: Optional[dict],
+    a1_rows_dropped: int = 0,
+    a1_cells_scrubbed: int = 0,
+    a1_drop_reasons: Optional[list] = None,
     a2_extracted: int,
     a2_resolved: int,
     a2_source_rows: int,
@@ -3650,6 +3783,13 @@ def _build_stage_contracts(
             "row_count": 0,
             "bundles_emitted": 0,
         }
+    # A1 validators (ONTA-393): surface the nav-chrome / type-invalid rejections on
+    # the terminal A1 contract only when there were any, so a clean run's contract is
+    # byte-identical to pre-393.
+    if a1_rows_dropped or a1_cells_scrubbed:
+        a1["rows_dropped"] = int(a1_rows_dropped)
+        a1["cells_scrubbed"] = int(a1_cells_scrubbed)
+        a1["drop_reasons_sample"] = list(a1_drop_reasons or [])[:8]
     a2 = summarize_a2_candidates(
         entities_extracted=a2_extracted,
         entities_resolved=a2_resolved,

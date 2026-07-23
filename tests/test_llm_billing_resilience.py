@@ -412,10 +412,13 @@ from cograph_client.web_sources import (  # noqa: E402
 
 
 ROWS = [
-    {"name": "a", "context_length": "1"},
-    {"name": "b", "context_length": "2"},
-    {"name": "c", "context_length": "3"},
-    {"name": "d", "context_length": "4"},
+    # 2+ char names so the ONTA-393 A1 validators keep these synthetic discovery
+    # rows (a length<2 key cell is dropped as chrome); this test is about honest
+    # partial coverage on a billing error, not the entity names.
+    {"name": "aa", "context_length": "1"},
+    {"name": "bb", "context_length": "2"},
+    {"name": "cc", "context_length": "3"},
+    {"name": "dd", "context_length": "4"},
 ]
 
 SPEC = {
@@ -572,7 +575,7 @@ async def test_billing_error_records_honest_partials(monkeypatch):
             else:
                 page = (
                     ROWS[:2] if self._page == 0 else
-                    [{"name": "e", "context_length": "5"}, {"name": "f", "context_length": "6"}]
+                    [{"name": "ee", "context_length": "5"}, {"name": "ff", "context_length": "6"}]
                 )
                 self._page += 1
             if hint_columns:
