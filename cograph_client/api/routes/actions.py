@@ -45,6 +45,7 @@ from cograph_client.enrichment.models import (
 )
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.queries import kg_graph_uri
+from cograph_client.pipeline.stage_trace import stamp_enrichment_job_created
 
 logger = structlog.stdlib.get_logger("cograph.actions")
 
@@ -310,6 +311,8 @@ async def dispatch_scheduled_action(
 
     if action == "enrich":
         await _resolve_scheduled_auto_tier(job)
+        # Operator Job Trace (ONTA-387): open live P0 at create (same as routes).
+        stamp_enrichment_job_created(job)
         await job_store.create(job)
         await executor.run(job, schedule.tenant_id)
         return job
@@ -565,6 +568,8 @@ async def enrich_action(
         sources=body.sources,
         spend_ceiling_usd=body.spend_ceiling_usd,
     )
+    # Operator Job Trace (ONTA-387): open live P0 at create (same as /enrich/jobs).
+    stamp_enrichment_job_created(job)
     await job_store.create(job)
     _spawn(executor.run(job, tenant.tenant_id))
     return {

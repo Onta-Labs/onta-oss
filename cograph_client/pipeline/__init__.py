@@ -32,6 +32,11 @@ from cograph_client.pipeline.stage_trace import (
     new_trace_for_job,
     reconstruct_from_job,
     resolve_trace,
+    stamp_enrichment_job_created,
+    stamp_enrichment_run_cancelled,
+    stamp_enrichment_run_failed,
+    stamp_enrichment_run_finished,
+    stamp_enrichment_run_started,
 )
 
 __all__ = [
@@ -48,4 +53,9 @@ __all__ = [
     "new_trace_for_job",
     "reconstruct_from_job",
     "resolve_trace",
+    "stamp_enrichment_job_created",
+    "stamp_enrichment_run_cancelled",
+    "stamp_enrichment_run_failed",
+    "stamp_enrichment_run_finished",
+    "stamp_enrichment_run_started",
 ]
