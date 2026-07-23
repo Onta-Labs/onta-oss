@@ -30,6 +30,7 @@ const JOB_CATEGORIES = [
   "reconciliation",
   "discovery",
   "ingest",
+  "answer",
 ] as const;
 
 // Compile-time drift guard: `JOB_CATEGORIES` must enumerate EXACTLY the SDK's

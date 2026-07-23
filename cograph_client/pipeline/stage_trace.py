@@ -23,7 +23,10 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, Optional
 
+import structlog
 from pydantic import BaseModel, Field
+
+logger = structlog.stdlib.get_logger("cograph.pipeline.stage_trace")
 
 
 def _now() -> datetime:
@@ -373,15 +376,7 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P1 Find ------------------------------------------------------------
     p1 = empty_project(StageProjectId.p1, status=StageStatus.skipped)
     p1.reconstructed = True
-    # File ingest is A1-like (source already provided) — P1 stays skipped with
-    # an explicit reason rather than being reconstructed as "find".
-    if category == "ingest":
-        p1.output = {
-            "skip_reason": (
-                "file is A1-like entry (source provided); Find Data not on this rail"
-            )
-        }
-    elif category == "discovery" or getattr(job, "platforms", None):
+    if category == "discovery" or getattr(job, "platforms", None):
         p1.status = StageStatus.reconstructed
         p1.input = {
             "type_name": getattr(job, "type_name", None),
@@ -403,13 +398,23 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
             "platforms": getattr(job, "platforms", None),
             "provider_count": len(plogs),
         }
-    projects.append(p1)
+    
+    if category == "ingest":
+        p1.status = StageStatus.skipped
+        p1.reconstructed = True
+        p1.output = {
+            "skip_reason": "file is A1-like entry (source provided); Find Data not on this rail"
+        }
+projects.append(p1)
 
     # --- P2 Extract ---------------------------------------------------------
     p2 = empty_project(StageProjectId.p2, status=StageStatus.skipped)
     p2.reconstructed = True
     progress = getattr(job, "progress", None)
-    if category in ("discovery", "enrichment", "ingest") or progress is not None:
+    # Answer runs (ONTA-389) are read-only Q&A — never reconstruct extract/write.
+    if category != "answer" and (
+        category in ("discovery", "enrichment", "ingest") or progress is not None
+    ):
         p2.status = StageStatus.reconstructed
         p2.input = {
             "type_name": getattr(job, "type_name", None),
@@ -475,7 +480,9 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P6 Write -----------------------------------------------------------
     p6 = empty_project(StageProjectId.p6, status=StageStatus.skipped)
     p6.reconstructed = True
-    if category in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest") or progress:
+    if category != "answer" and (
+        category in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest") or progress
+    ):
         p6.status = StageStatus.reconstructed
         p6.input = {"kg_name": getattr(job, "kg_name", None), "category": category}
         filled = getattr(progress, "filled", None) if progress else None
@@ -492,9 +499,27 @@ def reconstruct_from_job(job: Any) -> JobStageTrace:
     # --- P7 Answer ----------------------------------------------------------
     p7 = empty_project(StageProjectId.p7, status=StageStatus.skipped)
     p7.reconstructed = True
-    # Query/ask jobs are not always EnrichJobs; leave skipped unless thread_id
-    # suggests chat-kicked work that might have answered.
-    if category not in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest"):
+    # Answer runs (ONTA-389, category=answer) are the P7 rail: A7 Answer from
+    # /ask or agent question turns. Other non-write categories may also carry
+    # answer-like work; leave a reconstructed breadcrumb for them.
+    if category == "answer":
+        p7.status = StageStatus.reconstructed
+        p7.input = {
+            "question": getattr(job, "instructions", None),
+            "kg_name": getattr(job, "kg_name", None),
+        }
+        p7.actions = [
+            StageAction(name="a7_answer", detail="answer job (P7 Answer emits A7)")
+        ]
+        p7.output = {
+            "status": status,
+            "result_count": getattr(job, "result_count", None),
+            "error": getattr(job, "error", None),
+        }
+        if status in ("failed",):
+            p7.status = StageStatus.failed
+            p7.error = getattr(job, "error", None)
+    elif category not in ("discovery", "enrichment", "dedupe", "reconciliation", "ingest"):
         p7.status = StageStatus.reconstructed
         p7.actions = [StageAction(name="answer", detail="non-write job category")]
     projects.append(p7)
@@ -694,3 +719,495 @@ def attach_recorder(job: Any) -> Optional[StageTraceRecorder]:
     if getattr(job, "stage_trace", None) is None:
         job.stage_trace = new_trace_for_job(job)
     return StageTraceRecorder(job.stage_trace)
+
+
+# --------------------------------------------------------------------------- #
+# Enrichment live instrumentation (ONTA-387)
+# --------------------------------------------------------------------------- #
+# Discovery (web_ingest) already records live P0/P1/P2/P6. Enrichment is a
+# different rail: no P1 Find (entities already exist), P2 = lookup/extract,
+# P4 = conflict/confidence/verify, P6 = apply/write. Everything is try/except
+# so operator observability can never fail the write path.
+
+# Rails not on the enrichment job path — stamped with reasons at terminal.
+_ENRICHMENT_SKIP_REASONS: dict[StageProjectId, str] = {
+    StageProjectId.p1: "find rail not on enrichment; entities already in the KG",
+    StageProjectId.p3: "clean fused into extract/lookup on enrichment path",
+    StageProjectId.p5: "type/attribute placement known a priori from job spec",
+    StageProjectId.p7: "answer rail not on enrichment jobs",
+    StageProjectId.p8: "not a refresh-delta run (P8 is schedule→P1, not enrich write)",
+    StageProjectId.p9: "surface is the Jobs UI; no A10 correction on this path",
+}
+
+
+def _enum_value(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    return getattr(v, "value", None) or str(v)
+
+
+def stamp_enrichment_job_created(job: Any) -> None:
+    """Open live stage_trace at enrichment job create (P0).
+
+    Called from every create site (``POST /enrich/jobs``, agent enrich cap,
+    ``POST /actions/enrich``) so a just-queued job already has ``source=live``
+    rather than only a reconstructed view. Never raises.
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        rec.begin(
+            StageProjectId.p0,
+            input={
+                "job_id": getattr(job, "id", None),
+                "category": "enrichment",
+                "tier": _enum_value(getattr(job, "tier", None)),
+                "type_name": getattr(job, "type_name", None),
+                "attributes": list(getattr(job, "attributes", None) or []),
+                "conflict_policy": _enum_value(getattr(job, "conflict_policy", None)),
+                "confidence_min": getattr(job, "confidence_min", None),
+                "spend_ceiling_usd": getattr(job, "spend_ceiling_usd", None),
+                "kg_name": getattr(job, "kg_name", None),
+            },
+        )
+        rec.action(
+            StageProjectId.p0,
+            "create_job",
+            detail="enrichment job queued",
+        )
+        if getattr(job, "stage_trace", None) is not None:
+            job.stage_trace.status = _enum_value(getattr(job, "status", None)) or "queued"
+            job.stage_trace.summary = {
+                "type_name": getattr(job, "type_name", None),
+                "attributes": list(getattr(job, "attributes", None) or []),
+                "tier": _enum_value(getattr(job, "tier", None)),
+            }
+    except Exception:  # pragma: no cover - never block job create on obs
+        pass
+
+
+def stamp_enrichment_run_started(job: Any) -> None:
+    """P0 start_run + open P2 lookup/extract, P4 policy, P6 write.
+
+    P4 is always opened on enrichment: every enrich job carries a conflict
+    policy + confidence floor that gates verdicts (the contract-shaped
+    "when policy applies" case). Never raises.
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        rec.action(
+            StageProjectId.p0,
+            "start_run",
+            detail="status=running",
+        )
+        # P2 Extraction — adapter-chain lookup / LLM extract over existing entities.
+        rec.begin(
+            StageProjectId.p2,
+            input={
+                "type_name": getattr(job, "type_name", None),
+                "attributes": list(getattr(job, "attributes", None) or []),
+                "tier": _enum_value(getattr(job, "tier", None)),
+                "sources": list(getattr(job, "sources", None) or []) or None,
+                "entity_uri_count": len(getattr(job, "entity_uris", None) or []),
+                "scope": (
+                    getattr(job, "scope", None).model_dump()
+                    if getattr(job, "scope", None) is not None
+                    and hasattr(getattr(job, "scope", None), "model_dump")
+                    else None
+                ),
+            },
+        )
+        rec.action(
+            StageProjectId.p2,
+            "lookup",
+            detail="adapter-chain lookup/extract",
+        )
+        # P4 Verify — conflict policy + confidence floor always apply on enrich.
+        policy = _enum_value(getattr(job, "conflict_policy", None))
+        rec.begin(
+            StageProjectId.p4,
+            input={
+                "conflict_policy": policy,
+                "confidence_min": getattr(job, "confidence_min", None),
+            },
+        )
+        rec.action(
+            StageProjectId.p4,
+            "conflict_policy",
+            detail=(
+                f"policy={policy}, "
+                f"confidence_min={getattr(job, 'confidence_min', None)}"
+            ),
+        )
+        # P6 Write — apply path (insert_facts / supersede / stage).
+        rec.begin(
+            StageProjectId.p6,
+            input={
+                "kg_name": getattr(job, "kg_name", None),
+                "conflict_policy": policy,
+                "category": "enrichment",
+            },
+        )
+        if getattr(job, "stage_trace", None) is not None:
+            job.stage_trace.status = "running"
+    except Exception:  # pragma: no cover - never block enrichment on obs
+        pass
+
+
+def stamp_enrichment_entities_selected(
+    job: Any, *, entity_count: int, item_total: int
+) -> None:
+    """Record P2 entity-selection progress after the SELECT. Never raises."""
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        rec.action(
+            StageProjectId.p2,
+            "entities_selected",
+            detail=f"entities={entity_count} items={item_total}",
+            meta={"entity_count": entity_count, "item_total": item_total},
+        )
+        # Seed P6 with planned write scope once we know the item total.
+        rec.action(
+            StageProjectId.p6,
+            "plan_write",
+            detail=f"planned_items={item_total}",
+            meta={"item_total": item_total},
+        )
+    except Exception:  # pragma: no cover
+        pass
+
+
+def stamp_enrichment_write_phase(
+    job: Any,
+    *,
+    write_policy: Optional[str] = None,
+    has_conflicts: bool = False,
+    applied: bool = False,
+) -> None:
+    """Record a P4/P6 action around the apply/write phase. Never raises."""
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        progress = getattr(job, "progress", None)
+        rec.action(
+            StageProjectId.p4,
+            "verdict_tally",
+            detail=(
+                f"filled={getattr(progress, 'filled', None)} "
+                f"verified={getattr(progress, 'verified', None)} "
+                f"conflicts={getattr(progress, 'conflicts', None)} "
+                f"no_match={getattr(progress, 'no_match', None)}"
+            ),
+            meta={
+                "filled": getattr(progress, "filled", None),
+                "verified": getattr(progress, "verified", None),
+                "conflicts": getattr(progress, "conflicts", None),
+                "no_match": getattr(progress, "no_match", None),
+                "has_conflicts": has_conflicts,
+            },
+        )
+        rec.action(
+            StageProjectId.p6,
+            "write_path",
+            detail=(
+                f"write_policy={write_policy} applied={applied} "
+                f"has_conflicts={has_conflicts}"
+            ),
+            meta={
+                "write_policy": write_policy,
+                "applied": applied,
+                "has_conflicts": has_conflicts,
+            },
+        )
+    except Exception:  # pragma: no cover
+        pass
+
+
+def stamp_enrichment_run_finished(job: Any) -> None:
+    """Close P0/P2/P4/P6 live; skip other P* with reasons. Never raises."""
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        progress = getattr(job, "progress", None)
+        status = _enum_value(getattr(job, "status", None))
+        progress_out = {
+            "total": getattr(progress, "total", None),
+            "processed": getattr(progress, "processed", None),
+            "filled": getattr(progress, "filled", None),
+            "verified": getattr(progress, "verified", None),
+            "conflicts": getattr(progress, "conflicts", None),
+            "no_match": getattr(progress, "no_match", None),
+            "skipped": getattr(progress, "skipped", None),
+            "cache_hits": getattr(progress, "cache_hits", None),
+        }
+        rec.end(
+            StageProjectId.p2,
+            output={
+                "row_results": len(getattr(job, "results", None) or []),
+                "progress": progress_out,
+            },
+        )
+        rec.end(
+            StageProjectId.p4,
+            output={
+                "conflict_policy": _enum_value(getattr(job, "conflict_policy", None)),
+                "confidence_min": getattr(job, "confidence_min", None),
+                "verified": getattr(progress, "verified", None),
+                "conflicts": getattr(progress, "conflicts", None),
+                "filled": getattr(progress, "filled", None),
+            },
+        )
+        rec.end(
+            StageProjectId.p6,
+            output={
+                "status": status,
+                "filled": getattr(progress, "filled", None),
+                "result_count": getattr(job, "result_count", None)
+                or len(getattr(job, "results", None) or []),
+                "note": (
+                    "staged for review (conflicts held)"
+                    if status == "review"
+                    else None
+                ),
+            },
+        )
+        rec.end(
+            StageProjectId.p0,
+            output={
+                "status": status,
+                "progress": progress_out,
+                "cost": getattr(job, "cost", None),
+                "error": getattr(job, "error", None),
+            },
+        )
+        for pid, reason in _ENRICHMENT_SKIP_REASONS.items():
+            rec.skip(pid, reason=reason)
+        if getattr(job, "stage_trace", None) is not None:
+            job.stage_trace.status = status
+            job.stage_trace.summary = {
+                "type_name": getattr(job, "type_name", None),
+                "attributes": list(getattr(job, "attributes", None) or []),
+                "tier": _enum_value(getattr(job, "tier", None)),
+                "progress": progress_out,
+                "cost": getattr(job, "cost", None),
+                "status": status,
+            }
+    except Exception:  # pragma: no cover - never block enrichment on obs
+        pass
+
+
+def stamp_enrichment_run_failed(job: Any, error: str) -> None:
+    """Honest terminal-failed stage_trace for enrichment. Never raises.
+
+    Ends every non-terminal project so mid-run failures never leave P2/P4/P6
+    stuck as ``running`` on a failed job.
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        err = (error or "enrichment failed")[:500]
+        for p in list(job.stage_trace.projects if job.stage_trace else []):
+            if p.status in (StageStatus.running, StageStatus.pending):
+                rec.end(p.project_id, error=err, status=StageStatus.failed)
+        rec.end(StageProjectId.p0, error=err, status=StageStatus.failed)
+        for pid, reason in _ENRICHMENT_SKIP_REASONS.items():
+            rec.skip(pid, reason=reason)
+        if getattr(job, "stage_trace", None) is not None:
+            job.stage_trace.status = "failed"
+            job.stage_trace.summary = {
+                "error": err,
+                "type_name": getattr(job, "type_name", None),
+                "attributes": list(getattr(job, "attributes", None) or []),
+            }
+    except Exception:  # pragma: no cover - never block enrichment on obs
+        pass
+
+
+def stamp_enrichment_run_cancelled(job: Any) -> None:
+    """Close open projects when an enrichment job is cancelled. Never raises."""
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        for p in list(job.stage_trace.projects if job.stage_trace else []):
+            if p.status in (StageStatus.running, StageStatus.pending):
+                rec.end(
+                    p.project_id,
+                    output={"status": "cancelled"},
+                    status=StageStatus.completed,
+                )
+        rec.end(
+            StageProjectId.p0,
+            output={"status": "cancelled"},
+            status=StageStatus.completed,
+        )
+        for pid, reason in _ENRICHMENT_SKIP_REASONS.items():
+            rec.skip(pid, reason=reason)
+        if getattr(job, "stage_trace", None) is not None:
+            job.stage_trace.status = "cancelled"
+            job.stage_trace.summary = {
+                "status": "cancelled",
+                "type_name": getattr(job, "type_name", None),
+            }
+    except Exception:  # pragma: no cover
+        pass
+
+
+# --------------------------------------------------------------------------- #
+# Cross-category open + finalize (ONTA-388 / P0–A9 live contract)
+# --------------------------------------------------------------------------- #
+# Every job category (enrichment, dedupe, reconciliation, discovery, …) must
+# open P0 on create and finalize all non-terminal projects when the job
+# settles. Mid-run failures must never leave P2/P6 stuck as ``running`` on a
+# terminal job. Helpers are try/except-isolated so operator observability can
+# never fail a write path.
+#
+# Enrichment also has richer per-rail stamps above (ONTA-387); other categories
+# use these general helpers. finalize_job_stage_trace is the shared "never leave
+# running" primitive for any terminal job.
+
+def open_job_stage_trace(
+    job: Any,
+    *,
+    input: Optional[dict[str, Any]] = None,
+    action_detail: Optional[str] = None,
+) -> Optional[StageTraceRecorder]:
+    """P0/A9 live open: stamp P0 ``running`` when a job is created/queued.
+
+    Safe no-op on ``None`` job or any recorder error. Callers still own
+    persistence (``job_store.create`` / ``update``).
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return None
+        category = (
+            getattr(getattr(job, "category", None), "value", None)
+            or (str(job.category) if getattr(job, "category", None) else None)
+        )
+        p0_input: dict[str, Any] = {
+            "job_id": getattr(job, "id", None),
+            "category": category,
+            "spend_ceiling_usd": getattr(job, "spend_ceiling_usd", None),
+        }
+        if input:
+            p0_input.update(input)
+        rec.begin(StageProjectId.p0, input=p0_input)
+        detail = action_detail or (
+            f"{category or 'job'} job queued" if category else "job queued"
+        )
+        rec.action(StageProjectId.p0, "create_job", detail=detail)
+        if getattr(job, "stage_trace", None) is not None:
+            job.stage_trace.status = (
+                getattr(getattr(job, "status", None), "value", None)
+                or (str(job.status) if getattr(job, "status", None) else "queued")
+            )
+        return rec
+    except Exception:
+        logger.warning(
+            "stage_trace_open_failed",
+            job_id=getattr(job, "id", None),
+            exc_info=True,
+        )
+        return None
+
+
+def finalize_job_stage_trace(
+    job: Any,
+    *,
+    terminal_status: str,
+    error: Optional[str] = None,
+    summary: Optional[dict[str, Any]] = None,
+    p0_output: Optional[dict[str, Any]] = None,
+) -> None:
+    """Stamp an honest terminal stage_trace for any job category.
+
+    Ends every non-terminal project (running/pending) so mid-run failures never
+    leave stages stuck as ``running`` on a settled job. Forces P0 to the
+    matching terminal stage status. Isolated in try/except so operator
+    observability cannot fail the write path.
+
+    ``terminal_status`` should be a job status value (``applied`` / ``failed`` /
+    ``review`` / ``cancelled``). Failures mark open projects + P0 as
+    ``failed``; all other terminals mark them ``completed``.
+    """
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        status_l = (terminal_status or "").strip().lower()
+        is_fail = status_l == "failed"
+        end_status = StageStatus.failed if is_fail else StageStatus.completed
+        err = (error or getattr(job, "error", None) or None) if is_fail else None
+
+        for p in list(job.stage_trace.projects if job.stage_trace else []):
+            if p.status in (StageStatus.running, StageStatus.pending):
+                out = p0_output if p.project_id == StageProjectId.p0 else None
+                rec.end(
+                    p.project_id,
+                    error=err,
+                    status=end_status,
+                    output=out,
+                )
+
+        # Always stamp orchestration terminal even if it was already completed
+        # mid-run (e.g. partial instrumentation ended P0 early).
+        p0 = None
+        for p in job.stage_trace.projects if job.stage_trace else []:
+            if p.project_id == StageProjectId.p0:
+                p0 = p
+                break
+        if is_fail:
+            rec.end(
+                StageProjectId.p0,
+                error=err,
+                status=StageStatus.failed,
+                output=p0_output,
+            )
+        elif p0 is None or p0.status in (
+            StageStatus.running,
+            StageStatus.pending,
+            StageStatus.skipped,
+        ):
+            rec.end(
+                StageProjectId.p0,
+                status=StageStatus.completed,
+                output=p0_output,
+            )
+        elif p0_output:
+            p0.output = {**p0.output, **p0_output}
+
+        job.stage_trace.status = status_l or terminal_status
+        merged_summary: dict[str, Any] = dict(job.stage_trace.summary or {})
+        if summary:
+            merged_summary.update(summary)
+        if err:
+            merged_summary.setdefault("error", err)
+        job.stage_trace.summary = merged_summary
+    except Exception:
+        logger.warning(
+            "stage_trace_finalize_failed",
+            job_id=getattr(job, "id", None),
+            exc_info=True,
+        )
+
+
+def ensure_job_stage_trace_open(job: Any) -> Optional[StageTraceRecorder]:
+    """Open P0 if the job has no live trace yet (belt for workers that start
+    without a create-site open). No-op when a trace is already present."""
+    if job is None:
+        return None
+    if getattr(job, "stage_trace", None) is not None:
+        try:
+            return StageTraceRecorder(job.stage_trace)
+        except Exception:
+            return None
+    return open_job_stage_trace(job)

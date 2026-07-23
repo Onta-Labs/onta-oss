@@ -40,6 +40,7 @@ from cograph_client.enrichment.models import (
     EnrichmentTier,
     JobStatus,
 )
+from cograph_client.pipeline.stage_trace import stamp_enrichment_job_created
 from cograph_client.enrichment.tier_router import (
     DEFAULT_CONFIDENCE_MIN as _DEFAULT_CONFIDENCE_MIN,
 )
@@ -663,6 +664,8 @@ class EnrichCapability:
             # ``resolve_spend_ceiling(...)`` override. None → deployment default.
             spend_ceiling_usd=getattr(ctx, "spend_ceiling_usd", None),
         )
+        # Operator Job Trace (ONTA-387): open live P0 at create (same as /enrich/jobs).
+        stamp_enrichment_job_created(job)
         await job_store.create(job)
         _spawn(executor.run(job, ctx.tenant_id))
         return {

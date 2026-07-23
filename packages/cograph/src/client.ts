@@ -1463,12 +1463,15 @@ export function isTerminalJobStatus(status: JobStatus): boolean {
  *  CREATES a new record set from the web rather than filling/merging an existing
  *  one. `ingest` is file CSV/JSON/text ingest (ONTA-386): an A1-like entry that
  *  maps/extracts, places against the ontology, and writes via insert_facts. */
+ *  one. `answer` is a read-only NL ask / agent Q&A turn (P7 Answer / A7 + P0/A9
+ *  stage_trace; ONTA-389) — not every chat message, only meaningful completions. */
 export type JobCategory =
   | "dedupe"
   | "enrichment"
   | "reconciliation"
   | "discovery"
-  | "ingest";
+  | "ingest"
+  | "answer";
 /** How a job was kicked off. Today everything is `manual` (a user clicked an
  *  action); `scheduled`/`webhook` are reserved for future automation. */
 export type JobTrigger = "manual" | "scheduled" | "webhook";
