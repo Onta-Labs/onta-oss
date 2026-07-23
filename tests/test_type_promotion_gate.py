@@ -257,6 +257,41 @@ async def test_primary_without_parent_anchors_under_focus_when_collapse_off(
 
 
 @pytest.mark.asyncio
+async def test_same_as_to_existing_type_is_preserved_over_collapse(resolver, mock_neptune):
+    """ONTA-394: an explicit same_as to an EXISTING non-focus type is a de-dup, not
+    an accidental subtype — collapse must NOT override it. The record resolves to
+    the same_as target, not the focus."""
+
+    class SameAsMatcher:
+        async def match(self, proposed_type, proposed_description, existing_types):
+            # Verifies the extractor's same_as claim: College == the existing
+            # TradeSchool (SAME), resolved to that existing type.
+            return TypeMatch(
+                proposed=proposed_type,
+                resolved="TradeSchool",
+                verdict=MatchVerdict.SAME,
+                confidence=1.0,
+                is_new=False,
+            )
+
+    resolver._type_matcher = SameAsMatcher()
+    existing_types: dict[str, str] = {"Institution": "", "TradeSchool": ""}
+    existing_attrs: dict[str, dict] = {"Institution": {}, "TradeSchool": {}}
+    entity = ExtractedEntity(
+        type_name="College",
+        id="x",
+        same_as="TradeSchool",
+        attributes=[ExtractedAttribute(name="name", value="X", datatype="string")],
+    )
+    resolved = await resolver._resolve_type(
+        entity, "g", existing_types, existing_attrs, IngestResult(entities_extracted=1),
+        focus_types=["Institution"],
+        is_primary=True,
+    )
+    assert resolved == "TradeSchool"   # same_as respected, NOT collapsed to Institution
+
+
+@pytest.mark.asyncio
 async def test_existing_subtype_is_reused_not_collapsed(resolver, mock_neptune):
     """A subtype ALREADY in the ontology (a prior confirmed College) is REUSED,
     never collapsed — collapse only suppresses BRAND-NEW accidental subtypes."""

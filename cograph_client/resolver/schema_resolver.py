@@ -515,6 +515,13 @@ _DISCOVERY_COLLAPSE_SUBTYPES = (
     os.environ.get("COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES", "1") != "0"
 )
 
+# ONTA-394: kill-switch for the node-label plausibility gate (default ON). The
+# gate runs on the SHARED resolver promotion branch (discovery + open ingest), so
+# a deploy-free revert is available if its conservative heuristics ever keep a
+# legitimate relationship value as a literal. Set COGRAPH_NODE_LABEL_GUARD=0 to
+# restore the pre-ONTA-394 "always mint the node" behavior.
+_NODE_LABEL_GUARD = os.environ.get("COGRAPH_NODE_LABEL_GUARD", "1") != "0"
+
 
 # ONTA-394: a value is a real numeric range like "2020-2021" / "1998–99" (a bare
 # span, not a proper name). Kept separate from the pure-digit check below.
@@ -602,6 +609,17 @@ def _drop_offplan_compound_attributes(result, constraint):
     if len(plan_attrs) < 2:
         return result  # need ≥2 plan attrs to form a compound
     focus_types = set(constraint.types)
+    # A PRIMARY record (a relationship source, or an orphan with no edges) is a
+    # subject the plan names — it either IS the focus type or will be collapsed /
+    # anchored under it (ONTA-394 AC#4 / ONTA-383). The dogfood's compound-bearing
+    # records are EVIDENCE-FREE near-synonym subtypes (``College`` with an EMPTY
+    # parent_chain), so a pure ``type_name in focus_types`` check would miss them
+    # here — this drop runs BEFORE type resolution/collapse. Guarding every primary
+    # (not just already-focus-typed ones) is what makes the backstop actually fire
+    # on the shape that produced ``website_city``. Dimension-only nodes (relationship
+    # TARGETS the decomposer lifts out — City, …) are NOT primary and stay
+    # unrestricted, so a lifted node keeps its own attributes.
+    primary_ids = _primary_entity_ids(result)
 
     def _is_plan_compound(attr_name: str) -> bool:
         norm = _normalize_attr_name(attr_name)
@@ -615,11 +633,14 @@ def _drop_offplan_compound_attributes(result, constraint):
     drops: list[CleanFact] = list(getattr(result, "ceiling_drops", None) or [])
     dropped = 0
     for e in result.entities:
-        # Only guard focus-related records (the plan's subject). Off-type nodes
-        # the soft decomposer lifts out (City, …) carry no plan and are unrestricted.
+        # Guard the plan's SUBJECT records: focus-typed, focus-lineaged, OR any
+        # primary record (a brand-new near-synonym subtype the collapse will fold
+        # into the focus). Off-type dimension nodes are unrestricted.
         chain = list(getattr(e, "parent_chain", None) or [])
         is_focus_related = (
-            e.type_name in focus_types or any(p in focus_types for p in chain)
+            e.type_name in focus_types
+            or any(p in focus_types for p in chain)
+            or e.id in primary_ids
         )
         if not is_focus_related or not e.attributes:
             new_entities.append(e)
@@ -4031,10 +4052,17 @@ class SchemaResolver:
         #     keep free minting.
         #   * ANCHOR (COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0, the ONTA-383 fallback):
         #     an evidence-free primary is anchored as a SUBTYPE of the focus rather
-        #     than an orphan peer, without overriding an explicit same_as/lineage.
+        #     than an orphan peer.
+        # ``same_as`` is preserved in BOTH modes: an explicit "this is the SAME AS
+        # <existing type>" is a de-dup to a confirmed type, not an accidental new
+        # subtype — it falls through to the same_as→existing-type mapping below. An
+        # extractor-guessed parent_type/parent_chain, by contrast, IS overridden by
+        # collapse (it is the LLM's guess, not user confirmation — the exact
+        # `College`-under-`Institution` case AC#4 targets).
         if (
             focus_types
             and is_primary
+            and not entity.same_as
             and entity.type_name not in focus_types
         ):
             focus = focus_types[0]
@@ -4508,7 +4536,7 @@ class SchemaResolver:
                 _rel_reject = None
                 if is_junk_type_name(resolved.datatype):
                     _rel_reject = "junk_target_type"
-                elif _is_implausible_node_label(resolved.value):
+                elif _NODE_LABEL_GUARD and _is_implausible_node_label(resolved.value):
                     _rel_reject = "implausible_node_label"
                 if _rel_reject:
                     logger.info(

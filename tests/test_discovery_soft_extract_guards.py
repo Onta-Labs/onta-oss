@@ -33,6 +33,7 @@ from cograph_client.resolver.models import (
     CleanOutcome,
     ExtractedAttribute,
     ExtractedEntity,
+    ExtractedRelationship,
     ExtractionConstraint,
     ExtractionResult,
     IngestResult,
@@ -139,9 +140,10 @@ def test_website_city_compound_dropped_even_when_illustrative():
     assert all(d.reason == "compound_plan_attribute" for d in out.ceiling_drops)
 
 
-def test_real_multiword_attr_and_offtype_entity_untouched():
-    """A real multi-word attr whose tokens are NOT separate plan attrs survives;
-    an off-type (lifted dimension) entity is unrestricted."""
+def test_real_multiword_attr_and_offtype_dimension_untouched():
+    """A real multi-word attr whose tokens are NOT separate plan attrs survives on
+    the subject; a lifted DIMENSION node (a relationship TARGET, not a primary) is
+    unrestricted even for a plan-compound name."""
     result = ExtractionResult(
         entities=[
             ExtractedEntity(
@@ -156,21 +158,47 @@ def test_real_multiword_attr_and_offtype_entity_untouched():
                 ],
             ),
             ExtractedEntity(
-                type_name="City",  # off-type dimension: unrestricted
+                type_name="City",  # lifted DIMENSION (relationship target below)
                 id="van",
                 attributes=[
-                    ExtractedAttribute(name="name_city", value="Vancouver", datatype="string"),
+                    # a plan-compound name is UNTOUCHED on an off-type dimension node.
+                    ExtractedAttribute(name="website_city", value="x", datatype="string"),
                 ],
             ),
         ],
-        relationships=[],
+        relationships=[
+            ExtractedRelationship(source_id="ubc", predicate="located_in", target_id="van"),
+        ],
     )
     out = _drop_offplan_compound_attributes(result, _constraint())
     inst = next(e for e in out.entities if e.id == "ubc")
     city = next(e for e in out.entities if e.id == "van")
     assert {a.name for a in inst.attributes} == {"name", "postal_code", "address_line"}
-    assert {a.name for a in city.attributes} == {"name_city"}  # off-type untouched
+    assert {a.name for a in city.attributes} == {"website_city"}  # dimension untouched
     assert not out.ceiling_drops
+
+
+def test_evidence_free_subtype_compound_dropped():
+    """Dogfood shape (ONTA-394 review gap): a compound attr on an EVIDENCE-FREE
+    near-synonym subtype — ``College``, empty parent_chain, orphan primary — is
+    still dropped. This is the record AC#4's collapse folds into the focus, so the
+    AC#2 backstop must reach it even though it is NOT focus-typed at drop time."""
+    result = ExtractionResult(
+        entities=[
+            ExtractedEntity(
+                type_name="College",  # NOT the focus; no parent_chain / same_as
+                id="langara",
+                attributes=[
+                    ExtractedAttribute(name="name", value="Langara", datatype="string"),
+                    ExtractedAttribute(name="website_city", value="langara.ca Vancouver", datatype="string"),
+                ],
+            ),
+        ],
+        relationships=[],  # orphan ⇒ primary record
+    )
+    out = _drop_offplan_compound_attributes(result, _constraint(exhaustive=False))
+    assert {a.name for a in out.entities[0].attributes} == {"name"}
+    assert [d.attribute for d in out.ceiling_drops] == ["website_city"]
 
 
 def test_compound_drop_noop_for_hard_or_inactive_constraint():
