@@ -1488,7 +1488,34 @@ class WebIngestCapability:
                                 sub_query,
                             )
                             if not rows_found:
-                                plog.no_match += 1
+                                # Distinguish hard locate/API failure from a clean
+                                # empty (dogfood 802b2672): when the provider stamps
+                                # locate_errors (HTTP 4xx/5xx / transport on Parallel
+                                # or Gemini), count as error + last_error so Job Trace
+                                # / provider_logs show status=error, not silent
+                                # no_match. Soft empty (searched OK, no list page)
+                                # stays no_match.
+                                lt = getattr(full, "locate_trace", None) or {}
+                                locate_errs = [
+                                    str(e)
+                                    for e in (lt.get("locate_errors") or [])
+                                    if e
+                                ]
+                                hard_err = None
+                                if locate_errs:
+                                    hard_err = "; ".join(locate_errs)[:300]
+                                elif getattr(full, "error", None) and str(
+                                    full.error
+                                ).startswith("locate APIs failed"):
+                                    hard_err = str(full.error)[:300]
+                                if hard_err:
+                                    plog.errors += 1
+                                    plog.last_error = hard_err
+                                    last_provider_err = hard_err
+                                    last_err_provider = prov.name
+                                    errors_total += 1
+                                else:
+                                    plog.no_match += 1
                                 continue
                             # Per-record source-URL provenance (ONTA-151): stamp
                             # each row with the page it was drawn from BEFORE
@@ -3477,11 +3504,16 @@ def _record_locate_trace(job, locate_trace, provider_name: str, sub_query: str) 
 
     A provider that searches only to LOCATE list/directory pages and then scrapes a
     few sets ``DiscoverResult.locate_trace`` = ``{locate_calls, urls_located,
-    urls_selected, pages_fetched, escalated, skip_reason}``. We project those into
-    the operator Job Trace so P1 shows the page-MINIMISATION work — the number of
-    search calls, candidate URLs, URLs selected, and pages actually fetched — instead
-    of only the terminal ``source_bundle rows=N``. This is the direct evidence for
-    "search located pages; we scraped a FEW", the ONTA-391 objective.
+    urls_selected, pages_fetched, escalated, skip_reason, locate_errors?}``. We
+    project those into the operator Job Trace so P1 shows the page-MINIMISATION
+    work — the number of search calls, candidate URLs, URLs selected, and pages
+    actually fetched — instead of only the terminal ``source_bundle rows=N``. This
+    is the direct evidence for "search located pages; we scraped a FEW", the
+    ONTA-391 objective.
+
+    Hard locate failures (``locate_errors``: Parallel 422, Gemini 429, …) get an
+    explicit ``locate_error`` action so the webapp Job Trace never looks like a
+    clean empty search when the locate API actually rejected the request.
 
     A no-op when there is no job/recorder, or when ``locate_trace`` is None (an
     enumeration provider that never locates+scrapes). Wrapped so observability never
@@ -3495,20 +3527,33 @@ def _record_locate_trace(job, locate_trace, provider_name: str, sub_query: str) 
         lt = locate_trace
         sq = (sub_query or "")[:200]
         base_meta = {"provider": provider_name, "sub_query": sq}
+        locate_errs = [str(e) for e in (lt.get("locate_errors") or []) if e]
         rec.action(
             StageProjectId.p1,
             "locate",
             detail=(
                 f"search calls={lt.get('locate_calls', 0)} "
                 f"urls_found={lt.get('urls_located', 0)}"
+                + (f" errors={len(locate_errs)}" if locate_errs else "")
             ),
             meta={
                 **base_meta,
                 "locate_calls": lt.get("locate_calls", 0),
                 "urls_located": lt.get("urls_located", 0),
                 "escalated": bool(lt.get("escalated", False)),
+                "locate_errors": locate_errs[:8] if locate_errs else [],
             },
         )
+        # Surface each hard locate API failure as its own action so the Job Trace
+        # UI shows "Parallel HTTP 422" / "Gemini HTTP 429" as first-class steps,
+        # not only buried under a soft locate_miss skip_reason.
+        for err in locate_errs[:8]:
+            rec.action(
+                StageProjectId.p1,
+                "locate_error",
+                detail=str(err)[:200],
+                meta={**base_meta, "error": str(err)[:200]},
+            )
         rec.action(
             StageProjectId.p1,
             "select_urls",
@@ -3529,13 +3574,19 @@ def _record_locate_trace(job, locate_trace, provider_name: str, sub_query: str) 
         )
         skip = lt.get("skip_reason")
         if skip:
-            # Honest miss — located no fetchable list page (or pages had no rows).
+            # Honest miss — located no fetchable list page (or pages had no rows),
+            # OR locate APIs failed (skip_reason then carries the API errors).
             # Recorded so the trace shows WHY A1 is empty, not a silent gap.
+            action_name = "locate_error" if locate_errs else "locate_miss"
             rec.action(
                 StageProjectId.p1,
-                "locate_miss",
+                action_name,
                 detail=str(skip)[:200],
-                meta={**base_meta, "skip_reason": str(skip)[:200]},
+                meta={
+                    **base_meta,
+                    "skip_reason": str(skip)[:200],
+                    "locate_errors": locate_errs[:8] if locate_errs else [],
+                },
             )
     except Exception:  # noqa: BLE001 — observability must never sink discovery
         logger.warning("web_ingest_locate_trace_record_failed", exc_info=True)
