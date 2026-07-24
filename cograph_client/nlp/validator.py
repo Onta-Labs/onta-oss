@@ -2,6 +2,18 @@ import re
 
 MUTATION_KEYWORDS = {"INSERT", "DELETE", "DROP", "CREATE", "CLEAR", "LOAD", "COPY", "MOVE", "ADD"}
 
+# The live URI namespace. `omnix.dev` is the retired one (renamed 2026-04-27;
+# deployed graph stores were migrated by a one-shot script) — it no longer
+# resolves to anything in any graph, so any occurrence is normalized away.
+ONTO_BASE = "https://cograph.tech"
+LEGACY_ONTO_HOSTS = ("omnix.dev",)
+
+_BARE_URI_RE = re.compile(
+    r"<https://(?:"
+    + "|".join(re.escape(h) for h in (ONTO_BASE.removeprefix("https://"), *LEGACY_ONTO_HOSTS))
+    + r")/([\w/.\-]+)>"  # hyphens matter: tenants and _safe_id entity ids carry them
+)
+
 
 def normalize_sparql(sparql: str) -> str:
     """Fix common SPARQL syntax issues from LLM generation.
@@ -34,20 +46,24 @@ def normalize_sparql(sparql: str) -> str:
     # Fix common URI mistakes from LLMs that use wrong prefix expansion:
     # <https://cograph.tech/Property> → <https://cograph.tech/types/Property>
     # <https://cograph.tech/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
-    # But don't touch already correct: /types/, /onto/, /entities/, /graphs/
-    def _fix_omnix_uri(m: re.Match) -> str:
+    # Also rewrite the retired omnix.dev namespace (renamed 2026-04-27) onto the
+    # live one — the LLM can still echo it back from a stale prompt or example.
+    # Correct path shapes (/types/, /onto/, /entities/, /graphs/, …) keep their
+    # shape; only the host is normalized.
+    def _fix_bare_uri(m: re.Match) -> str:
         path = m.group(1)
-        if path.startswith(("types/", "onto/", "entities/", "graphs/", "functions/", "kgs/")):
-            return m.group(0)  # already correct
+        if path.startswith(("types/", "onto/", "entities/", "graphs/", "functions/", "kgs/", "attr_meta/")):
+            return f"<{ONTO_BASE}/{path}>"  # shape already correct
         # PascalCase = bare type name → add /types/
         if path[0].isupper():
-            return f"<https://cograph.tech/types/{path}>"
-        # lowercase = likely a bare attribute name (bedrooms, price, etc.)
-        # Can't fix without knowing the type, so try onto/ namespace
-        # (relationships use onto/, attributes use types/Type/attrs/)
-        return m.group(0)
+            return f"<{ONTO_BASE}/types/{path}>"
+        # lowercase = likely a bare attribute name (bedrooms, price, etc.). Can't
+        # place it without knowing the owning type, so leave the path alone and
+        # normalize only the host — pipeline.py's _fix_attribute_uris gets a
+        # second, ontology-grounded pass at it right after this.
+        return f"<{ONTO_BASE}/{path}>"
 
-    result = re.sub(r"<https://omnix\.dev/([\w/.]+)>", _fix_omnix_uri, result)
+    result = _BARE_URI_RE.sub(_fix_bare_uri, result)
 
     # Step 2: Fix bare aggregates — SELECT COUNT(?x) → SELECT (COUNT(?x) AS ?count)
     # Neptune requires aggregates to be aliased
