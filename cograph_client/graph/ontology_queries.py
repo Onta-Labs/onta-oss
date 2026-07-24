@@ -971,6 +971,60 @@ def get_full_ontology_query(graph_uri: str) -> str:
     )
 
 
+def full_ontology_detail_query(graph_uri: str) -> str:
+    """Every type in ONE graph with its full browsable detail, in ONE query.
+
+    Namespace-agnostic (it never mentions a ``types/`` prefix), so the same
+    builder reads a tenant ontology graph or either Global layer graph
+    (``types/public/<T>`` / ``types/x/<T>``). Superset of
+    :func:`get_full_ontology_query`, which the NL pipeline uses: this one also
+    projects ``?typeComment``, ``?parent``, ``?attrComment`` and ``?core`` — the
+    fields the operator Global-ontology browser searches and renders — and drops
+    the attached-function join it does not need.
+
+    Row shape is one row per (type × parent × attribute) combination; a type
+    with no attributes still yields one row (the attribute block is OPTIONAL),
+    which is what makes an "empty" type visible instead of silently dropped.
+
+    Deliberately LENIENT on the attribute pattern: it keys on
+    ``rdfs:domain`` + ``rdfs:label`` and does NOT require ``rdf:type
+    rdf:Property``. Every writer in the repo does assert that triple
+    (``insert_attribute``/``upsert_attribute``, and the premium
+    ``GlobalShapeWriter``), so requiring it would change nothing today while
+    silently hiding any future slot written without it.
+
+    ``ORDER BY`` is load-bearing, not cosmetic. SPARQL leaves solution order
+    UNSPECIFIED without it, and the reader folds multi-row results back into one
+    record per type. A predicate that is single-valued by contract but doubly
+    asserted in practice (a blind ``INSERT DATA``, a half-run migration) would
+    otherwise resolve differently between two identical requests — most visibly
+    a slot with both an XSD and a ``types/…`` range flipping between
+    ``attributes`` and ``relationships``. The reader ALSO folds deterministically
+    on its own side (``global_ontology._pick``), so correctness never depends on
+    the engine honoring this; the ordering just makes the wire bytes reproducible
+    too.
+    """
+    return (
+        f"SELECT ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
+        f"?attrComment ?range ?core FROM <{graph_uri}>\n"
+        f"WHERE {{\n"
+        f"  ?type <{RDF}#type> <{RDFS}#Class> .\n"
+        f"  ?type <{RDFS}#label> ?typeLabel .\n"
+        f"  OPTIONAL {{ ?type <{RDFS}#comment> ?typeComment }}\n"
+        f"  OPTIONAL {{ ?type <{RDFS}#subClassOf> ?parent }}\n"
+        f"  OPTIONAL {{\n"
+        f"    ?attr <{RDFS}#domain> ?type .\n"
+        f"    ?attr <{RDFS}#label> ?attrLabel .\n"
+        f"    OPTIONAL {{ ?attr <{RDFS}#comment> ?attrComment }}\n"
+        f"    OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
+        f"    OPTIONAL {{ ?attr <{OMNIX_ONTO}/coreSlot> ?core }}\n"
+        f"  }}\n"
+        f"}}\n"
+        f"ORDER BY ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
+        f"?attrComment ?range ?core"
+    )
+
+
 def _esc(s: str) -> str:
     # Escape every char that is illegal or lexically fragile inside a SPARQL
     # string literal. `\r`/`\t` matter now that CSV user values flow through
