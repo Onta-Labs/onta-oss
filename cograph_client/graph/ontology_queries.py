@@ -452,15 +452,6 @@ def insert_subtype(graph_uri: str, parent_name: str, child_name: str) -> str:
     )
 
 
-def merge_predicates(graph_uri: str, old_predicate: str, new_predicate: str) -> str:
-    """Generate SPARQL UPDATE to rename a predicate across all triples."""
-    return (
-        f"DELETE {{ GRAPH <{graph_uri}> {{ ?s <{old_predicate}> ?o }} }}\n"
-        f"INSERT {{ GRAPH <{graph_uri}> {{ ?s <{new_predicate}> ?o }} }}\n"
-        f"WHERE {{ GRAPH <{graph_uri}> {{ ?s <{old_predicate}> ?o }} }}"
-    )
-
-
 def list_types_query(graph_uri: str) -> str:
     return (
         f"SELECT ?type ?label ?comment ?parent FROM <{graph_uri}>\n"
