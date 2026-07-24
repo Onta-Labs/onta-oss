@@ -256,7 +256,17 @@ async def fetch_global_ontology(neptune) -> GlobalOntologyResponse:
             children.setdefault((parent_layer.value, parent_name), set()).add(acc.name)
 
     types = [
-        acc.build(sorted(children.get((acc.layer, acc.name), set()), key=_name_key))
+        # `children` values are SETS, so a key that folds two distinct names to
+        # the same value (case) would leave their relative order to set
+        # iteration — i.e. PYTHONHASHSEED-dependent, differing between API
+        # workers for the same graph. Tie-break on the raw name for a total
+        # order, same reason `_pick` uses min() rather than next(iter(...)).
+        acc.build(
+            sorted(
+                children.get((acc.layer, acc.name), set()),
+                key=lambda n: (_name_key(n), n),
+            )
+        )
         for acc in accumulators.values()
     ]
     # Alphabetical by name (case-insensitive); layer breaks ties so a name

@@ -463,6 +463,7 @@ def test_pick_is_the_lexicographic_minimum_not_set_iteration_order():
     workers would then disagree about the same graph. Only a value-ordered pick
     closes that, so assert the ordering itself.
     """
+    import random
     import string
 
     from cograph_client.graph.global_ontology import _pick
@@ -470,20 +471,19 @@ def test_pick_is_the_lexicographic_minimum_not_set_iteration_order():
     assert _pick(set()) is None
     assert _pick({"only"}) == "only"
 
-    # WHICH sets iterate out of order depends on the hash seed, so SEARCH for a
-    # probe instead of hardcoding one — otherwise this test silently stops
-    # discriminating on a run where the hardcoded set happens to iterate
-    # minimum-first (it did, which is how this assertion earned its keep).
-    probe = next(
-        (
-            s
-            for s in (set(string.ascii_lowercase[:n]) for n in range(2, 27))
-            if next(iter(s)) != min(s)
-        ),
-        None,
-    )
-    assert probe is not None, "could not construct an out-of-order probe set"
-    assert _pick(probe) == min(probe)
+    # Assert the contract over MANY sets rather than hunting for one that
+    # iterates out of order. Two earlier versions of this test got the trade
+    # wrong in opposite directions: hardcoded probes passed against a broken
+    # `next(iter(values))` (they happened to iterate minimum-first), and then
+    # SEARCHING for an out-of-order probe made the test fail on hash seeds
+    # where no such probe turned up — i.e. flaky against CORRECT code.
+    # `min()` satisfies this for every set, so a correct implementation can
+    # never fail here; a first-iteration pick would have to iterate
+    # minimum-first for all 200 sets to survive, which it will not.
+    rng = random.Random(20260724)
+    for _ in range(200):
+        probe = set(rng.sample(string.ascii_letters, rng.randint(2, 12)))
+        assert _pick(probe) == min(probe)
     assert _pick({f"{PUB}/Place", f"{XSD}#string"}) == f"{XSD}#string"
 
 
