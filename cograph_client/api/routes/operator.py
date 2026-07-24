@@ -21,9 +21,6 @@ from cograph_client.graph.global_ontology import fetch_global_ontology
 from cograph_client.models.ontology import GlobalOntologyResponse
 from cograph_client.pipeline.stage_trace import JobStageTrace, resolve_trace
 
-router = APIRouter(prefix="/operator", tags=["operator"])
-
-
 def require_operator(
     tenant: TenantContext = Depends(get_tenant),
 ) -> TenantContext:
@@ -31,6 +28,22 @@ def require_operator(
     if not tenant.is_operator:
         raise HTTPException(status_code=403, detail="operator only")
     return tenant
+
+
+#: The operator gate is declared ROUTER-WIDE, not per-route. Every route under
+#: ``/operator`` is cross-tenant by design, so a new one that merely FORGOT its
+#: ``Depends(require_operator)`` would be both ungated and cross-tenant — the
+#: worst failure this surface can have. Router-level means the gate is opt-OUT
+#: (impossible without editing this line) instead of opt-in. Routes still
+#: declare it individually where they need the returned TenantContext; FastAPI
+#: caches a dependency per request, so it resolves once either way.
+#: ``tests/test_global_ontology_browser.py`` asserts EVERY route on this router
+#: is gated, so the invariant fails CI rather than review.
+router = APIRouter(
+    prefix="/operator",
+    tags=["operator"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 @router.get("/ontology/global", response_model=GlobalOntologyResponse)

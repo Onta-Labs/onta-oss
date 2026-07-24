@@ -29,6 +29,7 @@ import structlog
 from cograph_client.graph.layers import (
     Layer,
     enhanced_graph_uri,
+    layer_from_uri,
     public_graph_uri,
     type_name_from_uri,
 )
@@ -70,50 +71,90 @@ def _name_key(name: str) -> str:
     return name.lower()
 
 
+def _pick(values: set[str]) -> str | None:
+    """Deterministically choose ONE value for a predicate that arrived with
+    several — ``min()`` over the candidate set.
+
+    Everything folded here is SINGLE-VALUED by the ontology's own upsert
+    contract (``upsert_type`` / ``upsert_attribute`` DELETE-then-INSERT exactly
+    for that reason), but a graph written by a blind ``INSERT DATA``, a partial
+    migration, or a hand edit can still carry two. Taking "the first row that
+    bound it" would then make the RESPONSE depend on Neptune's row order, which
+    SPARQL leaves unspecified: two identical requests could flip a slot between
+    ``attributes`` and ``relationships`` (one XSD range, one ``types/…`` range).
+    That is the same intermittent-by-row-order failure class the QC fuzzer
+    caught in ER lineage, so it is closed by construction here rather than left
+    merely unlikely. ``min()`` is arbitrary but total and stable; the query also
+    carries an ``ORDER BY`` so the engine's own output is reproducible.
+    """
+    return min(values) if values else None
+
+
 class _TypeAccumulator:
     """Mutable per-(layer, type) scratch built up across the query's rows.
 
     A batched query returns one row per (type × parent × slot) combination, so
     the same type name recurs; this folds those rows back into one record.
+    Every folded field is collected as a SET and resolved by :func:`_pick` at
+    build time — never "first row wins", which would inherit the engine's
+    unspecified row order.
     """
 
-    __slots__ = ("name", "layer", "description", "parent_type", "slots")
+    __slots__ = ("name", "layer", "descriptions", "parent_uris", "slots")
 
     def __init__(self, name: str, layer: str) -> None:
         self.name = name
         self.layer = layer
-        self.description: str | None = None
-        self.parent_type: str | None = None
-        #: slot name -> {"description", "range", "core"}
+        self.descriptions: set[str] = set()
+        #: Raw rdfs:subClassOf object URIs — kept as URIs, not names, because a
+        #: bare name is not an identity across layers (see :meth:`parent`).
+        self.parent_uris: set[str] = set()
+        #: slot name -> {"descriptions": set, "ranges": set, "core": bool}
         self.slots: dict[str, dict[str, Any]] = {}
 
     def absorb(self, row: dict[str, str]) -> None:
-        if self.description is None and row.get("typeComment"):
-            self.description = row["typeComment"]
-        if self.parent_type is None and row.get("parent"):
-            # rdfs:subClassOf may point at a URI outside every layer namespace
-            # (e.g. rdfs:Resource) — type_name_from_uri returns None there and
-            # we leave the type un-parented rather than inventing a name.
-            self.parent_type = type_name_from_uri(row["parent"])
+        if row.get("typeComment"):
+            self.descriptions.add(row["typeComment"])
+        if row.get("parent"):
+            self.parent_uris.add(row["parent"])
 
         attr_name = row.get("attrLabel")
         if not attr_name:
             return
         slot = self.slots.setdefault(
-            attr_name, {"description": None, "range": "", "core": False}
+            attr_name, {"descriptions": set(), "ranges": set(), "core": False}
         )
-        if slot["description"] is None and row.get("attrComment"):
-            slot["description"] = row["attrComment"]
-        if not slot["range"] and row.get("range"):
-            slot["range"] = row["range"]
-        if not slot["core"] and _truthy(row.get("core")):
+        if row.get("attrComment"):
+            slot["descriptions"].add(row["attrComment"])
+        if row.get("range"):
+            slot["ranges"].add(row["range"])
+        # coreSlot is a MARKER, not a value: any row asserting it wins, so the
+        # fold is order-independent without needing _pick.
+        if _truthy(row.get("core")):
             slot["core"] = True
+
+    def parent(self) -> tuple[Layer, str] | None:
+        """The parent's LAYER-QUALIFIED identity, or None.
+
+        ``rdfs:subClassOf`` may point outside every layer namespace (e.g.
+        ``rdfs:Resource``), in which case the type is left un-parented rather
+        than given an invented name.
+        """
+        uri = _pick(self.parent_uris)
+        if not uri:
+            return None
+        layer = layer_from_uri(uri)
+        name = type_name_from_uri(uri)
+        if layer is None or not name:
+            return None
+        return layer, name
 
     def build(self, subtypes: list[str]) -> GlobalOntologyType:
         attributes: list[GlobalOntologyAttribute] = []
         relationships: list[GlobalOntologyRelationship] = []
+        parent = self.parent()
         for slot_name, slot in self.slots.items():
-            range_uri = slot["range"]
+            range_uri = _pick(slot["ranges"]) or ""
             # A slot is a RELATIONSHIP iff its range resolves to a type in ANY
             # layer namespace (tenant / enhanced / public). Everything else —
             # an XSD primitive, rdfs:Resource, a geo WKT literal, or no range
@@ -126,7 +167,7 @@ class _TypeAccumulator:
                     GlobalOntologyRelationship(
                         name=slot_name,
                         target_type=target,
-                        description=slot["description"],
+                        description=_pick(slot["descriptions"]),
                         core_slot=slot["core"],
                     )
                 )
@@ -135,7 +176,7 @@ class _TypeAccumulator:
                     GlobalOntologyAttribute(
                         name=slot_name,
                         datatype=xsd_to_datatype(range_uri) if range_uri else "string",
-                        description=slot["description"],
+                        description=_pick(slot["descriptions"]),
                         core_slot=slot["core"],
                     )
                 )
@@ -144,8 +185,10 @@ class _TypeAccumulator:
         return GlobalOntologyType(
             name=self.name,
             layer=self.layer,
-            description=self.description,
-            parent_type=self.parent_type,
+            description=_pick(self.descriptions),
+            # The CONTRACT carries a bare name; the layer qualification is an
+            # internal identity concern (see the children map below).
+            parent_type=parent[1] if parent else None,
             subtypes=subtypes,
             attributes=attributes,
             relationships=relationships,
@@ -197,15 +240,23 @@ async def fetch_global_ontology(neptune) -> GlobalOntologyResponse:
             )
         )
 
-    # Invert rdfs:subClassOf across BOTH layers at once: an Enhanced type may
-    # subclass a Public one, and the Public parent should still list it.
-    children: dict[str, set[str]] = {}
+    # Invert rdfs:subClassOf across BOTH layers at once — an Enhanced type may
+    # subclass a Public one, and the Public parent should still list it — but
+    # key on the parent's LAYER-QUALIFIED identity, never its bare name. The
+    # parent's layer comes from its URI namespace, so `types/x/Doctor
+    # subClassOf types/x/Person` attaches to the ENHANCED Person only, and an
+    # unrelated Public `Person` homonym is left alone. Name-keying would list
+    # Doctor under both — the exact shadowing confusion this payload exists to
+    # make visible.
+    children: dict[tuple[str, str], set[str]] = {}
     for acc in accumulators.values():
-        if acc.parent_type:
-            children.setdefault(acc.parent_type, set()).add(acc.name)
+        parent = acc.parent()
+        if parent:
+            parent_layer, parent_name = parent
+            children.setdefault((parent_layer.value, parent_name), set()).add(acc.name)
 
     types = [
-        acc.build(sorted(children.get(acc.name, set()), key=_name_key))
+        acc.build(sorted(children.get((acc.layer, acc.name), set()), key=_name_key))
         for acc in accumulators.values()
     ]
     # Alphabetical by name (case-insensitive); layer breaks ties so a name

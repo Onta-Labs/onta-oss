@@ -87,6 +87,25 @@ def type_name_from_uri(uri: str) -> str | None:
     return None
 
 
+def layer_from_uri(uri: str) -> Layer | None:
+    """Which layer's namespace does `uri` live in? None if outside all of them.
+
+    The layer half of :func:`type_name_from_uri` — same longest-prefix-first
+    scan, so `types/public/Person` resolves to PUBLIC (not TENANT, whose
+    namespace is a prefix of it). Callers that key anything on a type IDENTITY
+    need this: a bare name is NOT an identity across layers, since Public and
+    Enhanced may both declare `Person` and they are different types.
+    """
+    for ns, layer in sorted(
+        ((ns, layer) for layer, ns in _TYPE_NAMESPACES.items()),
+        key=lambda pair: len(pair[0]),
+        reverse=True,
+    ):
+        if uri.startswith(ns):
+            return layer
+    return None
+
+
 def layer_type_uri(layer: Layer, type_name: str) -> str:
     """Type URI for `type_name` in `layer`'s namespace.
 

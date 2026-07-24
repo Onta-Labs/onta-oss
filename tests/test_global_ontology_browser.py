@@ -1,15 +1,22 @@
 """Operator-only Global ontology browser — GET /operator/ontology/global.
 
-The correctness question this file exists to answer: **can the reader actually
-read what the premium ``GlobalShapeWriter`` writes?** So the fixtures below are
-not hand-shaped rows — they are the exact triple shapes
+The fixtures below are the triple shapes
 ``cograph/governance/writer.py::GlobalShapeWriter.write_approved_shape`` emits
 (``rdf:type rdfs:Class`` + ``rdfs:label`` + optional type ``rdfs:comment``; per
 slot ``rdf:Property`` + ``rdfs:label`` + ``rdfs:domain`` + ``rdfs:range`` +
 ``onto/coreSlot "true"^^xsd:boolean`` + ``rdfs:comment`` = the slot rationale,
-under ``types/public/<T>/attrs/<slot>``), fed through a tiny SPARQL evaluator
-that reproduces ``full_ontology_detail_query``'s semantics. The premium module
-is NOT imported (OSS boundary) — its shapes are transcribed with this note.
+under ``types/public/<T>/attrs/<slot>``). The premium module is NOT imported
+(OSS boundary) — its shapes are transcribed here with this note.
+
+SCOPE — what this file does NOT prove. ``_rows_for`` is a hand-rolled
+reproduction of ``full_ontology_detail_query``'s semantics, not a SPARQL
+engine. It therefore validates the READER's folding, classification, ordering
+and degradation logic against writer-shaped data, but it structurally CANNOT
+catch a divergence between the actual SPARQL text and what the reader expects
+of it — change the query's projection or patterns and these tests keep passing.
+That gap was closed once out-of-band (the reader was run against real
+``GlobalShapeWriter`` output through pyoxigraph and round-tripped correctly,
+typed boolean included); re-do that by hand if the query changes materially.
 """
 
 from __future__ import annotations
@@ -63,7 +70,11 @@ def shape_triples(
             (a_uri, f"{RDFS}#range", slot.get("range", f"{XSD}#string")),
         ]
         if slot.get("core", True):
-            triples.append((a_uri, f"{ONTO}/coreSlot", "true"))
+            # The writer emits a TYPED literal; a SPARQL JSON result carries the
+            # lexical form ("true") plus a datatype the parser drops. Seeded in
+            # the writer's own shape so the marker is never accidentally
+            # exercised only in its plain-literal form.
+            triples.append((a_uri, f"{ONTO}/coreSlot", f'"true"^^{XSD}#boolean'))
         if slot.get("why"):
             triples.append((a_uri, f"{RDFS}#comment", slot["why"]))
     return triples
@@ -116,6 +127,22 @@ def _rows_for(triples: list[tuple[str, str, str]]) -> list[dict]:
     return rows
 
 
+def _binding(value: str) -> dict:
+    """SPARQL-JSON binding for one value.
+
+    A typed literal (``"true"^^<dt>``) is split the way a real engine reports
+    it: ``value`` carries only the LEXICAL form and the datatype rides in its
+    own key — which is exactly why ``parse_sparql_results`` (which keeps only
+    ``value``) hands the reader a bare ``"true"``.
+    """
+    if value.startswith('"') and '"^^' in value:
+        literal, datatype = value[1:].split('"^^', 1)
+        return {"type": "literal", "value": literal, "datatype": datatype}
+    if value.startswith("http"):
+        return {"type": "uri", "value": value}
+    return {"type": "literal", "value": value}
+
+
 def _sparql_json(rows: list[dict]) -> dict:
     keys: list[str] = []
     for r in rows:
@@ -125,9 +152,7 @@ def _sparql_json(rows: list[dict]) -> dict:
     return {
         "head": {"vars": keys},
         "results": {
-            "bindings": [
-                {k: {"type": "literal", "value": v} for k, v in r.items()} for r in rows
-            ]
+            "bindings": [{k: _binding(v) for k, v in r.items()} for r in rows]
         },
     }
 
@@ -378,6 +403,182 @@ def test_same_name_in_both_layers_yields_two_entries():
     assert [t["layer"] for t in entries] == ["enhanced", "public"]
 
 
+def test_subtype_attaches_to_the_parents_LAYER_not_its_bare_name():
+    """A homonym parent in the other layer must NOT inherit the subtype.
+
+    `types/x/Doctor subClassOf types/x/Person` belongs to the ENHANCED Person
+    only; the unrelated PUBLIC `Person` is a different type that merely shares a
+    name. Keying the children map on the bare name listed Doctor under both —
+    the precise shadowing confusion this payload exists to make visible.
+    """
+    neptune = FakeNeptune({
+        public_graph_uri(): shape_triples(PUB, "Person"),
+        enhanced_graph_uri(): (
+            shape_triples(ENH, "Person")
+            + shape_triples(ENH, "Doctor", parent_uri=f"{ENH}/Person")
+        ),
+    })
+    body = _app(neptune).get("/operator/ontology/global").json()
+    by_layer = {t["layer"]: t for t in body["types"] if t["name"] == "Person"}
+    assert by_layer["enhanced"]["subtypes"] == ["Doctor"]
+    assert by_layer["public"]["subtypes"] == []
+
+
+def test_cross_layer_subclass_still_attaches():
+    """The legitimate case must keep working: Enhanced child, Public parent."""
+    neptune = FakeNeptune({
+        public_graph_uri(): shape_triples(PUB, "Organization"),
+        enhanced_graph_uri(): shape_triples(
+            ENH, "Clinic", parent_uri=f"{PUB}/Organization"
+        ),
+    })
+    body = _app(neptune).get("/operator/ontology/global").json()
+    org = next(t for t in body["types"] if t["name"] == "Organization")
+    assert org["layer"] == "public"
+    assert org["subtypes"] == ["Clinic"]
+
+
+def test_parent_outside_every_layer_namespace_is_dropped_not_invented():
+    neptune = FakeNeptune({
+        public_graph_uri(): shape_triples(
+            PUB, "Thing", parent_uri=f"{RDFS}#Resource"
+        ),
+        enhanced_graph_uri(): [],
+    })
+    body = _app(neptune).get("/operator/ontology/global").json()
+    assert body["types"][0]["parent_type"] is None
+
+
+# --- determinism under multi-valued predicates -------------------------------
+
+
+def test_pick_is_the_lexicographic_minimum_not_set_iteration_order():
+    """Pins the fold to a TOTAL order, which is what makes it stable across
+    PROCESSES — not merely within one.
+
+    The two round-trip tests below collect candidates into a set, so they are
+    row-order independent no matter how _pick chooses; they would still pass
+    with `next(iter(values))`. But `str` hashing is randomized per interpreter
+    (PYTHONHASHSEED), so set iteration order differs BETWEEN processes: two API
+    workers would then disagree about the same graph. Only a value-ordered pick
+    closes that, so assert the ordering itself.
+    """
+    import string
+
+    from cograph_client.graph.global_ontology import _pick
+
+    assert _pick(set()) is None
+    assert _pick({"only"}) == "only"
+
+    # WHICH sets iterate out of order depends on the hash seed, so SEARCH for a
+    # probe instead of hardcoding one — otherwise this test silently stops
+    # discriminating on a run where the hardcoded set happens to iterate
+    # minimum-first (it did, which is how this assertion earned its keep).
+    probe = next(
+        (
+            s
+            for s in (set(string.ascii_lowercase[:n]) for n in range(2, 27))
+            if next(iter(s)) != min(s)
+        ),
+        None,
+    )
+    assert probe is not None, "could not construct an out-of-order probe set"
+    assert _pick(probe) == min(probe)
+    assert _pick({f"{PUB}/Place", f"{XSD}#string"}) == f"{XSD}#string"
+
+
+def test_conflicting_ranges_fold_deterministically_regardless_of_row_order():
+    """Two declared ranges must not flip a slot between attributes and
+    relationships depending on the engine's (unspecified) row order."""
+    from cograph_client.graph.global_ontology import _TypeAccumulator
+
+    rows = [
+        {"typeLabel": "Org", "attrLabel": "hq", "range": f"{XSD}#string"},
+        {"typeLabel": "Org", "attrLabel": "hq", "range": f"{PUB}/Place"},
+    ]
+    forward = _TypeAccumulator("Org", "public")
+    for row in rows:
+        forward.absorb(row)
+    reverse = _TypeAccumulator("Org", "public")
+    for row in reversed(rows):
+        reverse.absorb(row)
+    assert forward.build([]).model_dump() == reverse.build([]).model_dump()
+
+
+def test_conflicting_comments_and_parents_fold_deterministically():
+    from cograph_client.graph.global_ontology import _TypeAccumulator
+
+    rows = [
+        {"typeLabel": "Org", "typeComment": "b", "parent": f"{PUB}/Thing"},
+        {"typeLabel": "Org", "typeComment": "a", "parent": f"{ENH}/Thing"},
+    ]
+    forward = _TypeAccumulator("Org", "public")
+    for row in rows:
+        forward.absorb(row)
+    reverse = _TypeAccumulator("Org", "public")
+    for row in reversed(rows):
+        reverse.absorb(row)
+    assert forward.build([]).model_dump() == reverse.build([]).model_dump()
+    assert forward.parent() == reverse.parent()
+
+
+# --- the operator gate is router-wide, not per-route opt-in -----------------
+
+
+def _dependency_callables(dependant) -> set:
+    """Every callable in a route's dependency tree, recursively."""
+    found = set()
+    stack = list(dependant.dependencies)
+    while stack:
+        dep = stack.pop()
+        if dep.call is not None:
+            found.add(dep.call)
+        stack.extend(dep.dependencies)
+    return found
+
+
+def test_every_operator_route_is_gated():
+    """A future /operator/* route that forgets Depends(require_operator) would be
+    ungated AND cross-tenant. The gate is declared on the ROUTER, so this holds
+    for routes that do not exist yet — assert it rather than trust review."""
+    from cograph_client.api.routes.operator import require_operator, router
+
+    routes = [r for r in router.routes if hasattr(r, "dependant")]
+    assert routes, "no routes found on the operator router"
+    for route in routes:
+        assert require_operator in _dependency_callables(route.dependant), (
+            f"{route.path} is not behind require_operator"
+        )
+
+
+def test_router_declares_the_gate_itself():
+    from cograph_client.api.routes.operator import require_operator, router
+
+    assert any(d.dependency is require_operator for d in router.dependencies)
+
+
+def test_preexisting_job_trace_route_still_gated_403_and_200():
+    """The router-level dependency must not change existing route behavior."""
+    from cograph_client.api.deps import get_enrichment_job_store
+
+    class _Store:
+        async def get(self, job_id):
+            return None
+
+    for is_operator, expected in ((False, 403), (True, 404)):
+        app = FastAPI()
+        app.include_router(operator_routes.router)
+        app.dependency_overrides[get_enrichment_job_store] = _Store
+        app.dependency_overrides[api_keys.get_tenant] = (
+            lambda tenant=None, api_key=None, request=None, _o=is_operator: TenantContext(
+                tenant_id="t", api_key="k", is_operator=_o
+            )
+        )
+        r = TestClient(app).get("/operator/jobs/nope/trace")
+        # 403 when not an operator; past the gate (404 unknown job) when one.
+        assert r.status_code == expected, (is_operator, r.text)
+
+
 # --- query-builder parameterization: existing callers unaffected ------------
 
 
@@ -398,21 +599,19 @@ def test_query_builders_default_to_tenant_namespace():
     )
 
 
-def test_query_builders_accept_a_layer_uri_override():
-    from cograph_client.graph.layers import Layer, layer_type_uri
-    from cograph_client.graph.ontology_queries import (
-        get_subtypes_query,
-        get_type_attributes_query,
-        get_type_detail_query,
-    )
+def test_batched_query_is_deterministically_ordered():
+    """No ORDER BY => unspecified solution order => a non-deterministic fold."""
+    from cograph_client.graph.ontology_queries import full_ontology_detail_query
 
-    g = public_graph_uri()
-    pub = layer_type_uri(Layer.PUBLIC, "Place")
-    assert f"<{pub}>" in get_type_detail_query(g, "Place", pub)
-    assert f"<{pub}>" in get_type_attributes_query(g, "Place", pub)
-    assert f"<{pub}>" in get_subtypes_query(g, "Place", pub)
-    # And the tenant URI is NOT what got embedded.
-    assert "<https://cograph.tech/types/Place>" not in get_type_detail_query(g, "Place", pub)
+    sparql = full_ontology_detail_query(public_graph_uri())
+    assert "ORDER BY" in sparql
+    ordered = sparql.split("ORDER BY", 1)[1]
+    # Every projected variable participates, so no tie is left to the engine.
+    for var in (
+        "?type", "?typeLabel", "?typeComment", "?parent",
+        "?attr", "?attrLabel", "?attrComment", "?range", "?core",
+    ):
+        assert var in ordered, var
 
 
 def test_oss_boundary_no_proprietary_import():

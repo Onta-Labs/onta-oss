@@ -473,18 +473,8 @@ def list_types_query(graph_uri: str) -> str:
     )
 
 
-def get_type_detail_query(
-    graph_uri: str, type_name: str, type_uri_override: str | None = None
-) -> str:
-    """Type label/comment/parent for ONE type.
-
-    ``type_uri_override`` selects a NON-tenant type URI (ADR 0002 §1 layers):
-    the Global layers live at ``types/public/<T>`` / ``types/x/<T>``, so a
-    caller browsing them must pass ``layer_type_uri(layer, name)`` — the default
-    ``None`` keeps the byte-identical tenant-namespace behavior every existing
-    caller depends on.
-    """
-    t_uri = type_uri_override or type_uri(type_name)
+def get_type_detail_query(graph_uri: str, type_name: str) -> str:
+    t_uri = type_uri(type_name)
     return (
         f"SELECT ?label ?comment ?parent FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -495,15 +485,8 @@ def get_type_detail_query(
     )
 
 
-def get_type_attributes_query(
-    graph_uri: str, type_name: str, type_uri_override: str | None = None
-) -> str:
-    """Declared properties (label/comment/range) whose ``rdfs:domain`` is the type.
-
-    ``type_uri_override`` — see :func:`get_type_detail_query`; ``None`` keeps the
-    tenant-namespace query byte-identical.
-    """
-    t_uri = type_uri_override or type_uri(type_name)
+def get_type_attributes_query(graph_uri: str, type_name: str) -> str:
+    t_uri = type_uri(type_name)
     return (
         f"SELECT ?attr ?attrLabel ?attrComment ?range FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -516,24 +499,15 @@ def get_type_attributes_query(
     )
 
 
-def get_attribute_range_query(
-    graph_uri: str,
-    type_name: str,
-    attr_name: str,
-    attr_uri_override: str | None = None,
-) -> str:
+def get_attribute_range_query(graph_uri: str, type_name: str, attr_name: str) -> str:
     """Fetch the single ``rdfs:range`` currently declared for one attribute.
 
     Returns ``?range`` (zero rows if the attribute / its range is undeclared).
     Used by enrichment to decide whether declaring an enriched attribute would
     DOWNGRADE an existing richer range (an XSD primitive like ``xsd:integer`` or
     a relationship ``types/<Target>`` URI) down to ``xsd:string`` — it must not.
-
-    ``attr_uri_override`` selects a NON-tenant attribute URI (the Global layers
-    hang slots off ``types/public/<T>/attrs/<slot>``); ``None`` keeps the
-    tenant-namespace query byte-identical for every existing caller.
     """
-    a_uri = attr_uri_override or attr_uri(type_name, attr_name)
+    a_uri = attr_uri(type_name, attr_name)
     return (
         f"SELECT ?range FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -542,15 +516,8 @@ def get_attribute_range_query(
     )
 
 
-def get_subtypes_query(
-    graph_uri: str, type_name: str, type_uri_override: str | None = None
-) -> str:
-    """Direct ``rdfs:subClassOf`` children of the type.
-
-    ``type_uri_override`` — see :func:`get_type_detail_query`; ``None`` keeps the
-    tenant-namespace query byte-identical.
-    """
-    t_uri = type_uri_override or type_uri(type_name)
+def get_subtypes_query(graph_uri: str, type_name: str) -> str:
+    t_uri = type_uri(type_name)
     return (
         f"SELECT ?sub ?label FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -1025,6 +992,17 @@ def full_ontology_detail_query(graph_uri: str) -> str:
     (``insert_attribute``/``upsert_attribute``, and the premium
     ``GlobalShapeWriter``), so requiring it would change nothing today while
     silently hiding any future slot written without it.
+
+    ``ORDER BY`` is load-bearing, not cosmetic. SPARQL leaves solution order
+    UNSPECIFIED without it, and the reader folds multi-row results back into one
+    record per type. A predicate that is single-valued by contract but doubly
+    asserted in practice (a blind ``INSERT DATA``, a half-run migration) would
+    otherwise resolve differently between two identical requests — most visibly
+    a slot with both an XSD and a ``types/…`` range flipping between
+    ``attributes`` and ``relationships``. The reader ALSO folds deterministically
+    on its own side (``global_ontology._pick``), so correctness never depends on
+    the engine honoring this; the ordering just makes the wire bytes reproducible
+    too.
     """
     return (
         f"SELECT ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
@@ -1041,7 +1019,9 @@ def full_ontology_detail_query(graph_uri: str) -> str:
         f"    OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
         f"    OPTIONAL {{ ?attr <{OMNIX_ONTO}/coreSlot> ?core }}\n"
         f"  }}\n"
-        f"}}"
+        f"}}\n"
+        f"ORDER BY ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
+        f"?attrComment ?range ?core"
     )
 
 
