@@ -473,8 +473,18 @@ def list_types_query(graph_uri: str) -> str:
     )
 
 
-def get_type_detail_query(graph_uri: str, type_name: str) -> str:
-    t_uri = type_uri(type_name)
+def get_type_detail_query(
+    graph_uri: str, type_name: str, type_uri_override: str | None = None
+) -> str:
+    """Type label/comment/parent for ONE type.
+
+    ``type_uri_override`` selects a NON-tenant type URI (ADR 0002 §1 layers):
+    the Global layers live at ``types/public/<T>`` / ``types/x/<T>``, so a
+    caller browsing them must pass ``layer_type_uri(layer, name)`` — the default
+    ``None`` keeps the byte-identical tenant-namespace behavior every existing
+    caller depends on.
+    """
+    t_uri = type_uri_override or type_uri(type_name)
     return (
         f"SELECT ?label ?comment ?parent FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -485,8 +495,15 @@ def get_type_detail_query(graph_uri: str, type_name: str) -> str:
     )
 
 
-def get_type_attributes_query(graph_uri: str, type_name: str) -> str:
-    t_uri = type_uri(type_name)
+def get_type_attributes_query(
+    graph_uri: str, type_name: str, type_uri_override: str | None = None
+) -> str:
+    """Declared properties (label/comment/range) whose ``rdfs:domain`` is the type.
+
+    ``type_uri_override`` — see :func:`get_type_detail_query`; ``None`` keeps the
+    tenant-namespace query byte-identical.
+    """
+    t_uri = type_uri_override or type_uri(type_name)
     return (
         f"SELECT ?attr ?attrLabel ?attrComment ?range FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -499,15 +516,24 @@ def get_type_attributes_query(graph_uri: str, type_name: str) -> str:
     )
 
 
-def get_attribute_range_query(graph_uri: str, type_name: str, attr_name: str) -> str:
+def get_attribute_range_query(
+    graph_uri: str,
+    type_name: str,
+    attr_name: str,
+    attr_uri_override: str | None = None,
+) -> str:
     """Fetch the single ``rdfs:range`` currently declared for one attribute.
 
     Returns ``?range`` (zero rows if the attribute / its range is undeclared).
     Used by enrichment to decide whether declaring an enriched attribute would
     DOWNGRADE an existing richer range (an XSD primitive like ``xsd:integer`` or
     a relationship ``types/<Target>`` URI) down to ``xsd:string`` — it must not.
+
+    ``attr_uri_override`` selects a NON-tenant attribute URI (the Global layers
+    hang slots off ``types/public/<T>/attrs/<slot>``); ``None`` keeps the
+    tenant-namespace query byte-identical for every existing caller.
     """
-    a_uri = attr_uri(type_name, attr_name)
+    a_uri = attr_uri_override or attr_uri(type_name, attr_name)
     return (
         f"SELECT ?range FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -516,8 +542,15 @@ def get_attribute_range_query(graph_uri: str, type_name: str, attr_name: str) ->
     )
 
 
-def get_subtypes_query(graph_uri: str, type_name: str) -> str:
-    t_uri = type_uri(type_name)
+def get_subtypes_query(
+    graph_uri: str, type_name: str, type_uri_override: str | None = None
+) -> str:
+    """Direct ``rdfs:subClassOf`` children of the type.
+
+    ``type_uri_override`` — see :func:`get_type_detail_query`; ``None`` keeps the
+    tenant-namespace query byte-identical.
+    """
+    t_uri = type_uri_override or type_uri(type_name)
     return (
         f"SELECT ?sub ?label FROM <{graph_uri}>\n"
         f"WHERE {{\n"
@@ -966,6 +999,47 @@ def get_full_ontology_query(graph_uri: str) -> str:
         f"  OPTIONAL {{\n"
         f"    ?func <{OMNIX_ONTO}/attachedTo> ?type .\n"
         f"    ?func <{OMNIX_ONTO}/name> ?funcName .\n"
+        f"  }}\n"
+        f"}}"
+    )
+
+
+def full_ontology_detail_query(graph_uri: str) -> str:
+    """Every type in ONE graph with its full browsable detail, in ONE query.
+
+    Namespace-agnostic (it never mentions a ``types/`` prefix), so the same
+    builder reads a tenant ontology graph or either Global layer graph
+    (``types/public/<T>`` / ``types/x/<T>``). Superset of
+    :func:`get_full_ontology_query`, which the NL pipeline uses: this one also
+    projects ``?typeComment``, ``?parent``, ``?attrComment`` and ``?core`` — the
+    fields the operator Global-ontology browser searches and renders — and drops
+    the attached-function join it does not need.
+
+    Row shape is one row per (type × parent × attribute) combination; a type
+    with no attributes still yields one row (the attribute block is OPTIONAL),
+    which is what makes an "empty" type visible instead of silently dropped.
+
+    Deliberately LENIENT on the attribute pattern: it keys on
+    ``rdfs:domain`` + ``rdfs:label`` and does NOT require ``rdf:type
+    rdf:Property``. Every writer in the repo does assert that triple
+    (``insert_attribute``/``upsert_attribute``, and the premium
+    ``GlobalShapeWriter``), so requiring it would change nothing today while
+    silently hiding any future slot written without it.
+    """
+    return (
+        f"SELECT ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
+        f"?attrComment ?range ?core FROM <{graph_uri}>\n"
+        f"WHERE {{\n"
+        f"  ?type <{RDF}#type> <{RDFS}#Class> .\n"
+        f"  ?type <{RDFS}#label> ?typeLabel .\n"
+        f"  OPTIONAL {{ ?type <{RDFS}#comment> ?typeComment }}\n"
+        f"  OPTIONAL {{ ?type <{RDFS}#subClassOf> ?parent }}\n"
+        f"  OPTIONAL {{\n"
+        f"    ?attr <{RDFS}#domain> ?type .\n"
+        f"    ?attr <{RDFS}#label> ?attrLabel .\n"
+        f"    OPTIONAL {{ ?attr <{RDFS}#comment> ?attrComment }}\n"
+        f"    OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
+        f"    OPTIONAL {{ ?attr <{OMNIX_ONTO}/coreSlot> ?core }}\n"
         f"  }}\n"
         f"}}"
     )

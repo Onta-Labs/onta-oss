@@ -14,8 +14,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from cograph_client.api.deps import get_enrichment_job_store
+from cograph_client.api.deps import get_enrichment_job_store, get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.global_ontology import fetch_global_ontology
+from cograph_client.models.ontology import GlobalOntologyResponse
 from cograph_client.pipeline.stage_trace import JobStageTrace, resolve_trace
 
 router = APIRouter(prefix="/operator", tags=["operator"])
@@ -28,6 +31,25 @@ def require_operator(
     if not tenant.is_operator:
         raise HTTPException(status_code=403, detail="operator only")
     return tenant
+
+
+@router.get("/ontology/global", response_model=GlobalOntologyResponse)
+async def get_global_ontology(
+    _operator: TenantContext = Depends(require_operator),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Return the ENTIRE Global ontology — Public + Enhanced layers — at once.
+
+    Cross-tenant by design (like the job trace above): the Global layers are the
+    shared canon, not any one tenant's ontology, so this route deliberately sits
+    outside ``/graphs/{tenant}/…``. One payload, not paginated: the curated
+    Global ontology is small, and the browser searches/sorts it client-side.
+
+    Never 500s on an empty or partially-unreachable Global ontology — an empty
+    canon is the expected state today (200 + ``types: []``), and a layer whose
+    graph errors is reported ``available: false`` while the other still renders.
+    """
+    return await fetch_global_ontology(client)
 
 
 @router.get("/jobs/{job_id}/trace", response_model=JobStageTrace)

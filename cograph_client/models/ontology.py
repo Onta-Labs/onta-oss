@@ -25,6 +25,90 @@ class TypeResponse(BaseModel):
     functions: list[str] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# Global ontology browser (operator-only, ONTA-234 visibility seam)
+#
+# GET /operator/ontology/global returns the ENTIRE Global ontology — both
+# layers, Public + Enhanced (ADR 0002 §1) — in ONE payload, rich enough for a
+# web page to search client-side across type names, slot names and descriptions
+# and to sort alphabetically. These are NEW models on purpose: TypeResponse is
+# the tenant ontology routes' contract (description "" not null, no layer, no
+# relationship/attribute split, no core_slot) and must not be contorted.
+# ---------------------------------------------------------------------------
+
+
+class GlobalOntologyAttribute(BaseModel):
+    """A LITERAL-valued slot: its ``rdfs:range`` is not a type in any layer."""
+
+    name: str
+    datatype: str = Field(
+        default="string",
+        description="Primitive datatype name: string, integer, float, boolean, datetime, uri, geo",
+    )
+    description: str | None = Field(
+        default=None, description="rdfs:comment on the property URI; null when absent"
+    )
+    core_slot: bool = Field(
+        default=False, description="onto/coreSlot marker — a CONSTITUTIVE slot (ADR 0003 Pass D)"
+    )
+
+
+class GlobalOntologyRelationship(BaseModel):
+    """A NODE-valued slot: its ``rdfs:range`` resolves to a type in a layer namespace."""
+
+    name: str
+    target_type: str = Field(description="Bare type NAME the range points at, not a URI")
+    description: str | None = Field(
+        default=None, description="rdfs:comment on the property URI; null when absent"
+    )
+    core_slot: bool = False
+
+
+class GlobalOntologyType(BaseModel):
+    """One type as declared in ONE Global layer.
+
+    A name declared in BOTH layers yields TWO entries (one per layer) — this is
+    the operator's raw browse view, so shadowing (Enhanced > Public) is shown,
+    not silently applied.
+    """
+
+    name: str
+    layer: str = Field(description='Layer that declares this type: "public" or "enhanced"')
+    description: str | None = None
+    parent_type: str | None = Field(
+        default=None, description="Bare parent type NAME from rdfs:subClassOf, not a URI"
+    )
+    subtypes: list[str] = Field(
+        default_factory=list,
+        description="Bare NAMES of types (in EITHER Global layer) whose rdfs:subClassOf points here",
+    )
+    attributes: list[GlobalOntologyAttribute] = Field(default_factory=list)
+    relationships: list[GlobalOntologyRelationship] = Field(default_factory=list)
+
+
+class GlobalOntologyLayer(BaseModel):
+    """Per-layer status line. ``available=False`` is the graceful-degradation
+    signal: that layer's graph was unreachable or its query errored, so it
+    contributed no types — the request still succeeds with 200."""
+
+    layer: str
+    graph_uri: str
+    type_count: int = 0
+    available: bool = True
+
+
+class GlobalOntologyResponse(BaseModel):
+    """Body of ``GET /operator/ontology/global``.
+
+    ``types`` is sorted alphabetically by name (case-insensitive); each type's
+    ``attributes`` and ``relationships`` are likewise sorted by name. An empty
+    Global ontology is NOT an error — it returns 200 with ``types: []``.
+    """
+
+    layers: list[GlobalOntologyLayer] = Field(default_factory=list)
+    types: list[GlobalOntologyType] = Field(default_factory=list)
+
+
 class AttributeAdd(BaseModel):
     attributes: list[AttributeDefinition] = Field(min_length=1)
 
