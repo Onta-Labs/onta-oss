@@ -187,7 +187,7 @@ async def _stage_a_graph_probe(
 
         # Probe 2: If SPARQL has a specific predicate, check it exists in ontology
         if sparql:
-            predicate_uris = re.findall(r"<(https://omnix\.dev/(?:onto|types)/[^>]+)>", sparql)
+            predicate_uris = re.findall(r"<(https://cograph\.tech/(?:onto|types)/[^>]+)>", sparql)
             ontology_graph = f"https://cograph.tech/graphs/{tenant}"
             for pred_uri in predicate_uris:
                 if "/onto/" in pred_uri or "/attrs/" in pred_uri:
