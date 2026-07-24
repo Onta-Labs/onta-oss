@@ -187,12 +187,12 @@ containment. City is NOT a subtype of State.
 
 | Thing | Pattern | Example |
 |-------|---------|---------|
-| Type | `https://omnix.dev/types/{TypeName}` | `https://omnix.dev/types/ClinicalTrial` |
-| Attribute | `https://omnix.dev/types/{TypeName}/attrs/{attr}` | `https://omnix.dev/types/Event/attrs/name` |
-| Relationship | `https://omnix.dev/onto/{predicate}` | `https://omnix.dev/onto/city` |
-| Entity | `https://omnix.dev/entities/{TypeName}/{safe_id}` | `https://omnix.dev/entities/City/Austin` |
-| Tenant graph | `https://omnix.dev/graphs/{tenant_id}` | `https://omnix.dev/graphs/demo-tenant` |
-| KG graph | `https://omnix.dev/graphs/{tenant_id}/kg/{kg}` | `https://omnix.dev/graphs/demo-tenant/kg/zillow-austin` |
+| Type | `https://cograph.tech/types/{TypeName}` | `https://cograph.tech/types/ClinicalTrial` |
+| Attribute | `https://cograph.tech/types/{TypeName}/attrs/{attr}` | `https://cograph.tech/types/Event/attrs/name` |
+| Relationship | `https://cograph.tech/onto/{predicate}` | `https://cograph.tech/onto/city` |
+| Entity | `https://cograph.tech/entities/{TypeName}/{safe_id}` | `https://cograph.tech/entities/City/Austin` |
+| Tenant graph | `https://cograph.tech/graphs/{tenant_id}` | `https://cograph.tech/graphs/demo-tenant` |
+| KG graph | `https://cograph.tech/graphs/{tenant_id}/kg/{kg}` | `https://cograph.tech/graphs/demo-tenant/kg/zillow-austin` |
 
 ### Named Graph Structure
 
@@ -336,7 +336,8 @@ Auto-fixes common LLM syntax mistakes before execution:
 - Expands PREFIX declarations inline
 - Moves FROM clauses to correct position
 - Fixes bare aggregates (`SELECT COUNT(?x)` → `SELECT (COUNT(?x) AS ?count)`)
-- Corrects `omnix.dev/` URI namespace mistakes
+- Corrects URI namespace mistakes (bare type names, and the retired
+  `omnix.dev/` namespace echoed back from a stale prompt)
 
 **Step 5 — Validation + execution**: Syntax check, then execute against Neptune.
 On failure, retry with error feedback (up to 3 attempts).
@@ -429,6 +430,33 @@ reingest KG → fresh ontology types, rdfs:label on entities
 run eval → correct pairs saved → bank auto-rebuilt from all pairs
 ```
 
+**What auto-sync does NOT cover.** The KG-delete purge above evicts by `kg_name`;
+nothing evicts by *content*, so a stale URI namespace or datatype survives it.
+Three separate reasons the loop cannot self-heal:
+
+1. **The rebuild's source is a machine-local upsert.** `finetune_pairs.jsonl` is
+   gitignored and keyed on `(question, graph_uri)`, newer replacing older
+   (`eval.py`). But `graph_uri` *carries the namespace*, so a post-rename run
+   writes a **second** pair for the same question instead of replacing the stale
+   one. The rebuild's `add_batch` then dedups on question text alone and keeps
+   whichever came first in file order — the stale one. Fresh data loses.
+2. **The rebuild can't even reach the shipped bank.** `eval.py` reads
+   `finetune_pairs.jsonl` **cwd-relative** but `save()` writes `DEFAULT_BANK_PATH`
+   **package-relative**, so a rebuild run from the parent repo root reads the
+   parent's pairs and clobbers the *OSS* copy. The image-baked bank is orphaned
+   from auto-sync entirely.
+3. **Production never rebuilds.** `run_full_eval` has no caller outside the eval
+   CLI, so no deployed code path regenerates the bank. Production writes it only
+   via the per-KG purge above; its *contents* otherwise change only when a human
+   edits the file.
+
+That is how the `omnix.dev` → `cograph.tech` rename (2026-04-27) left both banks
+priming every `/ask` prompt with predicates that resolve to nothing — while the
+*system* prompt was already teaching the new namespace, so each prompt
+contradicted itself. Guarded now by `tests/test_example_bank_namespace.py` (OSS
+bank) and the parent repo's `tests/test_shipped_example_bank_namespace.py` (the
+image-baked bank).
+
 ### Retrieval Algorithm
 
 1. Embed the incoming question
@@ -451,7 +479,7 @@ predicate URIs.
 
 **What does NOT transfer:** Answer values, entity names, specific predicate URIs.
 The LLM must still read the current ontology to generate correct URIs. A Coffee
-example's `<https://omnix.dev/types/CoffeeLot/attrs/altitude>` is useless for
+example's `<https://cograph.tech/types/CoffeeLot/attrs/altitude>` is useless for
 IMDB queries. Only the SPARQL structure carries over.
 
 **Why this works:** A human developer does the same thing. You look at a working
