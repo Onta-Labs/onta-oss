@@ -283,11 +283,6 @@ def select_triples(
     )
 
 
-def scoped_query(graph_uri: str, sparql: str) -> str:
-    """Wrap a user-provided SPARQL query to scope it to a tenant's named graph."""
-    return f"# Scoped to tenant graph\n# FROM <{graph_uri}>\n{sparql}"
-
-
 def register_function_triple(
     graph_uri: str,
     entity_type: str,
