@@ -1386,3 +1386,41 @@ def test_skills_reader_takes_no_tenant_context(clean_skill_registry):
 
     params = inspect.signature(global_skills_for_type).parameters
     assert list(params) == ["type_name", "layer"]
+
+
+def test_the_source_reader_never_passes_a_tenant_to_the_catalog():
+    """A guard on the SHAPE of the source seam, mirroring
+    ``test_skills_reader_takes_no_tenant_context`` for the other overlay.
+
+    The skills side cannot leak by construction: ``global_skills_for_type``
+    has no tenant parameter at all. The sources side is different —
+    ``get_api_source_catalog`` DOES take ``tenant_id``, and passing it would
+    merge a workspace's private ``tenant_custom`` entries into a cross-tenant
+    operator view. Until this test, the only thing standing between that and
+    production was one behavioural test plus a comment; a reviewer flagged the
+    asymmetry. Reading the call site's AST makes the omission structural: add
+    the argument back and this fails as a shape violation, whatever the merged
+    catalog happens to return for the fixtures a behavioural test picked.
+    """
+    import ast
+    import inspect
+
+    from cograph_client.graph import global_ontology as mod
+
+    tree = ast.parse(inspect.getsource(mod))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", getattr(node.func, "attr", None))
+        == "get_api_source_catalog"
+    ]
+    assert calls, "the catalog call vanished — this guard is now watching nothing"
+    for call in calls:
+        assert not call.args, "positional arg to get_api_source_catalog"
+        passed = {kw.arg for kw in call.keywords}
+        assert "tenant_id" not in passed, (
+            "get_api_source_catalog was given a tenant_id inside the CROSS-TENANT "
+            "operator ontology reader: a workspace's private tenant_custom "
+            "sources would leak onto the shared Global canon."
+        )
