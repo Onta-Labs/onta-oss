@@ -136,9 +136,23 @@ class InvokeRequest(BaseModel):
 
 
 class DiscoveredEntity(BaseModel):
+    """An entity found by cascade discovery, plus the functions attached to its type.
+
+    `functions` holds callable FUNCTION names (e.g. ``"filings()"``) registered for
+    the entity's type — executable code, not prose.
+
+    DEPRECATED: `skills` is a legacy alias of `functions`, kept only so existing
+    clients of the `/graphs/{tenant}/functions/{name}/invoke` response keep working.
+    It is populated identically to `functions` and will be removed in a future
+    release — read `functions` instead. The name is a misnomer: in this product a
+    "skill" is now type-attached human-authored markdown PROSE consumed by LM agents
+    (``cograph_client.skills``), which is the opposite of an executable function.
+    """
+
     uri: str
     type: str
     name: str
+    functions: list[str]
     skills: list[str]
 
 
@@ -150,8 +164,10 @@ class InvokeResponse(BaseModel):
     duration_ms: float
 
 
-# Hardcoded skill mapping per entity type (mirrors frontend TypeNode METHOD_MAP)
-SKILLS_BY_TYPE: dict[str, list[str]] = {
+# Hardcoded FUNCTION-name mapping per entity type (mirrors frontend TypeNode
+# METHOD_MAP). These are callable function names — note the parentheses — not
+# "skills" in the type-attached-markdown-prose sense (cograph_client.skills).
+FUNCTIONS_BY_TYPE: dict[str, list[str]] = {
     "Company": ["filings()", "patents()", "headcount()", "news()"],
     "Investor": ["portfolio()", "coInvestors()"],
     "Person": ["publications()", "bio()", "trajectory()"],
@@ -391,11 +407,15 @@ async def invoke_function(
                 inv_name = row.get("investorName", "")
                 if inv_uri and inv_name:
                     inv_type = "Investor"
+                    inv_functions = FUNCTIONS_BY_TYPE.get(inv_type, [])
                     discovered.append(DiscoveredEntity(
                         uri=inv_uri,
                         type=inv_type,
                         name=inv_name,
-                        skills=SKILLS_BY_TYPE.get(inv_type, []),
+                        functions=inv_functions,
+                        # Deprecated alias — populated identically to `functions`
+                        # so existing invoke-response clients keep working.
+                        skills=inv_functions,
                     ))
         except Exception as exc:
             logger.warning("discover_entities_failed", error=str(exc))
