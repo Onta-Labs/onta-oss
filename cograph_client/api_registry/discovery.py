@@ -63,6 +63,10 @@ class RegistryDiscoverySource:
         self.supports_urls = False
         self.url_only = False
         self.query_kinds = frozenset()
+        # Pre-structured rows from a declarative field map — commit via
+        # ingest_structured_rows (no soft multi-type re-extract). Same contract
+        # as locate_scrape A1 rows after ONTA-272 / discovery quality.
+        self.structured = True
 
     @property
     def is_source_of_truth(self) -> bool:
@@ -101,8 +105,9 @@ class RegistryDiscoverySource:
             # to web, exactly like every dormant premium adapter.
             logger.info("api_registry source %s dormant: %s", self.name, res.error)
             return DiscoverResult(rows=[], provenance={}, sources=[])
+        rows = [_enrich_provider_from_id(r) for r in (res.rows or [])]
         return DiscoverResult(
-            rows=res.rows,
+            rows=rows,
             provenance=res.provenance,
             sources=res.sources,
             is_partial=res.is_partial,
@@ -110,6 +115,28 @@ class RegistryDiscoverySource:
             error=res.error,
             calls=res.calls,
         )
+
+
+def _enrich_provider_from_id(row: dict) -> dict:
+    """If ``name`` looks like ``provider/slug`` and ``provider`` is empty, fill it.
+
+    OpenRouter (and similar) catalogs use org/model ids; plans often request a
+    ``provider`` attribute the JSON field map cannot split. Deterministic and
+    lossless — never overwrites a non-empty provider cell.
+    """
+    if not isinstance(row, dict):
+        return row
+    name = str(row.get("name") or "").strip()
+    if not name or "/" not in name:
+        return row
+    if str(row.get("provider") or "").strip():
+        return row
+    left = name.split("/", 1)[0].strip()
+    if not left:
+        return row
+    out = dict(row)
+    out["provider"] = left
+    return out
 
 
 def build_registry_sources(
