@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from cograph_client.models.function import FunctionRef
+
 
 class AttributeDefinition(BaseModel):
     name: str = Field(min_length=1)
@@ -64,6 +66,81 @@ class GlobalOntologyRelationship(BaseModel):
     core_slot: bool = False
 
 
+class GlobalOntologySource(BaseModel):
+    """A registered API source whose declared coverage PLAUSIBLY covers a type.
+
+    **This is a fuzzy token match, not a stored foreign key.** Nothing in the
+    graph or the catalog binds a source to an ontology type. The association is
+    computed at read time by
+    :func:`~cograph_client.api_registry.matching.type_matches` — the SAME
+    predicate the enrichment rail self-gates on and the selector pre-filters
+    with — which overlaps the type's name tokens with the entry's declared
+    ``coverage.entity_kinds`` (camelCase-split, with a generic-token guard).
+
+    So the ONLY honest UI phrasing is "sources that plausibly cover this type"
+    (or "…that could be asked about this type"), NEVER "sources bound to this
+    type", "the source of this type", or anything implying provenance: a source
+    listed here may never have written a single fact, and a source that DID
+    write facts about a differently-named type will not appear. It answers
+    "would the enrichment rail even consider this API for this type?" — nothing
+    more, and it answers it identically to the rail itself, by construction.
+
+    Every field is carried verbatim from
+    :class:`~cograph_client.api_registry.spec.ApiSourceSpec`; nothing is
+    invented. Call-volume and refresh-cadence in particular are NOT here —
+    nothing records them.
+    """
+
+    slug: str = Field(description="Catalog entry id, unique across layers")
+    title: str = ""
+    publisher: str = ""
+    registry_layer: str = Field(
+        default="",
+        description=(
+            "The SOURCE CATALOG's layer — NOT an ontology layer. Values are "
+            '"global_public" / "global_enhanced" (and "tenant_custom", which can '
+            "never appear here). This is a DIFFERENT AXIS from "
+            "``GlobalOntologyType.layer`` (\"public\" / \"enhanced\"): different "
+            "subsystem, different vocabulary, different precedence ranks, no "
+            "relationship whatsoever between the two. A ``global_public`` API can "
+            "cover an ``enhanced``-layer type and a ``global_enhanced`` API can "
+            "cover a ``public`` one. The field is NAMED apart from the type's "
+            "``layer`` precisely so the two can never be rendered with the same "
+            "badge by mistake — do not shorten it back to ``layer``."
+        ),
+    )
+    authority_level: str = Field(
+        default="",
+        description="ApiSourceSpec.authority_level, e.g. source_of_truth / authoritative / supplementary",
+    )
+    enabled: bool = Field(
+        default=True, description="False ⇒ the entry is catalogued but not served"
+    )
+    verified_at: str = Field(
+        default="",
+        description="ISO date (YYYY-MM-DD) the entry's call spec was last hand-verified; empty ⇒ never",
+    )
+    freshness: str = Field(
+        default="OK",
+        description=(
+            "Verification grade from the EXISTING catalog audit "
+            "(``api_registry/catalog_audit.py``), never a second health scale: "
+            '"UNVERIFIED" (no/unparseable verified_at), "STALE" (older than the '
+            'audit\'s max age), "FUTURE" (stamp in the future — a typo), or "OK". '
+            "Live reachability (the audit's optional EMPTY / UNREACHABLE smoke) is "
+            "deliberately NOT computed here: this read must stay offline."
+        ),
+    )
+    entity_kinds: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The entry's declared ``coverage.entity_kinds`` — the EVIDENCE the "
+            "token match ran against, so an operator can see WHY a source was "
+            "attached (or was not)."
+        ),
+    )
+
+
 class GlobalOntologyType(BaseModel):
     """One type as declared in ONE Global layer.
 
@@ -84,6 +161,28 @@ class GlobalOntologyType(BaseModel):
     )
     attributes: list[GlobalOntologyAttribute] = Field(default_factory=list)
     relationships: list[GlobalOntologyRelationship] = Field(default_factory=list)
+    sources: list[GlobalOntologySource] = Field(
+        default_factory=list,
+        description=(
+            "Registered API sources that PLAUSIBLY cover this type (fuzzy token "
+            "match on coverage.entity_kinds — see GlobalOntologySource), sorted "
+            "by slug. Empty is normal: no covering source, or the registry was "
+            "unavailable (which degrades to [] and never fails the request)."
+        ),
+    )
+    functions: list[FunctionRef] = Field(
+        default_factory=list,
+        description=(
+            "Executable code attached to this type, read from THIS LAYER's "
+            "graph. Read-only, and "
+            "EMPTY today for every type: no writer mints a function against a "
+            "layer-qualified type URI yet — ``queries.register_function_triple`` "
+            "still attaches to the bare tenant namespace. ``entity_type`` is the "
+            "enclosing type's name; ``tier`` is not stored in the graph and "
+            "carries the model default, exactly as the tenant "
+            "``GET /graphs/{tenant}/functions`` route reports it."
+        ),
+    )
 
 
 class GlobalOntologyLayer(BaseModel):

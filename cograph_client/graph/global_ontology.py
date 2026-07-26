@@ -12,16 +12,41 @@ boundary): a type as ``rdf:type rdfs:Class`` + ``rdfs:label`` + optional
 ``rdfs:label`` / ``rdfs:domain`` / ``rdfs:range`` / ``onto/coreSlot
 "true"^^xsd:boolean`` / optional ``rdfs:comment`` (the slot rationale).
 
+Two things a type carries beyond its own triples:
+
+* ``sources`` — registered API sources whose declared coverage PLAUSIBLY covers
+  the type. A **fuzzy token match**, not a stored link: computed by
+  :func:`~cograph_client.api_registry.matching.type_matches`, the SAME predicate
+  the enrichment rail self-gates on, so this page can never disagree with the
+  rail about which source covers ``City``. See
+  :class:`~cograph_client.models.ontology.GlobalOntologySource` for the honest
+  phrasing this permits. Only the GLOBAL catalog is read (no ``tenant_id``): the
+  route is cross-tenant, so a workspace's private ``tenant_custom`` entries must
+  never surface on it. A source reports its catalog layer as ``registry_layer``,
+  NOT ``layer`` — the registry's layer axis (``global_public`` /
+  ``global_enhanced``) is unrelated to the ontology layer (``public`` /
+  ``enhanced``) on the type it is attached to, and the two travel in the same
+  payload.
+* ``functions`` — the executable code attached to the type, read from THAT
+  LAYER'S GRAPH. Read path only, and empty in practice today: no writer mints a
+  function against a layer-qualified type URI yet (see
+  :func:`full_ontology_detail_query`'s note). This field covers functions and
+  nothing else; a type's human-authored SKILLS (prose taught to an LM agent) are
+  a separate capability owned elsewhere and are deliberately not modeled here.
+
 Degradation (mirrors :func:`~cograph_client.graph.layers.fetch_types_by_layer`,
 ADR 0002 §1): a layer whose graph is missing or whose query raises is reported
 ``available=False`` with ``type_count=0`` and contributes no types; the other
 layer is unaffected and the request still returns 200. An EMPTY Global ontology
 — today's expected state — is likewise a normal 200 with ``types: []``, never
-an error.
+an error. The registry degrades the same way: an unavailable/erroring/
+unimportable catalog yields ``sources: []`` on every type, never a failed
+ontology read — the ontology is the payload, the sources are an overlay on it.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import structlog
@@ -38,11 +63,13 @@ from cograph_client.graph.ontology_queries import (
     xsd_to_datatype,
 )
 from cograph_client.graph.parser import parse_sparql_results
+from cograph_client.models.function import FunctionRef
 from cograph_client.models.ontology import (
     GlobalOntologyAttribute,
     GlobalOntologyLayer,
     GlobalOntologyRelationship,
     GlobalOntologyResponse,
+    GlobalOntologySource,
     GlobalOntologyType,
 )
 
@@ -100,7 +127,7 @@ class _TypeAccumulator:
     unspecified row order.
     """
 
-    __slots__ = ("name", "layer", "descriptions", "parent_uris", "slots")
+    __slots__ = ("name", "layer", "descriptions", "parent_uris", "slots", "functions")
 
     def __init__(self, name: str, layer: str) -> None:
         self.name = name
@@ -111,12 +138,27 @@ class _TypeAccumulator:
         self.parent_uris: set[str] = set()
         #: slot name -> {"descriptions": set, "ranges": set, "core": bool}
         self.slots: dict[str, dict[str, Any]] = {}
+        #: function name -> {"descriptions": set, "endpoints": set}. Keyed by
+        #: NAME (the identity the ontology exposes), folded with the same
+        #: set + _pick discipline as everything else, so the attribute ×
+        #: function row cross-product folds idempotently.
+        self.functions: dict[str, dict[str, set[str]]] = {}
 
     def absorb(self, row: dict[str, str]) -> None:
         if row.get("typeComment"):
             self.descriptions.add(row["typeComment"])
         if row.get("parent"):
             self.parent_uris.add(row["parent"])
+
+        func_name = row.get("funcName")
+        if func_name:
+            func = self.functions.setdefault(
+                func_name, {"descriptions": set(), "endpoints": set()}
+            )
+            if row.get("funcDesc"):
+                func["descriptions"].add(row["funcDesc"])
+            if row.get("funcEndpoint"):
+                func["endpoints"].add(row["funcEndpoint"])
 
         attr_name = row.get("attrLabel")
         if not attr_name:
@@ -149,7 +191,11 @@ class _TypeAccumulator:
             return None
         return layer, name
 
-    def build(self, subtypes: list[str]) -> GlobalOntologyType:
+    def build(
+        self,
+        subtypes: list[str],
+        sources: list[GlobalOntologySource] | None = None,
+    ) -> GlobalOntologyType:
         attributes: list[GlobalOntologyAttribute] = []
         relationships: list[GlobalOntologyRelationship] = []
         parent = self.parent()
@@ -182,6 +228,27 @@ class _TypeAccumulator:
                 )
         attributes.sort(key=lambda a: _name_key(a.name))
         relationships.sort(key=lambda r: _name_key(r.name))
+        functions = [
+            FunctionRef(
+                name=func_name,
+                # The function's own graph carries `attachedTo <this type URI>`,
+                # so the enclosing type IS its entity_type — reported as the
+                # bare NAME, matching every other cross-reference in this
+                # contract (parent_type, subtypes, target_type).
+                entity_type=self.name,
+                description=_pick(func["descriptions"]) or "",
+                endpoint_url=_pick(func["endpoints"]),
+                # `tier` is deliberately left at the model default: NOTHING in
+                # the graph records a tier (register_function_triple writes
+                # name/endpointUrl/description only), and the tenant
+                # GET /graphs/{tenant}/functions route reports the same default
+                # for the same reason. Inventing PLATFORM for global-layer
+                # functions would be a fabricated field.
+            )
+            for func_name, func in sorted(
+                self.functions.items(), key=lambda kv: (_name_key(kv[0]), kv[0])
+            )
+        ]
         return GlobalOntologyType(
             name=self.name,
             layer=self.layer,
@@ -192,16 +259,136 @@ class _TypeAccumulator:
             subtypes=subtypes,
             attributes=attributes,
             relationships=relationships,
+            sources=list(sources or []),
+            functions=functions,
         )
 
 
-async def fetch_global_ontology(neptune) -> GlobalOntologyResponse:
+#: Audit flags that are FRESHNESS grades, in reporting priority. Live-smoke
+#: flags (EMPTY / UNREACHABLE) are excluded by construction — this read never
+#: goes to the network, so they can never be present.
+_FRESHNESS_FLAGS = ("UNVERIFIED", "FUTURE", "STALE")
+
+
+def _freshness(finding: dict[str, Any]) -> str:
+    """Grade one ``catalog_audit`` finding. Reuses THAT module's judgement — this
+    never re-decides what "stale" means, it only names the flag it already
+    raised (and reports ``"OK"`` when it raised none)."""
+    flags = finding.get("flags") or []
+    for flag in _FRESHNESS_FLAGS:
+        if flag in flags:
+            return flag
+    return "OK"
+
+
+class _SourceIndex:
+    """Answers "which registered API sources plausibly cover type X?".
+
+    Built ONCE per request (the catalog is process-wide and the freshness grade
+    is pure date arithmetic), then memoized per type NAME — a name declared in
+    both Global layers asks the same question twice and must get the same
+    answer, since the registry has no notion of ontology layers at all.
+
+    An EMPTY index is the degradation state: every type gets ``sources: []``.
+    """
+
+    __slots__ = ("_specs", "_grades", "_cache")
+
+    def __init__(self, specs: list[Any], grades: dict[str, str]) -> None:
+        self._specs = specs
+        self._grades = grades
+        self._cache: dict[str, list[GlobalOntologySource]] = {}
+
+    def for_type(self, type_name: str) -> list[GlobalOntologySource]:
+        cached = self._cache.get(type_name)
+        if cached is not None:
+            return cached
+        # Lazy import, and tolerant: an import failure or a matcher raising on
+        # one odd spec must degrade this OVERLAY to empty, never fail the
+        # ontology read (module docstring).
+        try:
+            from cograph_client.api_registry.matching import type_matches
+
+            out = [
+                GlobalOntologySource(
+                    slug=spec.slug,
+                    title=spec.title,
+                    publisher=spec.publisher,
+                    # NOTE the field name: the registry's layer vocabulary
+                    # (global_public / global_enhanced) is a DIFFERENT AXIS from
+                    # the ontology layer (public / enhanced) on the enclosing
+                    # type. Both would read as "layer" in one payload, so the
+                    # contract keeps them apart by name.
+                    registry_layer=spec.layer,
+                    authority_level=getattr(
+                        spec.authority_level, "value", str(spec.authority_level)
+                    ),
+                    enabled=bool(spec.enabled),
+                    verified_at=spec.verified_at or "",
+                    freshness=self._grades.get(spec.slug, "UNVERIFIED"),
+                    entity_kinds=list(spec.coverage.entity_kinds),
+                )
+                for spec in self._specs
+                if type_matches(spec, type_name)
+            ]
+        except Exception:
+            logger.warning(
+                "global_ontology_source_match_failed", type_name=type_name, exc_info=True
+            )
+            out = []
+        self._cache[type_name] = out
+        return out
+
+
+async def _build_source_index(
+    catalog: Any | None = None, today: date | None = None
+) -> _SourceIndex:
+    """Load the GLOBAL API-source catalog + grade each entry's freshness.
+
+    ``catalog`` / ``today`` are injection seams (mirroring ``audit_catalog``'s
+    own parameters) so the overlay is testable without a process catalog or a
+    moving clock; production passes neither.
+
+    NO ``tenant_id`` is passed to :func:`get_api_source_catalog` — deliberately.
+    This endpoint is cross-tenant, so it must show only the operator-curated
+    global layers; a workspace's private ``tenant_custom`` entries are not the
+    Global canon and must never leak onto it.
+
+    Never raises: any failure (import error, unreadable data dir, audit blowing
+    up) logs and returns an EMPTY index, so ``sources`` degrades to ``[]``
+    exactly as an unreachable ontology layer degrades to ``available=False``.
+    """
+    try:
+        # Imported lazily so `graph/` takes no import-time dependency on the
+        # registry (and its httpx/executor chain), and so an unimportable
+        # registry degrades instead of breaking the ontology module outright.
+        from cograph_client.api_registry.catalog import get_api_source_catalog
+        from cograph_client.api_registry.catalog_audit import audit_catalog
+
+        cat = catalog if catalog is not None else get_api_source_catalog()
+        # live_smoke stays off (the default): the grading must be OFFLINE and
+        # deterministic — an ontology read must not issue network calls.
+        findings = await audit_catalog(catalog=cat, today=today)
+        grades = {f.get("slug", ""): _freshness(f) for f in findings}
+        specs = sorted(cat.all(), key=lambda spec: spec.slug)
+    except Exception:
+        logger.warning("global_ontology_source_registry_unavailable", exc_info=True)
+        return _SourceIndex([], {})
+    return _SourceIndex(specs, grades)
+
+
+async def fetch_global_ontology(
+    neptune, *, catalog: Any | None = None, today: date | None = None
+) -> GlobalOntologyResponse:
     """Assemble the full Global ontology payload — one query per layer graph.
 
-    Never raises for an unreachable/erroring layer; see the module docstring.
+    Never raises for an unreachable/erroring layer, nor for an unavailable API
+    source registry; see the module docstring. ``catalog`` / ``today`` are the
+    registry-overlay injection seams described on :func:`_build_source_index`.
     """
     layer_infos: list[GlobalOntologyLayer] = []
     accumulators: dict[tuple[str, str], _TypeAccumulator] = {}
+    sources = await _build_source_index(catalog=catalog, today=today)
 
     for layer, graph_uri in GLOBAL_LAYERS:
         available = True
@@ -265,7 +452,8 @@ async def fetch_global_ontology(neptune) -> GlobalOntologyResponse:
             sorted(
                 children.get((acc.layer, acc.name), set()),
                 key=lambda n: (_name_key(n), n),
-            )
+            ),
+            sources.for_type(acc.name),
         )
         for acc in accumulators.values()
     ]

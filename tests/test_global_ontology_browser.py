@@ -21,6 +21,8 @@ typed boolean included); re-do that by hand if the query changes materially.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -58,8 +60,12 @@ def shape_triples(
     if comment:
         triples.append((t_uri, f"{RDFS}#comment", comment))
     if parent_uri:
-        # The writer itself does not emit subClassOf today, but the layer graphs
-        # are ordinary ontology graphs and the contract exposes parent/subtypes.
+        # Both governance writers DO emit rdfs:subClassOf (the premium
+        # GlobalShapeWriter gained it with ancestor synthesis; the OSS writer
+        # always had it), so this is the real written shape, not a
+        # reader-only affordance. The comment here used to claim the opposite —
+        # it was written before the premium writer emitted the edge and went
+        # stale; do not reintroduce that claim.
         triples.append((t_uri, f"{RDFS}#subClassOf", parent_uri))
     for slot in slots or []:
         a_uri = f"{t_uri}/attrs/{slot['name']}"
@@ -77,6 +83,31 @@ def shape_triples(
             triples.append((a_uri, f"{ONTO}/coreSlot", f'"true"^^{XSD}#boolean'))
         if slot.get("why"):
             triples.append((a_uri, f"{RDFS}#comment", slot["why"]))
+    return triples
+
+
+def function_triples(
+    type_ns: str,
+    type_name: str,
+    name: str,
+    description: str | None = None,
+    endpoint: str | None = None,
+) -> list[tuple[str, str, str]]:
+    """The triples ``queries.register_function_triple`` writes, but attached to a
+    LAYER-QUALIFIED type URI — the shape a future global-layer function writer
+    must emit for this read path to see it. ``register_function_triple`` itself
+    still mints the BARE tenant ``types/<T>`` URI, which is exactly why no
+    function surfaces here today."""
+    f_uri = f"https://cograph.tech/functions/{name}"
+    t_uri = f"{type_ns}/{type_name}"
+    triples = [
+        (f_uri, f"{ONTO}/attachedTo", t_uri),
+        (f_uri, f"{ONTO}/name", name),
+    ]
+    if endpoint:
+        triples.append((f_uri, f"{ONTO}/endpointUrl", endpoint))
+    if description:
+        triples.append((f_uri, f"{ONTO}/description", description))
     return triples
 
 
@@ -111,19 +142,36 @@ def _rows_for(triples: list[tuple[str, str, str]]) -> list[dict]:
             })
         if not attr_rows:
             attr_rows = [{}]  # the attribute block is OPTIONAL
+        funcs = sorted({s for (s, p, o) in triples if p == f"{ONTO}/attachedTo" and o == t})
+        func_rows: list[dict] = []
+        for f in funcs:
+            f_names = objs(f, f"{ONTO}/name")
+            if not f_names:
+                continue  # onto/name is a required pattern inside the block
+            func_rows.append({
+                "funcName": f_names[0],
+                "funcDesc": (objs(f, f"{ONTO}/description") or [None])[0],
+                "funcEndpoint": (objs(f, f"{ONTO}/endpointUrl") or [None])[0],
+            })
+        if not func_rows:
+            func_rows = [{}]  # the function block is OPTIONAL too
         for label in labels:
             for comment in comments:
                 for parent in parents:
+                    # The two OPTIONAL blocks are independent, so the engine
+                    # returns their CROSS PRODUCT — reproduce that, since the
+                    # reader's fold has to be idempotent under the repetition.
                     for ar in attr_rows:
-                        row = {"type": t, "typeLabel": label}
-                        if comment is not None:
-                            row["typeComment"] = comment
-                        if parent is not None:
-                            row["parent"] = parent
-                        for k, v in ar.items():
-                            if v is not None:
-                                row[k] = v
-                        rows.append(row)
+                        for fr in func_rows:
+                            row = {"type": t, "typeLabel": label}
+                            if comment is not None:
+                                row["typeComment"] = comment
+                            if parent is not None:
+                                row["parent"] = parent
+                            for k, v in list(ar.items()) + list(fr.items()):
+                                if v is not None:
+                                    row[k] = v
+                            rows.append(row)
     return rows
 
 
@@ -610,6 +658,7 @@ def test_batched_query_is_deterministically_ordered():
     for var in (
         "?type", "?typeLabel", "?typeComment", "?parent",
         "?attr", "?attrLabel", "?attrComment", "?range", "?core",
+        "?funcName", "?funcDesc", "?funcEndpoint",
     ):
         assert var in ordered, var
 
@@ -623,3 +672,428 @@ def test_oss_boundary_no_proprietary_import():
     src = Path(mod.__file__).read_text()
     assert "from cograph." not in src
     assert "import cograph." not in src
+
+
+# ============================================================================
+# Data sources attached to a type (fuzzy coverage match, NOT a stored link)
+# ============================================================================
+
+
+def _spec(slug: str, kinds: list[str], **kw):
+    """A minimal catalog entry. Only the fields this overlay reads are set."""
+    from cograph_client.api_registry.spec import ApiSourceSpec, Coverage
+
+    return ApiSourceSpec(
+        slug=slug,
+        title=kw.pop("title", slug.upper()),
+        publisher=kw.pop("publisher", "Somebody"),
+        coverage=Coverage(entity_kinds=list(kinds)),
+        verified_at=kw.pop("verified_at", "2026-07-04"),
+        layer=kw.pop("layer", "global_public"),
+        **kw,
+    )
+
+
+def _catalog(*specs):
+    from cograph_client.api_registry.catalog import ApiSourceCatalog
+
+    return ApiSourceCatalog(entries={s.slug: s for s in specs})
+
+
+def _fetch(neptune, **kw):
+    """Call the reader directly (async) so the registry overlay's `catalog` /
+    `today` seams are injectable — a freshness assertion pinned to the process
+    catalog and the real clock would rot on its own."""
+    import asyncio
+
+    from cograph_client.graph.global_ontology import fetch_global_ontology
+
+    return asyncio.run(fetch_global_ontology(neptune, **kw)).model_dump()
+
+
+def _types_of(body) -> dict:
+    return {t["name"]: t for t in body["types"]}
+
+
+def _one_public_type(name: str, **shape_kw) -> FakeNeptune:
+    return FakeNeptune({
+        public_graph_uri(): shape_triples(PUB, name, **shape_kw),
+        enhanced_graph_uri(): [],
+    })
+
+
+def test_sources_attach_by_coverage_token_match():
+    body = _fetch(
+        _one_public_type("Hospital"),
+        catalog=_catalog(
+            _spec("nppes", ["healthcare_provider", "clinic", "hospital"]),
+            _spec("geonames", ["place", "city"]),
+        ),
+    )
+    hospital = _types_of(body)["Hospital"]
+    assert [s["slug"] for s in hospital["sources"]] == ["nppes"]
+
+
+def test_source_carries_only_real_registry_fields():
+    body = _fetch(
+        _one_public_type("Hospital"),
+        catalog=_catalog(
+            _spec(
+                "nppes",
+                ["hospital"],
+                title="NPPES NPI Registry",
+                publisher="CMS",
+                layer="global_enhanced",
+                enabled=False,
+            )
+        ),
+        today=date(2026, 7, 25),
+    )
+    src = _types_of(body)["Hospital"]["sources"][0]
+    assert src == {
+        "slug": "nppes",
+        "title": "NPPES NPI Registry",
+        "publisher": "CMS",
+        "registry_layer": "global_enhanced",
+        "authority_level": "authoritative",
+        "enabled": False,
+        "verified_at": "2026-07-04",
+        "freshness": "OK",
+        "entity_kinds": ["hospital"],
+    }
+    # Nothing invented: no volume / cadence / health columns.
+    assert "volume" not in src and "cadence" not in src
+
+
+def test_registry_layer_is_a_different_axis_from_the_ontology_layer():
+    """The two vocabularies collide in one payload and must not be conflated.
+
+    A source's catalog layer ("global_public" / "global_enhanced") has NOTHING
+    to do with the ontology layer ("public" / "enhanced") of the type it hangs
+    off: here a global_enhanced API covers a public-layer type. The field is
+    named `registry_layer` so a UI cannot reach for the same badge by habit —
+    a bare `layer` sitting next to `GlobalOntologyType.layer` would read as the
+    same axis.
+    """
+    body = _fetch(
+        _one_public_type("Hospital"),
+        catalog=_catalog(_spec("nppes", ["hospital"], layer="global_enhanced")),
+    )
+    hospital = _types_of(body)["Hospital"]
+    assert hospital["layer"] == "public"           # ONTOLOGY layer
+    src = hospital["sources"][0]
+    assert src["registry_layer"] == "global_enhanced"  # REGISTRY layer
+    # The ambiguous key must not exist at all — not even as an alias, which
+    # would let a reader bind to it and silently conflate the two axes again.
+    assert "layer" not in src
+
+
+def test_type_with_no_covering_source_gets_empty_list():
+    body = _fetch(
+        _one_public_type("Spacecraft"),
+        catalog=_catalog(_spec("nppes", ["hospital", "clinic"])),
+    )
+    assert _types_of(body)["Spacecraft"]["sources"] == []
+
+
+def test_generic_type_name_does_not_match_on_a_generic_token_alone():
+    """The matcher's generic-token guard must not be bypassed here.
+
+    A bare `Organization` matching `health_organization` on the shared generic
+    token would fire a spurious "this API covers you" on the page AND is exactly
+    what the enrichment rail refuses to do — the two must agree.
+    """
+    body = _fetch(
+        _one_public_type("Organization"),
+        catalog=_catalog(_spec("nppes", ["health_organization"])),
+    )
+    assert _types_of(body)["Organization"]["sources"] == []
+
+
+def test_membership_is_exactly_the_shared_matcher_over_the_real_seed_catalog():
+    """Convergence guard: the page's answer == `matching.type_matches`, entry for
+    entry, over the SHIPPED seed catalog — not a lookalike heuristic.
+
+    A second, drifting matcher (or a filter layered on top, e.g. silently
+    dropping disabled entries) is caught here even when it agrees on the common
+    cases.
+    """
+    from cograph_client.api_registry.catalog import make_api_source_catalog
+    from cograph_client.api_registry.matching import type_matches
+
+    catalog = make_api_source_catalog()
+    assert catalog.slugs(), "seed catalog is empty — the guard would be vacuous"
+    names = ["Hospital", "Place", "City", "Organization", "Thing", "LineItem",
+             "ClinicalTrial", "Physician", "Spacecraft"]
+    neptune = FakeNeptune({
+        public_graph_uri(): sum(
+            (shape_triples(PUB, n) for n in names), start=[]
+        ),
+        enhanced_graph_uri(): [],
+    })
+    body = _fetch(neptune, catalog=catalog)
+    for name, t in _types_of(body).items():
+        expected = sorted(
+            spec.slug for spec in catalog.all() if type_matches(spec, name)
+        )
+        assert [s["slug"] for s in t["sources"]] == expected, name
+
+
+def test_sources_are_sorted_by_slug():
+    body = _fetch(
+        _one_public_type("Hospital"),
+        catalog=_catalog(
+            _spec("zeta", ["hospital"]),
+            _spec("alpha", ["hospital"]),
+            _spec("mid", ["hospital"]),
+        ),
+    )
+    assert [s["slug"] for s in _types_of(body)["Hospital"]["sources"]] == [
+        "alpha", "mid", "zeta",
+    ]
+
+
+def test_same_name_in_both_layers_gets_the_same_sources():
+    """The registry knows nothing about ontology layers, so a shadowed name must
+    not get two different answers."""
+    neptune = FakeNeptune({
+        public_graph_uri(): shape_triples(PUB, "Hospital"),
+        enhanced_graph_uri(): shape_triples(ENH, "Hospital"),
+    })
+    body = _fetch(neptune, catalog=_catalog(_spec("nppes", ["hospital"])))
+    entries = [t for t in body["types"] if t["name"] == "Hospital"]
+    assert len(entries) == 2
+    assert all([s["slug"] for s in t["sources"]] == ["nppes"] for t in entries)
+
+
+# --- freshness reuses the EXISTING catalog audit's grading -------------------
+
+
+@pytest.mark.parametrize(
+    "verified_at,expected",
+    [
+        ("2026-07-04", "OK"),
+        ("2020-01-01", "STALE"),
+        ("", "UNVERIFIED"),
+        ("not-a-date", "UNVERIFIED"),
+        ("2030-01-01", "FUTURE"),
+    ],
+)
+def test_freshness_grades_come_from_catalog_audit(verified_at, expected):
+    body = _fetch(
+        _one_public_type("Hospital"),
+        catalog=_catalog(_spec("s", ["hospital"], verified_at=verified_at)),
+        today=date(2026, 7, 25),
+    )
+    src = _types_of(body)["Hospital"]["sources"][0]
+    assert src["freshness"] == expected
+    assert src["verified_at"] == verified_at
+
+
+def test_freshness_never_reports_a_live_smoke_status():
+    """The grade is OFFLINE by construction: an ontology read must not make
+    network calls, so EMPTY / UNREACHABLE can never appear."""
+    from cograph_client.api_registry import catalog_audit
+
+    calls = []
+
+    async def _boom(*a, **kw):  # pragma: no cover - must never run
+        calls.append(a)
+        raise AssertionError("live smoke ran during an ontology read")
+
+    original = catalog_audit._smoke_entry
+    catalog_audit._smoke_entry = _boom
+    try:
+        body = _fetch(
+            _one_public_type("Hospital"),
+            catalog=_catalog(_spec("s", ["hospital"])),
+        )
+    finally:
+        catalog_audit._smoke_entry = original
+    assert not calls
+    assert _types_of(body)["Hospital"]["sources"][0]["freshness"] in (
+        "OK", "STALE", "UNVERIFIED", "FUTURE",
+    )
+
+
+# --- degradation: a broken registry must never take down the ontology --------
+
+
+def test_registry_unavailable_degrades_to_empty_sources_not_500(monkeypatch):
+    from cograph_client.api_registry import catalog as catalog_mod
+
+    def _explode(*a, **kw):
+        raise RuntimeError("registry is down")
+
+    monkeypatch.setattr(catalog_mod, "get_api_source_catalog", _explode)
+    r = _app(_seeded()).get("/operator/ontology/global")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # The ONTOLOGY is intact — only the overlay degraded.
+    assert [t["name"] for t in body["types"]] == [
+        "Clinic", "Hospital", "Organization", "Place", "Thing",
+    ]
+    assert all(t["sources"] == [] for t in body["types"])
+
+
+def test_registry_audit_failure_also_degrades(monkeypatch):
+    from cograph_client.api_registry import catalog_audit
+
+    async def _explode(*a, **kw):
+        raise RuntimeError("audit blew up")
+
+    monkeypatch.setattr(catalog_audit, "audit_catalog", _explode)
+    body = _fetch(_one_public_type("Hospital"))
+    assert _types_of(body)["Hospital"]["sources"] == []
+
+
+def test_a_matcher_failure_degrades_that_type_only(monkeypatch):
+    """A spec the matcher chokes on must cost that type its overlay, not the
+    whole request."""
+    from cograph_client.api_registry import matching
+
+    def _explode(spec, entity_type):
+        raise RuntimeError("bad spec")
+
+    monkeypatch.setattr(matching, "type_matches", _explode)
+    body = _fetch(
+        _one_public_type("Hospital"),
+        catalog=_catalog(_spec("nppes", ["hospital"])),
+    )
+    assert _types_of(body)["Hospital"]["sources"] == []
+
+
+# --- tenant isolation: a cross-tenant page shows the GLOBAL catalog only -----
+
+
+def test_a_tenants_private_sources_never_appear():
+    """`/operator/ontology/global` is cross-tenant. Passing a tenant_id into the
+    catalog would leak one workspace's private entries onto the shared canon."""
+    from cograph_client.api_registry.catalog import (
+        reset_api_source_catalog,
+        set_tenant_custom_specs,
+    )
+
+    reset_api_source_catalog()
+    set_tenant_custom_specs("demo-tenant", [_spec("private-hospital-api", ["hospital"])])
+    try:
+        body = _fetch(_one_public_type("Hospital"))
+        slugs = [s["slug"] for s in _types_of(body)["Hospital"]["sources"]]
+        assert "private-hospital-api" not in slugs
+        # Sanity: the global seed DID attach, so the assertion above is not
+        # passing merely because the overlay was empty.
+        assert "nppes" in slugs
+    finally:
+        reset_api_source_catalog()
+
+
+# ============================================================================
+# Attached functions — EXECUTABLE code on a type (read path only)
+# ============================================================================
+
+
+def test_function_attached_to_a_layer_qualified_type_surfaces():
+    neptune = FakeNeptune({
+        public_graph_uri(): [],
+        enhanced_graph_uri(): (
+            shape_triples(ENH, "Place", slots=[{"name": "address"}])
+            + function_triples(
+                ENH, "Place", "distance_to",
+                description="Great-circle distance between two places.",
+                endpoint="https://fn.example/distance",
+            )
+        ),
+    })
+    place = _types_of(_fetch(neptune))["Place"]
+    assert place["functions"] == [{
+        "name": "distance_to",
+        "entity_type": "Place",
+        "description": "Great-circle distance between two places.",
+        "endpoint_url": "https://fn.example/distance",
+        # Not stored in the graph — the model default, same as the tenant route.
+        "tier": "custom",
+    }]
+    # The function join must not disturb the slot fold (row cross-product).
+    assert [a["name"] for a in place["attributes"]] == ["address"]
+
+
+def test_functions_are_sorted_and_optional_fields_degrade():
+    neptune = FakeNeptune({
+        public_graph_uri(): (
+            shape_triples(PUB, "Place")
+            + function_triples(PUB, "Place", "zeta")
+            + function_triples(PUB, "Place", "alpha", endpoint="https://fn/a")
+        ),
+        enhanced_graph_uri(): [],
+    })
+    funcs = _types_of(_fetch(neptune))["Place"]["functions"]
+    assert [f["name"] for f in funcs] == ["alpha", "zeta"]
+    assert funcs[0]["endpoint_url"] == "https://fn/a"
+    # Absent description/endpoint are reported, never fabricated.
+    assert funcs[1]["endpoint_url"] is None
+    assert funcs[1]["description"] == ""
+
+
+def test_type_without_functions_reports_an_empty_list(seeded_body):
+    assert all(t["functions"] == [] for t in seeded_body["types"])
+
+
+def test_the_only_function_WRITER_still_targets_the_bare_tenant_namespace():
+    """Pins the known gap the contract documents: `functions` is empty in
+    practice because `register_function_triple` — the one writer — attaches to
+    `https://cograph.tech/types/<T>`, never to a layer-qualified
+    `types/public/<T>` / `types/x/<T>`.
+
+    This fails the day a global-layer function writer lands, which is exactly
+    when the "empty until a writer exists" note in the model + module docstrings
+    stops being true and must be rewritten.
+    """
+    from cograph_client.graph.ontology_queries import type_uri
+    from cograph_client.graph.queries import register_function_triple
+
+    sparql = register_function_triple(
+        public_graph_uri(), entity_type="Place", function_name="f",
+        endpoint_url="https://fn/a",
+    )
+    assert f"<{type_uri('Place')}>" in sparql
+    assert f"<{PUB}/Place>" not in sparql and f"<{ENH}/Place>" not in sparql
+
+
+def test_a_function_attached_to_the_BARE_tenant_uri_does_not_surface():
+    """The read-side half of the gap above: such a triple attaches to a
+    DIFFERENT subject than the layer-qualified type this browser reads, so it
+    contributes nothing even when it sits inside a layer graph."""
+    neptune = FakeNeptune({
+        public_graph_uri(): (
+            shape_triples(PUB, "Place")
+            + function_triples("https://cograph.tech/types", "Place", "legacy_fn")
+        ),
+        enhanced_graph_uri(): [],
+    })
+    assert _types_of(_fetch(neptune))["Place"]["functions"] == []
+
+
+def test_query_builder_joins_attached_functions():
+    from cograph_client.graph.ontology_queries import full_ontology_detail_query
+
+    sparql = full_ontology_detail_query(public_graph_uri())
+    assert "https://cograph.tech/onto/attachedTo" in sparql
+    assert "?funcName" in sparql
+    assert "?funcEndpoint" in sparql
+
+
+def test_function_fold_is_deterministic_regardless_of_row_order():
+    from cograph_client.graph.global_ontology import _TypeAccumulator
+
+    rows = [
+        {"typeLabel": "Place", "funcName": "f", "funcDesc": "b", "funcEndpoint": "https://z"},
+        {"typeLabel": "Place", "funcName": "f", "funcDesc": "a", "funcEndpoint": "https://a"},
+    ]
+    forward = _TypeAccumulator("Place", "public")
+    for row in rows:
+        forward.absorb(row)
+    reverse = _TypeAccumulator("Place", "public")
+    for row in reversed(rows):
+        reverse.absorb(row)
+    assert forward.build([]).model_dump() == reverse.build([]).model_dump()
+    assert len(forward.build([]).functions) == 1
