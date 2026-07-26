@@ -85,6 +85,7 @@ from cograph_client.graph.suppression import fetch_suppressed_entities
 from cograph_client.normalization.inference import list_type_schema
 from cograph_client.config import settings
 from cograph_client.pipeline.a1_validators import screen_row
+from cograph_client.pipeline.discovery_quality import apply_discovery_quality_gate
 from cograph_client.pipeline.manifest import (
     HaltReasonKind,
     RunManifest,
@@ -213,19 +214,18 @@ _DISCOVERY_SOFT_EXTRACT = (
     os.environ.get("COGRAPH_DISCOVERY_SOFT_EXTRACT", "1") != "0"
 )
 
-# ONTA-272: pre-structured fast-path. A provider that returns ALREADY-structured
-# rows keyed by the confirmed attribute set (an API-registry pull with a known
-# field mapping, a structured capture) does not need the open-ended LLM extractor
-# — running it is a non-deterministic detour. When this flag is ON and a provider
-# self-declares ``structured=True`` (read DEFENSIVELY via getattr, so no provider
-# change is required for the default path), that provider's rows commit through the
-# deterministic mapping seam (``resolver.ingest_structured_rows`` →
-# ``ingest_mapped_records``) with NO ``_extract``. Default OFF: the ``resolver.ingest``
-# JSON path is byte-for-byte unchanged (and stays frozen by test_web_ingest_registry),
-# so this is an opt-in rollout switch with a kill-switch, mirroring
-# ``_DISCOVERY_SOFT_EXTRACT`` above.
+# ONTA-272 / quality fix: pre-structured fast-path. A provider that returns
+# ALREADY-structured rows keyed by the confirmed attribute set (API-registry
+# pulls, locate_scrape page-backed A1 rows) must NOT re-run the open-ended LLM
+# multi-type extractor — that detour was the primary source of entity fan-out,
+# junk types (Colour/Asset), and attribute explosion on directory scrapes.
+# When this flag is ON and a provider self-declares ``structured=True`` (read
+# DEFENSIVELY via getattr), rows commit through
+# ``resolver.ingest_structured_rows`` → ``ingest_mapped_records`` with NO
+# ``_extract``. Default ON (2026-07 quality bar): set
+# ``COGRAPH_DISCOVERY_STRUCTURED_FASTPATH=0`` to kill-switch back to soft re-extract.
 _DISCOVERY_STRUCTURED_FASTPATH = (
-    os.environ.get("COGRAPH_DISCOVERY_STRUCTURED_FASTPATH", "0") != "0"
+    os.environ.get("COGRAPH_DISCOVERY_STRUCTURED_FASTPATH", "1") != "0"
 )
 
 # In-session progress observability (ONTA-243). A single (sub-query, provider)
@@ -1692,6 +1692,78 @@ class WebIngestCapability:
                                     )
                             if not batch:
                                 continue  # found rows; all deduped/suppressed/chrome
+                            # DISCOVERY QUALITY GATE: website policy (empty > wrong
+                            # list-page URLs as homepage) + near-dup merge (same
+                            # normalized name or website host → one row). Runs
+                            # after A1 shape validators, before SourceBundle /
+                            # write so soft-reifier and structured fast-path both
+                            # see clean material. Observability only on failure
+                            # to record — never raise into the write path.
+                            try:
+                                qv = apply_discovery_quality_gate(
+                                    batch,
+                                    key_attr,
+                                    list(attributes),
+                                )
+                                if (
+                                    qv.websites_scrubbed
+                                    or qv.near_dups_merged
+                                ):
+                                    batch = qv.rows
+                                    a1_cells_scrubbed += int(
+                                        qv.websites_scrubbed or 0
+                                    )
+                                    for _r in qv.reasons:
+                                        if (
+                                            _r not in a1_drop_reasons
+                                            and len(a1_drop_reasons) < 20
+                                        ):
+                                            a1_drop_reasons.append(_r)
+                                    try:
+                                        if job is not None:
+                                            rec = attach_recorder(job)
+                                            if rec is not None:
+                                                rec.action(
+                                                    StageProjectId.p1,
+                                                    "quality_gate",
+                                                    detail=(
+                                                        f"scrubbed "
+                                                        f"{qv.websites_scrubbed} "
+                                                        f"website cells, merged "
+                                                        f"{qv.near_dups_merged} "
+                                                        f"near-dups → "
+                                                        f"{len(batch)} rows"
+                                                    ),
+                                                    meta={
+                                                        "websites_scrubbed": (
+                                                            qv.websites_scrubbed
+                                                        ),
+                                                        "near_dups_merged": (
+                                                            qv.near_dups_merged
+                                                        ),
+                                                        "rows_out": len(batch),
+                                                        "reasons": qv.reasons[:8],
+                                                        "provider": prov.name,
+                                                    },
+                                                )
+                                    except Exception:  # noqa: BLE001
+                                        logger.warning(
+                                            "web_ingest_quality_gate_trace_failed",
+                                            job_id=(
+                                                job.id if job is not None else None
+                                            ),
+                                            exc_info=True,
+                                        )
+                                else:
+                                    batch = qv.rows
+                            except Exception:  # noqa: BLE001 — gate never sinks write
+                                logger.warning(
+                                    "web_ingest_quality_gate_failed",
+                                    job_id=job.id if job is not None else None,
+                                    exc_info=True,
+                                )
+                            if not batch:
+                                continue
                             # A1 SOURCE BUNDLE (ONTA-346): materialize the
                             # Find→Extract boundary artifact from THIS provider's
                             # post-dedupe batch, BEFORE the extract/write below.
