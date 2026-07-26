@@ -176,12 +176,27 @@ def _looks_like_list_page_url(url: str) -> bool:
 
 
 def _is_website_attr(attr: str) -> bool:
+    """True for entity-homepage attributes — never for citation ``source_url``.
+
+    ``source_url`` contains the token ``url`` but is the list-page citation, not
+    a homepage. Treating it as website caused every row on the same source page
+    to share one host and near-dup-merge into a single entity (CI failure on
+    model-list fixtures).
+    """
     leaf = attr.casefold().strip()
+    if not leaf or leaf in ("source_url", "source"):
+        return False
     if leaf in _WEBSITE_ATTRS:
         return True
-    # token match: home_page_url, primary_website
     tokens = set(re.split(r"[^a-z0-9]+", leaf))
-    return bool(tokens & _WEBSITE_ATTRS)
+    if "source" in tokens:
+        return False  # source_*, *_source — provenance, not homepage
+    # Genuine homepage compounds: primary_website, home_page_url, official_site
+    if tokens & {"website", "homepage", "webpage"}:
+        return True
+    if "url" in tokens and tokens & {"home", "web", "site", "official", "primary"}:
+        return True
+    return False
 
 
 def scrub_website_policy(
