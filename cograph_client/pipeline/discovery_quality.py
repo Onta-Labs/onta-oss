@@ -64,22 +64,25 @@ _LIST_LIKE_HOST_MARKERS = (
     "pinterest.com",
 )
 
-# Path tokens that mark a *directory / list* URL — if website == this shape, scrub.
-_LIST_PATH_TOKENS = (
-    "/list",
-    "/lists/",
-    "/directory",
-    "/directories",
-    "/registry",
-    "/roster",
-    "/members",
-    "/catalogue",
-    "/catalog",
-    "/index.php",
+# Path *segments* (or wiki slug prefixes) that mark a directory / list URL.
+# Matched on path segments after split, NOT as raw substrings — so "/list" does
+# not scrub a real homepage under "/listings" or "/listen".
+_LIST_PATH_SEGMENTS = frozenset({
+    "list",
+    "lists",
+    "directory",
+    "directories",
+    "registry",
+    "roster",
+    "members",
+    "catalogue",
+    "catalog",
+    "index.php",
+})
+_LIST_SLUG_PREFIXES = (
     "list_of_",
     "list-of-",
-    "/wiki/list_of",
-    "/wiki/list_of_",
+    "list_of",
 )
 
 
@@ -89,15 +92,21 @@ def _norm_ws(value: object) -> str:
 
 def normalize_entity_key(value: object) -> str:
     """Collapse a name for near-dup matching: lower, strip punctuation, drop
-    common legal/edu suffixes so 'UBC' stays distinct from 'University of X'
-    only when the surface forms truly differ after normalization."""
+    legal-entity fluff only (Inc/LLC/Corp).
+
+    Deliberately does **not** strip educational type words (university, college,
+    institute, school, …). Those distinguish real institutions
+    (St. Mary's College ≠ St. Mary's University; Columbia College ≠ Columbia
+    University). Linking "UBC" to "University of British Columbia" is the job of
+    a distinctive website host, not of over-normalizing the name.
+    """
     s = _norm_ws(value).casefold()
     if not s:
         return ""
-    # Drop common trailing legal fluff that creates false near-dups.
+    # Leading "the" is noise; legal suffixes only (not edu type words).
+    s = re.sub(r"^\s*the\s+", "", s)
     s = re.sub(
-        r"\b(inc|llc|ltd|corp|corporation|university|college|institute|"
-        r"polytechnic|school|the)\b",
+        r"\b(inc|llc|ltd|corp|corporation|co|company|plc)\b\.?",
         " ",
         s,
     )
@@ -137,18 +146,31 @@ def _same_page(a: str, b: str) -> bool:
     return _parts(a) == _parts(b)
 
 
+def _path_segments(url: str) -> list[str]:
+    try:
+        path = urlsplit(url if "://" in url else f"https://{url}").path or ""
+    except ValueError:
+        path = url
+    return [p for p in path.casefold().split("/") if p]
+
+
 def _looks_like_list_page_url(url: str) -> bool:
     low = url.casefold()
     host = registrable_host(url)
-    if any(m in host for m in _LIST_LIKE_HOST_MARKERS if not m.endswith(".")):
-        # wikipedia etc. — homepage of an entity is rarely these hosts *unless*
-        # the path is a single article about the entity. List-of pages always scrub.
-        if any(tok in low for tok in _LIST_PATH_TOKENS) or "/wiki/list" in low:
+    segs = _path_segments(url)
+    # Wiki list/category pages (never an entity homepage).
+    if "wikipedia.org" in host or "wikidata.org" in host:
+        if any(s.startswith("list_of") or s.startswith("list-of") for s in segs):
             return True
-        # Bare wikipedia.org root or category pages
-        if "wikipedia.org" in host and ("/wiki/list" in low or "/wiki/category:" in low):
+        if any(s.startswith("category:") for s in segs):
             return True
-    if any(tok in low for tok in _LIST_PATH_TOKENS):
+        if "/wiki/list" in low:
+            return True
+    # Path segment is exactly a directory token (not substring of "listings").
+    if any(s in _LIST_PATH_SEGMENTS for s in segs):
+        return True
+    # Wiki-style "list_of_*" slug anywhere in the path.
+    if any(s.startswith(p) for s in segs for p in _LIST_SLUG_PREFIXES):
         return True
     return False
 

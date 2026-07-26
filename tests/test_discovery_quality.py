@@ -97,6 +97,47 @@ def test_near_dup_does_not_collapse_shared_wikipedia_host():
     assert len(kept) == 3
 
 
+def test_near_dup_keeps_college_vs_university_distinct():
+    """Edu type words are identity-bearing — must not over-normalize."""
+    rows = [
+        {"name": "St. Mary's College", "city": "A"},
+        {"name": "St. Mary's University", "city": "B"},
+        {"name": "Columbia College", "city": "C"},
+        {"name": "Columbia University", "city": "D"},
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows, "name", plan_attrs=["name", "city"]
+    )
+    assert merged == 0
+    assert len(kept) == 4
+
+
+def test_near_dup_merges_legal_suffix_only():
+    rows = [
+        {"name": "Acme Inc", "city": "SF"},
+        {"name": "Acme Corp", "website": "https://acme.example"},
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows, "name", plan_attrs=["name", "city", "website"]
+    )
+    assert merged == 1
+    assert len(kept) == 1
+    assert kept[0].get("website") == "https://acme.example"
+    assert kept[0].get("city") == "SF"
+
+
+def test_listings_path_is_not_list_page():
+    """Substring /list must not scrub real /listings homepages."""
+    row = {
+        "name": "Listings Co",
+        "website": "https://listings.example.com/homes",
+        "source_url": "https://directory.example.com/directory",
+    }
+    fixed, reasons = scrub_website_policy(row)
+    assert fixed.get("website") == "https://listings.example.com/homes"
+    assert reasons == []
+
+
 def test_quality_gate_end_to_end():
     list_url = "https://en.wikipedia.org/wiki/List_of_universities_in_British_Columbia"
     rows = [
@@ -162,6 +203,9 @@ def test_page_yield_score_nav_shell_low():
 
 
 def test_normalize_and_host_helpers():
-    assert "british" in normalize_entity_key("The University of British Columbia")
+    # Leading "the" stripped; "university" KEPT (identity-bearing).
+    key = normalize_entity_key("The University of British Columbia")
+    assert key.startswith("university")
+    assert "british" in key
     assert registrable_host("https://www.ubc.ca/foo") == "ubc.ca"
     assert registrable_host("ubc.ca") == "ubc.ca"
