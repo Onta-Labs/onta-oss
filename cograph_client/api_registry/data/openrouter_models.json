@@ -1,0 +1,106 @@
+{
+  "slug": "openrouter_models",
+  "title": "OpenRouter Models",
+  "publisher": "OpenRouter",
+  "description": "Authoritative catalog of models available on OpenRouter (openrouter.ai), including chat, multimodal, speech/TTS, and audio models. Prefer this over generic web search for any ask about models offered ON OpenRouter — which models exist, their ids (provider/slug), display names, modalities, and pricing. Free public JSON API; no key required. For text-to-speech / speech / TTS / voice models, use the speech endpoint (output_modalities=speech). For the full catalog use list.",
+  "docs_url": "https://openrouter.ai/docs/api-reference/models/get-models",
+  "coverage": {
+    "entity_kinds": [
+      "model",
+      "llm",
+      "chat_model",
+      "tts_model",
+      "speech_model",
+      "voice_model",
+      "openrouter_model"
+    ],
+    "attributes": [
+      "name",
+      "display_name",
+      "modality",
+      "input_price",
+      "context_length",
+      "description"
+    ],
+    "geo": "global (cloud API catalog)",
+    "temporal": "current catalog (live API)",
+    "example_asks": [
+      "TTS models offered on OpenRouter",
+      "speech models on OpenRouter",
+      "list all OpenRouter models",
+      "chat models available on OpenRouter",
+      "what models does OpenRouter offer for text-to-speech"
+    ]
+  },
+  "authority_level": "source_of_truth",
+  "base_url": "https://openrouter.ai",
+  "auth": { "mode": "none" },
+  "cost_per_call": 0.0,
+  "rate_limit_per_min": 0,
+  "persist_ok": true,
+  "tos_note": "Public OpenRouter Models API. Respect OpenRouter terms when persisting.",
+  "enabled": true,
+  "entitlement": "free",
+  "verified_at": "2026-07-16",
+  "endpoints": [
+    {
+      "name": "speech",
+      "method": "GET",
+      "path": "/api/v1/models",
+      "query": { "output_modalities": "speech" },
+      "params": [
+        {
+          "name": "output_modalities",
+          "target": "output_modalities",
+          "required": false,
+          "default": "speech",
+          "description": "Modality filter; defaults to speech for the TTS endpoint."
+        }
+      ],
+      "result_path": "data",
+      "field_mappings": {
+        "name": "id",
+        "display_name": "name",
+        "modality": "architecture.modality",
+        "input_price": "pricing.prompt",
+        "context_length": "context_length",
+        "description": "description"
+      },
+      "pagination": {
+        "style": "none",
+        "page_size": 200,
+        "max_pages": 1
+      },
+      "smoke_bindings": { "output_modalities": "speech" }
+    },
+    {
+      "name": "list",
+      "method": "GET",
+      "path": "/api/v1/models",
+      "query": {},
+      "params": [
+        {
+          "name": "output_modalities",
+          "target": "output_modalities",
+          "required": false,
+          "description": "Optional modality filter, e.g. 'speech' for TTS / text-to-speech models, 'text' for chat."
+        }
+      ],
+      "result_path": "data",
+      "field_mappings": {
+        "name": "id",
+        "display_name": "name",
+        "modality": "architecture.modality",
+        "input_price": "pricing.prompt",
+        "context_length": "context_length",
+        "description": "description"
+      },
+      "pagination": {
+        "style": "none",
+        "page_size": 500,
+        "max_pages": 1
+      },
+      "smoke_bindings": { "output_modalities": "speech" }
+    }
+  ]
+}
