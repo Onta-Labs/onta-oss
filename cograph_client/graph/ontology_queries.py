@@ -970,12 +970,26 @@ def full_ontology_detail_query(graph_uri: str) -> str:
     (``types/public/<T>`` / ``types/x/<T>``). Superset of
     :func:`get_full_ontology_query`, which the NL pipeline uses: this one also
     projects ``?typeComment``, ``?parent``, ``?attrComment`` and ``?core`` — the
-    fields the operator Global-ontology browser searches and renders — and drops
-    the attached-function join it does not need.
+    fields the operator Global-ontology browser searches and renders — and it
+    projects the attached-function join in RICHER form (name + description +
+    endpoint URL, not just ``?funcName``).
 
-    Row shape is one row per (type × parent × attribute) combination; a type
-    with no attributes still yields one row (the attribute block is OPTIONAL),
-    which is what makes an "empty" type visible instead of silently dropped.
+    Row shape is one row per (type × parent × attribute × attached function)
+    combination; a type with no attributes and no functions still yields one row
+    (both blocks are OPTIONAL), which is what makes an "empty" type visible
+    instead of silently dropped. The two OPTIONAL blocks are INDEPENDENT, so a
+    type with A attributes and F functions yields A×F rows — the reader folds
+    them back per (type, slot) / (type, function name) and is idempotent under
+    the repetition, which is why the cross-product is harmless rather than
+    something to work around with a second round trip.
+
+    The function pattern is matched WHOLLY inside the graph being read, so a
+    function surfaces here only when it was declared against a LAYER-QUALIFIED
+    type URI (``types/public/<T>`` / ``types/x/<T>``) in that layer's graph.
+    Nothing writes those yet — ``queries.register_function_triple`` still mints
+    ``onto/attachedTo https://cograph.tech/types/<Type>`` in the bare tenant
+    namespace — so on the Global layers this join legitimately returns nothing
+    until a global-layer writer exists.
 
     Deliberately LENIENT on the attribute pattern: it keys on
     ``rdfs:domain`` + ``rdfs:label`` and does NOT require ``rdf:type
@@ -997,7 +1011,8 @@ def full_ontology_detail_query(graph_uri: str) -> str:
     """
     return (
         f"SELECT ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
-        f"?attrComment ?range ?core FROM <{graph_uri}>\n"
+        f"?attrComment ?range ?core ?funcName ?funcDesc ?funcEndpoint "
+        f"FROM <{graph_uri}>\n"
         f"WHERE {{\n"
         f"  ?type <{RDF}#type> <{RDFS}#Class> .\n"
         f"  ?type <{RDFS}#label> ?typeLabel .\n"
@@ -1010,9 +1025,15 @@ def full_ontology_detail_query(graph_uri: str) -> str:
         f"    OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
         f"    OPTIONAL {{ ?attr <{OMNIX_ONTO}/coreSlot> ?core }}\n"
         f"  }}\n"
+        f"  OPTIONAL {{\n"
+        f"    ?func <{OMNIX_ONTO}/attachedTo> ?type .\n"
+        f"    ?func <{OMNIX_ONTO}/name> ?funcName .\n"
+        f"    OPTIONAL {{ ?func <{OMNIX_ONTO}/description> ?funcDesc }}\n"
+        f"    OPTIONAL {{ ?func <{OMNIX_ONTO}/endpointUrl> ?funcEndpoint }}\n"
+        f"  }}\n"
         f"}}\n"
         f"ORDER BY ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "
-        f"?attrComment ?range ?core"
+        f"?attrComment ?range ?core ?funcName ?funcDesc ?funcEndpoint"
     )
 
 

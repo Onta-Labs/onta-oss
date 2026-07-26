@@ -90,6 +90,16 @@ class Settings(BaseSettings):
     # (paid/licensed) API entries with no OSS change.
     api_registry_plugin: str = ""
 
+    # Optional type-SKILLS plugin: a dotted "module.path:callable" imported at
+    # app startup. The callable is invoked with no arguments and is expected to
+    # contribute the CURATED Global-Enhanced skill layer via
+    # cograph_client.skills.register_skill_layer. Without it, only the OSS
+    # Global-Public seed content is loaded and resolution degrades to
+    # Tenant > Public. Keeps cograph-oss content-neutral: the mechanism
+    # (storage, resolution, CRUD, injection seam) is OSS; the curated premium
+    # PROSE is not.
+    skills_plugin: str = ""
+
     # Optional free-text geocoder plugin (ONTA-249): a dotted "module.path:callable"
     # imported at app startup. The callable is invoked with no arguments and is
     # expected to register a premium Geocoder via
