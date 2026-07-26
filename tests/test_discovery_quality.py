@@ -138,6 +138,37 @@ def test_listings_path_is_not_list_page():
     assert reasons == []
 
 
+def test_source_url_is_not_website_identity():
+    """Rows sharing a list-page source_url must NOT near-dup-merge via host."""
+    rows = [
+        {
+            "name": "anthropic/claude-opus-4-8",
+            "context_length": "200000",
+            "source_url": "https://src.example/page-0",
+        },
+        {
+            "name": "openai/gpt-5",
+            "context_length": "400000",
+            "source_url": "https://src.example/page-0",
+        },
+        {
+            "name": "google/gemini-2.5-flash",
+            "context_length": "1000000",
+            "source_url": "https://src.example/page-0",
+        },
+        {
+            "name": "meta/llama-4",
+            "context_length": "128000",
+            "source_url": "https://src.example/page-0",
+        },
+    ]
+    v = apply_discovery_quality_gate(
+        rows, "name", ["name", "context_length"]
+    )
+    assert v.near_dups_merged == 0
+    assert len(v.rows) == 4
+
+
 def test_quality_gate_end_to_end():
     list_url = "https://en.wikipedia.org/wiki/List_of_universities_in_British_Columbia"
     rows = [
