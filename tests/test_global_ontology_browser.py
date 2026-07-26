@@ -1097,3 +1097,292 @@ def test_function_fold_is_deterministic_regardless_of_row_order():
         reverse.absorb(row)
     assert forward.build([]).model_dump() == reverse.build([]).model_dump()
     assert len(forward.build([]).functions) == 1
+
+
+# ============================================================================
+# Attached SKILLS — curated PROSE on a type (read path only, GLOBAL layers only)
+#
+# Skills TEACH, functions COMPUTE (boundary doc §27). These assertions are about
+# three things and nothing else: that curated global content surfaces, that the
+# BODY is not dragged through an ontology read, and that a workspace's private
+# skills are structurally unreachable from this cross-tenant page.
+# ============================================================================
+
+
+@pytest.fixture
+def clean_skill_registry():
+    """Each skills test owns the process-wide registry outright.
+
+    The registry is module-global and memoized, so a test that registers content
+    would otherwise bleed into the next one — and the OSS seed dir ships empty,
+    so a clean registry means a genuinely empty overlay to assert against.
+    """
+    from cograph_client.skills import reset_skill_layers
+
+    reset_skill_layers()
+    try:
+        yield
+    finally:
+        reset_skill_layers()
+
+
+def _register(*skills, layer=None):
+    """Register curated skills through the subsystem's OWN public seam — the
+    same call the premium overlay makes. Never by poking module state: a test
+    that bypasses `register_skill_layer` would also bypass the tenant guard it
+    enforces, which is half of what these tests exist to check."""
+    from cograph_client.graph.layers import Layer
+    from cograph_client.skills import register_skill_layer
+
+    register_skill_layer(layer or Layer.PUBLIC, list(skills))
+
+
+def _skill(slug: str, type_name: str, body: str = "Some guidance.", **kw):
+    from cograph_client.skills import TypeSkill
+
+    return TypeSkill(slug=slug, type_name=type_name, body=body, **kw)
+
+
+def test_curated_global_skill_surfaces_on_its_type(clean_skill_registry):
+    _register(
+        _skill(
+            "billing-not-buildings",
+            "Hospital",
+            body="A Hospital is a billing entity, not a building.",
+            title="Billing, not buildings",
+            summary="Never merge two hospitals sharing a street address.",
+        )
+    )
+    hospital = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]
+    assert [s["slug"] for s in hospital["skills"]] == ["billing-not-buildings"]
+    assert hospital["skills"][0]["title"] == "Billing, not buildings"
+    assert hospital["skills"][0]["summary"] == (
+        "Never merge two hospitals sharing a street address."
+    )
+
+
+def test_skill_carries_only_real_fields_and_no_body(clean_skill_registry):
+    """The contract mirrors the skills API's own list projection (SkillSummary):
+    identity + authored metadata + a derived preview. A `body` key here would be
+    the performance regression this design exists to avoid."""
+    _register(_skill("s1", "Hospital", body="B" * 50, title="T", summary="S", version=3))
+    skill = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]["skills"][0]
+    assert set(skill) == {
+        "slug", "type_name", "title", "summary", "excerpt",
+        "body_chars", "layer", "enabled", "version",
+    }
+    assert "body" not in skill
+    assert skill == {
+        "slug": "s1",
+        "type_name": "Hospital",
+        "title": "T",
+        "summary": "S",
+        "excerpt": "B" * 50,
+        "body_chars": 50,
+        "layer": "public",
+        "enabled": True,
+        "version": 3,
+    }
+
+
+def test_a_long_body_is_excerpted_not_inlined(clean_skill_registry):
+    """A 20k body (the validator's ceiling) must not ride along whole."""
+    from cograph_client.graph.global_ontology import SKILL_EXCERPT_CHARS
+    from cograph_client.skills import MAX_BODY_CHARS
+
+    # A 9-char word deliberately does NOT divide the excerpt budget, so the raw
+    # cut lands MID-WORD ("…alph") and the word-boundary rule is observable. A
+    # word length that divides it evenly would make this test pass with the
+    # boundary logic deleted.
+    body = ("alphabet " * 2500)[:MAX_BODY_CHARS]
+    assert SKILL_EXCERPT_CHARS % len("alphabet ") != 0
+    _register(_skill("long", "Hospital", body=body))
+    skill = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]["skills"][0]
+    assert skill["body_chars"] == len(body) == MAX_BODY_CHARS
+    # Bounded — and the +1 is only the announcing ellipsis.
+    assert len(skill["excerpt"]) <= SKILL_EXCERPT_CHARS + 1
+    assert skill["excerpt"].endswith("…")
+    # Cut on a word boundary: no half word before the ellipsis.
+    assert skill["excerpt"][:-1].endswith("alphabet")
+
+
+def test_excerpt_collapses_whitespace_and_keeps_short_bodies_whole(clean_skill_registry):
+    _register(
+        _skill("md", "Hospital", body="# Heading\n\n- one\n-  two\n\n\nTrailing.\n")
+    )
+    skill = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]["skills"][0]
+    assert skill["excerpt"] == "# Heading - one - two Trailing."
+    # A body that fits is carried WHOLE and is not falsely marked truncated.
+    assert not skill["excerpt"].endswith("…")
+    assert skill["body_chars"] == len("# Heading\n\n- one\n-  two\n\n\nTrailing.\n")
+
+
+def test_skills_sorted_by_slug_then_layer_so_an_override_pair_is_adjacent(
+    clean_skill_registry,
+):
+    """A slug curated in BOTH global layers is the OVERRIDE case (Enhanced wins
+    at resolution). This is the operator's raw browse view, so both rows are
+    shown — adjacent and in a fixed order, never split by the registry's own
+    precedence ordering."""
+    from cograph_client.graph.layers import Layer
+
+    _register(_skill("zeta", "Hospital"), _skill("naming", "Hospital"))
+    _register(_skill("naming", "Hospital"), layer=Layer.ENHANCED)
+    skills = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]["skills"]
+    assert [(s["slug"], s["layer"]) for s in skills] == [
+        ("naming", "enhanced"),
+        ("naming", "public"),
+        ("zeta", "public"),
+    ]
+
+
+def test_a_skills_layer_may_differ_from_the_types_layer(clean_skill_registry):
+    """Unlike `registry_layer`, this IS the ontology-layer axis — but it is the
+    SKILL's layer, so a curated ENHANCED skill can legitimately hang off a
+    PUBLIC type. The UI may share the badge; it must not assume the values
+    agree."""
+    from cograph_client.graph.layers import Layer
+
+    _register(_skill("premium-guidance", "Hospital"), layer=Layer.ENHANCED)
+    hospital = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]
+    assert hospital["layer"] == "public"
+    assert hospital["skills"][0]["layer"] == "enhanced"
+
+
+def test_attachment_is_case_insensitive_and_type_name_is_the_skills_own(
+    clean_skill_registry,
+):
+    """`global_skills_for_type` casefolds, so the skill's own spelling can
+    differ from the type's — and it is the skill's spelling the canonical
+    `/skills/{type_name}/{slug}` read wants."""
+    _register(_skill("s", "hospital"))
+    hospital = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]
+    assert [s["type_name"] for s in hospital["skills"]] == ["hospital"]
+
+
+def test_type_with_no_curated_skill_gets_an_empty_list(clean_skill_registry):
+    _register(_skill("s", "Hospital"))
+    body = _fetch(_one_public_type("Place"))
+    assert _types_of(body)["Place"]["skills"] == []
+
+
+def test_same_name_in_both_layers_gets_the_same_skills(clean_skill_registry):
+    """The registry is keyed by type NAME and knows nothing about ontology
+    layers, so the two entries of a shadowed name must not disagree."""
+    _register(_skill("s", "Organization"))
+    neptune = FakeNeptune({
+        public_graph_uri(): shape_triples(PUB, "Organization"),
+        enhanced_graph_uri(): shape_triples(ENH, "Organization"),
+    })
+    entries = [t for t in _fetch(neptune)["types"] if t["name"] == "Organization"]
+    assert len(entries) == 2
+    assert entries[0]["skills"] == entries[1]["skills"]
+    assert entries[0]["skills"][0]["slug"] == "s"
+
+
+def test_a_disabled_skill_is_still_listed_and_says_so(clean_skill_registry):
+    """The raw browse view shows what is authored; `enabled: false` is the fact
+    that it is not injected into any prompt (and that it suppresses a same-slug
+    skill below it), not a reason to hide the row."""
+    _register(_skill("off", "Hospital", enabled=False))
+    skills = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]["skills"]
+    assert [(s["slug"], s["enabled"]) for s in skills] == [("off", False)]
+
+
+def test_skills_subsystem_failure_degrades_to_empty_not_500(
+    monkeypatch, clean_skill_registry
+):
+    import cograph_client.skills as skills_pkg
+
+    def _explode(*a, **kw):
+        raise RuntimeError("skills registry is down")
+
+    # Patch the attribute the assembler's LAZY IMPORT actually binds
+    # (`from cograph_client.skills import global_skills_for_type`) — patching
+    # `skills.registry` instead would leave the package re-export untouched and
+    # this test would pass without exercising the degradation at all.
+    monkeypatch.setattr(skills_pkg, "global_skills_for_type", _explode)
+    # Register content for a seeded type so a NON-degraded run would return a
+    # non-empty overlay: without this the assertion below holds trivially.
+    _register(_skill("s", "Hospital"))
+    r = _app(_seeded()).get("/operator/ontology/global")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # The ONTOLOGY is intact — only the overlay degraded.
+    assert [t["name"] for t in body["types"]] == [
+        "Clinic", "Hospital", "Organization", "Place", "Thing",
+    ]
+    assert all(t["skills"] == [] for t in body["types"])
+
+
+# --- tenant isolation: a cross-tenant page shows the GLOBAL layers only -------
+
+
+def test_a_tenants_private_skills_never_appear(clean_skill_registry):
+    """`/operator/ontology/global` is cross-tenant. A workspace's authored
+    skills are its own data and must not surface on the shared canon."""
+    import asyncio
+
+    from cograph_client.graph.layers import Layer
+    from cograph_client.skills import InMemoryTypeSkillStore, TypeSkill
+
+    store = InMemoryTypeSkillStore()
+    asyncio.run(
+        store.upsert(
+            TypeSkill(
+                slug="workspace-private",
+                type_name="Hospital",
+                body="Internal-only guidance for this one workspace.",
+                layer=Layer.TENANT,
+                tenant_id="demo-tenant",
+            )
+        )
+    )
+    # Sanity: the tenant DID author it, and its own workspace can resolve it —
+    # so the assertion below is not passing merely because the write no-oped.
+    resolved = asyncio.run(
+        __import__(
+            "cograph_client.skills", fromlist=["resolve_skills"]
+        ).resolve_skills("Hospital", tenant_id="demo-tenant", store=store)
+    )
+    assert [s.slug for s in resolved] == ["workspace-private"]
+
+    _register(_skill("curated", "Hospital"))
+    hospital = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]
+    slugs = [s["slug"] for s in hospital["skills"]]
+    assert "workspace-private" not in slugs
+    # And the global overlay DID attach, so this is a real exclusion rather
+    # than an empty overlay passing for one.
+    assert slugs == ["curated"]
+
+
+def test_the_read_function_cannot_carry_a_tenant_row_at_all(clean_skill_registry):
+    """Structural, not filtered: the ONLY writer into the registry this page
+    reads REFUSES the tenant layer outright and blanks `tenant_id` on
+    everything it accepts. There is no tenant row for the assembler to have to
+    filter out — which is why `_SkillIndex` does not have such a filter."""
+    from cograph_client.graph.layers import Layer
+    from cograph_client.skills import global_skills_for_type, register_skill_layer
+
+    with pytest.raises(ValueError, match="GLOBAL layers only"):
+        register_skill_layer(Layer.TENANT, [_skill("t", "Hospital")])
+
+    register_skill_layer(
+        Layer.PUBLIC,
+        [_skill("smuggled", "Hospital", tenant_id="demo-tenant", layer=Layer.TENANT)],
+    )
+    got = global_skills_for_type("Hospital")
+    assert [(s.slug, s.layer, s.tenant_id) for s in got] == [
+        ("smuggled", Layer.PUBLIC, None)
+    ]
+
+
+def test_skills_reader_takes_no_tenant_context(clean_skill_registry):
+    """A guard on the SHAPE of the seam: give `global_skills_for_type` a tenant
+    parameter and this page would be one keyword argument away from leaking."""
+    import inspect
+
+    from cograph_client.skills import global_skills_for_type
+
+    params = inspect.signature(global_skills_for_type).parameters
+    assert list(params) == ["type_name", "layer"]

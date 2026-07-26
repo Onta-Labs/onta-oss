@@ -31,8 +31,17 @@ Two things a type carries beyond its own triples:
   LAYER'S GRAPH. Read path only, and empty in practice today: no writer mints a
   function against a layer-qualified type URI yet (see
   :func:`full_ontology_detail_query`'s note). This field covers functions and
-  nothing else; a type's human-authored SKILLS (prose taught to an LM agent) are
-  a separate capability owned elsewhere and are deliberately not modeled here.
+  nothing else.
+* ``skills`` — the curated GLOBAL-layer markdown PROSE attached to the type, for
+  an LM agent to read (boundary doc §27). Functions COMPUTE, skills TEACH: two
+  subsystems, two storage layers, two consumers — never merge the fields. Read
+  from :func:`~cograph_client.skills.registry.global_skills_for_type`, which is
+  a plain synchronous registry lookup over the two GLOBAL layers and takes no
+  tenant context, so a workspace's private tenant-layer skills (which live in
+  the durable store, never in the registry) cannot surface on this cross-tenant
+  page. Bodies are NOT inlined — see
+  :class:`~cograph_client.models.ontology.GlobalOntologySkill` for why, and for
+  the canonical route that serves a full body on demand.
 
 Degradation (mirrors :func:`~cograph_client.graph.layers.fetch_types_by_layer`,
 ADR 0002 §1): a layer whose graph is missing or whose query raises is reported
@@ -42,6 +51,8 @@ layer is unaffected and the request still returns 200. An EMPTY Global ontology
 an error. The registry degrades the same way: an unavailable/erroring/
 unimportable catalog yields ``sources: []`` on every type, never a failed
 ontology read — the ontology is the payload, the sources are an overlay on it.
+The skills overlay degrades identically (an unimportable or erroring skills
+subsystem yields ``skills: []`` on every type).
 """
 
 from __future__ import annotations
@@ -69,6 +80,7 @@ from cograph_client.models.ontology import (
     GlobalOntologyLayer,
     GlobalOntologyRelationship,
     GlobalOntologyResponse,
+    GlobalOntologySkill,
     GlobalOntologySource,
     GlobalOntologyType,
 )
@@ -195,6 +207,7 @@ class _TypeAccumulator:
         self,
         subtypes: list[str],
         sources: list[GlobalOntologySource] | None = None,
+        skills: list[GlobalOntologySkill] | None = None,
     ) -> GlobalOntologyType:
         attributes: list[GlobalOntologyAttribute] = []
         relationships: list[GlobalOntologyRelationship] = []
@@ -261,6 +274,7 @@ class _TypeAccumulator:
             relationships=relationships,
             sources=list(sources or []),
             functions=functions,
+            skills=list(skills or []),
         )
 
 
@@ -377,18 +391,130 @@ async def _build_source_index(
     return _SourceIndex(specs, grades)
 
 
+# --------------------------------------------------------------------------- #
+# Skills overlay — curated PROSE attached to a type (boundary doc §27)
+# --------------------------------------------------------------------------- #
+
+#: Characters of body carried inline as ``excerpt``. Sized to show a paragraph —
+#: enough that the browser can actually convey what a skill SAYS, which is the
+#: whole point of a prose tab — while keeping the worst case bounded: a body may
+#: be 20 000 chars (``skills.models.MAX_BODY_CHARS``) and this endpoint returns
+#: every type in both global layers in ONE payload, so inlining bodies would
+#: turn an ontology read into a document download. The full text stays one
+#: canonical request away (``GET /graphs/{tenant}/skills/{type_name}/{slug}``).
+SKILL_EXCERPT_CHARS = 400
+
+
+def _excerpt(body: str, limit: int = SKILL_EXCERPT_CHARS) -> str:
+    """A bounded, single-line preview of a markdown body.
+
+    Whitespace runs collapse to single spaces, so markdown structure does NOT
+    survive — deliberate: this is a plain-prose preview, and a half-open code
+    fence or a dangling list marker rendered as markdown would look like
+    corruption. Truncation cuts on a word boundary (when one is reasonably
+    close) and is ANNOUNCED with an ellipsis, so a reader is never handed half a
+    sentence as if it were the whole instruction — the same discipline
+    ``render_skills_block`` applies to its own truncation.
+    """
+    text = " ".join((body or "").split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    space = cut.rfind(" ")
+    if space > limit // 2:
+        cut = cut[:space]
+    return cut.rstrip() + "…"
+
+
+class _SkillIndex:
+    """Answers "which curated GLOBAL skills are attached to type X?".
+
+    Memoized per type NAME for the same reason as :class:`_SourceIndex`: a name
+    declared in BOTH ontology layers asks the same question twice and must get
+    the same answer — the skills registry is keyed by type name, not by the
+    layer of the type asking.
+
+    **Tenant isolation is structural, not a filter here.** The only call is
+    :func:`~cograph_client.skills.registry.global_skills_for_type`, which reads
+    the process-wide curated registry plus the OSS seed directory and takes no
+    tenant argument at all. Tenant-authored skills live in the durable
+    ``TypeSkillStore`` and never enter that registry — ``register_skill_layer``
+    raises on ``Layer.TENANT`` and blanks ``tenant_id`` on everything it
+    accepts. So there is no tenant row for this page to leak, which is why this
+    class does not (and must not) grow a "drop tenant skills" filter: a filter
+    would imply tenant rows can arrive here, and inviting them is the failure
+    mode.
+
+    An EMPTY index is the degradation state: every type gets ``skills: []``.
+    """
+
+    __slots__ = ("_cache",)
+
+    def __init__(self) -> None:
+        self._cache: dict[str, list[GlobalOntologySkill]] = {}
+
+    def for_type(self, type_name: str) -> list[GlobalOntologySkill]:
+        cached = self._cache.get(type_name)
+        if cached is not None:
+            return cached
+        # Lazy import, and tolerant — same contract as the sources overlay: an
+        # unimportable skills subsystem, an unreadable seed directory, or a
+        # malformed registered skill must degrade this OVERLAY to empty, never
+        # fail the ontology read.
+        try:
+            from cograph_client.skills import global_skills_for_type
+
+            skills = list(global_skills_for_type(type_name))
+            # Deterministic and stable: slug first, then the skill's own layer,
+            # so a slug curated in BOTH global layers (the override case) lists
+            # as two ADJACENT rows in a fixed order. `global_skills_for_type`
+            # returns precedence order (Enhanced, then Public), which is the
+            # right order for a PROMPT but leaves a same-slug pair split apart
+            # in a browse list sorted any other way.
+            skills.sort(key=lambda s: (_name_key(s.slug), s.slug, s.layer.value))
+            out = [
+                GlobalOntologySkill(
+                    slug=s.slug,
+                    type_name=s.type_name,
+                    title=s.title,
+                    summary=s.summary,
+                    excerpt=_excerpt(s.body),
+                    # The FULL body's length, not the excerpt's — that gap is
+                    # exactly what tells a reader there is more to fetch.
+                    body_chars=len(s.body or ""),
+                    layer=s.layer.value,
+                    enabled=bool(s.enabled),
+                    version=int(s.version),
+                )
+                for s in skills
+            ]
+        except Exception:
+            logger.warning(
+                "global_ontology_skill_lookup_failed", type_name=type_name, exc_info=True
+            )
+            out = []
+        self._cache[type_name] = out
+        return out
+
+
 async def fetch_global_ontology(
     neptune, *, catalog: Any | None = None, today: date | None = None
 ) -> GlobalOntologyResponse:
     """Assemble the full Global ontology payload — one query per layer graph.
 
     Never raises for an unreachable/erroring layer, nor for an unavailable API
-    source registry; see the module docstring. ``catalog`` / ``today`` are the
-    registry-overlay injection seams described on :func:`_build_source_index`.
+    source registry or skills registry; see the module docstring. ``catalog`` /
+    ``today`` are the registry-overlay injection seams described on
+    :func:`_build_source_index`.
     """
     layer_infos: list[GlobalOntologyLayer] = []
     accumulators: dict[tuple[str, str], _TypeAccumulator] = {}
     sources = await _build_source_index(catalog=catalog, today=today)
+    # No injection seam: the skills registry is a plain process-wide lookup with
+    # no clock and no I/O to fake — tests register curated content through the
+    # subsystem's own public seam (`register_skill_layer`), which is the same
+    # path the premium overlay uses.
+    skills = _SkillIndex()
 
     for layer, graph_uri in GLOBAL_LAYERS:
         available = True
@@ -454,6 +580,7 @@ async def fetch_global_ontology(
                 key=lambda n: (_name_key(n), n),
             ),
             sources.for_type(acc.name),
+            skills.for_type(acc.name),
         )
         for acc in accumulators.values()
     ]

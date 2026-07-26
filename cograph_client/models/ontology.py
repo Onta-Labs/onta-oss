@@ -141,6 +141,98 @@ class GlobalOntologySource(BaseModel):
     )
 
 
+class GlobalOntologySkill(BaseModel):
+    """A curated GLOBAL-layer skill attached to a type — type-attached PROSE
+    whose consumer is an LM agent.
+
+    A skill TEACHES ("a ``Clinic`` here is a billing location, not a building");
+    a :class:`~cograph_client.models.function.FunctionRef` COMPUTES. They are
+    separate subsystems with separate storage and separate consumers — this
+    field is not a second flavour of ``functions`` (boundary doc §27; ADR 0002's
+    "strategy bundles (skills)" phrasing predates the product definition and is
+    stale).
+
+    **The BODY is deliberately not carried.** A skill body is capped at
+    ``skills.models.MAX_BODY_CHARS`` (20 000 chars) and this endpoint returns
+    EVERY type in both global layers in one payload, so inlining bodies would
+    let one ontology read drag hundreds of KB of prose for types the reader
+    never opens. Instead this mirrors the skills API's own list projection
+    (``api/routes/skills.py::SkillSummary``, which carries ``body_chars`` and no
+    body): the authored ``summary``, a bounded ``excerpt`` of the body, the true
+    ``body_chars``, and the identity needed to read the full text on demand from
+    the ONE canonical route that already serves it —
+    ``GET /graphs/{tenant}/skills/{type_name}/{slug}``. No second full-body
+    endpoint is minted for this page; that would be exactly the per-interface
+    endpoint drift the convergence rule forbids.
+
+    Every field is carried verbatim from
+    :class:`~cograph_client.skills.models.TypeSkill` except ``excerpt`` /
+    ``body_chars``, which are derived from its body. Nothing is invented.
+    """
+
+    slug: str = Field(description="Skill id within (type, layer); URL-safe")
+    type_name: str = Field(
+        description=(
+            "The type name the skill declares itself attached to. Normally the "
+            "enclosing type's name, but attachment is matched CASE-INSENSITIVELY, "
+            "so the two can differ in case — this is the exact spelling the "
+            "canonical `/graphs/{tenant}/skills/{type_name}/{slug}` read wants."
+        )
+    )
+    title: str = Field(default="", description="Human title; empty ⇒ fall back to the slug")
+    summary: str = Field(
+        default="",
+        description=(
+            "The AUTHORED one-line gist (front-matter `summary`), capped at 500 "
+            "chars by validation. Empty is common — it is optional on the author's "
+            "side — which is why `excerpt` exists as well."
+        ),
+    )
+    excerpt: str = Field(
+        default="",
+        description=(
+            "First ~400 chars of the markdown body with runs of whitespace "
+            "collapsed, cut on a word boundary and suffixed with '…' when it was "
+            "truncated. DERIVED, never authored. Whitespace collapsing means "
+            "markdown structure (headings, bullets) does not survive it — render "
+            "it as a plain prose preview, never as markdown."
+        ),
+    )
+    body_chars: int = Field(
+        default=0,
+        description=(
+            "Length of the FULL raw body (not the excerpt). `body_chars > "
+            "len(excerpt)` ⇒ there is more text behind the canonical read."
+        ),
+    )
+    layer: str = Field(
+        default="",
+        description=(
+            'The SKILL\'s own ontology layer: "public" or "enhanced". Unlike '
+            "``GlobalOntologySource.registry_layer`` this is the SAME axis as "
+            "``GlobalOntologyType.layer`` and may be rendered with the same badge "
+            "— but it can legitimately DIFFER from the enclosing type's layer: "
+            "skills are looked up by type NAME across both global layers, so a "
+            "public-layer type can carry a curated enhanced-layer skill (and that "
+            "skill is only visible to entitled workspaces at resolution time). "
+            "TENANT-layer skills can never appear here — see "
+            "``GlobalOntologyType.skills``."
+        ),
+    )
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "False ⇒ authored but switched off. A disabled skill is still listed "
+            "(this is the operator's raw browse view) and is NOT injected into any "
+            "agent prompt; it also SUPPRESSES a same-slug skill from a lower layer "
+            "rather than falling through to it (`skills.resolve.merge_layers`)."
+        ),
+    )
+    version: int = Field(
+        default=1, description="Monotonic per-(scope, type, slug) revision, bumped on upsert"
+    )
+
+
 class GlobalOntologyType(BaseModel):
     """One type as declared in ONE Global layer.
 
@@ -181,6 +273,28 @@ class GlobalOntologyType(BaseModel):
             "enclosing type's name; ``tier`` is not stored in the graph and "
             "carries the model default, exactly as the tenant "
             "``GET /graphs/{tenant}/functions`` route reports it."
+        ),
+    )
+    skills: list[GlobalOntologySkill] = Field(
+        default_factory=list,
+        description=(
+            "Curated GLOBAL-layer skills attached to this type NAME — markdown "
+            "prose taught to an LM agent, NOT executable code (that is "
+            "``functions``). Sorted by slug, with the skill's own layer breaking "
+            "ties so a slug curated in BOTH global layers lists as two adjacent "
+            "rows: this is the operator's raw browse view, so that override is "
+            "SHOWN, not silently resolved (Enhanced wins at resolution time). "
+            "Bodies are NOT inlined — see ``GlobalOntologySkill``. "
+            "**Global layers only.** A workspace's private tenant-layer skills "
+            "live in the durable per-tenant store and are structurally "
+            "unreachable from here: this reader calls "
+            "``skills.registry.global_skills_for_type``, which reads only the "
+            "process-wide curated registry (whose writer, ``register_skill_layer``, "
+            "REJECTS ``Layer.TENANT`` and blanks ``tenant_id``) plus the OSS seed "
+            "directory. It never touches the store and takes no tenant context. "
+            "Empty is normal: no curated skill for the name, or the skills "
+            "subsystem was unavailable (which degrades to [] and never fails the "
+            "request)."
         ),
     )
 
