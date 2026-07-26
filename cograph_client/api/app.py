@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, tenants, triples, usage, workspace_invites
+from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.logging import setup_logging
@@ -172,6 +172,31 @@ def _load_api_registry_plugin() -> None:
         logger.error("api_registry_plugin_load_failed", plugin=spec, error=str(exc))
 
 
+def _load_skills_plugin() -> None:
+    """Import and invoke the configured type-SKILLS plugin, if any.
+
+    Format: "module.path:callable". The callable is invoked with no arguments
+    and is expected to contribute the curated Global-Enhanced skill layer via
+    cograph_client.skills.register_skill_layer. Failures are logged but do not
+    prevent startup — without it only the OSS Global-Public seed content is
+    loaded, and resolution degrades to Tenant > Public.
+    """
+    spec = settings.skills_plugin.strip()
+    if not spec:
+        return
+    if ":" not in spec:
+        logger.warning("skills_plugin_invalid_format", spec=spec)
+        return
+    module_name, attr = spec.split(":", 1)
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, attr)
+        fn()
+        logger.info("skills_plugin_loaded", plugin=spec)
+    except Exception as exc:
+        logger.error("skills_plugin_load_failed", plugin=spec, error=str(exc))
+
+
 def _load_secrets_cipher_plugin() -> None:
     """Import and invoke the configured secret-cipher plugin, if any (ONTA-2xx).
 
@@ -329,6 +354,7 @@ def create_app() -> FastAPI:
     _load_governance_plugin()
     _load_web_source_plugin()
     _load_api_registry_plugin()
+    _load_skills_plugin()
     _load_geocoder_plugin()
     _load_secrets_cipher_plugin()
     _load_analytics_plugin()
@@ -376,6 +402,10 @@ def create_app() -> FastAPI:
     # ONTA-2xx: the per-tenant API source registry (webapp/CLI/MCP all ride these
     # canonical routes via the shared SDK — interface-convergence rule).
     app.include_router(api_sources.router, tags=["api_sources"])
+    # Type-attached SKILLS: markdown instruction attached to an entity type,
+    # consumed by LM agents (distinct from FUNCTIONS, which are type-attached
+    # compute). One canonical route set for webapp/CLI/MCP.
+    app.include_router(skills.router, tags=["skills"])
     _register_agent_capabilities()
     _load_router_plugins(app)
     # ONTA-227: make the workspace-registry operating mode visible at startup —
