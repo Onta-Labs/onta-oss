@@ -277,6 +277,10 @@ export class Client {
   pOntology(): string {
     return `${this.base()}/ontology`;
   }
+  /** @internal Workspace-wide Active type counts (ONTA-409 KgStats union). */
+  pOntologyTypeCounts(): string {
+    return `${this.base()}/ontology/type-counts`;
+  }
   /** @internal */ pOntologyTypes(): string {
     return `${this.base()}/ontology/types`;
   }
@@ -870,6 +874,21 @@ export class Client {
       this.pOntology(),
       undefined,
       20_000,
+    );
+  }
+
+  /**
+   * Workspace-wide Active type counts — union of `KgStats.type_breakdown`
+   * across every KG in the tenant (`GET /graphs/{tenant}/ontology/type-counts`,
+   * ONTA-409). Powers the Ontology viewer's Active / All pills. Types with
+   * zero instances everywhere are omitted. Empty is `{ types: [] }`.
+   */
+  async ontologyTypeCounts(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      this.pOntologyTypeCounts(),
+      undefined,
+      15_000,
     );
   }
 
@@ -2079,6 +2098,12 @@ export class RawApi {
    *  (ONTA-397/408 browser payload). */
   ontology(init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pOntology(), init);
+  }
+
+  /** `GET /graphs/{tenant}/ontology/type-counts` — workspace-wide Active
+   *  type counts (ONTA-409 KgStats union). */
+  ontologyTypeCounts(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pOntologyTypeCounts(), init);
   }
 
   /** `GET /graphs/{tenant}/ontology/types` — list ontology types. */
