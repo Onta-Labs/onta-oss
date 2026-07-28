@@ -14,10 +14,11 @@ them together as "strategy bundles (skills)"; that phrasing predates the
 product definition and does not describe this feature.)
 
 Scoping mirrors the ontology layers (``graph/layers.py``): a skill is attached
-to a type IN A LAYER, so the same type name can carry a universal
-Global-Public skill, a curated Global-Enhanced one, and a workspace-private
-Tenant one at the same time. Resolution is union-with-shadowing — see
-:mod:`cograph_client.skills.resolve`.
+to a type IN A LAYER. Under the layer content matrix (ONTA-400) **Public may
+not carry skills** — only Enhanced and Tenant do. The model still tags a
+``layer`` so resolution (union-with-shadowing; see
+:mod:`cograph_client.skills.resolve`) and the reserved-empty Public seed path
+stay coherent; writers refuse non-empty Public registration at the seam.
 
 Boundary: OSS. Pure ``cograph_client.*`` / stdlib — no ``from cograph.*``.
 """

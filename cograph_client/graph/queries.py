@@ -290,6 +290,30 @@ def register_function_triple(
     endpoint_url: str,
     description: str = "",
 ) -> str:
+    """Build the SPARQL INSERT that attaches a function to a type.
+
+    The type URI is minted under the bare tenant namespace
+    (``types/<entity_type>``). Attaching a function to a **Public**-namespace
+    type (``types/public/<T>``, or a path-shaped ``entity_type`` that would
+    mint one, e.g. ``"public/Person"``) is refused: Public is attributes +
+    relationships only (ONTA-400 / ``LAYER_CONTENT_MATRIX``).
+    """
+    # Local import: queries.py is a low-level SPARQL builder; keep the module
+    # importable without pulling the full layer stack at import time, and avoid
+    # a cycle with anything that imports queries from layer helpers.
+    from cograph_client.graph.layer_content import (
+        ContentKind,
+        assert_permits,
+        is_public_type_uri,
+    )
+    from cograph_client.graph.layers import Layer
+
+    if is_public_type_uri(entity_type):
+        assert_permits(
+            Layer.PUBLIC,
+            ContentKind.FUNCTIONS,
+            what=f"register_function_triple entity_type={entity_type!r}",
+        )
     func_uri = f"https://cograph.tech/functions/{function_name}"
     type_uri = f"https://cograph.tech/types/{entity_type}"
     triples = [
