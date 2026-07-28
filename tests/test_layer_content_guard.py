@@ -392,6 +392,23 @@ def test_register_function_triple_still_accepts_tenant_type():
     assert type_namespace(Layer.PUBLIC) not in sparql
 
 
+def test_register_function_triple_accepts_enhanced_layer():
+    """ONTA-399: Enhanced (layer B) may carry functions; URI + graph are qualified."""
+    from cograph_client.graph.layers import enhanced_graph_uri, layer_type_uri
+
+    sparql = register_function_triple(
+        "https://cograph.tech/graphs/t1",  # overridden for Enhanced
+        entity_type="Place",
+        function_name="premium_distance",
+        endpoint_url="https://api.example.com/distance",
+        layer=Layer.ENHANCED,
+    )
+    assert layer_type_uri(Layer.ENHANCED, "Place") in sparql
+    assert enhanced_graph_uri() in sparql
+    assert "cograph.tech/types/Place>" not in sparql  # bare tenant subject absent
+    assert type_namespace(Layer.PUBLIC) not in sparql
+
+
 # --------------------------------------------------------------------------- #
 # Guard self-tests: the scan actually catches planted violations
 # --------------------------------------------------------------------------- #

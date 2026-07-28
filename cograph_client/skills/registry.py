@@ -1,7 +1,6 @@
-"""The GLOBAL skill layers — curated content, registered at startup.
+"""The GLOBAL skill layers — curated + durable Enhanced content (ONTA-399).
 
-The two global layers are **operator-curated, not user-managed**, exactly like
-the API-source catalog's global layers (``api_registry/catalog.py``):
+The two global layers:
 
 * **Global-Public** (``Layer.PUBLIC``) — **reserved empty** under the layer
   content matrix (ONTA-400 / founder rule: Public is attributes + relationships
@@ -9,23 +8,30 @@ the API-source catalog's global layers (``api_registry/catalog.py``):
   :func:`register_skill_layer` refuses a non-empty skill list for PUBLIC.
   Empty registration remains allowed so the reserved-empty seed path stays
   callable without becoming a content carrier.
-* **Global-Enhanced** (``Layer.ENHANCED``) — the curated premium overlay that
-  *does* carry skills. The proprietary package contributes it through
-  :func:`register_skill_layer`, the same plugin shape as ``register_adapter`` /
-  ``register_web_source`` / ``register_api_source_layer``. **The OSS package
-  never imports the premium tree** — this module holds the seam, not the
-  content.
+* **Global-Enhanced** (``Layer.ENHANCED``) — the paid overlay that *does* carry
+  skills. Two sources, merged at read:
 
-Per-tenant skills are NOT here; they are user-authored data in the durable store
-(``skills/store.py``) and are merged on top at resolution time.
+  1. **Process registry** (this module) — boot-time / file-seeded content via
+     :func:`register_skill_layer` (premium ``OMNIX_SKILLS_PLUGIN`` overlay).
+  2. **Durable store** (``skills/global_store.py``) — authored Enhanced skills
+     that survive restart/redeploy. Preferred authoring path (ONTA-399). The
+     store maintains a write-through process mirror so this sync read path
+     stays await-free for the operator Global Ontology browser.
+
+  On ``(type, slug)`` collision within Enhanced, the **durable store wins**
+  (authored content overrides a stale file seed).
+
+Per-tenant skills are NOT here; they are user-authored data in the durable
+tenant store (``skills/store.py``) and are merged on top at resolution time.
 
 Markdown file format (``skills/data/<Type>/<slug>.md``): an optional YAML-ish
 front-matter block delimited by ``---`` carrying ``title`` / ``summary`` /
 ``enabled``, then the body. The type name comes from the parent DIRECTORY and
 the slug from the FILENAME, so a file can never disagree with its own location.
-The seed directory is reserved empty — do not add skill files there.
+The OSS seed directory is reserved empty — do not add skill files there.
 
 Boundary: OSS. Pure ``cograph_client.*`` / stdlib — no ``from cograph.*``.
+Enhanced *content* is premium; this *mechanism* is OSS.
 """
 
 from __future__ import annotations
@@ -183,25 +189,55 @@ def register_skill_layer(layer: Layer, skills: Iterable[TypeSkill]) -> None:
     _invalidate()
 
 
-def _invalidate() -> None:
+def invalidate_skill_cache() -> None:
+    """Drop the memoized ``global_skills_by_layer`` merge (recomputed next call)."""
     global _cache
     _cache = None
 
 
+# Back-compat alias used by older call sites / the durable store hydrate path.
+_invalidate = invalidate_skill_cache
+
+
 def reset_skill_layers() -> None:
-    """Test helper — drop all registered global content and the memoized merge."""
+    """Test helper — drop all registered global content and the memoized merge.
+
+    Does **not** clear the durable-store mirror (``global_store``); tests that
+    own both call :func:`~cograph_client.skills.global_store.reset_global_type_skill_store`
+    as well.
+    """
     _layers.clear()
     _invalidate()
 
 
+def _merge_enhanced(
+    process: list[TypeSkill], durable: list[TypeSkill]
+) -> list[TypeSkill]:
+    """Merge process-registry + durable Enhanced skills; durable wins on slug."""
+    by_key: dict[tuple[str, str], TypeSkill] = {}
+    order: list[tuple[str, str]] = []
+    for skill in process:
+        k = (skill.type_name.casefold(), skill.slug)
+        if k not in by_key:
+            order.append(k)
+        by_key[k] = skill
+    for skill in durable:
+        k = (skill.type_name.casefold(), skill.slug)
+        if k not in by_key:
+            order.append(k)
+        by_key[k] = skill  # durable overwrites
+    return [by_key[k] for k in order]
+
+
 def global_skills_by_layer() -> dict[Layer, list[TypeSkill]]:
-    """All curated global skills, per layer, memoized.
+    """All global skills per layer, memoized (process registry + durable mirror).
 
     The OSS seed directory is loaded lazily on first call (so importing this
     module never touches the filesystem). It is **reserved empty** — Public
-    may not carry skills (ONTA-400). A non-empty seed is a hard error so a
+    may not carry skills (ONTA-400). A non-empty seed is a hard error so an
     accidentally-committed markdown file cannot silently attach skills to
-    Public. Registered Enhanced content is then merged in.
+    Public. Registered Enhanced content is then merged with the durable-store
+    write-through mirror (ONTA-399); durable wins on ``(type, slug)``.
     """
     global _cache
     if _cache is not None:
@@ -215,7 +251,8 @@ def global_skills_by_layer() -> dict[Layer, list[TypeSkill]]:
             f"OSS skills seed under skills/data must stay empty — Public may "
             f"not carry skills (ONTA-400 / LAYER_CONTENT_MATRIX); found "
             f"{len(seed)} skill file(s). Move curated content to "
-            f"register_skill_layer(Layer.ENHANCED, ...)."
+            f"register_skill_layer(Layer.ENHANCED, ...) or the durable "
+            f"GlobalTypeSkillStore."
         )
     for layer, skills in _layers.items():
         # Defence in depth: a PUBLIC bucket should never hold content after
@@ -229,6 +266,21 @@ def global_skills_by_layer() -> dict[Layer, list[TypeSkill]]:
             continue
         merged.setdefault(layer, [])
         merged[layer].extend(skills)
+
+    # Durable Enhanced mirror (survives restart when hydrated from Postgres).
+    # Local import keeps registry importable without pulling the store module
+    # at package import time.
+    try:
+        from cograph_client.skills.global_store import durable_skills_mirror
+
+        durable = durable_skills_mirror()
+    except Exception:
+        durable = {}
+    durable_enh = list(durable.get(Layer.ENHANCED, []) or [])
+    process_enh = list(merged.get(Layer.ENHANCED, []) or [])
+    if process_enh or durable_enh:
+        merged[Layer.ENHANCED] = _merge_enhanced(process_enh, durable_enh)
+
     _cache = merged
     return merged
 
@@ -265,6 +317,7 @@ def global_skills_for_type(
 __all__ = [
     "register_skill_layer",
     "reset_skill_layers",
+    "invalidate_skill_cache",
     "global_skills_by_layer",
     "global_skills_for_type",
     "load_skill_dir",

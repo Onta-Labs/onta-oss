@@ -19,6 +19,7 @@ from cograph_client.skills import (
     merge_layers,
     register_skill_layer,
     render_skills_block,
+    reset_global_type_skill_store,
     reset_skill_layers,
     reset_type_skill_store,
     resolve_skills,
@@ -36,14 +37,16 @@ from cograph_client.skills.store import PostgresTypeSkillStore
 
 @pytest.fixture(autouse=True)
 def _clean_skill_state():
-    """Skills keep two process-wide singletons (the memoized store and the
-    registered global layers). Reset both around every test so ordering can
+    """Skills keep process-wide singletons (tenant store, global durable store,
+    registered global layers). Reset all around every test so ordering can
     never make an assertion pass for the wrong reason."""
     reset_skill_layers()
     reset_type_skill_store()
+    reset_global_type_skill_store()
     yield
     reset_skill_layers()
     reset_type_skill_store()
+    reset_global_type_skill_store()
 
 
 def _skill(slug="notes", type_name="Person", layer=Layer.TENANT, **kw):

@@ -93,11 +93,9 @@ def function_triples(
     description: str | None = None,
     endpoint: str | None = None,
 ) -> list[tuple[str, str, str]]:
-    """The triples ``queries.register_function_triple`` writes, but attached to a
-    LAYER-QUALIFIED type URI — the shape a future global-layer function writer
-    must emit for this read path to see it. ``register_function_triple`` itself
-    still mints the BARE tenant ``types/<T>`` URI, which is exactly why no
-    function surfaces here today."""
+    """The triples ``queries.register_function_triple`` writes when attached to a
+    LAYER-QUALIFIED type URI (ONTA-399: Enhanced uses ``types/x/<T>``). Tenant
+    bare-name attachments still mint ``types/<T>``; Public is refused."""
     f_uri = f"https://cograph.tech/functions/{name}"
     t_uri = f"{type_ns}/{type_name}"
     triples = [
@@ -1012,6 +1010,8 @@ def test_function_attached_to_a_layer_qualified_type_surfaces():
         "endpoint_url": "https://fn.example/distance",
         # Not stored in the graph — the model default, same as the tenant route.
         "tier": "custom",
+        # ONTA-399: layer is the enclosing type's layer (Enhanced here).
+        "layer": "enhanced",
     }]
     # The function join must not disturb the slot fold (row cross-product).
     assert [a["name"] for a in place["attributes"]] == ["address"]
@@ -1038,25 +1038,33 @@ def test_type_without_functions_reports_an_empty_list(seeded_body):
     assert all(t["functions"] == [] for t in seeded_body["types"])
 
 
-def test_the_only_function_WRITER_still_targets_the_bare_tenant_namespace():
-    """Pins the known gap the contract documents: `functions` is empty in
-    practice because `register_function_triple` — the one writer — attaches to
-    `https://cograph.tech/types/<T>`, never to a layer-qualified
-    `types/public/<T>` / `types/x/<T>`.
+def test_function_writer_mints_layer_qualified_enhanced_attachment():
+    """ONTA-399: Enhanced attachments use types/x/<T> in the Enhanced graph.
 
-    This fails the day a global-layer function writer lands, which is exactly
-    when the "empty until a writer exists" note in the model + module docstrings
-    stops being true and must be rewritten.
+    Bare tenant names still mint the tenant namespace (back-compat); Enhanced
+    is explicit via layer= or a path/URI. Public remains refused (ONTA-400).
     """
+    from cograph_client.graph.layers import Layer, layer_type_uri
     from cograph_client.graph.ontology_queries import type_uri
     from cograph_client.graph.queries import register_function_triple
 
-    sparql = register_function_triple(
+    tenant_sparql = register_function_triple(
         public_graph_uri(), entity_type="Place", function_name="f",
         endpoint_url="https://fn/a",
     )
-    assert f"<{type_uri('Place')}>" in sparql
-    assert f"<{PUB}/Place>" not in sparql and f"<{ENH}/Place>" not in sparql
+    assert f"<{type_uri('Place')}>" in tenant_sparql
+    assert f"<{ENH}/Place>" not in tenant_sparql
+
+    enh_sparql = register_function_triple(
+        "https://cograph.tech/graphs/unused",
+        entity_type="Place",
+        function_name="premium_fn",
+        endpoint_url="https://fn/b",
+        layer=Layer.ENHANCED,
+    )
+    assert f"<{layer_type_uri(Layer.ENHANCED, 'Place')}>" in enh_sparql
+    assert enhanced_graph_uri() in enh_sparql
+    assert f"<{type_uri('Place')}>" not in enh_sparql
 
 
 def test_a_function_attached_to_the_BARE_tenant_uri_does_not_surface():

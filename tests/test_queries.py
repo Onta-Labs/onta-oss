@@ -77,6 +77,20 @@ def test_register_function_triple():
     assert "https://api.example.com/distance" in sparql
 
 
+def test_register_function_triple_enhanced_layer_qualified():
+    from cograph_client.graph.layers import Layer, enhanced_graph_uri, layer_type_uri
+
+    sparql = register_function_triple(
+        "https://cograph.tech/graphs/t1",
+        entity_type="Organization",
+        function_name="lookup_lei",
+        endpoint_url="https://api.example.com/lei",
+        layer=Layer.ENHANCED,
+    )
+    assert layer_type_uri(Layer.ENHANCED, "Organization") in sparql
+    assert enhanced_graph_uri() in sparql
+
+
 def test_list_functions_query_all():
     sparql = list_functions_query("https://cograph.tech/graphs/t1")
     assert "SELECT" in sparql
@@ -88,3 +102,15 @@ def test_list_functions_query_by_type():
     sparql = list_functions_query("https://cograph.tech/graphs/t1", entity_type="Place")
     assert "FILTER" in sparql
     assert "cograph.tech/types/Place" in sparql
+
+
+def test_list_functions_query_by_enhanced_type():
+    from cograph_client.graph.layers import Layer, layer_type_uri
+
+    sparql = list_functions_query(
+        "https://cograph.tech/graphs/global/enhanced",
+        entity_type="Organization",
+        layer=Layer.ENHANCED,
+    )
+    assert "FILTER" in sparql
+    assert layer_type_uri(Layer.ENHANCED, "Organization") in sparql

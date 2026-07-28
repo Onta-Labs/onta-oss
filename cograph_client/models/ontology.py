@@ -267,12 +267,11 @@ class GlobalOntologyType(BaseModel):
         default_factory=list,
         description=(
             "Executable code attached to this type, read from THIS LAYER's "
-            "graph. Read-only, and "
-            "EMPTY today for every type: no writer mints a function against a "
-            "layer-qualified type URI yet — ``queries.register_function_triple`` "
-            "still attaches to the bare tenant namespace. ``entity_type`` is the "
-            "enclosing type's name; ``tier`` is not stored in the graph and "
-            "carries the model default, exactly as the tenant "
+            "graph. Enhanced attachments use ``types/x/<T>`` via "
+            "``queries.register_function_triple`` (ONTA-399); Public may not "
+            "carry functions (ONTA-400). ``entity_type`` is the enclosing "
+            "type's name; ``tier`` is not stored in the graph and carries the "
+            "model default, exactly as the tenant "
             "``GET /graphs/{tenant}/functions`` route reports it."
         ),
     )

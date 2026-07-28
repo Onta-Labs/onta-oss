@@ -258,6 +258,9 @@ class _TypeAccumulator:
                 # GET /graphs/{tenant}/functions route reports the same default
                 # for the same reason. Inventing PLATFORM for global-layer
                 # functions would be a fabricated field.
+                # Layer is the enclosing type's layer (ONTA-399): Enhanced
+                # functions now attach to types/x/<T> in the Enhanced graph.
+                layer=self.layer,
             )
             for func_name, func in sorted(
                 self.functions.items(), key=lambda kv: (_name_key(kv[0]), kv[0])
