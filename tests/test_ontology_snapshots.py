@@ -244,6 +244,25 @@ class MemNeptune:
                     )
             return self._sparql_json(bindings)
 
+        # deprecation map (ONTA-404)
+        if "deprecatedAt" in sparql or "/deprecatedAt>" in sparql:
+            deps: dict[str, dict] = {}
+            for gg, s, p, o in self.triples:
+                if gg != g:
+                    continue
+                if p.endswith("/deprecatedAt"):
+                    deps.setdefault(s, {})["dep"] = o.split("^^")[0].strip('"')
+                if p.endswith("/supersededBy"):
+                    deps.setdefault(s, {})["sup"] = o
+            for s, info in deps.items():
+                if "dep" not in info:
+                    continue
+                row = {"s": {"value": s}, "dep": {"value": info["dep"]}}
+                if "sup" in info:
+                    row["sup"] = {"value": info["sup"]}
+                bindings.append(row)
+            return self._sparql_json(bindings)
+
         # workspaceRevision counter
         if "workspaceRevision" in sparql:
             for gg, s, p, o in self.triples:
@@ -608,14 +627,16 @@ async def test_snapshot_mutate_restore_fingerprint_identity():
         kind="release",
         publisher="ops@onta",
         change_summary="initial public release",
-        compat_class="major",  # stored only; classifier is ONTA-404
+        # Free-form compat_class is ignored for releases (ONTA-404 classifier).
+        compat_class="major",
     )
     assert isinstance(rec, ReleaseRecord)
     assert rec.version == 1
     assert rec.fingerprint == fp0
     assert rec.snapshot_graph_uri == f"{PUBLIC}/v1"
     assert rec.publisher == "ops@onta"
-    assert rec.compat_class == "major"
+    # First release (no parent / empty delta) → classifier says additive.
+    assert rec.compat_class == "additive"
 
     # Heavy mutation on the live graph.
     await commit_ontology(

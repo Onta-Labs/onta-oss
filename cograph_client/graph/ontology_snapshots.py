@@ -35,6 +35,10 @@ from cograph_client.graph.ontology_commit import (
     revision_graph_uri,
     versions_graph_uri,
 )
+from cograph_client.graph.ontology_compat import (
+    assert_publishable,
+    classify_diff,
+)
 from cograph_client.graph.ontology_queries import OMNIX_ONTO, XSD
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import insert_triples
@@ -389,6 +393,58 @@ def diff_shapes(a: OntologyShape, b: OntologyShape) -> list[ChangeRecord]:
                 )
             )
 
+    # Deprecations (ONTA-404). Newly marked types/slots → DEPRECATE; a change
+    # of superseded_by on an already-deprecated subject also emits DEPRECATE.
+    # Un-deprecate (marker removed) is not a ChangeKind today — fail-open as
+    # absent rather than inventing a reverse op (publish gate only cares that
+    # a new deprecation is DEPRECATING, not that un-deprecate is invisible).
+    dt_a, dt_b = a.deprecated_types or {}, b.deprecated_types or {}
+    for t in sorted(set(dt_b) - set(dt_a)):
+        records.append(
+            ChangeRecord(
+                kind=ChangeKind.DEPRECATE,
+                type_name=t,
+                superseded_by=dt_b[t] or None,
+                new_value=dt_b[t] or None,
+            )
+        )
+    for t in sorted(set(dt_a) & set(dt_b)):
+        if (dt_a[t] or "") != (dt_b[t] or ""):
+            records.append(
+                ChangeRecord(
+                    kind=ChangeKind.DEPRECATE,
+                    type_name=t,
+                    superseded_by=dt_b[t] or None,
+                    old_value=dt_a[t] or None,
+                    new_value=dt_b[t] or None,
+                )
+            )
+    ds_a, ds_b = a.deprecated_slots or {}, b.deprecated_slots or {}
+    for key in sorted(set(ds_b) - set(ds_a)):
+        t, slot = key
+        records.append(
+            ChangeRecord(
+                kind=ChangeKind.DEPRECATE,
+                type_name=t,
+                slot_name=slot,
+                superseded_by=ds_b[key] or None,
+                new_value=ds_b[key] or None,
+            )
+        )
+    for key in sorted(set(ds_a) & set(ds_b)):
+        if (ds_a[key] or "") != (ds_b[key] or ""):
+            t, slot = key
+            records.append(
+                ChangeRecord(
+                    kind=ChangeKind.DEPRECATE,
+                    type_name=t,
+                    slot_name=slot,
+                    superseded_by=ds_b[key] or None,
+                    old_value=ds_a[key] or None,
+                    new_value=ds_b[key] or None,
+                )
+            )
+
     return records
 
 
@@ -633,15 +689,44 @@ async def execute_snapshot(
     publisher: str | None = None,
     change_summary: str | None = None,
     compat_class: str | None = None,
+    declare_major: bool = False,
     timestamp: str | None = None,
+    parent_shape: OntologyShape | None = None,
 ) -> ReleaseRecord:
     """Materialize ``plan``: copy live → snapshot graph + write release record.
 
     Refuses to overwrite an existing snapshot graph (immutability). With
     ``dry_run=True`` returns the would-be :class:`ReleaseRecord` without writes.
+
+    **Publish gate (ONTA-404):** for ``kind="release"`` the typed diff vs parent
+    is classified; a breaking release raises :class:`OntologyCompatError` unless
+    ``declare_major=True``. The stored ``compat_class`` always comes from the
+    classifier — free-form ``compat_class=`` from callers is ignored for
+    releases (kept on the signature only so older call sites do not break).
+    ``kind="revision"`` is not gated (workspace C is automatic) but is still
+    classified for metadata when cheap.
     """
     if is_immutable_version_graph(plan.live_graph_uri):
         raise OntologyGraphImmutable(plan.live_graph_uri)
+
+    # Classify vs parent. First release (no parent / empty delta) → additive.
+    if plan.kind == "release":
+        verdict = assert_publishable(
+            plan.change_records_vs_parent,
+            declare_major=declare_major,
+            parent_shape=parent_shape,
+        )
+        stored_compat = verdict.stored_compat_class
+    else:
+        # Revisions: classify for metadata; never refuse.
+        verdict = classify_diff(
+            plan.change_records_vs_parent, parent_shape=parent_shape,
+        )
+        stored_compat = verdict.stored_compat_class
+        # Free-form override only meaningful for non-release (legacy). Prefer
+        # classifier output; ignore arbitrary caller strings on releases above.
+        if compat_class and not plan.change_records_vs_parent:
+            stored_compat = compat_class
 
     ts = timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     record = ReleaseRecord(
@@ -655,7 +740,7 @@ async def execute_snapshot(
         publisher=publisher,
         timestamp=ts,
         change_summary=change_summary,
-        compat_class=compat_class,
+        compat_class=stored_compat,
         change_records=tuple(plan.change_records_vs_parent),
     )
     if dry_run:
@@ -681,7 +766,7 @@ async def execute_snapshot(
             plan,
             publisher=publisher,
             change_summary=change_summary,
-            compat_class=compat_class,
+            compat_class=stored_compat,
             timestamp=ts,
         )
         await neptune.update(
@@ -695,6 +780,8 @@ async def execute_snapshot(
             kind=plan.kind,
             fingerprint=plan.fingerprint,
             publisher=publisher,
+            compat_class=stored_compat,
+            declare_major=declare_major,
         )
     return record
 
@@ -709,11 +796,30 @@ async def snapshot_ontology(
     publisher: str | None = None,
     change_summary: str | None = None,
     compat_class: str | None = None,
+    declare_major: bool = False,
 ) -> ReleaseRecord:
-    """Plan + execute a snapshot (convenience; mirrors attr_meta_migration)."""
+    """Plan + execute a snapshot (convenience; mirrors attr_meta_migration).
+
+    ``declare_major`` is required to publish a breaking release (ONTA-404).
+    Free-form ``compat_class`` is ignored for releases — the classifier sets it.
+    """
     plan = await plan_snapshot(
         neptune, live_graph_uri, kind=kind, version=version
     )
+    # Load parent shape when a parent release exists so re-parent ancestry
+    # can be classified correctly at the gate.
+    parent_shape: OntologyShape | None = None
+    if plan.parent_version is not None and plan.kind == "release":
+        existing = await list_snapshots(neptune, live_graph_uri, kind=kind)
+        for rec in existing:
+            if rec.version == plan.parent_version:
+                try:
+                    parent_shape = await load_ontology_shape(
+                        neptune, rec.snapshot_graph_uri
+                    )
+                except Exception:
+                    parent_shape = None
+                break
     return await execute_snapshot(
         neptune,
         plan,
@@ -721,6 +827,8 @@ async def snapshot_ontology(
         publisher=publisher,
         change_summary=change_summary,
         compat_class=compat_class,
+        declare_major=declare_major,
+        parent_shape=parent_shape,
     )
 
 

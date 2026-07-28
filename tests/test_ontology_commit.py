@@ -211,6 +211,25 @@ class MemNeptune:
                     })
             return self._sparql_json(bindings)
 
+        # deprecation map (ONTA-404): SELECT ?s ?dep ?sup … deprecatedAt
+        if "deprecatedAt" in sparql or "/deprecatedAt>" in sparql:
+            deps: dict[str, dict] = {}
+            for gg, s, p, o in self.triples:
+                if gg != g:
+                    continue
+                if p.endswith("/deprecatedAt"):
+                    deps.setdefault(s, {})["dep"] = o.split("^^")[0].strip('"')
+                if p.endswith("/supersededBy"):
+                    deps.setdefault(s, {})["sup"] = o
+            for s, info in deps.items():
+                if "dep" not in info:
+                    continue
+                row = {"s": {"value": s}, "dep": {"value": info["dep"]}}
+                if "sup" in info:
+                    row["sup"] = {"value": info["sup"]}
+                bindings.append(row)
+            return self._sparql_json(bindings)
+
         # COUNT(*) for alias reference checks / backfill (ONTA-407b)
         if "COUNT" in sparql.upper() and "?n" in sparql:
             pred_m = re.search(r"\?s\s+<([^>]+)>\s+\?o", sparql)
