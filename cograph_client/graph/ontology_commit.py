@@ -16,6 +16,7 @@ fails CI if a production module reintroduces a raw builder write.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from datetime import datetime, timezone
 from typing import Sequence
@@ -23,9 +24,11 @@ from uuid import uuid4
 
 import structlog
 
+from cograph_client.graph.aliases import fetch_alias_map, register_alias
 from cograph_client.graph.ontology_queries import (
     OMNIX_ONTO,
     XSD,
+    attr_uri,
     delete_attribute_declaration,
     full_ontology_detail_query,
     insert_subtype,
@@ -245,7 +248,8 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
     """Read the live ontology shape from ``graph_uri`` and return its fingerprint.
 
     Covers types, attributes (with ranges), subclass edges, comments, core-slot
-    markers, and text-kinds (ONTA-403 extended surface).
+    markers, text-kinds (ONTA-403 extended surface), and attribute aliases
+    (ONTA-407a — alias registration must shift the concurrency token).
     """
     types: dict[str, str] = {}
     attrs: dict[str, dict[str, str]] = {}
@@ -318,7 +322,7 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
     except Exception:
         logger.warning("ontology_fingerprint_text_kinds_failed", graph_uri=graph_uri, exc_info=True)
 
-    return ontology_version(
+    base = ontology_version(
         types,
         attrs,
         parent_of,
@@ -326,6 +330,27 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
         core_slots=core_slots or None,
         text_kinds=text_kinds or None,
     )
+
+    # ONTA-407a: mix flattened alias edges into the concurrency token so a
+    # pure alias registration still advances version_before → version_after.
+    # Empty map leaves the ONTA-403 fingerprint byte-identical.
+    try:
+        alias_map = await fetch_alias_map(neptune, graph_uri)
+    except Exception:
+        logger.warning("ontology_fingerprint_aliases_failed", graph_uri=graph_uri, exc_info=True)
+        alias_map = {}
+    if not alias_map:
+        return base
+    h = hashlib.sha256()
+    h.update(base.encode("utf-8"))
+    h.update(b"\n")
+    for old in sorted(alias_map):
+        h.update(b"AL:")
+        h.update(old.encode("utf-8"))
+        h.update(b"=")
+        h.update(alias_map[old].encode("utf-8"))
+        h.update(b"\n")
+    return h.hexdigest()[:16]
 
 
 def _range_to_datatype(range_str: str) -> str:
@@ -465,16 +490,82 @@ async def _apply_one(
             )
         ]
     if op is OntologyOpKind.REGISTER_ALIAS:
-        raise OntologyOpNotSupported(
-            "REGISTER_ALIAS is owned by ONTA-407; do not route aliases through "
-            "commit_ontology until that ticket lands."
-        )
+        return await _apply_register_alias(neptune, graph_uri, mut)
     if op is OntologyOpKind.DEPRECATE:
         raise OntologyOpNotSupported(
             "DEPRECATE is owned by the compat/publish path (ONTA-404); not "
             "implemented in the ONTA-403 commit body."
         )
     raise ValueError(f"unknown ontology op: {op!r}")
+
+
+def _resolve_attr_endpoint(
+    name_or_uri: str,
+    *,
+    type_name: str | None,
+    target_type: str | None = None,
+) -> str:
+    """Resolve a REGISTER_ALIAS endpoint to a full attribute IRI.
+
+    Accepts a full ``http(s)://…`` IRI as-is, or a bare attribute leaf that is
+    minted under ``types/<type>/attrs/<leaf>`` via :func:`attr_uri`. Bare leaves
+    require ``type_name`` (or ``target_type`` when resolving the *new* side of a
+    hierarchy move). Type-level renames (bare type IRIs without ``/attrs/``) are
+    deferred to ONTA-407b.
+    """
+    s = (name_or_uri or "").strip()
+    if not s:
+        raise ValueError("REGISTER_ALIAS endpoint must be a non-empty leaf or IRI")
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    owner = (target_type or type_name or "").strip()
+    if not owner:
+        raise ValueError(
+            "REGISTER_ALIAS bare leaf requires type_name (or target_type for the new side)"
+        )
+    # Reject accidental path fragments that are not full IRIs — 407a is
+    # attribute-leaf only unless the caller passes a full IRI.
+    if "/" in s:
+        raise ValueError(
+            f"REGISTER_ALIAS bare endpoint must be a leaf name or full IRI, got {s!r}"
+        )
+    return attr_uri(owner, s)
+
+
+async def _apply_register_alias(
+    neptune, graph_uri: str, mut: OntologyMutation,
+) -> list[ChangeRecord]:
+    """Author an ``old aliasOf new`` triple via :func:`register_alias` (ONTA-407a).
+
+    The SPARQL INSERT still lives in ``graph/aliases.py`` — that module stays on
+    the write-path allowlist until ONTA-407b consolidates it. This commit op is
+    the production *authoring path* so aliases are no longer dead code: REST,
+    agent, and other callers go through :func:`commit_ontology`.
+    """
+    if not mut.alias_from or not mut.alias_to:
+        raise ValueError("REGISTER_ALIAS requires alias_from and alias_to")
+    old_uri = _resolve_attr_endpoint(mut.alias_from, type_name=mut.type_name)
+    new_uri = _resolve_attr_endpoint(
+        mut.alias_to,
+        type_name=mut.type_name,
+        target_type=mut.target_type,
+    )
+    await register_alias(neptune, graph_uri, old_uri, new_uri)
+    # from_name/to_name prefer bare leaves when the caller used leaves; fall
+    # back to the full URI tail so the ChangeRecord is always informative.
+    from_name = mut.alias_from if not mut.alias_from.startswith("http") else old_uri.rsplit("/", 1)[-1]
+    to_name = mut.alias_to if not mut.alias_to.startswith("http") else new_uri.rsplit("/", 1)[-1]
+    return [
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            type_name=mut.type_name or None,
+            slot_name=from_name if not mut.alias_from.startswith("http") else None,
+            from_name=from_name,
+            to_name=to_name,
+            old_value=old_uri,
+            new_value=new_uri,
+        )
+    ]
 
 
 async def _apply_upsert_type(
