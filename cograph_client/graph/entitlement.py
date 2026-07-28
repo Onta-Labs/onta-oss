@@ -21,6 +21,21 @@ Signature (frozen):
 * ``is_entitled(tenant: TenantContext) -> bool``
 * ``register_entitlement_checker(checker: EntitlementChecker | None) -> None``
 * ``EntitlementChecker = Callable[[TenantContext], bool]``
+
+**Call sites that must use this predicate** (document for ONTA-397+; wire any
+site that already constructs a ``LayerStack`` with ``entitled=``):
+
+* ``api/routes/skills.py::_entitled`` — thin wrapper; every skills list /
+  resolve / prompt-block path builds ``LayerStack(entitled=…)`` from it.
+* ``skills/resolve.py::resolve_skills`` — takes ``entitled: bool`` from the
+  route; the route is the one that calls :func:`is_entitled`.
+* Any future layered ontology read (ONTA-397 ``fetch_ontology`` /
+  workspace response): pass ``entitled=is_entitled(tenant)`` into
+  :class:`~cograph_client.graph.layers.LayerStack`, or use
+  :func:`layer_stack_for`.
+* Future MCP / agent surfaces that expose Enhanced content must call
+  :func:`is_entitled` server-side; client flags, ``?layer=enhanced``, and
+  deep links MUST NOT raise entitlement.
 """
 
 from __future__ import annotations
@@ -30,8 +45,9 @@ from typing import Callable, Optional
 from cograph_client.auth.api_keys import TenantContext
 
 #: Premium (or test) determination. Takes the full auth context so a provider
-#: can key off ``tenant_id``, ``subject``, ``is_operator``, etc. without a
-#: second lookup. Returns True only when Enhanced is visible.
+#: can key off ``tenant_id``, ``subject``, ``is_operator``,
+#: ``enhanced_entitled``, etc. without a second lookup. Returns True only when
+#: Enhanced is visible.
 EntitlementChecker = Callable[[TenantContext], bool]
 
 _checker: Optional[EntitlementChecker] = None
@@ -60,6 +76,10 @@ def is_entitled(tenant: TenantContext) -> bool:
     Never raises — a buggy premium checker that raises is treated as not
     entitled (fail closed), so a provider outage cannot open Enhanced to a
     non-paying workspace.
+
+    Never consults client-supplied headers, query parameters, or path
+    segments. Only the registered checker (premium: verified identity +
+    env allowlist) may return True.
     """
     checker = _checker
     if checker is None:
@@ -68,3 +88,20 @@ def is_entitled(tenant: TenantContext) -> bool:
         return bool(checker(tenant))
     except Exception:
         return False
+
+
+def layer_stack_for(tenant: TenantContext):
+    """Build the :class:`~cograph_client.graph.layers.LayerStack` for ``tenant``.
+
+    THE construction helper layered reads should use (ONTA-397+). Non-entitled
+    workspaces get ``(TENANT, PUBLIC)``; entitled get
+    ``(TENANT, ENHANCED, PUBLIC)``. Silent total degradation — never raises
+    and never invents a third stack shape.
+    """
+    from cograph_client.graph.layers import LayerStack
+    from cograph_client.graph.queries import tenant_graph_uri
+
+    return LayerStack(
+        tenant_graph_uri=tenant_graph_uri(tenant.tenant_id),
+        entitled=is_entitled(tenant),
+    )

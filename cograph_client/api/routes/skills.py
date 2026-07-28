@@ -31,8 +31,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from cograph_client.auth.api_keys import TenantContext, get_tenant
-from cograph_client.graph.layers import Layer, LayerStack
-from cograph_client.graph.queries import tenant_graph_uri
+from cograph_client.graph.entitlement import is_entitled, layer_stack_for
+from cograph_client.graph.layers import Layer
 from cograph_client.skills import (
     DEFAULT_PROMPT_BUDGET,
     TypeSkill,
@@ -56,13 +56,12 @@ def _entitled(tenant: TenantContext) -> bool:
     """Does this caller see the Global-ENHANCED layer?
 
     Thin route-local wrapper over the frozen seam
-    :func:`cograph_client.graph.entitlement.is_entitled` (Wave 0 / ONTA-396).
-    OSS default remains False; premium determination plugs in via
+    :func:`cograph_client.graph.entitlement.is_entitled` (Wave 0 / ONTA-396 /
+    ONTA-398). OSS default remains False; premium determination plugs in via
     :func:`~cograph_client.graph.entitlement.register_entitlement_checker`.
-    Resolution degrades to ``Tenant > Public``, never errors.
+    Resolution degrades to ``Tenant > Public``, never errors. Never consults
+    client headers, ``?layer=…``, or deep links.
     """
-    from cograph_client.graph.entitlement import is_entitled
-
     return is_entitled(tenant)
 
 
@@ -198,10 +197,7 @@ async def list_skills(
     by_layer: dict[Layer, list[TypeSkill]] = dict(global_skills_by_layer())
     by_layer[Layer.TENANT] = tenant_rows
 
-    stack = LayerStack(
-        tenant_graph_uri=tenant_graph_uri(tenant.tenant_id),
-        entitled=_entitled(tenant),
-    )
+    stack = layer_stack_for(tenant)
     names: dict[str, str] = {}
     for layer in stack.layers:  # entitlement already applied by the stack
         for s in by_layer.get(layer, []):
