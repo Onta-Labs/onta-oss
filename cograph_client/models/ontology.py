@@ -380,6 +380,43 @@ class WorkspaceOntologyResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Workspace-wide active type counts (ONTA-409)
+#
+# Union of KgStats.type_breakdown across every KG in the tenant. Powers the
+# Ontology viewer's Active / All pills. Distinct from per-KG
+# GET /kgs/{kg}/type-counts (live SPARQL, one dataset).
+# ---------------------------------------------------------------------------
+
+
+class WorkspaceTypeCount(BaseModel):
+    """One type with a non-zero instance count somewhere in the workspace."""
+
+    name: str
+    entity_count: int = Field(
+        description="Sum of entity counts for this type across every KG that has any"
+    )
+    by_kg: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-KG breakdown (kg_name → count); omits KGs with zero for this type",
+    )
+
+
+class WorkspaceTypeCountsResponse(BaseModel):
+    """Body of ``GET /graphs/{tenant}/ontology/type-counts`` (ONTA-409).
+
+    Types with zero instances in every KG are omitted. Empty is 200 with
+    ``types: []`` (brand-new workspace → Active pill falls back to All).
+    """
+
+    tenant_id: str = ""
+    types: list[WorkspaceTypeCount] = Field(default_factory=list)
+    kg_names: list[str] = Field(
+        default_factory=list,
+        description="KG names that contributed a stats row (may include empty KGs)",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Ontology change / commit vocabulary (ONTA-403/404/406; Wave 0 freeze)
 #
 # ChangeRecord is the typed change vocabulary shared by the diff producer
