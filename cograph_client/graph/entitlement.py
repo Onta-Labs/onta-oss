@@ -93,10 +93,11 @@ def is_entitled(tenant: TenantContext) -> bool:
 def layer_stack_for(tenant: TenantContext):
     """Build the :class:`~cograph_client.graph.layers.LayerStack` for ``tenant``.
 
-    THE construction helper layered reads should use (ONTA-397+). Non-entitled
-    workspaces get ``(TENANT, PUBLIC)``; entitled get
-    ``(TENANT, ENHANCED, PUBLIC)``. Silent total degradation — never raises
-    and never invents a third stack shape.
+    Synchronous, **unversioned** stack (live Public / Enhanced). Prefer
+    :func:`layer_stack_for_tenant` when a Neptune client is available so the
+    workspace base pin (ONTA-405) is applied. Non-entitled workspaces get
+    ``(TENANT, PUBLIC)``; entitled get ``(TENANT, ENHANCED, PUBLIC)``. Silent
+    total degradation — never raises and never invents a third stack shape.
     """
     from cograph_client.graph.layers import LayerStack
     from cograph_client.graph.queries import tenant_graph_uri
@@ -104,4 +105,26 @@ def layer_stack_for(tenant: TenantContext):
     return LayerStack(
         tenant_graph_uri=tenant_graph_uri(tenant.tenant_id),
         entitled=is_entitled(tenant),
+    )
+
+
+async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure: bool = True):
+    """Versioned :class:`~cograph_client.graph.layers.LayerStack` for ``tenant``.
+
+    Loads (and optionally backfills) the workspace base pin so reads resolve
+    against the pinned base release rather than live global graphs (ONTA-405).
+    Entitlement still gates Enhanced visibility.
+
+    Pin **read** infrastructure failures are handled inside
+    :func:`~cograph_client.graph.ontology_base_pin.layer_stack_for_workspace`:
+    degrade to an ephemeral unversioned (live) stack **without writing**.
+    A read failure is never treated as "missing pin" (no silent re-pin).
+    """
+    from cograph_client.graph.ontology_base_pin import layer_stack_for_workspace
+
+    return await layer_stack_for_workspace(
+        neptune,
+        tenant.tenant_id,
+        entitled=is_entitled(tenant),
+        auto_ensure=auto_ensure,
     )
