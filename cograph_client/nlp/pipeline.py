@@ -502,6 +502,10 @@ class NLQueryPipeline:
         # query, and whether we have already widened a semantic subset to the
         # full ontology (so we escalate at most once).
         last_was_empty_sparql = False
+        # Zero-row recovery: previous SPARQL had CONTAINS FILTERs on closed-enum
+        # attributes that cannot match the needle (enum_filter module). The next
+        # attempt regenerates with targeted feedback rather than answering empty.
+        last_was_enum_filter_mismatch = False
         full_ontology_loaded = ontology_source == "full"
         # Reasoning-budget recovery state (retry path only). `last_was_length_truncated`
         # records that the PREVIOUS attempt's generator raised EmptyLLMResponse with
@@ -576,6 +580,18 @@ class NLQueryPipeline:
                         ),
                         **gen_recovery,
                     )
+                elif last_was_enum_filter_mismatch:
+                    # Zero-row recovery: prior query was syntactically valid but
+                    # filtered a closed-enum attribute with a free-text needle that
+                    # cannot match any listed [values: ...] (Oliver DP rehearsal /
+                    # multi-hop "after bladder surgery" on setting). Feedback was
+                    # built by enum_filter.enum_mismatch_feedback; regenerate once.
+                    llm_response = await self._generate_sparql(
+                        question, ontology, data_graph,
+                        error_feedback=last_error,
+                        examples_text=examples_text,
+                        **gen_recovery,
+                    )
                 else:
                     llm_response = await self._generate_sparql(
                         question, ontology, data_graph,
@@ -586,6 +602,7 @@ class NLQueryPipeline:
                 # reasoning-budget truncation, so clear the flag. (The except branch
                 # re-sets it if a length-truncation is what raised.)
                 last_was_length_truncated = False
+                last_was_enum_filter_mismatch = False
                 timing[f"sparql_gen_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t1) * 1000, 1)
 
                 sparql = normalize_sparql(llm_response.get("sparql", ""))
@@ -638,6 +655,35 @@ class NLQueryPipeline:
                             sparql = b_sparql
                             variables, bindings = b_variables, b_bindings
                             timing["name_lookup_broadened"] = True
+                # Enum-filter mismatch recovery: a CONTAINS FILTER on a closed
+                # [values: ...] attribute with a needle that cannot match any
+                # listed value (e.g. setting CONTAINS "bladder" when values are
+                # only adjuvant/metastatic/…). Valid SPARQL, structurally empty.
+                # Regenerate with targeted feedback once (same attempt budget as
+                # other retries). No-op when rows exist, no enum annotations, or
+                # the filter is on free-text / high-cardinality attributes.
+                if not bindings and attempt < max_attempts - 1:
+                    try:
+                        from cograph_client.nlp.enum_filter import (
+                            enum_mismatch_feedback,
+                            impossible_enum_contains,
+                        )
+                        mismatches = impossible_enum_contains(sparql, ontology)
+                        if mismatches:
+                            last_error = enum_mismatch_feedback(
+                                mismatches, previous_sparql=sparql
+                            )
+                            last_was_enum_filter_mismatch = True
+                            timing["enum_filter_mismatch_retry"] = 1.0
+                            timing["enum_filter_mismatches"] = float(len(mismatches))
+                            logger.info(
+                                "enum_filter_mismatch_retry",
+                                count=len(mismatches),
+                                question=question,
+                            )
+                            continue
+                    except Exception:
+                        logger.debug("enum_filter_mismatch_check_failed", exc_info=True)
                 # Projected vars that bound in ZERO rows (e.g. an OPTIONAL
                 # attribute absent from every matching entity, or a drifted
                 # attribute URI). Reported honestly instead of silently omitted,
