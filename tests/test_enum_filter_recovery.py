@@ -81,6 +81,23 @@ def test_parse_enum_attr_values_closed_list_only():
     assert disease not in enums
 
 
+def test_parse_enum_attr_values_skips_truncated_sample():
+    """vals[:10] + '… (25 total)' is not exhaustive — do not treat as closed enum."""
+    onto = (
+        'setting (string) — URI: <https://cograph.tech/types/Indication/attrs/setting> '
+        '[values: "adjuvant", "metastatic", "maintenance", "neoadjuvant", '
+        '"first-line", "second-line", "consolidation", "perioperative", '
+        '"unresectable", "locally advanced", … (25 total)]'
+    )
+    assert parse_enum_attr_values(onto) == {}
+    # needle that only fails the visible subset must NOT flag when truncated
+    sparql = (
+        '?i <https://cograph.tech/types/Indication/attrs/setting> ?setting .\n'
+        'FILTER(CONTAINS(LCASE(?setting), "hidden-value-11"))'
+    )
+    assert impossible_enum_contains(sparql, onto) == []
+
+
 def test_impossible_enum_contains_flags_bladder_on_setting():
     bad = impossible_enum_contains(BAD_SPARQL, ONTOLOGY)
     assert len(bad) == 1

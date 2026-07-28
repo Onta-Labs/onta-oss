@@ -28,6 +28,9 @@ _ENUM_ATTR_RE = re.compile(
     re.IGNORECASE,
 )
 _ENUM_VAL_RE = re.compile(r'"([^"]*)"')
+# Ontology summary truncates long enum lists: "a", "b", … (25 total). A partial
+# sample must NOT be treated as exhaustive (false "impossible" FILTERs).
+_TRUNCATED_ENUM_RE = re.compile(r"\(?\s*\d+\s+total\s*\)?", re.IGNORECASE)
 
 # FILTER(CONTAINS(LCASE(?var), "needle")) or FILTER(CONTAINS(LCASE(?var), LCASE("needle")))
 _CONTAINS_FILTER_RE = re.compile(
@@ -56,11 +59,15 @@ class EnumContainsMismatch(NamedTuple):
 def parse_enum_attr_values(ontology: str) -> dict[str, list[str]]:
     """Map attribute URI → listed sample values from ``[values: ...]`` annotations.
 
-    Ignores ``[N unique values]`` high-cardinality annotations (no closed list).
+    Ignores:
+    - ``[N unique values]`` high-cardinality annotations (no closed list)
+    - truncated samples that end with ``… (N total)`` — incomplete, not exhaustive
     """
     out: dict[str, list[str]] = {}
     for m in _ENUM_ATTR_RE.finditer(ontology or ""):
         uri, blob = m.group(1), m.group(2)
+        if _TRUNCATED_ENUM_RE.search(blob):
+            continue
         vals = _ENUM_VAL_RE.findall(blob)
         if vals:
             out[uri] = vals
