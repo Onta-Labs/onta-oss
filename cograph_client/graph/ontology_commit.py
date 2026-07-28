@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Sequence
 from uuid import uuid4
@@ -66,9 +68,22 @@ _ONTOLOGY_WRITE_LOCK = asyncio.Lock()
 # Workspace revision counter lives on a companion named graph of the ontology
 # graph (house encoding: companion-graph-per-data-graph). No durable Postgres
 # revision store exists yet (plan §4); this RDF counter is the minimal
-# monotonic bump ONTA-403 requires. ONTA-406/401 may promote it later.
+# monotonic bump ONTA-403 requires. ONTA-406 materializes revision snapshots
+# and release records on the same companion.
 _REV_PRED = f"{OMNIX_ONTO}/workspaceRevision"
 _REV_GRAPH_SUFFIX = "/versions"
+
+# Published A/B release graphs (`…/public/v{N}`, `…/enhanced/v{N}`) and C
+# revision snapshot graphs (`…/revisions/r{N}`) are immutable. commit_ontology
+# refuses them so a publish cannot be silently rewritten (ONTA-406).
+_PUBLISHED_VERSION_GRAPH_RE = re.compile(
+    r"^https://cograph\.tech/graphs/"
+    r"(?:global/(?:public|enhanced)|[^/]+)"
+    r"/v\d+$"
+)
+_REVISION_SNAPSHOT_GRAPH_RE = re.compile(
+    r"^https://cograph\.tech/graphs/[^/]+/revisions/r\d+$"
+)
 
 # Changelog vocabulary — same GOV_* shape as resolver/governance.py so one
 # reader can eventually cover both Global governance and workspace commits.
@@ -104,6 +119,21 @@ class OntologyOpNotSupported(ValueError):
     """Raised for ops reserved for later tickets (alias/deprecate)."""
 
 
+class OntologyGraphImmutable(Exception):
+    """Raised when a write targets a published version / revision snapshot graph.
+
+    Version graphs (``…/v{N}``, ``…/revisions/r{N}``) are immutable by
+    construction (ONTA-406). Restore and ordinary commits must target the live
+    layer graph, never a snapshot URI.
+    """
+
+    def __init__(self, graph_uri: str):
+        self.graph_uri = graph_uri
+        super().__init__(
+            f"refusing write into immutable ontology version graph {graph_uri!r}"
+        )
+
+
 def ontology_write_lock() -> asyncio.Lock:
     """The ONE process-wide ontology-schema write lock (ONTA-403 / ONTA-268).
 
@@ -115,8 +145,49 @@ def ontology_write_lock() -> asyncio.Lock:
 
 
 def versions_graph_uri(graph_uri: str) -> str:
-    """Companion graph holding the workspace ontology revision counter."""
+    """Companion graph holding revision counters + release/revision records.
+
+    House encoding: companion-graph-per-data-graph. Holds the monotonic
+    ``workspaceRevision`` counter (ONTA-403) and the RDF release/revision
+    metadata for snapshots (ONTA-406). Snapshot *content* lives at
+    :func:`release_graph_uri` / :func:`revision_graph_uri`, not here.
+    """
     return f"{graph_uri.rstrip('/')}{_REV_GRAPH_SUFFIX}"
+
+
+def is_immutable_version_graph(graph_uri: str) -> bool:
+    """True iff ``graph_uri`` is a published A/B release or C revision snapshot.
+
+    Type IRIs are never versioned (plan §5 — version the graph name). These
+    named graphs hold frozen ontology content and must not accept writes.
+    """
+    if not isinstance(graph_uri, str):
+        return False
+    g = graph_uri.rstrip("/")
+    return bool(
+        _PUBLISHED_VERSION_GRAPH_RE.match(g) or _REVISION_SNAPSHOT_GRAPH_RE.match(g)
+    )
+
+
+def release_graph_uri(live_graph_uri: str, version: int) -> str:
+    """Published release snapshot graph for layer A or B: ``{live}/v{N}``.
+
+    Example: ``https://cograph.tech/graphs/global/public/v3``.
+    """
+    if version < 1:
+        raise ValueError(f"release version must be >= 1, got {version}")
+    return f"{live_graph_uri.rstrip('/')}/v{int(version)}"
+
+
+def revision_graph_uri(live_graph_uri: str, revision: int) -> str:
+    """Materialized C revision snapshot: ``{live}/revisions/r{N}``.
+
+    Revisions are a monotonic counter (ONTA-403); content is snapshotted only
+    at job boundaries / named checkpoints (ONTA-406), not on every commit.
+    """
+    if revision < 1:
+        raise ValueError(f"revision must be >= 1, got {revision}")
+    return f"{live_graph_uri.rstrip('/')}/revisions/r{int(revision)}"
 
 
 def changelog_graph_uri_for(graph_uri: str) -> str:
@@ -128,6 +199,55 @@ def changelog_graph_uri_for(graph_uri: str) -> str:
     commits use a per-graph companion so tenant isolation is by named graph.
     """
     return f"{graph_uri.rstrip('/')}/changelog"
+
+
+# ---------------------------------------------------------------------------
+# Ontology shape (shared by fingerprint, diff, snapshot — ONTA-403/406)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class OntologyShape:
+    """Identity-bearing ontology snapshot used by fingerprint + ONTA-406 diff.
+
+    Companions under ``attr_meta/`` are never loaded here — they are not
+    ontology content (plan §2).
+    """
+
+    types: dict[str, str] = field(default_factory=dict)  # name -> comment
+    attrs: dict[str, dict[str, str]] = field(default_factory=dict)  # type -> attr -> dt
+    parent_of: dict[str, str] = field(default_factory=dict)
+    # Nested attr comments: {type: {attr: text}} — type comments live in types.
+    attr_comments: dict[str, dict[str, str]] = field(default_factory=dict)
+    core_slots: list[tuple[str, str]] = field(default_factory=list)
+    text_kinds: dict[tuple[str, str], str] = field(default_factory=dict)
+    alias_map: dict[str, str] = field(default_factory=dict)
+
+    def fingerprint(self) -> str:
+        """Same digest :func:`fingerprint_ontology` would return for this shape."""
+        comments: dict = {}
+        if self.attr_comments:
+            comments.update(self.attr_comments)
+        base = ontology_version(
+            self.types,
+            self.attrs,
+            self.parent_of,
+            comments=comments or None,
+            core_slots=self.core_slots or None,
+            text_kinds=self.text_kinds or None,
+        )
+        if not self.alias_map:
+            return base
+        h = hashlib.sha256()
+        h.update(base.encode("utf-8"))
+        h.update(b"\n")
+        for old in sorted(self.alias_map):
+            h.update(b"AL:")
+            h.update(old.encode("utf-8"))
+            h.update(b"=")
+            h.update(self.alias_map[old].encode("utf-8"))
+            h.update(b"\n")
+        return h.hexdigest()[:16]
 
 
 async def commit_ontology(
@@ -195,6 +315,8 @@ async def commit_ontology_unlocked(
     shared lock (match-then-mint). Never call this without holding the lock —
     concurrent commits would race on the fingerprint.
     """
+    if is_immutable_version_graph(graph_uri):
+        raise OntologyGraphImmutable(graph_uri)
     version_before = await fingerprint_ontology(neptune, graph_uri)
     if expected_version is not None and expected_version != version_before:
         raise OntologyVersionConflict(expected_version, version_before, graph_uri)
@@ -244,23 +366,22 @@ async def commit_ontology_unlocked(
     )
 
 
-async def fingerprint_ontology(neptune, graph_uri: str) -> str:
-    """Read the live ontology shape from ``graph_uri`` and return its fingerprint.
+async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
+    """Read the live ontology shape from ``graph_uri`` (ONTA-403/406).
 
-    Covers types, attributes (with ranges), subclass edges, comments, core-slot
-    markers, text-kinds (ONTA-403 extended surface), and attribute aliases
-    (ONTA-407a — alias registration must shift the concurrency token).
+    Shared by :func:`fingerprint_ontology` and the ONTA-406 diff/snapshot path
+    so the two cannot disagree on what counts as ontology content.
     """
     types: dict[str, str] = {}
     attrs: dict[str, dict[str, str]] = {}
-    comments: dict = {}
+    attr_comments: dict[str, dict[str, str]] = {}
     core_slots: list[tuple[str, str]] = []
 
     try:
         raw = await neptune.query(full_ontology_detail_query(graph_uri))
         _, rows = parse_sparql_results(raw)
     except Exception:
-        logger.warning("ontology_fingerprint_fetch_failed", graph_uri=graph_uri, exc_info=True)
+        logger.warning("ontology_shape_fetch_failed", graph_uri=graph_uri, exc_info=True)
         rows = []
 
     for row in rows:
@@ -280,7 +401,7 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
             attrs[tlabel][alabel] = datatype
             ac = row.get("attrComment") or ""
             if ac:
-                comments.setdefault(tlabel, {})[alabel] = ac
+                attr_comments.setdefault(tlabel, {})[alabel] = ac
             core = row.get("core") or ""
             if core and str(core).lower() in ("true", "1"):
                 core_slots.append((tlabel, alabel))
@@ -298,7 +419,7 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
                 if child and parent:
                     parent_of[child] = parent
     except Exception:
-        logger.warning("ontology_fingerprint_parent_map_failed", graph_uri=graph_uri, exc_info=True)
+        logger.warning("ontology_shape_parent_map_failed", graph_uri=graph_uri, exc_info=True)
 
     text_kinds: dict[tuple[str, str], str] = {}
     try:
@@ -320,37 +441,34 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
             if type_name and attr_name:
                 text_kinds[(type_name, attr_name)] = kind
     except Exception:
-        logger.warning("ontology_fingerprint_text_kinds_failed", graph_uri=graph_uri, exc_info=True)
+        logger.warning("ontology_shape_text_kinds_failed", graph_uri=graph_uri, exc_info=True)
 
-    base = ontology_version(
-        types,
-        attrs,
-        parent_of,
-        comments=comments or None,
-        core_slots=core_slots or None,
-        text_kinds=text_kinds or None,
-    )
-
-    # ONTA-407a: mix flattened alias edges into the concurrency token so a
-    # pure alias registration still advances version_before → version_after.
-    # Empty map leaves the ONTA-403 fingerprint byte-identical.
     try:
         alias_map = await fetch_alias_map(neptune, graph_uri)
     except Exception:
-        logger.warning("ontology_fingerprint_aliases_failed", graph_uri=graph_uri, exc_info=True)
+        logger.warning("ontology_shape_aliases_failed", graph_uri=graph_uri, exc_info=True)
         alias_map = {}
-    if not alias_map:
-        return base
-    h = hashlib.sha256()
-    h.update(base.encode("utf-8"))
-    h.update(b"\n")
-    for old in sorted(alias_map):
-        h.update(b"AL:")
-        h.update(old.encode("utf-8"))
-        h.update(b"=")
-        h.update(alias_map[old].encode("utf-8"))
-        h.update(b"\n")
-    return h.hexdigest()[:16]
+
+    return OntologyShape(
+        types=types,
+        attrs=attrs,
+        parent_of=parent_of,
+        attr_comments=attr_comments,
+        core_slots=core_slots,
+        text_kinds=text_kinds,
+        alias_map=alias_map or {},
+    )
+
+
+async def fingerprint_ontology(neptune, graph_uri: str) -> str:
+    """Read the live ontology shape from ``graph_uri`` and return its fingerprint.
+
+    Covers types, attributes (with ranges), subclass edges, comments, core-slot
+    markers, text-kinds (ONTA-403 extended surface), and attribute aliases
+    (ONTA-407a — alias registration must shift the concurrency token).
+    """
+    shape = await load_ontology_shape(neptune, graph_uri)
+    return shape.fingerprint()
 
 
 def _range_to_datatype(range_str: str) -> str:
