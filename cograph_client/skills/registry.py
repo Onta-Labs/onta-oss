@@ -3,14 +3,18 @@
 The two global layers are **operator-curated, not user-managed**, exactly like
 the API-source catalog's global layers (``api_registry/catalog.py``):
 
-* **Global-Public** (``Layer.PUBLIC``) — universal, domain-agnostic guidance for
-  universal types. Ships in OSS as markdown files under ``skills/data/``, loaded
-  once at first use.
-* **Global-Enhanced** (``Layer.ENHANCED``) — the curated premium overlay. The
-  proprietary package contributes it through :func:`register_skill_layer`, the
-  same plugin shape as ``register_adapter`` / ``register_web_source`` /
-  ``register_api_source_layer``. **The OSS package never imports the premium
-  tree** — this module holds the seam, not the content.
+* **Global-Public** (``Layer.PUBLIC``) — **reserved empty** under the layer
+  content matrix (ONTA-400 / founder rule: Public is attributes + relationships
+  only). The OSS ``skills/data/`` directory ships empty on purpose;
+  :func:`register_skill_layer` refuses a non-empty skill list for PUBLIC.
+  Empty registration remains allowed so the reserved-empty seed path stays
+  callable without becoming a content carrier.
+* **Global-Enhanced** (``Layer.ENHANCED``) — the curated premium overlay that
+  *does* carry skills. The proprietary package contributes it through
+  :func:`register_skill_layer`, the same plugin shape as ``register_adapter`` /
+  ``register_web_source`` / ``register_api_source_layer``. **The OSS package
+  never imports the premium tree** — this module holds the seam, not the
+  content.
 
 Per-tenant skills are NOT here; they are user-authored data in the durable store
 (``skills/store.py``) and are merged on top at resolution time.
@@ -19,6 +23,7 @@ Markdown file format (``skills/data/<Type>/<slug>.md``): an optional YAML-ish
 front-matter block delimited by ``---`` carrying ``title`` / ``summary`` /
 ``enabled``, then the body. The type name comes from the parent DIRECTORY and
 the slug from the FILENAME, so a file can never disagree with its own location.
+The seed directory is reserved empty — do not add skill files there.
 
 Boundary: OSS. Pure ``cograph_client.*`` / stdlib — no ``from cograph.*``.
 """
@@ -29,6 +34,11 @@ import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
+from cograph_client.graph.layer_content import (
+    ContentKind,
+    LayerContentError,
+    assert_permits,
+)
 from cograph_client.graph.layers import Layer
 
 from .models import TypeSkill, validate_skill
@@ -131,14 +141,35 @@ def register_skill_layer(layer: Layer, skills: Iterable[TypeSkill]) -> None:
     belong in the durable store, never in a process-wide registry where they
     would leak across workspaces. This is the tenant-isolation guard for this
     module.
+
+    Raises :class:`LayerContentError` for a **non-empty** registration on
+    ``Layer.PUBLIC``: Public is attributes + relationships only (ONTA-400 /
+    ``LAYER_CONTENT_MATRIX``). An empty iterable is accepted so the
+    reserved-empty OSS seed path remains a no-op rather than a hard error.
     """
     if layer is Layer.TENANT:
         raise ValueError(
             "register_skill_layer is for GLOBAL layers only — tenant skills are "
             "per-workspace data and belong in the TypeSkillStore"
         )
+    materialised = list(skills)
+    # Public may not carry skills. Empty registration is the reserved-empty
+    # seed path and is intentionally a no-op (ONTA-400).
+    if layer is Layer.PUBLIC:
+        if materialised:
+            assert_permits(
+                Layer.PUBLIC,
+                ContentKind.SKILLS,
+                what=f"{len(materialised)} skill(s) via register_skill_layer",
+            )
+        # Empty list: nothing to store; still invalidate so a prior cache
+        # cannot hide a concurrent empty re-registration's intent.
+        _invalidate()
+        return
+    # Enhanced (and any future global layer that permits skills) proceeds.
+    assert_permits(layer, ContentKind.SKILLS, what="register_skill_layer")
     bucket = _layers.setdefault(layer, [])
-    for skill in skills:
+    for skill in materialised:
         skill.layer = layer
         skill.tenant_id = None
         errors = validate_skill(skill)
@@ -167,18 +198,35 @@ def global_skills_by_layer() -> dict[Layer, list[TypeSkill]]:
     """All curated global skills, per layer, memoized.
 
     The OSS seed directory is loaded lazily on first call (so importing this
-    module never touches the filesystem) and merged UNDER anything registered
-    for the same layer, so a registration always wins over a shipped file.
+    module never touches the filesystem). It is **reserved empty** — Public
+    may not carry skills (ONTA-400). A non-empty seed is a hard error so a
+    accidentally-committed markdown file cannot silently attach skills to
+    Public. Registered Enhanced content is then merged in.
     """
     global _cache
     if _cache is not None:
         return _cache
 
     merged: dict[Layer, list[TypeSkill]] = {}
+    # Reserved-empty seed: load to detect accidental content, then refuse.
     seed = load_skill_dir(_DATA_DIR, layer=Layer.PUBLIC)
     if seed:
-        merged[Layer.PUBLIC] = list(seed)
+        raise LayerContentError(
+            f"OSS skills seed under skills/data must stay empty — Public may "
+            f"not carry skills (ONTA-400 / LAYER_CONTENT_MATRIX); found "
+            f"{len(seed)} skill file(s). Move curated content to "
+            f"register_skill_layer(Layer.ENHANCED, ...)."
+        )
     for layer, skills in _layers.items():
+        # Defence in depth: a PUBLIC bucket should never hold content after
+        # register_skill_layer's refusal, but skip it if one appears.
+        if layer is Layer.PUBLIC and skills:
+            raise LayerContentError(
+                "Layer.PUBLIC skill registry is non-empty; Public may not "
+                "carry skills (ONTA-400)."
+            )
+        if layer is Layer.PUBLIC:
+            continue
         merged.setdefault(layer, [])
         merged[layer].extend(skills)
     _cache = merged

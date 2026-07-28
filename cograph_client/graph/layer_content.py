@@ -16,6 +16,10 @@ Product rule (founder, ONTA-396):
 editorial policy. Plan §11 item 5 was open; the conservative choice is
 deny-by-default so ONTA-400 ships a structural guard rather than a lint. Flag
 for the founder if product later wants policy-only.
+
+Runtime helpers here (``assert_permits``, ``LayerContentError``,
+``is_public_type_uri``) are the single refusal surface writers call so a
+second hand-rolled check cannot disagree with the matrix.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Final, Literal, Mapping
 
-from cograph_client.graph.layers import Layer
+from cograph_client.graph.layers import Layer, layer_from_uri, type_namespace
 
 
 class ContentKind(str, Enum):
@@ -34,6 +38,14 @@ class ContentKind(str, Enum):
     SKILLS = "skills"
     FUNCTIONS = "functions"
     SOURCES = "sources"
+
+
+class LayerContentError(ValueError):
+    """Raised when content of a forbidden kind would land on a layer.
+
+    Subclass of ``ValueError`` so existing ``pytest.raises(ValueError, ...)``
+    call sites keep matching while callers can pin the content-contract class.
+    """
 
 
 #: How the A-only-attrs-and-rels rule is enforced. Frozen as ``"invariant"``
@@ -80,3 +92,46 @@ def permits(layer: Layer, kind: ContentKind) -> bool:
 def forbidden_kinds(layer: Layer) -> frozenset[ContentKind]:
     """Content kinds the matrix forbids on ``layer``."""
     return frozenset(ContentKind) - LAYER_CONTENT_MATRIX[layer]
+
+
+def assert_permits(layer: Layer, kind: ContentKind, *, what: str = "") -> None:
+    """Raise :class:`LayerContentError` if ``layer`` may not carry ``kind``.
+
+    Writers call this before attaching skills / functions / sources so the
+    refusal text always names the matrix rule rather than a hand-rolled check.
+    """
+    if permits(layer, kind):
+        return
+    permitted = ", ".join(sorted(k.value for k in LAYER_CONTENT_MATRIX[layer]))
+    detail = f" ({what})" if what else ""
+    raise LayerContentError(
+        f"{layer.value} layer may not carry {kind.value}{detail}; "
+        f"permitted kinds: {permitted}. "
+        f"Public is attributes + relationships only "
+        f"(LAYER_A_CONTENT_ENFORCEMENT={LAYER_A_CONTENT_ENFORCEMENT!r})."
+    )
+
+
+def is_public_type_uri(uri_or_name: str) -> bool:
+    """True iff ``uri_or_name`` is (or would resolve to) a Public-namespace type.
+
+    Accepts a full type URI (``https://cograph.tech/types/public/Person``), a
+    path-shaped entity_type (``public/Person`` → minted under the tenant
+    namespace prefix as ``types/public/Person``), or a bare name (``Person`` →
+    tenant namespace — not public). Used by function writers so a smuggled
+    ``entity_type="public/Foo"`` cannot attach a function to Public.
+    """
+    raw = (uri_or_name or "").strip()
+    if not raw:
+        return False
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return layer_from_uri(raw) is Layer.PUBLIC
+    # Path-shaped: register_function_triple mints types/{entity_type}, so
+    # entity_type="public/Person" becomes types/public/Person (PUBLIC).
+    candidate = f"https://cograph.tech/types/{raw}"
+    if layer_from_uri(candidate) is Layer.PUBLIC:
+        return True
+    # Defensive: also match the namespace prefix as a substring so a future
+    # mint shape that still embeds the public namespace is caught.
+    public_ns = type_namespace(Layer.PUBLIC)
+    return public_ns in raw or public_ns in candidate

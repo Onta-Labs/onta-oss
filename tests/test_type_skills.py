@@ -258,6 +258,20 @@ def test_register_skill_layer_refuses_the_tenant_layer():
         register_skill_layer(Layer.TENANT, [_skill()])
 
 
+def test_register_skill_layer_refuses_nonempty_public_layer():
+    """ONTA-400: Public is attrs+rels only — non-empty skill registration refuses."""
+    from cograph_client.graph.layer_content import LayerContentError
+
+    with pytest.raises(LayerContentError, match="may not carry skills"):
+        register_skill_layer(Layer.PUBLIC, [_skill(slug="pub", tenant_id=None)])
+
+
+def test_register_skill_layer_allows_empty_public_registration():
+    """Reserved-empty seed path remains callable as a no-op."""
+    register_skill_layer(Layer.PUBLIC, [])
+    assert global_skills_by_layer().get(Layer.PUBLIC, []) == []
+
+
 def test_register_skill_layer_normalizes_and_rejects_invalid_content():
     register_skill_layer(
         Layer.ENHANCED,
@@ -274,14 +288,19 @@ def test_register_skill_layer_normalizes_and_rejects_invalid_content():
 
 def test_global_skills_for_type_is_the_operator_read_function():
     """The operator Global Ontology assembler's entry point: plain, importable,
-    no tenant context, Enhanced before Public."""
-    register_skill_layer(Layer.PUBLIC, [_skill(slug="pub", tenant_id=None)])
+    no tenant context. Skills live on Enhanced (Public carries none — ONTA-400)."""
     register_skill_layer(Layer.ENHANCED, [_skill(slug="enh", tenant_id=None)])
+    # A second Enhanced registration appends (multiple contributors).
+    register_skill_layer(Layer.ENHANCED, [_skill(slug="enh2", tenant_id=None)])
 
     got = global_skills_for_type("Person")
-    assert [s.slug for s in got] == ["enh", "pub"]
-    assert [s.slug for s in global_skills_for_type("person")] == ["enh", "pub"]
-    assert [s.slug for s in global_skills_for_type("Person", layer=Layer.PUBLIC)] == ["pub"]
+    assert [s.slug for s in got] == ["enh", "enh2"]
+    assert [s.slug for s in global_skills_for_type("person")] == ["enh", "enh2"]
+    assert global_skills_for_type("Person", layer=Layer.PUBLIC) == []
+    assert [s.slug for s in global_skills_for_type("Person", layer=Layer.ENHANCED)] == [
+        "enh",
+        "enh2",
+    ]
     assert global_skills_for_type("Unknown") == []
 
 
@@ -356,12 +375,18 @@ def test_merge_filters_by_type():
 
 
 def test_resolve_skills_combines_store_and_registry():
-    register_skill_layer(Layer.PUBLIC, [_skill(slug="universal", tenant_id=None)])
+    # Curated skills land on Enhanced (Public may not carry them — ONTA-400).
+    register_skill_layer(Layer.ENHANCED, [_skill(slug="universal", tenant_id=None)])
     store = InMemoryTypeSkillStore()
 
     async def go():
         await store.upsert(_skill(slug="local"))
-        got = await resolve_skills("Person", tenant_id="t1", store=store)
+        # Non-entitled stack is Tenant > Public; Enhanced is invisible without
+        # entitlement. Pass entitled=True via resolve_skills' stack... resolve
+        # builds its own LayerStack from entitled flag.
+        got = await resolve_skills(
+            "Person", tenant_id="t1", store=store, entitled=True
+        )
         assert [s.slug for s in got] == ["local", "universal"]
 
     asyncio.run(go())
@@ -369,11 +394,13 @@ def test_resolve_skills_combines_store_and_registry():
 
 def test_resolve_skills_degrades_when_the_tenant_store_is_broken():
     """A broken store must cost you the tenant layer, not the whole feature."""
-    register_skill_layer(Layer.PUBLIC, [_skill(slug="universal", tenant_id=None)])
+    register_skill_layer(Layer.ENHANCED, [_skill(slug="universal", tenant_id=None)])
     broken = AsyncMock()
     broken.list_for_tenant.side_effect = RuntimeError("db down")
 
-    got = asyncio.run(resolve_skills("Person", tenant_id="t1", store=broken))
+    got = asyncio.run(
+        resolve_skills("Person", tenant_id="t1", store=broken, entitled=True)
+    )
     assert [s.slug for s in got] == ["universal"]
 
 
@@ -411,14 +438,16 @@ def test_prompt_block_dedupes_a_repeated_type():
     twice must not spend twice the prompt budget on it. Distinct types keep
     their own copy of a same-named skill: those are different skills."""
     register_skill_layer(
-        Layer.PUBLIC,
+        Layer.ENHANCED,
         [
             _skill(slug="shared", type_name="Person", tenant_id=None),
             _skill(slug="shared", type_name="Company", tenant_id=None),
         ],
     )
     text = asyncio.run(
-        skills_prompt_block(["Person", "Person", "Company"], tenant_id="t1")
+        skills_prompt_block(
+            ["Person", "Person", "Company"], tenant_id="t1", entitled=True
+        )
     )
     assert text.count("### Person") == 1
     assert text.count("### Company") == 1
@@ -438,9 +467,11 @@ def test_prompt_block_uses_the_documented_default_budget():
     the output to the same symbol that produced it would pass for any value."""
     assert DEFAULT_PROMPT_BUDGET == 6_000
     register_skill_layer(
-        Layer.PUBLIC, [_skill(slug="huge", body="X" * 19_000, tenant_id=None)]
+        Layer.ENHANCED, [_skill(slug="huge", body="X" * 19_000, tenant_id=None)]
     )
-    text = asyncio.run(skills_prompt_block(["Person"], tenant_id="t1"))
+    text = asyncio.run(
+        skills_prompt_block(["Person"], tenant_id="t1", entitled=True)
+    )
     assert 0 < len(text) <= 6_200, f"default budget not applied: {len(text)}"
 
 
@@ -522,29 +553,41 @@ def test_delete_removes_the_skill(client, auth_headers):
 
 
 def test_curated_global_skills_are_read_only_over_http(client, auth_headers):
+    # Curated skills live on Enhanced (Public may not carry them — ONTA-400).
+    # Entitle the caller so the Enhanced layer is visible on the list route.
+    from cograph_client.graph.entitlement import register_entitlement_checker
+
     register_skill_layer(
-        Layer.PUBLIC, [_skill(slug="curated", tenant_id=None, body="Curated guidance.")]
+        Layer.ENHANCED,
+        [_skill(slug="curated", tenant_id=None, body="Curated guidance.")],
     )
+    register_entitlement_checker(lambda _t: True)
+    try:
+        listed = client.get(_BASE, headers=auth_headers).json()
+        assert [s["slug"] for s in listed] == ["curated"]
+        assert listed[0]["editable"] is False
+        assert listed[0]["layer"] == "enhanced"
 
-    listed = client.get(_BASE, headers=auth_headers).json()
-    assert [s["slug"] for s in listed] == ["curated"]
-    assert listed[0]["editable"] is False
+        patched = client.patch(
+            f"{_BASE}/Person/curated", json={"body": "hijacked"}, headers=auth_headers
+        )
+        assert patched.status_code == 403
+        assert "read-only" in patched.json()["detail"]
 
-    patched = client.patch(
-        f"{_BASE}/Person/curated", json={"body": "hijacked"}, headers=auth_headers
-    )
-    assert patched.status_code == 403
-    assert "read-only" in patched.json()["detail"]
+        deleted = client.delete(f"{_BASE}/Person/curated", headers=auth_headers)
+        assert deleted.status_code == 403
 
-    deleted = client.delete(f"{_BASE}/Person/curated", headers=auth_headers)
-    assert deleted.status_code == 403
-
-    # The sanctioned override: a tenant skill with the SAME slug shadows it.
-    assert _create(client, auth_headers, slug="curated", body="Ours.").status_code == 201
-    resolved = client.get(_BASE, headers=auth_headers).json()
-    assert len(resolved) == 1
-    assert resolved[0]["layer"] == "tenant"
-    assert client.get(f"{_BASE}/Person/curated", headers=auth_headers).json()["body"] == "Ours."
+        # The sanctioned override: a tenant skill with the SAME slug shadows it.
+        assert _create(client, auth_headers, slug="curated", body="Ours.").status_code == 201
+        resolved = client.get(_BASE, headers=auth_headers).json()
+        assert len(resolved) == 1
+        assert resolved[0]["layer"] == "tenant"
+        assert (
+            client.get(f"{_BASE}/Person/curated", headers=auth_headers).json()["body"]
+            == "Ours."
+        )
+    finally:
+        register_entitlement_checker(None)
 
 
 def test_unfiltered_list_reads_the_store_once(client, auth_headers):
