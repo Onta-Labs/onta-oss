@@ -283,20 +283,99 @@ def select_triples(
     )
 
 
+def resolve_function_attachment(
+    entity_type: str,
+    *,
+    layer: "Layer | None" = None,
+) -> tuple["Layer", str]:
+    """Resolve ``(layer, type_uri)`` for attaching a function to a type.
+
+    ``entity_type`` may be:
+
+    * a bare type name (``"Person"``) → Tenant namespace
+      (``types/Person``) unless ``layer`` is passed explicitly;
+    * a path-shaped name (``"x/Person"`` / ``"public/Person"``) → the layer
+      encoded by that path under the ``types/`` prefix;
+    * a full type URI in any layer namespace.
+
+    Explicit ``layer`` wins when the input is a bare name; a path-shaped or
+    full-URI input that resolves to a different layer is a ValueError so a
+    caller cannot smuggle Public via ``layer=ENHANCED``.
+    """
+    # Local imports: keep queries.py import-light (see register_function_triple).
+    from cograph_client.graph.layers import (
+        Layer,
+        layer_from_uri,
+        layer_type_uri,
+        type_name_from_uri,
+    )
+
+    raw = (entity_type or "").strip()
+    if not raw:
+        raise ValueError("entity_type must not be empty")
+
+    if raw.startswith("http://") or raw.startswith("https://"):
+        detected = layer_from_uri(raw)
+        if detected is None:
+            # Outside every layer namespace — treat as an opaque tenant URI so
+            # legacy absolute IRIs keep working rather than being rejected.
+            if layer is not None and layer is not Layer.TENANT:
+                raise ValueError(
+                    f"entity_type URI {raw!r} is outside every layer namespace "
+                    f"but layer={layer.value!r} was requested"
+                )
+            return Layer.TENANT, raw
+        if layer is not None and layer is not detected:
+            raise ValueError(
+                f"entity_type URI {raw!r} is in the {detected.value} namespace "
+                f"but layer={layer.value!r} was requested"
+            )
+        return detected, raw
+
+    # Path-shaped (contains '/') or bare name. Mint under types/ and classify.
+    candidate = f"https://cograph.tech/types/{raw}"
+    detected = layer_from_uri(candidate)
+    if detected is Layer.PUBLIC or detected is Layer.ENHANCED:
+        if layer is not None and layer is not detected:
+            raise ValueError(
+                f"entity_type {raw!r} resolves to the {detected.value} layer "
+                f"but layer={layer.value!r} was requested"
+            )
+        return detected, candidate
+
+    # Bare name (or non-public/non-enhanced path that still lands in TENANT).
+    resolved = layer if layer is not None else Layer.TENANT
+    bare = type_name_from_uri(candidate) or raw
+    return resolved, layer_type_uri(resolved, bare)
+
+
 def register_function_triple(
     graph_uri: str,
     entity_type: str,
     function_name: str,
     endpoint_url: str,
     description: str = "",
+    *,
+    layer: "Layer | None" = None,
 ) -> str:
     """Build the SPARQL INSERT that attaches a function to a type.
 
-    The type URI is minted under the bare tenant namespace
-    (``types/<entity_type>``). Attaching a function to a **Public**-namespace
-    type (``types/public/<T>``, or a path-shaped ``entity_type`` that would
-    mint one, e.g. ``"public/Person"``) is refused: Public is attributes +
-    relationships only (ONTA-400 / ``LAYER_CONTENT_MATRIX``).
+    **Layer-aware attachment identity (ONTA-399).** The type URI is minted via
+    :func:`resolve_function_attachment` / :func:`~cograph_client.graph.layers.layer_type_uri`
+    so Enhanced (``types/x/<T>``) and Tenant (``types/<T>``) attachments land on
+    the correct subject. When the resolved layer is Enhanced, the INSERT targets
+    the Enhanced named graph (``graphs/global/enhanced``) regardless of the
+    caller-supplied ``graph_uri`` — a workspace write must not smuggle Enhanced
+    triples into a tenant graph. Tenant-layer attachments keep the caller's
+    ``graph_uri``.
+
+    **Public is refused** (ONTA-400 / ``LAYER_CONTENT_MATRIX``): Public is
+    attributes + relationships only. Path-shaped ``"public/Person"`` and full
+    Public type URIs raise :class:`~cograph_client.graph.layer_content.LayerContentError`.
+
+    Runtime is unchanged: this only decides *where* the attachment triple lands.
+    Execution still goes through the existing dual model (endpoint-URL registry
+    here + lambda executor in ``functions/executor.py``).
     """
     # Local import: queries.py is a low-level SPARQL builder; keep the module
     # importable without pulling the full layer stack at import time, and avoid
@@ -304,20 +383,25 @@ def register_function_triple(
     from cograph_client.graph.layer_content import (
         ContentKind,
         assert_permits,
-        is_public_type_uri,
     )
-    from cograph_client.graph.layers import Layer
+    from cograph_client.graph.layers import Layer, enhanced_graph_uri
 
-    if is_public_type_uri(entity_type):
-        assert_permits(
-            Layer.PUBLIC,
-            ContentKind.FUNCTIONS,
-            what=f"register_function_triple entity_type={entity_type!r}",
-        )
+    resolved_layer, type_uri_val = resolve_function_attachment(
+        entity_type, layer=layer
+    )
+    assert_permits(
+        resolved_layer,
+        ContentKind.FUNCTIONS,
+        what=f"register_function_triple entity_type={entity_type!r}",
+    )
+    # Global Enhanced always writes into its own named graph so attachment
+    # identity and graph location cannot drift. Tenant keeps the caller graph.
+    if resolved_layer is Layer.ENHANCED:
+        graph_uri = enhanced_graph_uri()
+
     func_uri = f"https://cograph.tech/functions/{function_name}"
-    type_uri = f"https://cograph.tech/types/{entity_type}"
     triples = [
-        (func_uri, "https://cograph.tech/onto/attachedTo", type_uri),
+        (func_uri, "https://cograph.tech/onto/attachedTo", type_uri_val),
         (func_uri, "https://cograph.tech/onto/endpointUrl", endpoint_url),
         (func_uri, "https://cograph.tech/onto/name", function_name),
     ]
@@ -347,11 +431,23 @@ def delete_batch_query(graph_uri: str, batch_id: str) -> str:
     )
 
 
-def list_functions_query(graph_uri: str, entity_type: str | None = None) -> str:
+def list_functions_query(
+    graph_uri: str,
+    entity_type: str | None = None,
+    *,
+    layer: "Layer | None" = None,
+) -> str:
+    """List functions in ``graph_uri``, optionally filtered by attached type.
+
+    ``entity_type`` uses the same resolution rules as
+    :func:`register_function_triple` (bare name / path / full URI + optional
+    ``layer``) so a filter for an Enhanced type matches the layer-qualified
+    attachment subject.
+    """
     type_filter = ""
     if entity_type:
-        type_uri = f"https://cograph.tech/types/{entity_type}"
-        type_filter = f'  FILTER(?type = <{type_uri}>)\n'
+        _, type_uri_val = resolve_function_attachment(entity_type, layer=layer)
+        type_filter = f'  FILTER(?type = <{type_uri_val}>)\n'
     return (
         f"SELECT ?name ?type ?endpoint ?desc FROM <{graph_uri}>\n"
         f"WHERE {{\n"
