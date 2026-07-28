@@ -11,8 +11,11 @@ tenant layer exactly as today.
 
 Ingestion never blocks on governance: the tenant-layer write happens first
 regardless of the verdict, panel failures degrade to the tenant layer, and
-every Global write is reversible via revoke_type (the structural answer to
-the spider-bench contamination class of bug).
+every Global write is reversible via revoke_type, which **deprecates** the
+type (ONTA-404) rather than hard-deleting it so the type still resolves and
+the publish gate can treat the change as DEPRECATING (minor) instead of
+BREAKING — the structural answer to the spider-bench contamination class of
+bug without silent schema surgery.
 
 This is the OSS seam only — the production judge service is premium and
 plugs in through the JudgePanel protocol.
@@ -420,36 +423,80 @@ class GovernanceEngine:
             "governance_ancestor_synthesized", type_uri=anc_uri, child=proposal.type_name,
         )
 
-    async def revoke_type(self, type_uri: str, timestamp: datetime | None = None) -> None:
-        """Engine-shaped wrapper around the module-level revoke_type."""
-        await revoke_type(self._neptune, type_uri, timestamp=timestamp)
+    async def revoke_type(
+        self,
+        type_uri: str,
+        timestamp: datetime | None = None,
+        *,
+        superseded_by: str | None = None,
+    ) -> None:
+        """Engine-shaped wrapper around the module-level revoke_type (deprecates)."""
+        await revoke_type(
+            self._neptune, type_uri, timestamp=timestamp, superseded_by=superseded_by,
+        )
 
 
-async def revoke_type(neptune, type_uri: str, timestamp: datetime | None = None) -> None:
-    """Rip a governed type out of the Public layer wholesale (reversibility,
-    ADR 0002 §2).
+async def revoke_type(
+    neptune,
+    type_uri: str,
+    timestamp: datetime | None = None,
+    *,
+    superseded_by: str | None = None,
+) -> None:
+    """Deprecate a governed type in the Public layer (ONTA-404 / ADR 0002 §2).
 
-    Removes (1) every Public-graph triple with the type as subject OR object
-    (the type node plus any subClassOf edges pointing at it) and (2) its
-    governance record(s). The changelog is append-only — the add_type entry
-    stays for audit and a revoke_type entry is appended instead.
+    Prior to ONTA-404 this **deleted** every Public-graph triple with the type
+    as subject or object plus its governance record. That made the type
+    unresolvable and broke the publish-gate model (removes are breaking;
+    deprecations are minor). The type now stays in the graph with
+    ``onto/deprecatedAt`` (+ optional ``onto/supersededBy``) so it still
+    resolves; the governance provenance record is left for audit; the
+    changelog is append-only with a ``deprecate_type`` entry (legacy readers
+    looking for ``revoke_type`` should map both).
+
+    ``superseded_by`` may be a full type IRI or a bare type name.
     """
+    from cograph_client.graph.ontology_commit import DEPRECATED_AT, SUPERSEDED_BY
+    from cograph_client.graph.ontology_queries import type_uri as bare_type_uri
+
     g = public_graph_uri()
+    ts_dt = timestamp or datetime.now(timezone.utc)
+    ts = ts_dt.isoformat()
+    ts_lit = ts_dt.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(ts_dt, "strftime") else str(ts)
+
+    # Clear prior markers then write deprecation (type still resolves).
+    for pred in (DEPRECATED_AT, SUPERSEDED_BY):
+        await neptune.update(
+            f"DELETE {{ GRAPH <{g}> {{ <{type_uri}> <{pred}> ?v }} }}\n"
+            f"WHERE {{ GRAPH <{g}> {{ "
+            f"OPTIONAL {{ <{type_uri}> <{pred}> ?v }} }} }}"
+        )
+    triples: list[tuple[str, str, str]] = [
+        (type_uri, DEPRECATED_AT, f"{ts_lit}^^{XSD}#dateTime"),
+    ]
+    if superseded_by:
+        raw = superseded_by.strip()
+        sup = (
+            raw
+            if raw.startswith("http://") or raw.startswith("https://")
+            else bare_type_uri(raw)
+        )
+        triples.append((type_uri, SUPERSEDED_BY, sup))
+    await neptune.update(insert_triples(g, triples))
+
+    # Changelog stays append-only. Prefer deprecate terminology (ONTA-404);
+    # action string is "deprecate_type" going forward.
     await neptune.update(
-        f"DELETE {{ GRAPH <{g}> {{ ?s ?p ?o }} }}\n"
-        f"WHERE {{ GRAPH <{g}> {{ ?s ?p ?o . "
-        f"FILTER(?s = <{type_uri}> || ?o = <{type_uri}>) }} }}"
+        insert_triples(
+            changelog_graph_uri(),
+            changelog_triples("deprecate_type", type_uri, "", ts),
+        ),
     )
-    prov_g = provenance_graph_uri(g)
-    await neptune.update(
-        f"DELETE {{ GRAPH <{prov_g}> {{ ?node ?p ?o }} }}\n"
-        f"WHERE {{ GRAPH <{prov_g}> {{ ?node <{GOV_SUBJECT}> <{type_uri}> . ?node ?p ?o }} }}"
+    logger.info(
+        "governance_type_deprecated",
+        type_uri=type_uri,
+        superseded_by=superseded_by,
     )
-    ts = (timestamp or datetime.now(timezone.utc)).isoformat()
-    await neptune.update(
-        insert_triples(changelog_graph_uri(), changelog_triples("revoke_type", type_uri, "", ts)),
-    )
-    logger.info("governance_type_revoked", type_uri=type_uri)
 
 
 # ---------------------------------------------------------------------------
