@@ -432,6 +432,23 @@ def _excerpt(body: str, limit: int = SKILL_EXCERPT_CHARS) -> str:
     return cut.rstrip() + "…"
 
 
+def _skill_to_payload(s: Any) -> GlobalOntologySkill:
+    """Project a :class:`~cograph_client.skills.models.TypeSkill` onto the wire."""
+    return GlobalOntologySkill(
+        slug=s.slug,
+        type_name=s.type_name,
+        title=s.title,
+        summary=s.summary,
+        excerpt=_excerpt(s.body),
+        # The FULL body's length, not the excerpt's — that gap is exactly what
+        # tells a reader there is more to fetch.
+        body_chars=len(s.body or ""),
+        layer=s.layer.value if hasattr(s.layer, "value") else str(s.layer),
+        enabled=bool(s.enabled),
+        version=int(s.version),
+    )
+
+
 class _SkillIndex:
     """Answers "which curated GLOBAL skills are attached to type X?".
 
@@ -450,6 +467,9 @@ class _SkillIndex:
     class does not (and must not) grow a "drop tenant skills" filter: a filter
     would imply tenant rows can arrive here, and inviting them is the failure
     mode.
+
+    Workspace reads use :class:`_WorkspaceSkillIndex` instead, which unions the
+    caller's tenant layer on top (ONTA-408).
 
     An EMPTY index is the degradation state: every type gets ``skills: []``.
     """
@@ -478,22 +498,7 @@ class _SkillIndex:
             # right order for a PROMPT but leaves a same-slug pair split apart
             # in a browse list sorted any other way.
             skills.sort(key=lambda s: (_name_key(s.slug), s.slug, s.layer.value))
-            out = [
-                GlobalOntologySkill(
-                    slug=s.slug,
-                    type_name=s.type_name,
-                    title=s.title,
-                    summary=s.summary,
-                    excerpt=_excerpt(s.body),
-                    # The FULL body's length, not the excerpt's — that gap is
-                    # exactly what tells a reader there is more to fetch.
-                    body_chars=len(s.body or ""),
-                    layer=s.layer.value,
-                    enabled=bool(s.enabled),
-                    version=int(s.version),
-                )
-                for s in skills
-            ]
+            out = [_skill_to_payload(s) for s in skills]
         except Exception:
             logger.warning(
                 "global_ontology_skill_lookup_failed", type_name=type_name, exc_info=True
@@ -501,6 +506,105 @@ class _SkillIndex:
             out = []
         self._cache[type_name] = out
         return out
+
+
+class _WorkspaceSkillIndex:
+    """Workspace browse overlay: Tenant ∪ Enhanced ∪ Public with slug shadowing.
+
+    Loads the durable tenant skill store ONCE per request, then merges with the
+    global registry per type name. Precedence matches
+    :func:`~cograph_client.skills.resolve.resolve_skills` (Tenant > Enhanced >
+    Public, Enhanced only when entitled) — but DISABLED higher-layer skills are
+    still LISTED (this is a raw browse view, same as the operator global page)
+    while still suppressing a same-slug lower-layer skill.
+
+    Tenant isolation is by store key: ``list_for_tenant(tenant_id)`` can only
+    return that tenant's rows. Never call this with an empty tenant_id.
+    """
+
+    __slots__ = ("_tenant_id", "_visible_layers", "_tenant_by_type", "_cache")
+
+    def __init__(
+        self,
+        tenant_id: str,
+        *,
+        visible_layers: set[str],
+        tenant_skills: list[Any] | None = None,
+    ) -> None:
+        self._tenant_id = tenant_id
+        self._visible_layers = visible_layers
+        self._tenant_by_type: dict[str, list[Any]] = {}
+        if tenant_skills:
+            for s in tenant_skills:
+                key = (s.type_name or "").casefold()
+                self._tenant_by_type.setdefault(key, []).append(s)
+        self._cache: dict[str, list[GlobalOntologySkill]] = {}
+
+    def for_type(self, type_name: str) -> list[GlobalOntologySkill]:
+        cached = self._cache.get(type_name)
+        if cached is not None:
+            return cached
+        try:
+            from cograph_client.skills import global_skills_for_type
+
+            global_rows = [
+                s
+                for s in global_skills_for_type(type_name)
+                if s.layer.value in self._visible_layers
+            ]
+        except Exception:
+            logger.warning(
+                "workspace_ontology_skill_lookup_failed",
+                type_name=type_name,
+                tenant_id=self._tenant_id,
+                exc_info=True,
+            )
+            global_rows = []
+
+        # Precedence order for browse: tenant first (when visible), then
+        # enhanced, then public. Within a layer, slug order is stable.
+        by_layer: dict[str, list[Any]] = {
+            "tenant": list(self._tenant_by_type.get(type_name.casefold(), [])),
+            "enhanced": [s for s in global_rows if s.layer.value == "enhanced"],
+            "public": [s for s in global_rows if s.layer.value == "public"],
+        }
+        for layer_rows in by_layer.values():
+            layer_rows.sort(key=lambda s: (_name_key(s.slug), s.slug))
+
+        precedence = [
+            layer
+            for layer in ("tenant", "enhanced", "public")
+            if layer in self._visible_layers
+        ]
+        seen: set[str] = set()
+        out: list[GlobalOntologySkill] = []
+        for layer in precedence:
+            for s in by_layer.get(layer, []):
+                slug = s.slug
+                if slug in seen:
+                    continue
+                seen.add(slug)
+                out.append(_skill_to_payload(s))
+        self._cache[type_name] = out
+        return out
+
+
+async def _load_tenant_skills(tenant_id: str) -> list[Any]:
+    """Load all durable skills for one tenant. Degrades to ``[]`` on any failure."""
+    if not tenant_id:
+        return []
+    try:
+        from cograph_client.skills.store import make_type_skill_store
+
+        store = make_type_skill_store()
+        return list(await store.list_for_tenant(tenant_id))
+    except Exception:
+        logger.warning(
+            "workspace_ontology_tenant_skills_unavailable",
+            tenant_id=tenant_id,
+            exc_info=True,
+        )
+        return []
 
 
 async def fetch_ontology(
@@ -555,12 +659,22 @@ async def fetch_ontology(
     # Parallel map: bare name -> winning layer value (shadowing path only).
     winning_layer: dict[str, str] = {}
     sources = await _build_source_index(catalog=catalog, today=today)
-    skills = _SkillIndex()
     # Skills are process-registry prose keyed by type name across GLOBAL
     # layers. Only surface skills whose OWN layer is visible in this stack —
     # otherwise a non-entitled workspace would see Enhanced skill rows via the
     # overlay even though Enhanced types are excluded from ``layers``.
+    # When ``tenant_id`` is set (workspace read), also union the durable
+    # tenant skill store so the browser matches agent resolution (ONTA-408).
     visible_skill_layers = {layer.value for layer, _ in layers}
+    if tenant_id:
+        tenant_skills = await _load_tenant_skills(tenant_id)
+        skills: _SkillIndex | _WorkspaceSkillIndex = _WorkspaceSkillIndex(
+            tenant_id,
+            visible_layers=visible_skill_layers,
+            tenant_skills=tenant_skills,
+        )
+    else:
+        skills = _SkillIndex()
 
     for layer, graph_uri in layers:
         available = True

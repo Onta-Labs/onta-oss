@@ -273,6 +273,10 @@ export class Client {
   /** @internal */ pEnrichJobApply(jobId: string): string {
     return `${this.pEnrichJob(jobId)}/apply`;
   }
+  /** @internal Full workspace ontology (layered C+A/B effective payload). */
+  pOntology(): string {
+    return `${this.base()}/ontology`;
+  }
   /** @internal */ pOntologyTypes(): string {
     return `${this.base()}/ontology/types`;
   }
@@ -851,6 +855,21 @@ export class Client {
       `${this.base()}/kgs/${encodeURIComponent(name)}`,
       undefined,
       30_000,
+    );
+  }
+
+  /**
+   * Effective workspace ontology — layered C+A/B read with shadowing applied
+   * (`GET /graphs/{tenant}/ontology`, ONTA-397/408). Returns the full browser
+   * payload (`tenant_id`, `entitled`, `layers`, `types` with sources/skills
+   * overlays). Empty is a normal `{ types: [] }`, never an error.
+   */
+  async ontology(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      this.pOntology(),
+      undefined,
+      20_000,
     );
   }
 
@@ -2055,6 +2074,12 @@ export class RawApi {
   }
 
   // -- ontology ------------------------------------------------------------ #
+
+  /** `GET /graphs/{tenant}/ontology` — effective layered workspace ontology
+   *  (ONTA-397/408 browser payload). */
+  ontology(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pOntology(), init);
+  }
 
   /** `GET /graphs/{tenant}/ontology/types` — list ontology types. */
   ontologyTypes(init?: RawInit): Promise<Response> {
