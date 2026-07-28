@@ -16,13 +16,32 @@ flattens ``a → b → c`` to ``a → c`` so every rewrite is one hop. Cyclic al
 data (``a → b → a``) is nonsensical — entries whose chain hits a cycle are
 dropped with a warning rather than rewritten unpredictably.
 
-**Authoring (ONTA-407a).** Production callers MUST go through
-:func:`cograph_client.graph.ontology_commit.commit_ontology` with
-``OntologyOpKind.REGISTER_ALIAS`` (or the thin REST route
-``POST /graphs/{tenant}/ontology/aliases`` which uses that op). Direct
-``register_alias`` calls remain the SPARQL writer that commit applies — do not
-hand-roll a second INSERT path. Lazy backfill + retirement + type renames are
-ONTA-407b. The write-path allowlist entry for this module stays until 407b.
+**Authoring (ONTA-407a + ONTA-407b).** Production callers MUST go through
+:func:`cograph_client.graph.ontology_commit.commit_ontology`:
+
+- ``OntologyOpKind.RENAME_ATTRIBUTE`` — full rename lifecycle; **always**
+  creates the alias (cannot record a rename without one), ensures the new
+  attribute declaration, and drops the old schema declaration.
+- ``OntologyOpKind.REGISTER_ALIAS`` — alias edge only (both attributes already
+  exist; hierarchy moves).
+- ``OntologyOpKind.RETIRE_ALIAS`` — drop the alias **only when** the instance
+  graph has zero remaining triples on the old predicate (real reference check).
+
+Thin REST routes under ``POST/DELETE …/ontology/aliases*`` use those ops.
+Direct ``register_alias`` / ``retire_alias`` remain the SPARQL writers that
+commit applies — do not hand-roll a second INSERT path. Instance backfill is
+:func:`backfill_aliases` (REST ``POST …/aliases/backfill``).
+
+**Write-path allowlist (ONTA-407b).** This module still issues raw
+``INSERT DATA`` / ``DELETE WHERE`` for ``aliasOf`` schema triples and batched
+instance-predicate rewrites. It stays on the write-path allowlist with an
+honest justification: sole production callers are ``ontology_commit``
+(register / rename / retire) and the alias backfill entrypoint. Not a general
+instance writer — domain facts continue to flow through ``kg_writer``.
+
+**Type renames are a remaining gap.** Attribute renames use this mechanism;
+renaming a *type* would also need entity-URI re-keying (``entities/<Type>/…``
+embeds the type leaf) and is intentionally out of scope for 407b.
 
 **alignedTo is NOT this mechanism.** Governance shape alignment
 (``cograph/governance/writer.write_alignment``) used to write tenant type URIs
@@ -47,8 +66,32 @@ logger = structlog.stdlib.get_logger("cograph.graph.aliases")
 ALIAS_OF = f"{OMNIX_ONTO}/aliasOf"
 
 
+class AliasStillReferencedError(Exception):
+    """Raised when retiring an alias while old-predicate instance triples remain.
+
+    Retirement is only safe after :func:`backfill_aliases` has rewritten every
+    remaining reference (count == 0). Carries the count so callers can surface
+    a useful error without a second probe.
+    """
+
+    def __init__(self, old_attr_uri: str, remaining: int, data_graph_uri: str):
+        self.old_attr_uri = old_attr_uri
+        self.remaining = remaining
+        self.data_graph_uri = data_graph_uri
+        super().__init__(
+            f"cannot retire alias for {old_attr_uri!r}: {remaining} instance "
+            f"triple(s) still reference it in {data_graph_uri!r}; "
+            f"run backfill first"
+        )
+
+
 async def register_alias(neptune, graph_uri: str, old_attr_uri: str, new_attr_uri: str) -> None:
-    """Record `old_attr_uri aliasOf new_attr_uri` in the (tenant) ontology graph."""
+    """Record `old_attr_uri aliasOf new_attr_uri` in the (tenant) ontology graph.
+
+    Production authoring goes through :func:`commit_ontology`
+    (``REGISTER_ALIAS`` / ``RENAME_ATTRIBUTE``). This is the SPARQL writer that
+    commit applies — do not call from a second production path.
+    """
     if old_attr_uri == new_attr_uri:
         raise ValueError(f"alias must point to a different attribute, got {old_attr_uri} -> itself")
     await neptune.update(
@@ -60,8 +103,24 @@ async def register_alias(neptune, graph_uri: str, old_attr_uri: str, new_attr_ur
     )
 
 
-async def retire_alias(neptune, graph_uri: str, old_attr_uri: str) -> None:
-    """Remove the alias triple for `old_attr_uri` — call after backfill completes."""
+async def retire_alias(
+    neptune,
+    graph_uri: str,
+    old_attr_uri: str,
+    *,
+    data_graph_uri: str | None = None,
+) -> None:
+    """Remove the alias triple for `old_attr_uri` — call after backfill completes.
+
+    When ``data_graph_uri`` is provided, refuses retirement while any instance
+    triples still use the old predicate (real reference check, ONTA-407b).
+    Production retirement goes through :func:`commit_ontology`
+    (``RETIRE_ALIAS``), which always supplies the data graph.
+    """
+    if data_graph_uri:
+        remaining = await count_attr_references(neptune, data_graph_uri, old_attr_uri)
+        if remaining > 0:
+            raise AliasStillReferencedError(old_attr_uri, remaining, data_graph_uri)
     await neptune.update(
         f"DELETE WHERE {{ GRAPH <{graph_uri}> {{ <{old_attr_uri}> <{ALIAS_OF}> ?new }} }}"
     )
@@ -125,6 +184,20 @@ def _count_attr_query(graph_uri: str, attr_uri: str) -> str:
     return f"SELECT (COUNT(*) AS ?n) FROM <{graph_uri}> WHERE {{ ?s <{attr_uri}> ?o . }}"
 
 
+async def count_attr_references(neptune, data_graph_uri: str, attr_uri: str) -> int:
+    """Count instance triples in ``data_graph_uri`` that use ``attr_uri`` as predicate.
+
+    The real reference check behind :func:`retire_alias` / ``RETIRE_ALIAS`` —
+    retirement is refused while this returns > 0.
+    """
+    raw = await neptune.query(_count_attr_query(data_graph_uri, attr_uri))
+    _, bindings = parse_sparql_results(raw)
+    try:
+        return int(bindings[0].get("n", "0")) if bindings else 0
+    except (ValueError, TypeError):
+        return 0
+
+
 def _backfill_batch_update(graph_uri: str, old_attr_uri: str, new_attr_uri: str, limit: int) -> str:
     """One batch of the lazy rewrite: DELETE/INSERT WHERE over a LIMITed subselect."""
     return (
@@ -144,16 +217,12 @@ async def backfill_aliases(
     For each alias, counts the remaining old-predicate triples in the DATA
     graph, then issues batched DELETE/INSERT WHERE updates (batch_size triples
     per update). Returns the total number of triples rewritten. After a clean
-    backfill the caller retires the alias via retire_alias.
+    backfill the caller retires the alias via :func:`retire_alias` /
+    ``OntologyOpKind.RETIRE_ALIAS`` (which re-checks the count).
     """
     total = 0
     for old_uri, new_uri in alias_map.items():
-        raw = await neptune.query(_count_attr_query(data_graph_uri, old_uri))
-        _, bindings = parse_sparql_results(raw)
-        try:
-            count = int(bindings[0].get("n", "0")) if bindings else 0
-        except ValueError:
-            count = 0
+        count = await count_attr_references(neptune, data_graph_uri, old_uri)
         if count <= 0:
             continue
         for _ in range(math.ceil(count / batch_size)):

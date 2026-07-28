@@ -17,7 +17,9 @@ import pytest
 
 from cograph_client.graph.aliases import (
     ALIAS_OF,
+    AliasStillReferencedError,
     backfill_aliases,
+    count_attr_references,
     fetch_alias_map,
     register_alias,
     retire_alias,
@@ -91,6 +93,38 @@ async def test_retire_alias_deletes_alias_triple(mock_neptune):
     sparql = mock_neptune.update.call_args.args[0]
     assert "DELETE WHERE" in sparql
     assert f"<{PHONE_NUM}> <{ALIAS_OF}> ?new" in sparql
+
+
+@pytest.mark.asyncio
+async def test_retire_alias_refuses_while_refs_remain(mock_neptune):
+    """ONTA-407b: real reference check — retirement blocked while count > 0."""
+    mock_neptune.query.return_value = _count_result(3)
+    with pytest.raises(AliasStillReferencedError) as ei:
+        await retire_alias(
+            mock_neptune, ONTO_GRAPH, PHONE_NUM, data_graph_uri=DATA_GRAPH,
+        )
+    assert ei.value.remaining == 3
+    assert ei.value.old_attr_uri == PHONE_NUM
+    assert ei.value.data_graph_uri == DATA_GRAPH
+    mock_neptune.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_retire_alias_ok_when_zero_refs(mock_neptune):
+    mock_neptune.query.return_value = _count_result(0)
+    await retire_alias(
+        mock_neptune, ONTO_GRAPH, PHONE_NUM, data_graph_uri=DATA_GRAPH,
+    )
+    sparql = mock_neptune.update.call_args.args[0]
+    assert "DELETE WHERE" in sparql
+
+
+@pytest.mark.asyncio
+async def test_count_attr_references(mock_neptune):
+    mock_neptune.query.return_value = _count_result(7)
+    n = await count_attr_references(mock_neptune, DATA_GRAPH, PHONE_NUM)
+    assert n == 7
+    assert f"<{PHONE_NUM}>" in mock_neptune.query.call_args.args[0]
 
 
 # ---------------------------------------------------------------------------

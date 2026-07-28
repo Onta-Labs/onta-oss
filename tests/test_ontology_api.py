@@ -222,6 +222,62 @@ def test_register_alias_rejects_self(client, auth_headers, mock_neptune):
     assert "different" in response.json()["detail"].lower() or "itself" in response.json()["detail"].lower()
 
 
+def test_rename_attribute_via_api(client, auth_headers, mock_neptune):
+    """POST /aliases/rename goes through RENAME_ATTRIBUTE (always creates alias)."""
+    from cograph_client.graph.aliases import ALIAS_OF
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Guest", "phone")
+
+    reg = client.post(
+        "/graphs/test-tenant/ontology/aliases/rename",
+        headers=auth_headers,
+        json={
+            "type_name": "Guest",
+            "from_slot": "phone_num",
+            "to_slot": "phone",
+            "datatype": "string",
+        },
+    )
+    assert reg.status_code == 201, reg.text
+    body = reg.json()
+    assert body["from_slot"] == "phone_num"
+    assert body["to_slot"] == "phone"
+    assert body["old_attr_uri"] == old_uri
+    assert body["new_attr_uri"] == new_uri
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    assert "aliasOf" in all_sparql or ALIAS_OF in all_sparql
+    assert old_uri in all_sparql and new_uri in all_sparql
+
+
+def test_retire_alias_conflict_when_refs_remain(client, auth_headers, mock_neptune):
+    """DELETE /aliases returns 409 when instance triples still use the old predicate."""
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    old_uri = attr_uri("Guest", "phone_num")
+    # commit path: fingerprint + count probe. Count returns 2 remaining.
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["n"]},
+        "results": {"bindings": [{"n": {"type": "literal", "value": "2"}}]},
+    }
+    resp = client.request(
+        "DELETE",
+        "/graphs/test-tenant/ontology/aliases",
+        headers=auth_headers,
+        json={
+            "type_name": "Guest",
+            "from_slot": "phone_num",
+            "kg_name": "main",
+        },
+    )
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert detail["error"] == "alias_still_referenced"
+    assert detail["remaining"] == 2
+    assert detail["old_attr_uri"] == old_uri
+
+
 # ---------------------------------------------------------------------------
 # /kgs/{kg}/type-counts and /kgs/{kg}/types/{name}/usage
 # ---------------------------------------------------------------------------
