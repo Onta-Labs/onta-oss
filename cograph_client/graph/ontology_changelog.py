@@ -256,3 +256,205 @@ async def fetch_ontology_changelog(
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# History grouping (ONTA-410) — pure; shared by API + UI consumers
+# ---------------------------------------------------------------------------
+
+#: Default burst window for automatic mid-ingest commits (seconds).
+DEFAULT_HISTORY_GROUP_WINDOW_S = 60.0
+
+
+@dataclass(frozen=True)
+class HistoryGroup:
+    """One collapsed history row over consecutive changelog entries.
+
+    ``entries`` are newest → oldest (same order as the changelog reader).
+    ``start`` is the earliest timestamp in the group; ``end`` the latest.
+    """
+
+    id: str
+    start: str
+    end: str
+    count: int
+    actor: str | None
+    message: str | None
+    sample_actions: tuple[str, ...]
+    change_summary_counts: dict[str, int]
+    entries: tuple[ChangelogEntry, ...] = ()
+
+
+def _parse_iso_ts(raw: str | None):
+    """Best-effort ISO-8601 parse; returns aware UTC datetime or None."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    # Tolerate trailing Z and missing timezone (treat as UTC).
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        from datetime import datetime, timezone
+
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def _job_identity(entry: ChangelogEntry) -> tuple[str, str] | None:
+    """Non-empty (actor, message) job key, or None when both blank."""
+    actor = (entry.actor or "").strip()
+    message = (entry.message or "").strip()
+    if not actor and not message:
+        return None
+    return (actor, message)
+
+
+def _within_window(
+    a: ChangelogEntry,
+    b: ChangelogEntry,
+    window_s: float,
+) -> bool:
+    ta = _parse_iso_ts(a.timestamp)
+    tb = _parse_iso_ts(b.timestamp)
+    if ta is None or tb is None:
+        return False
+    return abs((ta - tb).total_seconds()) <= window_s
+
+
+def _should_group_pair(
+    newer: ChangelogEntry,
+    older: ChangelogEntry,
+    *,
+    window_s: float,
+) -> bool:
+    """True when two *consecutive* newest→older entries belong in one group.
+
+    Rules (ONTA-410):
+    * Same non-empty job identity (actor + message) — mid-ingest commits
+      from one job collapse even if slightly staggered.
+    * OR timestamps within ``window_s`` (default 60s) — rapid automatic
+      bursts without a shared message still collapse.
+    Isolated commits with different identity and distant timestamps stay
+    separate.
+    """
+    id_a = _job_identity(newer)
+    id_b = _job_identity(older)
+    if id_a is not None and id_a == id_b:
+        return True
+    return _within_window(newer, older, window_s)
+
+
+def _summarize_kinds(entries: Sequence[ChangelogEntry]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for e in entries:
+        for c in e.changes or []:
+            kind = c.kind.value if hasattr(c.kind, "value") else str(c.kind)
+            counts[kind] = counts.get(kind, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _sample_actions(entries: Sequence[ChangelogEntry], *, limit: int = 5) -> tuple[str, ...]:
+    seen: list[str] = []
+    for e in entries:
+        a = (e.action or "").strip()
+        if a and a not in seen:
+            seen.append(a)
+        if len(seen) >= limit:
+            break
+    return tuple(seen)
+
+
+def _group_id(entries: Sequence[ChangelogEntry]) -> str:
+    first = entries[0]
+    last = entries[-1]
+    # Stable, URL-safe-ish id from the boundary entry URIs / timestamps.
+    head = (first.entry_uri or first.timestamp or "e").rsplit("/", 1)[-1]
+    if len(entries) == 1:
+        return f"g:{head}"
+    tail = (last.entry_uri or last.timestamp or "e").rsplit("/", 1)[-1]
+    return f"g:{head}..{tail}:{len(entries)}"
+
+
+def group_changelog_entries(
+    entries: Sequence[ChangelogEntry],
+    *,
+    window_s: float = DEFAULT_HISTORY_GROUP_WINDOW_S,
+) -> list[HistoryGroup]:
+    """Collapse consecutive changelog rows into history groups (ONTA-410).
+
+    Expects ``entries`` newest → oldest (changelog reader order). Empty input
+    → empty list (never an error). Pure function — safe to unit-test without
+    Neptune and to share between the history API and any client-side display
+    helpers.
+    """
+    if not entries:
+        return []
+
+    groups: list[HistoryGroup] = []
+    bucket: list[ChangelogEntry] = [entries[0]]
+
+    def _flush(bucket_entries: list[ChangelogEntry]) -> HistoryGroup:
+        # bucket is newest → oldest; start = earliest, end = latest.
+        start = bucket_entries[-1].timestamp or ""
+        end = bucket_entries[0].timestamp or ""
+        # Prefer the most recent entry's actor/message as the group label.
+        actor = bucket_entries[0].actor
+        message = bucket_entries[0].message
+        for e in bucket_entries:
+            if actor is None and e.actor:
+                actor = e.actor
+            if message is None and e.message:
+                message = e.message
+        return HistoryGroup(
+            id=_group_id(bucket_entries),
+            start=start,
+            end=end,
+            count=len(bucket_entries),
+            actor=actor,
+            message=message,
+            sample_actions=_sample_actions(bucket_entries),
+            change_summary_counts=_summarize_kinds(bucket_entries),
+            entries=tuple(bucket_entries),
+        )
+
+    for cur in entries[1:]:
+        # ``bucket[-1]`` is the oldest so far in the open group; ``cur`` is
+        # next-older. Compare the previous consecutive pair's older edge
+        # (bucket[-1]) with cur.
+        if _should_group_pair(bucket[-1], cur, window_s=window_s):
+            bucket.append(cur)
+        else:
+            groups.append(_flush(bucket))
+            bucket = [cur]
+    groups.append(_flush(bucket))
+    return groups
+
+
+__all__ = [
+    "ChangelogEntry",
+    "DEFAULT_HISTORY_GROUP_WINDOW_S",
+    "GOV_ACTION",
+    "GOV_ACTOR",
+    "GOV_DELTA",
+    "GOV_MESSAGE",
+    "GOV_NS",
+    "GOV_REVISION",
+    "GOV_SUBJECT",
+    "GOV_TENANT",
+    "GOV_TIMESTAMP",
+    "GOV_VERSION_AFTER",
+    "GOV_VERSION_BEFORE",
+    "HistoryGroup",
+    "changelog_graph_uri_for",
+    "fetch_ontology_changelog",
+    "group_changelog_entries",
+    "ontology_changelog_query",
+    "parse_change_records",
+    "serialize_change_records",
+]
