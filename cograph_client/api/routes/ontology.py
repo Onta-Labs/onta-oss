@@ -17,7 +17,7 @@ byte-for-byte; they must never share a graph in a union.
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
@@ -584,7 +584,7 @@ async def preview_workspace_base_upgrade(
 
 @router.post("/base-pin/upgrade", response_model=BasePinResponse)
 async def post_workspace_base_upgrade(
-    body: BasePinUpgradeRequest | None = None,
+    body: BasePinUpgradeRequest = Body(default_factory=BasePinUpgradeRequest),
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
