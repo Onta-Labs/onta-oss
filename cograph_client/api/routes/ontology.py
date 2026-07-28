@@ -1,3 +1,18 @@
+"""Tenant ontology routes — layered READS, tenant-graph WRITES (ONTA-397).
+
+**Reads** (list / get / schema / workspace) go through
+:func:`~cograph_client.graph.global_ontology.fetch_ontology` over the caller's
+:class:`~cograph_client.graph.layers.LayerStack` (via
+:func:`~cograph_client.graph.entitlement.layer_stack_for`). Empty tenant +
+populated Public → Public types are visible. Same-name tenant definitions
+shadow Public/Enhanced. Non-entitled stacks never see Enhanced.
+
+**Writes** (create type, add attribute, add subtype, resolve-apply, …) always
+target ``tenant_graph_uri(tenant)``. Ordinary mutations never write a global
+layer graph. Isolation is by named graph: two tenants' type URIs may collide
+byte-for-byte; they must never share a graph in a union.
+"""
+
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,19 +21,14 @@ from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.entitlement import is_entitled, layer_stack_for
+from cograph_client.graph.global_ontology import fetch_ontology
 from cograph_client.graph.ontology_queries import (
-    get_full_ontology_query,
-    get_subtypes_query,
-    get_type_attributes_query,
-    get_type_detail_query,
-    get_type_functions_query,
     insert_attribute,
     insert_subtype,
     insert_type,
-    list_types_query,
     upsert_attribute,
 )
-from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import tenant_graph_uri
 from cograph_client.models.ontology import (
     ApplyBatchRequest,
@@ -32,6 +42,8 @@ from cograph_client.models.ontology import (
     SubtypeAdd,
     TypeCreate,
     TypeResponse,
+    WorkspaceOntologyResponse,
+    WorkspaceOntologyType,
 )
 from cograph_client.nlp.pipeline import get_embedding_service
 from cograph_client.resolver.ontology_resolver import OntologyResolver
@@ -45,12 +57,70 @@ router = APIRouter(prefix="/graphs/{tenant}/ontology")
 _VERDICT_CACHE_PATH = Path("/tmp/omnix-verdict-cache.json")
 
 
+async def _workspace_ontology(
+    tenant: TenantContext, client: NeptuneClient
+) -> WorkspaceOntologyResponse:
+    """Effective (shadowed) ontology for ``tenant`` — single LayerStack read."""
+    stack = layer_stack_for(tenant)
+    return await fetch_ontology(
+        client,
+        layers=stack.layer_pairs(),
+        entitled=is_entitled(tenant),
+        tenant_id=tenant.tenant_id,
+        apply_shadowing=True,
+    )
+
+
+def _type_response(t: WorkspaceOntologyType) -> TypeResponse:
+    """Map a layered type onto the legacy TypeResponse contract."""
+    return TypeResponse(
+        name=t.name,
+        description=t.description or "",
+        parent_type=t.parent_type,
+        attributes=[
+            AttributeDefinition(
+                name=a.name,
+                description=a.description or "",
+                datatype=a.datatype,
+            )
+            for a in t.attributes
+        ]
+        + [
+            # Relationships surface as attributes with the target type name as
+            # datatype — matching the pre-layered TypeResponse shape used by
+            # the CLI / Explorer (no separate relationships field).
+            AttributeDefinition(
+                name=r.name,
+                description=r.description or "",
+                datatype=r.target_type,
+            )
+            for r in t.relationships
+        ],
+        subtypes=list(t.subtypes),
+        functions=[f.name for f in t.functions],
+    )
+
+
+@router.get("", response_model=WorkspaceOntologyResponse)
+async def get_workspace_ontology(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Effective layered ontology for this workspace (ONTA-397).
+
+    Canonical full-payload read: layers status + shadowed types. Empty is 200
+    with ``types: []``. Writes never go through this route.
+    """
+    return await _workspace_ontology(tenant, client)
+
+
 @router.post("/types", status_code=201)
 async def create_type(
     body: TypeCreate,
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
+    # WRITE path: tenant graph only. Never a global layer.
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     sparql = insert_type(graph_uri, body.name, body.description, body.parent_type)
     await client.update(sparql)
@@ -67,23 +137,9 @@ async def list_types(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    graph_uri = tenant_graph_uri(tenant.tenant_id)
-    raw = await client.query(list_types_query(graph_uri))
-    _, bindings = parse_sparql_results(raw)
-
-    types = {}
-    for row in bindings:
-        label = row.get("label", "")
-        if label not in types:
-            types[label] = TypeResponse(
-                name=label,
-                description=row.get("comment", ""),
-                parent_type=_extract_name(row.get("parent")) if row.get("parent") else None,
-            )
-        elif row.get("parent"):
-            types[label].parent_type = _extract_name(row["parent"])
-
-    return list(types.values())
+    """List effective types (tenant + visible global layers, shadowed)."""
+    body = await _workspace_ontology(tenant, client)
+    return [_type_response(t) for t in body.types]
 
 
 @router.get("/types/{type_name}", response_model=TypeResponse)
@@ -92,40 +148,12 @@ async def get_type(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    graph_uri = tenant_graph_uri(tenant.tenant_id)
-
-    raw = await client.query(get_type_detail_query(graph_uri, type_name))
-    _, bindings = parse_sparql_results(raw)
-    if not bindings:
-        raise HTTPException(status_code=404, detail=f"Type '{type_name}' not found")
-
-    row = bindings[0]
-    result = TypeResponse(
-        name=row.get("label", type_name),
-        description=row.get("comment", ""),
-        parent_type=_extract_name(row.get("parent")) if row.get("parent") else None,
-    )
-
-    attr_raw = await client.query(get_type_attributes_query(graph_uri, type_name))
-    _, attr_bindings = parse_sparql_results(attr_raw)
-    result.attributes = [
-        AttributeDefinition(
-            name=r.get("attrLabel", ""),
-            description=r.get("attrComment", ""),
-            datatype=_xsd_to_datatype(r.get("range", "")),
-        )
-        for r in attr_bindings
-    ]
-
-    sub_raw = await client.query(get_subtypes_query(graph_uri, type_name))
-    _, sub_bindings = parse_sparql_results(sub_raw)
-    result.subtypes = [r.get("label", "") for r in sub_bindings]
-
-    func_raw = await client.query(get_type_functions_query(graph_uri, type_name))
-    _, func_bindings = parse_sparql_results(func_raw)
-    result.functions = [r.get("name", "") for r in func_bindings]
-
-    return result
+    """Type detail from the effective (shadowed) layered ontology."""
+    body = await _workspace_ontology(tenant, client)
+    for t in body.types:
+        if t.name == type_name:
+            return _type_response(t)
+    raise HTTPException(status_code=404, detail=f"Type '{type_name}' not found")
 
 
 @router.post("/types/{type_name}/attributes", status_code=201)
@@ -135,6 +163,7 @@ async def add_attributes(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
+    # WRITE path: tenant graph only.
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     for attr in body.attributes:
         sparql = insert_attribute(graph_uri, type_name, attr.name, attr.description, attr.datatype)
@@ -149,6 +178,7 @@ async def add_subtype(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
+    # WRITE path: tenant graph only.
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     sparql = insert_subtype(graph_uri, type_name, body.subtype)
     await client.update(sparql)
@@ -160,27 +190,21 @@ async def get_full_schema(
     tenant: TenantContext = Depends(get_tenant),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
-    """Get the complete ontology schema. Used by the NL pipeline."""
-    graph_uri = tenant_graph_uri(tenant.tenant_id)
-    raw = await client.query(get_full_ontology_query(graph_uri))
-    _, bindings = parse_sparql_results(raw)
-
-    types = {}
-    for row in bindings:
-        type_label = row.get("typeLabel", "")
-        if not type_label:
-            continue
-        if type_label not in types:
-            types[type_label] = {"attributes": [], "functions": []}
-        if row.get("attrLabel") and row["attrLabel"] not in [a["name"] for a in types[type_label]["attributes"]]:
-            types[type_label]["attributes"].append({
-                "name": row["attrLabel"],
-                "datatype": _xsd_to_datatype(row.get("range", "")),
-            })
-        if row.get("funcName") and row["funcName"] not in types[type_label]["functions"]:
-            types[type_label]["functions"].append(row["funcName"])
-
-    return {"types": types}
+    """Complete effective schema (layered + shadowed). Used by the NL pipeline."""
+    body = await _workspace_ontology(tenant, client)
+    types: dict = {}
+    for t in body.types:
+        types[t.name] = {
+            "attributes": [
+                {"name": a.name, "datatype": a.datatype} for a in t.attributes
+            ]
+            + [
+                {"name": r.name, "datatype": r.target_type} for r in t.relationships
+            ],
+            "functions": [f.name for f in t.functions],
+            "layer": t.layer,
+        }
+    return {"types": types, "entitled": body.entitled, "tenant_id": body.tenant_id}
 
 
 # ── Natural-language ontology evolution (COG-80) ──────────────────────────────
@@ -355,30 +379,3 @@ async def apply_ontology_changes(
 def change_label(change: ResolvedChange) -> str:
     target = f" → {change.datatype_or_target}" if change.kind == "relationship" else f" ({change.datatype_or_target})"
     return f"{change.action} {change.kind} '{change.name}'{target} on {change.subject_type}"
-
-
-def _extract_name(uri: str | None) -> str | None:
-    if not uri:
-        return None
-    return uri.rstrip("/").split("/")[-1]
-
-
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
-
-
-def _xsd_to_datatype(xsd_uri: str) -> str:
-    if not xsd_uri:
-        return "string"
-    # Check if it's a reference to another ontology type
-    if xsd_uri.startswith(TYPE_URI_PREFIX):
-        return xsd_uri[len(TYPE_URI_PREFIX):]
-    mapping = {
-        "string": "string",
-        "integer": "integer",
-        "float": "float",
-        "boolean": "boolean",
-        "dateTime": "datetime",
-        "Resource": "uri",
-    }
-    last = xsd_uri.split("#")[-1] if "#" in xsd_uri else xsd_uri.split("/")[-1]
-    return mapping.get(last, "string")

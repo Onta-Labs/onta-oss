@@ -28,16 +28,29 @@ def test_create_type_with_parent(client, auth_headers, mock_neptune):
     assert response.json()["created"] == "Park"
 
 
+def _detail_row(**cells):
+    """One full_ontology_detail_query-shaped SPARQL JSON binding row."""
+    out = {}
+    for k, v in cells.items():
+        if isinstance(v, str) and (v.startswith("http://") or v.startswith("https://")):
+            out[k] = {"type": "uri", "value": v}
+        else:
+            out[k] = {"type": "literal", "value": str(v)}
+    return out
+
+
 def test_list_types(client, auth_headers, mock_neptune):
+    # ONTA-397: list_types reads via fetch_ontology (full_ontology_detail_query
+    # per visible layer). Empty global layers + one tenant type.
     mock_neptune.query.return_value = {
-        "head": {"vars": ["type", "label", "comment", "parent"]},
+        "head": {"vars": ["type", "typeLabel", "typeComment"]},
         "results": {
             "bindings": [
-                {
-                    "type": {"type": "uri", "value": "https://cograph.tech/types/Place"},
-                    "label": {"type": "literal", "value": "Place"},
-                    "comment": {"type": "literal", "value": "A location"},
-                },
+                _detail_row(
+                    type="https://cograph.tech/types/Place",
+                    typeLabel="Place",
+                    typeComment="A location",
+                ),
             ]
         },
     }
@@ -46,28 +59,40 @@ def test_list_types(client, auth_headers, mock_neptune):
     types = response.json()
     assert len(types) == 1
     assert types[0]["name"] == "Place"
+    assert types[0]["description"] == "A location"
 
 
 def test_get_type_detail(client, auth_headers, mock_neptune):
-    mock_neptune.query.side_effect = [
-        # type detail
-        {"head": {"vars": ["label", "comment", "parent"]}, "results": {"bindings": [
-            {"label": {"type": "literal", "value": "Place"}, "comment": {"type": "literal", "value": "A location"}},
-        ]}},
-        # attributes
-        {"head": {"vars": ["attr", "attrLabel", "attrComment", "range"]}, "results": {"bindings": [
-            {"attr": {"type": "uri", "value": "x"}, "attrLabel": {"type": "literal", "value": "name"},
-             "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"}},
-        ]}},
-        # subtypes
-        {"head": {"vars": ["sub", "label"]}, "results": {"bindings": [
-            {"sub": {"type": "uri", "value": "x"}, "label": {"type": "literal", "value": "Park"}},
-        ]}},
-        # functions
-        {"head": {"vars": ["name", "endpoint", "desc"]}, "results": {"bindings": [
-            {"name": {"type": "literal", "value": "calculate_distance"}},
-        ]}},
-    ]
+    # Single layered read: one full_ontology_detail_query result folds type +
+    # attrs + functions. Subtypes come from the inverted subClassOf map.
+    mock_neptune.query.return_value = {
+        "head": {
+            "vars": [
+                "type", "typeLabel", "typeComment", "parent",
+                "attr", "attrLabel", "attrComment", "range",
+                "funcName",
+            ]
+        },
+        "results": {
+            "bindings": [
+                _detail_row(
+                    type="https://cograph.tech/types/Place",
+                    typeLabel="Place",
+                    typeComment="A location",
+                    attr="https://cograph.tech/types/Place/attrs/name",
+                    attrLabel="name",
+                    range="http://www.w3.org/2001/XMLSchema#string",
+                    funcName="calculate_distance",
+                ),
+                # Park subClassOf Place → subtypes of Place includes Park
+                _detail_row(
+                    type="https://cograph.tech/types/Park",
+                    typeLabel="Park",
+                    parent="https://cograph.tech/types/Place",
+                ),
+            ]
+        },
+    }
     response = client.get("/graphs/test-tenant/ontology/types/Place", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
@@ -108,13 +133,14 @@ def test_get_full_schema(client, auth_headers, mock_neptune):
     mock_neptune.query.return_value = {
         "head": {"vars": ["type", "typeLabel", "attr", "attrLabel", "range", "funcName"]},
         "results": {"bindings": [
-            {
-                "type": {"type": "uri", "value": "https://cograph.tech/types/Place"},
-                "typeLabel": {"type": "literal", "value": "Place"},
-                "attrLabel": {"type": "literal", "value": "name"},
-                "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
-                "funcName": {"type": "literal", "value": "calculate_distance"},
-            },
+            _detail_row(
+                type="https://cograph.tech/types/Place",
+                typeLabel="Place",
+                attr="https://cograph.tech/types/Place/attrs/name",
+                attrLabel="name",
+                range="http://www.w3.org/2001/XMLSchema#string",
+                funcName="calculate_distance",
+            ),
         ]},
     }
     response = client.get("/graphs/test-tenant/ontology/schema", headers=auth_headers)
@@ -123,6 +149,8 @@ def test_get_full_schema(client, auth_headers, mock_neptune):
     assert "Place" in data["types"]
     assert data["types"]["Place"]["attributes"][0]["name"] == "name"
     assert "calculate_distance" in data["types"]["Place"]["functions"]
+    assert data["types"]["Place"]["layer"] == "tenant"
+    assert data["entitled"] is False
 
 
 # ---------------------------------------------------------------------------

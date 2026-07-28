@@ -16,9 +16,19 @@ Namespaces (one per layer, so shadowing is explicit and collisions impossible):
   Enhanced — https://cograph.tech/types/x/
   Public   — https://cograph.tech/types/public/
 
+**Reads are layered; writes are not (ONTA-397).** A workspace *read* sees the
+merged stack via :class:`LayerStack` / :func:`~cograph_client.graph.global_ontology.fetch_ontology`.
+A workspace *write* (ordinary ontology mutation: create type, add attribute,
+ingest schema mint, …) **always** goes to the tenant named graph. A workspace
+must never write into a global layer through an ordinary mutation — only the
+governed promotion path may, and only with consent (ONTA-402a). Isolation is
+by **named graph**, not by type URI: two tenants' ``Person`` share the same
+tenant-namespace URI; unioning graphs without scoping by the caller's stack
+leaks tenant A into tenant B.
+
 Everything here is additive and opt-in: default single-tenant, single-graph
-behavior is untouched. The schema resolver can adopt fetch_types_by_layer +
-LayerStack.resolve_type when the layer-aware closure work lands.
+behavior is the write path; layered reads are wired through
+:func:`~cograph_client.graph.entitlement.layer_stack_for`.
 """
 
 from dataclasses import dataclass
@@ -146,6 +156,13 @@ class LayerStack:
     def visible_graph_uris(self) -> list[str]:
         """Graph URIs of the visible layers, in precedence order."""
         return [self.graph_uri_for(layer) for layer in self.layers]
+
+    def layer_pairs(self) -> list[tuple[Layer, str]]:
+        """``(Layer, graph_uri)`` pairs for :func:`~cograph_client.graph.global_ontology.fetch_ontology`.
+
+        Precedence order matches :attr:`layers` (first wins under shadowing).
+        """
+        return [(layer, self.graph_uri_for(layer)) for layer in self.layers]
 
     def resolve_type(
         self, name: str, types_by_layer: dict[Layer, dict[str, Any]]
