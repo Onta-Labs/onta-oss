@@ -1751,6 +1751,12 @@ class SchemaResolver:
         # stays a fallback only.
         self._type_matcher._graph_uri = graph_uri
 
+        # Layer stack for the subclass-closure parent map (ONTA-397). Reads are
+        # layered so a tenant leaf under a Public parent resolves; writes still
+        # land only on the tenant graph. Entitlement is decided by the OSS seam
+        # (env allowlist / Clerk-stamped bit) — never a client flag.
+        layer_stack = self._layer_stack_for(tenant_id, graph_uri)
+
         # Step 1: Fetch existing ontology (needed for extraction context)
         existing_types, existing_attrs = await self._fetch_ontology(graph_uri)
         # Build the child->parent subclass map once per ingest. Used to climb the
@@ -1758,8 +1764,10 @@ class SchemaResolver:
         # in-place as new subtypes are created during this ingest. CALL-LOCAL and
         # threaded (ONTA-268): a fresh dict per ingest, so concurrent ingests each
         # mutate their own map; `self._parent_of` remains the legacy fallback.
-        parent_of = await self._fetch_parent_map(graph_uri)
+        parent_of = await self._fetch_parent_map(graph_uri, layer_stack=layer_stack)
         self._parent_of = parent_of
+        # Stash for _reconcile_ontology_version (same run, same stack).
+        self._active_layer_stack = layer_stack
 
         # ONTA-270: fingerprint the ontology snapshot THIS run (P5) planned
         # against. Stamped onto the A5 placement plan and threaded into the apply
@@ -2543,9 +2551,11 @@ class SchemaResolver:
         target_instance_graph = instance_graph or graph_uri
         self._instance_graph = target_instance_graph
         self._type_matcher._graph_uri = graph_uri
+        layer_stack = self._layer_stack_for(tenant_id, graph_uri)
         existing_types, existing_attrs = await self._fetch_ontology(graph_uri)
-        parent_of = await self._fetch_parent_map(graph_uri)
+        parent_of = await self._fetch_parent_map(graph_uri, layer_stack=layer_stack)
         self._parent_of = parent_of
+        self._active_layer_stack = layer_stack
         return await self._ingest_mapped(
             mapping, rows, graph_uri, existing_types, existing_attrs, source,
             key_join=key_join,
@@ -3540,6 +3550,23 @@ class SchemaResolver:
         except Exception:
             return ""
 
+    @staticmethod
+    def _layer_stack_for(tenant_id: str, graph_uri: str) -> LayerStack:
+        """Build the LayerStack for an ingest run (ONTA-397).
+
+        Uses the OSS entitlement seam with a minimal TenantContext keyed by
+        ``tenant_id``. Env-allowlisted workspaces (and Clerk-stamped ones when
+        the bit is available via a richer context elsewhere) see Enhanced;
+        everyone else degrades to Tenant > Public. Never consults client input.
+        """
+        from cograph_client.auth.api_keys import TenantContext
+        from cograph_client.graph.entitlement import is_entitled
+
+        return LayerStack(
+            tenant_graph_uri=graph_uri,
+            entitled=is_entitled(TenantContext(tenant_id=tenant_id, api_key="")),
+        )
+
     async def _fetch_ontology(
         self, graph_uri: str
     ) -> tuple[dict[str, str], dict[str, dict[str, AttributeSchema]]]:
@@ -3848,7 +3875,10 @@ class SchemaResolver:
         """
         async with self._ontology_lock:
             fresh_types, fresh_attrs = await self._fetch_ontology(graph_uri)
-            fresh_parent = await self._fetch_parent_map(graph_uri)
+            # Reuse the run's LayerStack when available so reconcile sees the
+            # same layered parent map ingest planned against (ONTA-397).
+            stack = getattr(self, "_active_layer_stack", None)
+            fresh_parent = await self._fetch_parent_map(graph_uri, layer_stack=stack)
             current = ontology_version(fresh_types, fresh_attrs, fresh_parent)
             if current == stamped_version:
                 return current

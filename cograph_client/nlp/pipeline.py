@@ -421,8 +421,10 @@ class NLQueryPipeline:
         """
         timing: dict[str, float] = {}
         timing["model"] = f"{self._query_provider}:{self._query_model}"
-        # Ontology is always fetched from the base tenant graph
-        # Instance data may be in a different graph (KG-specific)
+        # Ontology is always fetched from the base tenant graph for embeddings;
+        # when layer_graph_uris is set (production ask route, ONTA-397) the full
+        # fetch also unions visible global layers with shadowing so Public types
+        # are visible to the planner. Instance data may be in a different graph.
         data_graph = instance_graph or graph_uri
 
         t0 = time.time()
@@ -443,7 +445,9 @@ class NLQueryPipeline:
             except Exception:
                 pass
         if ontology is None:
-            ontology = await self._fetch_ontology(graph_uri, data_graph)
+            ontology = await self._fetch_ontology(
+                graph_uri, data_graph, layer_graph_uris=layer_graph_uris
+            )
             ontology_source = "full"
             timing["ontology_source"] = "full"
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
@@ -549,7 +553,9 @@ class NLQueryPipeline:
                     # that never existed.
                     if not full_ontology_loaded:
                         try:
-                            full_ontology = await self._fetch_ontology(graph_uri, data_graph)
+                            full_ontology = await self._fetch_ontology(
+                                graph_uri, data_graph, layer_graph_uris=layer_graph_uris
+                            )
                             if full_ontology and full_ontology.strip():
                                 ontology = full_ontology
                                 ontology_source = "full"
@@ -1160,15 +1166,46 @@ class NLQueryPipeline:
                     break
         return out
 
-    async def _fetch_ontology(self, graph_uri: str, instance_graph: str | None = None) -> str:
-        # Cache key includes instance graph so different KGs get filtered ontologies
-        cache_key = f"{graph_uri}|{instance_graph or ''}"
+    async def _fetch_ontology(
+        self,
+        graph_uri: str,
+        instance_graph: str | None = None,
+        layer_graph_uris: list[str] | None = None,
+    ) -> str:
+        # Cache key includes instance graph + layer stack so different KGs and
+        # entitlement shapes get the correct filtered ontology (ONTA-397).
+        layers_key = ",".join(layer_graph_uris or ())
+        cache_key = f"{graph_uri}|{instance_graph or ''}|{layers_key}"
         cached = _ontology_cache.get(cache_key)
         if cached and (time.time() - cached[1]) < ONTOLOGY_CACHE_TTL:
             return cached[0]
 
+        from cograph_client.graph.layers import (
+            Layer,
+            enhanced_graph_uri,
+            layer_type_uri,
+            public_graph_uri,
+            type_name_from_uri,
+        )
         from cograph_client.graph.ontology_queries import get_full_ontology_query, type_uri, attr_uri
-        TYPE_URI_PREFIX = "https://cograph.tech/types/"
+
+        def _layer_for_graph(g: str) -> Layer:
+            if g == public_graph_uri():
+                return Layer.PUBLIC
+            if g == enhanced_graph_uri():
+                return Layer.ENHANCED
+            return Layer.TENANT
+
+        def _attr_uri_for(layer: Layer, type_name: str, attr_name: str) -> str:
+            if layer is Layer.TENANT:
+                return attr_uri(type_name, attr_name)
+            return f"{layer_type_uri(layer, type_name)}/attrs/{attr_name}"
+
+        def _type_uri_for(layer: Layer, type_name: str) -> str:
+            if layer is Layer.TENANT:
+                return type_uri(type_name)
+            return layer_type_uri(layer, type_name)
+
         try:
             # If querying a specific KG, find which types actually have instances
             active_types: set[str] | None = None
@@ -1182,41 +1219,76 @@ class NLQueryPipeline:
                 active_types = set()
                 for row in type_bindings:
                     t = row.get("type", "")
-                    if t.startswith(TYPE_URI_PREFIX):
-                        active_types.add(t[len(TYPE_URI_PREFIX):])
+                    # type_name_from_uri understands tenant / public / enhanced
+                    # namespaces (longest-prefix-first) — bare strip of the
+                    # tenant prefix would turn types/public/Person into
+                    # "public/Person".
+                    name = type_name_from_uri(t)
+                    if name:
+                        active_types.add(name)
 
-            raw = await self.neptune.query(get_full_ontology_query(graph_uri))
-            _, bindings = parse_sparql_results(raw)
+            # Graphs in precedence order (first wins under shadowing). When no
+            # layer stack is threaded, behaviour is exactly the pre-ONTA-397
+            # single tenant-graph read.
+            ontology_graphs = list(layer_graph_uris) if layer_graph_uris else [graph_uri]
 
             types: dict[str, dict] = {}
-            for row in bindings:
-                tl = row.get("typeLabel", "")
-                if not tl:
+            type_layers: dict[str, Layer] = {}
+            for onto_g in ontology_graphs:
+                layer = _layer_for_graph(onto_g)
+                try:
+                    raw = await self.neptune.query(get_full_ontology_query(onto_g))
+                    _, bindings = parse_sparql_results(raw)
+                except Exception:
+                    # Per-layer degradation (ADR 0002 §1): a missing/erroring
+                    # global layer contributes nothing; others still load.
+                    logger.warning(
+                        "layer_ontology_fetch_failed",
+                        graph_uri=onto_g,
+                        layer=layer.value,
+                        exc_info=True,
+                    )
                     continue
-                # NOTE: we no longer drop a declared type that is absent from
-                # `active_types` here (ONTA-258). Every declared type is parsed
-                # in; types with no instances in the queried KG are annotated
-                # "[no instances]" during summary assembly below instead of being
-                # hidden. See the empty-type handling after this loop.
-                if tl not in types:
-                    types[tl] = {"attributes": [], "relationships": [], "functions": set()}
-                if row.get("attrLabel"):
-                    attr_name = row["attrLabel"]
-                    range_str = row.get("range", "")
-                    if range_str.startswith(TYPE_URI_PREFIX):
-                        target_type = range_str[len(TYPE_URI_PREFIX):]
-                        # Relationship predicates use onto/ namespace in instance data
-                        onto_uri = f"https://cograph.tech/onto/{attr_name}"
-                        entry = f"{attr_name} → {target_type} — predicate URI: <{onto_uri}>"
-                        if entry not in types[tl]["relationships"]:
-                            types[tl]["relationships"].append(entry)
-                    else:
-                        dtype = range_str.split("#")[-1] if "#" in range_str else "string"
-                        entry = f"{attr_name} ({dtype}) — URI: <{attr_uri(tl, attr_name)}>"
-                        if entry not in types[tl]["attributes"]:
-                            types[tl]["attributes"].append(entry)
-                if row.get("funcName"):
-                    types[tl]["functions"].add(row["funcName"])
+                for row in bindings:
+                    tl = row.get("typeLabel", "")
+                    if not tl:
+                        continue
+                    # NOTE: we no longer drop a declared type that is absent from
+                    # `active_types` here (ONTA-258). Every declared type is parsed
+                    # in; types with no instances in the queried KG are annotated
+                    # "[no instances]" during summary assembly below instead of being
+                    # hidden. See the empty-type handling after this loop.
+                    #
+                    # Shadowing (ONTA-397): the first visible layer that defines
+                    # this name wins; later layers' definitions are skipped.
+                    if tl not in types:
+                        types[tl] = {
+                            "attributes": [],
+                            "relationships": [],
+                            "functions": set(),
+                        }
+                        type_layers[tl] = layer
+                    elif type_layers.get(tl) is not layer:
+                        # Already claimed by a higher-precedence layer.
+                        continue
+                    if row.get("attrLabel"):
+                        attr_name = row["attrLabel"]
+                        range_str = row.get("range", "")
+                        target_type = type_name_from_uri(range_str) if range_str else None
+                        if target_type:
+                            # Relationship predicates use onto/ namespace in instance data
+                            onto_uri = f"https://cograph.tech/onto/{attr_name}"
+                            entry = f"{attr_name} → {target_type} — predicate URI: <{onto_uri}>"
+                            if entry not in types[tl]["relationships"]:
+                                types[tl]["relationships"].append(entry)
+                        else:
+                            dtype = range_str.split("#")[-1] if "#" in range_str else "string"
+                            a_uri = _attr_uri_for(type_layers[tl], tl, attr_name)
+                            entry = f"{attr_name} ({dtype}) — URI: <{a_uri}>"
+                            if entry not in types[tl]["attributes"]:
+                                types[tl]["attributes"].append(entry)
+                    if row.get("funcName"):
+                        types[tl]["functions"].add(row["funcName"])
 
             # A DECLARED type with no correctly-typed instances in the queried KG
             # is KEPT and annotated "[no instances]" — NOT dropped (ONTA-258).
@@ -1308,11 +1380,13 @@ class NLQueryPipeline:
                     # schema plainly under the type-level [no instances] mark.
                     if type_name in empty_types:
                         continue
+                    t_layer = type_layers.get(type_name, Layer.TENANT)
                     for attr_entry in info["attributes"]:
                         a_name = attr_entry.split(" (")[0]
-                        all_attrs.append((type_name, a_name, attr_uri(type_name, a_name)))
+                        a_uri = _attr_uri_for(t_layer, type_name, a_name)
+                        all_attrs.append((type_name, a_name, a_uri))
                         if "(string)" in attr_entry:
-                            string_attrs.append((type_name, a_name, attr_uri(type_name, a_name)))
+                            string_attrs.append((type_name, a_name, a_uri))
                     for rel_entry in info["relationships"]:
                         r_name = rel_entry.split(" →")[0].strip()
                         onto_uri = f"https://cograph.tech/onto/{r_name}"
@@ -1346,7 +1420,10 @@ class NLQueryPipeline:
                             tn, an, cnt = result
                             enum_counts.setdefault(tn, {})[an] = cnt
                             if 0 < cnt <= MAX_ENUM_CARDINALITY:
-                                low_card_attrs.append((tn, an, attr_uri(tn, an)))
+                                t_layer = type_layers.get(tn, Layer.TENANT)
+                                low_card_attrs.append(
+                                    (tn, an, _attr_uri_for(t_layer, tn, an))
+                                )
 
                         # Phase 2: Concurrent value fetches for low-cardinality attrs
                         async def _fetch_vals(tn: str, an: str, uri: str) -> tuple[str, str, list[str]]:
@@ -1399,7 +1476,9 @@ class NLQueryPipeline:
                 # "declared but no instances" explanation instead of claiming the
                 # type is absent or substituting a different type.
                 empty_suffix = " [no instances]" if type_name in empty_types else ""
-                lines.append(f"Type: {type_name} — URI: <{type_uri(type_name)}>{empty_suffix}")
+                t_layer = type_layers.get(type_name, Layer.TENANT)
+                t_uri = _type_uri_for(t_layer, type_name)
+                lines.append(f"Type: {type_name} — URI: <{t_uri}>{empty_suffix}")
                 if info["attributes"]:
                     annotated = []
                     for attr_entry in sorted(info["attributes"]):
