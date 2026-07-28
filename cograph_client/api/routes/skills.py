@@ -55,15 +55,15 @@ router = APIRouter(prefix="/graphs/{tenant}/skills")
 def _entitled(tenant: TenantContext) -> bool:
     """Does this caller see the Global-ENHANCED layer?
 
-    OSS answers "no" for everyone. Entitlement DETERMINATION is a premium
-    concern (boundary doc §5 — "Entitlement gating (Global-Enhanced access)" is
-    premium), exactly like the operator bit's determination in ONTA-234, and
-    exactly like the still-unwired ``entitled`` parameter on
-    ``resolver/sensitivity.filter_response_attrs``. Resolution degrades to
-    ``Tenant > Public``, never errors. This one function is the single place a
-    premium determination gets threaded in.
+    Thin route-local wrapper over the frozen seam
+    :func:`cograph_client.graph.entitlement.is_entitled` (Wave 0 / ONTA-396).
+    OSS default remains False; premium determination plugs in via
+    :func:`~cograph_client.graph.entitlement.register_entitlement_checker`.
+    Resolution degrades to ``Tenant > Public``, never errors.
     """
-    return False
+    from cograph_client.graph.entitlement import is_entitled
+
+    return is_entitled(tenant)
 
 
 # --------------------------------------------------------------------------- #
