@@ -114,12 +114,16 @@ _ALLOWLIST: dict[str, str] = {
     # library (mirrors graph/queries.py) — it constructs schema upsert DELETE/
     # INSERT strings but never calls neptune.update. Application of those
     # builders is exclusive to graph/ontology_commit.py, enforced by
-    # tests/test_ontology_commit_convergence.py. aliases.py stays until
-    # ONTA-407b (Wave 3) routes aliases through commit_ontology.
+    # tests/test_ontology_commit_convergence.py.
     "graph/ontology_queries.py": "ontology SCHEMA SPARQL builder library (ONTA-403) — defines type/attribute/range/comment builders; not itself a writer. Application is exclusive to ontology_commit.py.",
     "graph/ontology_commit.py": "ontology SCHEMA commit path (ONTA-403) — the one place that applies ontology_queries builders; emits changelog + revision, not instance data.",
     "graph/ontology_snapshots.py": "ontology SCHEMA snapshot/diff/restore (ONTA-406) — versions named graphs + RDF release records; not instance data. Copy/clear/drop of schema graphs + insert_triples for release metadata only.",
-    "graph/aliases.py": "attribute-alias SPARQL writer (INSERT DATA / DELETE WHERE for aliasOf) — not instance data. ONTA-407a routes authoring through commit_ontology → register_alias; this module keeps the raw SPARQL until ONTA-407b consolidates (do NOT remove from allowlist in 407a).",
+    # ONTA-407b: aliases stay allowlisted with an honest sole-caller justification.
+    # register_alias / retire_alias are applied only by ontology_commit
+    # (REGISTER_ALIAS / RENAME_ATTRIBUTE / RETIRE_ALIAS); backfill_aliases is the
+    # sole instance-predicate rewrite entrypoint for the alias lifecycle. Not a
+    # general instance writer — domain facts still go through kg_writer.
+    "graph/aliases.py": "aliasOf SPARQL writer + lazy instance-predicate backfill (ADR 0002 §7) — sole production callers are ontology_commit (register/rename/retire) and the alias backfill entrypoint (ONTA-407b). Not a general instance writer.",
     "resolver/governance.py": "audit / changelog / governance-provenance graphs — not instance data (ADR 0007 allowlist).",
     # Derived / admin escape hatches with their own lifecycle.
     "resolver/functions.py": "derived computed-function value store (ADR 0002 §6 / ADR 0001 rule 6) — regenerable /derived/ values with their own atomic replace + TTL/invalidate lifecycle, never asserted facts.",

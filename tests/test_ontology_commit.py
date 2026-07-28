@@ -53,7 +53,7 @@ class MemNeptune:
             g, body = m.group(1), m.group(2)
             for s, p, o in self._parse_triples(body):
                 self.triples.add((g, s, p, o))
-        # INSERT { GRAPH <g> { ... } } WHERE
+        # INSERT { GRAPH <g> { ... } } WHERE  (also covers backfill INSERT half)
         for m in re.finditer(
             r"INSERT\s*\{\s*GRAPH\s*<([^>]+)>\s*\{([^}]*)\}\s*\}",
             sparql,
@@ -62,11 +62,33 @@ class MemNeptune:
             if "INSERT DATA" in sparql[max(0, m.start() - 20):m.start() + 20].upper():
                 continue
             g, body = m.group(1), m.group(2)
+            # Variable patterns like `?s <p> ?o` — resolve from current triples
+            # that match the DELETE half of a backfill (handled below for DELETE).
+            if "?s" in body or "?o" in body:
+                continue
             for s, p, o in self._parse_triples(body):
                 self.triples.add((g, s, p, o))
-        # DELETE { GRAPH <g> { <s> <p> ?var } }
+        # Backfill: DELETE { GRAPH <g> { ?s <old> ?o } } INSERT { GRAPH <g> { ?s <new> ?o } }
+        bf = re.search(
+            r"DELETE\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*\?s\s*<([^>]+)>\s*\?o\s*\}\s*\}\s*"
+            r"INSERT\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*\?s\s*<([^>]+)>\s*\?o\s*\}\s*\}",
+            sparql,
+            re.I | re.S,
+        )
+        if bf:
+            g_del, old_p, g_ins, new_p = bf.group(1), bf.group(2), bf.group(3), bf.group(4)
+            moved: list[tuple[str, str, str, str]] = []
+            keep: set[tuple[str, str, str, str]] = set()
+            for t in self.triples:
+                gg, ss, pp, oo = t
+                if gg == g_del and pp == old_p:
+                    moved.append((g_ins, ss, new_p, oo))
+                else:
+                    keep.add(t)
+            self.triples = keep | set(moved)
+        # DELETE { GRAPH <g> { <s> <p> ?var } }  (and DELETE WHERE alias form)
         for m in re.finditer(
-            r"DELETE\s*\{\s*GRAPH\s*<([^>]+)>\s*\{\s*<([^>]+)>\s*<([^>]+)>\s*\?(\w+)\s*\}\s*\}",
+            r"DELETE\s*(?:WHERE\s*)?\{\s*GRAPH\s*<([^>]+)>\s*\{\s*<([^>]+)>\s*<([^>]+)>\s*\?(\w+)\s*\}\s*\}",
             sparql,
             re.I | re.S,
         ):
@@ -188,6 +210,16 @@ class MemNeptune:
                         "new": {"value": o},
                     })
             return self._sparql_json(bindings)
+
+        # COUNT(*) for alias reference checks / backfill (ONTA-407b)
+        if "COUNT" in sparql.upper() and "?n" in sparql:
+            pred_m = re.search(r"\?s\s+<([^>]+)>\s+\?o", sparql)
+            pred = pred_m.group(1) if pred_m else None
+            n = sum(
+                1 for gg, ss, pp, oo in self.triples
+                if gg == g and (pred is None or pp == pred)
+            )
+            return self._sparql_json([{"n": {"value": str(n)}}])
 
         return self._sparql_json([])
 
@@ -599,3 +631,340 @@ async def test_register_alias_full_iri_and_hierarchy_move():
     amap = await fetch_alias_map(n, g)
     assert amap[old_uri] == new_uri
     assert amap[attr_uri("Guest", "contact_phone")] == new_uri
+
+
+# ---------------------------------------------------------------------------
+# ONTA-407b — full rename lifecycle via commit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rename_attribute_always_creates_alias():
+    """RENAME_ATTRIBUTE always records aliasOf — cannot rename without it."""
+    from cograph_client.graph.aliases import ALIAS_OF, fetch_alias_map, rewrite_query_attrs
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-rename"
+    data_g = "https://cograph.tech/graphs/t-rename/kg/main"
+    await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Guest"),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Guest",
+                slot_name="phone_num",
+                datatype="string",
+            ),
+        ],
+    )
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Guest", "phone")
+    # Seed instance data under the OLD predicate (pre-backfill state).
+    n.triples.add((data_g, "https://cograph.tech/entities/Guest/g1", old_uri, '"555-0100"'))
+
+    result = await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.RENAME_ATTRIBUTE,
+                type_name="Guest",
+                alias_from="phone_num",
+                alias_to="phone",
+                datatype="string",
+            )
+        ],
+        actor="test",
+        message="rename phone_num → phone",
+    )
+    kinds = {c.kind for c in result.change_records}
+    assert ChangeKind.RENAME_WITH_ALIAS in kinds
+    assert ChangeKind.ADD_ATTRIBUTE in kinds
+    assert ChangeKind.REMOVE_ATTRIBUTE in kinds
+    assert any(
+        c.kind == ChangeKind.RENAME_WITH_ALIAS
+        and c.from_name == "phone_num"
+        and c.to_name == "phone"
+        and c.old_value == old_uri
+        and c.new_value == new_uri
+        for c in result.change_records
+    )
+    # Alias triple MUST exist — the defining property of rename.
+    assert any(
+        p == ALIAS_OF and s == old_uri and o == new_uri
+        for (_g, s, p, o) in n.triples
+    )
+    # Old schema declaration wiped; new attribute present.
+    assert not any(
+        s == old_uri and p.endswith("#type")
+        for (_g, s, p, o) in n.triples
+    )
+    assert any(s == new_uri for (_g, s, p, o) in n.triples)
+
+    # Query path: old SPARQL rewrites to new; new is identity.
+    alias_map = await fetch_alias_map(n, g)
+    assert alias_map[old_uri] == new_uri
+    old_q = f"SELECT ?v WHERE {{ ?s <{old_uri}> ?v }}"
+    new_q = f"SELECT ?v WHERE {{ ?s <{new_uri}> ?v }}"
+    assert rewrite_query_attrs(old_q, alias_map) == new_q
+    assert rewrite_query_attrs(new_q, alias_map) == new_q
+
+
+@pytest.mark.asyncio
+async def test_rename_lifecycle_backfill_and_retire():
+    """rename → backfill → retire-refuses-while-refs → retire-ok → old fails."""
+    from cograph_client.graph.aliases import (
+        AliasStillReferencedError,
+        backfill_aliases,
+        fetch_alias_map,
+        rewrite_query_attrs,
+    )
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-life"
+    data_g = "https://cograph.tech/graphs/t-life/kg/main"
+    await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Guest"),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Guest",
+                slot_name="phone_num",
+                datatype="string",
+            ),
+        ],
+    )
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Guest", "phone")
+    # Two instance triples under old predicate.
+    n.triples.add((data_g, "https://cograph.tech/entities/Guest/g1", old_uri, '"555-0100"'))
+    n.triples.add((data_g, "https://cograph.tech/entities/Guest/g2", old_uri, '"555-0200"'))
+
+    await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.RENAME_ATTRIBUTE,
+                type_name="Guest",
+                alias_from="phone_num",
+                alias_to="phone",
+            )
+        ],
+    )
+    alias_map = await fetch_alias_map(n, g)
+    assert alias_map[old_uri] == new_uri
+
+    # Retirement refuses while refs remain (real COUNT check).
+    with pytest.raises(AliasStillReferencedError) as ei:
+        await commit_ontology(
+            n,
+            g,
+            [
+                OntologyMutation(
+                    op=OntologyOpKind.RETIRE_ALIAS,
+                    type_name="Guest",
+                    alias_from="phone_num",
+                    data_graph_uri=data_g,
+                )
+            ],
+        )
+    assert ei.value.remaining == 2
+    assert ei.value.old_attr_uri == old_uri
+
+    # Backfill rewrites instance triples old → new.
+    rewritten = await backfill_aliases(n, data_g, alias_map)
+    assert rewritten == 2
+    assert not any(pp == old_uri for (_g, _s, pp, _o) in n.triples)
+    assert sum(1 for (_g, _s, pp, _o) in n.triples if pp == new_uri) == 2
+
+    # After backfill both old (via rewrite) and new work against data under new.
+    rewritten_q = rewrite_query_attrs(
+        f"SELECT ?v WHERE {{ ?s <{old_uri}> ?v }}", alias_map,
+    )
+    assert f"<{new_uri}>" in rewritten_q
+    # New predicate is on the data graph.
+    assert any(pp == new_uri for (_g, _s, pp, _o) in n.triples)
+
+    # Retire succeeds with zero refs.
+    result = await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.RETIRE_ALIAS,
+                type_name="Guest",
+                alias_from="phone_num",
+                data_graph_uri=data_g,
+            )
+        ],
+    )
+    assert any(
+        c.kind == ChangeKind.RENAME_WITH_ALIAS and c.new_value is None
+        for c in result.change_records
+    )
+    post = await fetch_alias_map(n, g)
+    assert old_uri not in post
+    # Old SPARQL no longer rewrites — alias gone.
+    old_q = f"SELECT ?v WHERE {{ ?s <{old_uri}> ?v }}"
+    assert rewrite_query_attrs(old_q, post) == old_q
+
+
+@pytest.mark.asyncio
+async def test_alias_chains_flatten_and_cycles_dropped():
+    """A→B→C flattens; cyclic A→B→A is dropped (no hang)."""
+    from cograph_client.graph.aliases import ALIAS_OF, fetch_alias_map
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-chain"
+    a = attr_uri("Guest", "phone_num")
+    b = attr_uri("Guest", "phone")
+    c = attr_uri("Person", "contact")
+
+    await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.REGISTER_ALIAS,
+                type_name="Guest",
+                alias_from="phone_num",
+                alias_to="phone",
+            ),
+            OntologyMutation(
+                op=OntologyOpKind.REGISTER_ALIAS,
+                type_name="Guest",
+                alias_from="phone",
+                alias_to="contact",
+                target_type="Person",
+            ),
+        ],
+    )
+    amap = await fetch_alias_map(n, g)
+    assert amap == {a: c, b: c}
+
+    # Cycle: wipe and plant A↔B
+    n.triples = {(gg, s, p, o) for gg, s, p, o in n.triples if p != ALIAS_OF}
+    n.triples.add((g, a, ALIAS_OF, b))
+    n.triples.add((g, b, ALIAS_OF, a))
+    cyclic = await fetch_alias_map(n, g)
+    assert cyclic == {}
+
+
+@pytest.mark.asyncio
+async def test_retire_alias_requires_data_graph():
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-retire"
+    with pytest.raises(ValueError, match="data_graph_uri"):
+        await commit_ontology(
+            n,
+            g,
+            [
+                OntologyMutation(
+                    op=OntologyOpKind.RETIRE_ALIAS,
+                    type_name="Guest",
+                    alias_from="phone_num",
+                )
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_rename_rejects_type_level_iri():
+    """Type renames are a documented gap — only attribute aliases are supported."""
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-typerename"
+    with pytest.raises(ValueError, match="type renames are not supported"):
+        await commit_ontology(
+            n,
+            g,
+            [
+                OntologyMutation(
+                    op=OntologyOpKind.RENAME_ATTRIBUTE,
+                    type_name="Guest",
+                    alias_from="https://cograph.tech/types/Guest",
+                    alias_to="https://cograph.tech/types/Person",
+                )
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_nl_ask_rewrites_after_rename(monkeypatch):
+    """When aliases are enabled, /ask rewrites old attr IRIs after rename."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import json
+
+    from cograph_client.graph.aliases import ALIAS_OF
+    from cograph_client.graph.ontology_queries import attr_uri
+    from cograph_client.nlp.pipeline import NLQueryPipeline
+
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-nl"
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Guest", "phone")
+    await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Guest"),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Guest",
+                slot_name="phone_num",
+                datatype="string",
+            ),
+            OntologyMutation(
+                op=OntologyOpKind.RENAME_ATTRIBUTE,
+                type_name="Guest",
+                alias_from="phone_num",
+                alias_to="phone",
+            ),
+        ],
+    )
+    assert any(p == ALIAS_OF for (_g, _s, p, _o) in n.triples)
+
+    monkeypatch.setenv("COGRAPH_ALIASES_ENABLED", "1")
+    # Pipeline needs a Neptune-like client; wrap MemNeptune for query/update.
+    pipeline = NLQueryPipeline(n, "fake-key")
+    pipeline._openrouter_key = ""
+    assert pipeline._aliases_enabled is True
+
+    generated = f"SELECT ?v WHERE {{ ?g <{old_uri}> ?v }}"
+    msg = MagicMock()
+    msg.content = [MagicMock(text=json.dumps({
+        "sparql": generated,
+        "explanation": "test",
+        "functions_needed": [],
+    }))]
+    # After alias fetch, execution returns a row under the rewritten predicate.
+    exec_result = {
+        "head": {"vars": ["v"]},
+        "results": {"bindings": [{"v": {"type": "literal", "value": "555"}}]},
+    }
+    original_query = n.query
+
+    async def query_side_effect(sparql: str):
+        # Alias map + ontology detail + exec — MemNeptune handles map/detail;
+        # inject exec result when it's the generated SELECT.
+        if "SELECT ?v" in sparql and "phone" in sparql:
+            return exec_result
+        return await original_query(sparql)
+
+    n.query = query_side_effect  # type: ignore[method-assign]
+
+    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=None), \
+         patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value="Type: Guest")), \
+         patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = msg
+        result = await pipeline.ask("guest phone?", g)
+
+    assert f"<{new_uri}>" in result.sparql
+    assert f"<{old_uri}>" not in result.sparql

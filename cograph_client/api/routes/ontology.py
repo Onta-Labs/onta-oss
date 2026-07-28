@@ -24,13 +24,20 @@ from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.entitlement import is_entitled, layer_stack_for
 from cograph_client.graph.global_ontology import fetch_ontology
-from cograph_client.graph.aliases import fetch_alias_map
+from cograph_client.graph.aliases import (
+    AliasStillReferencedError,
+    backfill_aliases,
+    fetch_alias_map,
+)
 from cograph_client.graph.ontology_changelog import fetch_ontology_changelog
 from cograph_client.graph.ontology_commit import commit_ontology
-from cograph_client.graph.queries import tenant_graph_uri
+from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.models.ontology import (
+    AliasBackfill,
     AliasMapResponse,
     AliasRegister,
+    AliasRename,
+    AliasRetire,
     ApplyBatchRequest,
     OntologyChangelogEntry,
     OntologyChangelogResponse,
@@ -376,13 +383,13 @@ async def get_ontology_changelog(
     )
 
 
-# ── Attribute aliases (ONTA-407a / ADR 0002 §7) ───────────────────────────────
+# ── Attribute aliases (ONTA-407a / 407b / ADR 0002 §7) ────────────────────────
 #
-# Authoring path for `register_alias`. Writes go through commit_ontology
-# (REGISTER_ALIAS op) on the TENANT ontology graph only — never a global layer.
-# alignedTo (governance shape alignment) is a separate mechanism: ONTA-402a
-# already stopped writing tenant URIs into global graphs; 407a does NOT add an
-# alignedTo reader (see PR decision). Type renames + backfill/retire are 407b.
+# Full rename lifecycle on the TENANT ontology graph only — never a global layer:
+#   rename (always creates alias) → query via rewrite_query_attrs → backfill
+#   instance triples → retire (refuses while old-predicate refs remain).
+# alignedTo is a separate mechanism (ONTA-402a stop-writing decision). Type
+# renames remain a documented gap (entity URIs embed the type leaf).
 
 
 @router.post("/aliases", status_code=201)
@@ -393,9 +400,8 @@ async def register_attribute_alias(
 ):
     """Register an attribute alias (old → new) on the tenant ontology graph.
 
-    Canonical authoring path for ADR 0002 §7 aliases. The NL pipeline's
-    ``rewrite_query_attrs`` resolves through the map immediately; instance
-    triples keep the old predicate until a later backfill (ONTA-407b).
+    Alias-edge only. Prefer ``POST /aliases/rename`` for a full rename that
+    also updates the schema declaration (always creates the alias).
     """
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     try:
@@ -433,6 +439,137 @@ async def register_attribute_alias(
     }
 
 
+@router.post("/aliases/rename", status_code=201)
+async def rename_attribute_with_alias(
+    body: AliasRename,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Full attribute rename — ALWAYS creates an alias (ONTA-407b).
+
+    Ensures the new attribute declaration, records ``old aliasOf new``, and
+    drops the old schema declaration. Instance triples keep the old predicate
+    until ``POST /aliases/backfill``; retirement refuses while refs remain.
+    """
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    try:
+        result = await commit_ontology(
+            client,
+            graph_uri,
+            [
+                OntologyMutation(
+                    op=OntologyOpKind.RENAME_ATTRIBUTE,
+                    type_name=body.type_name,
+                    alias_from=body.from_slot,
+                    alias_to=body.to_slot,
+                    target_type=body.to_type,
+                    datatype=body.datatype,
+                    description=body.description,
+                )
+            ],
+            actor=tenant.tenant_id,
+            message=f"rename_attribute {body.from_slot} → {body.to_slot}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    rename_rec = next(
+        (c for c in result.change_records if c.kind.value == "rename_with_alias"),
+        result.change_records[0] if result.change_records else None,
+    )
+    return {
+        "type": body.type_name,
+        "from_slot": body.from_slot,
+        "to_slot": body.to_slot,
+        "to_type": body.to_type or body.type_name,
+        "old_attr_uri": rename_rec.old_value if rename_rec else None,
+        "new_attr_uri": rename_rec.new_value if rename_rec else None,
+        "version_before": result.version_before,
+        "version_after": result.version_after,
+        "change_records": [c.model_dump() for c in result.change_records],
+    }
+
+
+@router.post("/aliases/backfill")
+async def backfill_attribute_aliases(
+    body: AliasBackfill,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Rewrite old-predicate instance triples onto their alias targets.
+
+    After a clean backfill (zero remaining refs), call
+    ``DELETE /aliases`` (retire) to drop the alias edge.
+    """
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    data_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
+    alias_map = await fetch_alias_map(client, graph_uri)
+    if body.old_attr_uri:
+        if body.old_attr_uri not in alias_map:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no alias registered for {body.old_attr_uri!r}",
+            )
+        alias_map = {body.old_attr_uri: alias_map[body.old_attr_uri]}
+    rewritten = await backfill_aliases(
+        client, data_graph, alias_map, batch_size=body.batch_size,
+    )
+    return {
+        "kg_name": body.kg_name,
+        "data_graph_uri": data_graph,
+        "rewritten": rewritten,
+        "aliases": alias_map,
+    }
+
+
+@router.delete("/aliases")
+async def retire_attribute_alias(
+    body: AliasRetire,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Retire an alias after backfill — 409 while instance refs remain."""
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    data_graph = kg_graph_uri(tenant.tenant_id, body.kg_name)
+    try:
+        result = await commit_ontology(
+            client,
+            graph_uri,
+            [
+                OntologyMutation(
+                    op=OntologyOpKind.RETIRE_ALIAS,
+                    type_name=body.type_name,
+                    alias_from=body.from_slot,
+                    data_graph_uri=data_graph,
+                )
+            ],
+            actor=tenant.tenant_id,
+            message=f"retire_alias {body.from_slot}",
+        )
+    except AliasStillReferencedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "alias_still_referenced",
+                "old_attr_uri": exc.old_attr_uri,
+                "remaining": exc.remaining,
+                "data_graph_uri": exc.data_graph_uri,
+                "message": str(exc),
+            },
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "type": body.type_name,
+        "from_slot": body.from_slot,
+        "kg_name": body.kg_name,
+        "retired": True,
+        "version_before": result.version_before,
+        "version_after": result.version_after,
+    }
+
+
 @router.get("/aliases", response_model=AliasMapResponse)
 async def list_attribute_aliases(
     tenant: TenantContext = Depends(get_tenant),
@@ -441,7 +578,7 @@ async def list_attribute_aliases(
     """Return the flattened old→new attribute alias map for this tenant graph.
 
     Chains (``a → b → c``) collapse to one hop (``a → c``, ``b → c``). Empty
-    when no aliases are registered.
+    when no aliases are registered. Cyclic chains are dropped (never hang).
     """
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     aliases = await fetch_alias_map(client, graph_uri)

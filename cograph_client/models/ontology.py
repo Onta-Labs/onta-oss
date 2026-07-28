@@ -453,6 +453,8 @@ class OntologyOpKind(str, Enum):
     SET_TEXT_KIND = "set_text_kind"
     SET_COMMENT = "set_comment"
     REGISTER_ALIAS = "register_alias"
+    RENAME_ATTRIBUTE = "rename_attribute"
+    RETIRE_ALIAS = "retire_alias"
     DEPRECATE = "deprecate"
 
 
@@ -477,6 +479,14 @@ class OntologyMutation(BaseModel):
     alias_from: str | None = None
     alias_to: str | None = None
     superseded_by: str | None = None
+    data_graph_uri: str | None = Field(
+        default=None,
+        description=(
+            "Instance/data named graph for RETIRE_ALIAS reference counting "
+            "(ONTA-407b). Required for retirement so aliases cannot be "
+            "dropped while old-predicate triples remain."
+        ),
+    )
 
 
 class OntologyCommitResult(BaseModel):
@@ -502,8 +512,9 @@ class AliasRegister(BaseModel):
 
     ONTA-407a authoring path. Records
     ``<old-attr-IRI> onto/aliasOf <new-attr-IRI>`` so the NL query rewriter can
-    resolve renamed predicates immediately (ADR 0002 §7). Lazy instance
-    backfill + retirement are ONTA-407b.
+    resolve renamed predicates immediately (ADR 0002 §7). Prefer
+    :class:`AliasRename` / ``OntologyOpKind.RENAME_ATTRIBUTE`` for a full
+    rename lifecycle (always creates the alias and updates the schema).
     """
 
     type_name: str = Field(
@@ -524,6 +535,83 @@ class AliasRegister(BaseModel):
             "Type owning the NEW attribute when different from type_name "
             "(hierarchy move, e.g. Guest.phone_num → Person.phone)"
         ),
+    )
+
+
+class AliasRename(BaseModel):
+    """Full attribute rename via commit — ALWAYS creates an alias (ONTA-407b).
+
+    Schema side: ensures the new attribute declaration exists, drops the old
+    declaration, and records ``old aliasOf new``. Instance triples keep the
+    old predicate until :class:`AliasBackfill` rewrites them; only then may
+    :class:`AliasRetire` drop the alias.
+    """
+
+    type_name: str = Field(
+        min_length=1,
+        description="Type owning the OLD attribute",
+    )
+    from_slot: str = Field(
+        min_length=1,
+        description="Old attribute leaf name, or a full attribute IRI",
+    )
+    to_slot: str = Field(
+        min_length=1,
+        description="New attribute leaf name, or a full attribute IRI",
+    )
+    to_type: str | None = Field(
+        default=None,
+        description=(
+            "Type owning the NEW attribute when different from type_name "
+            "(hierarchy move)"
+        ),
+    )
+    datatype: str | None = Field(
+        default=None,
+        description="Datatype for the new attribute when it must be minted (default string)",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Optional description written onto the new attribute declaration",
+    )
+
+
+class AliasBackfill(BaseModel):
+    """Rewrite old-predicate instance triples onto their alias targets (ONTA-407b)."""
+
+    kg_name: str = Field(
+        min_length=1,
+        description="Knowledge graph name whose instance graph is rewritten",
+    )
+    old_attr_uri: str | None = Field(
+        default=None,
+        description=(
+            "Optional single old attribute IRI to backfill. When omitted, every "
+            "registered alias on the tenant ontology is backfilled."
+        ),
+    )
+    batch_size: int = Field(
+        default=1000,
+        ge=1,
+        le=10000,
+        description="Triples per DELETE/INSERT batch",
+    )
+
+
+class AliasRetire(BaseModel):
+    """Retire an alias after backfill — refuses while instance refs remain."""
+
+    type_name: str = Field(
+        min_length=1,
+        description="Type owning the OLD attribute (for bare leaves)",
+    )
+    from_slot: str = Field(
+        min_length=1,
+        description="Old attribute leaf name, or a full attribute IRI",
+    )
+    kg_name: str = Field(
+        min_length=1,
+        description="KG whose instance graph is checked for remaining old-predicate triples",
     )
 
 

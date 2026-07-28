@@ -353,6 +353,8 @@ def test_ontology_mutation_and_op_kind_vocabulary():
         "set_text_kind",
         "set_comment",
         "register_alias",
+        "rename_attribute",
+        "retire_alias",
         "deprecate",
     }
     m = OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person")

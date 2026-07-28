@@ -25,7 +25,11 @@ from uuid import uuid4
 
 import structlog
 
-from cograph_client.graph.aliases import fetch_alias_map, register_alias
+from cograph_client.graph.aliases import (
+    fetch_alias_map,
+    register_alias,
+    retire_alias,
+)
 from cograph_client.graph.ontology_queries import (
     OMNIX_ONTO,
     XSD,
@@ -608,6 +612,10 @@ async def _apply_one(
         ]
     if op is OntologyOpKind.REGISTER_ALIAS:
         return await _apply_register_alias(neptune, graph_uri, mut)
+    if op is OntologyOpKind.RENAME_ATTRIBUTE:
+        return await _apply_rename_attribute(neptune, graph_uri, mut)
+    if op is OntologyOpKind.RETIRE_ALIAS:
+        return await _apply_retire_alias(neptune, graph_uri, mut)
     if op is OntologyOpKind.DEPRECATE:
         raise OntologyOpNotSupported(
             "DEPRECATE is owned by the compat/publish path (ONTA-404); not "
@@ -621,32 +629,49 @@ def _resolve_attr_endpoint(
     *,
     type_name: str | None,
     target_type: str | None = None,
+    op_label: str = "alias",
 ) -> str:
-    """Resolve a REGISTER_ALIAS endpoint to a full attribute IRI.
+    """Resolve an alias/rename endpoint to a full attribute IRI.
 
     Accepts a full ``http(s)://…`` IRI as-is, or a bare attribute leaf that is
     minted under ``types/<type>/attrs/<leaf>`` via :func:`attr_uri`. Bare leaves
     require ``type_name`` (or ``target_type`` when resolving the *new* side of a
-    hierarchy move). Type-level renames (bare type IRIs without ``/attrs/``) are
-    deferred to ONTA-407b.
+    hierarchy move).
+
+    **Type renames remain a gap (ONTA-407b):** bare type IRIs without
+    ``/attrs/`` are rejected — renaming a type would also re-key
+    ``entities/<Type>/…`` instance URIs and is intentionally out of scope.
     """
     s = (name_or_uri or "").strip()
     if not s:
-        raise ValueError("REGISTER_ALIAS endpoint must be a non-empty leaf or IRI")
+        raise ValueError(f"{op_label} endpoint must be a non-empty leaf or IRI")
     if s.startswith("http://") or s.startswith("https://"):
+        # Full attribute IRIs only — reject type-level URIs (no /attrs/).
+        if "/attrs/" not in s and "/types/" in s:
+            raise ValueError(
+                f"{op_label}: type renames are not supported (got type IRI "
+                f"{s!r}); only attribute aliases are implemented (ONTA-407b gap)"
+            )
         return s
     owner = (target_type or type_name or "").strip()
     if not owner:
         raise ValueError(
-            "REGISTER_ALIAS bare leaf requires type_name (or target_type for the new side)"
+            f"{op_label} bare leaf requires type_name (or target_type for the new side)"
         )
-    # Reject accidental path fragments that are not full IRIs — 407a is
-    # attribute-leaf only unless the caller passes a full IRI.
+    # Reject accidental path fragments that are not full IRIs — attribute-leaf
+    # only unless the caller passes a full attribute IRI.
     if "/" in s:
         raise ValueError(
-            f"REGISTER_ALIAS bare endpoint must be a leaf name or full IRI, got {s!r}"
+            f"{op_label} bare endpoint must be a leaf name or full IRI, got {s!r}"
         )
     return attr_uri(owner, s)
+
+
+def _leaf_name(name_or_uri: str, resolved_uri: str) -> str:
+    """Prefer the caller's bare leaf; fall back to the IRI tail."""
+    if name_or_uri and not name_or_uri.startswith("http"):
+        return name_or_uri
+    return resolved_uri.rsplit("/", 1)[-1]
 
 
 async def _apply_register_alias(
@@ -654,24 +679,24 @@ async def _apply_register_alias(
 ) -> list[ChangeRecord]:
     """Author an ``old aliasOf new`` triple via :func:`register_alias` (ONTA-407a).
 
-    The SPARQL INSERT still lives in ``graph/aliases.py`` — that module stays on
-    the write-path allowlist until ONTA-407b consolidates it. This commit op is
-    the production *authoring path* so aliases are no longer dead code: REST,
-    agent, and other callers go through :func:`commit_ontology`.
+    Alias-edge only — both attributes are assumed to already exist (or the
+    caller only needs the query-path rewrite). For a full rename that also
+    updates the schema, use :func:`_apply_rename_attribute`.
     """
     if not mut.alias_from or not mut.alias_to:
         raise ValueError("REGISTER_ALIAS requires alias_from and alias_to")
-    old_uri = _resolve_attr_endpoint(mut.alias_from, type_name=mut.type_name)
+    old_uri = _resolve_attr_endpoint(
+        mut.alias_from, type_name=mut.type_name, op_label="REGISTER_ALIAS",
+    )
     new_uri = _resolve_attr_endpoint(
         mut.alias_to,
         type_name=mut.type_name,
         target_type=mut.target_type,
+        op_label="REGISTER_ALIAS",
     )
     await register_alias(neptune, graph_uri, old_uri, new_uri)
-    # from_name/to_name prefer bare leaves when the caller used leaves; fall
-    # back to the full URI tail so the ChangeRecord is always informative.
-    from_name = mut.alias_from if not mut.alias_from.startswith("http") else old_uri.rsplit("/", 1)[-1]
-    to_name = mut.alias_to if not mut.alias_to.startswith("http") else new_uri.rsplit("/", 1)[-1]
+    from_name = _leaf_name(mut.alias_from, old_uri)
+    to_name = _leaf_name(mut.alias_to, new_uri)
     return [
         ChangeRecord(
             kind=ChangeKind.RENAME_WITH_ALIAS,
@@ -681,6 +706,141 @@ async def _apply_register_alias(
             to_name=to_name,
             old_value=old_uri,
             new_value=new_uri,
+        )
+    ]
+
+
+async def _apply_rename_attribute(
+    neptune, graph_uri: str, mut: OntologyMutation,
+) -> list[ChangeRecord]:
+    """Full attribute rename — ALWAYS creates an alias (ONTA-407b).
+
+    Steps (atomic within the commit batch):
+    1. Ensure the **new** attribute declaration exists (upsert).
+    2. Record ``old aliasOf new`` — there is no rename without an alias.
+    3. Drop the **old** attribute's schema declaration (instance triples stay
+       on the old predicate until backfill).
+
+    Cannot be used to "just rename" without the alias edge: that would break
+    ADR 0002 §7 (published URIs never break; migration is alias-first).
+    """
+    # Accept alias_from or slot_name as the old leaf for ergonomics.
+    old_leaf = mut.alias_from or mut.slot_name
+    if not old_leaf or not mut.alias_to:
+        raise ValueError(
+            "RENAME_ATTRIBUTE requires alias_from (or slot_name) and alias_to"
+        )
+    if not mut.type_name:
+        raise ValueError("RENAME_ATTRIBUTE requires type_name")
+
+    old_uri = _resolve_attr_endpoint(
+        old_leaf, type_name=mut.type_name, op_label="RENAME_ATTRIBUTE",
+    )
+    new_owner = (mut.target_type or mut.type_name).strip()
+    new_uri = _resolve_attr_endpoint(
+        mut.alias_to,
+        type_name=mut.type_name,
+        target_type=mut.target_type,
+        op_label="RENAME_ATTRIBUTE",
+    )
+    if old_uri == new_uri:
+        raise ValueError(
+            f"RENAME_ATTRIBUTE must change the attribute, got {old_uri} -> itself"
+        )
+
+    from_name = _leaf_name(old_leaf, old_uri)
+    to_name = _leaf_name(mut.alias_to, new_uri)
+    records: list[ChangeRecord] = []
+
+    # 1. Mint / refresh the new attribute declaration.
+    datatype = mut.datatype or "string"
+    await neptune.update(
+        upsert_attribute(
+            graph_uri,
+            new_owner,
+            to_name,
+            description=mut.description or "",
+            datatype=datatype,
+        )
+    )
+    records.append(
+        ChangeRecord(
+            kind=ChangeKind.ADD_ATTRIBUTE,
+            type_name=new_owner,
+            slot_name=to_name,
+            new_value=datatype,
+        )
+    )
+
+    # 2. Drop the old schema declaration FIRST (instance data untouched).
+    # delete_attribute_declaration wipes every triple with subject=old_uri,
+    # which would also remove aliasOf — so the alias is written *after* this.
+    if not old_leaf.startswith("http"):
+        await neptune.update(
+            delete_attribute_declaration(graph_uri, mut.type_name, from_name)
+        )
+    else:
+        # Full IRI: strip declaration by subject wipe (same effect as the builder).
+        await neptune.update(
+            f"WITH <{graph_uri}>\n"
+            f"DELETE {{ <{old_uri}> ?p ?o }} WHERE {{ <{old_uri}> ?p ?o }}"
+        )
+    records.append(
+        ChangeRecord(
+            kind=ChangeKind.REMOVE_ATTRIBUTE,
+            type_name=mut.type_name,
+            slot_name=from_name,
+        )
+    )
+
+    # 3. ALWAYS create the alias — the rename vehicle, not optional. Must run
+    # after the old-declaration wipe so the subject wipe does not delete it.
+    await register_alias(neptune, graph_uri, old_uri, new_uri)
+    records.append(
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            type_name=mut.type_name,
+            slot_name=from_name if not old_leaf.startswith("http") else None,
+            from_name=from_name,
+            to_name=to_name,
+            old_value=old_uri,
+            new_value=new_uri,
+        )
+    )
+    return records
+
+
+async def _apply_retire_alias(
+    neptune, graph_uri: str, mut: OntologyMutation,
+) -> list[ChangeRecord]:
+    """Retire an alias after backfill — refuses while references remain (ONTA-407b).
+
+    Requires ``data_graph_uri`` so the real reference check runs against the
+    instance graph. Zero remaining old-predicate triples is mandatory.
+    """
+    old_leaf = mut.alias_from or mut.slot_name
+    if not old_leaf:
+        raise ValueError("RETIRE_ALIAS requires alias_from (or slot_name)")
+    if not mut.data_graph_uri:
+        raise ValueError(
+            "RETIRE_ALIAS requires data_graph_uri for the instance reference check"
+        )
+    old_uri = _resolve_attr_endpoint(
+        old_leaf, type_name=mut.type_name, op_label="RETIRE_ALIAS",
+    )
+    await retire_alias(
+        neptune, graph_uri, old_uri, data_graph_uri=mut.data_graph_uri,
+    )
+    from_name = _leaf_name(old_leaf, old_uri)
+    return [
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            type_name=mut.type_name or None,
+            slot_name=from_name if not old_leaf.startswith("http") else None,
+            from_name=from_name,
+            to_name=None,
+            old_value=old_uri,
+            new_value=None,
         )
     ]
 
