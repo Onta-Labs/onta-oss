@@ -178,6 +178,27 @@ def test_skills_route_entitled_delegates_to_seam():
         register_entitlement_checker(None)
 
 
+def test_layer_stack_for_helper_uses_is_entitled():
+    """ONTA-398: layered reads construct stacks via the single helper."""
+    from cograph_client.graph.entitlement import layer_stack_for
+    from cograph_client.graph.layers import Layer
+
+    register_entitlement_checker(None)
+    free = TenantContext(tenant_id="free", api_key="k")
+    assert layer_stack_for(free).layers == (Layer.TENANT, Layer.PUBLIC)
+
+    register_entitlement_checker(lambda t: t.tenant_id == "paid")
+    try:
+        paid = TenantContext(tenant_id="paid", api_key="k")
+        assert layer_stack_for(paid).layers == (
+            Layer.TENANT,
+            Layer.ENHANCED,
+            Layer.PUBLIC,
+        )
+    finally:
+        register_entitlement_checker(None)
+
+
 # ---------------------------------------------------------------------------
 # 3. Generalized reader signature
 # ---------------------------------------------------------------------------
