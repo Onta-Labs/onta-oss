@@ -236,9 +236,13 @@ def test_fetch_global_ontology_signature_unchanged():
 
 
 @pytest.mark.asyncio
-async def test_fetch_ontology_raises_not_implemented_until_onta_397():
-    with pytest.raises(NotImplementedError, match="ONTA-397"):
-        await fetch_ontology(neptune=None, layers=())
+async def test_fetch_ontology_empty_layers_returns_empty_response():
+    """ONTA-397 landed the body: empty layer list is a normal empty payload."""
+    body = await fetch_ontology(neptune=None, layers=(), tenant_id="acme")
+    assert isinstance(body, WorkspaceOntologyResponse)
+    assert body.types == []
+    assert body.layers == []
+    assert body.tenant_id == "acme"
 
 
 # ---------------------------------------------------------------------------

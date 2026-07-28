@@ -9,6 +9,7 @@ from cograph_client.api.rate_limit import limiter
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.entitlement import layer_stack_for
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.models.query import NLQuery, NLResult
 from cograph_client.nlp.pipeline import NLQueryPipeline
@@ -28,10 +29,16 @@ async def ask_question(
     client: NeptuneClient = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
-    # Ontology always lives in the base tenant graph
+    # Ontology always lives in the base tenant graph (writes); reads are
+    # layered via LayerStack so C extends A/B (ONTA-397).
     ontology_graph = tenant_graph_uri(tenant.tenant_id)
     # Instance data may be in a KG-specific graph
     instance_graph = kg_graph_uri(tenant.tenant_id, body.kg_name) if body.kg_name else ontology_graph
+    # Visible layer graphs (tenant + Public, + Enhanced when entitled). Passed
+    # so generated SPARQL can walk subClassOf edges that live in global layers,
+    # and so the ontology summary includes Public/Enhanced types.
+    stack = layer_stack_for(tenant)
+    layer_graph_uris = stack.visible_graph_uris()
     pipeline = NLQueryPipeline(client, settings.anthropic_api_key)
     if body.model:
         pipeline._query_model = body.model
@@ -49,7 +56,11 @@ async def ask_question(
     start = time.monotonic()
     try:
         result = await pipeline.ask(
-            body.question, ontology_graph, instance_graph, exclude_questions=body.exclude_questions
+            body.question,
+            ontology_graph,
+            instance_graph,
+            exclude_questions=body.exclude_questions,
+            layer_graph_uris=layer_graph_uris,
         )
         _emit_query_executed(tenant, body.kg_name, start, result, ok=True)
         # ONTA-389: mint answer run so operators can open Job Trace (P7 + P0/A9).
