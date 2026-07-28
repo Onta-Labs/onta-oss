@@ -105,6 +105,22 @@ def base_pin_graph_uri(tenant_id: str) -> str:
 _LIVE_SENTINEL = 0
 
 
+class BasePinReadError(Exception):
+    """Infrastructure failure reading the workspace base pin (not "missing").
+
+    Must **not** be treated as an absent pin: mapping read failures to
+    ``None`` would let :func:`ensure_workspace_base_pin` backfill to latest
+    and destroy a stable pin (review B1 / ONTA-405).
+    """
+
+    def __init__(self, tenant_id: str, message: str | None = None):
+        self.tenant_id = tenant_id
+        super().__init__(
+            message
+            or f"failed to read workspace base pin for tenant {tenant_id!r}"
+        )
+
+
 @dataclass(frozen=True)
 class BasePin:
     """Explicit base-layer pin for one workspace (inspectable)."""
@@ -179,7 +195,12 @@ def _parse_bool_lit(val: str | None, default: bool = False) -> bool:
 
 
 async def get_base_pin(neptune, tenant_id: str) -> BasePin | None:
-    """Load the workspace base pin, or ``None`` if never ensured / missing."""
+    """Load the workspace base pin, or ``None`` if never ensured / missing.
+
+    A successful empty query result means no pin (``None``). Query / parse
+    infrastructure failures raise :class:`BasePinReadError` — they must not
+    be collapsed to ``None`` (that would trigger a silent re-pin to latest).
+    """
     g = base_pin_graph_uri(tenant_id)
     q = (
         f"SELECT ?p ?o FROM <{g}> WHERE {{\n"
@@ -189,9 +210,11 @@ async def get_base_pin(neptune, tenant_id: str) -> BasePin | None:
     try:
         raw = await neptune.query(q)
         _, rows = parse_sparql_results(raw)
-    except Exception:
+    except BasePinReadError:
+        raise
+    except Exception as exc:
         logger.warning("base_pin_read_failed", tenant_id=tenant_id, exc_info=True)
-        return None
+        raise BasePinReadError(tenant_id) from exc
 
     if not rows:
         return None
@@ -338,10 +361,13 @@ async def ensure_workspace_base_pin(
     * Entitlement only gates which *layer* is chosen on **create**; an
       existing enhanced pin is not rewritten when entitlement is lost (the
       stack builder excludes Enhanced instead — predictable degrade).
-    * Pin write failures (read-only store, network blip) degrade to an
-      ephemeral in-memory pin so workspace **reads** never 500 — the next
-      successful ensure persists.
+    * Pin **read** failures (:class:`BasePinReadError`) **re-raise** — never
+      treat as missing / never overwrite an unreadable pin with latest.
+    * Pin **write** failures (read-only store, network blip) degrade to an
+      ephemeral in-memory pin so ensure can still return a value when the
+      pin was confirmed missing; the next successful ensure persists.
     """
+    # Read errors propagate (BasePinReadError) — do not catch and backfill.
     existing = await get_base_pin(neptune, tenant_id)
     if existing is not None:
         if not existing.auto_upgrade:
@@ -455,14 +481,30 @@ async def layer_stack_for_workspace(
     workspace has an explicit inspectable pin. Pass ``auto_ensure=False`` for
     pure reads that must not write (still returns an unversioned stack when no
     pin exists).
+
+    On :class:`BasePinReadError` (pin graph unreadable): degrade to an
+    **ephemeral unversioned/live** stack **without writing**. Availability over
+    a 500 on every workspace GET; never silent re-pin to latest.
     """
-    pin: BasePin | None
-    if auto_ensure:
-        pin = await ensure_workspace_base_pin(
-            neptune, tenant_id, entitled=entitled
+    try:
+        if auto_ensure:
+            pin = await ensure_workspace_base_pin(
+                neptune, tenant_id, entitled=entitled
+            )
+        else:
+            pin = await get_base_pin(neptune, tenant_id)
+    except BasePinReadError:
+        logger.warning(
+            "base_pin_read_failed_degrade_live",
+            tenant_id=tenant_id,
+            auto_ensure=auto_ensure,
+            exc_info=True,
         )
-    else:
-        pin = await get_base_pin(neptune, tenant_id)
+        return LayerStack(
+            tenant_graph_uri=tenant_graph_uri(tenant_id),
+            entitled=entitled,
+            # Explicit live — no pin versions, no set_base_pin.
+        )
     return layer_stack_from_pin(tenant_id, pin, entitled=entitled)
 
 
@@ -678,6 +720,9 @@ async def upgrade_base_pin(
 
     Creates a pin via ensure when missing. ``previous_version`` is set to the
     prior pin version so :func:`rollback_base_pin` can restore it.
+
+    Raises ``ValueError`` when an explicit ``to_version`` has no published
+    release record for the target base layer.
     """
     pin = await ensure_workspace_base_pin(
         neptune, tenant_id, entitled=entitled
@@ -693,6 +738,17 @@ async def upgrade_base_pin(
         if to_version is None:
             # Still no releases — stay on live.
             return pin
+    else:
+        if to_version < 1:
+            raise ValueError(
+                f"to_version must be >= 1 or None (latest), got {to_version}"
+            )
+        live = _live_uri_for(layer)
+        records = await list_snapshots(neptune, live, kind="release")
+        if not any(r.version == to_version for r in records):
+            raise ValueError(
+                f"no {layer} release v{to_version} for {live!r}"
+            )
 
     if to_version == pin.base_version and layer == pin.base_layer:
         return pin
@@ -756,21 +812,12 @@ async def fingerprint_base_layer(
 ) -> str:
     """Fingerprint of the stack's resolved base-layer graph content.
 
-    Empty/missing snapshot → empty-shape fingerprint (stable; does **not**
-    fall back to live).
+    Uses :func:`base_graph_uri_for_stack` consistently (entitled → enhanced,
+    else public — including live URIs when unpinned). Empty/missing snapshot
+    → empty-shape fingerprint (stable; does **not** fall back to live when
+    a version pin points at a missing graph).
     """
     uri = base_graph_uri_for_stack(stack)
-    # For non-entitled stacks the base is public; for entitled it's enhanced
-    # (public is also in the stack but pin-stability of "the base" keys off
-    # the primary entitled layer). When only public is versioned, use public.
-    if not stack.entitled:
-        uri = stack.graph_uri_for(Layer.PUBLIC)
-    elif stack.enhanced_version is not None:
-        uri = stack.graph_uri_for(Layer.ENHANCED)
-    elif stack.public_version is not None:
-        uri = stack.graph_uri_for(Layer.PUBLIC)
-    else:
-        uri = stack.graph_uri_for(Layer.PUBLIC)
     shape = await _load_shape_soft(neptune, uri)
     return shape.fingerprint()
 
@@ -778,6 +825,7 @@ async def fingerprint_base_layer(
 __all__ = [
     "BasePin",
     "BaseLayerName",
+    "BasePinReadError",
     "CollisionRecord",
     "PIN_SUBJECT",
     "UpgradePreview",

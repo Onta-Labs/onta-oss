@@ -20,6 +20,8 @@ import pytest
 from cograph_client.graph.layers import Layer, LayerStack, public_graph_uri
 from cograph_client.graph.ontology_base_pin import (
     BasePin,
+    BasePinReadError,
+    base_graph_uri_for_stack,
     base_pin_graph_uri,
     ensure_workspace_base_pin,
     fingerprint_base_layer,
@@ -809,3 +811,91 @@ async def test_rollback_without_previous_raises():
     )
     with pytest.raises(ValueError, match="previous_version"):
         await rollback_base_pin(n, TENANT_ID)
+
+
+# ---------------------------------------------------------------------------
+# B1: read failure must not re-pin to latest
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pin_read_failure_does_not_repin_to_latest():
+    """Pin at v1, auto_upgrade=False; pin SELECT raises → ensure must not
+    CLEAR/INSERT and must not change the stored version (review B1)."""
+    n = MemNeptune()
+    await _seed_public_v1(n)
+    await _publish_public_v2(n)
+
+    await set_base_pin(
+        n,
+        TENANT_ID,
+        BasePin(
+            base_layer="public",
+            base_version=1,
+            auto_upgrade=False,
+            tenant_id=TENANT_ID,
+        ),
+    )
+    pin_before = await get_base_pin(n, TENANT_ID)
+    assert pin_before is not None and pin_before.base_version == 1
+
+    updates_before = len(n.updates)
+    original_query = n.query
+
+    async def failing_pin_query(sparql: str):
+        if "WorkspaceBasePin" in sparql:
+            raise RuntimeError("neptune unavailable")
+        return await original_query(sparql)
+
+    n.query = failing_pin_query  # type: ignore[method-assign]
+
+    with pytest.raises(BasePinReadError):
+        await get_base_pin(n, TENANT_ID)
+
+    with pytest.raises(BasePinReadError):
+        await ensure_workspace_base_pin(n, TENANT_ID, entitled=False)
+
+    # No pin-graph writes after the failure.
+    new_updates = n.updates[updates_before:]
+    pin_g = base_pin_graph_uri(TENANT_ID)
+    assert not any(pin_g in u for u in new_updates), new_updates
+
+    # Soft degrade on workspace stack: live, no write.
+    stack = await layer_stack_for_workspace(
+        n, TENANT_ID, entitled=False, auto_ensure=True
+    )
+    assert stack.public_version is None
+    assert stack.graph_uri_for(Layer.PUBLIC) == PUBLIC
+    assert not any(pin_g in u for u in n.updates[updates_before:])
+
+    # Pin still v1 once reads work again.
+    n.query = original_query  # type: ignore[method-assign]
+    pin_after = await get_base_pin(n, TENANT_ID)
+    assert pin_after is not None
+    assert pin_after.base_version == 1
+    assert pin_after.auto_upgrade is False
+
+
+@pytest.mark.asyncio
+async def test_upgrade_refuses_missing_target_version():
+    n = MemNeptune()
+    await _seed_public_v1(n)
+    await set_base_pin(
+        n,
+        TENANT_ID,
+        BasePin(base_layer="public", base_version=1, tenant_id=TENANT_ID),
+    )
+    with pytest.raises(ValueError, match="no public release v99"):
+        await upgrade_base_pin(n, TENANT_ID, entitled=False, to_version=99)
+    pin = await get_base_pin(n, TENANT_ID)
+    assert pin is not None and pin.base_version == 1
+
+
+def test_fingerprint_base_uri_entitled_uses_enhanced():
+    """N2: entitled live stack keys base fingerprint off Enhanced."""
+    stack = LayerStack(TENANT, entitled=True)
+    assert base_graph_uri_for_stack(stack) == ENHANCED
+    stack_pinned = LayerStack(TENANT, entitled=True, enhanced_version=3)
+    assert base_graph_uri_for_stack(stack_pinned) == release_graph_uri(ENHANCED, 3)
+    free = LayerStack(TENANT, entitled=False, public_version=2)
+    assert base_graph_uri_for_stack(free) == release_graph_uri(PUBLIC, 2)

@@ -114,6 +114,11 @@ async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure:
     Loads (and optionally backfills) the workspace base pin so reads resolve
     against the pinned base release rather than live global graphs (ONTA-405).
     Entitlement still gates Enhanced visibility.
+
+    Pin **read** infrastructure failures are handled inside
+    :func:`~cograph_client.graph.ontology_base_pin.layer_stack_for_workspace`:
+    degrade to an ephemeral unversioned (live) stack **without writing**.
+    A read failure is never treated as "missing pin" (no silent re-pin).
     """
     from cograph_client.graph.ontology_base_pin import layer_stack_for_workspace
 
