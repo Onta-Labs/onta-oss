@@ -286,6 +286,17 @@ async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
     logger.info("starting", neptune_endpoint=settings.neptune_endpoint)
     app.state.neptune_client = NeptuneClient(settings.neptune_endpoint, backend=settings.graph_backend)
+    # ONTA-399: re-hydrate durable Enhanced global skills into the process
+    # mirror so authored layer-B content survives restart/redeploy without
+    # depending on the image's file seed. Best-effort — never blocks startup.
+    try:
+        from cograph_client.skills import hydrate_global_skills_from_store
+
+        n = await hydrate_global_skills_from_store()
+        if n:
+            logger.info("global_enhanced_skills_hydrated", count=n)
+    except Exception as exc:  # noqa: BLE001 - skills hydrate must not break startup
+        logger.warning("global_enhanced_skills_hydrate_failed", error=str(exc))
     # COG-136: start the in-process schedule firing loop. make_schedule_runner
     # returns None when scheduling is disabled (no database_url and not explicitly
     # enabled), so startup is unaffected when the feature is off. Failures here

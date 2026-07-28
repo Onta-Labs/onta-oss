@@ -985,11 +985,10 @@ def full_ontology_detail_query(graph_uri: str) -> str:
 
     The function pattern is matched WHOLLY inside the graph being read, so a
     function surfaces here only when it was declared against a LAYER-QUALIFIED
-    type URI (``types/public/<T>`` / ``types/x/<T>``) in that layer's graph.
-    Nothing writes those yet — ``queries.register_function_triple`` still mints
-    ``onto/attachedTo https://cograph.tech/types/<Type>`` in the bare tenant
-    namespace — so on the Global layers this join legitimately returns nothing
-    until a global-layer writer exists.
+    type URI (``types/x/<T>`` for Enhanced; Public may not carry functions —
+    ONTA-400) in that layer's graph. ``queries.register_function_triple``
+    (ONTA-399) mints the correct layer-qualified attachment and writes Enhanced
+    functions into ``graphs/global/enhanced``.
 
     Deliberately LENIENT on the attribute pattern: it keys on
     ``rdfs:domain`` + ``rdfs:label`` and does NOT require ``rdf:type
