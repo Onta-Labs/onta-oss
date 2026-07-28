@@ -589,9 +589,44 @@ async def plan_snapshot(
         parent_version = parent.version
         parent_fp = parent.fingerprint
         try:
-            parent_shape = await load_ontology_shape(neptune, parent.snapshot_graph_uri)
+            parent_shape = await load_ontology_shape(
+                neptune, parent.snapshot_graph_uri
+            )
+            loaded_fp = parent_shape.fingerprint()
+            # load_ontology_shape swallows per-query errors and can return an
+            # empty shape. For releases that is fatal: an empty synthetic delta
+            # would pass the ONTA-404 gate as additive. Match the recorded
+            # parent fingerprint so silent degradation fails closed.
+            if (
+                kind == "release"
+                and parent_fp
+                and loaded_fp != parent_fp
+            ):
+                raise RuntimeError(
+                    f"cannot classify release vs parent snapshot "
+                    f"{parent.snapshot_graph_uri!r}: fingerprint mismatch "
+                    f"(recorded {parent_fp!r}, loaded {loaded_fp!r}) — "
+                    f"parent content unreadable or corrupted"
+                )
             change_vs_parent = diff_shapes(parent_shape, shape)
-        except Exception:
+        except Exception as exc:
+            # Fail closed for releases (ONTA-404). Revisions stay best-effort.
+            if kind == "release":
+                if isinstance(exc, RuntimeError) and "cannot classify release" in str(
+                    exc
+                ):
+                    raise
+                logger.error(
+                    "snapshot_parent_diff_failed",
+                    parent=parent.snapshot_graph_uri,
+                    live=live_graph_uri,
+                    exc_info=True,
+                )
+                raise RuntimeError(
+                    f"cannot classify release vs parent snapshot "
+                    f"{parent.snapshot_graph_uri!r}: parent load/diff failed "
+                    f"({type(exc).__name__}: {exc})"
+                ) from exc
             logger.warning(
                 "snapshot_parent_diff_failed",
                 parent=parent.snapshot_graph_uri,

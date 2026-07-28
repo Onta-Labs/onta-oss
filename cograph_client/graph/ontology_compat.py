@@ -24,7 +24,11 @@ Open rulings (ONTA-404)
   within the ancestor chain). Re-parent to a sibling / unrelated type is
   **breaking**.
 * **Adversarial rename** (``REMOVE_TYPE`` + ``ADD_TYPE`` under a new name in one
-  release) is **breaking**. Only explicit ``RENAME_WITH_ALIAS`` is non-breaking.
+  release) is **breaking**. Only an explicit ``RENAME_WITH_ALIAS`` path is
+  non-breaking: when a structural diff also carries ``REMOVE_*`` + ``ADD_*``
+  for the same rename (schema leaf move), :func:`classify_diff` pairs them
+  with the alias record into one **additive** bundle. Unpaired remove+add
+  without an alias stays **breaking**.
 
 The gate **refuses** a breaking release unless the caller sets
 ``declare_major=True``. A quiet bypass is not a gate.
@@ -32,7 +36,7 @@ The gate **refuses** a breaking release unless the caller sets
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
 
@@ -312,8 +316,98 @@ def _additive_note(record: ChangeRecord) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Diff-level classification (re-parent pairing + overall)
+# Diff-level classification (re-parent pairing + rename bundles + overall)
 # ---------------------------------------------------------------------------
+
+
+_SLOT_REMOVE_KINDS = frozenset({
+    ChangeKind.REMOVE_ATTRIBUTE,
+    ChangeKind.REMOVE_RELATIONSHIP,
+})
+_SLOT_ADD_KINDS = frozenset({
+    ChangeKind.ADD_ATTRIBUTE,
+    ChangeKind.ADD_RELATIONSHIP,
+})
+
+
+def _leaf(name: str | None) -> str:
+    """Bare leaf of a slot / IRI-ish name (last path segment)."""
+    if not name:
+        return ""
+    return name.rsplit("/", 1)[-1]
+
+
+def _pair_rename_with_alias_bundles(
+    items: list[ChangeRecord],
+    paired_ids: set[int],
+    classified: list[ClassifiedChange],
+) -> None:
+    """Neutralize REMOVE+ADD that belong to an explicit RENAME_WITH_ALIAS.
+
+    Structural ``diff_shapes`` after a rename-with-alias commit emits
+    ``REMOVE_ATTRIBUTE`` (old leaf) + ``ADD_ATTRIBUTE`` (new leaf) +
+    ``RENAME_WITH_ALIAS`` (alias edge). Without pairing, the unpaired REMOVE
+    forces overall BREAKING and a legitimate rename would require
+    ``declare_major``. Product rule: only the *explicit* alias path is
+    non-breaking; unpaired remove+add stays breaking.
+    """
+    renames = [
+        r for r in items
+        if r.kind is ChangeKind.RENAME_WITH_ALIAS
+        and id(r) not in paired_ids
+        and _leaf(r.from_name)
+        and _leaf(r.to_name)
+    ]
+    removes = [
+        r for r in items
+        if r.kind in _SLOT_REMOVE_KINDS
+        and id(r) not in paired_ids
+        and r.slot_name
+    ]
+    adds = [
+        r for r in items
+        if r.kind in _SLOT_ADD_KINDS
+        and id(r) not in paired_ids
+        and r.slot_name
+    ]
+    used_rem: set[int] = set()
+    used_add: set[int] = set()
+
+    for ren in renames:
+        from_leaf = _leaf(ren.from_name)
+        to_leaf = _leaf(ren.to_name)
+        rem: ChangeRecord | None = None
+        for r in removes:
+            if id(r) in used_rem:
+                continue
+            if _leaf(r.slot_name) == from_leaf:
+                rem = r
+                break
+        add: ChangeRecord | None = None
+        for a in adds:
+            if id(a) in used_add:
+                continue
+            if _leaf(a.slot_name) == to_leaf:
+                add = a
+                break
+        if rem is None or add is None:
+            # Incomplete bundle — leave records for per-kind classification
+            # (lone RENAME_WITH_ALIAS stays additive; unpaired REMOVE stays
+            # breaking).
+            continue
+        used_rem.add(id(rem))
+        used_add.add(id(add))
+        paired_ids.add(id(rem))
+        paired_ids.add(id(add))
+        paired_ids.add(id(ren))
+        note = (
+            f"rename_with_alias bundle {from_leaf}→{to_leaf} "
+            f"(explicit alias; non-breaking)"
+        )
+        for rec in (rem, add, ren):
+            classified.append(
+                ClassifiedChange(rec, CompatClass.ADDITIVE, note)
+            )
 
 
 def classify_diff(
@@ -329,6 +423,11 @@ def classify_diff(
     ``REMOVE_SUBCLASS`` + ``ADD_SUBCLASS`` on the **same** ``type_name`` are
     treated as a re-parent event: re-parent to an ancestor of the old parent is
     non-breaking (annotative); any other re-parent is breaking.
+
+    ``REMOVE_{ATTRIBUTE,RELATIONSHIP}`` + ``ADD_{ATTRIBUTE,RELATIONSHIP}``
+    matched to a ``RENAME_WITH_ALIAS`` (``from_name`` / ``to_name``) form one
+    **additive** rename bundle. Unpaired remove+add without an alias remains
+    **breaking** (adversarial / silent rename).
 
     ``parent_shape`` / ``child_shape`` are optional ancestry context (pre/post
     shapes). Ancestry walks use ``parent_shape`` first, then ``child_shape``.
@@ -384,6 +483,9 @@ def classify_diff(
             )
             classified.append(ClassifiedChange(rem, CompatClass.BREAKING, note))
             classified.append(ClassifiedChange(add, CompatClass.BREAKING, note))
+
+    # Explicit rename-with-alias bundles (REMOVE+ADD+RENAME_WITH_ALIAS).
+    _pair_rename_with_alias_bundles(items, paired_ids, classified)
 
     for r in items:
         if id(r) in paired_ids:

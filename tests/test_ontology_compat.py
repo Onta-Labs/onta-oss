@@ -232,6 +232,57 @@ def test_rename_with_alias_is_non_breaking():
     assert not v.requires_major
 
 
+def test_rename_bundle_remove_add_alias_is_additive():
+    """Structural rename: REMOVE+ADD+RENAME_WITH_ALIAS → additive (B2)."""
+    v = classify_diff([
+        ChangeRecord(
+            kind=ChangeKind.REMOVE_ATTRIBUTE,
+            type_name="Guest",
+            slot_name="phone_num",
+            old_value="string",
+        ),
+        ChangeRecord(
+            kind=ChangeKind.ADD_ATTRIBUTE,
+            type_name="Guest",
+            slot_name="phone",
+            new_value="string",
+        ),
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            from_name="phone_num",
+            to_name="phone",
+            type_name="Guest",
+        ),
+    ])
+    assert v.overall is CompatClass.ADDITIVE
+    assert not v.requires_major
+    assert v.semver_bump == "minor"
+
+
+def test_rename_bundle_relationship_slots_is_additive():
+    v = classify_diff([
+        ChangeRecord(
+            kind=ChangeKind.REMOVE_RELATIONSHIP,
+            type_name="P",
+            slot_name="works_at",
+            old_value="Org",
+        ),
+        ChangeRecord(
+            kind=ChangeKind.ADD_RELATIONSHIP,
+            type_name="P",
+            slot_name="employer",
+            new_value="Org",
+        ),
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            from_name="works_at",
+            to_name="employer",
+        ),
+    ])
+    assert v.overall is CompatClass.ADDITIVE
+    assert not v.requires_major
+
+
 def test_remove_plus_add_type_is_breaking_not_silent_rename():
     """Adversarial: delete-then-re-add under a new name in one release."""
     v = classify_diff([
@@ -243,6 +294,7 @@ def test_remove_plus_add_type_is_breaking_not_silent_rename():
 
 
 def test_remove_attr_plus_add_unrelated_attr_is_breaking():
+    """No RENAME_WITH_ALIAS → still breaking (adversarial silent rename)."""
     v = classify_diff([
         ChangeRecord(
             kind=ChangeKind.REMOVE_ATTRIBUTE, type_name="P", slot_name="old",
@@ -250,6 +302,26 @@ def test_remove_attr_plus_add_unrelated_attr_is_breaking():
         ChangeRecord(
             kind=ChangeKind.ADD_ATTRIBUTE, type_name="P", slot_name="new",
             new_value="string",
+        ),
+    ])
+    assert v.overall is CompatClass.BREAKING
+    assert v.requires_major
+
+
+def test_remove_add_with_mismatched_alias_still_breaking():
+    """Alias names that don't match the remove/add leaves stay unpaired."""
+    v = classify_diff([
+        ChangeRecord(
+            kind=ChangeKind.REMOVE_ATTRIBUTE, type_name="P", slot_name="old",
+        ),
+        ChangeRecord(
+            kind=ChangeKind.ADD_ATTRIBUTE, type_name="P", slot_name="new",
+            new_value="string",
+        ),
+        ChangeRecord(
+            kind=ChangeKind.RENAME_WITH_ALIAS,
+            from_name="other",
+            to_name="else",
         ),
     ])
     assert v.overall is CompatClass.BREAKING
@@ -836,3 +908,118 @@ async def test_diff_shapes_emits_deprecate():
     assert any(r.kind is ChangeKind.DEPRECATE and r.type_name == "Person" for r in recs)
     v = classify_diff(recs)
     assert v.overall is CompatClass.DEPRECATING
+
+
+# ---------------------------------------------------------------------------
+# B1 — parent load failure fails closed (no silent additive publish)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_plan_snapshot_parent_load_failure_raises_for_release():
+    """Parent exists but content unreadable → RuntimeError, not empty additive.
+
+    load_ontology_shape swallows per-query errors; fail-closed is via the
+    recorded parent fingerprint vs the loaded (empty) shape fingerprint.
+    """
+    n = MemNeptune()
+    await _seed_type(n, PUBLIC)
+    await snapshot_ontology(n, PUBLIC, kind="release")
+
+    parent_snap = f"{PUBLIC}/v1"
+    original_query = n.query
+
+    async def flaky_query(sparql: str):
+        # Fail shape reads against the parent snapshot content graph only.
+        if f"FROM <{parent_snap}>" in sparql or f"FROM <{parent_snap}>" in sparql.replace(
+            " ", ""
+        ):
+            raise ConnectionError("simulated parent snapshot unavailable")
+        # full_ontology_detail uses FROM <uri>
+        if parent_snap in sparql and "?typeLabel" in sparql:
+            raise ConnectionError("simulated parent snapshot unavailable")
+        if parent_snap in sparql and "?child" in sparql:
+            raise ConnectionError("simulated parent snapshot unavailable")
+        if parent_snap in sparql and "deprecatedAt" in sparql:
+            raise ConnectionError("simulated parent snapshot unavailable")
+        if parent_snap in sparql and "textKind" in sparql:
+            raise ConnectionError("simulated parent snapshot unavailable")
+        if parent_snap in sparql and "aliasOf" in sparql:
+            raise ConnectionError("simulated parent snapshot unavailable")
+        return await original_query(sparql)
+
+    n.query = flaky_query  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="cannot classify release vs parent"):
+        await plan_snapshot(n, PUBLIC, kind="release")
+
+
+@pytest.mark.asyncio
+async def test_execute_snapshot_cannot_publish_when_parent_diff_unavailable():
+    """End-to-end: parent load failure blocks release (no silent additive)."""
+    n = MemNeptune()
+    await _seed_type(n, PUBLIC)
+    await snapshot_ontology(n, PUBLIC, kind="release")
+    await commit_ontology(
+        n,
+        PUBLIC,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Person",
+                slot_name="email",
+                datatype="string",
+            )
+        ],
+    )
+
+    parent_snap = f"{PUBLIC}/v1"
+    original_query = n.query
+
+    async def flaky_query(sparql: str):
+        if parent_snap in sparql and "?typeLabel" in sparql:
+            raise OSError("parent graph gone")
+        return await original_query(sparql)
+
+    n.query = flaky_query  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="cannot classify release vs parent"):
+        await snapshot_ontology(n, PUBLIC, kind="release")
+
+
+# ---------------------------------------------------------------------------
+# B2 — rename-with-alias release does not require declare_major
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rename_attribute_release_without_declare_major():
+    """RENAME_ATTRIBUTE then publish release: additive, no declare_major."""
+    n = MemNeptune()
+    await _seed_type(n, PUBLIC)
+    r1 = await snapshot_ontology(n, PUBLIC, kind="release")
+    assert r1.version == 1
+
+    await commit_ontology(
+        n,
+        PUBLIC,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.RENAME_ATTRIBUTE,
+                type_name="Person",
+                alias_from="name",
+                alias_to="full_name",
+            )
+        ],
+    )
+    # Must succeed without declare_major — rename bundle is additive.
+    rec = await snapshot_ontology(n, PUBLIC, kind="release")
+    assert rec.version == 2
+    assert rec.compat_class == "additive"
+    kinds = {r.kind for r in rec.change_records}
+    # Structural delta vs parent includes remove/add and/or alias edge.
+    assert kinds & {
+        ChangeKind.REMOVE_ATTRIBUTE,
+        ChangeKind.ADD_ATTRIBUTE,
+        ChangeKind.RENAME_WITH_ALIAS,
+    }
