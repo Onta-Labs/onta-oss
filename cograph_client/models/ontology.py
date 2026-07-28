@@ -537,6 +537,48 @@ class AliasMapResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Ontology changelog reader (ONTA-401)
+# ---------------------------------------------------------------------------
+
+
+class OntologyChangelogEntry(BaseModel):
+    """One append-only ontology changelog entry (workspace companion graph).
+
+    The ``changes`` list is the full :class:`ChangeRecord` delta written at
+    commit time — enough to describe the mutation without consulting the live
+    ontology graph. Thin governance-shaped entries may leave ``changes`` empty.
+    """
+
+    entry_uri: str
+    action: str
+    subject: str = Field(
+        description=(
+            "Target graph URI for commit_ontology writes; type/shape URI for "
+            "global governance entries"
+        )
+    )
+    timestamp: str
+    tenant_id: str | None = None
+    actor: str | None = None
+    message: str | None = None
+    version_before: str | None = None
+    version_after: str | None = None
+    revision: int | None = None
+    changes: list[ChangeRecord] = Field(default_factory=list)
+
+
+class OntologyChangelogResponse(BaseModel):
+    """Paginated workspace ontology changelog (newest first)."""
+
+    tenant_id: str
+    graph_uri: str
+    count: int
+    offset: int
+    limit: int
+    entries: list[OntologyChangelogEntry] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Ontology evolution resolver (COG-84)
 #
 # The OntologyResolver (cograph_client/resolver/ontology_resolver.py) turns a
