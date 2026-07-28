@@ -30,26 +30,42 @@ class TenantContext:
     # so they can never see the operator-only view. Routes gate operator-only
     # visibility (e.g. the global API-source catalog) on this flag.
     is_operator: bool = False
+    # Whether THIS workspace may see the Global-Enhanced ontology layer
+    # (ONTA-398). Set by the auth PROVIDER from verified identity metadata
+    # (Clerk ``public_metadata``) — never from a client header, query param, or
+    # deep link. Static/anonymous keys default ``False``. The layered-ontology
+    # seam (:func:`cograph_client.graph.entitlement.is_entitled`) is the single
+    # predicate that consumes this bit (plus an env allowlist on the premium
+    # side); callers must not invent a second path.
+    enhanced_entitled: bool = False
 
 
 @dataclass
 class AuthVerdict:
     """A richer verifier result: the tenants a key may access plus the auth
-    subject (the user id behind the key, when the provider exposes one) and
-    whether that identity is an ONTA operator.
+    subject (the user id behind the key, when the provider exposes one),
+    whether that identity is an ONTA operator, and which of its workspaces
+    are Enhanced-entitled.
 
     Verifiers may keep returning a bare ``str``/``Sequence[str]`` (no subject,
-    non-operator); returning an :class:`AuthVerdict` additionally carries the
-    subject through to :class:`TenantContext.subject` and the operator bit
-    through to :class:`TenantContext.is_operator`. The operator DETERMINATION is
-    the provider's job (premium Clerk: email domain / ``OMNIX_OPERATOR_EMAILS``
-    allowlist / ``public_metadata.is_operator``) — the OSS seam only threads the
-    resulting bit, so no provider-specific logic leaks into OSS (ONTA-234).
+    non-operator, no entitlement); returning an :class:`AuthVerdict`
+    additionally carries the subject through to :class:`TenantContext.subject`,
+    the operator bit through to :class:`TenantContext.is_operator`, and
+    per-workspace Enhanced entitlement through to
+    :class:`TenantContext.enhanced_entitled` for the resolved tenant. The
+    DETERMINATION for both bits is the provider's job (premium Clerk:
+    email domain / allowlist / ``public_metadata``) — the OSS seam only
+    threads the resulting bits, so no provider-specific logic leaks into
+    OSS (ONTA-234, ONTA-398).
     """
 
     tenants: Sequence[str]
     subject: Optional[str] = None
     is_operator: bool = False
+    # Workspace ids the verified identity may see Enhanced for. Resolved
+    # against the requested path tenant into ``TenantContext.enhanced_entitled``.
+    # Empty by default — fail closed.
+    entitled_tenants: Sequence[str] = ()
 
 
 # A verifier takes a raw API key and returns either:
@@ -96,6 +112,7 @@ def _resolve_allowed(
     api_key: str,
     subject: Optional[str] = None,
     is_operator: bool = False,
+    entitled_tenants: Sequence[str] = (),
 ) -> TenantContext:
     """Pick the tenant for a key that may access several.
 
@@ -106,20 +123,25 @@ def _resolve_allowed(
     ``is_operator`` (from the provider's :class:`AuthVerdict`) rides through
     onto the resolved :class:`TenantContext` unchanged — it describes the
     identity, not the tenant, so it is the same for every tenant the key
-    grants.
+    grants. ``entitled_tenants`` is resolved against the *selected* tenant
+    into ``enhanced_entitled`` (workspace-scoped, ONTA-398).
     """
     allowed = [t for t in allowed if t]
     if not allowed:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    entitled = {t for t in entitled_tenants if t}
     if requested is None or requested == "":
+        tenant_id = allowed[0]
         return TenantContext(
-            tenant_id=allowed[0], api_key=api_key, subject=subject,
+            tenant_id=tenant_id, api_key=api_key, subject=subject,
             is_operator=is_operator,
+            enhanced_entitled=tenant_id in entitled,
         )
     if requested in allowed:
         return TenantContext(
             tenant_id=requested, api_key=api_key, subject=subject,
             is_operator=is_operator,
+            enhanced_entitled=requested in entitled,
         )
     raise HTTPException(
         status_code=403,
@@ -187,6 +209,7 @@ def _resolve_tenant(tenant: Optional[str], api_key: Optional[str]) -> TenantCont
             return _resolve_allowed(
                 verdict.tenants, tenant, api_key, subject=verdict.subject,
                 is_operator=verdict.is_operator,
+                entitled_tenants=verdict.entitled_tenants,
             )
         if isinstance(verdict, str):
             return TenantContext(tenant_id=verdict, api_key=api_key)
