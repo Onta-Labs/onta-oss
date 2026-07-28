@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -846,40 +845,37 @@ async def _emit_changelog(
     change_records: list[ChangeRecord],
     revision: int,
 ) -> None:
-    """One append-only changelog entry with a delta payload (ONTA-403).
+    """One append-only changelog entry with a full delta payload (ONTA-403/401).
 
     Shape mirrors :func:`cograph_client.resolver.governance.changelog_triples`
     (action / subject / timestamp / tenant) and extends it with version before/
-    after, actor, message, revision, and a JSON delta of ChangeRecord kinds so
-    ONTA-401 can describe a change without re-reading the graph.
+    after, actor, message, revision, and a JSON delta of **full**
+    :class:`ChangeRecord` objects (including ``from_name`` / ``to_name`` /
+    ``superseded_by``) so ONTA-401 can describe a change without re-reading the
+    live ontology graph. ``gov:subject`` is the **target graph URI** for
+    workspace commits. Entry nodes use a fresh uuid (``gov/log/{uuid4}``) so
+    two commits in the same millisecond never collide.
     """
+    # Local import avoids a circular import at module load (changelog imports
+    # nothing from this module's write path; commit is the sole writer).
+    from cograph_client.graph.ontology_changelog import serialize_change_records
+
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry = f"{_GOV_NS}log/{uuid4()}"
-    # Tenant id is the last path segment of graphs/{tenant} (not a kg URI).
+    # Tenant id is the first path segment of graphs/{tenant}[…].
     tenant_id = ""
     prefix = "https://cograph.tech/graphs/"
     if graph_uri.startswith(prefix):
         rest = graph_uri[len(prefix):]
         tenant_id = rest.split("/", 1)[0]
-    delta = [
-        {
-            "kind": r.kind.value if hasattr(r.kind, "value") else str(r.kind),
-            "type_name": r.type_name,
-            "slot_name": r.slot_name,
-            "parent_type": r.parent_type,
-            "old_value": r.old_value,
-            "new_value": r.new_value,
-        }
-        for r in change_records
-    ]
     triples: list[tuple[str, str, str]] = [
         (entry, _GOV_ACTION, "commit_ontology"),
-        (entry, _GOV_SUBJECT, graph_uri),
+        (entry, _GOV_SUBJECT, graph_uri),  # target graph URI
         (entry, _GOV_TIMESTAMP, f"{ts}^^{XSD}#dateTime"),
         (entry, _GOV_VERSION_BEFORE, version_before),
         (entry, _GOV_VERSION_AFTER, version_after),
         (entry, _GOV_REVISION, f"{revision}^^{XSD}#integer"),
-        (entry, _GOV_DELTA, json.dumps(delta, separators=(",", ":"), sort_keys=True)),
+        (entry, _GOV_DELTA, serialize_change_records(change_records)),
     ]
     if tenant_id:
         triples.append((entry, _GOV_TENANT, tenant_id))
