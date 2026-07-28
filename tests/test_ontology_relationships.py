@@ -17,8 +17,13 @@ from cograph_client.graph.ontology_queries import (
     _datatype_to_xsd,
     insert_attribute,
     type_uri,
+    xsd_to_datatype,
 )
-from cograph_client.api.routes.ontology import _xsd_to_datatype, TYPE_URI_PREFIX
+
+# Canonical reverse mapper (ONTA-397 moved the route-local helper; tests the
+# shared graph helper which is what layered reads use).
+_xsd_to_datatype = xsd_to_datatype
+TYPE_URI_PREFIX = "https://cograph.tech/types/"
 
 
 # ---------------------------------------------------------------------------

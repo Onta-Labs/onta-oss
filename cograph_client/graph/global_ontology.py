@@ -83,7 +83,9 @@ from cograph_client.models.ontology import (
     GlobalOntologySkill,
     GlobalOntologySource,
     GlobalOntologyType,
+    WorkspaceOntologyLayer,
     WorkspaceOntologyResponse,
+    WorkspaceOntologyType,
 )
 
 logger = structlog.stdlib.get_logger("cograph.graph.global_ontology")
@@ -511,7 +513,7 @@ async def fetch_ontology(
     tenant_id: str = "",
     apply_shadowing: bool = True,
 ) -> WorkspaceOntologyResponse:
-    """Generalized layered ontology reader — Wave 0 signature freeze (ONTA-397).
+    """Generalized layered ontology reader (ONTA-397).
 
     Parameters
     ----------
@@ -543,17 +545,120 @@ async def fetch_ontology(
     Notes
     -----
     :func:`fetch_global_ontology` remains the dedicated two-layer operator call
-    and is **not** rewritten to call this function in Wave 0 — the operator
-    payload must stay byte-stable. ONTA-397 implements this body; until then
-    the function raises :class:`NotImplementedError`.
+    and is **not** rewritten to call this function — the operator payload must
+    stay byte-stable. Reads are layered; ordinary writes always go to the
+    tenant graph only (never into a global layer).
     """
-    # Signature pin only — body is ONTA-397. Keep args referenced so a future
-    # rename of an unused parameter is caught by the pin tests, not by ruff.
-    _ = (neptune, layers, catalog, today, entitled, tenant_id, apply_shadowing)
-    raise NotImplementedError(
-        "fetch_ontology is the Wave-0-frozen signature for ONTA-397; "
-        "the body lands with that ticket. fetch_global_ontology remains the "
-        "two-layer operator call and is untouched."
+    layer_infos: list[WorkspaceOntologyLayer] = []
+    # Keyed by bare type name when shadowing; by (layer, name) when raw.
+    accumulators: dict[Any, _TypeAccumulator] = {}
+    # Parallel map: bare name -> winning layer value (shadowing path only).
+    winning_layer: dict[str, str] = {}
+    sources = await _build_source_index(catalog=catalog, today=today)
+    skills = _SkillIndex()
+    # Skills are process-registry prose keyed by type name across GLOBAL
+    # layers. Only surface skills whose OWN layer is visible in this stack —
+    # otherwise a non-entitled workspace would see Enhanced skill rows via the
+    # overlay even though Enhanced types are excluded from ``layers``.
+    visible_skill_layers = {layer.value for layer, _ in layers}
+
+    for layer, graph_uri in layers:
+        available = True
+        bindings: list[dict[str, str]] = []
+        try:
+            raw = await neptune.query(full_ontology_detail_query(graph_uri))
+            _, bindings = parse_sparql_results(raw)
+        except Exception:
+            available = False
+            logger.warning(
+                "workspace_ontology_layer_unavailable",
+                layer=layer.value,
+                graph_uri=graph_uri,
+                tenant_id=tenant_id,
+                exc_info=True,
+            )
+
+        layer_types = 0
+        seen_names: set[str] = set()
+        for row in bindings:
+            label = row.get("typeLabel", "")
+            if not label:
+                continue
+            if label not in seen_names:
+                seen_names.add(label)
+                layer_types += 1
+
+            if apply_shadowing:
+                # First-visible-layer-wins: skip types already claimed by a
+                # higher-precedence layer. Lower layers still contribute their
+                # status line (type_count) but not the effective type list.
+                if label in winning_layer:
+                    continue
+                winning_layer[label] = layer.value
+                key: Any = label
+            else:
+                key = (layer.value, label)
+
+            acc = accumulators.get(key)
+            if acc is None:
+                acc = _TypeAccumulator(label, layer.value)
+                accumulators[key] = acc
+            acc.absorb(row)
+
+        layer_infos.append(
+            WorkspaceOntologyLayer(
+                layer=layer.value,
+                graph_uri=graph_uri,
+                type_count=layer_types,
+                available=available,
+            )
+        )
+
+    # Subtype inversion — same layer-qualified parent identity discipline as
+    # fetch_global_ontology so a Public parent is not polluted by a tenant
+    # homonym (or vice versa). Under shadowing we only list children that
+    # themselves survived shadowing (their accumulator is present).
+    children: dict[tuple[str, str], set[str]] = {}
+    for acc in accumulators.values():
+        parent = acc.parent()
+        if parent:
+            parent_layer, parent_name = parent
+            children.setdefault((parent_layer.value, parent_name), set()).add(acc.name)
+
+    types: list[WorkspaceOntologyType] = []
+    for acc in accumulators.values():
+        skill_rows = [
+            s for s in skills.for_type(acc.name) if s.layer in visible_skill_layers
+        ]
+        built = acc.build(
+            sorted(
+                children.get((acc.layer, acc.name), set()),
+                key=lambda n: (_name_key(n), n),
+            ),
+            sources.for_type(acc.name),
+            skill_rows,
+        )
+        types.append(
+            WorkspaceOntologyType(
+                name=built.name,
+                layer=built.layer,
+                description=built.description,
+                parent_type=built.parent_type,
+                subtypes=built.subtypes,
+                attributes=built.attributes,
+                relationships=built.relationships,
+                sources=built.sources,
+                functions=built.functions,
+                skills=built.skills,
+            )
+        )
+    types.sort(key=lambda t: (_name_key(t.name), t.layer))
+
+    return WorkspaceOntologyResponse(
+        tenant_id=tenant_id,
+        entitled=entitled,
+        layers=layer_infos,
+        types=types,
     )
 
 

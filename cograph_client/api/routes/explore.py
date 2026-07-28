@@ -23,7 +23,13 @@ from fastapi import APIRouter, Depends, Query
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.entitlement import layer_stack_for
 from cograph_client.graph.kg_writer import refresh_after_write
+from cograph_client.graph.layers import (
+    Layer,
+    fetch_types_by_layer,
+    layer_type_uri,
+)
 from cograph_client.graph.ontology_queries import attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
@@ -44,6 +50,34 @@ router = APIRouter(prefix="/graphs/{tenant}/explore")
 # slot is EXEMPT from the ADR 0004 drift floor (always declared), so the edge
 # filter must know whether the upgraded predicate carries this marker.
 _CORE_SLOT_PRED = "https://cograph.tech/onto/coreSlot"
+
+
+def _from_graphs(graph_uris: list[str]) -> str:
+    """``FROM <g1> FROM <g2> …`` so a SPARQL default-graph union covers layers."""
+    return " ".join(f"FROM <{g}>" for g in graph_uris)
+
+
+async def _resolve_layered_type(
+    client: NeptuneClient, tenant: TenantContext, type_name: str
+) -> tuple[str, str, Layer] | None:
+    """Resolve ``type_name`` across the workspace LayerStack (ONTA-397).
+
+    Returns ``(type_uri, owning_graph_uri, layer)`` for the winning definition
+    under first-visible-layer-wins shadowing, or ``None`` if no visible layer
+    declares the name. Used by Explorer ontology-touching reads so empty-tenant
+    + populated Public still surfaces Public types.
+    """
+    stack = layer_stack_for(tenant)
+    types_by_layer = await fetch_types_by_layer(client, stack)
+    resolved = stack.resolve_type(type_name, types_by_layer)
+    if resolved is None:
+        return None
+    layer, _ = resolved
+    return (
+        layer_type_uri(layer, type_name),
+        stack.graph_uri_for(layer),
+        layer,
+    )
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
@@ -1170,9 +1204,18 @@ async def get_type_summary(
     if cached is not None and (time.monotonic() - cached[0]) < _SUMMARY_TTL_SECONDS:
         return cached[1]
 
-    onto_graph = tenant_graph_uri(tenant.tenant_id)
+    # Layered resolve (ONTA-397): Public/Enhanced types are visible when the
+    # tenant graph is empty. Instance counts still use the tenant-namespace
+    # type URI for historical data, plus the winning layer URI.
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
-    t_uri = type_uri(type_name)
+    resolved = await _resolve_layered_type(client, tenant, type_name)
+    if resolved is not None:
+        t_uri, onto_graph, _layer = resolved
+    else:
+        # No layered declaration — fall back to tenant URI so live-scan of
+        # instance-only types (no schema yet) still works.
+        onto_graph = tenant_graph_uri(tenant.tenant_id)
+        t_uri = type_uri(type_name)
 
     onto_sparql = (
         f"SELECT ?label ?comment ?parent FROM <{onto_graph}> WHERE {{\n"
@@ -1400,9 +1443,13 @@ async def get_type_records(
     """
     _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
 
-    onto_graph = tenant_graph_uri(tenant.tenant_id)
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
-    t_uri = type_uri(type_name)
+    resolved = await _resolve_layered_type(client, tenant, type_name)
+    if resolved is not None:
+        t_uri, onto_graph, _layer = resolved
+    else:
+        onto_graph = tenant_graph_uri(tenant.tenant_id)
+        t_uri = type_uri(type_name)
 
     # --- (1) attribute display-name map from ontology (same as get_type_summary) ---
     attr_def_sparql = (
@@ -1686,51 +1733,64 @@ async def search_explorer(
 
     kind=type  — returns matching type names + their instance counts.
     kind=attr  — returns every type that has an attribute matching the query.
+
+    Ontology side is layered (ONTA-397): Public/Enhanced declarations are
+    visible under the caller's LayerStack; same-name collisions collapse by
+    first-visible-layer-wins when assembling the result set.
     """
-    onto_graph = tenant_graph_uri(tenant.tenant_id)
+    stack = layer_stack_for(tenant)
+    from_clause = _from_graphs(stack.visible_graph_uris())
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
     q_lower = q.lower()
 
     if kind == "type":
-        sparql = (
-            f"SELECT DISTINCT ?type ?label FROM <{onto_graph}> WHERE {{\n"
-            f"  ?type <{RDF_TYPE}> <{RDFS}#Class> .\n"
-            f"  ?type <{RDFS}#label> ?label .\n"
-            f'  FILTER(CONTAINS(LCASE(STR(?label)), "{_esc(q_lower)}"))\n'
-            f"}}"
-        )
-        _, rows = parse_sparql_results(await client.query(sparql))
+        # Prefer the layered resolver so shadowing is explicit and one name
+        # never appears twice across tenant + Public.
+        types_by_layer = await fetch_types_by_layer(client, stack)
+        all_names: set[str] = set()
+        for layer_map in types_by_layer.values():
+            all_names.update(layer_map)
+        matched = sorted(n for n in all_names if q_lower in n.lower())
 
         results = []
-        for row in rows:
-            type_name = row.get("label", "")
-            if not type_name:
+        for type_name in matched:
+            resolved = stack.resolve_type(type_name, types_by_layer)
+            if resolved is None:
                 continue
-            t_uri = type_uri(type_name)
-            count_sparql = (
-                f"SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <{kg_graph}> WHERE {{\n"
-                f"  ?e <{RDF_TYPE}> <{t_uri}> .\n"
-                # Primary-type attribution: a multi-typed instance is counted
-                # only under its smallest asserted type URI (see
-                # _PRIMARY_TYPE_GUARD). Single-typed: vacuously satisfied.
-                f"  FILTER NOT EXISTS {{\n"
-                f"    ?e <{RDF_TYPE}> ?type2 .\n"
-                f'    FILTER(STRSTARTS(STR(?type2), "{TYPE_URI_PREFIX}") '
-                f'&& STR(?type2) < "{t_uri}")\n'
-                f"  }}\n"
-                f"}}"
-            )
-            try:
-                _, count_rows = parse_sparql_results(await client.query(count_sparql))
-                entity_count = int(count_rows[0].get("n", "0")) if count_rows else 0
-            except Exception:
-                entity_count = 0
-            results.append({"name": type_name, "entity_count": entity_count})
+            layer, _ = resolved
+            t_uri = layer_type_uri(layer, type_name)
+            # Also count instances typed under the bare tenant URI (historical
+            # writes) so a Public type with tenant-namespace instances is not
+            # reported as empty solely because of the namespace split.
+            tenant_t_uri = type_uri(type_name)
+            count_uris = [t_uri] if t_uri == tenant_t_uri else [t_uri, tenant_t_uri]
+            entity_count = 0
+            for cu in count_uris:
+                count_sparql = (
+                    f"SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <{kg_graph}> WHERE {{\n"
+                    f"  ?e <{RDF_TYPE}> <{cu}> .\n"
+                    f"  FILTER NOT EXISTS {{\n"
+                    f"    ?e <{RDF_TYPE}> ?type2 .\n"
+                    f'    FILTER(STRSTARTS(STR(?type2), "{TYPE_URI_PREFIX}") '
+                    f'&& STR(?type2) < "{cu}")\n'
+                    f"  }}\n"
+                    f"}}"
+                )
+                try:
+                    _, count_rows = parse_sparql_results(await client.query(count_sparql))
+                    entity_count += int(count_rows[0].get("n", "0")) if count_rows else 0
+                except Exception:
+                    pass
+            results.append({
+                "name": type_name,
+                "entity_count": entity_count,
+                "layer": layer.value,
+            })
         return results
 
-    # kind == "attr"
+    # kind == "attr" — union of visible layer graphs; dedupe by (attr, type name).
     sparql = (
-        f"SELECT DISTINCT ?attrLabel ?type ?typeLabel FROM <{onto_graph}> WHERE {{\n"
+        f"SELECT DISTINCT ?attrLabel ?type ?typeLabel {from_clause} WHERE {{\n"
         f"  ?attr <{RDF_TYPE}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> .\n"
         f"  ?attr <{RDFS}#label> ?attrLabel .\n"
         f"  ?attr <{RDFS}#domain> ?type .\n"
@@ -1739,11 +1799,19 @@ async def search_explorer(
         f"}}"
     )
     _, rows = parse_sparql_results(await client.query(sparql))
-    return [
-        {"attr_name": r.get("attrLabel", ""), "type_name": r.get("typeLabel", "")}
-        for r in rows
-        if r.get("attrLabel") and r.get("typeLabel")
-    ]
+    seen: set[tuple[str, str]] = set()
+    out = []
+    for r in rows:
+        attr_name = r.get("attrLabel", "")
+        type_name = r.get("typeLabel", "")
+        if not attr_name or not type_name:
+            continue
+        key = (attr_name, type_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"attr_name": attr_name, "type_name": type_name})
+    return out
 
 
 def _esc(s: str) -> str:
