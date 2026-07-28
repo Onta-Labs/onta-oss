@@ -55,6 +55,8 @@ from cograph_client.models.ontology import (
     TypeResponse,
     WorkspaceOntologyResponse,
     WorkspaceOntologyType,
+    WorkspaceTypeCount,
+    WorkspaceTypeCountsResponse,
 )
 from cograph_client.nlp.pipeline import get_embedding_service
 from cograph_client.resolver.ontology_resolver import OntologyResolver
@@ -150,6 +152,46 @@ async def get_workspace_ontology(
     with ``types: []``. Writes never go through this route.
     """
     return await _workspace_ontology(tenant, client)
+
+
+@router.get("/type-counts", response_model=WorkspaceTypeCountsResponse)
+async def workspace_type_counts(
+    tenant: TenantContext = Depends(get_tenant),
+):
+    """Workspace-wide union of per-type entity counts (ONTA-409).
+
+    Unions ``KgStats.type_breakdown`` across every knowledge graph in this
+    tenant's durable stats store — one relational read, no Neptune. Types with
+    zero instances in every KG are omitted (so the response IS the Active set).
+
+    Freshness is write-path best-effort (the same stats path that powers the
+    dashboard), not the live SPARQL of per-KG ``GET /kgs/{kg}/type-counts``.
+    Empty is 200 with ``types: []`` — the Ontology viewer's Active pill falls
+    back to All rather than showing a bare empty tree.
+
+    Isolation: the store is keyed by ``tenant_id``; a peer tenant's rows never
+    appear here.
+    """
+    from cograph_client.graph.kg_stats_store import (
+        get_kg_stats_store,
+        union_type_breakdowns,
+    )
+
+    store = get_kg_stats_store()
+    try:
+        rows = await store.list_for_tenant(tenant.tenant_id)
+    except Exception:  # noqa: BLE001 — degrade to empty Active, never 500
+        rows = []
+
+    aggregated = union_type_breakdowns(rows)
+    return WorkspaceTypeCountsResponse(
+        tenant_id=tenant.tenant_id,
+        types=[
+            WorkspaceTypeCount(name=name, entity_count=total, by_kg=by_kg)
+            for name, total, by_kg in aggregated
+        ],
+        kg_names=sorted({r.kg_name for r in rows}),
+    )
 
 
 @router.post("/types", status_code=201)
