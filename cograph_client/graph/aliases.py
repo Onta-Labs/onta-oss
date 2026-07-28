@@ -15,6 +15,22 @@ Chains are allowed (a renamed attribute can itself be renamed): fetch_alias_map
 flattens ``a → b → c`` to ``a → c`` so every rewrite is one hop. Cyclic alias
 data (``a → b → a``) is nonsensical — entries whose chain hits a cycle are
 dropped with a warning rather than rewritten unpredictably.
+
+**Authoring (ONTA-407a).** Production callers MUST go through
+:func:`cograph_client.graph.ontology_commit.commit_ontology` with
+``OntologyOpKind.REGISTER_ALIAS`` (or the thin REST route
+``POST /graphs/{tenant}/ontology/aliases`` which uses that op). Direct
+``register_alias`` calls remain the SPARQL writer that commit applies — do not
+hand-roll a second INSERT path. Lazy backfill + retirement + type renames are
+ONTA-407b. The write-path allowlist entry for this module stays until 407b.
+
+**alignedTo is NOT this mechanism.** Governance shape alignment
+(``cograph/governance/writer.write_alignment``) used to write tenant type URIs
+into the global layer as ``onto/alignedTo``; ONTA-402a stopped that. ONTA-407a
+decides **stop writing** (already done) rather than adding a reader — alignment
+audit lives in the shared provenance graph + changelog, not as a query-path
+alias. Do not conflate ``aliasOf`` (tenant attribute rename vehicle) with
+``alignedTo`` (global shape promotion audit).
 """
 
 from __future__ import annotations

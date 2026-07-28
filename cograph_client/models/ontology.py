@@ -497,6 +497,45 @@ class SubtypeAdd(BaseModel):
     subtype: str = Field(min_length=1, description="Name of the child type")
 
 
+class AliasRegister(BaseModel):
+    """Register an attribute alias (old → new) on the tenant ontology graph.
+
+    ONTA-407a authoring path. Records
+    ``<old-attr-IRI> onto/aliasOf <new-attr-IRI>`` so the NL query rewriter can
+    resolve renamed predicates immediately (ADR 0002 §7). Lazy instance
+    backfill + retirement are ONTA-407b.
+    """
+
+    type_name: str = Field(
+        min_length=1,
+        description="Type owning the OLD attribute (context for bare leaves and ChangeRecord)",
+    )
+    from_slot: str = Field(
+        min_length=1,
+        description="Old attribute leaf name, or a full attribute IRI",
+    )
+    to_slot: str = Field(
+        min_length=1,
+        description="New attribute leaf name, or a full attribute IRI",
+    )
+    to_type: str | None = Field(
+        default=None,
+        description=(
+            "Type owning the NEW attribute when different from type_name "
+            "(hierarchy move, e.g. Guest.phone_num → Person.phone)"
+        ),
+    )
+
+
+class AliasMapResponse(BaseModel):
+    """Flattened old→new attribute IRI map for a tenant ontology graph."""
+
+    aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description="old_attr_iri → new_attr_iri (chains flattened to one hop)",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Ontology evolution resolver (COG-84)
 #

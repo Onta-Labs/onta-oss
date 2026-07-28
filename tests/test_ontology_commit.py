@@ -179,6 +179,16 @@ class MemNeptune:
                     bindings.append({"r": {"value": o.split("^^")[0].strip('"')}})
             return self._sparql_json(bindings)
 
+        # alias_map_query (ONTA-407a): SELECT ?old ?new … aliasOf
+        if "?old" in sparql and "?new" in sparql and "aliasOf" in sparql:
+            for gg, s, p, o in self.triples:
+                if gg == g and p.endswith("/aliasOf"):
+                    bindings.append({
+                        "old": {"value": s},
+                        "new": {"value": o},
+                    })
+            return self._sparql_json(bindings)
+
         return self._sparql_json([])
 
     @staticmethod
@@ -453,17 +463,139 @@ async def test_set_text_kind_and_core_slot_ops():
 
 
 @pytest.mark.asyncio
-async def test_register_alias_raises_not_supported():
+async def test_register_alias_via_commit_writes_and_fingerprints():
+    """ONTA-407a: REGISTER_ALIAS is a real commit op (no longer NotSupported)."""
+    from cograph_client.graph.aliases import ALIAS_OF, fetch_alias_map, rewrite_query_attrs
+    from cograph_client.graph.ontology_queries import attr_uri
+
     n = MemNeptune()
-    from cograph_client.graph.ontology_commit import OntologyOpNotSupported
-    with pytest.raises(OntologyOpNotSupported, match="ONTA-407"):
+    g = "https://cograph.tech/graphs/t-alias"
+    # Seed type+attr so fingerprint has a base shape (alias still works without it).
+    await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Guest"),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Guest",
+                slot_name="phone",
+                datatype="string",
+            ),
+            OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name="Guest",
+                slot_name="phone_num",
+                datatype="string",
+            ),
+        ],
+    )
+    before = await fingerprint_ontology(n, g)
+    result = await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.REGISTER_ALIAS,
+                type_name="Guest",
+                alias_from="phone_num",
+                alias_to="phone",
+            )
+        ],
+        actor="test",
+        message="rename phone_num → phone",
+    )
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Guest", "phone")
+    assert any(
+        c.kind == ChangeKind.RENAME_WITH_ALIAS
+        and c.from_name == "phone_num"
+        and c.to_name == "phone"
+        and c.old_value == old_uri
+        and c.new_value == new_uri
+        for c in result.change_records
+    )
+    assert result.version_before == before
+    assert result.version_after != before  # alias must shift the concurrency token
+
+    # Triple landed, map resolves, rewriter rewrites.
+    assert any(
+        p == ALIAS_OF and s == old_uri and o == new_uri
+        for (_g, s, p, o) in n.triples
+    )
+    alias_map = await fetch_alias_map(n, g)
+    assert alias_map[old_uri] == new_uri
+    sparql = f"SELECT ?v WHERE {{ ?s <{old_uri}> ?v }}"
+    assert rewrite_query_attrs(sparql, alias_map) == (
+        f"SELECT ?v WHERE {{ ?s <{new_uri}> ?v }}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_alias_rejects_self_and_missing_fields():
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-alias"
+    with pytest.raises(ValueError, match="alias_from and alias_to"):
         await commit_ontology(
             n,
-            "https://cograph.tech/graphs/t",
+            g,
             [OntologyMutation(
                 op=OntologyOpKind.REGISTER_ALIAS,
-                type_name="Person",
-                alias_from="Person",
-                alias_to="Human",
+                type_name="Guest",
             )],
         )
+    with pytest.raises(ValueError, match="different attribute"):
+        await commit_ontology(
+            n,
+            g,
+            [OntologyMutation(
+                op=OntologyOpKind.REGISTER_ALIAS,
+                type_name="Guest",
+                alias_from="phone",
+                alias_to="phone",
+            )],
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_alias_full_iri_and_hierarchy_move():
+    """Full IRIs and cross-type targets (hierarchy move) are accepted."""
+    from cograph_client.graph.aliases import fetch_alias_map
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    n = MemNeptune()
+    g = "https://cograph.tech/graphs/t-alias"
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Person", "phone")
+    result = await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.REGISTER_ALIAS,
+                type_name="Guest",
+                alias_from=old_uri,
+                alias_to=new_uri,
+            )
+        ],
+    )
+    assert result.change_records[0].old_value == old_uri
+    assert result.change_records[0].new_value == new_uri
+    # Bare leaf + to_type (target_type) path
+    result2 = await commit_ontology(
+        n,
+        g,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.REGISTER_ALIAS,
+                type_name="Guest",
+                alias_from="contact_phone",
+                alias_to="phone",
+                target_type="Person",
+            )
+        ],
+    )
+    assert result2.change_records[0].new_value == new_uri
+    amap = await fetch_alias_map(n, g)
+    assert amap[old_uri] == new_uri
+    assert amap[attr_uri("Guest", "contact_phone")] == new_uri
