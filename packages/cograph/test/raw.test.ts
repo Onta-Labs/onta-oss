@@ -271,6 +271,42 @@ describe("canonical paths + methods for every covered op", () => {
       url: `${PREFIX}/ontology`,
     },
     {
+      name: "ontologyBasePin",
+      run: (c) => c.raw.ontologyBasePin(),
+      method: "GET",
+      url: `${PREFIX}/ontology/base-pin`,
+    },
+    {
+      name: "ontologyBasePinPreview",
+      run: (c) => c.raw.ontologyBasePinPreview("?to_version=3"),
+      method: "GET",
+      url: `${PREFIX}/ontology/base-pin/preview?to_version=3`,
+    },
+    {
+      name: "ontologyBasePinUpgrade",
+      run: (c) => c.raw.ontologyBasePinUpgrade({ to_version: 3 }),
+      method: "POST",
+      url: `${PREFIX}/ontology/base-pin/upgrade`,
+    },
+    {
+      name: "ontologyBasePinRollback",
+      run: (c) => c.raw.ontologyBasePinRollback(),
+      method: "POST",
+      url: `${PREFIX}/ontology/base-pin/rollback`,
+    },
+    {
+      name: "ontologyHistory",
+      run: (c) => c.raw.ontologyHistory("?grouped=true"),
+      method: "GET",
+      url: `${PREFIX}/ontology/history?grouped=true`,
+    },
+    {
+      name: "ontologyDiff",
+      run: (c) => c.raw.ontologyDiff("?from=revision:1&to=current"),
+      method: "GET",
+      url: `${PREFIX}/ontology/diff?from=revision:1&to=current`,
+    },
+    {
       name: "ontologyTypes",
       run: (c) => c.raw.ontologyTypes(),
       method: "GET",

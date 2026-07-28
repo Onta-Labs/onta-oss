@@ -704,6 +704,136 @@ class OntologyChangelogResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Ontology version UI substrate (ONTA-410)
+# ---------------------------------------------------------------------------
+
+
+class BasePinResponse(BaseModel):
+    """Body of ``GET /graphs/{tenant}/ontology/base-pin`` (ONTA-410).
+
+    Surfaces the workspace base pin plus the current workspace revision
+    counter and whether a newer base release is available for upgrade.
+    Missing pin after ensure-soft still returns a coherent live pin shape.
+    """
+
+    tenant_id: str
+    base_layer: Literal["public", "enhanced"] = "public"
+    base_version: int | None = Field(
+        default=None,
+        description="Pinned release number, or null when tracking live",
+    )
+    is_live: bool = False
+    auto_upgrade: bool = False
+    previous_version: int | None = None
+    has_previous: bool = False
+    updated_at: str | None = None
+    workspace_revision: int = Field(
+        default=0,
+        description="ONTA-403 workspaceRevision counter (0 if never committed)",
+    )
+    latest_available: int | None = Field(
+        default=None,
+        description="Latest published release for the pin's base layer, if any",
+    )
+    upgrade_available: bool = Field(
+        default=False,
+        description="True when latest_available > base_version (or pin is live and a release exists)",
+    )
+
+
+class CollisionRecordResponse(BaseModel):
+    """Tenant-overlay name that would collide with a base upgrade add."""
+
+    type_name: str
+    slot_name: str | None = None
+    kind: str = "type"
+    detail: str = ""
+
+
+class UpgradePreviewResponse(BaseModel):
+    """Body of ``GET .../base-pin/preview`` — typed upgrade preview (ONTA-405/410)."""
+
+    from_version: int | None = None
+    to_version: int | None = None
+    base_layer: Literal["public", "enhanced"] = "public"
+    changes: list[ChangeRecord] = Field(default_factory=list)
+    collisions: list[CollisionRecordResponse] = Field(default_factory=list)
+    deprecated_used: list[ChangeRecord] = Field(default_factory=list)
+    summary: list[str] = Field(default_factory=list)
+    from_fingerprint: str | None = None
+    to_fingerprint: str | None = None
+
+
+class BasePinUpgradeRequest(BaseModel):
+    """Body of ``POST .../base-pin/upgrade``."""
+
+    to_version: int | None = Field(
+        default=None,
+        description="Target release number; omit to upgrade to latest",
+    )
+
+
+class OntologyHistoryGroup(BaseModel):
+    """One collapsed history row (ONTA-410)."""
+
+    id: str
+    start: str
+    end: str
+    count: int
+    actor: str | None = None
+    message: str | None = None
+    sample_actions: list[str] = Field(default_factory=list)
+    change_summary_counts: dict[str, int] = Field(default_factory=dict)
+    entries: list[OntologyChangelogEntry] = Field(
+        default_factory=list,
+        description="Member entries newest → oldest; expand in the UI",
+    )
+
+
+class OntologyHistoryResponse(BaseModel):
+    """Body of ``GET .../ontology/history`` (ONTA-410).
+
+    Default ``grouped=true`` collapses mid-ingest bursts. Empty changelog →
+    200 with ``groups: []`` / ``entries: []``, never an error.
+    """
+
+    tenant_id: str
+    graph_uri: str
+    grouped: bool = True
+    count: int = 0
+    offset: int = 0
+    limit: int = 100
+    workspace_revision: int = 0
+    groups: list[OntologyHistoryGroup] = Field(default_factory=list)
+    entries: list[OntologyChangelogEntry] = Field(
+        default_factory=list,
+        description="Flat changelog when grouped=false; empty when grouped",
+    )
+
+
+class OntologyDiffResponse(BaseModel):
+    """Body of ``GET .../ontology/diff`` (ONTA-410).
+
+    ``changes`` are the same :class:`ChangeRecord` list ``diff_shapes`` would
+    produce for the resolved graph pair — the viewer must not re-diff client-side.
+    """
+
+    tenant_id: str
+    from_ref: str
+    to_ref: str
+    from_graph_uri: str
+    to_graph_uri: str
+    changes: list[ChangeRecord] = Field(default_factory=list)
+    count: int = 0
+    compat_class: str | None = Field(
+        default=None,
+        description="Overall CompatClass from classify_diff (when computed)",
+    )
+    requires_major: bool = False
+    summary: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Ontology evolution resolver (COG-84)
 #
 # The OntologyResolver (cograph_client/resolver/ontology_resolver.py) turns a
