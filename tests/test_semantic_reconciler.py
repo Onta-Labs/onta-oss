@@ -143,6 +143,14 @@ class FakeNeptune:
             return self._rows(
                 [{"e": e, "p": p, "o": o} for e, p, o in page], ["e", "p", "o"]
             )
+        # ONTA-403: commit_ontology fingerprints + revision reads — empty is fine.
+        if (
+            "typeLabel" in sparql
+            or "subClassOf" in sparql
+            or "workspaceRevision" in sparql
+            or "textKind" in sparql
+        ):
+            return self._rows([], [])
         raise AssertionError(f"unexpected query shape:\n{sparql}")
 
     async def update(self, sparql: str) -> None:
@@ -458,7 +466,10 @@ def test_reconcile_heuristic_verdicts_stick_across_runs():
     async def run():
         await rec.reconcile_kg(neptune, TENANT, KG, index=index)
         first_updates = len(neptune.updates)
-        assert first_updates == 1  # the sku decided-no verdict
+        # ONTA-403: commit_ontology writes the textKind marker + revision +
+        # changelog (≥1 schema write). Marker presence is the durable signal.
+        assert first_updates >= 1
+        assert ("Doc", "sku") in neptune.markers
         counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
         assert len(neptune.updates) == first_updates  # nothing rewritten
         assert counters["attrs_marked_not_text"] == 0

@@ -67,15 +67,16 @@ from cograph_client.graph.kg_writer import (
     insert_facts,
     refresh_after_write,
 )
+from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     XSD_STRING,
     entity_uri as _entity_uri,
     get_attribute_range_query,
-    upsert_attribute,
     with_subclass_closure,
     xsd_to_datatype,
 )
+from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.provenance import (
     attr_provenance_companion_uri,
@@ -2577,14 +2578,16 @@ class EnrichmentExecutor:
                 onto_graph, type_name, name, values
             )
             resolved[name] = datatype
-            await self._neptune.update(
-                upsert_attribute(
-                    onto_graph,
-                    type_name,
-                    name,
-                    description=ENRICH_ATTR_DESCRIPTION,
+            await commit_ontology(
+                self._neptune,
+                onto_graph,
+                [OntologyMutation(
+                    op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                    type_name=type_name,
+                    slot_name=name,
                     datatype=datatype,
-                )
+                    description=ENRICH_ATTR_DESCRIPTION,
+                )],
             )
         return resolved
 

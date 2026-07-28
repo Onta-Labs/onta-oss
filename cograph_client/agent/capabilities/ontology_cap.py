@@ -13,8 +13,7 @@ Reuses the EXISTING ontology engine end-to-end (no reimplementation):
 * **declare / extend** (mutating) — proposes ONE :class:`PlanStep` to add an
   attribute (or a new type) to the ontology. ``execute`` commits it through the
   SAME idempotent atomic upsert builders the ontology endpoint + the enrichment
-  "declare-then-write" path use (:func:`...ontology_queries.upsert_attribute`,
-  :func:`...ontology_queries.insert_type`), so a retry is safe and the schema
+  "declare-then-write" path use (:func:`~cograph_client.graph.ontology_commit.commit_ontology`), so a retry is safe and the schema
   the agent writes is byte-identical to what the REST/MCP surface writes.
 
 The agent never calls the ``/ontology/*`` HTTP routes — it drives the same query
@@ -29,12 +28,12 @@ import json
 import structlog
 
 from cograph_client.agent.registry import AgentContext, PlanStep
+from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
-    insert_type,
     list_types_query,
-    upsert_attribute,
 )
+from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import tenant_graph_uri
 from cograph_client.normalization.inference import list_type_schema
@@ -230,13 +229,17 @@ class OntologyCapability:
 
         if step.action == "declare_type":
             type_name = p["type_name"]
-            await ctx.neptune.update(
-                insert_type(
-                    onto_graph,
-                    type_name,
-                    description=p.get("description", "") or "",
+            desc = p.get("description", "") or ""
+            await commit_ontology(
+                ctx.neptune,
+                onto_graph,
+                [OntologyMutation(
+                    op=OntologyOpKind.UPSERT_TYPE,
+                    type_name=type_name,
+                    description=desc or None,
                     parent_type=p.get("parent_type") or None,
-                )
+                )],
+                actor=ctx.tenant_id,
             )
             return {
                 "kind": "ack",
@@ -249,14 +252,26 @@ class OntologyCapability:
         if step.action == "declare_attribute":
             type_name = p["type_name"]
             attribute = p["attribute"]
-            await ctx.neptune.update(
-                upsert_attribute(
-                    onto_graph,
-                    type_name,
-                    attribute,
-                    description=p.get("description", "") or "",
-                    datatype=p.get("datatype", "string") or "string",
+            datatype = p.get("datatype", "string") or "string"
+            desc = p.get("description", "") or ""
+            if datatype in PRIMITIVE_TYPES:
+                mut = OntologyMutation(
+                    op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                    type_name=type_name,
+                    slot_name=attribute,
+                    datatype=datatype,
+                    description=desc,
                 )
+            else:
+                mut = OntologyMutation(
+                    op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                    type_name=type_name,
+                    slot_name=attribute,
+                    target_type=datatype,
+                    description=desc,
+                )
+            await commit_ontology(
+                ctx.neptune, onto_graph, [mut], actor=ctx.tenant_id,
             )
             return {
                 "kind": "ack",

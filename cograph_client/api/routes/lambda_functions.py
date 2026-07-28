@@ -19,7 +19,8 @@ from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.functions.executor import FunctionExecutor
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
-from cograph_client.graph.ontology_queries import insert_attribute
+from cograph_client.graph.ontology_commit import commit_ontology
+from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.provenance import (
     attr_provenance_companion_uri,
@@ -348,13 +349,18 @@ async def invoke_function(
             datatype = "integer"
         elif isinstance(value, float):
             datatype = "float"
-        attr_sparql = insert_attribute(
-            ontology_graph, entity_type, key,
-            description=f"Lambda-computed by {function_name}",
-            datatype=datatype,
-        )
         try:
-            await client.update(attr_sparql)
+            await commit_ontology(
+                client,
+                ontology_graph,
+                [OntologyMutation(
+                    op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                    type_name=entity_type,
+                    slot_name=key,
+                    datatype=datatype,
+                    description=f"Lambda-computed by {function_name}",
+                )],
+            )
         except Exception:
             pass  # attribute may already exist
 
@@ -607,13 +613,18 @@ async def invoke_investor_portfolio(
         # Ensure attribute in ontology (schema graph — unrelated to the instance
         # write below; left as-is).
         datatype = "integer" if key == "portfolio_count" else "string"
-        attr_sparql = insert_attribute(
-            ontology_graph, entity_type, key,
-            description=f"Lambda-computed by investor-portfolio",
-            datatype=datatype,
-        )
         try:
-            await client.update(attr_sparql)
+            await commit_ontology(
+                client,
+                ontology_graph,
+                [OntologyMutation(
+                    op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                    type_name=entity_type,
+                    slot_name=key,
+                    datatype=datatype,
+                    description="Lambda-computed by investor-portfolio",
+                )],
+            )
         except Exception:
             pass
 

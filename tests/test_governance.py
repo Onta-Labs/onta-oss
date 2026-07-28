@@ -494,10 +494,14 @@ async def test_flag_off_new_type_path_identical_regression(mock_neptune):
 
     assert resolved == "LoyaltyTier"
     calls = _update_sparql(mock_neptune)
-    assert len(calls) == 1
-    assert f"GRAPH <{TENANT_GRAPH}>" in calls[0]
-    assert f"<{type_uri('LoyaltyTier')}>" in calls[0]
-    assert public_graph_uri() not in calls[0] and GOV_NS not in calls[0]
+    # ONTA-403: tenant type mint via commit_ontology (+ revision + workspace changelog).
+    tenant_writes = [c for c in calls if f"GRAPH <{TENANT_GRAPH}>" in c]
+    assert tenant_writes
+    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in tenant_writes)
+    assert all(public_graph_uri() not in c for c in calls)
+    # Workspace commit changelog uses GOV_NS entry URIs under the tenant companion
+    # graph — not the global Public governance path.
+    assert all(f"GRAPH <{public_graph_uri()}>" not in c for c in calls)
 
 
 @pytest.mark.asyncio
@@ -513,29 +517,30 @@ async def test_flag_on_majority_approve_also_writes_public_layer(mock_neptune):
     resolved = await resolver._resolve_type(_new_entity(), TENANT_GRAPH, {}, {}, result)
 
     assert resolved == "LoyaltyTier"
-    # The ingest path returned after the tenant write alone — governance is
+    # The ingest path returned after the tenant commit alone — governance is
     # scheduled, retained on the resolver, and not yet (necessarily) done.
-    assert len(_update_sparql(mock_neptune)) == 1
+    pre_gov = _update_sparql(mock_neptune)
+    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in pre_gov)
+    assert all(public_graph_uri() not in c for c in pre_gov)
     assert len(resolver._governance_tasks) == 1
 
     await resolver.drain_governance()
 
     assert resolver._governance_tasks == []
     calls = _update_sparql(mock_neptune)
-    assert len(calls) == 4
-    # Tenant write happens first and is unchanged.
-    assert f"GRAPH <{TENANT_GRAPH}>" in calls[0]
-    assert f"<{type_uri('LoyaltyTier')}>" in calls[0]
-    # Then the governed Public-layer copy with provenance + changelog.
-    assert f"GRAPH <{public_graph_uri()}>" in calls[1]
-    assert f"<{layer_type_uri(Layer.PUBLIC, 'LoyaltyTier')}>" in calls[1]
-    assert f"GRAPH <{provenance_graph_uri(public_graph_uri())}>" in calls[2]
-    assert '"2/3"' in calls[2]
+    joined = " ".join(calls)
+    # Tenant write is present.
+    assert f"<{type_uri('LoyaltyTier')}>" in joined
+    # Then the governed Public-layer copy with provenance + global changelog.
+    assert f"GRAPH <{public_graph_uri()}>" in joined
+    assert f"<{layer_type_uri(Layer.PUBLIC, 'LoyaltyTier')}>" in joined
+    assert f"GRAPH <{provenance_graph_uri(public_graph_uri())}>" in joined
+    assert '"2/3"' in joined
     # The proposal carries the tenant id (derived from the graph) and the
     # proposer model (the extract model).
-    assert '"acme"' in calls[2]
-    assert resolver.EXTRACT_MODEL in calls[2]
-    assert f"GRAPH <{changelog_graph_uri()}>" in calls[3] and '"add_type"' in calls[3]
+    assert '"acme"' in joined
+    assert resolver.EXTRACT_MODEL in joined
+    assert f"GRAPH <{changelog_graph_uri()}>" in joined and '"add_type"' in joined
 
 
 @pytest.mark.asyncio
@@ -549,8 +554,10 @@ async def test_flag_on_majority_reject_stays_tenant_only(mock_neptune):
 
     assert resolved == "LoyaltyTier"
     calls = _update_sparql(mock_neptune)
-    assert len(calls) == 1, "rejected proposal must add NO writes beyond the tenant insert"
-    assert f"GRAPH <{TENANT_GRAPH}>" in calls[0]
+    # Rejected proposal must add NO Public-layer / global-governance writes.
+    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in calls)
+    assert all(public_graph_uri() not in c for c in calls)
+    assert all(f"GRAPH <{changelog_graph_uri()}>" not in c for c in calls)
 
 
 @pytest.mark.asyncio
@@ -568,7 +575,11 @@ async def test_flag_on_governance_write_failure_never_blocks_ingest(mock_neptune
 
     assert resolved == "LoyaltyTier"
     assert "LoyaltyTier" in result.types_created
-    assert mock_neptune.update.call_count == 1  # the tenant insert_type only
+    # Tenant commit only (no successful Public write) — ONTA-403 may emit
+    # revision/changelog alongside the type mint.
+    calls = _update_sparql(mock_neptune)
+    assert any(f"<{type_uri('LoyaltyTier')}>" in c for c in calls)
+    assert all(public_graph_uri() not in c for c in calls)
 
 
 @pytest.mark.asyncio
