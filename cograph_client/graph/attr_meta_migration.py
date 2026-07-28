@@ -50,7 +50,8 @@ from cograph_client.graph.queries import (
     parse_kg_graph_uri,
     tenant_graph_uri,
 )
-from cograph_client.graph.ontology_queries import delete_attribute_declaration
+from cograph_client.graph.ontology_commit import commit_ontology
+from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 
 logger = structlog.get_logger(__name__)
 
@@ -139,11 +140,21 @@ async def migrate_kg(
     # Purge the stale ontology declarations (one idempotent delete per distinct
     # companion pseudo-attribute; discovery-only KGs simply have none to purge).
     purged: set[tuple[str, str]] = set()
+    del_muts: list[OntologyMutation] = []
     for _old, (_new, type_name, leaf) in mapping.items():
         if (type_name, leaf) in purged:
             continue
-        await neptune.update(delete_attribute_declaration(onto_graph, type_name, leaf))
+        del_muts.append(OntologyMutation(
+            op=OntologyOpKind.DELETE_ATTRIBUTE,
+            type_name=type_name,
+            slot_name=leaf,
+        ))
         purged.add((type_name, leaf))
+    if del_muts:
+        await commit_ontology(
+            neptune, onto_graph, del_muts,
+            message=f"attr_meta companion migration (ONTA-262), kg={kg_name}",
+        )
     summary["declarations_purged"] = len(purged)
 
     affected_types = {t for (_new, t, _leaf) in mapping.values()}
@@ -194,8 +205,19 @@ async def sweep_orphaned_companion_declarations(
     }
     if not mapping or dry_run:
         return summary
-    for _old, (_new, type_name, leaf) in mapping.items():
-        await neptune.update(delete_attribute_declaration(onto_graph, type_name, leaf))
+    await commit_ontology(
+        neptune,
+        onto_graph,
+        [
+            OntologyMutation(
+                op=OntologyOpKind.DELETE_ATTRIBUTE,
+                type_name=type_name,
+                slot_name=leaf,
+            )
+            for _old, (_new, type_name, leaf) in mapping.items()
+        ],
+        message="attr_meta orphaned companion declaration sweep",
+    )
     summary["declarations_purged"] = len(mapping)
     logger.info("attr_meta_declaration_sweep_done", tenant_id=tenant_id, **summary)
     return summary

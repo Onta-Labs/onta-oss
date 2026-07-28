@@ -274,7 +274,8 @@ async def ingest_csv_rows(
         # This ensures the ontology has all attributes even if the first batch
         # of rows has empty values for some columns. Without this, types can
         # end up with 0 ontology attributes when all columns are relationships.
-        from cograph_client.graph.ontology_queries import insert_attribute, insert_type
+        from cograph_client.graph.ontology_commit import commit_ontology
+        from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 
         def _mget(obj, key, default=None):
             return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
@@ -300,9 +301,13 @@ async def ingest_csv_rows(
             type_name=mapping_type or None,
         )
 
+        # Collect all pre-registration mutations and commit once (ONTA-403).
+        pre_muts: list[OntologyMutation] = []
         for type_name, cols in groups:
             if type_name and type_name not in existing_types:
-                await client.update(insert_type(graph_uri, type_name, ""))
+                pre_muts.append(OntologyMutation(
+                    op=OntologyOpKind.UPSERT_TYPE, type_name=type_name,
+                ))
                 existing_types[type_name] = ""
                 existing_attrs[type_name] = {}
             for col in cols:
@@ -321,9 +326,26 @@ async def ingest_csv_rows(
                 type_attrs = existing_attrs.get(type_name, {})
                 if col_name not in type_attrs:
                     if col_role == "relationship" and col_target:
-                        await client.update(insert_attribute(graph_uri, type_name, col_name, "", col_target))
+                        pre_muts.append(OntologyMutation(
+                            op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                            type_name=type_name,
+                            slot_name=col_name,
+                            target_type=col_target,
+                            description="",
+                        ))
+                        type_attrs[col_name] = AttributeSchema(name=col_name, datatype=col_target)
                     else:
-                        await client.update(insert_attribute(graph_uri, type_name, col_name, "", col_datatype))
+                        pre_muts.append(OntologyMutation(
+                            op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                            type_name=type_name,
+                            slot_name=col_name,
+                            datatype=col_datatype or "string",
+                            description="",
+                        ))
+                        type_attrs[col_name] = AttributeSchema(
+                            name=col_name, datatype=col_datatype or "string",
+                        )
+                    existing_attrs[type_name] = type_attrs
 
         # Pre-register ontology extensions (ADR 0003 Pass D, COG-52): promoted
         # types and EVERY core slot — including slots with zero data in this file.
@@ -333,8 +355,6 @@ async def ingest_csv_rows(
         # held_for_review confirm gate is client-side, so whatever (possibly
         # user-edited) extensions arrive in the posted mapping are written
         # (judge-panel gating lands with COG-56).
-        from cograph_client.graph.ontology_queries import mark_core_slot
-
         extensions = _mget(body.mapping, "ontology_extensions")
         for ext in (_mget(extensions, "types", []) or []) if extensions else []:
             ext_type = _mget(ext, "type_name") or _mget(ext, "type", "")
@@ -346,7 +366,11 @@ async def ingest_csv_rows(
                     f"Dependent entity promoted from attribute '{promoted_from}' (ADR 0003 Pass D)"
                     if promoted_from else ""
                 )
-                await client.update(insert_type(graph_uri, ext_type, desc))
+                pre_muts.append(OntologyMutation(
+                    op=OntologyOpKind.UPSERT_TYPE,
+                    type_name=ext_type,
+                    description=desc or None,
+                ))
                 existing_types[ext_type] = ""
                 existing_attrs[ext_type] = {}
             ext_attrs = existing_attrs.setdefault(ext_type, {})
@@ -362,15 +386,29 @@ async def ingest_csv_rows(
                 # when this dataset has ZERO instances of it (e.g. the issuer of
                 # a promoted identifier with no issuer column).
                 if slot_kind == "relationship" and slot_target and slot_target not in existing_types:
-                    await client.update(insert_type(graph_uri, slot_target, ""))
+                    pre_muts.append(OntologyMutation(
+                        op=OntologyOpKind.UPSERT_TYPE, type_name=slot_target,
+                    ))
                     existing_types[slot_target] = ""
                     existing_attrs[slot_target] = {}
                 if slot_name not in ext_attrs:
                     if slot_kind == "relationship" and slot_target:
-                        await client.update(insert_attribute(graph_uri, ext_type, slot_name, slot_why, slot_target))
+                        pre_muts.append(OntologyMutation(
+                            op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                            type_name=ext_type,
+                            slot_name=slot_name,
+                            target_type=slot_target,
+                            description=slot_why,
+                        ))
                         slot_datatype = slot_target
                     else:
-                        await client.update(insert_attribute(graph_uri, ext_type, slot_name, slot_why, "string"))
+                        pre_muts.append(OntologyMutation(
+                            op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                            type_name=ext_type,
+                            slot_name=slot_name,
+                            datatype="string",
+                            description=slot_why,
+                        ))
                         slot_datatype = "string"
                     # Store a real AttributeSchema (not a bare marker string): this dict
                     # is existing_attrs[ext_type], which flows into resolve_attribute()
@@ -378,7 +416,17 @@ async def ingest_csv_rows(
                     # `'str' object has no attribute 'datatype'` the moment any ingested
                     # entity of ext_type has an attribute matching this slot name.
                     ext_attrs[slot_name] = AttributeSchema(name=slot_name, datatype=slot_datatype)
-                await client.update(mark_core_slot(graph_uri, ext_type, slot_name))
+                pre_muts.append(OntologyMutation(
+                    op=OntologyOpKind.SET_CORE_SLOT,
+                    type_name=ext_type,
+                    slot_name=slot_name,
+                    core_slot=True,
+                ))
+        if pre_muts:
+            await commit_ontology(
+                client, graph_uri, pre_muts, actor=tenant.tenant_id,
+                message="csv rows pre-register ontology",
+            )
 
         # Judge-panel gating (ADR 0003 §5, COG-56): the tenant-layer writes above
         # already happened — the tenant uses the shape immediately (ADR 0002 §2

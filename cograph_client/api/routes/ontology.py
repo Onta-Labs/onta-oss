@@ -23,15 +23,12 @@ from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.entitlement import is_entitled, layer_stack_for
 from cograph_client.graph.global_ontology import fetch_ontology
-from cograph_client.graph.ontology_queries import (
-    insert_attribute,
-    insert_subtype,
-    insert_type,
-    upsert_attribute,
-)
+from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.queries import tenant_graph_uri
 from cograph_client.models.ontology import (
     ApplyBatchRequest,
+    OntologyMutation,
+    OntologyOpKind,
     ApplyBatchResult,
     ApplyChangeResult,
     AttributeAdd,
@@ -122,13 +119,34 @@ async def create_type(
 ):
     # WRITE path: tenant graph only. Never a global layer.
     graph_uri = tenant_graph_uri(tenant.tenant_id)
-    sparql = insert_type(graph_uri, body.name, body.description, body.parent_type)
-    await client.update(sparql)
-
+    muts = [
+        OntologyMutation(
+            op=OntologyOpKind.UPSERT_TYPE,
+            type_name=body.name,
+            description=body.description or None,
+            parent_type=body.parent_type,
+        )
+    ]
     for attr in body.attributes:
-        attr_sparql = insert_attribute(graph_uri, body.name, attr.name, attr.description, attr.datatype)
-        await client.update(attr_sparql)
-
+        if attr.datatype and attr.datatype not in (
+            "string", "integer", "float", "boolean", "datetime", "uri", "geo",
+        ):
+            muts.append(OntologyMutation(
+                op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                type_name=body.name,
+                slot_name=attr.name,
+                target_type=attr.datatype,
+                description=attr.description or "",
+            ))
+        else:
+            muts.append(OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name=body.name,
+                slot_name=attr.name,
+                datatype=attr.datatype or "string",
+                description=attr.description or "",
+            ))
+    await commit_ontology(client, graph_uri, muts, actor=tenant.tenant_id)
     return {"created": body.name, "attributes": len(body.attributes)}
 
 
@@ -165,9 +183,27 @@ async def add_attributes(
 ):
     # WRITE path: tenant graph only.
     graph_uri = tenant_graph_uri(tenant.tenant_id)
+    muts = []
     for attr in body.attributes:
-        sparql = insert_attribute(graph_uri, type_name, attr.name, attr.description, attr.datatype)
-        await client.update(sparql)
+        if attr.datatype and attr.datatype not in (
+            "string", "integer", "float", "boolean", "datetime", "uri", "geo",
+        ):
+            muts.append(OntologyMutation(
+                op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                type_name=type_name,
+                slot_name=attr.name,
+                target_type=attr.datatype,
+                description=attr.description or "",
+            ))
+        else:
+            muts.append(OntologyMutation(
+                op=OntologyOpKind.UPSERT_ATTRIBUTE,
+                type_name=type_name,
+                slot_name=attr.name,
+                datatype=attr.datatype or "string",
+                description=attr.description or "",
+            ))
+    await commit_ontology(client, graph_uri, muts, actor=tenant.tenant_id)
     return {"type": type_name, "attributes_added": len(body.attributes)}
 
 
@@ -180,8 +216,16 @@ async def add_subtype(
 ):
     # WRITE path: tenant graph only.
     graph_uri = tenant_graph_uri(tenant.tenant_id)
-    sparql = insert_subtype(graph_uri, type_name, body.subtype)
-    await client.update(sparql)
+    await commit_ontology(
+        client,
+        graph_uri,
+        [OntologyMutation(
+            op=OntologyOpKind.SET_SUBCLASS,
+            type_name=body.subtype,
+            parent_type=type_name,
+        )],
+        actor=tenant.tenant_id,
+    )
     return {"parent": type_name, "subtype": body.subtype}
 
 
@@ -240,35 +284,46 @@ def _build_resolver(graph_uri: str) -> OntologyResolver:
 
 
 async def _apply_change(change: ResolvedChange, graph_uri: str, client: NeptuneClient) -> list[str]:
-    """Translate one resolved change into atomic upsert SPARQL and run it.
+    """Translate one resolved change into ontology mutations and commit them.
 
     Shared by `/resolve` (for confident `applied` changes) and `/apply` (for a
-    confirmed proposal). Type minting uses the non-destructive `insert_type`
-    (only ever adds class+label, never clears an existing type's
-    description/parent); the property itself goes through `upsert_attribute`,
-    whose single-valued `rdfs:range`/`rdfs:comment` are replaced atomically.
+    confirmed proposal). All schema writes go through :func:`commit_ontology`
+    (ONTA-403).
     """
-    sparqls: list[str] = []
+    muts: list[OntologyMutation] = []
 
     # A `create` change means the subject type is newly minted — ensure it
     # exists first (idempotent on an existing type, never clobbers it).
     if change.action == "create":
-        sparqls.append(insert_type(graph_uri, change.subject_type))
+        muts.append(OntologyMutation(
+            op=OntologyOpKind.UPSERT_TYPE, type_name=change.subject_type,
+        ))
 
     # A relationship's range points at another type; ensure that target type
     # exists before we point an object property at it.
     if change.kind == "relationship":
-        sparqls.append(insert_type(graph_uri, change.datatype_or_target))
+        muts.append(OntologyMutation(
+            op=OntologyOpKind.UPSERT_TYPE, type_name=change.datatype_or_target,
+        ))
+        muts.append(OntologyMutation(
+            op=OntologyOpKind.UPSERT_RELATIONSHIP,
+            type_name=change.subject_type,
+            slot_name=change.name,
+            target_type=change.datatype_or_target,
+            description="",
+        ))
+    else:
+        # `reuse` is already satisfied, but the upsert is idempotent.
+        muts.append(OntologyMutation(
+            op=OntologyOpKind.UPSERT_ATTRIBUTE,
+            type_name=change.subject_type,
+            slot_name=change.name,
+            datatype=change.datatype_or_target,
+            description="",
+        ))
 
-    # `reuse` is already satisfied, but the upsert is idempotent, so emitting it
-    # keeps the property authoritative without risk.
-    sparqls.append(
-        upsert_attribute(graph_uri, change.subject_type, change.name, datatype=change.datatype_or_target)
-    )
-
-    for sparql in sparqls:
-        await client.update(sparql)
-    return sparqls
+    await commit_ontology(client, graph_uri, muts)
+    return [m.op.value for m in muts]
 
 
 @router.post("/resolve", response_model=ResolutionResult)

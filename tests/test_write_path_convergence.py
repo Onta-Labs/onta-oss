@@ -110,8 +110,15 @@ _ALLOWLIST: dict[str, str] = {
     # The SPARQL builder library the whole write path composes.
     "graph/queries.py": "SPARQL builder library — defines the insert/delete/rewrite statement builders every writer composes; not itself a writer.",
     # Non-instance graphs: schema / aliases / governance.
-    "graph/ontology_queries.py": "ontology SCHEMA edits (type/attribute declarations, ranges, comments) on the tenant ontology graph — not instance data.",
-    "graph/aliases.py": "attribute-alias records on the tenant ontology graph — not instance data.",
+    # ONTA-403: ontology_queries.py is reclassified as a SPARQL *builder*
+    # library (mirrors graph/queries.py) — it constructs schema upsert DELETE/
+    # INSERT strings but never calls neptune.update. Application of those
+    # builders is exclusive to graph/ontology_commit.py, enforced by
+    # tests/test_ontology_commit_convergence.py. aliases.py stays until
+    # ONTA-407b (Wave 3) routes aliases through commit_ontology.
+    "graph/ontology_queries.py": "ontology SCHEMA SPARQL builder library (ONTA-403) — defines type/attribute/range/comment builders; not itself a writer. Application is exclusive to ontology_commit.py.",
+    "graph/ontology_commit.py": "ontology SCHEMA commit path (ONTA-403) — the one place that applies ontology_queries builders; emits changelog + revision, not instance data.",
+    "graph/aliases.py": "attribute-alias records on the tenant ontology graph — not instance data. Stays until ONTA-407b routes aliases through commit_ontology.",
     "resolver/governance.py": "audit / changelog / governance-provenance graphs — not instance data (ADR 0007 allowlist).",
     # Derived / admin escape hatches with their own lifecycle.
     "resolver/functions.py": "derived computed-function value store (ADR 0002 §6 / ADR 0001 rule 6) — regenerable /derived/ values with their own atomic replace + TTL/invalidate lifecycle, never asserted facts.",
