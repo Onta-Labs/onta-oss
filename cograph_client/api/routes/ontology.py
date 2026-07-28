@@ -57,14 +57,41 @@ router = APIRouter(prefix="/graphs/{tenant}/ontology")
 _VERDICT_CACHE_PATH = Path("/tmp/omnix-verdict-cache.json")
 
 
+async def _workspace_catalog(tenant_id: str):
+    """Tenant-aware API-source catalog for the workspace browser overlay.
+
+    Loads the caller's ``tenant_custom`` entries from the durable store and
+    merges them onto the global catalog (highest precedence for THIS tenant
+    only). Degrades to ``None`` (global-only / empty overlay) on any failure
+    so a broken source store never sinks the ontology read. Operator
+    ``fetch_global_ontology`` deliberately never takes a tenant catalog —
+    private entries must not leak onto the cross-tenant route.
+    """
+    try:
+        from cograph_client.api_registry.catalog import load_tenant_custom_catalog
+        from cograph_client.api_registry.store import make_tenant_api_source_store
+
+        return await load_tenant_custom_catalog(
+            tenant_id, make_tenant_api_source_store()
+        )
+    except Exception:
+        return None
+
+
 async def _workspace_ontology(
     tenant: TenantContext, client: NeptuneClient
 ) -> WorkspaceOntologyResponse:
-    """Effective (shadowed) ontology for ``tenant`` — single LayerStack read."""
+    """Effective (shadowed) ontology for ``tenant`` — single LayerStack read.
+
+    Full browser payload (ONTA-408): layered types + tenant-custom sources +
+    tenant-layer skills overlay. Writes never go through this path.
+    """
     stack = layer_stack_for(tenant)
+    catalog = await _workspace_catalog(tenant.tenant_id)
     return await fetch_ontology(
         client,
         layers=stack.layer_pairs(),
+        catalog=catalog,
         entitled=is_entitled(tenant),
         tenant_id=tenant.tenant_id,
         apply_shadowing=True,

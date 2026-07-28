@@ -265,6 +265,12 @@ describe("canonical paths + methods for every covered op", () => {
       url: `${PREFIX}/schedules/${ENC("s 1")}`,
     },
     {
+      name: "ontology",
+      run: (c) => c.raw.ontology(),
+      method: "GET",
+      url: `${PREFIX}/ontology`,
+    },
+    {
       name: "ontologyTypes",
       run: (c) => c.raw.ontologyTypes(),
       method: "GET",
