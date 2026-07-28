@@ -118,6 +118,7 @@ _ALLOWLIST: dict[str, str] = {
     "graph/ontology_queries.py": "ontology SCHEMA SPARQL builder library (ONTA-403) — defines type/attribute/range/comment builders; not itself a writer. Application is exclusive to ontology_commit.py.",
     "graph/ontology_commit.py": "ontology SCHEMA commit path (ONTA-403) — the one place that applies ontology_queries builders; emits changelog + revision, not instance data.",
     "graph/ontology_snapshots.py": "ontology SCHEMA snapshot/diff/restore (ONTA-406) — versions named graphs + RDF release records; not instance data. Copy/clear/drop of schema graphs + insert_triples for release metadata only.",
+    "graph/ontology_base_pin.py": "ontology SCHEMA-META workspace base pin (ONTA-405) — CLEAR + insert_triples on per-tenant base-pin companion graph only; not instance data.",
     # ONTA-407b: aliases stay allowlisted with an honest sole-caller justification.
     # register_alias / retire_alias are applied only by ontology_commit
     # (REGISTER_ALIAS / RENAME_ATTRIBUTE / RETIRE_ALIAS); backfill_aliases is the
