@@ -281,6 +281,30 @@ export class Client {
   pOntologyTypeCounts(): string {
     return `${this.base()}/ontology/type-counts`;
   }
+  /** @internal Workspace base pin + revision (ONTA-410). */
+  pOntologyBasePin(): string {
+    return `${this.base()}/ontology/base-pin`;
+  }
+  /** @internal Base-pin upgrade preview (ONTA-410). */
+  pOntologyBasePinPreview(query?: string): string {
+    return `${this.base()}/ontology/base-pin/preview${query ?? ""}`;
+  }
+  /** @internal Upgrade workspace base pin (ONTA-410). */
+  pOntologyBasePinUpgrade(): string {
+    return `${this.base()}/ontology/base-pin/upgrade`;
+  }
+  /** @internal Rollback workspace base pin (ONTA-410). */
+  pOntologyBasePinRollback(): string {
+    return `${this.base()}/ontology/base-pin/rollback`;
+  }
+  /** @internal Grouped ontology history (ONTA-410). */
+  pOntologyHistory(query?: string): string {
+    return `${this.base()}/ontology/history${query ?? ""}`;
+  }
+  /** @internal Structural ontology diff (ONTA-410). */
+  pOntologyDiff(query?: string): string {
+    return `${this.base()}/ontology/diff${query ?? ""}`;
+  }
   /** @internal */ pOntologyTypes(): string {
     return `${this.base()}/ontology/types`;
   }
@@ -2104,6 +2128,58 @@ export class RawApi {
    *  type counts (ONTA-409 KgStats union). */
   ontologyTypeCounts(init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pOntologyTypeCounts(), init);
+  }
+
+  /** `GET /graphs/{tenant}/ontology/base-pin` — current pin + revision (ONTA-410). */
+  ontologyBasePin(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("GET", this.client.pOntologyBasePin(), init);
+  }
+
+  /** `GET /graphs/{tenant}/ontology/base-pin/preview` — upgrade preview. */
+  ontologyBasePinPreview(
+    query?: string,
+    init?: RawInit,
+  ): Promise<Response> {
+    return this.client.requestRaw(
+      "GET",
+      this.client.pOntologyBasePinPreview(query),
+      init,
+    );
+  }
+
+  /** `POST /graphs/{tenant}/ontology/base-pin/upgrade`. */
+  ontologyBasePinUpgrade(body?: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pOntologyBasePinUpgrade(), {
+      body: body ?? {},
+      ...init,
+    });
+  }
+
+  /** `POST /graphs/{tenant}/ontology/base-pin/rollback`. */
+  ontologyBasePinRollback(init?: RawInit): Promise<Response> {
+    return this.client.requestRaw(
+      "POST",
+      this.client.pOntologyBasePinRollback(),
+      init,
+    );
+  }
+
+  /** `GET /graphs/{tenant}/ontology/history` — grouped changelog (ONTA-410). */
+  ontologyHistory(query?: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw(
+      "GET",
+      this.client.pOntologyHistory(query),
+      init,
+    );
+  }
+
+  /** `GET /graphs/{tenant}/ontology/diff` — structural ChangeRecords (ONTA-410). */
+  ontologyDiff(query?: string, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw(
+      "GET",
+      this.client.pOntologyDiff(query),
+      init,
+    );
   }
 
   /** `GET /graphs/{tenant}/ontology/types` — list ontology types. */

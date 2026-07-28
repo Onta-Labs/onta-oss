@@ -17,7 +17,7 @@ byte-for-byte; they must never share a graph in a union.
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
@@ -30,8 +30,30 @@ from cograph_client.graph.aliases import (
     backfill_aliases,
     fetch_alias_map,
 )
-from cograph_client.graph.ontology_changelog import fetch_ontology_changelog
-from cograph_client.graph.ontology_commit import commit_ontology
+from cograph_client.graph.ontology_base_pin import (
+    BasePin,
+    BasePinReadError,
+    ensure_workspace_base_pin,
+    get_base_pin,
+    latest_base_release_version,
+    preview_base_upgrade,
+    rollback_base_pin,
+    upgrade_base_pin,
+)
+from cograph_client.graph.ontology_changelog import (
+    fetch_ontology_changelog,
+    group_changelog_entries,
+)
+from cograph_client.graph.ontology_commit import (
+    commit_ontology,
+    release_graph_uri,
+    revision_graph_uri,
+)
+from cograph_client.graph.ontology_compat import classify_diff
+from cograph_client.graph.ontology_snapshots import (
+    _current_revision_counter,
+    diff_graphs,
+)
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.models.ontology import (
     AliasBackfill,
@@ -40,8 +62,14 @@ from cograph_client.models.ontology import (
     AliasRename,
     AliasRetire,
     ApplyBatchRequest,
+    BasePinResponse,
+    BasePinUpgradeRequest,
+    CollisionRecordResponse,
     OntologyChangelogEntry,
     OntologyChangelogResponse,
+    OntologyDiffResponse,
+    OntologyHistoryGroup,
+    OntologyHistoryResponse,
     OntologyMutation,
     OntologyOpKind,
     ApplyBatchResult,
@@ -54,6 +82,7 @@ from cograph_client.models.ontology import (
     SubtypeAdd,
     TypeCreate,
     TypeResponse,
+    UpgradePreviewResponse,
     WorkspaceOntologyResponse,
     WorkspaceOntologyType,
     WorkspaceTypeCount,
@@ -426,6 +455,418 @@ async def get_ontology_changelog(
             )
             for e in entries
         ],
+    )
+
+
+# ── Base pin + history + diff (ONTA-410) ──────────────────────────────────────
+#
+# Version strip / upgrade / history groups / structural diff for the workspace
+# ontology viewer. Thin wrappers over ontology_base_pin + changelog grouping +
+# diff_shapes. Tenant isolation is by named graph throughout.
+
+
+def _changelog_entry_model(e) -> OntologyChangelogEntry:
+    return OntologyChangelogEntry(
+        entry_uri=e.entry_uri,
+        action=e.action,
+        subject=e.subject,
+        timestamp=e.timestamp,
+        tenant_id=e.tenant_id,
+        actor=e.actor,
+        message=e.message,
+        version_before=e.version_before,
+        version_after=e.version_after,
+        revision=e.revision,
+        changes=list(e.changes),
+    )
+
+
+def _base_pin_response(
+    pin: BasePin,
+    *,
+    workspace_revision: int,
+    latest_available: int | None,
+) -> BasePinResponse:
+    upgrade_available = False
+    if latest_available is not None:
+        if pin.base_version is None:
+            upgrade_available = True  # live pin, a release exists
+        elif latest_available > pin.base_version:
+            upgrade_available = True
+    return BasePinResponse(
+        tenant_id=pin.tenant_id,
+        base_layer=pin.base_layer,
+        base_version=pin.base_version,
+        is_live=pin.is_live,
+        auto_upgrade=pin.auto_upgrade,
+        previous_version=pin.previous_version,
+        has_previous=pin.has_previous,
+        updated_at=pin.updated_at,
+        workspace_revision=workspace_revision,
+        latest_available=latest_available,
+        upgrade_available=upgrade_available,
+    )
+
+
+@router.get("/base-pin", response_model=BasePinResponse)
+async def get_workspace_base_pin(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Current workspace base pin + revision + upgrade affordance (ONTA-410).
+
+    Ensures a pin when missing (soft backfill to latest) so the version strip
+    always has a defined state. Pin **read** infrastructure failures → 503
+    (never silent re-pin to latest).
+    """
+    entitled = is_entitled(tenant)
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    try:
+        pin = await ensure_workspace_base_pin(
+            client, tenant.tenant_id, entitled=entitled
+        )
+    except BasePinReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    latest = await latest_base_release_version(client, pin.base_layer)
+    rev = await _current_revision_counter(client, graph_uri)
+    return _base_pin_response(
+        pin,
+        workspace_revision=rev,
+        latest_available=latest,
+    )
+
+
+@router.get("/base-pin/preview", response_model=UpgradePreviewResponse)
+async def preview_workspace_base_upgrade(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+    to_version: int | None = Query(
+        None,
+        ge=1,
+        description="Target base release; omit for latest available",
+    ),
+):
+    """Preview upgrading the workspace base pin (structural ChangeRecords)."""
+    entitled = is_entitled(tenant)
+    try:
+        preview = await preview_base_upgrade(
+            client,
+            tenant.tenant_id,
+            entitled=entitled,
+            to_version=to_version,
+        )
+    except BasePinReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return UpgradePreviewResponse(
+        from_version=preview.from_version,
+        to_version=preview.to_version,
+        base_layer=preview.base_layer,
+        changes=list(preview.changes),
+        collisions=[
+            CollisionRecordResponse(
+                type_name=c.type_name,
+                slot_name=c.slot_name,
+                kind=c.kind,
+                detail=c.detail,
+            )
+            for c in preview.collisions
+        ],
+        deprecated_used=list(preview.deprecated_used),
+        summary=list(preview.summary),
+        from_fingerprint=preview.from_fingerprint,
+        to_fingerprint=preview.to_fingerprint,
+    )
+
+
+@router.post("/base-pin/upgrade", response_model=BasePinResponse)
+async def post_workspace_base_upgrade(
+    body: BasePinUpgradeRequest = Body(default_factory=BasePinUpgradeRequest),
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Upgrade the workspace base pin to ``to_version`` (or latest)."""
+    entitled = is_entitled(tenant)
+    to_version = body.to_version if body is not None else None
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    try:
+        pin = await upgrade_base_pin(
+            client,
+            tenant.tenant_id,
+            entitled=entitled,
+            to_version=to_version,
+        )
+    except BasePinReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    latest = await latest_base_release_version(client, pin.base_layer)
+    rev = await _current_revision_counter(client, graph_uri)
+    return _base_pin_response(
+        pin,
+        workspace_revision=rev,
+        latest_available=latest,
+    )
+
+
+@router.post("/base-pin/rollback", response_model=BasePinResponse)
+async def post_workspace_base_rollback(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Roll the workspace base pin back to its previous version."""
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    try:
+        pin = await rollback_base_pin(client, tenant.tenant_id)
+    except BasePinReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    latest = await latest_base_release_version(client, pin.base_layer)
+    rev = await _current_revision_counter(client, graph_uri)
+    return _base_pin_response(
+        pin,
+        workspace_revision=rev,
+        latest_available=latest,
+    )
+
+
+@router.get("/history", response_model=OntologyHistoryResponse)
+async def get_ontology_history(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+    since: str | None = Query(
+        None,
+        description="ISO-8601 cutoff; only entries STRICTLY AFTER it",
+    ),
+    subject: str | None = Query(
+        None,
+        description="Narrow to one gov:subject IRI",
+    ),
+    action: str | None = Query(
+        None,
+        description="Exact gov:action match",
+    ),
+    grouped: bool = Query(
+        True,
+        description="Collapse consecutive mid-ingest commits (default true)",
+    ),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0, le=100_000),
+):
+    """Grouped (or flat) workspace ontology history (ONTA-410).
+
+    Default ``grouped=true`` collapses consecutive ``commit_ontology`` bursts
+    that share a job identity or fall within a 60s window — hundreds of
+    automatic mid-ingest revisions become a few history rows. Empty changelog
+    → 200 with empty groups/entries, never an error.
+    """
+    if subject is not None and not _ABS_IRI_RE.match(subject):
+        raise HTTPException(
+            status_code=422,
+            detail="subject must be a well-formed absolute http(s) IRI",
+        )
+    if action is not None and not _ACTION_RE.match(action):
+        raise HTTPException(
+            status_code=422,
+            detail="action must be a short alphanumeric token (e.g. commit_ontology)",
+        )
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    entries = await fetch_ontology_changelog(
+        client,
+        graph_uri,
+        since=since,
+        subject=subject,
+        action=action,
+        limit=limit,
+        offset=offset,
+    )
+    rev = await _current_revision_counter(client, graph_uri)
+    if not grouped:
+        return OntologyHistoryResponse(
+            tenant_id=tenant.tenant_id,
+            graph_uri=graph_uri,
+            grouped=False,
+            count=len(entries),
+            offset=offset,
+            limit=limit,
+            workspace_revision=rev,
+            groups=[],
+            entries=[_changelog_entry_model(e) for e in entries],
+        )
+
+    groups = group_changelog_entries(entries)
+    return OntologyHistoryResponse(
+        tenant_id=tenant.tenant_id,
+        graph_uri=graph_uri,
+        grouped=True,
+        count=len(groups),
+        offset=offset,
+        limit=limit,
+        workspace_revision=rev,
+        groups=[
+            OntologyHistoryGroup(
+                id=g.id,
+                start=g.start,
+                end=g.end,
+                count=g.count,
+                actor=g.actor,
+                message=g.message,
+                sample_actions=list(g.sample_actions),
+                change_summary_counts=dict(g.change_summary_counts),
+                entries=[_changelog_entry_model(e) for e in g.entries],
+            )
+            for g in groups
+        ],
+        entries=[],
+    )
+
+
+def _resolve_ontology_ref(
+    ref: str,
+    *,
+    tenant_id: str,
+    base_layer: str = "public",
+) -> tuple[str, str]:
+    """Map a version/revision ref string to ``(canonical_ref, graph_uri)``.
+
+    Accepted forms:
+    * ``current`` / ``live`` — tenant live ontology graph
+    * bare integer / ``rN`` / ``revision:N`` / ``revision/N`` — workspace revision
+    * ``release:N`` / ``vN`` — base-layer release snapshot for the pin's layer
+    * absolute ``https://…`` graph URI — must stay under this tenant's graphs/
+      or a global public/enhanced release path
+    """
+    raw = (ref or "").strip()
+    if not raw:
+        raise ValueError("version ref must be non-empty")
+
+    live = tenant_graph_uri(tenant_id)
+    lower = raw.lower()
+
+    if lower in ("current", "live"):
+        return ("current", live)
+
+    # Absolute graph URI — tenant isolation + allowed global release graphs.
+    if _ABS_IRI_RE.match(raw):
+        g = raw.rstrip("/")
+        tenant_prefix = f"https://cograph.tech/graphs/{tenant_id}"
+        global_ok = (
+            g.startswith("https://cograph.tech/graphs/global/public")
+            or g.startswith("https://cograph.tech/graphs/global/enhanced")
+        )
+        if not (g == live or g.startswith(tenant_prefix + "/") or global_ok):
+            raise ValueError(
+                "graph URI must be this tenant's ontology graph (or a global release)"
+            )
+        return (raw, g)
+
+    # release:N / vN — base layer release
+    m_rel = re.match(r"^(?:release:|v)(\d+)$", lower)
+    if m_rel:
+        n = int(m_rel.group(1))
+        if n < 1:
+            raise ValueError(f"release version must be >= 1, got {n}")
+        from cograph_client.graph.layers import enhanced_graph_uri, public_graph_uri
+
+        base_live = (
+            enhanced_graph_uri() if base_layer == "enhanced" else public_graph_uri()
+        )
+        uri = release_graph_uri(base_live, n)
+        return (f"release:{n}", uri)
+
+    # revision:N / rN / bare integer
+    m_rev = re.match(r"^(?:revision[:/]|r)?(\d+)$", lower)
+    if m_rev:
+        n = int(m_rev.group(1))
+        if n < 1:
+            raise ValueError(f"revision must be >= 1, got {n}")
+        uri = revision_graph_uri(live, n)
+        return (f"revision:{n}", uri)
+
+    raise ValueError(
+        f"unrecognized version ref {ref!r}; use current, revision:N, release:N, or a graph URI"
+    )
+
+
+@router.get("/diff", response_model=OntologyDiffResponse)
+async def get_ontology_diff(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+    from_ref: str | None = Query(
+        None,
+        alias="from",
+        description="Source ref: current | revision:N | release:N | graph URI",
+    ),
+    to_ref: str | None = Query(
+        None,
+        alias="to",
+        description="Target ref: current | revision:N | release:N | graph URI",
+    ),
+    from_revision: int | None = Query(
+        None, ge=1, description="Shorthand for from=revision:N"
+    ),
+    to_revision: int | None = Query(
+        None, ge=1, description="Shorthand for to=revision:N"
+    ),
+):
+    """Structural ontology diff as ChangeRecords (ONTA-410).
+
+    Reuses ``diff_graphs`` / ``diff_shapes`` so the viewer and the pure
+    classifier see the same records. Missing snapshot graphs resolve to empty
+    shapes (clear empty), never a 500. Deep-link a version/revision that does
+    not exist → empty change list for that scope.
+    """
+    # Resolve shorthand query params into refs.
+    src = from_ref
+    dst = to_ref
+    if from_revision is not None:
+        src = f"revision:{from_revision}"
+    if to_revision is not None:
+        dst = f"revision:{to_revision}"
+    if not src or not dst:
+        raise HTTPException(
+            status_code=422,
+            detail="provide from+to (or from_revision+to_revision) version refs",
+        )
+
+    # Base layer from pin so release:N maps correctly (soft; live public on miss).
+    base_layer = "public"
+    try:
+        pin = await get_base_pin(client, tenant.tenant_id)
+        if pin is not None:
+            base_layer = pin.base_layer
+    except BasePinReadError:
+        base_layer = "public"
+
+    try:
+        from_label, from_uri = _resolve_ontology_ref(
+            src, tenant_id=tenant.tenant_id, base_layer=base_layer
+        )
+        to_label, to_uri = _resolve_ontology_ref(
+            dst, tenant_id=tenant.tenant_id, base_layer=base_layer
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    changes = await diff_graphs(client, from_uri, to_uri)
+    verdict = classify_diff(changes)
+    return OntologyDiffResponse(
+        tenant_id=tenant.tenant_id,
+        from_ref=from_label,
+        to_ref=to_label,
+        from_graph_uri=from_uri,
+        to_graph_uri=to_uri,
+        changes=list(changes),
+        count=len(changes),
+        compat_class=verdict.overall.value,
+        requires_major=verdict.requires_major,
+        summary=list(verdict.summary),
     )
 
 
