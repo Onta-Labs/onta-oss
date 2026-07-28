@@ -23,6 +23,11 @@ import httpx
 import structlog
 
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.ontology_commit import (
+    commit_ontology,
+    commit_ontology_unlocked,
+    ontology_write_lock,
+)
 from cograph_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     TEXT_KIND_FREE_TEXT,
@@ -32,18 +37,12 @@ from cograph_client.graph.ontology_queries import (
     entity_exists_query,
     entity_uri as _entity_uri,
     get_full_ontology_query,
-    insert_attribute,
-    insert_subtype,
-    insert_type,
     ontology_version,
     parent_map_query,
-    set_object_property_range,
     type_uri,
-    upsert_attribute_text_kind,
-    upsert_type,
-    upsert_type_comment,
     attr_uri,
 )
+from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 from cograph_client.graph.layers import LayerStack, type_name_from_uri
 from cograph_client.graph.text_markers import (
     TextCandidacy,
@@ -1484,7 +1483,7 @@ class SchemaResolver:
         # (which is per-sub-query by construction). asyncio.Lock is NOT reentrant,
         # so the guarded methods never nest a second acquisition (see `_resolve_type`
         # / `_locked_ontology_update`).
-        self._ontology_lock = ontology_lock or asyncio.Lock()
+        self._ontology_lock = ontology_lock or ontology_write_lock()
         from cograph_client.config import settings
         self._openrouter_key = settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self._type_matcher = TypeMatcher(self._openrouter_key, verdict_cache, embedding_service)
@@ -1542,16 +1541,83 @@ class SchemaResolver:
         # (`_provenance_enabled` / `_attr_provenance_enabled`).
         self._verify_policy = verify_policy
 
-    async def _locked_ontology_update(self, sparql: str) -> None:
-        """Run a single ontology-mutating SPARQL update under the ontology-write
-        lock (ONTA-268).
+    async def _commit_ontology(
+        self,
+        graph_uri: str,
+        mutations: list[OntologyMutation],
+        *,
+        holding_lock: bool = False,
+    ):
+        """Apply schema mutations through the ONE commit API (ONTA-403).
 
-        Used for the scattered pass-2 ontology writes (attribute/range/promotion
-        type creation) that are NOT already inside a lock-guarded region. MUST NOT
-        be called from within `_resolve_type` (which already holds the lock —
-        `asyncio.Lock` is not reentrant, so that would deadlock)."""
-        async with self._ontology_lock:
-            await self._neptune.update(sparql)
+        ``holding_lock=True`` when the caller already holds ``self._ontology_lock``
+        (e.g. inside ``_resolve_type``) — asyncio.Lock is not reentrant.
+        ``holding_lock=False`` (default) takes the shared lock via
+        :func:`commit_ontology` so pass-2 writes serialize with REST commits.
+        """
+        if not mutations:
+            return None
+        if holding_lock:
+            return await commit_ontology_unlocked(self._neptune, graph_uri, mutations)
+        return await commit_ontology(self._neptune, graph_uri, mutations)
+
+    def _mut_type(self, name: str, description: str | None = None, parent_type: str | None = None) -> OntologyMutation:
+        return OntologyMutation(
+            op=OntologyOpKind.UPSERT_TYPE,
+            type_name=name,
+            description=description,
+            parent_type=parent_type,
+        )
+
+    def _mut_subclass(self, child: str, parent: str) -> OntologyMutation:
+        return OntologyMutation(
+            op=OntologyOpKind.SET_SUBCLASS,
+            type_name=child,
+            parent_type=parent,
+        )
+
+    def _mut_comment(self, name: str, description: str) -> OntologyMutation:
+        return OntologyMutation(
+            op=OntologyOpKind.SET_COMMENT,
+            type_name=name,
+            description=description,
+        )
+
+    def _mut_attr(self, type_name: str, attr_name: str, datatype: str = "string", description: str = "") -> OntologyMutation:
+        # Non-primitive datatype ⇒ relationship-ranged attribute.
+        if datatype not in PRIMITIVE_TYPES:
+            return OntologyMutation(
+                op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                type_name=type_name,
+                slot_name=attr_name,
+                target_type=datatype,
+                description=description if description else "",
+            )
+        return OntologyMutation(
+            op=OntologyOpKind.UPSERT_ATTRIBUTE,
+            type_name=type_name,
+            slot_name=attr_name,
+            datatype=datatype,
+            description=description if description else "",
+        )
+
+    def _mut_range(self, type_name: str, attr_name: str, target_type: str) -> OntologyMutation:
+        # description=None → range-only upgrade (preserves comment).
+        return OntologyMutation(
+            op=OntologyOpKind.UPSERT_RELATIONSHIP,
+            type_name=type_name,
+            slot_name=attr_name,
+            target_type=target_type,
+            description=None,
+        )
+
+    def _mut_text_kind(self, type_name: str, attr_name: str, kind: str = TEXT_KIND_FREE_TEXT) -> OntologyMutation:
+        return OntologyMutation(
+            op=OntologyOpKind.SET_TEXT_KIND,
+            type_name=type_name,
+            slot_name=attr_name,
+            text_kind=kind,
+        )
 
     def _verify_clean_facts(
         self,
@@ -2403,10 +2469,9 @@ class SchemaResolver:
                     type_attrs = existing_attrs.get(source_type, {})
                     existing = type_attrs.get(canonical_pred)
                     if existing is None:
-                        sparql = insert_attribute(
-                            graph_uri, source_type, canonical_pred, "", target_type,
-                        )
-                        await self._locked_ontology_update(sparql)  # ONTA-268
+                        await self._commit_ontology(graph_uri, [
+                            self._mut_attr(source_type, canonical_pred, target_type),
+                        ])
                         result.attributes_added.append(f"{source_type}.{canonical_pred}")
                         existing_attrs.setdefault(source_type, {})[canonical_pred] = AttributeSchema(
                             name=canonical_pred, datatype=target_type,
@@ -2416,11 +2481,9 @@ class SchemaResolver:
                         # entity object: upgrade its ontology range to the target
                         # type so the schema-only Explorer overview draws the edge
                         # (the detail view already shows it from instance data).
-                        await self._locked_ontology_update(  # ONTA-268
-                            set_object_property_range(
-                                graph_uri, source_type, canonical_pred, target_type,
-                            )
-                        )
+                        await self._commit_ontology(graph_uri, [
+                            self._mut_range(source_type, canonical_pred, target_type),
+                        ])
                         existing_attrs[source_type][canonical_pred] = AttributeSchema(
                             name=canonical_pred, datatype=target_type,
                         )
@@ -2979,8 +3042,9 @@ class SchemaResolver:
                         type_attrs = existing_attrs.get(source_type, {})
                         existing = type_attrs.get(canonical_pred)
                         if existing is None:
-                            sparql = insert_attribute(graph_uri, source_type, canonical_pred, "", target_type)
-                            await self._locked_ontology_update(sparql)  # ONTA-268
+                            await self._commit_ontology(graph_uri, [
+                                self._mut_attr(source_type, canonical_pred, target_type),
+                            ])
                             result.attributes_added.append(f"{source_type}.{canonical_pred}")
                             existing_attrs.setdefault(source_type, {})[canonical_pred] = AttributeSchema(
                                 name=canonical_pred, datatype=target_type,
@@ -2989,11 +3053,9 @@ class SchemaResolver:
                             # Upgrade a primitive attribute to a relationship range
                             # so the Explorer overview draws the edge (see entity
                             # ingest path above for the full rationale).
-                            await self._locked_ontology_update(  # ONTA-268
-                                set_object_property_range(
-                                    graph_uri, source_type, canonical_pred, target_type,
-                                )
-                            )
+                            await self._commit_ontology(graph_uri, [
+                                self._mut_range(source_type, canonical_pred, target_type),
+                            ])
                             existing_attrs[source_type][canonical_pred] = AttributeSchema(
                                 name=canonical_pred, datatype=target_type,
                             )
@@ -3734,17 +3796,20 @@ class SchemaResolver:
         # Brand-new lineage: the caller couldn't link child->parent because the
         # parent didn't exist yet. Emit that edge here.
         if emit_child_edge and child_type and child_type != parent_type:
-            await self._neptune.update(insert_subtype(graph_uri, parent_type, child_type))
+            await self._commit_ontology(
+                graph_uri, [self._mut_subclass(child_type, parent_type)], holding_lock=True,
+            )
 
         # Walk root-ward from the immediate parent. ancestor_chain is cycle-guarded.
         chain = ancestor_chain(parent_type, parent_of)
         for i, ancestor in enumerate(chain):
             grandparent = chain[i + 1] if i + 1 < len(chain) else None
             if ancestor not in existing_types:
-                await self._neptune.update(insert_type(graph_uri, ancestor, ""))
+                muts = [self._mut_type(ancestor)]
                 if grandparent:
-                    await self._neptune.update(insert_subtype(graph_uri, grandparent, ancestor))
+                    muts.append(self._mut_subclass(ancestor, grandparent))
                     parent_of[ancestor] = grandparent
+                await self._commit_ontology(graph_uri, muts, holding_lock=True)
                 result.types_created.append(ancestor)
                 existing_types[ancestor] = ""
                 existing_attrs[ancestor] = {}
@@ -3779,7 +3844,9 @@ class SchemaResolver:
         if pt and pt in existing_types:
             # Immediate parent exists — link directly, then synthesize any deeper
             # ancestors the extractor named.
-            await self._neptune.update(insert_subtype(graph_uri, pt, entity.type_name))
+            await self._commit_ontology(
+                graph_uri, [self._mut_subclass(entity.type_name, pt)], holding_lock=True,
+            )
             await self._synthesize_ancestors(
                 entity.type_name, pt, graph_uri, existing_types, existing_attrs, result,
                 parent_chain=entity.parent_chain, parent_of=parent_of,
@@ -3808,8 +3875,10 @@ class SchemaResolver:
         # new-parent-edge bug. upsert_type_comment touches only rdfs:comment, so
         # the edge survives while the description stays idempotent on re-ingest.
         if linked_as_subtype and entity.subtype_description:
-            await self._neptune.update(
-                upsert_type_comment(graph_uri, entity.type_name, entity.subtype_description)
+            await self._commit_ontology(
+                graph_uri,
+                [self._mut_comment(entity.type_name, entity.subtype_description)],
+                holding_lock=True,
             )
 
     async def _refresh_ontology(
@@ -3964,9 +4033,13 @@ class SchemaResolver:
         byte-identical to before.
         """
         if subtype_description:
-            await self._neptune.update(upsert_type_comment(graph_uri, type_name, subtype_description))
+            await self._commit_ontology(
+                graph_uri, [self._mut_comment(type_name, subtype_description)], holding_lock=True,
+            )
         else:
-            await self._neptune.update(insert_type(graph_uri, type_name, ""))
+            await self._commit_ontology(
+                graph_uri, [self._mut_type(type_name)], holding_lock=True,
+            )
 
     async def _ensure_focus_types(
         self,
@@ -3994,8 +4067,10 @@ class SchemaResolver:
             async with self._ontology_lock:
                 if ft in existing_types:
                     continue
-                await self._neptune.update(
-                    insert_type(graph_uri, ft, "Confirmed focus type (discovery)")
+                await self._commit_ontology(
+                    graph_uri,
+                    [self._mut_type(ft, description="Confirmed focus type (discovery)")],
+                    holding_lock=True,
                 )
                 result.types_created.append(ft)
                 existing_types[ft] = ""
@@ -4137,8 +4212,11 @@ class SchemaResolver:
                     # REPLACES the single-valued rdfs:comment so re-minting the same
                     # type across ingests can't accumulate duplicate comments.
                     await self._mint_subtype(graph_uri, entity.type_name, entity.subtype_description)
-                    sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
-                    await self._neptune.update(sparql)
+                    await self._commit_ontology(
+                        graph_uri,
+                        [self._mut_subclass(entity.type_name, match.parent_type)],
+                        holding_lock=True,
+                    )
                     logger.info("type_same_as_was_subtype", child=entity.type_name, parent=match.parent_type)
                     result.types_created.append(entity.type_name)
                     existing_types[entity.type_name] = ""
@@ -4160,8 +4238,9 @@ class SchemaResolver:
                     # same_as REJECTED → this is a genuine TOP-LEVEL type, not a
                     # subtype. subtype_description must NOT be written here (FIX 3):
                     # the field's contract is "describes a NEW SUBTYPE" only.
-                    sparql = insert_type(graph_uri, entity.type_name, "")
-                    await self._neptune.update(sparql)
+                    await self._commit_ontology(
+                        graph_uri, [self._mut_type(entity.type_name)], holding_lock=True,
+                    )
                     logger.info("type_same_as_rejected", proposed=entity.type_name, claimed=entity.same_as)
                     result.types_created.append(entity.type_name)
                     existing_types[entity.type_name] = ""
@@ -4176,8 +4255,11 @@ class SchemaResolver:
                     # SUBTYPE branch — subtype_description describes this NEW subtype
                     # (FIX 3), written idempotently via upsert (FIX 4).
                     await self._mint_subtype(graph_uri, entity.type_name, entity.subtype_description)
-                    sparql = insert_subtype(graph_uri, match.parent_type, entity.type_name)
-                    await self._neptune.update(sparql)
+                    await self._commit_ontology(
+                        graph_uri,
+                        [self._mut_subclass(entity.type_name, match.parent_type)],
+                        holding_lock=True,
+                    )
                     logger.info("type_subtype", child=entity.type_name, parent=match.parent_type)
                     result.types_created.append(entity.type_name)
                     existing_types[entity.type_name] = ""
@@ -4193,8 +4275,9 @@ class SchemaResolver:
                     # If _link_parent then establishes a parent (the entity carried a
                     # parent_type/parent_chain), it upserts the description there —
                     # the only place the type is actually a subtype.
-                    sparql = insert_type(graph_uri, entity.type_name, "")
-                    await self._neptune.update(sparql)
+                    await self._commit_ontology(
+                        graph_uri, [self._mut_type(entity.type_name)], holding_lock=True,
+                    )
                     result.types_created.append(entity.type_name)
                     existing_types[entity.type_name] = ""
                     existing_attrs[entity.type_name] = {}
@@ -4208,8 +4291,9 @@ class SchemaResolver:
                 else:
                     # Top-level mint: no subtype_description here (FIX 3). _link_parent
                     # upserts it iff this turns out to be a subtype (parent_chain).
-                    sparql = insert_type(graph_uri, entity.type_name, "")
-                    await self._neptune.update(sparql)
+                    await self._commit_ontology(
+                        graph_uri, [self._mut_type(entity.type_name)], holding_lock=True,
+                    )
                     result.types_created.append(entity.type_name)
                     existing_types[entity.type_name] = ""
                     existing_attrs[entity.type_name] = {}
@@ -4400,8 +4484,9 @@ class SchemaResolver:
 
         for ptype in promoted_type_names:
             if ptype not in existing_types:
-                sparql = insert_type(graph_uri, ptype, f"Promoted from {resolved_type} attributes")
-                await self._locked_ontology_update(sparql)  # ONTA-268
+                await self._commit_ontology(graph_uri, [
+                    self._mut_type(ptype, description=f"Promoted from {resolved_type} attributes"),
+                ])
                 result.types_created.append(ptype)
                 existing_types[ptype] = ""
                 existing_attrs[ptype] = {}
@@ -4454,8 +4539,9 @@ class SchemaResolver:
                 attr_name = promo_match.name
                 p_attrs = existing_attrs.get(ptype, {})
                 if attr_name not in p_attrs:
-                    sparql = insert_attribute(graph_uri, ptype, attr_name, "", attr.datatype)
-                    await self._locked_ontology_update(sparql)  # ONTA-268
+                    await self._commit_ontology(graph_uri, [
+                        self._mut_attr(ptype, attr_name, attr.datatype),
+                    ])
                     result.attributes_added.append(f"{ptype}.{attr_name}")
                     existing_attrs.setdefault(ptype, {})[attr_name] = AttributeSchema(
                         name=attr_name, datatype=attr.datatype,
@@ -4492,8 +4578,9 @@ class SchemaResolver:
 
                 resolved = resolve_attribute(attr, type_attrs)
                 if resolved.action == AttrAction.EXTEND:
-                    sparql = insert_attribute(graph_uri, resolved_type, resolved.name, "", resolved.datatype)
-                    await self._locked_ontology_update(sparql)  # ONTA-268
+                    await self._commit_ontology(graph_uri, [
+                        self._mut_attr(resolved_type, resolved.name, resolved.datatype),
+                    ])
                     result.attributes_added.append(f"{resolved_type}.{resolved.name}")
                     type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
@@ -4524,8 +4611,9 @@ class SchemaResolver:
             resolved = resolve_attribute(attr, type_attrs)
 
             if resolved.action == AttrAction.EXTEND:
-                sparql = insert_attribute(graph_uri, resolved_type, resolved.name, "", resolved.datatype)
-                await self._locked_ontology_update(sparql)  # ONTA-268
+                await self._commit_ontology(graph_uri, [
+                    self._mut_attr(resolved_type, resolved.name, resolved.datatype),
+                ])
                 result.attributes_added.append(f"{resolved_type}.{resolved.name}")
                 type_attrs[resolved.name] = AttributeSchema(name=resolved.name, datatype=resolved.datatype)
 
@@ -4605,13 +4693,12 @@ class SchemaResolver:
                         result.rejections.append(validated)
                     continue
                 if resolved.datatype not in existing_types:
-                    await self._locked_ontology_update(  # ONTA-268
-                        insert_type(
-                            graph_uri,
+                    await self._commit_ontology(graph_uri, [
+                        self._mut_type(
                             resolved.datatype,
-                            f"Relationship target of {resolved_type}.{resolved.name}",
-                        )
-                    )
+                            description=f"Relationship target of {resolved_type}.{resolved.name}",
+                        ),
+                    ])
                     result.types_created.append(resolved.datatype)
                     existing_types[resolved.datatype] = ""
                     existing_attrs.setdefault(resolved.datatype, {})
@@ -4816,16 +4903,14 @@ class SchemaResolver:
                 confirmed |= adjudicated_yes
                 declined |= adjudicated_no - confirmed
             for type_name, attr_name in sorted(confirmed):
-                await self._neptune.update(
-                    upsert_attribute_text_kind(graph_uri, type_name, attr_name)
-                )
+                await self._commit_ontology(graph_uri, [
+                    self._mut_text_kind(type_name, attr_name, TEXT_KIND_FREE_TEXT),
+                ])
                 result.free_text_attributes.append(f"{type_name}.{attr_name}")
             for type_name, attr_name in sorted(declined):
-                await self._neptune.update(
-                    upsert_attribute_text_kind(
-                        graph_uri, type_name, attr_name, TEXT_KIND_NOT_TEXT
-                    )
-                )
+                await self._commit_ontology(graph_uri, [
+                    self._mut_text_kind(type_name, attr_name, TEXT_KIND_NOT_TEXT),
+                ])
             if confirmed or declined:
                 # Marker write site self-invalidates (mirrors the reconciler's
                 # heuristic) so query-side consumers see the fresh verdicts
@@ -4982,11 +5067,9 @@ class SchemaResolver:
                 if not attr_name or key in seen:
                     continue
                 seen.add(key)
-                await self._neptune.update(
-                    upsert_attribute_text_kind(
-                        graph_uri, resolved_type, attr_name, col.text_kind
-                    )
-                )
+                await self._commit_ontology(graph_uri, [
+                    self._mut_text_kind(resolved_type, attr_name, col.text_kind),
+                ])
                 if col.text_kind == TEXT_KIND_FREE_TEXT:
                     result.free_text_attributes.append(f"{resolved_type}.{attr_name}")
                     marked_free_text.append(f"{resolved_type}.{attr_name}")

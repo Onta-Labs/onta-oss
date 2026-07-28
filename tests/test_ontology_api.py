@@ -15,7 +15,11 @@ def test_create_type(client, auth_headers, mock_neptune):
     data = response.json()
     assert data["created"] == "Place"
     assert data["attributes"] == 2
-    assert mock_neptune.update.call_count == 3  # 1 type + 2 attributes
+    # ONTA-403: one commit applies type + 2 attrs (+ revision + changelog).
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    assert "Place" in all_sparql
+    assert "coordinates" in all_sparql
+    assert mock_neptune.update.call_count >= 3
 
 
 def test_create_type_with_parent(client, auth_headers, mock_neptune):

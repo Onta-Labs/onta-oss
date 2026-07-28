@@ -628,10 +628,8 @@ async def _apply_default_candidacy(
     through ``upsert_attribute_text_kind`` (single-valued, idempotent) and the
     tenant's marker cache is invalidated so query-side consumers see them.
     """
-    from cograph_client.graph.ontology_queries import (
-        TEXT_KIND_FREE_TEXT,
-        upsert_attribute_text_kind,
-    )
+    from cograph_client.graph.ontology_commit import commit_ontology
+    from cograph_client.graph.ontology_queries import TEXT_KIND_FREE_TEXT
     from cograph_client.graph.parser import parse_sparql_results
     from cograph_client.graph.queries import tenant_graph_uri
     from cograph_client.graph.text_markers import (
@@ -639,6 +637,7 @@ async def _apply_default_candidacy(
         classify_text_candidacy,
         invalidate,
     )
+    from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 
     # Local names already marked free_text: the extractor's documented
     # conflation marks that local name on EVERY type, so a same-named attr on
@@ -695,8 +694,16 @@ async def _apply_default_candidacy(
             if verdict is TextCandidacy.FREE_TEXT
             else TEXT_KIND_NOT_TEXT
         )
-        await neptune.update(
-            upsert_attribute_text_kind(onto_graph, type_name, attr_name, kind)
+        await commit_ontology(
+            neptune,
+            onto_graph,
+            [OntologyMutation(
+                op=OntologyOpKind.SET_TEXT_KIND,
+                type_name=type_name,
+                slot_name=attr_name,
+                text_kind=kind,
+            )],
+            message="semantic reconciler text candidacy",
         )
         wrote = True
         if verdict is TextCandidacy.FREE_TEXT:
