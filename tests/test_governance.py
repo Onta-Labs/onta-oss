@@ -411,12 +411,12 @@ async def test_synthesized_ancestor_record_also_replaces(mock_neptune):
 
 
 # ---------------------------------------------------------------------------
-# revoke_type — reversibility: removes what write created, changelog stays
+# revoke_type — ONTA-404: deprecates (does not delete) + append-only changelog
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_revoke_removes_what_write_created(mock_neptune):
+async def test_revoke_deprecates_without_deleting(mock_neptune):
     engine = GovernanceEngine(mock_neptune)
     decision = GovernanceDecision(target_layer="public", votes=_verdicts(True, True, False), approved=True)
     pub_uri = await engine.write_governed_type(_proposal(), decision, timestamp=FIXED_TS)
@@ -425,28 +425,28 @@ async def test_revoke_removes_what_write_created(mock_neptune):
     await revoke_type(mock_neptune, pub_uri, timestamp=FIXED_TS)
 
     calls = _update_sparql(mock_neptune)
-    assert len(calls) == 3
-    # 1) Every Public-graph triple with the type as subject OR object is gone —
-    #    the write only created triples whose subject is pub_uri, so this
-    #    covers exactly what the write created (plus dangling edges INTO it).
-    assert calls[0].startswith("DELETE")
+    # 2× clear prior markers (deprecatedAt, supersededBy) + INSERT markers + changelog
+    assert len(calls) == 4
+    assert all("DELETE" in c for c in calls[:2])
     assert f"GRAPH <{public_graph_uri()}>" in calls[0]
-    assert f"?s = <{pub_uri}>" in calls[0] and f"?o = <{pub_uri}>" in calls[0]
-    # 2) The governance record(s) keyed to this type are gone too.
-    assert calls[1].startswith("DELETE")
-    assert f"GRAPH <{provenance_graph_uri(public_graph_uri())}>" in calls[1]
-    assert f"<{GOV_NS}subject> <{pub_uri}>" in calls[1]
-    # 3) The changelog is append-only: a revoke entry is INSERTed, nothing deleted.
+    assert f"<{pub_uri}>" in calls[0]
+    # Markers written on the type (still resolvable) — not a wholesale DELETE.
     assert calls[2].startswith("INSERT")
-    assert f"GRAPH <{changelog_graph_uri()}>" in calls[2]
-    assert '"revoke_type"' in calls[2] and f"<{pub_uri}>" in calls[2]
+    assert f"GRAPH <{public_graph_uri()}>" in calls[2]
+    assert "deprecatedAt" in calls[2]
+    assert f"<{pub_uri}>" in calls[2]
+    # No provenance-record wipe (audit stays); changelog is append-only.
+    assert not any("provenance" in c for c in calls)
+    assert calls[3].startswith("INSERT")
+    assert f"GRAPH <{changelog_graph_uri()}>" in calls[3]
+    assert '"deprecate_type"' in calls[3] and f"<{pub_uri}>" in calls[3]
 
 
 @pytest.mark.asyncio
 async def test_engine_revoke_method_delegates(mock_neptune):
     engine = GovernanceEngine(mock_neptune)
     await engine.revoke_type(layer_type_uri(Layer.PUBLIC, "LoyaltyTier"), timestamp=FIXED_TS)
-    assert mock_neptune.update.call_count == 3
+    assert mock_neptune.update.call_count == 4
 
 
 # ---------------------------------------------------------------------------

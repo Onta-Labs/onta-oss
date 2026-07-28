@@ -119,7 +119,13 @@ class OntologyVersionConflict(Exception):
 
 
 class OntologyOpNotSupported(ValueError):
-    """Raised for ops reserved for later tickets (alias/deprecate)."""
+    """Raised for ops that remain reserved / unimplemented."""
+
+
+# Deprecation markers on type / attribute subjects (ONTA-404).
+# Part of published schema identity — included in OntologyShape.fingerprint.
+DEPRECATED_AT = f"{OMNIX_ONTO}/deprecatedAt"
+SUPERSEDED_BY = f"{OMNIX_ONTO}/supersededBy"
 
 
 class OntologyGraphImmutable(Exception):
@@ -214,7 +220,8 @@ class OntologyShape:
     """Identity-bearing ontology snapshot used by fingerprint + ONTA-406 diff.
 
     Companions under ``attr_meta/`` are never loaded here — they are not
-    ontology content (plan §2).
+    ontology content (plan §2). Deprecation markers (ONTA-404) *are* schema
+    identity and are included in :meth:`fingerprint`.
     """
 
     types: dict[str, str] = field(default_factory=dict)  # name -> comment
@@ -225,6 +232,10 @@ class OntologyShape:
     core_slots: list[tuple[str, str]] = field(default_factory=list)
     text_kinds: dict[tuple[str, str], str] = field(default_factory=dict)
     alias_map: dict[str, str] = field(default_factory=dict)
+    # Deprecation (ONTA-404): type_name -> superseded_by ("" if unmarked replacement).
+    deprecated_types: dict[str, str] = field(default_factory=dict)
+    # (type_name, slot_name) -> superseded_by ("" if unmarked).
+    deprecated_slots: dict[tuple[str, str], str] = field(default_factory=dict)
 
     def fingerprint(self) -> str:
         """Same digest :func:`fingerprint_ontology` would return for this shape."""
@@ -239,7 +250,7 @@ class OntologyShape:
             core_slots=self.core_slots or None,
             text_kinds=self.text_kinds or None,
         )
-        if not self.alias_map:
+        if not self.alias_map and not self.deprecated_types and not self.deprecated_slots:
             return base
         h = hashlib.sha256()
         h.update(base.encode("utf-8"))
@@ -249,6 +260,24 @@ class OntologyShape:
             h.update(old.encode("utf-8"))
             h.update(b"=")
             h.update(self.alias_map[old].encode("utf-8"))
+            h.update(b"\n")
+        for t in sorted(self.deprecated_types):
+            h.update(b"DEP:")
+            h.update(t.encode("utf-8"))
+            sup = self.deprecated_types[t] or ""
+            if sup:
+                h.update(b"=")
+                h.update(sup.encode("utf-8"))
+            h.update(b"\n")
+        for (t, slot) in sorted(self.deprecated_slots):
+            h.update(b"DEPA:")
+            h.update(t.encode("utf-8"))
+            h.update(b".")
+            h.update(slot.encode("utf-8"))
+            sup = self.deprecated_slots[(t, slot)] or ""
+            if sup:
+                h.update(b"=")
+                h.update(sup.encode("utf-8"))
             h.update(b"\n")
         return h.hexdigest()[:16]
 
@@ -452,6 +481,45 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
         logger.warning("ontology_shape_aliases_failed", graph_uri=graph_uri, exc_info=True)
         alias_map = {}
 
+    deprecated_types: dict[str, str] = {}
+    deprecated_slots: dict[tuple[str, str], str] = {}
+    try:
+        raw_d = await neptune.query(
+            f"SELECT ?s ?dep ?sup FROM <{graph_uri}> WHERE {{\n"
+            f"  ?s <{DEPRECATED_AT}> ?dep .\n"
+            f"  OPTIONAL {{ ?s <{SUPERSEDED_BY}> ?sup }}\n"
+            f"}}"
+        )
+        _, drows = parse_sparql_results(raw_d)
+        for row in drows:
+            s = (row.get("s") or "").strip()
+            if not s:
+                continue
+            sup = (row.get("sup") or "").strip()
+            # Attribute: …/types/<Type>/attrs/<leaf>
+            if "/attrs/" in s and "/types/" in s:
+                try:
+                    after = s.split("/types/", 1)[1]
+                    type_part, attr_part = after.split("/attrs/", 1)
+                    t_name = type_part.rsplit("/", 1)[-1]
+                    a_name = attr_part
+                    if t_name and a_name:
+                        deprecated_slots[(t_name, a_name)] = (
+                            sup.rsplit("/", 1)[-1] if sup else ""
+                        )
+                except ValueError:
+                    continue
+            elif "/types/" in s:
+                t_name = s.rsplit("/", 1)[-1]
+                if t_name:
+                    deprecated_types[t_name] = (
+                        sup.rsplit("/", 1)[-1] if sup else ""
+                    )
+    except Exception:
+        logger.warning(
+            "ontology_shape_deprecations_failed", graph_uri=graph_uri, exc_info=True
+        )
+
     return OntologyShape(
         types=types,
         attrs=attrs,
@@ -460,6 +528,8 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
         core_slots=core_slots,
         text_kinds=text_kinds,
         alias_map=alias_map or {},
+        deprecated_types=deprecated_types,
+        deprecated_slots=deprecated_slots,
     )
 
 
@@ -617,11 +687,66 @@ async def _apply_one(
     if op is OntologyOpKind.RETIRE_ALIAS:
         return await _apply_retire_alias(neptune, graph_uri, mut)
     if op is OntologyOpKind.DEPRECATE:
-        raise OntologyOpNotSupported(
-            "DEPRECATE is owned by the compat/publish path (ONTA-404); not "
-            "implemented in the ONTA-403 commit body."
-        )
+        return await _apply_deprecate(neptune, graph_uri, mut)
     raise ValueError(f"unknown ontology op: {op!r}")
+
+
+async def _apply_deprecate(
+    neptune, graph_uri: str, mut: OntologyMutation,
+) -> list[ChangeRecord]:
+    """Mark a type or attribute deprecated without deleting it (ONTA-404).
+
+    Writes ``onto/deprecatedAt`` (+ optional ``onto/supersededBy``) on the
+    type or attribute subject. The subject still resolves; read paths can
+    surface the marker. Markers are schema identity (fingerprint-covered).
+    """
+    if not mut.type_name:
+        raise ValueError("DEPRECATE requires type_name")
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if mut.slot_name:
+        subject = attr_uri(mut.type_name, mut.slot_name)
+    else:
+        subject = type_uri(mut.type_name)
+
+    sup_uri: str | None = None
+    if mut.superseded_by:
+        raw = mut.superseded_by.strip()
+        if raw.startswith("http://") or raw.startswith("https://"):
+            sup_uri = raw
+        elif mut.slot_name and "/" not in raw:
+            # Bare leaf → attribute on the same type (caller can pass full IRI
+            # for cross-type supersession).
+            sup_uri = attr_uri(mut.type_name, raw)
+        else:
+            # Bare type name (or Type/attrs/leaf path is not supported bare).
+            leaf = raw.rsplit("/", 1)[-1]
+            sup_uri = type_uri(leaf)
+
+    # Clear then insert so re-deprecate is idempotent / updateable. Two
+    # single-predicate DELETEs keep the SPARQL shape simple for in-memory
+    # test stores (and for Neptune).
+    for pred in (DEPRECATED_AT, SUPERSEDED_BY):
+        await neptune.update(
+            f"DELETE {{ GRAPH <{graph_uri}> {{ <{subject}> <{pred}> ?v }} }}\n"
+            f"WHERE {{ GRAPH <{graph_uri}> {{ "
+            f"OPTIONAL {{ <{subject}> <{pred}> ?v }} }} }}"
+        )
+    triples: list[tuple[str, str, str]] = [
+        (subject, DEPRECATED_AT, f"{ts}^^{XSD}#dateTime"),
+    ]
+    if sup_uri:
+        triples.append((subject, SUPERSEDED_BY, sup_uri))
+    await neptune.update(insert_triples(graph_uri, triples))
+
+    return [
+        ChangeRecord(
+            kind=ChangeKind.DEPRECATE,
+            type_name=mut.type_name,
+            slot_name=mut.slot_name,
+            superseded_by=mut.superseded_by,
+            new_value=ts,
+        )
+    ]
 
 
 def _resolve_attr_endpoint(
