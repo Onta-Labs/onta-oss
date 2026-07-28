@@ -57,6 +57,19 @@ use its exact attribute URI. Failing both, bind any dateTime attribute that read
 checked/verified/updated timestamp. This is a RELATIVE window: do NOT hardcode an \
 absolute date. NOW() returns the current dateTime, so no server-side date substitution is needed.
 - For enum values shown in [values: ...], use the EXACT case as listed.
+- CLOSED ENUM FILTERS (critical — zero-row trap): when an attribute is annotated \
+`[values: "a", "b", ...]` those are the known stored values for that field. ONLY \
+put a FILTER(CONTAINS(...)) / equality on that attribute if your needle is a \
+substring of (or exact match to) at least one listed value. Example: if `setting` \
+lists `"adjuvant"`, `"metastatic"`, `"maintenance"` — filtering \
+`FILTER(CONTAINS(LCASE(?setting), "bladder"))` is WRONG and will return zero rows. \
+Colloquial / clinical free-text from the question ("bladder surgery", "after \
+surgery", "post-cystectomy") belongs on free-text attributes such as disease, \
+indication_summary, name, description, or rdfs:label — not on short enum-like \
+fields (setting, status, line_of_therapy) whose listed values cannot contain that \
+phrase. Prefer OR-ing the free-text phrase across disease + indication_summary when \
+unsure which free-text field holds it. Attributes annotated only as \
+`[N unique values]` are open free-text and may be filtered with question phrases.
 - "[no instances]": a Type, attribute, or relationship marked "[no instances]" in the schema IS \
 DECLARED and valid — it exists in the ontology, it simply has no data in THIS graph yet. When the \
 question targets such a type/attribute, STILL generate a correct query against it using its exact \
