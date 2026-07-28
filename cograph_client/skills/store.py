@@ -34,10 +34,10 @@ naturally tenant-scoped — no store method is given a way to read across tenant
 ``type_name_key`` is the casefolded type name so lookups are case-tolerant
 (agents pass whatever casing the user typed) while the display casing survives.
 
-The two GLOBAL layers deliberately do NOT live here — they are curated content,
-registered at startup from data files / the premium package
-(``skills/registry.py``), exactly as the API-source catalog splits its
-operator-curated global layers from its per-tenant store.
+The two GLOBAL layers deliberately do NOT live here. PUBLIC is reserved empty
+(ONTA-400). ENHANCED authoring is the durable :class:`GlobalTypeSkillStore` in
+``skills/global_store.py`` (ONTA-399), with a process-registry bootstrap path
+in ``skills/registry.py`` for the premium file overlay.
 
 Boundary: OSS. Pure ``cograph_client.*`` / stdlib — no ``from cograph.*``.
 """
