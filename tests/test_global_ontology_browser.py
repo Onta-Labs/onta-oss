@@ -1130,11 +1130,15 @@ def _register(*skills, layer=None):
     """Register curated skills through the subsystem's OWN public seam — the
     same call the premium overlay makes. Never by poking module state: a test
     that bypasses `register_skill_layer` would also bypass the tenant guard it
-    enforces, which is half of what these tests exist to check."""
+    enforces, which is half of what these tests exist to check.
+
+    Default layer is ENHANCED (ONTA-400: Public may not carry skills; the
+    premium overlay registers onto Enhanced only).
+    """
     from cograph_client.graph.layers import Layer
     from cograph_client.skills import register_skill_layer
 
-    register_skill_layer(layer or Layer.PUBLIC, list(skills))
+    register_skill_layer(layer or Layer.ENHANCED, list(skills))
 
 
 def _skill(slug: str, type_name: str, body: str = "Some guidance.", **kw):
@@ -1179,7 +1183,8 @@ def test_skill_carries_only_real_fields_and_no_body(clean_skill_registry):
         "summary": "S",
         "excerpt": "B" * 50,
         "body_chars": 50,
-        "layer": "public",
+        # Curated skills land on Enhanced (Public may not carry them — ONTA-400).
+        "layer": "enhanced",
         "enabled": True,
         "version": 3,
     }
@@ -1220,19 +1225,22 @@ def test_excerpt_collapses_whitespace_and_keeps_short_bodies_whole(clean_skill_r
 def test_skills_sorted_by_slug_then_layer_so_an_override_pair_is_adjacent(
     clean_skill_registry,
 ):
-    """A slug curated in BOTH global layers is the OVERRIDE case (Enhanced wins
-    at resolution). This is the operator's raw browse view, so both rows are
-    shown — adjacent and in a fixed order, never split by the registry's own
-    precedence ordering."""
+    """Skills are sorted by slug then layer so same-slug rows stay adjacent.
+
+    ONTA-400: Public may not carry skills, so the historical Public+Enhanced
+    override pair is no longer representable via registration. Sort order is
+    still pinned for multiple Enhanced skills (and any future permitted
+    layers) so the operator browse view stays stable.
+    """
     from cograph_client.graph.layers import Layer
 
     _register(_skill("zeta", "Hospital"), _skill("naming", "Hospital"))
-    _register(_skill("naming", "Hospital"), layer=Layer.ENHANCED)
+    _register(_skill("alpha", "Hospital"), layer=Layer.ENHANCED)
     skills = _types_of(_fetch(_one_public_type("Hospital")))["Hospital"]["skills"]
     assert [(s["slug"], s["layer"]) for s in skills] == [
+        ("alpha", "enhanced"),
         ("naming", "enhanced"),
-        ("naming", "public"),
-        ("zeta", "public"),
+        ("zeta", "enhanced"),
     ]
 
 
@@ -1360,7 +1368,11 @@ def test_the_read_function_cannot_carry_a_tenant_row_at_all(clean_skill_registry
     """Structural, not filtered: the ONLY writer into the registry this page
     reads REFUSES the tenant layer outright and blanks `tenant_id` on
     everything it accepts. There is no tenant row for the assembler to have to
-    filter out — which is why `_SkillIndex` does not have such a filter."""
+    filter out — which is why `_SkillIndex` does not have such a filter.
+
+    ONTA-400: Public refuses non-empty registration, so the smuggle test uses
+    Enhanced (the only global layer that may carry skills).
+    """
     from cograph_client.graph.layers import Layer
     from cograph_client.skills import global_skills_for_type, register_skill_layer
 
@@ -1368,12 +1380,12 @@ def test_the_read_function_cannot_carry_a_tenant_row_at_all(clean_skill_registry
         register_skill_layer(Layer.TENANT, [_skill("t", "Hospital")])
 
     register_skill_layer(
-        Layer.PUBLIC,
+        Layer.ENHANCED,
         [_skill("smuggled", "Hospital", tenant_id="demo-tenant", layer=Layer.TENANT)],
     )
     got = global_skills_for_type("Hospital")
     assert [(s.slug, s.layer, s.tenant_id) for s in got] == [
-        ("smuggled", Layer.PUBLIC, None)
+        ("smuggled", Layer.ENHANCED, None)
     ]
 
 
