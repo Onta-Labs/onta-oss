@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -320,6 +321,173 @@ class GlobalOntologyResponse(BaseModel):
 
     layers: list[GlobalOntologyLayer] = Field(default_factory=list)
     types: list[GlobalOntologyType] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Workspace-scoped layered ontology (ONTA-397; Wave 0 signature freeze)
+#
+# NEW models on purpose — same rationale as GlobalOntology*: TypeResponse is
+# the tenant routes' contract and GlobalOntologyResponse is the operator's
+# raw two-layer browse. Neither is contorted. The workspace reader returns
+# the EFFECTIVE ontology for one tenant: LayerStack shadowing applied,
+# Enhanced only when entitled.
+# ---------------------------------------------------------------------------
+
+
+class WorkspaceOntologyType(BaseModel):
+    """One type in the workspace's effective (shadowed) ontology.
+
+    ``layer`` is the layer that WON under shadowing (first visible definition),
+    so a Public type overridden by a tenant redefinition reports ``"tenant"``.
+    """
+
+    name: str
+    layer: str = Field(
+        description='Winning layer under shadowing: "tenant", "enhanced", or "public"'
+    )
+    description: str | None = None
+    parent_type: str | None = Field(
+        default=None, description="Bare parent type NAME from rdfs:subClassOf, not a URI"
+    )
+    subtypes: list[str] = Field(default_factory=list)
+    attributes: list[GlobalOntologyAttribute] = Field(default_factory=list)
+    relationships: list[GlobalOntologyRelationship] = Field(default_factory=list)
+    sources: list[GlobalOntologySource] = Field(default_factory=list)
+    functions: list[FunctionRef] = Field(default_factory=list)
+    skills: list[GlobalOntologySkill] = Field(default_factory=list)
+
+
+class WorkspaceOntologyLayer(BaseModel):
+    """Per-layer status line for a workspace read (mirrors GlobalOntologyLayer)."""
+
+    layer: str
+    graph_uri: str
+    type_count: int = 0
+    available: bool = True
+
+
+class WorkspaceOntologyResponse(BaseModel):
+    """Body of the workspace-scoped layered ontology read (ONTA-397).
+
+    Distinct from :class:`GlobalOntologyResponse` (operator, both global layers,
+    shadowing shown not applied) and from :class:`TypeResponse` (single-tenant
+    legacy routes). Empty is 200 with ``types: []``, never an error.
+    """
+
+    tenant_id: str = ""
+    entitled: bool = False
+    layers: list[WorkspaceOntologyLayer] = Field(default_factory=list)
+    types: list[WorkspaceOntologyType] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Ontology change / commit vocabulary (ONTA-403/404/406; Wave 0 freeze)
+#
+# ChangeRecord is the typed change vocabulary shared by the diff producer
+# (ONTA-406) and the compat classifier (ONTA-404). OntologyMutation is what
+# every schema-write site will hand to commit_ontology (ONTA-403).
+# ---------------------------------------------------------------------------
+
+
+class ChangeKind(str, Enum):
+    """Typed ontology change kinds. Keep exhaustive: pin tests fail if a
+    required kind is renamed or dropped.
+    """
+
+    ADD_TYPE = "add_type"
+    REMOVE_TYPE = "remove_type"
+    ADD_ATTRIBUTE = "add_attribute"
+    REMOVE_ATTRIBUTE = "remove_attribute"
+    ADD_RELATIONSHIP = "add_relationship"
+    REMOVE_RELATIONSHIP = "remove_relationship"
+    ADD_SUBCLASS = "add_subclass"
+    REMOVE_SUBCLASS = "remove_subclass"
+    CHANGE_COMMENT = "change_comment"
+    CHANGE_RANGE = "change_range"
+    CHANGE_CORE_SLOT = "change_core_slot"
+    CHANGE_TEXT_KIND = "change_text_kind"
+    DEPRECATE = "deprecate"
+    RENAME_WITH_ALIAS = "rename_with_alias"
+
+
+class ChangeRecord(BaseModel):
+    """One typed ontology change — diff unit for ONTA-406 and input to ONTA-404.
+
+    Companions under ``attr_meta/`` are NOT ontology content and must never
+    appear as a ChangeRecord (plan §2).
+    """
+
+    kind: ChangeKind
+    type_name: str | None = Field(
+        default=None, description="Bare type name the change attaches to, when applicable"
+    )
+    slot_name: str | None = Field(
+        default=None,
+        description="Attribute or relationship leaf name, when the change is slot-scoped",
+    )
+    parent_type: str | None = Field(
+        default=None, description="Parent type name for subclass-edge changes"
+    )
+    old_value: str | None = None
+    new_value: str | None = None
+    from_name: str | None = Field(
+        default=None, description="Prior name for RENAME_WITH_ALIAS"
+    )
+    to_name: str | None = Field(
+        default=None, description="New name for RENAME_WITH_ALIAS"
+    )
+    superseded_by: str | None = Field(
+        default=None, description="Replacement identity for DEPRECATE"
+    )
+
+
+class OntologyOpKind(str, Enum):
+    """Schema-write ops accepted by :func:`commit_ontology` (ONTA-403)."""
+
+    UPSERT_TYPE = "upsert_type"
+    UPSERT_ATTRIBUTE = "upsert_attribute"
+    UPSERT_RELATIONSHIP = "upsert_relationship"
+    SET_SUBCLASS = "set_subclass"
+    DELETE_TYPE = "delete_type"
+    DELETE_ATTRIBUTE = "delete_attribute"
+    SET_CORE_SLOT = "set_core_slot"
+    SET_TEXT_KIND = "set_text_kind"
+    SET_COMMENT = "set_comment"
+    REGISTER_ALIAS = "register_alias"
+    DEPRECATE = "deprecate"
+
+
+class OntologyMutation(BaseModel):
+    """One schema op submitted to :func:`commit_ontology`.
+
+    Fields not relevant to a given ``op`` stay ``None``; the commit body
+    (ONTA-403) validates required fields per op.
+    """
+
+    op: OntologyOpKind
+    type_name: str = Field(description="Bare type name the op attaches to")
+    slot_name: str | None = None
+    description: str | None = None
+    datatype: str | None = None
+    target_type: str | None = Field(
+        default=None, description="Relationship range (bare type name)"
+    )
+    parent_type: str | None = None
+    core_slot: bool | None = None
+    text_kind: str | None = None
+    alias_from: str | None = None
+    alias_to: str | None = None
+    superseded_by: str | None = None
+
+
+class OntologyCommitResult(BaseModel):
+    """Return of :func:`commit_ontology` — fingerprint + applied ops + diffs."""
+
+    graph_uri: str
+    version_before: str | None = None
+    version_after: str = ""
+    applied: list[OntologyMutation] = Field(default_factory=list)
+    change_records: list[ChangeRecord] = Field(default_factory=list)
 
 
 class AttributeAdd(BaseModel):

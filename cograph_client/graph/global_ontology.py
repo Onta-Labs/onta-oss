@@ -58,7 +58,7 @@ subsystem yields ``skills: []`` on every type).
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Sequence
 
 import structlog
 
@@ -83,6 +83,7 @@ from cograph_client.models.ontology import (
     GlobalOntologySkill,
     GlobalOntologySource,
     GlobalOntologyType,
+    WorkspaceOntologyResponse,
 )
 
 logger = structlog.stdlib.get_logger("cograph.graph.global_ontology")
@@ -497,6 +498,62 @@ class _SkillIndex:
         return out
 
 
+async def fetch_ontology(
+    neptune,
+    *,
+    layers: Sequence[tuple[Layer, str]],
+    catalog: Any | None = None,
+    today: date | None = None,
+    entitled: bool = False,
+    tenant_id: str = "",
+    apply_shadowing: bool = True,
+) -> WorkspaceOntologyResponse:
+    """Generalized layered ontology reader — Wave 0 signature freeze (ONTA-397).
+
+    Parameters
+    ----------
+    neptune:
+        Graph client.
+    layers:
+        Ordered ``(Layer, graph_uri)`` pairs to read — typically from
+        :class:`~cograph_client.graph.layers.LayerStack` for a workspace.
+        Precedence is the sequence order (first wins under shadowing).
+    catalog / today:
+        Registry-overlay injection seams (same as
+        :func:`fetch_global_ontology`).
+    entitled:
+        Whether Enhanced is visible; recorded on the response and used by the
+        caller to build ``layers``. The reader does not re-check entitlement.
+    tenant_id:
+        Workspace id stamped onto the response (isolation / audit).
+    apply_shadowing:
+        When True (workspace default), first-visible-layer-wins. When False,
+        every layer's declarations are returned as separate rows (operator-style
+        raw browse over an arbitrary layer list).
+
+    Returns
+    -------
+    WorkspaceOntologyResponse
+        Effective (or raw, when ``apply_shadowing=False``) ontology. Empty is
+        a normal empty response, never an error.
+
+    Notes
+    -----
+    :func:`fetch_global_ontology` remains the dedicated two-layer operator call
+    and is **not** rewritten to call this function in Wave 0 — the operator
+    payload must stay byte-stable. ONTA-397 implements this body; until then
+    the function raises :class:`NotImplementedError`.
+    """
+    # Signature pin only — body is ONTA-397. Keep args referenced so a future
+    # rename of an unused parameter is caught by the pin tests, not by ruff.
+    _ = (neptune, layers, catalog, today, entitled, tenant_id, apply_shadowing)
+    raise NotImplementedError(
+        "fetch_ontology is the Wave-0-frozen signature for ONTA-397; "
+        "the body lands with that ticket. fetch_global_ontology remains the "
+        "two-layer operator call and is untouched."
+    )
+
+
 async def fetch_global_ontology(
     neptune, *, catalog: Any | None = None, today: date | None = None
 ) -> GlobalOntologyResponse:
@@ -506,6 +563,9 @@ async def fetch_global_ontology(
     source registry or skills registry; see the module docstring. ``catalog`` /
     ``today`` are the registry-overlay injection seams described on
     :func:`_build_source_index`.
+
+    Wave 0: this remains the two-layer operator call. The generalized
+    workspace reader is :func:`fetch_ontology` (signature frozen; body ONTA-397).
     """
     layer_infos: list[GlobalOntologyLayer] = []
     accumulators: dict[tuple[str, str], _TypeAccumulator] = {}
