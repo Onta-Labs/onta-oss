@@ -118,7 +118,7 @@ _ALLOWLIST: dict[str, str] = {
     # ONTA-407b (Wave 3) routes aliases through commit_ontology.
     "graph/ontology_queries.py": "ontology SCHEMA SPARQL builder library (ONTA-403) — defines type/attribute/range/comment builders; not itself a writer. Application is exclusive to ontology_commit.py.",
     "graph/ontology_commit.py": "ontology SCHEMA commit path (ONTA-403) — the one place that applies ontology_queries builders; emits changelog + revision, not instance data.",
-    "graph/aliases.py": "attribute-alias records on the tenant ontology graph — not instance data. Stays until ONTA-407b routes aliases through commit_ontology.",
+    "graph/aliases.py": "attribute-alias SPARQL writer (INSERT DATA / DELETE WHERE for aliasOf) — not instance data. ONTA-407a routes authoring through commit_ontology → register_alias; this module keeps the raw SPARQL until ONTA-407b consolidates (do NOT remove from allowlist in 407a).",
     "resolver/governance.py": "audit / changelog / governance-provenance graphs — not instance data (ADR 0007 allowlist).",
     # Derived / admin escape hatches with their own lifecycle.
     "resolver/functions.py": "derived computed-function value store (ADR 0002 §6 / ADR 0001 rule 6) — regenerable /derived/ values with their own atomic replace + TTL/invalidate lifecycle, never asserted facts.",

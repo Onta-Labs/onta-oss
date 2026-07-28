@@ -158,6 +158,71 @@ def test_get_full_schema(client, auth_headers, mock_neptune):
 
 
 # ---------------------------------------------------------------------------
+# Attribute aliases (ONTA-407a)
+# ---------------------------------------------------------------------------
+
+
+def test_register_and_list_aliases(client, auth_headers, mock_neptune):
+    """POST /aliases goes through commit_ontology; GET returns the map."""
+    from cograph_client.graph.aliases import ALIAS_OF
+    from cograph_client.graph.ontology_queries import attr_uri
+
+    old_uri = attr_uri("Guest", "phone_num")
+    new_uri = attr_uri("Guest", "phone")
+
+    # After POST, the list endpoint queries alias_map — mock that SELECT.
+    mock_neptune.query.return_value = {
+        "head": {"vars": ["old", "new"]},
+        "results": {
+            "bindings": [
+                {
+                    "old": {"type": "uri", "value": old_uri},
+                    "new": {"type": "uri", "value": new_uri},
+                }
+            ]
+        },
+    }
+
+    reg = client.post(
+        "/graphs/test-tenant/ontology/aliases",
+        headers=auth_headers,
+        json={
+            "type_name": "Guest",
+            "from_slot": "phone_num",
+            "to_slot": "phone",
+        },
+    )
+    assert reg.status_code == 201, reg.text
+    body = reg.json()
+    assert body["from_slot"] == "phone_num"
+    assert body["to_slot"] == "phone"
+    assert body["old_attr_uri"] == old_uri
+    assert body["new_attr_uri"] == new_uri
+    # One of the updates must be the alias INSERT DATA.
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    assert "aliasOf" in all_sparql or ALIAS_OF in all_sparql
+    assert old_uri in all_sparql and new_uri in all_sparql
+
+    listed = client.get("/graphs/test-tenant/ontology/aliases", headers=auth_headers)
+    assert listed.status_code == 200
+    assert listed.json()["aliases"][old_uri] == new_uri
+
+
+def test_register_alias_rejects_self(client, auth_headers, mock_neptune):
+    response = client.post(
+        "/graphs/test-tenant/ontology/aliases",
+        headers=auth_headers,
+        json={
+            "type_name": "Guest",
+            "from_slot": "phone",
+            "to_slot": "phone",
+        },
+    )
+    assert response.status_code == 400
+    assert "different" in response.json()["detail"].lower() or "itself" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
 # /kgs/{kg}/type-counts and /kgs/{kg}/types/{name}/usage
 # ---------------------------------------------------------------------------
 
