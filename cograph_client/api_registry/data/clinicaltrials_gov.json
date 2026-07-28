@@ -37,7 +37,12 @@
         { "name": "term", "target": "query.term", "description": "Free-text search over the study record." },
         { "name": "sponsor", "target": "query.spons", "description": "Lead sponsor / collaborator name." },
         { "name": "status", "target": "filter.overallStatus", "description": "Recruitment status filter, e.g. 'RECRUITING'." },
-        { "name": "id", "target": "query.id", "description": "A specific NCT identifier, e.g. 'NCT04368728'." }
+        {
+          "name": "id",
+          "target": "query.id",
+          "enrich_from": "attribute:nct_id",
+          "description": "A specific NCT identifier, e.g. 'NCT04368728'. Bound from the entity's nct_id during enrichment so ClinicalTrials.gov is preferred over web search for trial status/phase/sponsor."
+        }
       ],
       "result_path": "studies",
       "field_mappings": {
