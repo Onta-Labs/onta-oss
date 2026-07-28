@@ -38,6 +38,7 @@ from cograph_client.graph.provenance import provenance_graph_uri
 from cograph_client.graph.queries import insert_triples
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from cograph_client.resolver.models import CSVSchemaMapping, TypeExtension
+from cograph_client.resolver.promotion_consent import require_promotion_consent
 
 logger = structlog.stdlib.get_logger("cograph.resolver.governance")
 
@@ -306,6 +307,14 @@ class GovernanceEngine:
         """
         if not decision.approved:
             raise ValueError("write_governed_type requires an approved decision")
+        # ONTA-402a: refuse without an explicit per-workspace consent record.
+        # Default provider denies; fire-and-forget / async panel paths cannot
+        # skip this — the write path itself is the gate.
+        await require_promotion_consent(
+            proposal.tenant_id,
+            target_layer=Layer.PUBLIC.value,
+            what=f"write_governed_type:{proposal.type_name}",
+        )
         ts = (timestamp or datetime.now(timezone.utc)).isoformat()
         pub_uri = layer_type_uri(Layer.PUBLIC, proposal.type_name)
         # Find what's missing from the Public lineage BEFORE writing anything,

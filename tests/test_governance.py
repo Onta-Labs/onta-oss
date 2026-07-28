@@ -43,10 +43,31 @@ from cograph_client.resolver.governance import (
     revoke_type,
 )
 from cograph_client.resolver.models import ExtractedEntity, IngestResult
+from cograph_client.resolver.promotion_consent import register_promotion_consent_provider
 from cograph_client.resolver.schema_resolver import SchemaResolver
 
 
 FIXED_TS = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
+
+
+class _AllowAllConsent:
+    """Test-only: grant every tenant so pre-ONTA-402a write tests stay green."""
+
+    async def has_consent(self, tenant_id: str, *, target_layer: str = "public") -> bool:
+        return True
+
+
+@pytest.fixture(autouse=True)
+def _grant_promotion_consent_for_governance_tests():
+    """Default-deny is covered by tests/test_promotion_consent_guard.py.
+
+    Existing write_governed_type / resolver wiring tests assume an approved
+    decision can write; they grant consent here so a refuse is not mistaken
+    for a regression in provenance encoding.
+    """
+    register_promotion_consent_provider(_AllowAllConsent())
+    yield
+    register_promotion_consent_provider(None)
 
 
 @pytest.fixture
