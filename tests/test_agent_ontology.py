@@ -287,14 +287,17 @@ async def test_execute_declare_attribute_calls_ontology_engine(monkeypatch):
     )
     assert result["kind"] == "result"
     assert all(s["status"] == "ok" for s in result["steps"])
-    # The ontology engine actually ran one update, against the TENANT graph, for
-    # the website attribute on Mentor.
-    assert len(neptune.updates) == 1
-    update = neptune.updates[0]
-    assert "<https://cograph.tech/graphs/t1>" in update  # tenant ontology graph
-    assert "/kg/" not in update  # NOT the KG graph
-    assert "Mentor" in update
-    assert "website" in update
+    # ONTA-403: commit_ontology applies the attribute (+ revision/changelog).
+    # At least one update targets the TENANT ontology graph for Mentor.website.
+    schema_updates = [
+        u for u in neptune.updates
+        if "https://cograph.tech/graphs/t1>" in u or "https://cograph.tech/graphs/t1/" in u
+    ]
+    assert schema_updates, neptune.updates
+    joined = " ".join(schema_updates)
+    assert "/kg/" not in joined.split("changelog")[0]  # schema write not on KG graph
+    assert "Mentor" in joined
+    assert "website" in joined
 
 
 @pytest.mark.asyncio
@@ -311,10 +314,11 @@ async def test_execute_declare_type_calls_ontology_engine(monkeypatch):
     ack = await asyncio.wait_for(cap.execute(ctx, step), TIMEOUT)
     assert ack["kind"] == "ack"
     assert ack["type_name"] == "Product"
-    assert len(neptune.updates) == 1
-    update = neptune.updates[0]
-    assert "Product" in update
-    assert "Thing" in update  # parent (subClassOf)
+    # ONTA-403: commit may emit several SPARQL updates (mutation + revision + changelog).
+    assert len(neptune.updates) >= 1
+    joined = " ".join(neptune.updates)
+    assert "Product" in joined
+    assert "Thing" in joined  # parent (subClassOf)
 
 
 # --------------------------------------------------------------------------- #

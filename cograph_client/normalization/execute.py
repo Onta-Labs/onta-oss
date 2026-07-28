@@ -79,16 +79,16 @@ import structlog
 
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
+from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
     RDF,
     RDFS,
     _safe_id,
     attr_uri,
     entity_uri,
-    set_object_property_range,
     type_uri,
-    upsert_type,
 )
+from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
     kg_graph_uri,
@@ -928,9 +928,22 @@ async def _promote_to_node(
     #        would silently clear it). The attribute is now a proper
     #        relationship-ranged property matching its onto/<leaf> instance edges.
     if literals_promoted:
-        await neptune.update(upsert_type(onto_graph, target_type))
-        await neptune.update(
-            set_object_property_range(onto_graph, type_name, pred_leaf, target_type)
+        # One commit: mint target type + flip attribute range to relationship
+        # (range-only upgrade preserves any human-authored rdfs:comment).
+        await commit_ontology(
+            neptune,
+            onto_graph,
+            [
+                OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name=target_type),
+                OntologyMutation(
+                    op=OntologyOpKind.UPSERT_RELATIONSHIP,
+                    type_name=type_name,
+                    slot_name=pred_leaf,
+                    target_type=target_type,
+                    description=None,  # range-only
+                ),
+            ],
+            message="normalization:promote_to_node",
         )
 
     summary = {

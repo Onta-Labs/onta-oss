@@ -317,13 +317,28 @@ def test_commit_ontology_signature_is_frozen():
 
 
 @pytest.mark.asyncio
-async def test_commit_ontology_raises_not_implemented_until_onta_403():
-    with pytest.raises(NotImplementedError, match="ONTA-403"):
-        await commit_ontology(
-            neptune=None,
-            graph_uri="https://cograph.tech/graphs/acme",
-            mutations=[],
-        )
+async def test_commit_ontology_empty_mutations_is_noop_returning_fingerprint():
+    """ONTA-403 landed the body: empty mutations still return a fingerprint.
+
+    Wave 0 pinned NotImplementedError; the pin now asserts the live contract
+    (empty commit is a version read, no raise).
+    """
+    class _N:
+        async def query(self, sparql: str):
+            return {"head": {"vars": []}, "results": {"bindings": []}}
+
+        async def update(self, sparql: str):
+            raise AssertionError("empty commit must not write")
+
+    result = await commit_ontology(
+        neptune=_N(),
+        graph_uri="https://cograph.tech/graphs/acme",
+        mutations=[],
+    )
+    assert result.graph_uri == "https://cograph.tech/graphs/acme"
+    assert result.version_before == result.version_after
+    assert result.applied == []
+    assert result.change_records == []
 
 
 def test_ontology_mutation_and_op_kind_vocabulary():

@@ -1169,7 +1169,11 @@ class WebIngestCapability:
         # the reentrancy hazard — while the shared lock serializes their ontology
         # mutations so concurrent (or future-parallelized) sub-queries can't race
         # type creation and fragment the ontology.
-        ontology_lock = asyncio.Lock()
+        # Share the process-wide ontology write lock (ONTA-403) so discovery
+        # sub-queries serialize with REST / enrichment schema commits too —
+        # not only with each other (ONTA-268).
+        from cograph_client.graph.ontology_commit import ontology_write_lock
+        ontology_lock = ontology_write_lock()
         pctx = _provider_context(ctx)
 
         # Track the discovery as a real job so the client polls a LIVE status

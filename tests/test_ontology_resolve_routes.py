@@ -42,10 +42,10 @@ def test_resolve_auto_applies_confident_change(client, auth_headers, mock_neptun
     assert len(data["applied"]) == 1
     assert data["applied"][0]["name"] == "age"
     assert data["proposals"] == []
-    # An attribute extend writes exactly one upsert_attribute statement.
-    assert mock_neptune.update.call_count == 1
-    sent = mock_neptune.update.call_args[0][0]
-    assert "age" in sent and "integer" in sent
+    # ONTA-403: commit applies the attribute (plus revision/changelog housekeeping).
+    assert mock_neptune.update.call_count >= 1
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    assert "age" in all_sparql and "integer" in all_sparql
 
 
 def test_resolve_with_only_proposals_writes_nothing(client, auth_headers, mock_neptune, monkeypatch):
@@ -147,8 +147,10 @@ def test_resolve_default_omits_dry_run_and_still_auto_applies(
     data = resp.json()
     assert len(data["applied"]) == 1
     assert data["dry_run"] is False
-    # The confident change is still auto-applied (one upsert write).
-    assert mock_neptune.update.call_count == 1
+    # The confident change is still auto-applied via commit_ontology (ONTA-403).
+    assert mock_neptune.update.call_count >= 1
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    assert "age" in all_sparql
 
 
 def test_apply_create_relationship_mints_target_and_property(client, auth_headers, mock_neptune):
@@ -171,8 +173,9 @@ def test_apply_create_relationship_mints_target_and_property(client, auth_header
     assert resp.status_code == 200
     data = resp.json()
     assert data["applied"]["name"] == "works_at"
-    # create relationship → mint subject (create) + ensure target type + property.
-    assert mock_neptune.update.call_count == 3
+    # create relationship → mint subject + ensure target type + property (ONTA-403
+    # also emits revision + changelog; assert content, not exact call count).
+    assert mock_neptune.update.call_count >= 3
     all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
     assert "Person" in all_sparql
     assert "Company" in all_sparql
@@ -197,10 +200,10 @@ def test_apply_attribute_extend_writes_single_upsert(client, auth_headers, mock_
     )
 
     assert resp.status_code == 200
-    # extend attribute → only the upsert_attribute statement, no type minting.
-    assert mock_neptune.update.call_count == 1
-    sent = mock_neptune.update.call_args[0][0]
-    assert "email" in sent
+    # extend attribute via commit_ontology (ONTA-403); no type minting SPARQL.
+    assert mock_neptune.update.call_count >= 1
+    all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
+    assert "email" in all_sparql
 
 
 # --- batch apply (persona-eval batch-ontology-apply bug) ---------------------
@@ -240,24 +243,35 @@ def test_apply_batch_applies_all_changes_in_one_call(client, auth_headers, mock_
     assert data["failed_count"] == 0
     assert len(data["results"]) == 3
     assert all(r["ok"] for r in data["results"])
-    # Each change's SPARQL actually ran: the two extends = 1 op each; the create
-    # relationship mints subject + target + property = 3 ops → 5 total updates.
-    assert mock_neptune.update.call_count == 5
+    # Each change's schema SPARQL ran (ONTA-403 also emits revision/changelog).
+    assert mock_neptune.update.call_count >= 5
     all_sparql = " ".join(c[0][0] for c in mock_neptune.update.call_args_list)
     for token in ("email", "age", "works_at", "Company"):
         assert token in all_sparql
 
 
+def _schema_mutation_sparql(calls) -> list[str]:
+    """Filter out ONTA-403 housekeeping (changelog / revision) so batch vs
+    single-apply can be compared on the schema mutations alone."""
+    out = []
+    for c in calls:
+        s = c[0][0]
+        if "/changelog" in s or "workspaceRevision" in s:
+            continue
+        out.append(s)
+    return out
+
+
 def test_apply_batch_equivalent_to_n_single_calls(client, auth_headers, mock_neptune):
-    """The batch route runs the exact same SPARQL as calling /apply once per
-    change — assert the concatenated update stream matches."""
+    """The batch route runs the same schema-mutation SPARQL as calling /apply
+    once per change (ONTA-403 housekeeping UUIDs differ; those are filtered)."""
     changes = [_change("email", "string"), _change("age", "integer")]
 
     # N single calls.
     for ch in changes:
         r = client.post("/graphs/test-tenant/ontology/apply", headers=auth_headers, json=ch)
         assert r.status_code == 200
-    single_sparql = [c[0][0] for c in mock_neptune.update.call_args_list]
+    single_sparql = _schema_mutation_sparql(mock_neptune.update.call_args_list)
 
     mock_neptune.update.reset_mock()
 
@@ -268,7 +282,7 @@ def test_apply_batch_equivalent_to_n_single_calls(client, auth_headers, mock_nep
         json={"changes": changes},
     )
     assert r.status_code == 200
-    batch_sparql = [c[0][0] for c in mock_neptune.update.call_args_list]
+    batch_sparql = _schema_mutation_sparql(mock_neptune.update.call_args_list)
 
     assert batch_sparql == single_sparql
 
