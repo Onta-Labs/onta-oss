@@ -3,7 +3,8 @@
 **Reads** (list / get / schema / workspace) go through
 :func:`~cograph_client.graph.global_ontology.fetch_ontology` over the caller's
 :class:`~cograph_client.graph.layers.LayerStack` (via
-:func:`~cograph_client.graph.entitlement.layer_stack_for`). Empty tenant +
+:func:`~cograph_client.graph.entitlement.layer_stack_for_tenant`, which applies
+the workspace base pin from ONTA-405). Empty tenant +
 populated Public → Public types are visible. Same-name tenant definitions
 shadow Public/Enhanced. Non-entitled stacks never see Enhanced.
 
@@ -22,7 +23,7 @@ from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.entitlement import is_entitled, layer_stack_for
+from cograph_client.graph.entitlement import is_entitled, layer_stack_for_tenant
 from cograph_client.graph.global_ontology import fetch_ontology
 from cograph_client.graph.aliases import (
     AliasStillReferencedError,
@@ -98,8 +99,11 @@ async def _workspace_ontology(
 
     Full browser payload (ONTA-408): layered types + tenant-custom sources +
     tenant-layer skills overlay. Writes never go through this path.
+
+    Base layer is resolved from the workspace pin (ONTA-405) so a global
+    release does not silently change the effective ontology until upgrade.
     """
-    stack = layer_stack_for(tenant)
+    stack = await layer_stack_for_tenant(client, tenant, auto_ensure=True)
     catalog = await _workspace_catalog(tenant.tenant_id)
     return await fetch_ontology(
         client,

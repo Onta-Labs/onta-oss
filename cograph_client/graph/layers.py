@@ -134,10 +134,21 @@ class LayerStack:
     Built from (tenant_graph_uri, entitled). Entitled tenants see
     [TENANT, ENHANCED, PUBLIC]; non-entitled see [TENANT, PUBLIC] — the
     Enhanced layer is silently excluded, never an error.
+
+    **Version pin (ONTA-405):** optional ``public_version`` / ``enhanced_version``
+    pin the stack to a published release graph (``…/v{N}``). ``None`` means the
+    live global graph for that layer. When a pin points at a missing / empty
+    snapshot, loaders degrade to an **empty** layer (not silent fall-through to
+    live) so a pinned workspace's effective ontology cannot jump to latest when
+    the snapshot is unavailable — pin stability is the core property.
     """
 
     tenant_graph_uri: str
     entitled: bool = False
+    # None => live global public / enhanced graph (pre-pin or "track live until
+    # first release"). Set to a positive int to pin at release graph …/v{N}.
+    public_version: int | None = None
+    enhanced_version: int | None = None
 
     @property
     def layers(self) -> tuple[Layer, ...]:
@@ -147,10 +158,27 @@ class LayerStack:
         return (Layer.TENANT, Layer.PUBLIC)
 
     def graph_uri_for(self, layer: Layer) -> str:
+        """Named graph URI for ``layer``.
+
+        Tenant is always the caller's tenant graph. Public / Enhanced resolve to
+        a release snapshot URI when the corresponding version field is set;
+        otherwise the live global graph. Missing snapshot content is **not**
+        substituted with live here — callers that load the URI treat empty /
+        missing as an empty layer (see module docstring).
+        """
         if layer is Layer.TENANT:
             return self.tenant_graph_uri
         if layer is Layer.ENHANCED:
+            if self.enhanced_version is not None:
+                from cograph_client.graph.ontology_commit import release_graph_uri
+
+                return release_graph_uri(_ENHANCED_GRAPH_URI, self.enhanced_version)
             return _ENHANCED_GRAPH_URI
+        # PUBLIC
+        if self.public_version is not None:
+            from cograph_client.graph.ontology_commit import release_graph_uri
+
+            return release_graph_uri(_PUBLIC_GRAPH_URI, self.public_version)
         return _PUBLIC_GRAPH_URI
 
     def visible_graph_uris(self) -> list[str]:
