@@ -23,9 +23,12 @@ from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.entitlement import is_entitled, layer_stack_for
 from cograph_client.graph.global_ontology import fetch_ontology
+from cograph_client.graph.aliases import fetch_alias_map
 from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.queries import tenant_graph_uri
 from cograph_client.models.ontology import (
+    AliasMapResponse,
+    AliasRegister,
     ApplyBatchRequest,
     OntologyMutation,
     OntologyOpKind,
@@ -249,6 +252,78 @@ async def get_full_schema(
             "layer": t.layer,
         }
     return {"types": types, "entitled": body.entitled, "tenant_id": body.tenant_id}
+
+
+# ── Attribute aliases (ONTA-407a / ADR 0002 §7) ───────────────────────────────
+#
+# Authoring path for `register_alias`. Writes go through commit_ontology
+# (REGISTER_ALIAS op) on the TENANT ontology graph only — never a global layer.
+# alignedTo (governance shape alignment) is a separate mechanism: ONTA-402a
+# already stopped writing tenant URIs into global graphs; 407a does NOT add an
+# alignedTo reader (see PR decision). Type renames + backfill/retire are 407b.
+
+
+@router.post("/aliases", status_code=201)
+async def register_attribute_alias(
+    body: AliasRegister,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Register an attribute alias (old → new) on the tenant ontology graph.
+
+    Canonical authoring path for ADR 0002 §7 aliases. The NL pipeline's
+    ``rewrite_query_attrs`` resolves through the map immediately; instance
+    triples keep the old predicate until a later backfill (ONTA-407b).
+    """
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    try:
+        result = await commit_ontology(
+            client,
+            graph_uri,
+            [
+                OntologyMutation(
+                    op=OntologyOpKind.REGISTER_ALIAS,
+                    type_name=body.type_name,
+                    alias_from=body.from_slot,
+                    alias_to=body.to_slot,
+                    target_type=body.to_type,
+                )
+            ],
+            actor=tenant.tenant_id,
+            message=f"register_alias {body.from_slot} → {body.to_slot}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    old_uri = new_uri = None
+    if result.change_records:
+        rec = result.change_records[0]
+        old_uri, new_uri = rec.old_value, rec.new_value
+    return {
+        "type": body.type_name,
+        "from_slot": body.from_slot,
+        "to_slot": body.to_slot,
+        "to_type": body.to_type or body.type_name,
+        "old_attr_uri": old_uri,
+        "new_attr_uri": new_uri,
+        "version_before": result.version_before,
+        "version_after": result.version_after,
+    }
+
+
+@router.get("/aliases", response_model=AliasMapResponse)
+async def list_attribute_aliases(
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Return the flattened old→new attribute alias map for this tenant graph.
+
+    Chains (``a → b → c``) collapse to one hop (``a → c``, ``b → c``). Empty
+    when no aliases are registered.
+    """
+    graph_uri = tenant_graph_uri(tenant.tenant_id)
+    aliases = await fetch_alias_map(client, graph_uri)
+    return AliasMapResponse(aliases=aliases)
 
 
 # ── Natural-language ontology evolution (COG-80) ──────────────────────────────
