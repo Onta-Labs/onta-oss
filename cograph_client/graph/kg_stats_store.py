@@ -236,3 +236,38 @@ def reset_kg_stats_store() -> None:
     """Test helper — clear the singleton."""
     global _store
     _store = None
+
+
+def union_type_breakdowns(
+    rows: list[KgStats],
+) -> list[tuple[str, int, dict[str, int]]]:
+    """Union per-type entity counts across KG stats rows (ONTA-409).
+
+    Returns ``[(type_name, total_count, {kg_name: count}), ...]`` sorted by
+    total descending then name ascending. Types whose count is ≤ 0 in every
+    KG are omitted. Counts from the same type across KGs are **summed** (a
+    type with 3 entities in kg-a and 2 in kg-b reports 5).
+
+    Pure / sync — no I/O. The workspace Active pill reads this over
+    :meth:`KgStatsStore.list_for_tenant` so the ontology viewer never needs a
+    Neptune scan.
+    """
+    by_type: dict[str, dict[str, int]] = {}
+    for row in rows:
+        breakdown = row.type_breakdown or {}
+        for type_name, raw in breakdown.items():
+            if not type_name:
+                continue
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if n <= 0:
+                continue
+            slot = by_type.setdefault(type_name, {})
+            slot[row.kg_name] = slot.get(row.kg_name, 0) + n
+    out: list[tuple[str, int, dict[str, int]]] = [
+        (name, sum(by_kg.values()), by_kg) for name, by_kg in by_type.items()
+    ]
+    out.sort(key=lambda t: (-t[1], t[0].lower()))
+    return out
