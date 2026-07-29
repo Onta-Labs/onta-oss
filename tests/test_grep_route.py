@@ -456,6 +456,17 @@ def test_type_filter_enumerates_every_layer_namespace(store, make_client, auth_h
     assert f"<{RDF_TYPE}> ?t" in q
     for ns in ("types/Movie", "types/x/Movie", "types/public/Movie"):
         assert f"https://cograph.tech/{ns}>" in q
+    # The rdf:type join can bind ?t twice for a cross-layer-typed entity, which
+    # would emit the same triple twice and burn the caller's limit.
+    assert q.startswith("SELECT DISTINCT ?s ?p ?o")
+
+
+def test_untyped_scan_skips_distinct(store, make_client, auth_headers):
+    """A triple is unique without the type join, so DISTINCT would be pure
+    overhead on the expensive path."""
+    client = make_client(store)
+    _post(client, {"q": "matrix", "kg_name": KG}, auth_headers)
+    assert store.scan_query.startswith("SELECT ?s ?p ?o")
 
 
 def test_predicate_filter_full_uri_binds_exactly(store, make_client, auth_headers):

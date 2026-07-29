@@ -344,11 +344,15 @@ def _scan_query(
         body += _predicate_clause(predicate)
     body += _internal_predicate_filter()
     body += f"  FILTER(isLiteral(?o) && {match})\n"
+    # DISTINCT only under a type filter: the rdf:type join can bind ?t more than
+    # once for an entity typed in two layer namespaces under the same name, which
+    # would emit the SAME triple twice and burn the caller's limit on a duplicate.
+    # Without that join a triple is unique, so DISTINCT would be pure overhead on
+    # the expensive path.
+    select = "SELECT DISTINCT ?s ?p ?o" if type_name else "SELECT ?s ?p ?o"
     # LIMIT limit + 1: the extra row is never returned, it only tells us
     # truthfully whether more matches exist.
-    return (
-        f"SELECT ?s ?p ?o FROM <{graph_uri}> WHERE {{\n{body}}} LIMIT {limit + 1}"
-    )
+    return f"{select} FROM <{graph_uri}> WHERE {{\n{body}}} LIMIT {limit + 1}"
 
 
 def _decorate_query(graph_uri: str, subjects: list[str]) -> str:
