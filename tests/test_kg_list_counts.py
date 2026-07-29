@@ -99,10 +99,13 @@ def test_missing_count_falls_back_to_live_scan_and_persists(
     ), f"computed count should be persisted; updates={updates}"
 
 
-# A registered name that cannot legally be interpolated into a graph IRI. Both
-# live registration paths validate (``KGCreate.name``'s pattern and
-# ``ensure_kg_registered``'s ``is_valid_kg_name`` branch), so this only arrives
-# from a pre-ONTA-414 registration or a direct write to the metadata graph.
+# A registered name that cannot legally be interpolated into a graph IRI. Both KG
+# registration paths validate (``KGCreate.name``'s pattern and
+# ``ensure_kg_registered``'s ``is_valid_kg_name`` branch) — but that does NOT make
+# this unreachable: ``POST /graphs/{tenant}/triples`` writes arbitrary triples via
+# ``insert_triples`` into ``tenant_graph_uri``, the same base graph ``list_kgs``
+# reads registrations from, and SPARQL literal escaping leaves ``>`` intact. A
+# pre-ONTA-414 registration is the other arrival vector.
 BAD_NAME = "bad>name"
 
 
@@ -186,3 +189,44 @@ def test_invalid_kg_name_degrades_one_row_not_the_whole_listing(
     assert any(KG_TRIPLE_COUNT in u and "11" in u for u in updates), (
         f"healthy computed count should still persist; updates={updates}"
     )
+
+
+def test_invalid_kg_name_is_logged_not_silently_zeroed(
+    client, mock_neptune, auth_headers
+):
+    """A corrupt registration must stay findable after we stop 422-ing on it.
+
+    Degrading to ``triple_count: 0`` is indistinguishable from a legitimately
+    empty KG, so the only remaining signal that a row is corrupt is the log line.
+    Before the listing fix the corruption was loud (a 422 on every Explorer
+    load); without this assertion the fix would trade a broken page for silence.
+    """
+    rows = [{"name": BAD_NAME, "desc": "broken"}]
+
+    def route(sparql, *args, **kwargs):
+        if "entityCount" in sparql or "SUM(?rel)" in sparql or "forType" in sparql:
+            return {"head": {"vars": []}, "results": {"bindings": []}}
+        return {
+            "head": {"vars": ["name", "desc"]},
+            "results": {"bindings": [_binding(**r) for r in rows]},
+        }
+
+    mock_neptune.query.side_effect = route
+
+    # structlog writes to stdout rather than through stdlib logging, so `caplog`
+    # sees nothing here — capture via structlog's own testing hook.
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        resp = client.get(f"/graphs/{TENANT}/kgs", headers=auth_headers)
+
+    assert resp.status_code == 200
+    assert resp.json()[0]["triple_count"] == 0
+
+    skipped = [e for e in logs if e.get("event") == "kg_name_invalid_skipped"]
+    assert skipped, (
+        f"corrupt registration must be logged, not silently zeroed; logs={logs}"
+    )
+    # The line must name the offending KG so an operator can locate the row.
+    assert all(e.get("kg_name") == BAD_NAME for e in skipped), skipped
+    assert {e.get("log_level") for e in skipped} == {"warning"}, skipped

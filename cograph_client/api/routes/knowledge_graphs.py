@@ -56,12 +56,41 @@ KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
 # unchanged.
 #
 # NOTE: unlike ``kg_graph_uri``, ``kg_meta_uri`` does NOT validate its name — so
-# the two best-effort count helpers below branch on ``is_valid_kg_name`` (THE
-# predicate, per ONTA-414) before interpolating a name into an IRI. Without that,
-# a ``>``-bearing name would close the IRI early and let the rest of the name
-# inject SPARQL into the tenant's metadata graph. They fail soft (return, no
-# raise) because both are called from paths that must never fail their caller.
+# the count helpers below branch on ``is_valid_kg_name`` (THE predicate, per
+# ONTA-414) before interpolating a name into an IRI. They fail soft (skip, no
+# raise) because all are called from paths that must never fail their caller.
+#
+# The guard in ``_store_triple_count`` is LOAD-BEARING, not decorative: it is the
+# only thing between a ``>``-bearing registered name and a top-level injection on
+# the tenant metadata graph. The ``<kg_uri>`` IRI closes early and the rest of the
+# name becomes statement-level SPARQL on a ``client.update`` — e.g.
+# ``; DROP SILENT GRAPH <…/graphs/other-tenant> ;``, a cross-tenant WRITE. Do not
+# "simplify" it away. ``invalidate_triple_count``'s guard is defense-in-depth
+# today (its only caller trips ``explore._stats_graph_uri`` first) but is kept so
+# the helper stays safe for any future caller.
 _kg_meta_uri = kg_meta_uri
+
+
+def _skip_invalid_kg_name(name: str, op: str) -> bool:
+    """Whether ``name`` can't legally sit in an IRI — log and skip if so.
+
+    A REGISTERED name that fails ``is_valid_kg_name`` means a corrupt row in the
+    tenant metadata graph, so it must stay observable. Before this module
+    degraded such rows, the corruption was loud (a 422 on every Explorer load);
+    serving ``triple_count: 0`` instead would make it silent, since that is
+    indistinguishable from a legitimately empty KG. Mirrors the
+    ``ensure_kg_registered_invalid_name`` warning the shared write path emits on
+    exactly this condition, so an operator can find the offending row.
+    """
+    if is_valid_kg_name(name):
+        return False
+    # Inline import to match this module's existing structlog usage.
+    import structlog
+
+    structlog.get_logger("cograph.kg").warning(
+        "kg_name_invalid_skipped", kg_name=name, op=op
+    )
+    return True
 
 
 async def _live_triple_count(
@@ -69,16 +98,29 @@ async def _live_triple_count(
 ) -> int:
     """Full-scan COUNT(*) for one KG graph. Slow — fallback path only.
 
-    ``kg_graph_uri`` is INSIDE the ``try``: since ONTA-414 it raises
-    :class:`InvalidKGName` (→ 422) for a name that can't legally sit in an IRI,
-    and ``list_kgs`` fans this out over EVERY registered KG under
-    ``asyncio.gather``. Minting the URI outside the guard let one bad
-    registration — arriving from a pre-ONTA-414 registration or a direct graph
-    write, since both live registration paths validate — 422 the whole
-    workspace's KG listing instead of degrading that single row to 0. Fail soft
-    per KG: this is a best-effort count, not a validation boundary. Routes that
-    act on ONE user-named KG still 422 by design.
+    Fails soft per KG on an un-IRI-able name, because ``list_kgs`` fans this out
+    over EVERY registered KG under ``asyncio.gather``: since ONTA-414
+    ``kg_graph_uri`` raises :class:`InvalidKGName` (→ 422 app-wide), so one bad
+    registration used to 422 the WHOLE workspace's KG listing rather than
+    degrading that single row to 0. This is a best-effort count, not a validation
+    boundary — routes that act on ONE user-named KG still 422 by design.
+
+    Such a name does NOT require out-of-band DB access to arrive. Both KG
+    registration paths validate (``KGCreate.name``'s pattern and
+    ``ensure_kg_registered``'s ``is_valid_kg_name`` branch) — but
+    ``POST /graphs/{tenant}/triples`` (an ordinary API-key-authenticated route)
+    writes arbitrary triples via ``insert_triples`` straight into
+    ``tenant_graph_uri``, the SAME base graph ``list_kgs`` reads registrations
+    from, and SPARQL literal escaping does not escape ``>``. So a caller with
+    write on their own tenant can plant a ``kg_name`` literal this module will
+    later read back. A pre-ONTA-414 registration (the ``$``→``\\Z`` tightening
+    invalidated trailing-newline names) is the other arrival vector.
+
+    ``kg_graph_uri`` is kept INSIDE the ``try`` as defense-in-depth even though
+    the pre-check above already skips such names.
     """
+    if _skip_invalid_kg_name(name, "live_triple_count"):
+        return 0
     try:
         graph = kg_graph_uri(tenant_id, name)
         sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
@@ -92,7 +134,7 @@ async def _store_triple_count(
     client: "NeptuneClient", tenant_id: str, name: str, count: int
 ) -> None:
     """Persist a KG's triple count in the tenant metadata graph (best-effort)."""
-    if not is_valid_kg_name(name):
+    if _skip_invalid_kg_name(name, "store_triple_count"):
         return
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
@@ -115,7 +157,7 @@ async def invalidate_triple_count(
     Called after ingest (data changed → count stale). Best-effort: a failure
     just means the stale count lingers until the next write.
     """
-    if not is_valid_kg_name(name):
+    if _skip_invalid_kg_name(name, "invalidate_triple_count"):
         return
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
