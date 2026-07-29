@@ -155,7 +155,12 @@ class NeptuneClient:
         )
 
     async def _post_with_retry(
-        self, path: str, *, data: dict, headers: dict | None = None
+        self,
+        path: str,
+        *,
+        data: dict,
+        headers: dict | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         """POST to the endpoint, retrying only transient TRANSPORT failures.
 
@@ -167,10 +172,22 @@ class NeptuneClient:
         caller: this only re-issues the request on a transport exception, and the
         successful ``Response`` (including 4xx/5xx) is returned unchanged for the
         caller to interpret. Used by reads only; writes are not routed here.
+
+        ``timeout`` (seconds) overrides the client-wide 120s budget for THIS
+        request only. Callers whose query has an unbounded scan cost — the
+        literal grep route (ONTA-416) — pass a much shorter one so a pathological
+        scan fails fast for the caller instead of occupying a connection for two
+        minutes. Note this bounds the CLIENT's wait, not the store's work: the
+        store may keep executing after we hang up, which is why the route also
+        rate-limits.
         """
         last_exc: BaseException | None = None
         for attempt in range(1, _MAX_TRANSPORT_ATTEMPTS + 1):
             try:
+                if timeout is not None:
+                    return await self._client.post(
+                        path, data=data, headers=headers, timeout=timeout
+                    )
                 return await self._client.post(path, data=data, headers=headers)
             except _RETRYABLE_TRANSPORT_ERRORS as exc:
                 last_exc = exc
@@ -186,12 +203,16 @@ class NeptuneClient:
         assert last_exc is not None  # loop only exits via return or a caught exc
         raise last_exc
 
-    async def query(self, sparql: str) -> dict:
+    async def query(self, sparql: str, *, timeout: float | None = None) -> dict:
+        """Run a SPARQL SELECT/CONSTRUCT. ``timeout`` (seconds) overrides the
+        client-wide 120s budget for this one request (see ``_post_with_retry``);
+        ``None`` keeps the default."""
         start = time.monotonic()
         response = await self._post_with_retry(
             self._query_path,
             data={"query": sparql},
             headers={"Accept": "application/sparql-results+json"},
+            timeout=timeout,
         )
         duration_ms = round((time.monotonic() - start) * 1000, 1)
         if response.is_error:

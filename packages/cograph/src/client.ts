@@ -380,6 +380,12 @@ export class Client {
   pSearch(): string {
     return `${this.base()}/search`;
   }
+  /** @internal Index-free literal grep over ONE KG (ONTA-416) — a live triple
+   *  scan, deliberately a SEPARATE route from `/search` (whose contract it
+   *  inverts on every axis). ONE route for every interface (webapp/CLI/MCP). */
+  pGrep(): string {
+    return `${this.base()}/grep`;
+  }
   /** @internal */ pNormalizeSuggest(query: string): string {
     return `${this.base()}/normalize/suggest${query}`;
   }
@@ -1224,8 +1230,14 @@ export class Client {
    *
    * `topK` is clamped server-side to 1..50 (the response echoes the effective
    * value). An unknown `kg` yields empty hits, not an error. A deployment with
-   * the semantic index disabled answers 503 naming the
-   * `COGRAPH_SEMANTIC_INDEX_ENABLED` gate (thrown here as an OntaError).
+   * the semantic index gate (`COGRAPH_SEMANTIC_INDEX_ENABLED`) OFF does NOT
+   * error: the vector leg is simply never populated, so the route degrades to
+   * the keyword leg and answers 200 with `degraded: true`. (It historically
+   * 503'd there; that dead-ended callers for no correctness benefit.)
+   *
+   * Both legs read the derived chunk index, so `search` cannot see a value that
+   * has not been indexed yet — use {@link Client.grep} for an index-free literal
+   * scan of a single KG when you need "is this exact string in my graph?".
    */
   async search(
     query: string,
@@ -1241,6 +1253,44 @@ export class Client {
       body,
       30_000,
     );
+  }
+
+  /**
+   * Index-free literal grep over ONE knowledge graph
+   * (`POST /graphs/{tenant}/grep`, ONTA-416) — "is this exact string anywhere in
+   * my graph?" answered by a live SPARQL scan of the KG's triples.
+   *
+   * The debugging counterpart to {@link Client.search}, and a SEPARATE canonical
+   * route because its contract inverts search's on every axis: it reads the
+   * triple store (not the derived chunk index), so it finds values that were
+   * never indexed; `kg` is REQUIRED (an index-free scan must be bounded); a hit
+   * is ONE matching triple, not a ranked entity; and results are in scan order,
+   * not ranked.
+   *
+   * Because the scan has no supporting index, the server guards it: the needle
+   * must carry >= 2 non-whitespace characters (else 400), `limit` is clamped to
+   * 1..200 and echoed, the scan runs under a short dedicated timeout, and the
+   * route is rate-limited. `truncated: true` means the limit was hit and more
+   * matches exist. A deployment may disable the surface entirely
+   * (`COGRAPH_GREP_ENABLED=false`), which answers 503 naming the gate (thrown
+   * here as an OntaError).
+   */
+  async grep(
+    q: string,
+    kg: string,
+    opts: {
+      type?: string;
+      predicate?: string;
+      caseSensitive?: boolean;
+      limit?: number;
+    } = {},
+  ): Promise<GrepResponse> {
+    const body: Record<string, unknown> = { q, kg_name: kg };
+    if (opts.type) body.type = opts.type;
+    if (opts.predicate) body.predicate = opts.predicate;
+    if (opts.caseSensitive != null) body.case_sensitive = opts.caseSensitive;
+    if (opts.limit != null) body.limit = opts.limit;
+    return this.request<GrepResponse>("POST", this.pGrep(), body, 30_000);
   }
 
   /** Search types or attributes by name substring within a KG. */
@@ -2037,6 +2087,35 @@ export interface SemanticSearchResponse {
   top_k: number;
 }
 
+// --- Index-free literal grep (ONTA-416) --------------------------------------- #
+
+/** ONE matching triple from the `/grep` route. The unit is a TRIPLE, not an
+ *  entity (contrast {@link SemanticSearchHit}): the same entity appears once per
+ *  matching attribute, because "which field did this match in?" is the point of
+ *  a grep. `value` is the literal (truncated), `snippet` a bounded window
+ *  centered on the match, `attr` the predicate's leaf name. `label` / `type` are
+ *  empty when the subject carries neither. */
+export interface GrepMatch {
+  entity_uri: string;
+  label: string;
+  type: string;
+  predicate: string;
+  attr: string;
+  value: string;
+  snippet: string;
+}
+
+/** The `/grep` response envelope. `truncated: true` means the scan hit `limit`
+ *  and more matches exist (the server over-fetches by one row, so this is
+ *  observed, not inferred). `limit` echoes the server-side clamped value
+ *  (1..200) actually used. */
+export interface GrepResponse {
+  matches: GrepMatch[];
+  count: number;
+  limit: number;
+  truncated: boolean;
+}
+
 // --- Raw / passthrough API (COG-128) ----------------------------------------- #
 
 /**
@@ -2387,6 +2466,12 @@ export class RawApi {
    *  (ONTA-178). Body `{query, kg_name?, type?, top_k?}`. */
   search(body: unknown, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("POST", this.client.pSearch(), { body, ...init });
+  }
+
+  /** `POST /graphs/{tenant}/grep` — index-free literal scan of ONE KG
+   *  (ONTA-416). Body `{q, kg_name, type?, predicate?, case_sensitive?, limit?}`. */
+  grep(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pGrep(), { body, ...init });
   }
 
   /** `GET /graphs/{tenant}/explore/search?kg&q&kind`. */

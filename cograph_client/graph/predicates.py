@@ -61,6 +61,24 @@ SUPPRESSION_NS = "https://cograph.tech/suppression/"
 # attrs/-namespace shape that pre-ONTA-262 graphs still carry).
 ATTR_META_SUFFIXES: tuple[str, ...] = ("source_url", "provenance", "verified_at")
 
+# The whole-namespace exclusions, in ONE tuple so a SPARQL-side prefilter can be
+# DERIVED from the same constants ``is_internal_predicate`` branches on instead of
+# hardcoding a second, drifting copy of the list. Used by the literal grep route
+# (ONTA-416) to push namespace exclusion INTO the scan query — a post-filter alone
+# would let internal triples consume the LIMIT and silently shrink a page.
+# ``RDFS_NS`` is deliberately EXCLUDED from this tuple: it is a whole-namespace
+# exclusion for classification, but grep must still be able to match an entity's
+# ``rdfs:label`` (finding a thing by its displayed name is the point), so the one
+# caller that needs a namespace list handles RDFS itself.
+INTERNAL_NAMESPACE_PREFIXES: tuple[str, ...] = (
+    RDF_NS,
+    ER_NS,
+    ONTO_NORM_PREFIX,
+    VALIDITY_NS,
+    SUPPRESSION_NS,
+    ATTR_META_NS,
+)
+
 # Literal-valued system markers that ingest attaches to (almost) every entity.
 SYSTEM_PREDICATES: frozenset[str] = frozenset({
     f"{RDFS_NS}label",

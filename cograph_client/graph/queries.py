@@ -74,8 +74,44 @@ def _escape_value(value: str) -> str:
     return f'"{_escape_literal(value)}"'
 
 
+def sparql_string_literal(value: str) -> str:
+    """Escape ``value`` for embedding INSIDE a SPARQL ``"…"`` string literal.
+
+    THE one hardened string-literal escaper (ONTA-416). Returns the escaped
+    *body* — the caller supplies the surrounding quotes — so it composes with
+    both plain (``"…"``) and typed (``"…"^^<xsd:…>``) literal forms.
+
+    SPARQL's ``STRING_LITERAL2`` production forbids a raw ``"``, ``\\``, LF and
+    CR inside the quotes, so every one of them MUST be escaped: a value carrying
+    an interior newline (a pasted multi-line string, a CSV cell with an embedded
+    line break, a search needle) otherwise produces an UNTERMINATED literal and a
+    hard parse error at the store — surfacing to the caller as an opaque 500
+    rather than the honest 400 the input deserves. ``\\t`` is legal verbatim but
+    escaped anyway so the emitted query stays single-line and greppable.
+
+    Order matters: backslash FIRST, so the escape sequences added afterwards are
+    not themselves re-escaped. (That ordering was already correct in the three
+    partial copies this function replaces, which is why none of them was ever a
+    breakout/injection hole — the gap was only the missing ``\\r``/``\\t``/``\\n``
+    coverage, i.e. malformed SPARQL rather than injected SPARQL.)
+    """
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+
+
 def _escape_literal(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    """Back-compat alias for :func:`sparql_string_literal`.
+
+    Kept because the write path (``kg_writer``, ``normalization``, ``history``,
+    ``ontology_changelog``) imports this name; it must never grow a second,
+    divergent escaping rule — delegate, don't copy.
+    """
+    return sparql_string_literal(value)
 
 
 def insert_triples(graph_uri: str, triples: list[tuple[str, str, str]]) -> str:
