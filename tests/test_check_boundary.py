@@ -435,6 +435,16 @@ BROKEN_TOOLCHAIN = [
     pytest.param(
         "xargs", "exit 127\n", id="xargs-silent-failure",
     ),
+    pytest.param(
+        # Runs fine on a simple regex but returns nothing for any pattern with
+        # a `{n,}` interval — so a generic canary would pass while every real
+        # pattern silently matched nothing. This is why the self-test probes
+        # the REAL patterns rather than a stand-in.
+        "grep",
+        'for a in "$@"; do case "$a" in *"{"*) exit 1;; esac; done\n'
+        'exec /usr/bin/grep "$@"\n',
+        id="grep-mishandling-interval-quantifiers",
+    ),
 ]
 
 

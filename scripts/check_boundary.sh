@@ -118,27 +118,32 @@ fi
 # run_repo_check for why an unanchored version is dangerous.
 BENIGN_GREP_ERR='^grep: .+: (No such file or directory|Permission denied|Is a directory)$'
 
-# --- Toolchain self-test ----------------------------------------------------
+# --- Per-pattern self-test --------------------------------------------------
 # Inferring health from error messages is not enough: a grep with a missing
 # shared library, a BusyBox grep with no -o, or a container with no /bin/sh can
 # all produce output that LOOKS like nothing was found. So prove the exact
-# pipeline works by running it over a file with a known match, before trusting
-# it to report on the real tree. A scanner that cannot demonstrate it works is
-# not evidence of a clean repo.
-verify_toolchain() {
-  local canary out
-  canary="$(mktemp)"
-  printf 'boundary-canary-MATCHME\n' > "$canary"
-  out="$(printf '%s\0' "$canary" | xargs -0r sh -c \
+# pipeline works before trusting it to report on the real tree. A scanner that
+# cannot demonstrate it works is not evidence of a clean repo.
+#
+# The probe runs THE REAL PATTERN with THE REAL FLAGS against a string that must
+# match it, not a stand-in regex. A generic canary would only prove that
+# grep/xargs/sh execute; it would not catch a grep that runs but mishandles a
+# `{n,}` interval, a long alternation, or `-i`, which is where these patterns
+# actually live.
+verify_pattern() {
+  # $1 = pattern, $2 = flags, $3 = a string the pattern MUST match
+  local pattern="$1" flags="${2:-}" sample="$3" canary out
+  canary="$(mktemp)" || die "mktemp failed; cannot run the scanner self-test"
+  printf '%s\n' "$sample" > "$canary" \
+    || die "could not write the scanner self-test file"
+  out="$(printf '%s\0' "$canary" | LC_ALL=C xargs -0r sh -c \
     'grep -IoHnE "$@"; rc=$?; [ "$rc" -le 1 ] || exit 99' \
-    sh -- 'boundary-canary-[A-Z]+' 2>/dev/null)"
+    sh $flags -- "$pattern" 2>/dev/null)"
   rm -f "$canary"
-  [[ "$out" == *"boundary-canary-MATCHME"* ]] || die \
-    "toolchain self-test failed — grep/xargs/sh did not return a known match. \
-A scan that cannot prove it works cannot certify this repo as clean."
+  [[ -n "$out" ]] || die \
+    "scanner self-test failed — grep did not match a string this pattern is \
+known to match, so a clean result would be meaningless. Pattern: ${pattern:0:60}..."
 }
-
-verify_toolchain
 
 # --- Check runners ----------------------------------------------------------
 
@@ -158,12 +163,17 @@ run_repo_check() {
   #      case-insensitive, so a capitalized host is the same live host)
   # $4 = path-allowlist regex applied to "file:line:" prefixes, or ""
   # $5 = regex of MATCHES to ignore, or ""
+  # $6 = a string $2 MUST match, used to prove the scan actually works
   #
   # Uses -o so each output row is ONE match, not the whole source line. That
   # makes $5 subtract at match level: a real address on the same line as a
   # stock placeholder is no longer suppressed by it.
   local label="$1" pattern="$2" flags="${3:-}" allow="${4:-}" ignore="${5:-}"
+  local sample="${6:-}"
   local hits keys suppressed
+
+  # Prove THIS pattern matches on THIS toolchain before believing a null result.
+  verify_pattern "$pattern" "$flags" "$sample"
 
   # A grep that cannot RUN (BusyBox without -o, a locale error, a bad binary on
   # PATH) must not read as "nothing found" — that is the same fail-open class as
@@ -177,7 +187,10 @@ run_repo_check() {
   #     still exits 0.
   local status line benign_only
   : > "$GREP_ERR"
-  hits="$(xargs -0r sh -c \
+  # LC_ALL=C keeps ERE ranges, collation, and grep's OWN diagnostics
+  # deterministic. A localized "No such file or directory" would not match
+  # BENIGN_GREP_ERR, turning an ordinary unreadable path into a hard failure.
+  hits="$(LC_ALL=C xargs -0r sh -c \
     'grep -IoHnE "$@"; rc=$?; [ "$rc" -le 1 ] || exit 99' \
     sh $flags -- "$pattern" < "$FILE_LIST" 2>"$GREP_ERR")"
   status=$?
@@ -213,7 +226,11 @@ run_repo_check() {
     done < "$GREP_ERR"
 
     if [[ "$benign_only" -eq 1 && ( "$status" -eq 123 || "$status" -eq 1 ) ]]; then
-      echo "note: skipped unreadable path(s): $(head -2 "$GREP_ERR" | tr '\n' ' ')"
+      # ::warning:: so a skipped path is visible in the Actions UI rather than
+      # buried in the log. Git stores only 644/755, so a CI checkout should
+      # never hit this — if it does, something is worth looking at.
+      echo "::warning::boundary scan skipped unreadable path(s): $(
+        head -2 "$GREP_ERR" | tr '\n' ' ')"
     else
       die "grep failed while scanning (exit $status$(
         [[ -s "$GREP_ERR" ]] && printf ': %s' "$(head -2 "$GREP_ERR" | tr '\n' ' ')")"
@@ -320,18 +337,26 @@ run_check "imports the proprietary 'cograph' parent package (use cograph_client 
 run_check "references a proprietary-only module path (lives in the parent repo, not OSS)" \
   'cograph/auth/clerk|cograph/enrichment/(exa|perplexity|gs1)|cograph/billing|cograph/entitlement'
 
+# Strings each pattern MUST match. They live only in a temp file, never in the
+# repo, and exist so a null result can be trusted: see verify_pattern. Each one
+# deliberately exercises the awkward part of its pattern — a case-folded host,
+# a `{n,}` interval, an alternation branch.
+SAMPLE_INFRA='HOST=X.ELB.amazonaws.com'
+SAMPLE_SECRET='K=sk-ant-api03-0123456789abcdefghij'  # boundary-ok: synthetic probe string, never present in the repo
+SAMPLE_CONTACT='C=Someone.Real@Gmail.com'  # boundary-ok: synthetic probe string, never present in the repo
+
 # 3. Proprietary host / AWS infrastructure — nowhere in the repo. The two
 #    guard scripts are exempt HERE ONLY: they quote host strings to hunt them.
 run_repo_check "references proprietary infrastructure (deployed host, ECR, Secrets Manager, AWS account)" \
-  "$PAT_INFRA" "-i" "$ALLOW_INFRA" ""
+  "$PAT_INFRA" "-i" "$ALLOW_INFRA" "" "$SAMPLE_INFRA"
 
 # 4. Secret-shaped strings — nowhere in the repo, no path exempt.
 run_repo_check "contains a secret-shaped string (API key / token / JWT)" \
-  "$PAT_SECRET" "" "" ""
+  "$PAT_SECRET" "" "" "" "$SAMPLE_SECRET"
 
 # 5. Personal contact address — nowhere in the repo except test fixtures.
 run_repo_check "hardcodes a personal email address (use a deployment-configured contact)" \
-  "$PAT_CONTACT" "-i" "$ALLOW_CONTACT" "$PAT_CONTACT_OK"
+  "$PAT_CONTACT" "-i" "$ALLOW_CONTACT" "$PAT_CONTACT_OK" "$SAMPLE_CONTACT"
 
 if [[ "$fail" -ne 0 ]]; then
   echo ""
