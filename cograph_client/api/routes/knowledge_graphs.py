@@ -26,6 +26,7 @@ from cograph_client.graph.ontology_queries import (
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
     _escape_literal,
+    is_valid_kg_name,
     kg_graph_uri,
     kg_meta_uri,
     tenant_graph_uri,
@@ -53,16 +54,34 @@ KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
 # path's ``ensure_kg_registered`` and the ONTA-413 existence probe all mint the
 # SAME registration URI. Aliased (not redefined) to keep this module's callers
 # unchanged.
+#
+# NOTE: unlike ``kg_graph_uri``, ``kg_meta_uri`` does NOT validate its name — so
+# the two best-effort count helpers below branch on ``is_valid_kg_name`` (THE
+# predicate, per ONTA-414) before interpolating a name into an IRI. Without that,
+# a ``>``-bearing name would close the IRI early and let the rest of the name
+# inject SPARQL into the tenant's metadata graph. They fail soft (return, no
+# raise) because both are called from paths that must never fail their caller.
 _kg_meta_uri = kg_meta_uri
 
 
 async def _live_triple_count(
     client: "NeptuneClient", tenant_id: str, name: str
 ) -> int:
-    """Full-scan COUNT(*) for one KG graph. Slow — fallback path only."""
-    graph = kg_graph_uri(tenant_id, name)
-    sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
+    """Full-scan COUNT(*) for one KG graph. Slow — fallback path only.
+
+    ``kg_graph_uri`` is INSIDE the ``try``: since ONTA-414 it raises
+    :class:`InvalidKGName` (→ 422) for a name that can't legally sit in an IRI,
+    and ``list_kgs`` fans this out over EVERY registered KG under
+    ``asyncio.gather``. Minting the URI outside the guard let one bad
+    registration — arriving from a pre-ONTA-414 registration or a direct graph
+    write, since both live registration paths validate — 422 the whole
+    workspace's KG listing instead of degrading that single row to 0. Fail soft
+    per KG: this is a best-effort count, not a validation boundary. Routes that
+    act on ONE user-named KG still 422 by design.
+    """
     try:
+        graph = kg_graph_uri(tenant_id, name)
+        sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
         _, rows = parse_sparql_results(await client.query(sparql))
         return int(rows[0].get("c", "0")) if rows else 0
     except Exception:
@@ -73,6 +92,8 @@ async def _store_triple_count(
     client: "NeptuneClient", tenant_id: str, name: str, count: int
 ) -> None:
     """Persist a KG's triple count in the tenant metadata graph (best-effort)."""
+    if not is_valid_kg_name(name):
+        return
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
     try:
@@ -94,6 +115,8 @@ async def invalidate_triple_count(
     Called after ingest (data changed → count stale). Best-effort: a failure
     just means the stale count lingers until the next write.
     """
+    if not is_valid_kg_name(name):
+        return
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
     try:
