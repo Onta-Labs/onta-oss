@@ -84,7 +84,13 @@ def _skip_invalid_kg_name(name: str, op: str) -> bool:
     """
     if is_valid_kg_name(name):
         return False
-    # Inline import to match this module's existing structlog usage.
+    # Per-call logger rather than the module-level ``logger = ...`` most route
+    # modules use, deliberately: ``cache_logger_on_first_use=True`` freezes a
+    # module-level proxy at import, after which ``structlog.testing.capture_logs``
+    # can no longer intercept it — the hazard that forces the import-order
+    # workarounds in test_sec_user_agent.py / test_web_ingest_fastpath.py. Minting
+    # the proxy per call keeps this warning assertable regardless of test order.
+    # Not hot: the valid-name fast path above returns before ever getting here.
     import structlog
 
     structlog.get_logger("cograph.kg").warning(
@@ -116,12 +122,15 @@ async def _live_triple_count(
     later read back. A pre-ONTA-414 registration (the ``$``→``\\Z`` tightening
     invalidated trailing-newline names) is the other arrival vector.
 
-    ``kg_graph_uri`` is kept INSIDE the ``try`` as defense-in-depth even though
-    the pre-check above already skips such names.
+    EVERYTHING that can raise lives inside the ``try`` — including the
+    ``_skip_invalid_kg_name`` pre-check and its log call, not just
+    ``kg_graph_uri``. ``list_kgs`` gathers this WITHOUT ``return_exceptions``, so
+    anything escaping here 500s the whole listing — the exact all-or-nothing
+    failure mode this helper exists to prevent. Don't hoist a statement out.
     """
-    if _skip_invalid_kg_name(name, "live_triple_count"):
-        return 0
     try:
+        if _skip_invalid_kg_name(name, "live_triple_count"):
+            return 0
         graph = kg_graph_uri(tenant_id, name)
         sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
         _, rows = parse_sparql_results(await client.query(sparql))

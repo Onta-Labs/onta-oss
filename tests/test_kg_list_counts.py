@@ -230,3 +230,11 @@ def test_invalid_kg_name_is_logged_not_silently_zeroed(
     # The line must name the offending KG so an operator can locate the row.
     assert all(e.get("kg_name") == BAD_NAME for e in skipped), skipped
     assert {e.get("log_level") for e in skipped} == {"warning"}, skipped
+    # Assert on `op` so this can't pass with only ONE of the two guards intact:
+    # the count fallback and the store-back are separate skips and both must
+    # report. Without this, reverting just the `_live_triple_count` pre-check
+    # would still leave `_store_triple_count`'s log and look green.
+    assert {e.get("op") for e in skipped} == {
+        "live_triple_count",
+        "store_triple_count",
+    }, f"both skip sites must log; got {[e.get('op') for e in skipped]}"
