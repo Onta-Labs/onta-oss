@@ -2988,3 +2988,151 @@ async def test_record_turn_stamps_the_kg_name(monkeypatch):
     await asyncio.wait_for(handle(_ctx_on("kg_a"), "do a thing", session), TIMEOUT)
     turns = await make_conversation_store().load("stamp-sess", "t1")
     assert [t.kg_name for t in turns] == ["kg_a", "kg_a"]
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-413: the /agent rail must separate "graph is missing/empty" from "the
+# query matched nothing", exactly like /ask does, but WITHOUT raising, since
+# the agent contract is {kind: answer|clarify|plan|result} and the Explorer
+# chat renders on that shape.
+# --------------------------------------------------------------------------- #
+class KGStateNeptune(FakeNeptune):
+    """FakeNeptune that answers the shared KG-status probe's two ASKs."""
+
+    def __init__(
+        self,
+        *,
+        registered: bool,
+        has_data: bool,
+        base_instances: bool = False,
+        others=(),
+    ):
+        super().__init__()
+        self._registered = registered
+        self._has_data = has_data
+        self._base_instances = base_instances
+        self._others = list(others)
+
+    async def ask(self, q):
+        if "/kg_name>" in q:
+            return self._registered
+        if "rdf-syntax-ns#type" in q:
+            return self._base_instances
+        return self._has_data
+
+    async def query(self, q):
+        if "/kg_name>" in q:
+            return {
+                "head": {"vars": ["name"]},
+                "results": {
+                    "bindings": [
+                        {"name": {"type": "literal", "value": n}} for n in self._others
+                    ]
+                },
+            }
+        return await super().query(q)
+
+
+@pytest.fixture(autouse=True)
+def _clear_kg_status_cache():
+    """The KG-status probe caches POSITIVE verdicts; keep tests independent."""
+    from cograph_client.graph.kg_status import invalidate_kg_status
+
+    invalidate_kg_status("t1")
+    yield
+    invalidate_kg_status("t1")
+
+
+@pytest.mark.asyncio
+async def test_question_about_missing_kg_clarifies_instead_of_answering(monkeypatch):
+    """A question against a nonexistent kg_name must NOT come back as an
+    "answer" that is really a silent "No results found.". It becomes an
+    in-contract {kind:"clarify"} naming the KGs that DO exist."""
+    _stub_classifier(monkeypatch, "question")
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("pipeline must not run against a nonexistent KG")
+
+    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", boom)
+
+    ctx = _ctx(
+        neptune=KGStateNeptune(
+            registered=False, has_data=False, others=["imdb", "events"]
+        )
+    )
+    out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
+
+    assert out["kind"] == "clarify"
+    assert "kg1" in out["question"]
+    assert "does not exist" in out["question"]
+    assert "imdb" in out["question"]
+    assert out["options"] == ["imdb", "events"]
+
+
+@pytest.mark.asyncio
+async def test_question_about_empty_kg_answers_explicitly(monkeypatch):
+    """A registered-but-empty KG stays an "answer" (the caller named a REAL KG)
+    but says so explicitly, and skips the wasted SPARQL generation."""
+    _stub_classifier(monkeypatch, "question")
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("pipeline must not run against an empty KG")
+
+    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", boom)
+
+    ctx = _ctx(neptune=KGStateNeptune(registered=True, has_data=False))
+    out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
+
+    assert out["kind"] == "answer"
+    assert "contains no data" in out["answer"]
+    assert out["answer"] != "No results found."
+    assert out["sparql"] == ""
+
+
+@pytest.mark.asyncio
+async def test_question_about_empty_kg_still_answers_from_the_base_graph(monkeypatch):
+    """Union-aware: an empty per-KG graph is not an empty dataset when the
+    workspace keeps its instances in the tenant base graph."""
+    _stub_classifier(monkeypatch, "question")
+
+    seen = {}
+
+    async def fake_ask(self, question, graph_uri, instance_graph=None, **kwargs):
+        seen["ran"] = True
+        from cograph_client.models.query import NLResult
+
+        return NLResult(answer="42", sparql="SELECT ...", explanation="e")
+
+    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
+
+    ctx = _ctx(
+        neptune=KGStateNeptune(registered=True, has_data=False, base_instances=True)
+    )
+    out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
+
+    assert seen.get("ran") is True
+    assert out["kind"] == "answer"
+    assert out["answer"] == "42"
+
+
+@pytest.mark.asyncio
+async def test_question_about_populated_kg_runs_the_pipeline(monkeypatch):
+    """State (c) unchanged: a KG with data still goes through the normal path."""
+    _stub_classifier(monkeypatch, "question")
+
+    seen = {}
+
+    async def fake_ask(self, question, graph_uri, instance_graph=None, **kwargs):
+        seen["ran"] = True
+        from cograph_client.models.query import NLResult
+
+        return NLResult(answer="42", sparql="SELECT ...", explanation="e")
+
+    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
+
+    ctx = _ctx(neptune=KGStateNeptune(registered=True, has_data=True))
+    out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
+
+    assert seen.get("ran") is True
+    assert out["kind"] == "answer"
+    assert out["answer"] == "42"
