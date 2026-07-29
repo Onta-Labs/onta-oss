@@ -388,7 +388,7 @@ def test_embed_checker_fires_on_planted_violations():
     )
     # A baked-in secret literal anywhere.
     lit = _minimal_seed({"mode": "none"})
-    lit["tos_note"] = "key sk-or-v1-abcdef0123456789deadbeef"
+    lit["tos_note"] = "key sk-or-v1-abcdef0123456789deadbeef"  # boundary-ok: planted fake key, this test asserts the detector fires on it
     assert _embedded_credential_violations("lit", lit)
 
 
@@ -402,9 +402,9 @@ def test_doc_parity_checker_fires_when_env_example_missing_a_key():
 
 
 def test_secret_shape_detector_fires_on_planted_secrets():
-    assert _looks_like_secret("sk-or-v1-9f3a2b7c8d9e0f1a2b3c4d5e6f7a8b9c")
+    assert _looks_like_secret("sk-or-v1-9f3a2b7c8d9e0f1a2b3c4d5e6f7a8b9c")  # boundary-ok: planted fake key, this test asserts the detector fires on it
     assert _looks_like_secret("fc-1234567890abcdef1234567890abcdef")
-    assert _looks_like_secret("AKIAIOSFODNN7EXAMPLE")
+    assert _looks_like_secret("AKIAIOSFODNN7EXAMPLE")  # boundary-ok: AWS's own documentation example key, not a credential
     assert _looks_like_secret("9f3a2b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c")  # hi-entropy
     # Must NOT fire on real seed content or innocuous hyphenated prose:
     assert not _looks_like_secret("APU0000712311")           # FRED series id

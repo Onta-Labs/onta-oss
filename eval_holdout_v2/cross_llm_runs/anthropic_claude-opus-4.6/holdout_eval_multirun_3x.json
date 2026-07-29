@@ -4,7 +4,7 @@
     "model": "anthropic/claude-opus-4.6",
     "temperature": 0,
     "tenant": "demo-tenant",
-    "api_url": "http://demo-tenant.example.invalid",
+    "api_url": "<redacted-internal-endpoint>",
     "seeds": [
       "1",
       "2",

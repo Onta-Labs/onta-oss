@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.auth.access import require_tenant_write
+from cograph_client.config import settings
 from cograph_client.functions.executor import FunctionExecutor
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
@@ -43,7 +44,42 @@ router = APIRouter()
 # Tier-2 Lambda: SEC EDGAR latest-filing
 # ---------------------------------------------------------------------------
 
-SEC_USER_AGENT = "cograph-demo noreply@infona.ai"
+#: Fallback User-Agent when the deployment has not declared its own contact.
+#: Impersonal by design (a published OSS build must never issue EDGAR requests
+#: under an individual's identity) but still a WORKING contact, because SEC's
+#: fair-access policy throttles clients that declare none. Same
+#: ``project/version (+repo; role@domain)`` shape the Wikidata adapter uses.
+DEFAULT_SEC_USER_AGENT = (
+    "onta-client/0.1 (+https://github.com/Onta-Labs/onta-oss; ops@onta.team)"
+)
+
+_sec_ua_warned = False
+
+
+def sec_user_agent() -> str:
+    """The User-Agent for SEC EDGAR requests.
+
+    SEC's fair-access policy asks automated clients to identify themselves with
+    a working contact and throttles those that do not, so every deployment
+    should set ``OMNIX_SEC_USER_AGENT`` to its own address. Unset falls back to
+    :data:`DEFAULT_SEC_USER_AGENT` and warns once per process rather than
+    borrowing anyone else's contact.
+    """
+    global _sec_ua_warned
+
+    configured = (settings.sec_user_agent or "").strip()
+    if configured:
+        return configured
+
+    if not _sec_ua_warned:
+        _sec_ua_warned = True
+        logger.warning(
+            "sec_user_agent_unset",
+            fallback=DEFAULT_SEC_USER_AGENT,
+            hint="set OMNIX_SEC_USER_AGENT to your own contact (SEC EDGAR "
+            "throttles clients that do not declare one)",
+        )
+    return DEFAULT_SEC_USER_AGENT
 
 
 class SECFilingRequest(BaseModel):
@@ -75,7 +111,7 @@ async def sec_latest_filing(
         try:
             resp = await client.get(
                 source_url,
-                headers={"User-Agent": SEC_USER_AGENT},
+                headers={"User-Agent": sec_user_agent()},
             )
         except httpx.RequestError as exc:
             logger.warning("sec_edgar_request_error", cik=padded_cik, error=str(exc))
