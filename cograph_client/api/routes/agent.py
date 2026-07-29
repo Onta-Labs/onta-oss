@@ -49,7 +49,12 @@ register_default_capabilities()
 
 
 class AgentRequestContext(BaseModel):
-    kg_name: str = ""
+    # ONTA-414: same pattern the /ask body enforces and the same one create
+    # enforces (KGCreate.name). This value reaches kg_graph_uri and is
+    # interpolated into a graph IRI inside generated SPARQL, so a ">" in it
+    # would close the IRI early and permit a second FROM naming another
+    # tenant's graph. "*" keeps the existing "" default ("no KG selected") legal.
+    kg_name: str = Field("", pattern=r"^[a-zA-Z0-9_-]*$")
     type_name: str | None = None
     selection: dict | None = None
     # Explicit URLs the user attached for this turn (the Explorer's "paste links"

@@ -23,6 +23,14 @@ turns do **not** mint a job.
 from __future__ import annotations
 
 from cograph_client.agent.registry import AgentContext, PlanStep
+from cograph_client.graph.kg_status import (
+    KG_EMPTY,
+    KG_MISSING,
+    empty_kg_message,
+    kg_data_status,
+    list_kg_names,
+    missing_kg_message,
+)
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from cograph_client.pipeline.answer_run import record_answer_run
 
@@ -45,9 +53,35 @@ class QueryCapability:
 
         When ``ctx.extras["enrichment_job_store"]`` is present, mints an answer
         run (P7 A7 + P0/A9) and echoes its ``run_id`` for operator Job Trace.
+
+        ONTA-413: a missing KG short-circuits to a ``{"kind": "clarify"}``
+        payload rather than an exception. ``/agent``'s contract is
+        ``{kind: answer|clarify|plan|result}`` and the Explorer chat renders on
+        that shape, so raising here would be a breaking contract change; a
+        clarify naming the missing KG (and the real ones) is both in-contract and
+        directly actionable. An empty-but-registered KG stays an ``answer`` that
+        says so explicitly, and skips the wasted SPARQL generation.
         """
-        pipeline = self._build_pipeline(ctx)
         ontology_graph = tenant_graph_uri(ctx.tenant_id)
+        if ctx.kg_name:
+            status = await kg_data_status(ctx.neptune, ctx.tenant_id, ctx.kg_name)
+            if status == KG_MISSING:
+                available = await list_kg_names(ctx.neptune, ctx.tenant_id)
+                return {
+                    "kind": "clarify",
+                    "question": missing_kg_message(ctx.kg_name, available),
+                    "options": list(available),
+                }
+            if status == KG_EMPTY:
+                return {
+                    "answer": empty_kg_message(ctx.kg_name),
+                    "sparql": "",
+                    "narrative": "",
+                    "citations": [],
+                    "coverage_caveat": "",
+                    "rows": [],
+                }
+        pipeline = self._build_pipeline(ctx)
         instance_graph = (
             kg_graph_uri(ctx.tenant_id, ctx.kg_name) if ctx.kg_name else ontology_graph
         )
@@ -116,4 +150,6 @@ class QueryCapability:
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict:
         question = step.params.get("question", "")
         out = await self.answer(ctx, question)
-        return {"kind": "answer", **out}
+        # `answer` may return its OWN kind (ONTA-413's missing-KG clarify);
+        # default to "answer" so every other path is byte-identical to before.
+        return {**out, "kind": out.get("kind", "answer")}
