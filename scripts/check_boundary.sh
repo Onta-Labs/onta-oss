@@ -148,17 +148,28 @@ run_repo_check() {
   #     which xargs then surfaces as 123 = a real failure.
   #   * stderr, captured rather than discarded, for a grep that complains but
   #     still exits 0.
-  local status
+  local status fatal
   : > "$GREP_ERR"
   hits="$(xargs -0r sh -c \
     'grep -IoHnE "$@"; rc=$?; [ "$rc" -le 1 ] || exit 99' \
     sh $flags -- "$pattern" < "$FILE_LIST" 2>"$GREP_ERR")"
   status=$?
-  [[ "$status" -eq 0 ]] \
-    || die "grep failed while scanning (xargs exit $status$(
-         [[ -s "$GREP_ERR" ]] && printf ': %s' "$(head -2 "$GREP_ERR" | tr '\n' ' ')"))"
-  [[ -s "$GREP_ERR" ]] \
-    && die "grep wrote to stderr while scanning ($(head -2 "$GREP_ERR" | tr '\n' ' '))"
+  # A single unreadable path is not a broken environment: `--others` lists
+  # untracked files, so a dangling symlink in a dev tree, or a temp file a
+  # concurrent build removed between `git ls-files` and here, would otherwise
+  # turn a clean run into a hard failure. Warn and skip those; anything else —
+  # including a non-zero status with NO stderr, which is the silent-failure
+  # case this exists to catch — still stops the run.
+  if [[ "$status" -ne 0 || -s "$GREP_ERR" ]]; then
+    fatal="$(grep -vE 'No such file or directory|Permission denied|Is a directory' \
+      "$GREP_ERR" 2>/dev/null || true)"
+    if [[ -s "$GREP_ERR" && -z "$fatal" ]]; then
+      echo "note: skipped unreadable path(s): $(head -2 "$GREP_ERR" | tr '\n' ' ')"
+    else
+      die "grep failed while scanning (exit $status$(
+        [[ -s "$GREP_ERR" ]] && printf ': %s' "$(head -2 "$GREP_ERR" | tr '\n' ' ')")"
+    fi
+  fi
   [[ -n "$hits" ]] || return 0
 
   # Drop matches on lines carrying the escape-hatch marker. -o discarded the
@@ -175,11 +186,19 @@ run_repo_check() {
     # occurring anywhere in it — plausibly in scraped content nobody chose —
     # would disarm the entire file. Refuse to honor it on such a line.
     [[ "${#src}" -le 500 ]] || continue
-    printf '%s:%s:\n' "$hit_file" "$hit_line"
+    printf '%s:%s\n' "$hit_file" "$hit_line"
   done)"
   if [[ -n "$suppressed" ]]; then
-    hits="$(printf '%s\n' "$hits" \
-      | grep -vF -f <(printf '%s\n' "$suppressed") || true)"
+    # EXACT key compare on (path, line). `grep -vF` matched the key as an
+    # unanchored substring, so a marker on `notes.md:3` also silenced a real
+    # leak on `docs/notes.md:3` — the tree already holds a dozen such
+    # suffix-colliding path pairs (README.md, package.json, LICENSE), and the
+    # failure was completely silent. Paths cannot contain ':' (enforced above),
+    # so $1 and $2 are always the path and line even when the MATCH has colons.
+    hits="$(awk -F: '
+      NR==FNR { seen[$1 ":" $2] = 1; next }
+      !(($1 ":" $2) in seen)
+    ' <(printf '%s\n' "$suppressed") <(printf '%s\n' "$hits"))"
   fi
 
   if [[ -n "$allow" ]]; then

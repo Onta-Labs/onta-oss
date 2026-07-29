@@ -60,6 +60,8 @@ def sandbox(tmp_path):
         target.write_text(content)
         return _run(tmp_path)
 
+    # Exposed so a test can plant something other than a regular file.
+    _plant.repo = tmp_path
     return _plant
 
 
@@ -307,6 +309,58 @@ def test_marker_is_ignored_on_a_minified_single_line_file(sandbox, tmp_path):
         "a marker inside a minified artifact disarmed the whole file\n"
         f"{result.stdout}{result.stderr}"
     )
+
+
+def test_marker_does_not_suppress_a_suffix_colliding_path(sandbox):
+    """A marker on `notes.md:3` must not silence `docs/notes.md:3`.
+
+    Suppression keys were once matched as an unanchored substring, so any file
+    whose path is a suffix of another's could launder the other's leak on the
+    same line. The tree already holds a dozen such pairs (README.md,
+    package.json, LICENSE), and the failure was completely silent.
+    """
+    marked = "x\ny\nAKIAQ7WXYZ12ABCD34EF  boundary-ok: legit fixture\n"  # boundary-ok: fake infra string planted for this self-test
+    victim = "a\nb\nhost http://omnix-demo-tenant-dev-9.us-east-1.elb.amazonaws.com\n"  # boundary-ok: fake infra string planted for this self-test
+
+    sandbox("notes.md", marked)
+    result = sandbox("docs/notes.md", victim)
+
+    assert result.returncode == 1, (
+        "a marker on a suffix-colliding path suppressed a real leak\n"
+        f"{result.stdout}{result.stderr}"
+    )
+    assert "docs/notes.md:3" in result.stdout
+
+
+def test_marker_still_suppresses_its_own_file(sandbox):
+    """The exact-key fix must not break the escape hatch itself."""
+    result = sandbox(
+        "solo.py", 'KEY = "AKIAQ7WXYZ12ABCD34EF"  # boundary-ok: fixture'
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_dangling_symlink_warns_but_does_not_abort(sandbox):
+    """A dangling symlink must not turn a clean run into "COULD NOT RUN".
+
+    `--others` lists untracked files, so a dev tree or a concurrent build can
+    leave one behind. Warn and keep scanning rather than hard-failing.
+    """
+    (sandbox.repo / "dangling.txt").symlink_to("/nonexistent/target")
+
+    result = sandbox("harmless.py", "X = 1\n")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "skipped unreadable path" in result.stdout
+
+
+def test_dangling_symlink_does_not_hide_a_leak(sandbox):
+    """Skipping an unreadable path is per-file, never a reason to stop."""
+    (sandbox.repo / "dangling.txt").symlink_to("/nonexistent/target")
+
+    result = sandbox("leak.txt", "KEY=AKIAQ7WXYZ12ABCD34EF")  # boundary-ok: fake infra string planted for this self-test
+
+    assert result.returncode == 1, result.stdout + result.stderr
 
 
 def test_secret_in_the_sibling_guard_script_is_caught(sandbox):
