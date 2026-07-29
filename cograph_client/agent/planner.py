@@ -415,6 +415,55 @@ def _same_kg_turns(history: list[Turn] | None, kg_name: str | None) -> list[Turn
     return [t for t in history or [] if _turn_matches_kg(t, kg_name)]
 
 
+# A KG name is rendered INTO the classifier's transcript block, which is a
+# line-oriented, role-prefixed format. Anything outside this class (most of all a
+# newline) could forge a turn the model reads as the user's own words, so the
+# label is sanitized at the point of interpolation.
+_KG_LABEL_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+_KG_LABEL_MAX = 64
+
+
+def _kg_label(name: str | None) -> str:
+    """Render a knowledge-graph name safe to interpolate into a prompt.
+
+    Real KG names already match ``^[a-zA-Z0-9_-]+$`` (``graph/kg_writer.py``),
+    but the ``/agent`` request body does not enforce that pattern before the name
+    reaches here, so an arbitrary string can be stamped onto a turn today. Escape
+    at the interpolation point rather than trusting an upstream check to arrive:
+    every character outside the safe class becomes ``_`` and the result is
+    length-capped. Only the LABEL is rewritten -- ``_turn_matches_kg`` still
+    compares the raw values, so scoping is unaffected.
+    """
+    safe = _KG_LABEL_UNSAFE_RE.sub("_", str(name or ""))
+    return safe[:_KG_LABEL_MAX]
+
+
+def _recent_window(
+    history: list[Turn] | None, kg_name: str | None, limit: int = _PROMPT_HISTORY_TURNS
+) -> list[Turn]:
+    """A bounded transcript tail that always carries this graph's own turns.
+
+    Trimming the raw tail and only THEN scoping by KG (the shape this code had
+    before) can leave zero same-graph turns: in a session where the user works on
+    graph B, switches to graph A and stays there for ``limit`` turns, B's own
+    open ask falls off the end and the accumulation window comes back empty. That
+    was equally true pre-ONTA-419, so it is a reach limitation rather than a
+    regression, but it is one line to fix now that the KG is known.
+
+    So keep the last ``limit`` turns overall AND the last ``limit`` turns for
+    THIS graph, restored to transcript order (bounded at ``2 * limit``). Foreign
+    turns still reach :func:`_format_history`, where they are labelled rather
+    than dropped; :func:`_open_ask_user_turns` still filters them out.
+    """
+    turns = list(history or [])
+    if len(turns) <= limit:
+        return turns
+    keep = set(range(len(turns) - limit, len(turns)))
+    same = [i for i, t in enumerate(turns) if _turn_matches_kg(t, kg_name)]
+    keep.update(same[-limit:])
+    return [turns[i] for i in sorted(keep)]
+
+
 def _format_history(history: list[Turn] | None, kg_name: str | None = None) -> str:
     """Render the prior turns as a transcript block for the classifier prompt.
 
@@ -438,7 +487,7 @@ def _format_history(history: list[Turn] | None, kg_name: str | None = None) -> s
         else:
             who = "User"
         if not _turn_matches_kg(t, kg_name):
-            who = f"{who} [on a different knowledge graph: {t.kg_name}]"
+            who = f"{who} [on a different knowledge graph: {_kg_label(t.kg_name)}]"
             saw_foreign = True
         text = (t.text or "").strip()
         if text:
@@ -451,9 +500,10 @@ def _format_history(history: list[Turn] | None, kg_name: str | None = None) -> s
     header = "Conversation so far:"
     if saw_foreign:
         header = (
-            f"Conversation so far (the latest message targets the '{kg_name}' "
-            "knowledge graph; turns marked as being on a different knowledge "
-            "graph are about other data and usually should not be continued):"
+            f"Conversation so far (the latest message targets the "
+            f"'{_kg_label(kg_name)}' knowledge graph; turns marked as being on a "
+            "different knowledge graph are about other data and usually should "
+            "not be continued):"
         )
     return header + "\n" + "\n".join(lines) + "\n\n"
 
@@ -690,12 +740,10 @@ async def _respond(
     # TYPE from what the user just said, not a stale mention still in the window.
     ctx.extras["current_message"] = message
     # Only the recent tail grounds the prompt — a long history-backed thread
-    # shouldn't blow up the classifier context (COG-131).
-    recent = (
-        history[-_PROMPT_HISTORY_TURNS:]
-        if len(history) > _PROMPT_HISTORY_TURNS
-        else history
-    )
+    # shouldn't blow up the classifier context (COG-131). The tail is chosen
+    # KG-aware (ONTA-419) so a long detour onto another graph can't push this
+    # graph's own open ask off the end of the window.
+    recent = _recent_window(history, getattr(ctx, "kg_name", None))
     classification = await _classify(ctx, message, recent, prior_clarify_count)
     intents = classification.get("intents", ["ambiguous"])
 
