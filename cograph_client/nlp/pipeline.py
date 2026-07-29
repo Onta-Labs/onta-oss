@@ -500,7 +500,16 @@ class NLQueryPipeline:
                         else None
                     )
                 except Exception:
-                    logger.debug("active_types_probe_failed", exc_info=True)
+                    # WARNING, not debug: a failed probe silently reinstates the
+                    # exact cross-KG leak this scoping exists to prevent, and the
+                    # only other signal is timing["ontology_scope"] buried in a
+                    # response body. Debug is filtered in production, so the
+                    # degradation would be invisible.
+                    logger.warning(
+                        "active_types_probe_failed",
+                        instance_graph=data_graph,
+                        exc_info=True,
+                    )
                     active_types = None
                 ontology = await embedding_svc.retrieve(
                     graph_uri,
@@ -1508,11 +1517,21 @@ class NLQueryPipeline:
         a probe failure so each caller applies its own degradation policy
         (:meth:`_fetch_ontology` keeps reporting ONTOLOGY_FETCH_ERROR, while
         :meth:`ask` degrades to unscoped retrieval).
+
+        An EMPTY result is deliberately NOT served from the cache. Downstream,
+        `_fetch_ontology` treats "no declared type carries instances" as the
+        fresh-ingest disambiguation branch and returns ONTOLOGY_EMPTY WITHOUT
+        caching the summary, precisely so the next ask re-reads a KG that may
+        have been populated in the meantime. Caching the empty probe would
+        reinstate the stale answer that branch exists to avoid: a KG asked about
+        while empty, then ingested by another worker, would keep answering
+        "No ontology defined yet." for the rest of the TTL. Re-probing an empty
+        graph is also the cheapest possible query.
         """
         if not instance_graph or instance_graph == ontology_graph:
             return None
         cached = _active_types_cache.get(instance_graph)
-        if cached and (time.time() - cached[1]) < ONTOLOGY_CACHE_TTL:
+        if cached and cached[0] and (time.time() - cached[1]) < ONTOLOGY_CACHE_TTL:
             return cached[0]
         names, _ = await self._resolve_active_types(instance_graph, declared_names)
         _active_types_cache[instance_graph] = (names, time.time())

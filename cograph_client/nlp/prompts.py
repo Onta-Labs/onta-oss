@@ -70,18 +70,20 @@ fields (setting, status, line_of_therapy) whose listed values cannot contain tha
 phrase. Prefer OR-ing the free-text phrase across disease + indication_summary when \
 unsure which free-text field holds it. Attributes annotated only as \
 `[N unique values]` are open free-text and may be filtered with question phrases.
-- "[no instances]": the ontology schema below is the TENANT's ontology, and one tenant owns MANY \
-knowledge graphs that share it. A Type, attribute, or relationship marked "[no instances]" IS \
-DECLARED and valid, but it holds NO DATA in the graph named above, most often because it belongs \
-to a DIFFERENT graph of the same tenant. Treat unmarked entries as this graph's populated schema \
-and PREFER them: when an unmarked type fits the question, use it. Query a "[no instances]" target \
-ONLY when the user named that type/attribute explicitly, or when nothing unmarked fits; then still \
-generate a correct query against it using its exact URI (it will legitimately return zero rows) and \
-state plainly in the explanation that the target is declared in the tenant's ontology but has no \
-data in this graph. NEVER claim the target "does not exist" / "is not in the schema", and NEVER \
-SILENTLY substitute a different, populated type. Substituting is allowed only when you say in the \
-explanation which type you used instead and why. A zero-row answer for an explicitly-requested \
-declared-but-empty target is the correct, honest answer, not a reason to answer a different question.
+- "[no instances]": a Type, attribute, or relationship marked "[no instances]" in the schema IS \
+DECLARED and valid. It exists in the ontology, it simply has no data in the graph you are querying. \
+The schema is drawn from the TENANT's ontology, which is shared across every knowledge graph that \
+tenant owns, so a marked entry may be declared for this graph but still unpopulated, or may belong \
+to another of the tenant's graphs. You cannot tell which from the schema alone, and you do not need \
+to: the handling is identical. When the question targets such a type/attribute, STILL generate a \
+correct query against it using its exact URI; it will legitimately return zero rows. In the \
+explanation, state plainly that the type/attribute is declared in the ontology but has no data in \
+this graph. NEVER claim the type "does not exist" / "is not in the schema", and NEVER silently \
+substitute a different, populated type. A zero-row answer for a declared-but-empty target is the \
+correct, honest answer, not a reason to answer a different question. ONLY when the question names \
+NO specific type and several types could plausibly answer it, prefer an UNMARKED (populated) type \
+over a marked one. That is a tie-break for an open-ended question, never a licence to redirect a \
+question that named its own target.
 - For numeric comparisons, use typed literals: "2000"^^<http://www.w3.org/2001/XMLSchema#integer> for \
 integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast with xsd:integer()/xsd:float().
 - NEVER use the `a` shorthand for rdf:type. Always write the full URI: \

@@ -522,23 +522,29 @@ async def delete_kg(
     except Exception:
         pass  # Derived-index cleanup is best-effort, don't fail the delete
 
-    # Evict the NL-planning caches and the ONTOLOGY EMBEDDING store for this
-    # tenant (ONTA-417). Both are keyed by the TENANT ontology graph, not by KG,
-    # so nothing above touches them: without this, the deleted KG's cached
-    # ontology summary, its cached active-type set, and its embedded type chunks
-    # all survive the delete. The chunks keep competing for semantic-retrieval
-    # slots on every later question, and a KG recreated under the same name
+    # Evict the NL-planning caches for this tenant (ONTA-417). They are keyed by
+    # the TENANT ontology graph, not by KG, so nothing above touches them:
+    # without this, the deleted KG's cached ontology summary and its cached
+    # active-type set survive the delete, and a KG recreated under the same name
     # inherits the dead one's cached scope for the rest of the TTL. Same
     # best-effort contract as the derived-index clears above.
     #
-    # TODO(ONTA-417): this evicts the CACHE, not the DECLARATIONS. The deleted
+    # SCOPE, precisely. The two cache sweeps here are complete. The embedding
+    # eviction is NOT: invalidate_cache pops only the IN-MEMORY embedding store,
+    # and the next retrieve() reloads identical chunks from S3, which is never
+    # cleared. So this does not stop a deleted KG's types from being retrieved.
+    # What keeps them from displacing this graph's schema is ONTA-411, which
+    # demotes them and marks them "[no instances]" because they carry no
+    # instances in the graph being queried.
+    #
+    # TODO(ONTA-417): evicting the DECLARATIONS (and with them the S3-persisted
+    # chunks) is the real fix and is deliberately not attempted here. The deleted
     # KG's types remain declared in the tenant ontology graph, so the next
-    # embedding rebuild re-embeds them and they reappear (now demoted and marked
-    # "[no instances]" by ONTA-411, so they no longer displace this graph's
-    # schema). Pruning them needs a real "is this type still used by another KG,
-    # or was it authored by hand?" guard. Types are shared tenant-wide BY
-    # DESIGN, and ONTA-258 deliberately keeps declared-but-unpopulated types
-    # visible, so an unguarded prune would delete user-authored schema.
+    # embedding rebuild re-embeds them. Pruning them needs a real "is this type
+    # still used by another KG, or was it authored by hand?" guard. Types are
+    # shared tenant-wide BY DESIGN, and ONTA-258 deliberately keeps
+    # declared-but-unpopulated types visible, so an unguarded prune would delete
+    # user-authored schema.
     try:
         from cograph_client.nlp.pipeline import NLQueryPipeline
         NLQueryPipeline.invalidate_cache(base)

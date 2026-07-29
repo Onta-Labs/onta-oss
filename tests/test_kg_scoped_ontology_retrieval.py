@@ -36,6 +36,7 @@ from cograph_client.nlp.ontology_embeddings import (
 )
 from cograph_client.nlp.pipeline import (
     NLQueryPipeline,
+    ONTOLOGY_EMPTY,
     _active_types_cache,
     _ontology_cache,
 )
@@ -271,6 +272,68 @@ async def test_active_types_is_ttl_cached():
     assert neptune.probe_count == 2
 
 
+class SchemaNeptune(ProbeNeptune):
+    """ProbeNeptune plus a one-type ontology schema so `_fetch_ontology` runs end
+    to end. ``active`` is reassignable, standing in for an ingest landing."""
+
+    ONTOLOGY_ROWS = [
+        {
+            "type": {"type": "uri", "value": f"{TYPES}Widget"},
+            "typeLabel": {"type": "literal", "value": "Widget"},
+            "attr": {"type": "uri", "value": f"{TYPES}Widget/attrs/serial"},
+            "attrLabel": {"type": "literal", "value": "serial"},
+            "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
+        }
+    ]
+
+    async def query(self, sparql: str):
+        if "?typeLabel" in sparql:
+            return {
+                "head": {"vars": ["type", "typeLabel", "attr", "attrLabel", "range"]},
+                "results": {"bindings": self.ONTOLOGY_ROWS},
+            }
+        if "COUNT(DISTINCT ?val)" in sparql:
+            return {
+                "head": {"vars": ["cnt"]},
+                "results": {"bindings": [{"cnt": {"type": "literal", "value": "3"}}]},
+            }
+        if "SELECT DISTINCT ?val" in sparql:
+            return {
+                "head": {"vars": ["val"]},
+                "results": {"bindings": [{"val": {"type": "literal", "value": "alpha"}}]},
+            }
+        return await super().query(sparql)
+
+
+async def test_an_empty_probe_is_never_served_from_the_cache():
+    """An empty result is the "might be mid-ingest" case. Caching it would make a
+    freshly-populated KG keep answering "empty" for a whole TTL on any worker
+    that did not run the write, and re-probing an empty graph is the cheapest
+    query there is."""
+    neptune = ProbeNeptune(active=())
+    pipe = _pipe(neptune)
+    assert await pipe._active_types(KG, GRAPH) == set()
+    assert await pipe._active_types(KG, GRAPH) == set()
+    assert neptune.probe_count == 2, "an empty probe must be retried, not cached"
+
+
+async def test_a_kg_populated_after_an_empty_ask_recovers_within_the_ttl():
+    """End-to-end: ask while the KG is empty, an ingest lands elsewhere, ask
+    again inside the TTL. `_fetch_ontology` deliberately does NOT cache
+    ONTOLOGY_EMPTY so the next ask re-reads; a cached empty PROBE would have
+    reinstated the staleness one layer down."""
+    _ontology_cache.clear()
+    neptune = SchemaNeptune(active=())
+    pipe = _pipe(neptune)
+
+    assert await pipe._fetch_ontology(GRAPH, KG) == ONTOLOGY_EMPTY
+
+    neptune.active = ("Widget",)
+    summary = await pipe._fetch_ontology(GRAPH, KG)
+    assert summary != ONTOLOGY_EMPTY, "stale empty probe survived the ingest"
+    assert "Widget" in summary
+
+
 async def test_invalidate_cache_clears_active_types_for_the_tenant():
     """A write that adds instances must not keep demoting the new types for the
     rest of the TTL. `invalidate_cache` runs after every converged write."""
@@ -381,17 +444,45 @@ def test_prompt_without_a_kg_name_is_unchanged():
 
 
 def test_system_prompt_rule_is_cross_kg_aware():
-    """The "[no instances]" rule must no longer read as "declared HERE but empty":
-    tenant-wide ontology means such an entry usually belongs to another graph."""
+    """The rule must explain that the ontology is tenant-wide, so a marked entry
+    may belong to another of the tenant's graphs rather than being empty here."""
     p = SPARQL_GENERATION_SYSTEM.lower()
     assert "[no instances]" in p
-    # Says the ontology spans many graphs of the same tenant.
     assert "tenant" in p
-    # Prefers the populated schema of the target graph...
-    assert "prefer" in p
-    # ...but keeps the ONTA-258 guarantees: never deny it, never silently swap.
-    assert "does not exist" in p or "not in the schema" in p
-    assert "substitut" in p
+    assert "shared across every knowledge graph" in p
+
+
+def test_system_prompt_keeps_the_onta258_absolutes():
+    """The cross-KG rewrite must not LOOSEN ONTA-258. The prohibition on
+    substituting a populated type is absolute, and the honest-zero-row guarantee
+    covers every declared-but-empty target, not just explicitly-named ones."""
+    p = SPARQL_GENERATION_SYSTEM
+    assert "NEVER silently substitute a different, populated type" in p
+    # No licence to swap the target as long as the swap is narrated: a narrated
+    # substitution still answers a different question, which IS the ONTA-258 harm.
+    low = p.lower()
+    assert "substituting is allowed" not in low
+    assert (
+        "a zero-row answer for a declared-but-empty target is the correct, "
+        "honest answer" in low
+    )
+    assert "explicitly-requested declared-but-empty" not in low
+    assert "does not exist" in low
+
+
+def test_system_prompt_states_no_false_premise_for_a_single_kg_tenant():
+    """A single-KG tenant's "[no instances]" means exactly what it meant
+    pre-ONTA-411 ("declared here, no data yet"), and SPARQL_GENERATION_SYSTEM is
+    unconditional, so the rule must not ASSERT that a marked entry belongs to
+    another graph, and the populated-type preference must be scoped to questions
+    that name no target."""
+    low = SPARQL_GENERATION_SYSTEM.lower()
+    # Conditional framing ("may ... or may ..."), never an assertion of fact.
+    assert "most often because it belongs" not in low
+    assert "may belong" in low
+    # The preference survives, but only as an open-ended tie-break.
+    assert "only when the question names no specific type" in low
+    assert "never a licence to redirect" in low
 
 
 @pytest.mark.parametrize(
