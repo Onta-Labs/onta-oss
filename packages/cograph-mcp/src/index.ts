@@ -282,6 +282,114 @@ function notFoundHint(filePath: string, roots: string[]): string {
   );
 }
 
+// ONTA-416: thin over the canonical `POST /graphs/{tenant}/grep` route (via the
+// SDK's `grep`) — the ONE literal-scan endpoint every interface rides. The
+// handler is EXPORTED so its rendering contract can be tested with a stubbed
+// client (same pattern as `ingestCsvHandler`), since the rendering is what keeps
+// an unbounded literal out of the agent's context window.
+export async function grepHandler(
+  {
+    q,
+    kg_name,
+    type,
+    predicate,
+    case_sensitive,
+    limit,
+  }: {
+    q: string;
+    kg_name: string;
+    type?: string;
+    predicate?: string;
+    case_sensitive?: boolean;
+    limit?: number;
+  },
+  makeClient: () => Client = client,
+) {
+  try {
+    const res = await makeClient().grep(q, kg_name, {
+      type,
+      predicate,
+      caseSensitive: case_sensitive,
+      limit,
+    });
+    if (!res.matches.length) {
+      return textResult(
+        `No literal matches for ${JSON.stringify(q)} in "${kg_name}".`,
+      );
+    }
+    const lines = res.matches.map((m, i) => {
+      const who = m.label || m.entity_uri;
+      const kind = m.type ? ` (${m.type})` : "";
+      return `${i + 1}. ${who}${kind} — ${m.entity_uri}\n   [${m.attr}] ${m.snippet}`;
+    });
+    if (res.truncated) {
+      // Never let a capped page read as an exhaustive answer: an agent that
+      // concludes "only N exist" from a truncated grep draws a false negative.
+      lines.push(
+        "",
+        `Note: stopped at the limit of ${res.limit} matches — MORE EXIST. ` +
+          "Narrow with `type`/`predicate`, or raise `limit` (max 200).",
+      );
+    }
+    return textResult(lines.join("\n"));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+server.registerTool(
+  "grep",
+  {
+    description:
+      "Literal substring search across every literal value in ONE context " +
+      "graph, by scanning its triples directly (no index). Use it for exact " +
+      'string debugging — "is this value anywhere in the graph?", "which ' +
+      'entities contain this id/typo/URL?" — and for data that `search` ' +
+      "cannot see because it was never indexed. Plain substring matching, not " +
+      "regex. Prefer `search` for meaning/topic questions and `ask` for " +
+      "aggregate or structured ones: this scan is unranked and can be slow on " +
+      "a large graph.",
+    inputSchema: {
+      q: z
+        .string()
+        .min(2)
+        .describe(
+          "Exact substring to look for (at least 2 non-whitespace characters).",
+        ),
+      kg_name: z
+        .string()
+        .describe(
+          "REQUIRED context graph to scan — the scan is index-free, so it must " +
+            "be bounded to one graph. Use list_knowledge_graphs to see them.",
+        ),
+      type: z
+        .string()
+        .optional()
+        .describe('Only match entities of this type (e.g. "Person").'),
+      predicate: z
+        .string()
+        .optional()
+        .describe(
+          'Only match this attribute — a leaf name ("title") or a full predicate URI.',
+        ),
+      case_sensitive: z
+        .boolean()
+        .optional()
+        .describe("Match case-sensitively (default false)."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe("Max matches to return (server clamps to 1..200; default 50)."),
+    },
+  },
+  // Wrapped, not passed directly: the MCP SDK calls the callback with a second
+  // `extra` argument, which would otherwise land in `makeClient`.
+  (args) => grepHandler(args),
+);
+
 // ONTA-253: this tool's contract is "ingest a CSV FILE" — so a path that does
 // not resolve to a readable file must be a CLEAR error, never a silent
 // text-ingest of the filename. We stat the path up front (returning a specific

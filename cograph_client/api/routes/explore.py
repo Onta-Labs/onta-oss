@@ -33,7 +33,11 @@ from cograph_client.graph.layers import (
 )
 from cograph_client.graph.ontology_queries import attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from cograph_client.graph.queries import (
+    kg_graph_uri,
+    sparql_string_literal,
+    tenant_graph_uri,
+)
 from cograph_client.resolver import drift_control
 from cograph_client.spatiotemporal.extract import (
     GEO_WKT,
@@ -2233,4 +2237,12 @@ async def search_explorer(
 
 
 def _esc(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    """Escape a value for a SPARQL string literal via the ONE shared escaper.
+
+    Used for the ``search`` needle AND the keyset-pagination ``cursor``. The old
+    local copy escaped only ``\\`` and ``"``, so an interior newline (a pasted
+    multi-line search box, a mangled cursor) produced an unterminated literal and
+    a store-side parse error surfacing as a 500 (ONTA-416). Delegating means the
+    two callers get the hardened coverage and can never re-diverge.
+    """
+    return sparql_string_literal(s)

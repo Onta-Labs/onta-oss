@@ -151,6 +151,7 @@ if (r.status === 404) { /* … */ }
 `client.raw` covers agent, ask, ingest (+ csv schema/rows), enrich jobs
 (create/list/get/conflicts/apply/cancel), ontology (types/resolve/recommend/apply),
 kgs (list/create/delete), explore (summary/records/type-edges/type-counts/search),
+search + grep (semantic instance search / index-free literal scan of one KG),
 normalize (suggest/rules GET+POST/confirm/reject/apply) and tenants
 (list/create/delete). Each returns `Promise<Response>` and only ever rejects on a
 network error or timeout (i.e. when there is no HTTP response to return).

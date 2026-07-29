@@ -3,6 +3,8 @@
 import hashlib
 import re
 
+from cograph_client.graph.queries import sparql_string_literal
+
 OMNIX_ONTO = "https://cograph.tech/onto"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
@@ -1155,18 +1157,12 @@ def full_ontology_detail_query(graph_uri: str) -> str:
 
 
 def _esc(s: str) -> str:
-    # Escape every char that is illegal or lexically fragile inside a SPARQL
-    # string literal. `\r`/`\t` matter now that CSV user values flow through
-    # here (entities_by_key_value_query, ONTA-250): an interior carriage return
-    # or tab would otherwise produce malformed SPARQL. Backslash first so the
-    # escape sequences we add aren't themselves re-escaped.
-    return (
-        s.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
-    )
+    # Delegates to the ONE hardened escaper (ONTA-416). This module's copy was
+    # the hardened one (`\r`/`\t` added by ONTA-250 when CSV user values started
+    # flowing through entities_by_key_value_query) while two other copies lagged;
+    # promoting it to graph/queries.sparql_string_literal and delegating here
+    # keeps a single definition so the coverage can never diverge again.
+    return sparql_string_literal(s)
 
 
 PRIMITIVE_TYPES = {"string", "integer", "float", "boolean", "datetime", "uri", "geo"}

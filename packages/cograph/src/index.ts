@@ -55,6 +55,9 @@ export type {
   // ONTA-178 — canonical semantic instance search
   SemanticSearchHit,
   SemanticSearchResponse,
+  // ONTA-416 — index-free literal grep over one KG
+  GrepMatch,
+  GrepResponse,
   // ONTA-2xx — per-tenant API source registry
   ApiSourceSummary,
   ApiSourceValidationError,
