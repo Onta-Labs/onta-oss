@@ -384,6 +384,10 @@ describe("canonical paths + methods for every covered op", () => {
     // ONTA-178: the canonical semantic instance search — one route for every
     // interface (the MCP `search` tool rides this exact path via the SDK).
     { name: "search", run: (c) => c.raw.search({ query: "q" }), method: "POST", url: `${PREFIX}/search` },
+    // ONTA-416: the canonical index-free literal grep — a SEPARATE route from
+    // /search on purpose (live triple scan vs derived index); the MCP `grep`
+    // tool rides this exact path via the SDK.
+    { name: "grep", run: (c) => c.raw.grep({ q: "ab", kg_name: "kg1" }), method: "POST", url: `${PREFIX}/grep` },
   ];
 
   for (const tc of cases) {
@@ -611,6 +615,83 @@ describe("new typed parsed variants of the missing methods", () => {
       new Response('{"detail":"… COGRAPH_SEMANTIC_INDEX_ENABLED …"}', { status: 503 }),
     );
     await expect(makeClient().search("x")).rejects.toBeInstanceOf(OntaError);
+  });
+
+  it("grep (typed, ONTA-416) maps opts to the canonical body and parses the envelope", async () => {
+    // Locks the SDK↔route field mapping the MCP `grep` tool depends on:
+    // q → q, kg → kg_name (REQUIRED, unlike search's optional kg_name),
+    // caseSensitive → case_sensitive, limit → limit; envelope unreshaped.
+    const envelope = {
+      matches: [
+        {
+          entity_uri: "e:m1",
+          label: "The Matrix",
+          type: "Movie",
+          predicate: "https://cograph.tech/onto/title",
+          attr: "title",
+          value: "The Matrix",
+          snippet: "The Matrix",
+        },
+      ],
+      count: 1,
+      limit: 10,
+      truncated: true,
+    };
+    const { calls } = installFetch(
+      new Response(JSON.stringify(envelope), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const got = await makeClient().grep("matrix", "movies", {
+      type: "Movie",
+      predicate: "title",
+      caseSensitive: true,
+      limit: 10,
+    });
+    expect(got).toEqual(envelope);
+    expect(calls[0]!.url).toBe(`${PREFIX}/grep`);
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      q: "matrix",
+      kg_name: "movies",
+      type: "Movie",
+      predicate: "title",
+      case_sensitive: true,
+      limit: 10,
+    });
+  });
+
+  it("grep (typed) sends only q + kg_name when no filters are given", async () => {
+    const { calls } = installFetch(
+      new Response(JSON.stringify({ matches: [], count: 0, limit: 50, truncated: false }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await makeClient().grep("matrix", "movies");
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      q: "matrix",
+      kg_name: "movies",
+    });
+  });
+
+  it("grep (typed) forwards case_sensitive:false explicitly, not as an omission", async () => {
+    // `false` is a MEANINGFUL value here; a truthiness check would drop it and
+    // silently change the caller's query semantics.
+    const { calls } = installFetch(
+      new Response(JSON.stringify({ matches: [], count: 0, limit: 50, truncated: false }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await makeClient().grep("matrix", "movies", { caseSensitive: false });
+    expect(JSON.parse(String(calls[0]!.init.body)).case_sensitive).toBe(false);
+  });
+
+  it("grep (typed) surfaces the too-short-needle 400 as OntaError", async () => {
+    installFetch(new Response('{"detail":"q must contain at least 2 …"}', { status: 400 }));
+    await expect(makeClient().grep("a", "movies")).rejects.toBeInstanceOf(OntaError);
   });
 
   it("ontologyApplyBatch (typed) wraps changes in {changes}, hits the canonical batch path, and passes the envelope through", async () => {
