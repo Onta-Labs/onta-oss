@@ -627,8 +627,19 @@ TARGET_GRAPH_PLACEHOLDER = "TARGET_GRAPH"
 
 # Matches the graph IRI of a dataset clause: `FROM <...>` / `FROM NAMED <...>`.
 # Group 1 keeps the keyword (and its original spacing/case) so only the IRI is
-# swapped.
-_FROM_GRAPH_RE = re.compile(r"(FROM\s+(?:NAMED\s+)?)<[^>]*>", re.IGNORECASE)
+# swapped. The lookbehind is load-bearing: without it a variable that merely ENDS
+# in "from" (`?from <p> ?o`, `?validFrom <p> ?o`) or a prefixed name (`ex:from
+# <...>`) would have its OBJECT eaten as if it were a dataset clause, silently
+# teaching the model a nonsense triple.
+_FROM_GRAPH_RE = re.compile(r"(?<![\w?$:-])(FROM\s+(?:NAMED\s+)?)<[^>]*>", re.IGNORECASE)
+
+# Backstop for any graph IRI the keyword rule cannot see: `GRAPH <...>`,
+# `SERVICE <...>`, or a bare mention. The bank has none today (all 262 examples
+# scope with FROM), but it is REGENERATED from LLM-written SPARQL by
+# `populate_from_eval_reports`, so a future model emitting a GRAPH block would
+# quietly reopen the leak. Keyed on the `/graphs/` path segment that
+# `graph/queries.py` mints, so type/attribute/entity IRIs are never touched.
+_ANY_GRAPH_IRI_RE = re.compile(r"<[^>]*/graphs/[^>]*>")
 
 
 def sanitize_example_sparql(sparql: str, target_graph_uri: str = "") -> str:
@@ -653,9 +664,15 @@ def sanitize_example_sparql(sparql: str, target_graph_uri: str = "") -> str:
     placeholder in the prompt) also means the model never sees a token it could
     echo into generated SPARQL, and a cross-KG example can no longer point the
     model at a DIFFERENT KG than the one being asked about.
+
+    Two rules, deliberately overlapping: the dataset clause (which catches a graph
+    IRI of ANY shape, including a self-hoster's custom one) and any surviving
+    ``/graphs/`` IRI (which catches a graph scoped some other way, e.g. a GRAPH
+    block). Neither alone is sufficient.
     """
     replacement = target_graph_uri or TARGET_GRAPH_PLACEHOLDER
-    return _FROM_GRAPH_RE.sub(lambda m: f"{m.group(1)}<{replacement}>", sparql)
+    out = _FROM_GRAPH_RE.sub(lambda m: f"{m.group(1)}<{replacement}>", sparql)
+    return _ANY_GRAPH_IRI_RE.sub(lambda _m: f"<{replacement}>", out)
 
 
 def format_examples_for_prompt(
@@ -673,11 +690,10 @@ def format_examples_for_prompt(
             substitute it.
 
     Output format:
-        Similar queries that worked (patterns from OTHER graphs, so reuse their
-        SHAPE, not their URIs). Their FROM clause has been rewritten to your
-        target graph. Every type/attribute URI below belongs to a DIFFERENT
-        ontology and is illustrative only: build yours from the ontology schema
-        above.
+        Similar queries that worked. Some may come from OTHER graphs, so reuse
+        their SHAPE and check every type/attribute URI against the ontology
+        schema above instead of copying it. Their FROM clause has been rewritten
+        to your target graph.
 
         Example 1 (count + join):
           Q: How many events are in the Mission District?
@@ -698,11 +714,17 @@ def format_examples_for_prompt(
             "substitute the named graph URI given above."
         )
 
+    # Hedged ("Some may come from OTHER graphs") on purpose. Production /ask
+    # passes no exclude_questions, so the same-KG filter + penalty at
+    # `retrieve()` stay OFF and a near-identical prior answer on the SAME KG is
+    # both common and the best available signal. Its type/attribute URIs are
+    # exactly right, so an unconditional "these belong to a DIFFERENT ontology"
+    # would tell the model to distrust correct URIs.
     lines = [
-        "Similar queries that worked (patterns from OTHER graphs, so reuse their "
-        "SHAPE, not their URIs).",
-        f"{from_note} Every type/attribute URI below belongs to a DIFFERENT "
-        "ontology and is illustrative only: build yours from the ontology schema above.",
+        "Similar queries that worked. Some may come from OTHER graphs, so reuse "
+        "their SHAPE and check every type/attribute URI against the ontology "
+        "schema above instead of copying it.",
+        from_note,
     ]
 
     for i, ex in enumerate(examples, 1):

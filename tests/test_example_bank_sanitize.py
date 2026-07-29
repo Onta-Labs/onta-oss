@@ -107,12 +107,48 @@ def test_query_without_a_from_clause_is_untouched():
     assert sanitize_example_sparql(sparql, TARGET_GRAPH) == sparql
 
 
-def test_where_clause_body_is_not_rewritten():
-    """Only the dataset clause moves. A `?from` variable must survive intact."""
-    sparql = f"SELECT ?from FROM <{FOREIGN_GRAPH}> WHERE {{ ?x <https://cograph.tech/onto/from> ?from }}"
+@pytest.mark.parametrize("subject", ["?from", "?validFrom", "ex:from"])
+def test_a_token_merely_ENDING_in_from_does_not_eat_the_next_iri(subject):
+    """The dataset-clause rule must not fire on `?from <predicate> ?o`.
+
+    Without a lookbehind, ``FROM\\s+<...>`` matches the tail of ``?from
+    <https://.../onto/actedIn>`` and replaces the PREDICATE with the target
+    graph, silently teaching the model a nonsense triple. No example in the
+    shipped bank has such a variable, so this is only reachable once the bank is
+    regenerated from new LLM output, which is exactly when nobody is looking.
+    """
+    sparql = (
+        f"SELECT ?m FROM <{FOREIGN_GRAPH}> WHERE {{ "
+        f"{subject} <https://cograph.tech/onto/actedIn> ?m }}"
+    )
     out = sanitize_example_sparql(sparql, TARGET_GRAPH)
-    assert "<https://cograph.tech/onto/from> ?from" in out
-    assert "SELECT ?from" in out
+    assert f"{subject} <https://cograph.tech/onto/actedIn> ?m" in out
+    assert f"FROM <{TARGET_GRAPH}>" in out
+
+
+@pytest.mark.parametrize("keyword", ["GRAPH", "SERVICE"])
+def test_a_graph_iri_scoped_without_from_is_still_rewritten(keyword):
+    """Backstop for the keyword rule.
+
+    Every one of the 262 shipped examples scopes with ``FROM``, but the bank is
+    REGENERATED from LLM-written SPARQL by ``populate_from_eval_reports``. A
+    future model emitting a ``GRAPH`` block would reopen the leak against a
+    keyword-only rule.
+    """
+    sparql = f"SELECT ?x WHERE {{ {keyword} <{FOREIGN_GRAPH}> {{ ?x ?p ?o }} }}"
+    out = sanitize_example_sparql(sparql, TARGET_GRAPH)
+    assert FOREIGN_GRAPH not in out
+    assert "demo-tenant" not in out
+    assert f"{keyword} <{TARGET_GRAPH}>" in out
+
+
+def test_the_graph_backstop_does_not_touch_type_or_entity_iris():
+    """It keys on the `/graphs/` path segment, not on the host."""
+    sparql = (
+        "SELECT ?x WHERE { ?x <https://cograph.tech/types/City/attrs/name> ?n . "
+        "?x <https://cograph.tech/onto/locatedIn> <https://cograph.tech/entities/City/san-jose> }"
+    )
+    assert sanitize_example_sparql(sparql, TARGET_GRAPH) == sparql
 
 
 # ── format_examples_for_prompt ───────────────────────────────────────────
@@ -124,11 +160,24 @@ def test_formatted_block_carries_no_foreign_graph_uri():
     assert f"FROM <{TARGET_GRAPH}>" in text
 
 
-def test_header_labels_examples_as_coming_from_other_graphs():
+def test_header_warns_that_examples_may_come_from_other_graphs():
     text = format_examples_for_prompt([_example()], TARGET_GRAPH)
     header = text.splitlines()[0] + " " + text.splitlines()[1]
     assert "OTHER graphs" in header
-    assert "illustrative" in header
+    assert "ontology schema above" in header
+    assert "rewritten to your target graph" in header
+
+
+def test_header_is_hedged_not_absolute_about_foreign_ontologies():
+    """Production /ask leaves the same-KG filter off (it is gated on
+    ``exclude_questions``, which only the eval harness passes), so a retrieved
+    example is OFTEN from the caller's own KG with exactly correct URIs. An
+    unconditional "these belong to a DIFFERENT ontology" would tell the model to
+    distrust them.
+    """
+    header = format_examples_for_prompt([_example()], TARGET_GRAPH).splitlines()[0]
+    assert "Some may come from OTHER graphs" in header
+    assert "DIFFERENT ontology" not in header
 
 
 def test_header_explains_the_placeholder_when_no_target_graph():
