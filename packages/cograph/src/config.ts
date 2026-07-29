@@ -12,6 +12,15 @@ export interface OntaConfig {
   defaultKg?: string;
 }
 
+/**
+ * Clerk user ids look like `user_2abc…`. They are NOT workspace/tenant ids.
+ * A historical `onta login` bug wrote `tenant: userId` into config; the API
+ * then 403s with "does not grant access to tenant 'user_…'".
+ */
+export function isClerkUserId(value: string | undefined | null): boolean {
+  return typeof value === "string" && /^user_[A-Za-z0-9]+$/.test(value);
+}
+
 /** Canonical config dir — the write target. */
 function configDir(): string {
   return join(homedir(), ".onta");
