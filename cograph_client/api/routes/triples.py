@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
@@ -18,7 +19,7 @@ router = APIRouter()
 @router.post("/graphs/{tenant}/triples", response_model=TripleBatch)
 async def create_triples(
     body: TripleCreate,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     graph_uri = tenant_graph_uri(tenant.tenant_id)
@@ -47,7 +48,7 @@ async def get_triples(
 @router.delete("/graphs/{tenant}/triples", response_model=TripleBatch)
 async def remove_triples(
     body: TripleDelete,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     graph_uri = tenant_graph_uri(tenant.tenant_id)

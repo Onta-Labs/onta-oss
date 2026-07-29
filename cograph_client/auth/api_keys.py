@@ -38,6 +38,15 @@ class TenantContext:
     # predicate that consumes this bit (plus an env allowlist on the premium
     # side); callers must not invent a second path.
     enhanced_entitled: bool = False
+    # Tenant-level capability for this subject on this workspace (``read`` |
+    # ``write``). Defaults to ``write`` so static keys and pre-capability
+    # membership keep today's behavior. Resolved at request time by
+    # :func:`cograph_client.auth.access.require_tenant_write` / membership
+    # lookup — not trusted from the client.
+    capability: str = "write"
+    # Membership role when known: ``owner`` | ``writer`` | ``reader``. Empty
+    # when static/anonymous keys have no membership row.
+    role: str = ""
 
 
 @dataclass

@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.normalization.execute import apply_rule
 from cograph_client.normalization.inference import suggest_rules
@@ -159,7 +160,7 @@ def _validate_create_request(req: CreateRuleRequest) -> None:
 @router.post("/rules", response_model=NormalizationRule)
 async def create_rule(
     req: CreateRuleRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Create a USER-AUTHORED normalization rule directly (no inference).
@@ -192,7 +193,7 @@ async def create_rule(
 async def suggest(
     kg: str = Query(..., description="KG name to analyze"),
     type: str = Query(..., description="Type name to analyze"),
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Infer normalization rules for a type's predicates, persist them as
@@ -218,7 +219,7 @@ async def list_rules(
 @router.post("/rules/{rule_id}/confirm", response_model=NormalizationRule)
 async def confirm_rule(
     rule_id: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     rule = await _store(client).update_status(tenant.tenant_id, rule_id, "confirmed")
@@ -230,7 +231,7 @@ async def confirm_rule(
 @router.post("/rules/{rule_id}/reject", response_model=NormalizationRule)
 async def reject_rule(
     rule_id: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     rule = await _store(client).update_status(tenant.tenant_id, rule_id, "rejected")
@@ -242,7 +243,7 @@ async def reject_rule(
 @router.post("/rules/{rule_id}/apply", status_code=202)
 async def apply_rule_route(
     rule_id: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Apply a confirmed rule in the background; ack immediately (202).

@@ -60,6 +60,7 @@ from typing import Any, Optional, Protocol, Sequence, runtime_checkable
 import structlog
 
 from cograph_client.auth.api_keys import AuthVerdict, get_external_verifier
+from cograph_client.auth.capabilities import normalize_role
 from cograph_client.config import settings
 from cograph_client.db.pool import get_pg_pool
 
@@ -98,7 +99,8 @@ class Workspace:
 class WorkspaceMember:
     tenant_id: str
     subject: str
-    role: str  # "owner" | "member"
+    #: ``owner`` | ``writer`` | ``reader`` (legacy ``member`` = writer).
+    role: str
     joined_at: datetime = field(default_factory=_utcnow)
 
 
@@ -197,7 +199,7 @@ class WorkspaceStore(Protocol):
     async def list_members(self, tenant_id: str) -> list[WorkspaceMember]: ...
 
     async def add_member(
-        self, tenant_id: str, subject: str, role: str = "member"
+        self, tenant_id: str, subject: str, role: str = "writer"
     ) -> None:
         """Idempotent membership upsert (an existing row keeps its role)."""
         ...
@@ -322,8 +324,9 @@ class InMemoryWorkspaceStore:
         return sorted(members, key=lambda m: m.joined_at)
 
     async def add_member(
-        self, tenant_id: str, subject: str, role: str = "member"
+        self, tenant_id: str, subject: str, role: str = "writer"
     ) -> None:
+        role = normalize_role(role)
         with self._lock:
             self._members.setdefault(
                 (tenant_id, subject),
@@ -479,11 +482,17 @@ class PostgresWorkspaceStore:
                 CREATE TABLE IF NOT EXISTS {self._MEMBERS} (
                     tenant_id text NOT NULL,
                     subject text NOT NULL,
-                    role text NOT NULL CHECK (role IN ('owner','member')),
+                    role text NOT NULL,
                     joined_at timestamptz NOT NULL DEFAULT now(),
                     PRIMARY KEY (tenant_id, subject)
                 )
                 """
+            )
+            # Widen legacy CHECK (owner|member) so writer/reader may land.
+            # CREATE TABLE IF NOT EXISTS never rewrites an existing constraint.
+            await conn.execute(
+                f"ALTER TABLE {self._MEMBERS} "
+                f"DROP CONSTRAINT IF EXISTS {self._MEMBERS}_role_check"
             )
             await conn.execute(
                 f"""
@@ -491,7 +500,7 @@ class PostgresWorkspaceStore:
                     id uuid PRIMARY KEY,
                     tenant_id text NOT NULL,
                     email text NOT NULL,
-                    role text NOT NULL DEFAULT 'member',
+                    role text NOT NULL DEFAULT 'writer',
                     status text NOT NULL CHECK (status IN
                         ('pending','accepted','revoked','declined','expired')),
                     token_hash text NOT NULL,
@@ -503,6 +512,8 @@ class PostgresWorkspaceStore:
                 )
                 """
             )
+            # Default for brand-new tables was already 'writer'; older DBs still
+            # default to 'member' which normalize_role maps to writer.
             # Duplicate-pending prevention at the constraint level — two
             # concurrent creates must not both land.
             await conn.execute(
@@ -619,8 +630,9 @@ class PostgresWorkspaceStore:
         return [self._member(r) for r in rows]
 
     async def add_member(
-        self, tenant_id: str, subject: str, role: str = "member"
+        self, tenant_id: str, subject: str, role: str = "writer"
     ) -> None:
+        role = normalize_role(role)
         pool = await self._conn_pool()
         async with pool.acquire() as conn:
             await conn.execute(

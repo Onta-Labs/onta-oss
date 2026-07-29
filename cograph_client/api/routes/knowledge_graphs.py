@@ -16,6 +16,7 @@ from cograph_client.api.deps import (
     get_schedule_store,
 )
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.enrichment.models import JobCategory, JobStatus
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.ontology_queries import (
@@ -290,7 +291,7 @@ async def _enriching_kgs(job_store, tenant_id: str) -> set[str]:
 @router.post("", response_model=KGInfo, status_code=201)
 async def create_kg(
     body: KGCreate,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Create a new knowledge graph for a tenant.
@@ -379,7 +380,7 @@ async def create_kg(
 @router.delete("/{kg_name}")
 async def delete_kg(
     kg_name: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
     schedule_store=Depends(get_schedule_store),
 ):
@@ -478,7 +479,7 @@ class ReindexAccepted(BaseModel):
 async def reindex_kg_semantic(
     kg_name: str,
     request: Request,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
     schedule_store=Depends(get_schedule_store),
 ):

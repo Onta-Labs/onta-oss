@@ -10,7 +10,8 @@ from pydantic import ValidationError
 from cograph_client.analytics import distinct_id_for, emit
 from cograph_client.api.deps import get_enrichment_job_store, get_neptune_client
 from cograph_client.api.rate_limit import limiter
-from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.api_keys import TenantContext
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.resolver.models import CSVRowsRequest, CSVSchemaMapping, CSVSchemaRequest, IngestRequest, IngestResult
@@ -68,7 +69,7 @@ def _emit_ingestion_completed(
 async def ingest(
     request: Request,
     body: IngestRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
@@ -142,7 +143,7 @@ async def ingest(
 async def infer_csv_schema(
     request: Request,
     body: CSVSchemaRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Step 1: Infer column mapping from CSV headers + sample rows.
@@ -210,7 +211,7 @@ async def infer_csv_schema(
 async def ingest_csv_rows(
     request: Request,
     body: CSVRowsRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
@@ -520,7 +521,7 @@ async def ingest_csv_rows(
 @limiter.limit("5/minute")
 async def build_embeddings(
     request: Request,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Trigger a full embedding build for all ontology types in this tenant."""
