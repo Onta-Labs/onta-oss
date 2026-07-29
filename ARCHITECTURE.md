@@ -318,10 +318,13 @@ Question → Ontology Retrieval → Example Retrieval → SPARQL Generation → 
 **Step 2 — Example retrieval** (`omnix/nlp/example_bank.py`): Before generating
 SPARQL, retrieve 3 similar working queries from the example bank. The bank stores
 (question, SPARQL, embedding) pairs from previous eval runs. Retrieval algorithm:
-embed the question, cosine similarity against bank, anti-cheat filter (exclude >0.95
-similarity), cross-dataset preference, pattern diversity (pick examples with different
-SPARQL patterns: count vs join vs filter). This is RAG for SPARQL — concrete examples
-teach patterns better than abstract rules.
+embed the question, cosine similarity against bank, pattern diversity (pick examples
+with different SPARQL patterns: count vs join vs filter), plus an anti-cheat filter
+and cross-dataset preference that apply ONLY when the caller passes
+`exclude_questions` (the eval harness; see "Retrieval Algorithm" below). Each
+retrieved example's `FROM` clause is rewritten to the caller's own target graph
+before it enters the prompt. This is RAG for SPARQL — concrete examples teach
+patterns better than abstract rules.
 
 **Step 3 — SPARQL generation**: LLM generates a SELECT query using the ontology +
 examples as context. Default model: `llama3.1-8b` via Cerebras. Configurable to
@@ -461,10 +464,42 @@ image-baked bank).
 
 1. Embed the incoming question
 2. Cosine similarity against all examples → top-10 candidates
-3. **Anti-cheat:** Exclude any example with >0.90 similarity to excluded questions
-4. **Cross-dataset preference:** Examples from different KGs score higher (0.9x penalty for same-KG)
-5. **Same-dataset gate:** Same-KG examples must have similarity <0.75
+3. **Anti-cheat (only when `exclude_questions` is passed):** Exclude any example with >0.90 similarity to an excluded question
+4. **Cross-dataset preference (same gate):** Examples from different KGs score higher (0.9x penalty for same-KG)
+5. **Same-dataset gate (same gate):** Same-KG examples must have similarity <0.75
 6. **Pattern diversity:** Pick 3 examples with different pattern tags (count, join, filter, avg, etc.)
+
+**Steps 3-5 are EVAL ONLY.** All three are gated on `exclude_vecs`
+(`nlp/example_bank.py`), which is non-empty only when the caller passes
+`exclude_questions`, and only the eval harness does. `/ask` defaults it to `[]`
+(`api/routes/ask.py`) and `QueryCapability.answer` never passes it at all
+(`agent/capabilities/query.py`). So **production retrieval is plain top-10
+cosine over the global bank, then pattern-diversify**: no same-KG block, no
+cross-dataset preference. That is deliberate, not an oversight. In production
+we WANT to reuse a near-identical prior answer on the same KG: it is the best
+available signal, and its type/attribute URIs are exactly right. Blocking or
+penalizing it would actively hurt real users. Do not "fix" this by ungating the
+filters.
+
+### Tenant Scoping (there is none, by design)
+
+The bank is scoped per **process**, not per tenant and not per KG:
+`DEFAULT_BANK_PATH` is a single JSONL file and `Example` carries a `kg_name` but
+no `tenant_id`. Every tenant retrieves from the same examples, which is the whole
+point (see cross-domain examples below).
+
+What is NOT acceptable is leaking the *origin graph* of an example. The graph IRI
+is the only tenant-identifying token in a stored example, and the shipped bank is
+262 examples all answered against `demo-tenant`. `format_examples_for_prompt`
+therefore rewrites each example's `FROM` clause (and any other `/graphs/` IRI) to
+the **caller's own target graph** before the example enters the prompt (ONTA-420,
+`tests/test_example_bank_sanitize.py`). Type and attribute IRIs are deliberately
+left alone: they are the pattern being taught, and they name public benchmark
+schemas rather than customer data.
+
+Note the alternative that was rejected: adding `tenant_id` to `Example` and
+filtering retrieval would hide every shipped example from every real tenant and
+kill the pattern transfer the bank exists for.
 
 ### Cross-domain Examples (by design)
 
@@ -487,9 +522,16 @@ query from a different project, understand the pattern, adapt it. Cross-domain
 examples are a structural hint, not an answer key.
 
 **Guard rails in place:**
-- Same-KG examples with >0.75 similarity are blocked (prevents near-duplicate leaking)
-- Same-KG examples get a 10% score penalty (prefers cross-domain)
+- Every example's `FROM` clause is rewritten to the asking tenant's own target
+  graph, so a cross-domain example can never point the LLM at another tenant's
+  graph or at the wrong KG (ONTA-420)
 - Pattern diversity ensures the LLM sees varied SPARQL structures, not 3 of the same type
+- The example block is labelled in the prompt: reuse the shape, check every
+  type/attribute URI against the current ontology schema instead of copying it
+- **Eval only:** same-KG examples with >0.75 similarity are blocked and same-KG
+  examples get a 10% score penalty. Both are off in production (see the
+  retrieval algorithm above) and are anti-cheat measures for benchmarking, not
+  quality guard rails for real users.
 
 ### Anti-cheat for Evals
 
