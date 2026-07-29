@@ -170,3 +170,19 @@ def test_invalid_kg_name_degrades_one_row_not_the_whole_listing(
     assert not any(BAD_NAME in q for q in queries), (
         f"invalid name must not be interpolated into SPARQL; queries={queries}"
     )
+
+    # Same for the count store-back. Degrading the row above makes
+    # `_store_triple_count` REACHABLE with the bad name (before the fix the
+    # request died in `gather` first), and `kg_meta_uri` — unlike
+    # `kg_graph_uri` — does NOT validate. Its `is_valid_kg_name` guard must
+    # keep a `>`-bearing name out of the metadata graph's UPDATE, where it
+    # would close the IRI early and inject SPARQL.
+    updates = [c.args[0] for c in mock_neptune.update.call_args_list if c.args]
+    assert not any(BAD_NAME in u for u in updates), (
+        f"invalid name must not be interpolated into an UPDATE; updates={updates}"
+    )
+    # The healthy live-fallback row still gets persisted — the guard is
+    # name-scoped, it does not suppress the whole store-back pass.
+    assert any(KG_TRIPLE_COUNT in u and "11" in u for u in updates), (
+        f"healthy computed count should still persist; updates={updates}"
+    )
