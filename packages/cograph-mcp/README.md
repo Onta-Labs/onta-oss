@@ -21,7 +21,7 @@ npx -y -p @onta/mcp onta-mcp
       "env": {
         "ONTA_API_KEY": "your-key",
         "ONTA_API_URL": "https://api.onta.sh",
-        "ONTA_TENANT": "demo-tenant"
+        "ONTA_TENANT": "your-workspace-id"
       }
     }
   }
