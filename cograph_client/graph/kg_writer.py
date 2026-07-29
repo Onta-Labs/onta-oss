@@ -52,7 +52,6 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Optional
@@ -82,6 +81,7 @@ from cograph_client.graph.queries import (
     count_subjects_query,
     delete_subject_predicates_query,
     delete_subjects_query,
+    is_valid_kg_name,
     kg_meta_uri,
     parse_kg_graph_uri,
     rewrite_predicate_update,
@@ -179,15 +179,17 @@ async def _count_matching(neptune, count_sparql: str) -> int:
 _KG_NAME_PRED = KG_NAME_PRED
 _kg_meta_uri = kg_meta_uri
 
-# A KG name that can legally be created via the Explorer ("New KG" button). Must
-# match ``KGCreate.name``'s pattern in ``api/routes/knowledge_graphs.py`` — a
-# name that can't be created via the UI must not be allowed to silently corrupt
-# the registration URI (``<{kg_uri}>`` interpolates the raw name, so a `>` or
-# whitespace would break the URI even when the literal is escaped). Same pattern
-# ``kg_graph_uri`` enforces (ONTA-414); kept as a warn-and-skip here because
-# registration is best-effort post-write housekeeping that must never fail a
-# write.
-_KG_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+# A KG name that can legally be created via the Explorer ("New KG" button) and
+# that ``kg_graph_uri`` will accept: a name that can't be created via the UI must
+# not be allowed to silently corrupt the registration URI (``<{kg_uri}>``
+# interpolates the raw name, so a `>` or whitespace would break the URI even when
+# the literal is escaped).
+#
+# ONTA-414 folded this into the ONE predicate in ``graph/queries.py``. The local
+# copy that used to live here had already drifted (``$`` instead of ``\Z``, so it
+# accepted a trailing newline that ``KGCreate.name`` rejects). Registration stays
+# a warn-and-skip rather than a raise, because it is best-effort post-write
+# housekeeping that must never fail a write.
 
 
 async def ensure_kg_registered(neptune, tenant_id: str, kg_name: str) -> None:
@@ -223,7 +225,7 @@ async def ensure_kg_registered(neptune, tenant_id: str, kg_name: str) -> None:
     """
     if not kg_name:
         return
-    if not _KG_NAME_RE.match(kg_name):
+    if not is_valid_kg_name(kg_name):
         # A name with URI-breaking characters (``>``, whitespace, …) can't be a
         # real KG (the UI rejects it), so don't risk corrupting the metadata
         # graph — log and skip rather than emit a malformed registration.

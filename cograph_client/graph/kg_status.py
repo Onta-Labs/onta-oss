@@ -12,9 +12,15 @@ one indistinguishable answer, ``"No results found."``:
 
 Only (c) is an answer. (a) and (b) are states the caller has to know about to
 act, and an MCP/CLI agent in particular cannot self-correct a typo it is never
-told about. This module separates them with at most two ASK queries, both O(1)
-in any triple store, and every interface (webapp, CLI, MCP) reaches it through
-the SAME canonical backend routes rather than re-deriving the check client-side.
+told about. This module separates them with two ASK queries on the hot path
+(three on the rare empty/missing path), all O(1) in any triple store, and every
+interface (webapp, CLI, MCP) reaches it through the SAME canonical backend
+routes rather than re-deriving the check client-side.
+
+"Empty" is defined against the query's ACTUAL dataset, which is a union of named
+graphs rather than the one per-KG graph, so the probe can never call a workspace
+empty that the answer query could still have answered from. See
+:func:`kg_data_status` for the mechanics.
 
 Deliberately NOT ``knowledge_graphs._live_triple_count``: that is a full
 ``COUNT(*)`` scan, seconds slow on a large KG, and its own docstring forbids the
@@ -50,6 +56,12 @@ KG_OK = "ok"
 KG_EMPTY = "empty"
 KG_MISSING = "missing"
 
+_RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+# Every instance's rdf:type object lives under this prefix (tenant, public and
+# enhanced type URIs alike). Ontology CLASS declarations do not (their object is
+# rdfs:Class), which is exactly the discrimination _base_has_instances_query needs.
+_TYPES_PREFIX = "https://cograph.tech/types/"
+
 # {(tenant_id, kg_name): checked_at}. Positive verdicts only (see module docstring).
 _kg_ok_cache: dict[tuple[str, str], float] = {}
 KG_STATUS_CACHE_TTL = 60  # seconds, mirrors nlp.pipeline's _ontology_cache
@@ -64,22 +76,68 @@ def invalidate_kg_status(tenant_id: str, kg_name: str | None = None) -> None:
         _kg_ok_cache.pop(key, None)
 
 
+def _base_has_instances_query(base_graph: str) -> str:
+    """ASK whether the tenant BASE graph holds INSTANCE data (not just schema).
+
+    See :func:`kg_data_status` for why a bare ``?s ?p ?o`` would be wrong here.
+    ``rdf:type`` is the scan-bounding predicate, and the object-namespace FILTER
+    is what separates instances from the ontology's own class declarations. The
+    prefix covers layered type URIs (``types/public/X``, ``types/enhanced/X``)
+    too, since those are still instances when they appear as an object.
+    """
+    return (
+        f"ASK FROM <{base_graph}> WHERE {{ "
+        f"?s <{_RDF_TYPE}> ?t . "
+        f'FILTER(STRSTARTS(STR(?t), "{_TYPES_PREFIX}")) '
+        f"}}"
+    )
+
+
 async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     """Return :data:`KG_OK`, :data:`KG_EMPTY` or :data:`KG_MISSING`.
 
-    Two ASKs, issued CONCURRENTLY so this costs one round-trip of latency:
+    Two ASKs on the hot path, issued CONCURRENTLY so this costs one round-trip
+    of latency:
 
     * ``registered``: the ``<kgs/{tenant}/{name}> <onto/kg_name> "{name}"``
       record in the tenant base graph, the same record ``list_kgs`` reads.
-    * ``has_data``: whether the KG's own named graph holds a single triple.
+    * ``kg_has_data``: whether the KG's own named graph holds a single triple.
 
     Both are needed, and the combination matters. A KG that holds data but has
     NO registration record (a legacy graph written before
     ``ensure_kg_registered`` folded registration into the shared write path) is
     reported :data:`KG_OK`, not :data:`KG_MISSING`. Refusing to answer a
     question about a graph that demonstrably has data would be a far worse
-    regression than the bug being fixed. Only "no record AND no triples" is
+    regression than the bug being fixed. Only "no record AND no data" is
     :data:`KG_MISSING`.
+
+    The dataset is a UNION, not one graph
+    -------------------------------------
+    A THIRD ASK fires only when the KG's own graph is empty, because "empty" has
+    to mean what the ANSWER QUERY means by empty. ``/ask`` threads
+    ``layer_stack_for(tenant).visible_graph_uris()`` into the pipeline, that
+    stack ALWAYS contains the tenant BASE graph (``LayerStack.visible_layers``
+    always includes ``Layer.TENANT``), and ``add_layer_from_clauses`` splices
+    those in as extra ``FROM`` clauses. So the effective default graph is the
+    union of ``kg/<name>`` + the tenant base graph + the global layers.
+
+    A workspace can legitimately hold its instance data in the tenant BASE graph
+    rather than a per-KG graph (``api/routes/ingest.py`` writes there whenever
+    ``kg_name`` is absent, and explicitly falls back to it). For such a
+    workspace an empty ``kg/<name>`` does NOT mean the question is unanswerable,
+    and short-circuiting on the per-KG ASK alone would turn a working answer
+    into a confident refusal. That is the same class of dishonesty this probe
+    exists to remove, just pointed the other way.
+
+    That third ASK is deliberately NOT a bare ``?s ?p ?o`` over the base graph:
+    the base graph is also the ONTOLOGY graph and always holds at least the KG's
+    own registration triple, so a bare pattern would be true for every
+    registered KG and this feature would never fire. It looks for INSTANCE data
+    specifically, a subject typed with a ``cograph.tech/types/`` class. Ontology
+    class declarations are ``<types/X> rdf:type <rdfs#Class>`` (object outside
+    that namespace), so they do not count, while instances
+    (``<entities/X/id> rdf:type <types/X>``) do. This is the same notion of
+    "active type" the pipeline's own instance-graph probe uses.
 
     Fails OPEN: any backend error returns :data:`KG_OK` so a transient Neptune
     hiccup degrades to today's behaviour (attempt the question) rather than
@@ -102,21 +160,27 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     registered_q = (
         f"ASK FROM <{base}> WHERE {{ <{meta}> <{KG_NAME_PRED}> ?n }}"
     )
-    has_data_q = f"ASK FROM <{kg_graph}> WHERE {{ ?s ?p ?o }}"
+    kg_has_data_q = f"ASK FROM <{kg_graph}> WHERE {{ ?s ?p ?o }}"
 
     try:
-        registered, has_data = await asyncio.gather(
-            neptune.ask(registered_q), neptune.ask(has_data_q)
+        registered, kg_has_data = await asyncio.gather(
+            neptune.ask(registered_q), neptune.ask(kg_has_data_q)
         )
+        if kg_has_data:
+            _kg_ok_cache[(tenant_id, kg_name)] = time.time()
+            return KG_OK
+        # Only now, on the rare path where we are about to declare a KG empty or
+        # missing, pay for the base-graph instance check. The common
+        # populated-KG case stays at exactly two ASKs.
+        if await neptune.ask(_base_has_instances_query(base)):
+            _kg_ok_cache[(tenant_id, kg_name)] = time.time()
+            return KG_OK
     except Exception:  # noqa: BLE001 - never turn a probe failure into a false claim
         logger.warning(
             "kg_status_probe_failed", tenant=tenant_id, kg_name=kg_name, exc_info=True
         )
         return KG_OK
 
-    if has_data:
-        _kg_ok_cache[(tenant_id, kg_name)] = time.time()
-        return KG_OK
     if registered:
         return KG_EMPTY
     return KG_MISSING

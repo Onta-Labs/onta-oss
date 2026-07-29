@@ -10,7 +10,25 @@ def tenant_graph_uri(tenant_id: str) -> str:
 # SAME pattern ``KGCreate.name`` enforces on create (api/routes/knowledge_graphs.py)
 # and that ``kg_writer.ensure_kg_registered`` enforces before registering: a name
 # that could never be created must never reach a generated SPARQL string.
-_KG_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+#
+# ``\Z``, not ``$``: Python's ``$`` also matches immediately BEFORE a final
+# newline, so ``re.match(r"^[a-zA-Z0-9_-]+$", "kg\n")`` succeeds and a trailing
+# ``%0A`` on a path or query param would have slipped through. Nothing can follow
+# that newline (so it was not itself an injection), but it broke the stated
+# invariant that this is exactly the pattern create enforces: pydantic compiles
+# its patterns with Rust regex, whose ``$`` is a strict end-of-text, so
+# ``KGCreate.name`` rejects ``"kg\n"``. ``\Z`` makes the two agree.
+_KG_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+\Z")
+
+
+def is_valid_kg_name(kg_name: object) -> bool:
+    """Whether ``kg_name`` may be interpolated into a graph IRI.
+
+    THE predicate. Callers that must not raise (the best-effort registration in
+    the shared write path) branch on this instead of keeping a second copy of the
+    pattern that can drift, as one did before ONTA-414.
+    """
+    return isinstance(kg_name, str) and _KG_NAME_RE.match(kg_name) is not None
 
 
 class InvalidKGName(ValueError):
@@ -33,9 +51,10 @@ def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
     graph. That is a tenant-isolation break, not a cosmetic bug, so this fails
     closed with :class:`InvalidKGName` instead of emitting a malformed IRI.
     """
-    if not isinstance(kg_name, str) or not _KG_NAME_RE.match(kg_name):
+    if not is_valid_kg_name(kg_name):
         raise InvalidKGName(
-            f"Invalid kg_name {kg_name!r}: must match ^[a-zA-Z0-9_-]+$"
+            f"Invalid kg_name {kg_name!r}: must be one or more of [a-zA-Z0-9_-] "
+            "with nothing else, including no trailing whitespace or newline"
         )
     return f"https://cograph.tech/graphs/{tenant_id}/kg/{kg_name}"
 

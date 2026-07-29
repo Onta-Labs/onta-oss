@@ -2999,14 +2999,26 @@ async def test_record_turn_stamps_the_kg_name(monkeypatch):
 class KGStateNeptune(FakeNeptune):
     """FakeNeptune that answers the shared KG-status probe's two ASKs."""
 
-    def __init__(self, *, registered: bool, has_data: bool, others=()):
+    def __init__(
+        self,
+        *,
+        registered: bool,
+        has_data: bool,
+        base_instances: bool = False,
+        others=(),
+    ):
         super().__init__()
         self._registered = registered
         self._has_data = has_data
+        self._base_instances = base_instances
         self._others = list(others)
 
     async def ask(self, q):
-        return self._registered if "/kg_name>" in q else self._has_data
+        if "/kg_name>" in q:
+            return self._registered
+        if "rdf-syntax-ns#type" in q:
+            return self._base_instances
+        return self._has_data
 
     async def query(self, q):
         if "/kg_name>" in q:
@@ -3075,6 +3087,32 @@ async def test_question_about_empty_kg_answers_explicitly(monkeypatch):
     assert "contains no data" in out["answer"]
     assert out["answer"] != "No results found."
     assert out["sparql"] == ""
+
+
+@pytest.mark.asyncio
+async def test_question_about_empty_kg_still_answers_from_the_base_graph(monkeypatch):
+    """Union-aware: an empty per-KG graph is not an empty dataset when the
+    workspace keeps its instances in the tenant base graph."""
+    _stub_classifier(monkeypatch, "question")
+
+    seen = {}
+
+    async def fake_ask(self, question, graph_uri, instance_graph=None, **kwargs):
+        seen["ran"] = True
+        from cograph_client.models.query import NLResult
+
+        return NLResult(answer="42", sparql="SELECT ...", explanation="e")
+
+    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
+
+    ctx = _ctx(
+        neptune=KGStateNeptune(registered=True, has_data=False, base_instances=True)
+    )
+    out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
+
+    assert seen.get("ran") is True
+    assert out["kind"] == "answer"
+    assert out["answer"] == "42"
 
 
 @pytest.mark.asyncio

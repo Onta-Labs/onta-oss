@@ -40,16 +40,24 @@ def _select(var: str, values: list[str]) -> dict:
     }
 
 
-def _wire_kg(mock_neptune, *, registered: bool, has_data: bool, others=()):
+def _wire_kg(
+    mock_neptune, *, registered: bool, has_data: bool, base_instances=False, others=()
+):
     """Make the shared KG-status probe report a specific state.
 
-    The probe fires two ASKs (registration record in the tenant base graph, and
-    "does the KG graph hold a triple") and, only on the missing path, one SELECT
-    for the tenant's real KG names.
+    The probe fires two ASKs on the hot path (the registration record in the
+    tenant base graph, and "does the KG graph hold a triple"), a third only when
+    the KG graph is empty ("does the tenant BASE graph hold instance data", the
+    union-aware check), and one SELECT for the tenant's real KG names on the
+    missing path.
     """
 
     async def fake_ask(sparql: str) -> bool:
-        return registered if "/kg_name>" in sparql else has_data
+        if "/kg_name>" in sparql:
+            return registered
+        if "rdf-syntax-ns#type" in sparql:
+            return base_instances
+        return has_data
 
     mock_neptune.ask.side_effect = fake_ask
     mock_neptune.query.return_value = _select("name", list(others))
@@ -203,6 +211,59 @@ def test_ask_unregistered_but_populated_kg_is_not_reported_missing(
     assert res.json()["answer"] == "42"
 
 
+def test_ask_empty_kg_still_answers_when_data_lives_in_the_base_graph(
+    client, auth_headers, mock_neptune
+):
+    """The dataset is a UNION, so an empty per-KG graph is not an empty dataset.
+
+    /ask threads layer_stack_for(tenant).visible_graph_uris() into the pipeline,
+    that stack ALWAYS includes the tenant base graph, and add_layer_from_clauses
+    splices it in as an extra FROM. A workspace that ingested without a kg_name
+    keeps its instances there (api/routes/ingest.py), so short-circuiting on the
+    per-KG ASK alone would turn an answer main gives today into a confident
+    "nothing to query" refusal.
+    """
+    _wire_kg(mock_neptune, registered=True, has_data=False, base_instances=True)
+    ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
+
+    with patch(
+        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        new_callable=AsyncMock,
+    ) as mock_ask:
+        mock_ask.return_value = ok
+        res = client.post(
+            f"/graphs/{TENANT}/ask",
+            json={"question": "how many", "kg_name": "fresh"},
+            headers=auth_headers,
+        )
+
+    assert res.status_code == 200
+    assert res.json()["answer"] == "42"
+    mock_ask.assert_called_once()
+
+
+def test_ask_missing_kg_still_answers_when_data_lives_in_the_base_graph(
+    client, auth_headers, mock_neptune
+):
+    """Same do-no-harm rule on the 404 path: main would have answered this."""
+    _wire_kg(mock_neptune, registered=False, has_data=False, base_instances=True)
+    ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
+
+    with patch(
+        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        new_callable=AsyncMock,
+    ) as mock_ask:
+        mock_ask.return_value = ok
+        res = client.post(
+            f"/graphs/{TENANT}/ask",
+            json={"question": "how many", "kg_name": "typo"},
+            headers=auth_headers,
+        )
+
+    assert res.status_code == 200
+    assert res.json()["answer"] == "42"
+
+
 def test_ask_probe_failure_degrades_to_answering(client, auth_headers, mock_neptune):
     """A backend hiccup during the probe must never invent "graph missing"."""
     mock_neptune.ask.side_effect = RuntimeError("neptune throttled")
@@ -277,6 +338,33 @@ def test_ask_malformed_kg_name_is_422(client, auth_headers, mock_neptune, bad_na
     # Nothing derived from the hostile name ever reached a SPARQL string.
     for call in mock_neptune.query.call_args_list:
         assert "other-tenant" not in str(call)
+
+
+@pytest.mark.parametrize(
+    "bad_segment",
+    [
+        "kg%3E",  # ">", the IRI-breakout character
+        "kg%20name",  # space
+        "kg%0A",  # trailing newline (the "$" vs "\Z" gap)
+    ],
+)
+def test_path_param_kg_name_is_422_via_the_app_level_handler(
+    client, auth_headers, bad_segment
+):
+    """Covers the handler itself, NOT a pydantic pattern.
+
+    Every other 422 in this file is satisfied by the request MODEL, so deleting
+    `app.add_exception_handler(InvalidKGName, ...)` would leave them all green
+    while turning this into an unhandled 500 in production. This route takes
+    kg_name as a PATH parameter, so nothing validates it before it reaches
+    `kg_graph_uri` and only the handler stands between the caller and a 500.
+    """
+    res = client.get(
+        f"/graphs/{TENANT}/explore/kgs/{bad_segment}/types/Person/summary",
+        headers=auth_headers,
+    )
+    assert res.status_code == 422, res.text
+    assert "kg_name" in res.json()["detail"]
 
 
 def test_ask_empty_kg_name_still_means_tenant_graph(client, auth_headers):
