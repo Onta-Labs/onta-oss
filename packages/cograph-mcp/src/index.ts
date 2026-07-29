@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync, statSync } from "node:fs";
+import { basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -12,8 +13,36 @@ import type {
   Schedule,
 } from "@onta/cli";
 import { z } from "zod";
+import {
+  ALLOWED_EXTENSIONS,
+  DEFAULT_DEPTH,
+  DEFAULT_LIMIT,
+  MAX_DEPTH,
+  MAX_RESULTS,
+  describeRootResolution,
+  listWorkspaceFiles,
+  renderListResult,
+  resolveRoots,
+} from "./workspace.js";
 
 const VERSION = "0.1.0";
+
+// ONTA-415: the local directory the user has explicitly granted this server, if
+// any. Resolved ONCE at startup from ONTA_LOCAL_FILES_DIR (see workspace.ts for
+// the precedence and for why there is no default root). Empty means the
+// capability stays DORMANT: `list_local_files` is never registered, so it does
+// not appear in tools/list and burns no context in a session that has no root.
+const LOCAL_FILE_ROOTS: string[] = (() => {
+  const res = resolveRoots();
+  // One stderr line either way, so a typo in the env var is diagnosable rather
+  // than presenting as a silently missing tool.
+  try {
+    process.stderr.write(`${describeRootResolution(res)}\n`);
+  } catch {
+    // stderr unavailable; the resolution itself still stands.
+  }
+  return res.roots;
+})();
 
 // The job categories the `list_jobs` filter accepts. This MUST stay in lockstep
 // with the backend `JobCategory` enum (cograph_client/enrichment/models.py) — a
@@ -210,6 +239,43 @@ server.registerTool(
   },
 );
 
+// ONTA-415: the "did you mean" suffix on a not-found path. This is the SECOND
+// consumer of the one containment-guarded primitive, not a second enumeration
+// path, so there is a single guard and a single test surface.
+//
+// The suffix is CONDITIONAL on a root actually being configured. Naming a tool
+// that is absent from tools/list is the ONTA-243 failure class documented at the
+// top of this file: the model is sent after a capability it cannot call and
+// strands the task. With no root there is no lister and no hint.
+function notFoundHint(filePath: string, roots: string[]): string {
+  if (!roots.length) return "";
+  let rows: ReturnType<typeof listWorkspaceFiles>["files"] = [];
+  try {
+    rows = listWorkspaceFiles(roots, { limit: MAX_RESULTS }).files;
+  } catch {
+    rows = [];
+  }
+  if (!rows.length) {
+    return (
+      ` No ${ALLOWED_EXTENSIONS.join(" / ")} files were found under the ` +
+      `configured local root either. Call list_local_files to check.`
+    );
+  }
+  // Prefer an exact basename match (the classic "right file, wrong directory"),
+  // otherwise show the most recently modified candidates.
+  const want = basename(filePath).toLowerCase();
+  const exact = rows.filter((r) => basename(r.path).toLowerCase() === want);
+  const shown = (exact.length ? exact : rows).slice(0, 5);
+  const lead = exact.length
+    ? ` A file with that name does exist under the configured local root:`
+    : ` Local files available under the configured root (most recent first):`;
+  return (
+    `${lead}\n` +
+    shown.map((r) => `  ${r.path}`).join("\n") +
+    `\nCall list_local_files for the full list.`
+  );
+}
+
 // ONTA-253: this tool's contract is "ingest a CSV FILE" — so a path that does
 // not resolve to a readable file must be a CLEAR error, never a silent
 // text-ingest of the filename. We stat the path up front (returning a specific
@@ -226,6 +292,7 @@ export async function ingestCsvHandler(
     join_on,
   }: { file_path: string; kg_name: string; join_on?: string },
   makeClient: () => Client = client,
+  roots: string[] = LOCAL_FILE_ROOTS,
 ) {
   let ok = false;
   try {
@@ -238,7 +305,8 @@ export async function ingestCsvHandler(
       new Error(
         `CSV file not found or not a readable file: ${file_path}. ` +
           `ingest_csv requires an absolute path to an existing CSV file — ` +
-          `nothing was ingested.`,
+          `nothing was ingested.` +
+          notFoundHint(file_path, roots),
       ),
     );
   }
@@ -294,6 +362,90 @@ server.registerTool(
   async ({ file_path, kg_name, join_on }) =>
     ingestCsvHandler({ file_path, kg_name, join_on }),
 );
+
+// ONTA-415: attacks the ROOT CAUSE of ONTA-253. That fix made a guessed path
+// fail LOUDLY (local stat + `asFile:true`) but did nothing to stop the guessing:
+// because `ingest_csv` demands an absolute path, an agent with no way to see the
+// filesystem had to invent one. This tool removes the guess.
+export async function listLocalFilesHandler(
+  {
+    subdir,
+    pattern,
+    max_depth,
+    limit,
+  }: { subdir?: string; pattern?: string; max_depth?: number; limit?: number },
+  roots: string[] = LOCAL_FILE_ROOTS,
+) {
+  const depth = max_depth ?? DEFAULT_DEPTH;
+  try {
+    const res = listWorkspaceFiles(roots, {
+      subdir,
+      pattern,
+      maxDepth: depth,
+      limit: limit ?? DEFAULT_LIMIT,
+    });
+    return textResult(renderListResult(res, roots, Math.min(depth, MAX_DEPTH)));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+// Registered ONLY when a root resolved. A registered-but-always-erroring tool
+// would still advertise the capability in every tools/list and burn context in
+// every session, so the dormant state is "absent", not "present and broken".
+if (LOCAL_FILE_ROOTS.length) {
+  server.registerTool(
+    "list_local_files",
+    {
+      description:
+        "List data files (" +
+        ALLOWED_EXTENSIONS.join(", ") +
+        ") that exist on the user's LOCAL machine, so you can pass a real " +
+        "absolute path to ingest_csv instead of guessing one. IMPORTANT: only a " +
+        "directory the user explicitly configured is visible to this server. It " +
+        "cannot see the rest of the filesystem, so if a file is not listed here " +
+        "it is not reachable: do NOT retry with '/' or some other path, ask the " +
+        "user instead. Results are the most recently modified files first, and " +
+        "no file contents are read.",
+      inputSchema: {
+        subdir: z
+          .string()
+          .optional()
+          .describe(
+            "Optional subdirectory, relative to the configured root, to list " +
+              "instead of the whole root. Paths outside the root are rejected.",
+          ),
+        pattern: z
+          .string()
+          .optional()
+          .describe(
+            "Optional filename filter. Plain text is a case-insensitive " +
+              'substring match (e.g. "tecentriq"); `*` and `?` make it an ' +
+              'anchored glob (e.g. "*-demo.csv").',
+          ),
+        max_depth: z
+          .number()
+          .int()
+          .min(0)
+          .max(MAX_DEPTH)
+          .optional()
+          .describe(
+            `How many directory levels below the root to descend (0 = the root ` +
+              `only). Default ${DEFAULT_DEPTH}, max ${MAX_DEPTH}.`,
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_RESULTS)
+          .optional()
+          .describe(`Max files to return. Default ${DEFAULT_LIMIT}, max ${MAX_RESULTS}.`),
+      },
+    },
+    async ({ subdir, pattern, max_depth, limit }) =>
+      listLocalFilesHandler({ subdir, pattern, max_depth, limit }),
+  );
+}
 
 server.registerTool(
   "create_knowledge_graph",
