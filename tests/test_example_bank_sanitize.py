@@ -159,6 +159,19 @@ def test_a_less_than_operator_is_not_mistaken_for_the_start_of_an_iri():
     assert out.count(f"<{TARGET_GRAPH}>") == 2
 
 
+def test_a_less_than_operator_before_a_graph_iri_with_no_space():
+    """The tightest form of the same trap: `?y <GRAPH-IRI-looking-thing`.
+
+    A SPARQL IRI cannot contain whitespace, `<` or `>`, so the pattern excludes
+    all three. This pins the `<` half specifically: without it the match could
+    still span a nested `<`.
+    """
+    sparql = f"SELECT ?x WHERE {{ FILTER(?a <?b) GRAPH <{FOREIGN_GRAPH}> {{ ?a ?b ?c }} }}"
+    out = sanitize_example_sparql(sparql, TARGET_GRAPH)
+    assert "FILTER(?a <?b)" in out
+    assert "demo-tenant" not in out
+
+
 @pytest.mark.parametrize(
     "expr",
     ["FILTER(?y < 2000)", "FILTER(?y <= 2000 && ?y > 1990)", "FILTER(?a <?b)"],
