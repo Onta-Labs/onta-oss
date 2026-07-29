@@ -34,16 +34,25 @@ os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 #
 # Escape hatch: export ONTA_TEST_ALLOW_LIVE_LLM=1 for a deliberate live-provider
 # run (e.g. porting the obsolete tests/test_integration.py back to life).
+#
+# tests/test_hermetic_llm_env.py imports both names below and asserts the outcome,
+# so this stays honest. It checks HERMETIC_SENTINEL_VAR rather than only "is a key
+# absent": absence is unfalsifiable on a machine that never had a key (CI), so a
+# sentinel is what lets the guard fail in CI if this block is ever deleted.
+LIVE_PROVIDER_KEY_VARS = (
+    "OPENROUTER_API_KEY",
+    "CEREBRAS_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OMNIX_OPENROUTER_API_KEY",
+    "OMNIX_CEREBRAS_API_KEY",
+    "OMNIX_ANTHROPIC_API_KEY",
+)
+HERMETIC_SENTINEL_VAR = "_ONTA_TEST_HERMETIC_LLM"
+
 if os.environ.get("ONTA_TEST_ALLOW_LIVE_LLM") != "1":
-    for _live_provider_key in (
-        "OPENROUTER_API_KEY",
-        "CEREBRAS_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "OMNIX_OPENROUTER_API_KEY",
-        "OMNIX_CEREBRAS_API_KEY",
-        "OMNIX_ANTHROPIC_API_KEY",
-    ):
+    for _live_provider_key in LIVE_PROVIDER_KEY_VARS:
         os.environ.pop(_live_provider_key, None)
+    os.environ[HERMETIC_SENTINEL_VAR] = "1"
 
 from cograph_client.api.app import create_app
 from cograph_client.graph.client import NeptuneClient
