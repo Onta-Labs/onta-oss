@@ -27,6 +27,7 @@ from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
     _escape_literal,
     kg_graph_uri,
+    kg_meta_uri,
     tenant_graph_uri,
 )
 
@@ -48,8 +49,11 @@ NAME_ATTRS = ("name", "title", "label", "headline")
 KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
 
 
-def _kg_meta_uri(tenant_id: str, name: str) -> str:
-    return f"https://cograph.tech/kgs/{tenant_id}/{name}"
+# Canonical in ``graph/queries.py`` so create_kg, list_kgs, the shared write
+# path's ``ensure_kg_registered`` and the ONTA-413 existence probe all mint the
+# SAME registration URI. Aliased (not redefined) to keep this module's callers
+# unchanged.
+_kg_meta_uri = kg_meta_uri
 
 
 async def _live_triple_count(

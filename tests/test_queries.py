@@ -1,3 +1,5 @@
+import pytest
+
 from cograph_client.graph.queries import (
     tenant_graph_uri,
     insert_triples,
@@ -114,3 +116,87 @@ def test_list_functions_query_by_enhanced_type():
     )
     assert "FILTER" in sparql
     assert layer_type_uri(Layer.ENHANCED, "Organization") in sparql
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-414: kg_name can never break out of the graph IRI
+# --------------------------------------------------------------------------- #
+def test_kg_graph_uri_accepts_a_legal_name():
+    from cograph_client.graph.queries import kg_graph_uri
+
+    assert (
+        kg_graph_uri("acme", "imdb-movies_2")
+        == "https://cograph.tech/graphs/acme/kg/imdb-movies_2"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        # The tenant-isolation break: ">" closes the <...> wrapper so a second
+        # FROM naming ANOTHER tenant's graph can be appended to the query.
+        "kg> FROM <https://cograph.tech/graphs/victim",
+        "kg name",
+        "kg\nname",
+        # TRAILING newline specifically: Python's "$" matches before a final
+        # newline, so an "^...$" + .match() guard accepts this. pydantic's Rust
+        # "$" does not, so accepting it here would break the stated invariant
+        # that this is the same pattern create enforces. Reachable via a path or
+        # query param carrying %0A.
+        "kg\n",
+        "kg\r\n",
+        "kg ",
+        'kg"name',
+        "kg/sub",
+        "kg{}",
+        "",
+        None,
+    ],
+)
+def test_kg_graph_uri_rejects_iri_breaking_names(bad):
+    from cograph_client.graph.queries import InvalidKGName, kg_graph_uri
+
+    with pytest.raises(InvalidKGName):
+        kg_graph_uri("acme", bad)
+
+
+def test_invalid_kg_name_is_a_value_error():
+    """Subclassing ValueError keeps any pre-existing `except ValueError` intact."""
+    from cograph_client.graph.queries import InvalidKGName
+
+    assert issubclass(InvalidKGName, ValueError)
+
+
+def test_kg_name_guard_agrees_with_the_create_pattern():
+    """The guard must accept exactly what `KGCreate.name` accepts, no more.
+
+    `KGCreate` compiles its pattern with pydantic (Rust regex, strict
+    end-of-text). The guard uses Python `re`, whose `$` also matches before a
+    final newline. Pinning them against each other is what keeps "the pattern
+    create already enforces" a true statement rather than an approximate one.
+    """
+    import pydantic
+
+    from cograph_client.api.routes.knowledge_graphs import KGCreate
+    from cograph_client.graph.queries import is_valid_kg_name
+
+    for candidate in ["imdb", "a-b_c", "kg\n", "kg ", "kg\r\n", "a/b", "x>y", ""]:
+        try:
+            KGCreate(name=candidate)
+            create_accepts = True
+        except pydantic.ValidationError:
+            create_accepts = False
+        assert is_valid_kg_name(candidate) == create_accepts, candidate
+
+
+def test_kg_writer_uses_the_shared_guard_not_a_local_copy():
+    """The drifted second copy in kg_writer is gone (it accepted "kg\\n")."""
+    import cograph_client.graph.kg_writer as kw
+
+    assert not hasattr(kw, "_KG_NAME_RE")
+
+
+def test_kg_graph_uri_round_trips_through_parse():
+    from cograph_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
+
+    assert parse_kg_graph_uri(kg_graph_uri("acme", "imdb")) == ("acme", "imdb")

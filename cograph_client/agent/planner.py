@@ -860,7 +860,12 @@ async def _respond(
     if "question" in intents:
         cap = get_capability("query") or QueryCapability()
         out = await cap.answer(ctx, message)  # type: ignore[attr-defined]
-        return {"kind": "answer", **out}
+        # The capability may return its OWN kind. ONTA-413 short-circuits a
+        # question about a NONEXISTENT kg_name to {kind:"clarify"} naming the
+        # available graphs, instead of an "answer" that is really a silent
+        # "No results found." Defaulting to "answer" keeps every other path
+        # byte-identical.
+        return {**out, "kind": out.get("kind", "answer")}
 
     actionable = [i for i in intents if i in _INTENT_TO_CAPABILITY]
     if not actionable:
