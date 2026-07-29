@@ -31,6 +31,12 @@ logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
 _ontology_cache: dict[str, tuple[str, float]] = {}
 ONTOLOGY_CACHE_TTL = 60  # seconds
 
+# Active-type cache: {instance_graph: (type names with instances, timestamp)}.
+# The probe is one cheap DISTINCT query, but ONTA-411 puts it on the HOT
+# semantic-retrieval path (every /ask, not just a full-ontology fetch), so it
+# gets the same TTL as the ontology summary it scopes.
+_active_types_cache: dict[str, tuple[set[str], float]] = {}
+
 # Distinct markers so a TRANSIENT fetch failure is never mistaken for a genuinely
 # empty graph (ONTA-248 A2: "errors masquerade as facts"). The old error text
 # ("Graph may be empty.") let the LLM authoritatively state the graph was empty on
@@ -470,10 +476,48 @@ class NLQueryPipeline:
         if embedding_svc:
             try:
                 from cograph_client.config import settings
-                ontology = await embedding_svc.retrieve(graph_uri, question, top_k=settings.embeddings_top_k)
+                # ONTA-411: the embedding store is TENANT-WIDE while the query
+                # runs against ONE KG's instance graph. Unscoped, semantic
+                # retrieval happily returns a SIBLING KG's schema at max
+                # similarity and the model writes a valid query over types this
+                # graph does not carry: zero rows, and the user reads it as the
+                # translator "recycling" an earlier graph's query. Scope the
+                # ranking to the types that actually have instances here.
+                # Probe failure degrades to unscoped retrieval (the pre-ONTA-411
+                # behaviour) rather than losing the semantic subset entirely.
+                try:
+                    # The embedding store's own type names ARE the tenant's
+                    # declared types, so they keep the probe on ONTA-427's
+                    # bounded path without a schema read. Empty store => no
+                    # scoping (retrieve() is about to return None anyway and the
+                    # full path runs its own probe), never a per-ask full scan.
+                    declared = await embedding_svc.type_names(graph_uri)
+                    active_types = (
+                        await self._active_types(
+                            data_graph, graph_uri, declared_names=declared
+                        )
+                        if declared
+                        else None
+                    )
+                except Exception:
+                    logger.debug("active_types_probe_failed", exc_info=True)
+                    active_types = None
+                ontology = await embedding_svc.retrieve(
+                    graph_uri,
+                    question,
+                    top_k=settings.embeddings_top_k,
+                    active_types=active_types,
+                )
                 if ontology:
                     ontology_source = "semantic"
                     timing["ontology_source"] = "semantic"
+                    # Diagnostic companion to ontology_source: was the semantic
+                    # subset scoped to the target KG, or tenant-wide? A STRING,
+                    # not a bool. NLResult.timing is dict[str, float | str] and
+                    # a bool silently arrives as 1.0/0.0.
+                    timing["ontology_scope"] = (
+                        "kg" if active_types is not None else "tenant"
+                    )
             except Exception:
                 pass
         if ontology is None:
@@ -1412,6 +1456,68 @@ class NLQueryPipeline:
                 out.add(name)
         return out
 
+    async def _resolve_active_types(
+        self, instance_graph: str, declared_names=None
+    ) -> tuple[set[str], set[str] | None]:
+        """Active type names, plus the scan result when a scan was what produced them.
+
+        The ONE place the ONTA-427 ladder lives, shared by the two callers that
+        need it (:meth:`_active_types` for the semantic path, :meth:`_fetch_ontology`
+        for the full one) so they cannot drift into asking the same question two
+        different ways. Bounded LIMIT-1 probe when the declared names are known and
+        there are few enough of them; the unbounded scan otherwise, or when the
+        probe could not answer. The second element is the scan's own result (or
+        None), so a caller that ALSO needs types the ontology never declared can
+        reuse it instead of scanning twice.
+        """
+        names: set[str] | None = None
+        if declared_names:
+            candidate_uris = self._active_type_candidate_uris(declared_names)
+            if candidate_uris and len(candidate_uris) <= MAX_ACTIVE_TYPE_PROBE_URIS:
+                names = await self._probe_active_types(instance_graph, candidate_uris)
+        scanned: set[str] | None = None
+        if names is None:
+            # Nothing declared, too many candidates to probe cheaply, or the
+            # probe failed. Fall back to the pre-ONTA-427 scan.
+            scanned = await self._scan_instance_types(instance_graph)
+            names = scanned
+        return names, scanned
+
+    async def _active_types(
+        self,
+        instance_graph: str | None,
+        ontology_graph: str = "",
+        declared_names=None,
+    ) -> set[str] | None:
+        """Type names that actually carry instances in ``instance_graph``.
+
+        Hoisted out of :meth:`_fetch_ontology` (ONTA-411) because the SEMANTIC
+        retrieval path needs the same scope signal: the ontology store is
+        tenant-wide, the instance graph is per-KG, and without this set a
+        question retrieves a sibling KG's schema at max cosine similarity.
+
+        ``declared_names`` keeps the probe on ONTA-427's bounded path. The
+        semantic caller has no schema read to draw them from, so it passes the
+        embedding store's own type names, which ARE the tenant's declared types;
+        without them this would fall back to the unbounded per-ask scan that
+        ONTA-427 removed.
+
+        Returns ``None`` when there is nothing to scope: no instance graph, or
+        the instance graph IS the ontology graph, in which case every declared
+        type is in scope by definition. TTL-cached per instance graph; raises on
+        a probe failure so each caller applies its own degradation policy
+        (:meth:`_fetch_ontology` keeps reporting ONTOLOGY_FETCH_ERROR, while
+        :meth:`ask` degrades to unscoped retrieval).
+        """
+        if not instance_graph or instance_graph == ontology_graph:
+            return None
+        cached = _active_types_cache.get(instance_graph)
+        if cached and (time.time() - cached[1]) < ONTOLOGY_CACHE_TTL:
+            return cached[0]
+        names, _ = await self._resolve_active_types(instance_graph, declared_names)
+        _active_types_cache[instance_graph] = (names, time.time())
+        return names
+
     async def _fetch_ontology(
         self,
         graph_uri: str,
@@ -1550,19 +1656,19 @@ class NLQueryPipeline:
             # supertype contributes to only one of them, and the other would read
             # as 0 instances. Any of those would produce a FALSE "[no instances]"
             # on a populated type, which is precisely the ONTA-258 failure.
+            #
+            # Shared with the semantic-retrieval path through one TTL cache
+            # (ONTA-411) so both build the SAME notion of "in scope for THIS
+            # graph" from one probe rather than each running their own.
             if instance_graph and instance_graph != graph_uri:
-                candidate_uris = self._active_type_candidate_uris(types)
-                if candidate_uris and len(candidate_uris) <= MAX_ACTIVE_TYPE_PROBE_URIS:
-                    active_types = await self._probe_active_types(
-                        instance_graph, candidate_uris
+                cached_active = _active_types_cache.get(instance_graph)
+                if cached_active and (time.time() - cached_active[1]) < ONTOLOGY_CACHE_TTL:
+                    active_types = cached_active[0]
+                else:
+                    active_types, scanned_instance_types = await self._resolve_active_types(
+                        instance_graph, types
                     )
-                if active_types is None:
-                    # Nothing declared, too many candidates to probe cheaply, or
-                    # the probe failed. Fall back to the pre-ONTA-427 scan.
-                    scanned_instance_types = await self._scan_instance_types(
-                        instance_graph
-                    )
-                    active_types = scanned_instance_types
+                    _active_types_cache[instance_graph] = (active_types, time.time())
 
             # A DECLARED type with no correctly-typed instances in the queried KG
             # is KEPT and annotated "[no instances]" — NOT dropped (ONTA-258).
@@ -2165,6 +2271,12 @@ class NLQueryPipeline:
             _ontology_cache.pop(k, None)
         # Alias map is keyed by the ontology graph URI alone
         _alias_cache.pop(graph_uri, None)
+        # Active-type sets are keyed by the INSTANCE graph, whose URI extends the
+        # tenant graph URI (.../graphs/<tenant>/kg/<name>), so the same prefix
+        # sweep drops every KG's entry for this tenant. Stale entries here would
+        # keep demoting types that an ingest just populated (ONTA-411).
+        for k in [k for k in _active_types_cache if k.startswith(graph_uri)]:
+            _active_types_cache.pop(k, None)
         # Invalidate embeddings
         svc = get_embedding_service()
         if svc:
@@ -2284,7 +2396,18 @@ class NLQueryPipeline:
         max_completion_tokens: int | None = None,
         prefer_fallback: bool = False,
     ) -> dict:
-        prompt = build_generation_prompt(question, ontology, graph_uri, examples_text=examples_text)
+        # Name the target KG in the prompt (ONTA-417) so "[no instances]" reads as
+        # "declared tenant-wide, absent from THIS graph" rather than "declared
+        # here but empty". parse_kg_graph_uri returns None for a non-KG graph
+        # (bare tenant/ontology graph), which leaves the prompt byte-identical.
+        parsed_kg = parse_kg_graph_uri(graph_uri)
+        prompt = build_generation_prompt(
+            question,
+            ontology,
+            graph_uri,
+            examples_text=examples_text,
+            kg_name=parsed_kg[1] if parsed_kg else "",
+        )
         if error_feedback:
             prompt += f"\n\n{error_feedback}"
 

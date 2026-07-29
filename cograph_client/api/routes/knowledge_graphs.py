@@ -522,6 +522,29 @@ async def delete_kg(
     except Exception:
         pass  # Derived-index cleanup is best-effort, don't fail the delete
 
+    # Evict the NL-planning caches and the ONTOLOGY EMBEDDING store for this
+    # tenant (ONTA-417). Both are keyed by the TENANT ontology graph, not by KG,
+    # so nothing above touches them: without this, the deleted KG's cached
+    # ontology summary, its cached active-type set, and its embedded type chunks
+    # all survive the delete. The chunks keep competing for semantic-retrieval
+    # slots on every later question, and a KG recreated under the same name
+    # inherits the dead one's cached scope for the rest of the TTL. Same
+    # best-effort contract as the derived-index clears above.
+    #
+    # TODO(ONTA-417): this evicts the CACHE, not the DECLARATIONS. The deleted
+    # KG's types remain declared in the tenant ontology graph, so the next
+    # embedding rebuild re-embeds them and they reappear (now demoted and marked
+    # "[no instances]" by ONTA-411, so they no longer displace this graph's
+    # schema). Pruning them needs a real "is this type still used by another KG,
+    # or was it authored by hand?" guard. Types are shared tenant-wide BY
+    # DESIGN, and ONTA-258 deliberately keeps declared-but-unpopulated types
+    # visible, so an unguarded prune would delete user-authored schema.
+    try:
+        from cograph_client.nlp.pipeline import NLQueryPipeline
+        NLQueryPipeline.invalidate_cache(base)
+    except Exception:
+        pass  # Cache eviction is best-effort, don't fail the delete
+
     # Drop the KG's recurring semantic-reconcile schedule row (ONTA-181) so the
     # runner doesn't keep scanning a graph that no longer exists. Best-effort.
     try:

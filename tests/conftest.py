@@ -73,6 +73,23 @@ def _reset_enrichment_chain_state():
     reset_tiers()
 
 
+@pytest.fixture(autouse=True)
+def _reset_active_types_cache():
+    """Isolate the per-instance-graph active-type cache across tests (ONTA-411).
+
+    The cache is keyed by instance-graph URI with a 60s TTL, and the fixture
+    graphs in this suite are shared constants, so without a reset one test's
+    "only Widget has instances" probe result silently scopes the NEXT test that
+    reuses the same KG URI with a different active set. Cleared here rather than
+    per test file so a new test cannot fall into the same trap.
+    """
+    from cograph_client.nlp.pipeline import _active_types_cache
+
+    _active_types_cache.clear()
+    yield
+    _active_types_cache.clear()
+
+
 @pytest.fixture
 def mock_neptune():
     client = AsyncMock(spec=NeptuneClient)

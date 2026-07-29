@@ -37,6 +37,18 @@ TYPE_URI_PREFIX = "https://cograph.tech/types/"
 LARGE_TYPE_ATTR_THRESHOLD = 200
 LARGE_TYPE_ATTR_KEEP = 50
 
+# Type-level mark for "declared in the tenant ontology, carries no data in the KG
+# being queried". Identical to the mark the full-ontology path emits
+# (`pipeline._fetch_ontology`) so the SPARQL prompt has ONE rule to learn.
+NO_INSTANCES_MARK = "[no instances]"
+
+# Rank penalty applied to a type that has no instances in the target KG
+# (ONTA-411). Larger than the cosine range [-1, 1] on purpose: every in-KG type
+# outranks every out-of-KG one, while the relative order WITHIN each group is
+# still the cosine order, so out-of-KG types fill leftover slots instead of
+# being hard-dropped.
+INACTIVE_TYPE_DEMOTION = 10.0
+
 
 def _singularize(word: str) -> str:
     """Lowercase + strip a simple English plural suffix for loose token matching.
@@ -185,11 +197,30 @@ class OntologyEmbeddingService:
 
     # ── Query-time retrieval ──────────────────────────────────────────
 
-    async def retrieve(self, graph_uri: str, question: str, top_k: int = 15) -> str | None:
+    async def retrieve(
+        self,
+        graph_uri: str,
+        question: str,
+        top_k: int = 15,
+        active_types: set[str] | None = None,
+    ) -> str | None:
         """Retrieve the most relevant ontology subset for a question.
 
         Returns formatted ontology text (same format as _fetch_ontology),
         or None if no embeddings are available (triggers fallback).
+
+        ``active_types`` (ONTA-411) is the set of type names that actually carry
+        instances in the KG being queried. The embedding store is TENANT-WIDE
+        (one ontology graph per tenant, shared by every KG) while a question is
+        answered against ONE KG's instance graph, so cosine ranking alone lets a
+        SIBLING KG's schema win the top-K outright: the model then writes a
+        perfectly valid query against types the target graph does not carry and
+        gets zero rows. Types outside the set are rank-DEMOTED and, if they still
+        survive, annotated ``[no instances]``, never hard-dropped, because
+        hiding a declared type is exactly the ONTA-258 regression (the model
+        asserts the type "does not exist", or silently substitutes a populated
+        one). ``None`` (the default) means "not KG-scoped" and behaves exactly as
+        before.
         """
         store = self._stores.get(graph_uri)
 
@@ -210,8 +241,21 @@ class OntologyEmbeddingService:
         matrix = np.stack([store.chunks[tn].embedding for tn in type_names])
         similarities = _cosine_similarity(q_vec, matrix)
 
+        def _out_of_kg(tn: str) -> bool:
+            return active_types is not None and tn not in active_types
+
+        # Scope-aware ranking (ONTA-411): in-KG types first, cosine order within
+        # each group. With active_types=None the ranking is the plain cosine one.
+        ranking = similarities
+        if active_types is not None:
+            penalty = np.array(
+                [INACTIVE_TYPE_DEMOTION if _out_of_kg(tn) else 0.0 for tn in type_names],
+                dtype=np.float32,
+            )
+            ranking = similarities - penalty
+
         # Top-K
-        top_indices = np.argsort(similarities)[::-1][:top_k]
+        top_indices = np.argsort(ranking)[::-1][:top_k]
         selected = {type_names[i] for i in top_indices}
 
         # 1-hop expansion
@@ -221,9 +265,19 @@ class OntologyEmbeddingService:
             for target in chunk.relationship_targets:
                 if target not in selected and target in store.chunks:
                     expansion.add(target)
-        # Cap expansion
+
+        # Ordering key shared by the expansion cap and the output assembly:
+        # in-KG types first, then alphabetical. Alphabetical is not cosmetic:
+        # `selected`/`expansion` are SETS, so without it the prompt's type order
+        # (and which neighbours survive the cap) varied with set-iteration order
+        # between processes.
+        def _scope_rank(tn: str) -> tuple[int, str]:
+            return (1 if _out_of_kg(tn) else 0, tn)
+
+        # Cap expansion. A sibling KG's neighbour is the last thing that should
+        # consume a slot, so in-KG neighbours are admitted first.
         max_total = top_k * 2
-        for target in expansion:
+        for target in sorted(expansion, key=_scope_rank):
             if len(selected) >= max_total:
                 break
             selected.add(target)
@@ -239,18 +293,39 @@ class OntologyEmbeddingService:
 
         # Assemble ontology text
         lines: list[str] = []
-        for tn in selected:
+        for tn in sorted(selected, key=_scope_rank):
             chunk = store.chunks[tn]
             # Safety valve: filter attributes if too many
             if len(chunk.attributes) > LARGE_TYPE_ATTR_THRESHOLD:
                 filtered_attrs = await self._filter_attributes(chunk.attributes, q_vec)
-                lines.append(_format_output_text(tn, filtered_attrs, chunk.relationship_targets))
+                text = _format_output_text(tn, filtered_attrs, chunk.relationship_targets)
             else:
-                lines.append(chunk.chunk_text)
+                text = chunk.chunk_text
+            # A type that survived the demotion (or was force-included by name)
+            # but carries no data in THIS KG is marked, not hidden. The prompt
+            # rule tells the model what the mark means.
+            lines.append(_mark_no_instances(text) if _out_of_kg(tn) else text)
 
         if not lines:
             return None
         return "\n".join(lines)
+
+    async def type_names(self, graph_uri: str) -> set[str]:
+        """Declared type names in this tenant's store (S3 cold start included).
+
+        The store is built from the tenant's ontology, so its keys ARE the
+        declared type set. Exposed because the KG-scoping probe needs candidate
+        type names BEFORE any schema read (ONTA-411 + ONTA-427): with them the
+        probe stays on its bounded LIMIT-1 form, without them the caller would
+        have to scan the whole instance graph on every ask. Empty set when no
+        embeddings exist, which is the same condition under which
+        :meth:`retrieve` returns None.
+        """
+        store = self._stores.get(graph_uri)
+        if store is None:
+            await self._load_from_s3(graph_uri)
+            store = self._stores.get(graph_uri)
+        return set(store.chunks) if store else set()
 
     # ── Embedding API ─────────────────────────────────────────────────
 
@@ -382,6 +457,22 @@ def _parse_ontology_bindings(bindings: list[dict]) -> dict[str, dict]:
         if row.get("funcName"):
             types[tl]["functions"].add(row["funcName"])
     return types
+
+
+def _mark_no_instances(chunk_text: str) -> str:
+    """Append the ``[no instances]`` mark to a chunk's ``Type:`` header line.
+
+    Same annotation the full-ontology path puts on a declared-but-unpopulated
+    type, so both retrieval paths hand the LLM one consistent vocabulary. Rides
+    on the header line only (attributes/relationships keep their own marks) and
+    is idempotent.
+    """
+    if not chunk_text:
+        return chunk_text
+    head, sep, rest = chunk_text.partition("\n")
+    if NO_INSTANCES_MARK in head:
+        return chunk_text
+    return f"{head} {NO_INSTANCES_MARK}{sep}{rest}"
 
 
 def _format_chunk_text(type_name: str, info: dict) -> str:
