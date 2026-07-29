@@ -461,6 +461,40 @@ def test_type_filter_enumerates_every_layer_namespace(store, make_client, auth_h
     assert q.startswith("SELECT DISTINCT ?s ?p ?o")
 
 
+@pytest.mark.parametrize(
+    "bad_type",
+    [
+        "Some Type",  # an ordinary space: an ILLEGAL IRIREF, a store parse error
+        "Movie>",  # closes the <…> early
+        "a> ?x ?y . <b",  # closes it and appends a graph pattern
+        "Mo\nvie",
+        'Mo"vie',
+        "Movie/Sub",
+    ],
+)
+def test_bad_type_is_400_and_never_scans(bad_type, store, make_client, auth_headers):
+    """`type` is interpolated into a type IRI and wrapped in <…>, so it needs the
+    same charset gate as kg_name. Unvalidated, a space emitted an illegal IRIREF
+    (an opaque 500) and a `>` closed the IRI early."""
+    client = make_client(store)
+    res = _post(
+        client, {"q": "matrix", "kg_name": KG, "type": bad_type}, auth_headers
+    )
+    assert res.status_code == 400
+    assert "type" in res.json()["detail"]
+    assert store.queries == []
+
+
+def test_every_emitted_iri_is_well_formed_under_a_type_filter(
+    store, make_client, auth_headers
+):
+    """No caller value can leave a dangling/extra angle bracket in the query."""
+    client = make_client(store)
+    _post(client, {"q": "matrix", "kg_name": KG, "type": "Movie"}, auth_headers)
+    q = store.scan_query
+    assert q.count("<") == q.count(">")
+
+
 def test_untyped_scan_skips_distinct(store, make_client, auth_headers):
     """A triple is unique without the type join, so DISTINCT would be pure
     overhead on the expensive path."""

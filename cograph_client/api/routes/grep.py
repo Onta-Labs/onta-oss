@@ -54,6 +54,10 @@ guardrails rather than pretending it is cheap:
 * ``kg_name`` is REQUIRED and validated against the KG-name charset, so the scan
   is always bounded to one graph and the graph URI is built ONLY by
   ``kg_graph_uri(tenant.tenant_id, kg_name)`` — never from caller-supplied text;
+* EVERY caller value that reaches the query is gated before interpolation: the
+  needle through ``sparql_string_literal``, ``kg_name`` and ``type`` through
+  their charset regexes, a full-URI ``predicate`` through the IRIREF-forbidden
+  character check. No input can alter the graph pattern's structure;
 * the needle must carry >= 2 non-whitespace characters (a 1-char grep matches
   most of the graph and is never what the caller meant);
 * ``limit`` is clamped to [1, 200];
@@ -106,6 +110,16 @@ router = APIRouter(prefix="/graphs/{tenant}")
 #: so rejecting it is both a validation nicety and the structural reason no caller
 #: input can ever reach the graph URI in a form that could widen the scan.
 _KG_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+#: Charset for the ``type`` filter. Same rule as ``kg_name``, and for the same
+#: structural reason: ``type`` is interpolated into a type IRI
+#: (``layer_type_uri`` → ``f"{namespace}{type_name}"``) and wrapped in ``<…>``.
+#: Left unvalidated, a ``>`` would close the IRI early and let a caller append
+#: graph patterns, and an ordinary SPACE would emit an illegal IRIREF — a hard
+#: parse error surfacing as an opaque 500, exactly the malformed-SPARQL class the
+#: escaper promotion exists to eliminate. A type name outside this charset can
+#: never have a well-formed IRI, so rejecting it never rejects a reachable type.
+_TYPE_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 LIMIT_MAX = 200
 LIMIT_DEFAULT = 50
@@ -180,7 +194,9 @@ class GrepRequest(BaseModel):
         description=(
             "Only match triples whose subject is an instance of this type "
             "(bare type name, e.g. 'Person'). Matched across every ontology "
-            "layer namespace, so a Public/Enhanced-typed instance is included."
+            "layer namespace, so a Public/Enhanced-typed instance is included. "
+            "Must match ^[a-zA-Z0-9_-]+$ — the charset a well-formed type IRI "
+            "can carry."
         ),
     )
     predicate: Optional[str] = Field(
@@ -306,10 +322,11 @@ def _type_clause(type_name: str) -> str:
 def _internal_predicate_filter() -> str:
     """Push the internal-namespace exclusions INTO the scan.
 
-    Derived from ``predicates.INTERNAL_NAMESPACE_PREFIXES`` rather than a second
-    hardcoded list, so a namespace added to the shared classifier is excluded
-    here too. Post-filtering alone would be correct but not honest: internal
-    triples would consume the ``LIMIT`` and shrink the page invisibly.
+    Reuses ``predicates.INTERNAL_NAMESPACE_PREFIXES`` rather than restating the
+    namespace strings here. Post-filtering alone would be correct but not honest:
+    internal triples would consume the ``LIMIT`` and shrink the page invisibly.
+    (That tuple is hand-maintained — a namespace added to the classifier but not
+    to it merely costs LIMIT honesty for that namespace, never correctness.)
 
     Note this is a PREfilter only — ``is_internal_predicate`` still runs on every
     row and remains the authority (it also knows the curated per-marker
@@ -427,6 +444,16 @@ async def grep_graph(
             ),
         )
 
+    type_name = body.type.strip() if body.type else None
+    if type_name and not _TYPE_NAME_RE.match(type_name):
+        # Validated for the same structural reason as kg_name: `type` is
+        # interpolated into a type IRI and wrapped in <…>, so a `>` would close
+        # the IRI early and a space would emit an illegal IRIREF (an opaque 500).
+        raise HTTPException(
+            status_code=400,
+            detail="type must match ^[a-zA-Z0-9_-]+$ (the type-name charset)",
+        )
+
     limit = max(1, min(body.limit, LIMIT_MAX))
     graph_uri = kg_graph_uri(tenant.tenant_id, kg_name)
 
@@ -434,7 +461,7 @@ async def grep_graph(
         graph_uri,
         needle,
         case_sensitive=body.case_sensitive,
-        type_name=body.type.strip() if body.type else None,
+        type_name=type_name,
         predicate=body.predicate.strip() if body.predicate else None,
         limit=limit,
     )
