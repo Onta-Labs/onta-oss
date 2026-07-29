@@ -542,6 +542,137 @@ server.registerTool(
   },
 );
 
+// ONTA-418: `view_ontology` is tenant-wide and DECLARATION-only, so an agent
+// could see that a type has an attribute but never whether that attribute
+// carries data in the graph it is about to query. So it guessed between similar
+// names (`fda_indications` vs `indications`). This tool rides the backend's
+// KG-scoped schema route (via the SDK's `kgSchema`), which assembles the whole
+// KG's population data server-side from stats that are already materialized:
+// ONE request, not a per-type fan-out from here.
+function renderSlot(s: {
+  name: string;
+  coverage_pct: number;
+  populated: boolean;
+  datatype?: string;
+  target_type?: string | null;
+}): string {
+  const kind = s.target_type ? ` -> ${s.target_type}` : s.datatype ? ` (${s.datatype})` : "";
+  // EMPTY, not "0%": the agent must not read an unpopulated slot as a weak
+  // signal it can still query. It is a declaration with nothing behind it.
+  const cov = s.populated ? `${s.coverage_pct}%` : "EMPTY";
+  return `${s.name}${kind} ${cov}`;
+}
+
+export async function inspectGraphSchemaHandler(
+  {
+    kg_name,
+    type,
+    min_coverage,
+  }: { kg_name: string; type?: string[]; min_coverage?: number },
+  makeClient: () => Client = client,
+) {
+  try {
+    const data = await makeClient().kgSchema(kg_name, {
+      types: type,
+      minCoverage: min_coverage,
+    });
+    if (!data.types.length) {
+      // Name what the graph DOES have, so a filter typo never reads as
+      // "that type does not exist" (the failure this tool exists to prevent).
+      const available = data.available_type_names ?? [];
+      return textResult(
+        `Context graph "${kg_name}" has no types matching that request.` +
+          (available.length
+            ? ` Types it does have: ${available.join(", ")}.`
+            : " The graph has no types at all."),
+      );
+    }
+    // Say "matching" when a filter was applied, so a drill-in is never misread
+    // as "this graph has exactly one type".
+    const scope = type?.length ? "matching type(s)" : "type(s)";
+    const lines: string[] = [
+      `Schema for context graph "${kg_name}" (${data.total_types} ${scope})` +
+        (data.stats_source === "live_scan"
+          ? " (scanned live; precomputed stats not materialized yet)"
+          : "") +
+        ". Percentages are the share of that type's entities carrying the slot; " +
+        "EMPTY means declared but with no data in this graph.",
+    ];
+    for (const t of data.types) {
+      const suffix = t.declared_only
+        ? " (declared in the ontology, NO instances in this graph)"
+        : "";
+      lines.push("", `${t.name}: ${t.entity_count} entities${suffix}`);
+      if (t.description) lines.push(`  ${t.description}`);
+      if (t.attributes.length) {
+        lines.push(`  attributes: ${t.attributes.map(renderSlot).join(", ")}`);
+      }
+      if (t.relationships.length) {
+        lines.push(`  relationships: ${t.relationships.map(renderSlot).join(", ")}`);
+      }
+      const withheld = t.attributes_withheld + t.relationships_withheld;
+      if (withheld) {
+        lines.push(
+          `  (${withheld} more below the min_coverage floor; lower or drop it to see them)`,
+        );
+      }
+    }
+    if (data.truncated) {
+      lines.push(
+        "",
+        `Also present, not expanded here (pass type= to drill in): ${data.omitted_type_names.join(", ")}`,
+      );
+    }
+    lines.push("", `Note: ${data.coverage_note}`);
+    return textResult(lines.join("\n"));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+server.registerTool(
+  "inspect_graph_schema",
+  {
+    description:
+      "Inspect ONE context graph's schema WITH population data: for every type, " +
+      "which attributes and relationships actually carry data there, and on what " +
+      "share of that type's entities. Use this before asking for specific " +
+      "attributes so you never guess between similar names (e.g. " +
+      '"fda_indications" vs "indications") or query a slot that is declared but ' +
+      "empty. Differs from view_ontology, which is tenant-wide and " +
+      "DECLARATION-only (every type in the workspace, no population): this tool " +
+      "is scoped to one graph and population-aware. Declared-but-empty types and " +
+      "attributes are still listed, marked EMPTY, so an absent slot is never " +
+      "confused with a non-existent one. Coverage is relative to each type's own " +
+      "entity count, which attributes an entity carrying several types to only " +
+      "one of them, so types that share multi-typed entities can legitimately " +
+      "read below 100%. Sample VALUES are not returned.",
+    inputSchema: {
+      kg_name: z
+        .string()
+        .describe(
+          "Name of the context graph to inspect. Use list_knowledge_graphs to see available KGs.",
+        ),
+      type: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Optional type names to drill into (e.g. [\"Drug\"]). Omit for the whole graph.",
+        ),
+      min_coverage: z
+        .number()
+        .optional()
+        .describe(
+          "Optional coverage floor as a PERCENT (0-100). Withholds slots below it " +
+            "to keep a wide schema readable; the response says how many were withheld. " +
+            "Omit to see every slot, including empty ones.",
+        ),
+    },
+  },
+  async ({ kg_name, type, min_coverage }) =>
+    inspectGraphSchemaHandler({ kg_name, type, min_coverage }),
+);
+
 function describeChange(c: ResolvedChange): string {
   const verb =
     c.kind === "relationship"

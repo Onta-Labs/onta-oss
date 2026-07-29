@@ -809,6 +809,23 @@ def test_explore_summary_isolated():
     _assert_no_peer_markers(str(b_body), peer="A")
 
 
+def test_explore_kg_schema_isolated():
+    # ONTA-418: the whole-KG schema read touches the ontology (declarations)
+    # AND the KG (population), so it belongs in this enumeration like every
+    # other ontology-touching route.
+    neptune = _seed_adversarial()
+    a = _explore_client(neptune, TENANT_A).get(
+        f"/graphs/{TENANT_A}/explore/kgs/{KG_NAME}/schema"
+    )
+    b = _explore_client(neptune, TENANT_B).get(
+        f"/graphs/{TENANT_B}/explore/kgs/{KG_NAME}/schema"
+    )
+    assert a.status_code == 200 and b.status_code == 200, (a.text, b.text)
+    a_dump, b_dump = str(a.json()), str(b.json())
+    _assert_no_peer_markers(a_dump, peer="B")
+    _assert_no_peer_markers(b_dump, peer="A")
+
+
 def test_explore_search_isolated():
     neptune = _seed_adversarial()
     a = _explore_client(neptune, TENANT_A).get(
