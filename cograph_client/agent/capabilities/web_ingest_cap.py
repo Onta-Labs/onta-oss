@@ -28,10 +28,16 @@ accurately and the user doesn't have to run a separate enrichment afterward:
    extractor can't run, the preview degrades to a flat single-type card (the turn
    never 500s).
 3. ``execute`` fetches the FULL set (targeting the same attributes) and ingests
-   it through :meth:`SchemaResolver.ingest` (``content_type="json"``) — the
-   identical extract→resolve→insert path document ingest commits through, which
-   infers MULTIPLE types and registers relationships as object-properties — as a
-   background job. Returns an ack. For an ENUMERATION ask ("all X in Y and Z"),
+   it — as a background job — through one of TWO seams, chosen by whether the
+   provider marks itself ``structured``. An UNSTRUCTURED provider goes through
+   :meth:`SchemaResolver.ingest` (``content_type="json"``), the identical
+   extract→resolve→insert path document ingest commits through, which infers
+   MULTIPLE types and registers relationships as object-properties. A STRUCTURED
+   provider (an API-registry pull, whose rows already arrive keyed by a
+   declarative field map) goes through :meth:`SchemaResolver.ingest_structured_rows`
+   instead: the same deterministic mapping seam CSV ingest uses, with NO LLM
+   ``_extract``. See ONTA-272 and the ``structured_fastpath`` branch below.
+   Returns an ack. For an ENUMERATION ask ("all X in Y and Z"),
    the spec partitions the scope into self-contained ``subqueries``; execute runs
    one discovery per sub-query, dedupes on the key attribute across batches, and
    ingests each batch as it lands (one merged job, streaming progress) — one page
