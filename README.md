@@ -216,7 +216,10 @@ WHERE { ?s ?p ?o }
 A query with no dataset clause is rejected with a 400, and one naming another
 workspace's graph with a 403. This is not a style preference: the backing store
 defines its default graph as the union of every named graph, so an unscoped
-query reads everything the store holds rather than just your workspace.
+query reads everything the store holds rather than just your workspace. The
+check parses the query with `rdflib` rather than scanning it for keywords, since
+SPARQL names may legally contain `FROM` (`_:b-FROM` is one token) and a scanner
+can be fooled into seeing a dataset clause the store does not.
 
 `POST /graphs/{tenant}/update` (raw SPARQL Update) is restricted to operators on
 any deployment that has authentication configured, because no equivalent rule

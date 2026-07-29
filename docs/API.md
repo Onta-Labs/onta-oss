@@ -224,9 +224,10 @@ clause would read every workspace.
 **Request body:** `SPARQLQuery`
 
 **200:** Successful Response
-**400:** No dataset clause, a clause that is not a full IRI, or `SERVICE`
+**400:** No dataset clause, unparseable SPARQL, or `SERVICE`
 **403:** A graph outside this workspace
 **422:** Validation Error
+**503:** The SPARQL parser used to confine the query is not installed
 
 ---
 

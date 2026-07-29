@@ -113,24 +113,102 @@ def test_from_hidden_in_a_string_literal_does_not_satisfy_the_gate(
 @pytest.mark.parametrize(
     "query",
     [
-        # An unterminated literal: the mask cannot tell where the literal ends,
-        # so clause detection is unreliable here by construction.
+        # An unterminated literal, i.e. text our reading of it and the store's
+        # could plausibly disagree about.
         f'SELECT * WHERE {{ ?s ?p "abc }} FROM <{VICTIM_GRAPH}>',
         f'SELECT * FROM <{OWN_GRAPH}> WHERE {{ ?s ?p "x GRAPH <{VICTIM_GRAPH}> }}',
         f'SELECT * FROM <{OWN_GRAPH}> WHERE {{ ?s ?p """a FROM <{VICTIM_GRAPH}>""" }}',
     ],
 )
-def test_raw_text_scan_catches_what_the_mask_cannot(
+def test_raw_text_scan_catches_what_the_parse_might_not(
     client, auth_headers, mock_neptune, query
 ):
     """The belt, exercised without its suspenders.
 
-    Clause detection reads a masked copy and can be confused by a malformed
-    literal. The foreign-IRI scan reads the untouched text, so naming another
-    workspace's graph is caught no matter how the surrounding syntax parses.
+    The foreign-IRI scan reads untouched text, so naming another workspace's
+    graph is caught no matter how the surrounding syntax parses, and a
+    divergence between our parser and the store's cannot blind it.
     """
     res = _post_query(client, auth_headers, query)
-    assert res.status_code == 403, res.text
+    assert res.status_code in (400, 403), res.text
+    mock_neptune.query.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Token-boundary bypasses: the reason rule A uses a parser, not a keyword scan
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("label", "query"),
+    [
+        # SPARQL's BLANK_NODE_LABEL and PN_LOCAL both allow "-", "." and a long
+        # tail of PN_CHARS INSIDE a name. Each decoy below is ONE token to the
+        # store, so the store sees NO dataset clause and falls back to the union
+        # of every graph, while a keyword scanner reads a standalone FROM
+        # followed by an owned IRI and calls the query scoped. The decoy sits in
+        # an OPTIONAL / MINUS so it constrains nothing and `?s ?p ?o` returns
+        # everything. This is a full reinstatement of the original bug, and it
+        # names no foreign IRI, so rule B cannot catch it either.
+        (
+            "blank node label",
+            "SELECT ?s ?p ?o WHERE { ?s ?p ?o OPTIONAL { _:b-FROM "
+            f"<{OWN_GRAPH}> ?z }} }}",
+        ),
+        (
+            "prefixed name with hyphen",
+            "PREFIX ex: <http://e/> SELECT ?s ?p ?o WHERE { ?s ?p ?o "
+            f"OPTIONAL {{ ?x ex:p-FROM <{OWN_GRAPH}> }} }}",
+        ),
+        (
+            "prefixed name with dot",
+            "PREFIX ex: <http://e/> SELECT ?s ?p ?o WHERE { ?s ?p ?o "
+            f"MINUS {{ ?x ex:a.FROM <{OWN_GRAPH}> }} }}",
+        ),
+        # U+00B7 MIDDLE DOT is a legal PN_CHARS codepoint that is neither a word
+        # character nor "-"/"."; it defeats the tightened lookbehind that a
+        # regex-based fix would have reached for.
+        (
+            "prefixed name with middle dot",
+            "PREFIX ex: <http://e/> SELECT ?s ?p ?o WHERE { ?s ?p ?o "
+            f"OPTIONAL {{ ?x ex:p·FROM <{OWN_GRAPH}> }} }}",
+        ),
+    ],
+)
+def test_keyword_lookalike_tokens_cannot_fake_a_dataset_clause(
+    client, auth_headers, mock_neptune, label, query
+):
+    res = _post_query(client, auth_headers, query)
+    assert res.status_code == 400, f"{label}: {res.text}"
+    mock_neptune.query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "graph",
+    [
+        f"{OWN_GRAPH}/../victim-tenant",
+        f"{OWN_GRAPH}/kg/../../victim-tenant",
+        f"{OWN_GRAPH}/./../victim-tenant",
+        f"{OWN_GRAPH}/%2e%2e/victim-tenant",
+        f"{OWN_GRAPH}/..\\victim-tenant",
+    ],
+)
+def test_dot_segments_under_an_owned_prefix_are_rejected(
+    client, auth_headers, mock_neptune, graph
+):
+    """An owned PREFIX is not an owned TARGET.
+
+    RFC 3986 section 5.2.2 removes dot segments when resolving a reference even
+    when it carries a scheme, and Jena's resolver does exactly that, so these
+    start inside the workspace's namespace and land outside it.
+    """
+    res = _post_query(
+        client, auth_headers, f"SELECT * FROM <{graph}> WHERE {{ ?s ?p ?o }}"
+    )
+    # 403 from the ownership check, or 400 when the IRI is malformed enough that
+    # the parser refuses it first (a backslash is not legal in an IRIREF). Both
+    # are refusals; `tenant_owns_graph` is pinned directly on all of these below.
+    assert res.status_code in (400, 403), res.text
     mock_neptune.query.assert_not_called()
 
 
@@ -239,10 +317,22 @@ def test_multiple_owned_clauses_and_graph_variable_are_allowed(client, auth_head
 def test_tenant_owns_graph_does_not_leak_across_a_shared_prefix():
     assert tenant_owns_graph(OWN_GRAPH, TENANT)
     assert tenant_owns_graph(f"{OWN_GRAPH}/kg/x", TENANT)
+    assert tenant_owns_graph(f"{OWN_GRAPH}/kg/x/provenance", TENANT)
     assert not tenant_owns_graph(f"{OWN_GRAPH}-evil", TENANT)
     assert not tenant_owns_graph(f"{OWN_GRAPH}evil", TENANT)
     assert not tenant_owns_graph(VICTIM_GRAPH, TENANT)
     assert not tenant_owns_graph("https://cograph.tech/graphs/", TENANT)
+
+
+def test_tenant_owns_graph_rejects_paths_that_escape_the_owned_prefix():
+    """Owned prefix, unowned target. See RFC 3986 section 5.2.2."""
+    assert not tenant_owns_graph(f"{OWN_GRAPH}/../victim-tenant", TENANT)
+    assert not tenant_owns_graph(f"{OWN_GRAPH}/kg/../../victim-tenant", TENANT)
+    assert not tenant_owns_graph(f"{OWN_GRAPH}/./x", TENANT)
+    assert not tenant_owns_graph(f"{OWN_GRAPH}/%2e%2e/victim-tenant", TENANT)
+    assert not tenant_owns_graph(f"{OWN_GRAPH}/..\\victim-tenant", TENANT)
+    assert not tenant_owns_graph(f"{OWN_GRAPH}//victim-tenant", TENANT)
+    assert not tenant_owns_graph(f"{OWN_GRAPH}/", TENANT)
 
 
 def test_scope_error_carries_the_status_the_route_should_return():
@@ -257,19 +347,92 @@ def test_scope_error_carries_the_status_the_route_should_return():
     assert foreign.value.status_code == 403
 
 
-def test_keyword_lookalikes_are_not_mistaken_for_clauses():
-    """?from / ex:from / a path segment named "from" are not dataset clauses.
-
-    Each of these queries IS properly scoped, so the only way to fail is for the
-    scanner to see a phantom extra FROM keyword and reject a legitimate query.
-    """
-    for query in (
+@pytest.mark.parametrize(
+    "query",
+    [
         f"SELECT ?from FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?from }}",
         f"SELECT ?s FROM <{OWN_GRAPH}> WHERE {{ ?s <http://example.com/from> ?o }}",
         "PREFIX ex: <http://example.com/> "
         f"SELECT ?s FROM <{OWN_GRAPH}> WHERE {{ ?s ex:from ?o }}",
-    ):
-        enforce_query_scope(query, TENANT)
+        # Hyphenated local names are ordinary in third-party vocabularies, and a
+        # keyword scanner rejected every one of these: "*-service" as banned
+        # federation, "*-from" as a malformed dataset clause, and the blank-node
+        # form as cross-tenant access on a query naming no foreign graph at all.
+        "PREFIX ex: <http://example.com/> "
+        f"SELECT ?s FROM <{OWN_GRAPH}> WHERE {{ ?s ex:web-service ?o }}",
+        "PREFIX ex: <http://example.com/> "
+        f"SELECT ?s FROM <{OWN_GRAPH}> WHERE {{ ?s ex:date-from ?o }}",
+        f"SELECT ?o FROM <{OWN_GRAPH}> WHERE {{ _:node-from <https://p/n> ?o }}",
+    ],
+)
+def test_keyword_lookalikes_are_not_mistaken_for_clauses(query):
+    """A name that merely CONTAINS a keyword is one token, not a clause.
+
+    Each query here IS properly scoped, so the only way to fail is to see a
+    phantom keyword and reject legitimate work.
+    """
+    enforce_query_scope(query, TENANT)
+
+
+def test_from_named_alone_is_a_dataset_clause():
+    """FROM NAMED with no plain FROM still declares a dataset, so it is accepted.
+
+    Pinned because it is the one accepted shape where the default graph ends up
+    EMPTY rather than tenant-scoped, which is safe but easy to break by mistake.
+    """
+    enforce_query_scope(
+        f"SELECT ?g FROM NAMED <{OWN_GRAPH}/kg/imdb> WHERE "
+        "{ GRAPH ?g { ?s ?p ?o } }",
+        TENANT,
+    )
+
+
+#: Every query this module asserts the guard ACCEPTS. Kept in one place so the
+#: differential invariant below covers all of them, not a hand-picked subset.
+ACCEPTED_QUERIES = [
+    f"SELECT ?name FROM <{OWN_GRAPH}> WHERE {{ ?s <https://schema.org/name> ?name }}",
+    f"SELECT ?s ?p ?o FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?o }} LIMIT 1000",
+    f"SELECT (COUNT(?v) AS ?cnt) FROM <{OWN_GRAPH}/kg/imdb> "
+    'WHERE { ?s ?p ?v . FILTER(CONTAINS(STR(?v), "|")) } LIMIT 1',
+    f"ASK FROM <{OWN_GRAPH}> WHERE {{ <https://cograph.tech/onto/x> ?p ?o }}",
+    f"SELECT ?s FROM <{OWN_GRAPH}/kg/imdb/provenance> WHERE {{ ?s ?p ?o }}",
+    f"SELECT ?g ?s FROM <{OWN_GRAPH}> FROM NAMED <{OWN_GRAPH}/kg/imdb> "
+    "WHERE { GRAPH ?g { ?s ?p ?o } }",
+    f"SELECT ?g FROM NAMED <{OWN_GRAPH}/kg/imdb> WHERE {{ GRAPH ?g {{ ?s ?p ?o }} }}",
+    "PREFIX ex: <http://example.com/> "
+    f"SELECT ?s FROM <{OWN_GRAPH}> WHERE {{ ?s ex:web-service ?o }}",
+    f"SELECT ?from FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?from }}",
+    f"CONSTRUCT {{ ?s ?p ?o }} FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?o }}",
+    f"DESCRIBE ?s FROM <{OWN_GRAPH}> WHERE {{ ?s ?p ?o }}",
+]
+
+
+@pytest.mark.parametrize("query", ACCEPTED_QUERIES)
+def test_every_accepted_query_really_carries_an_owned_dataset_clause(query):
+    """The invariant the guard exists to establish, checked independently.
+
+    Asserting a 200 only proves the guard said yes. It does NOT prove the store
+    will confine the query, and that gap is precisely where a token-boundary
+    bypass lives: the guard sees a dataset clause, the store sees none, and the
+    query runs against the union of every graph. So re-derive the dataset from
+    the parse tree and require it to be non-empty and entirely tenant-owned.
+    """
+    from rdflib.plugins.sparql.parser import parseQuery
+
+    from cograph_client.graph.sparql_scope import dataset_graphs, tenant_owns_graph
+
+    enforce_query_scope(query, TENANT)
+
+    graphs = dataset_graphs(parseQuery(query)[1])
+    assert graphs, f"accepted a query the parser reports as unscoped: {query}"
+    for graph_uri in graphs:
+        assert tenant_owns_graph(graph_uri, TENANT), (query, graph_uri)
+
+
+def test_unparseable_sparql_is_rejected_rather_than_forwarded():
+    with pytest.raises(TenantScopeError) as err:
+        enforce_query_scope("this is not sparql at all", TENANT)
+    assert err.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------
