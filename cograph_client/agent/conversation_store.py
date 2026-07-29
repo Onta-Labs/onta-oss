@@ -61,12 +61,24 @@ class Turn:
     ``kind``/``intent`` are recorded for assistant turns so the convergence
     guard can count prior ``clarify`` rounds and the classifier prompt can avoid
     re-asking an already-answered dimension.
+
+    ``kg_name`` (ONTA-419) records WHICH knowledge graph the turn was made
+    against. A single session id legitimately spans several graphs (the MCP
+    server mints one session per process, and the Explorer keeps a thread open
+    while the user switches graphs), so without this the planner replays graph
+    A's turns while classifying a graph B message: a misrouted intent and, worse,
+    a target type name resolved from a graph that no longer has it. It is
+    Optional and defaults to None: turns persisted before this field existed
+    (and turns made with no KG scope) load fine and are treated as matching every
+    graph, so no data migration is needed -- the transcript lives in a ``jsonb``
+    ``payload`` column and :meth:`from_dict` defaults every missing key.
     """
 
     role: str  # "user" | "assistant"
     text: str
     kind: Optional[str] = None  # assistant: answer | clarify | plan | result
     intent: Optional[str] = None  # assistant: the chosen intent(s), joined
+    kg_name: Optional[str] = None  # which KG this turn targeted; None = unscoped
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -78,6 +90,7 @@ class Turn:
             text=d.get("text", ""),
             kind=d.get("kind"),
             intent=d.get("intent"),
+            kg_name=d.get("kg_name"),
         )
 
 
