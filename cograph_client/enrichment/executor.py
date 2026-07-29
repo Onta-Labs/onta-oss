@@ -76,6 +76,7 @@ from cograph_client.graph.ontology_queries import (
     with_subclass_closure,
     xsd_to_datatype,
 )
+from cograph_client.graph.queries import sparql_string_literal
 from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.provenance import (
@@ -285,8 +286,13 @@ def _attr_uri(type_name: str, attr: str) -> str:
 
 
 def _esc_lit(value: str) -> str:
-    """Escape a string for use inside a SPARQL double-quoted literal."""
-    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    """Escape a string for use inside a SPARQL double-quoted literal.
+
+    Delegates to the ONE hardened escaper (ONTA-416) rather than keeping a
+    fourth partial copy — enriched values come off the open web, so an interior
+    ``\\r`` in a scraped value must not be able to emit malformed SPARQL.
+    """
+    return sparql_string_literal(value)
 
 
 def _strategy_version_with_instructions(

@@ -39,6 +39,7 @@ from cograph_client.api.deps import get_neptune_client
 from cograph_client.api.routes import ask as ask_routes
 from cograph_client.api.routes import explore as explore_routes
 from cograph_client.api.routes import functions as functions_routes
+from cograph_client.api.routes import grep as grep_routes
 from cograph_client.api.routes import knowledge_graphs as kg_routes
 from cograph_client.api.routes import ontology as ontology_routes
 from cograph_client.api.routes import operator as operator_routes
@@ -333,7 +334,17 @@ class IsolationNeptune:
     def _entity_preds(self, triples, entity: str) -> list[tuple[str, str]]:
         return [(p, o) for (s, p, o) in triples if s == entity]
 
-    async def query(self, sparql: str) -> dict:
+    def _grep_scope(self, graphs: list[str]) -> list[tuple[str, str, str]]:
+        """Graphs the literal grep is allowed to read. Overridden by the planted
+        self-test to simulate a writer that ignores the server-built FROM."""
+        out: list[tuple[str, str, str]] = []
+        for g in graphs:
+            out.extend(self._triples(g))
+        return out
+
+    async def query(self, sparql: str, *, timeout: float | None = None) -> dict:
+        # ``timeout`` accepted because the literal grep route (ONTA-416) passes a
+        # dedicated short one; ignored here, this store never blocks.
         self.queries.append(sparql)
         graphs = _extract_from_graphs(sparql)
         # Multi-FROM: union the triples (layer stack reads).
@@ -345,6 +356,32 @@ class IsolationNeptune:
         triples: list[tuple[str, str, str]] = []
         for ts in triple_sets:
             triples.extend(ts)
+
+        # --- literal grep scan (ONTA-416): SELECT ?s ?p ?o + isLiteral CONTAINS --
+        # Answered BEFORE the ontology shapes because it is the one query whose
+        # whole point is dumping raw instance literals — precisely what a
+        # graph-scoping bug would leak across tenants.
+        if "isLiteral(?o)" in sparql:
+            m = re.search(r'CONTAINS\((?:LCASE\()?STR\(\?o\)\)?, "([^"]*)"', sparql)
+            needle = (m.group(1) if m else "").lower()
+            rows = [
+                {"s": s, "p": p, "o": o}
+                for (s, p, o) in self._grep_scope(graphs)
+                if needle and needle in o.lower()
+            ]
+            return _sparql_from_rows(rows)
+
+        # --- literal grep decoration: VALUES ?s + OPTIONAL label/type ---
+        if "VALUES ?s" in sparql:
+            subjects = re.findall(r"<(https://cograph\.tech/entities/[^>]+)>", sparql)
+            rows = []
+            for s in subjects:
+                for p, o in self._entity_preds(self._grep_scope(graphs), s):
+                    if p == f"{RDFS}#label":
+                        rows.append({"s": s, "label": o})
+                    elif p == f"{RDF}#type":
+                        rows.append({"s": s, "type": o})
+            return _sparql_from_rows(rows)
 
         # --- list_types_query / explore search type list ---
         if "?label" in sparql and "rdfs#Class" in sparql.replace(
@@ -685,6 +722,10 @@ def _kg_client(neptune, tenant_id: str, **kw) -> TestClient:
     return _app(neptune, tenant_id, kg_routes.router, **kw)
 
 
+def _grep_client(neptune, tenant_id: str, **kw) -> TestClient:
+    return _app(neptune, tenant_id, grep_routes.router, **kw)
+
+
 def _operator_client(neptune) -> TestClient:
     return _app(neptune, TENANT_A, operator_routes.router, is_operator=True)
 
@@ -887,6 +928,97 @@ def test_type_counts_isolated():
     b_names = {r["name"] for r in b.json()}
     assert TYPE_NAME in a_names
     assert TYPE_NAME in b_names
+
+
+# ===========================================================================
+# 2b. Literal grep (ONTA-416) — the rawest instance read in the API
+# ===========================================================================
+#
+# Grep is the one route whose entire job is dumping raw instance LITERALS, so a
+# graph-scoping slip here leaks tenant data verbatim rather than as a type name.
+# It is isolated by construction (``get_tenant`` + a server-built
+# ``kg_graph_uri(tenant.tenant_id, kg)``; no caller value reaches the FROM), and
+# these tests pin that rather than assume it.
+
+GREP_COLLIDING_NEEDLE = "ISO402B_ENTITY"  # substring of BOTH tenants' labels
+
+
+def _grep(client, tenant_id: str, needle: str = GREP_COLLIDING_NEEDLE):
+    return client.post(
+        f"/graphs/{tenant_id}/grep",
+        json={"q": needle, "kg_name": KG_NAME},
+    )
+
+
+def test_grep_isolated():
+    """A needle that matches BOTH tenants' entities returns only your own."""
+    neptune = _seed_adversarial()
+    a = _grep(_grep_client(neptune, TENANT_A), TENANT_A)
+    b = _grep(_grep_client(neptune, TENANT_B), TENANT_B)
+    assert a.status_code == 200 and b.status_code == 200, (a.text, b.text)
+    a_dump, b_dump = str(a.json()), str(b.json())
+    # Positive: each tenant DOES see its own literal (so the test isn't vacuous).
+    _assert_own_markers_present(a_dump, owner="A", required=(A_ENTITY_LABEL,))
+    _assert_own_markers_present(b_dump, owner="B", required=(B_ENTITY_LABEL,))
+    # Negative: no peer marker, no peer entity URI.
+    _assert_no_peer_markers(a_dump, peer="B")
+    _assert_no_peer_markers(b_dump, peer="A")
+    assert B_ENTITY not in a_dump
+    assert A_ENTITY not in b_dump
+
+
+def test_grep_scans_only_the_callers_kg_graph():
+    """Structural pin: every query the route issues names exactly ONE graph, the
+    caller's, built from the RESOLVED tenant id — never the path string."""
+    neptune = _seed_adversarial()
+    _grep(_grep_client(neptune, TENANT_A), TENANT_A)
+    assert neptune.queries
+    for q in neptune.queries:
+        assert _extract_from_graphs(q) == [KG_A]
+        assert TENANT_B not in q
+
+
+def test_grep_path_tenant_cannot_override_the_key_tenant():
+    """B's key hitting A's path still scans B's graph (auth resolves the tenant;
+    the path segment never reaches the graph URI)."""
+    neptune = _seed_adversarial()
+    res = _grep_client(neptune, TENANT_B).post(
+        f"/graphs/{TENANT_A}/grep",
+        json={"q": GREP_COLLIDING_NEEDLE, "kg_name": KG_NAME},
+    )
+    assert res.status_code == 200, res.text
+    for q in neptune.queries:
+        assert _extract_from_graphs(q) == [KG_B]
+    _assert_no_peer_markers(str(res.json()), peer="A")
+
+
+def test_grep_private_attribute_value_never_crosses():
+    """A's private attribute value is invisible to B even when B names it."""
+    neptune = _seed_adversarial()
+    res = _grep(_grep_client(neptune, TENANT_B), TENANT_B, needle=A_STATUS_VAL)
+    assert res.status_code == 200, res.text
+    assert res.json()["count"] == 0
+    _assert_no_peer_markers(str(res.json()), peer="A")
+
+
+def test_planted_grep_leak_is_caught():
+    """Self-test: a store that ignores the FROM and unions every graph (the
+    union-default failure mode) MUST fail the assertions above — proving they
+    are not vacuously passing."""
+
+    class LeakyGrepNeptune(IsolationNeptune):
+        def _grep_scope(self, graphs):  # noqa: D102 — union everything
+            out = []
+            for g in self.by_graph:
+                out.extend(self.by_graph[g])
+            return out
+
+    neptune = _seed_adversarial()
+    leaky = LeakyGrepNeptune(neptune.by_graph)
+    res = _grep(_grep_client(leaky, TENANT_A), TENANT_A)
+    assert res.status_code == 200, res.text
+    with pytest.raises(AssertionError):
+        _assert_no_peer_markers(str(res.json()), peer="B")
 
 
 # ===========================================================================
