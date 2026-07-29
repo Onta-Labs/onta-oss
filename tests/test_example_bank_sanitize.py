@@ -142,6 +142,38 @@ def test_a_graph_iri_scoped_without_from_is_still_rewritten(keyword):
     assert f"{keyword} <{TARGET_GRAPH}>" in out
 
 
+def test_a_less_than_operator_is_not_mistaken_for_the_start_of_an_iri():
+    """`<` is also SPARQL's less-than. A backstop keyed only on `/graphs/` starts
+    matching at the `<` of `FILTER(?y < 2000)` and swallows everything through the
+    next `>`, eating the filter and any clause between it and the graph IRI. The
+    scheme anchor plus the whitespace exclusion make an operator unmatchable.
+    """
+    sparql = (
+        f"SELECT ?x FROM <{FOREIGN_GRAPH}> WHERE {{ "
+        "?x <https://cograph.tech/types/M/attrs/year> ?y . FILTER(?y < 2000) } "
+        f"GRAPH <{FOREIGN_GRAPH}> {{ ?a ?b ?c }}"
+    )
+    out = sanitize_example_sparql(sparql, TARGET_GRAPH)
+    assert "FILTER(?y < 2000)" in out
+    assert "demo-tenant" not in out
+    assert out.count(f"<{TARGET_GRAPH}>") == 2
+
+
+@pytest.mark.parametrize(
+    "expr",
+    ["FILTER(?y < 2000)", "FILTER(?y <= 2000 && ?y > 1990)", "FILTER(?a <?b)"],
+)
+def test_comparison_operators_survive_untouched(expr):
+    sparql = f"SELECT ?x FROM <{FOREIGN_GRAPH}> WHERE {{ ?x ?p ?y . {expr} }}"
+    out = sanitize_example_sparql(sparql, TARGET_GRAPH)
+    assert expr in out
+
+
+def test_sanitizing_twice_changes_nothing_the_second_time():
+    once = sanitize_example_sparql(_SAMPLE_SPARQL, TARGET_GRAPH)
+    assert sanitize_example_sparql(once, TARGET_GRAPH) == once
+
+
 def test_the_graph_backstop_does_not_touch_type_or_entity_iris():
     """It keys on the `/graphs/` path segment, not on the host."""
     sparql = (

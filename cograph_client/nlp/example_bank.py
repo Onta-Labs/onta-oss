@@ -639,7 +639,14 @@ _FROM_GRAPH_RE = re.compile(r"(?<![\w?$:-])(FROM\s+(?:NAMED\s+)?)<[^>]*>", re.IG
 # `populate_from_eval_reports`, so a future model emitting a GRAPH block would
 # quietly reopen the leak. Keyed on the `/graphs/` path segment that
 # `graph/queries.py` mints, so type/attribute/entity IRIs are never touched.
-_ANY_GRAPH_IRI_RE = re.compile(r"<[^>]*/graphs/[^>]*>")
+#
+# The `scheme://` anchor and the whitespace exclusion are load-bearing, not
+# tidiness: `<` is also the SPARQL less-than operator, so a laxer `<[^>]*/graphs/`
+# starts matching at the `<` of `FILTER(?y < 2000)` and swallows everything up to
+# the next `>` (i.e. the whole filter plus a following GRAPH clause). Requiring
+# the match to begin with a real IRI scheme and to contain no whitespace makes a
+# comparison operator unmatchable.
+_ANY_GRAPH_IRI_RE = re.compile(r"<[a-zA-Z][\w+.-]*://[^>\s]*/graphs/[^>\s]*>")
 
 
 def sanitize_example_sparql(sparql: str, target_graph_uri: str = "") -> str:
