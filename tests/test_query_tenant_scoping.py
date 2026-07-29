@@ -73,7 +73,13 @@ def test_unscoped_query_is_rejected(client, auth_headers, mock_neptune):
         # A relative IRI resolved against a BASE pointing at the victim.
         f"BASE <{VICTIM_GRAPH}> SELECT ?s FROM <> WHERE {{ ?s ?p ?o }}",
         f"SELECT ?s FROM <../victim-tenant> WHERE {{ ?s ?p ?o }}",
-        # A prefixed name, which would expand outside anything we can read here.
+        # A prefixed name. NOTE: this case passes on rule B, because the PREFIX
+        # declaration spells our namespace in the raw text. It is NOT evidence
+        # that prefixed dataset clauses are handled, and for one revision it
+        # masked the fact that they were being dropped. The dedicated
+        # test_prefixed_name_dataset_clauses_are_rejected_not_skipped below is
+        # what actually pins that, including the escaped-slash spelling that
+        # keeps the namespace out of the raw text entirely.
         "PREFIX g: <https://cograph.tech/graphs/> "
         "SELECT ?s FROM g:victim-tenant WHERE { ?s ?p ?o }",
         # A neighbouring tenant id that merely shares our prefix.
@@ -507,10 +513,50 @@ def test_every_accepted_query_really_carries_an_owned_dataset_clause(query):
 
     enforce_query_scope(query, TENANT)
 
-    graphs = dataset_graphs(parseQuery(query)[1])
+    parsed = parseQuery(query)[1]
+    graphs = dataset_graphs(parsed)
     assert graphs, f"accepted a query the parser reports as unscoped: {query}"
     for graph_uri in graphs:
         assert tenant_owns_graph(graph_uri, TENANT), (query, graph_uri)
+
+    # Counted against the PARSER's own clause list, not against the extractor.
+    # Everything above shares `dataset_graphs` with the guard, so it can only
+    # catch guard-logic bugs; it is blind to an EXTRACTOR that silently drops a
+    # clause. That blindness is not hypothetical: an earlier revision filtered
+    # the dataset to its URIRef values and thereby dropped an unexpanded
+    # prefixed-name clause, reporting a query as scoped while the store read a
+    # second graph. One clause in, one graph out, whatever the next unhandled
+    # clause shape turns out to be.
+    assert len(graphs) == len(parsed["datasetClause"]), (
+        f"a dataset clause was dropped rather than resolved or refused: {query}"
+    )
+
+
+def test_dataset_graphs_refuses_rather_than_drops_an_unresolvable_clause():
+    """The extractor must be TOTAL: one clause in, one graph out, or an error.
+
+    This is the direct pin for the bug the corpus check above cannot see. A
+    prefixed-name clause is left unexpanded by the parser, and an extractor that
+    filtered its output down to the resolved IRIs would return a SHORTER list
+    and report this query as scoped to its owned clause alone, while the store
+    reads both. The corpus check cannot catch that, because a query with a
+    dropped clause never appears among the ACCEPTED ones.
+    """
+    from rdflib.plugins.sparql.parser import parseQuery
+
+    from cograph_client.graph.sparql_scope import dataset_graphs
+
+    query = (
+        "PREFIX g: <https://cograph.tech/gr> "
+        f"SELECT * FROM <{OWN_GRAPH}> FROM g:aphs\\/victim-tenant "
+        "WHERE { ?s ?p ?o }"
+    )
+    parsed = parseQuery(query)[1]
+    assert len(parsed["datasetClause"]) == 2, "the parser must see both clauses"
+
+    with pytest.raises(TenantScopeError) as err:
+        dataset_graphs(parsed)
+    assert err.value.status_code == 400
 
 
 def test_unparseable_sparql_is_rejected_rather_than_forwarded():
