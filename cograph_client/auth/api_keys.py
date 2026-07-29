@@ -189,9 +189,26 @@ def get_tenant(
     return ctx
 
 
+def _has_static_keys() -> bool:
+    keys_map = settings.get_api_keys_map()
+    return bool(keys_map) and keys_map != {"": ""}
+
+
+def auth_is_configured() -> bool:
+    """Whether ANY authentication is wired up (static key map or a verifier).
+
+    When this is False the deployment is in open-access mode: ``_resolve_tenant``
+    below hands an anonymous caller whatever tenant the URL names, so there is no
+    tenant boundary for anything to cross. Routes that are otherwise restricted
+    to operators use this to stay usable for a self-hosted single-user install
+    without weakening anything in a deployment that DOES have auth.
+    """
+    return _has_static_keys() or _external_verifier is not None
+
+
 def _resolve_tenant(tenant: Optional[str], api_key: Optional[str]) -> TenantContext:
     keys_map = settings.get_api_keys_map()
-    has_static_keys = bool(keys_map) and keys_map != {"": ""}
+    has_static_keys = _has_static_keys()
     has_external = _external_verifier is not None
 
     # No auth configured at all — open access; honor the requested tenant.
