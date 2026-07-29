@@ -11,7 +11,12 @@ To re-enable, port the helpers below to drive the REST API directly
 ``/graphs/{tenant}/ask`` for queries, ``/graphs/{tenant}/update`` with
 ``DROP GRAPH`` for clear) or invoke the TypeScript CLI, then drop the module-level
 skip. Run against a live deployment with:
-    OPENROUTER_API_KEY=sk-or-... OMNIX_API_URL=... OMNIX_API_KEY=... pytest tests/test_integration.py -v -s
+    ONTA_TEST_ALLOW_LIVE_LLM=1 OPENROUTER_API_KEY=sk-or-... OMNIX_API_URL=... \
+        OMNIX_API_KEY=... pytest tests/test_integration.py -v -s
+
+``ONTA_TEST_ALLOW_LIVE_LLM=1`` is required: tests/conftest.py clears the provider
+credentials by default so the unit suite can never egress to a live LLM, and
+without that opt-in the OPENROUTER_API_KEY above is stripped before use.
 """
 
 import os
