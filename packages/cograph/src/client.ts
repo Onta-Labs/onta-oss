@@ -1589,6 +1589,10 @@ export interface KgSchema {
   /** Names of the types the `limit` cap withheld, so a capped type is still
    *  known to EXIST and can be fetched with `types: [...]`. */
   omitted_type_names: string[];
+  /** Populated ONLY when a `types` filter matched nothing: every type name the
+   *  graph does have, so a typo reads as "you meant one of these" rather than
+   *  "that type does not exist". Empty otherwise. */
+  available_type_names: string[];
   /** `"precomputed"` (materialized stats) or `"live_scan"` (legacy KG). */
   stats_source: string;
   /** How `coverage_pct` is computed, including the multi-typed-entity caveat. */

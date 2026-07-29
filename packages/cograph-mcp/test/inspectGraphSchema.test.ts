@@ -69,6 +69,7 @@ function schemaFixture(over: Partial<KgSchema> = {}): KgSchema {
     total_types: 1,
     truncated: false,
     omitted_type_names: [],
+    available_type_names: [],
     stats_source: "precomputed",
     coverage_note: "coverage_pct is relative to entity_count.",
     ...over,
@@ -168,6 +169,39 @@ describe("inspect_graph_schema handler", () => {
 
     expect(text).toContain("Trial, Company");
     expect(text).toContain("pass type= to drill in");
+  });
+
+  it("names the graph's real types when a filter matched nothing", async () => {
+    // A filter typo must never read as "that type does not exist", which is the
+    // exact failure this tool exists to prevent.
+    const { client } = stubClient(
+      schemaFixture({
+        types: [],
+        total_types: 0,
+        available_type_names: ["Company", "Drug"],
+      }),
+    );
+
+    const res = await inspectGraphSchemaHandler(
+      { kg_name: "pharma", type: ["Drugz"] },
+      () => client,
+    );
+    const text = res.content.map((c) => c.text).join("\n");
+
+    expect(text).toContain("Types it does have: Company, Drug");
+  });
+
+  it("says 'matching' when a type filter narrowed the result", async () => {
+    // Otherwise a drill-in reads as "this graph has exactly one type".
+    const { client } = stubClient(schemaFixture());
+
+    const res = await inspectGraphSchemaHandler(
+      { kg_name: "pharma", type: ["Drug"] },
+      () => client,
+    );
+    const text = res.content.map((c) => c.text).join("\n");
+
+    expect(text).toContain("(1 matching type(s))");
   });
 
   it("surfaces backend errors instead of an empty schema", async () => {

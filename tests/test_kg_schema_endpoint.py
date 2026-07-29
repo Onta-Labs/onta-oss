@@ -374,6 +374,135 @@ def test_whole_kg_read_does_not_fan_out_per_type(client, mock_neptune, auth_head
     assert mock_neptune.query.await_count == 4
 
 
+def test_declared_base_never_hides_a_populated_companion_shaped_attribute(
+    client, mock_neptune, auth_headers
+):
+    # `_assemble_summary` classifies `<base>_<suffix>` as a LEGACY provenance
+    # companion only when `<base>` is also present. Synthesizing a
+    # declared-but-empty `data` would therefore make a REAL, populated
+    # `data_provenance` vanish. Never trade a populated slot for an empty one.
+    stats = {
+        "entity_count": _rows({"type": TYPES + "Doc", "ec": "10", "sp": "", "tp": ""}),
+        "preds": _rows(
+            {"type": TYPES + "Doc", "pred": TYPES + "Doc/attrs/data_provenance",
+             "cnt": "10", "rel": "0", "target": ""},
+        ),
+    }
+    decl_types = _rows({"type": TYPES + "Doc", "label": "Doc", "comment": "", "parent": ""})
+    decl_attrs = _rows(
+        {"domain": TYPES + "Doc", "attr": TYPES + "Doc/attrs/data",
+         "attrLabel": "data", "range": ""},
+    )
+    mock_neptune.query.side_effect = _route_factory(stats, decl_types, decl_attrs)
+
+    doc = _by_name(client.get(SCHEMA_URL, headers=auth_headers).json())["Doc"]
+    names = {a["name"] for a in doc["attributes"]}
+    assert "data_provenance" in names
+    # The declared-empty base is withheld precisely because keeping it would
+    # have hidden the populated one.
+    assert "data" not in names
+
+
+def test_type_filter_is_case_insensitive_and_names_alternatives_on_a_miss(
+    client, mock_neptune, auth_headers
+):
+    # The caller is usually an LLM: an exact-match miss would answer "no such
+    # type", which is the conclusion this endpoint exists to prevent.
+    stats = {
+        "entity_count": _rows(
+            {"type": TYPES + "Drug", "ec": "10", "sp": "", "tp": ""},
+            {"type": TYPES + "Company", "ec": "2", "sp": "", "tp": ""},
+        ),
+        "preds": _rows(),
+    }
+    mock_neptune.query.side_effect = _route_factory(stats)
+
+    body = client.get(SCHEMA_URL, params={"type": "drug"}, headers=auth_headers).json()
+    assert [t["name"] for t in body["types"]] == ["Drug"]
+    assert body["available_type_names"] == []
+
+    body = client.get(SCHEMA_URL, params={"type": "Dr"}, headers=auth_headers).json()
+    assert body["types"] == []
+    assert body["available_type_names"] == ["Company", "Drug"]
+
+
+def test_layered_declaration_collapses_onto_tenant_namespace_instances(
+    client, mock_neptune, auth_headers
+):
+    # ONTA-397 layering: a Public-declared type whose instances were written
+    # under the historical TENANT namespace must resolve to ONE entry, not a
+    # populated orphan plus a phantom empty type. The tenant namespace is a
+    # PREFIX of the public one, so the URI parse has to be longest-first.
+    public = "https://cograph.tech/types/public/"
+    stats = {
+        "entity_count": _rows({"type": TYPES + "Drug", "ec": "8", "sp": "", "tp": ""}),
+        "preds": _rows(
+            {"type": TYPES + "Drug", "pred": TYPES + "Drug/attrs/brand_name",
+             "cnt": "8", "rel": "0", "target": ""},
+        ),
+    }
+    decl_types = _rows(
+        {"type": public + "Drug", "label": "Drug",
+         "comment": "Public-layer drug", "parent": ""},
+    )
+    decl_attrs = _rows(
+        # Declared on the PUBLIC type URI while instances carry tenant-namespace
+        # predicates; the declared-only slot must still surface.
+        {"domain": public + "Drug", "attr": public + "Drug/attrs/atc_code",
+         "attrLabel": "atc_code", "range": ""},
+    )
+    mock_neptune.query.side_effect = _route_factory(stats, decl_types, decl_attrs)
+
+    body = client.get(SCHEMA_URL, headers=auth_headers).json()
+    assert [t["name"] for t in body["types"]] == ["Drug"]
+    drug = body["types"][0]
+    # Population from the tenant-namespace instances, description from the
+    # Public declaration, and the union of both layers' attributes.
+    assert drug["entity_count"] == 8
+    assert drug["description"] == "Public-layer drug"
+    attrs = {a["name"]: a for a in drug["attributes"]}
+    assert attrs["brand_name"]["populated"] is True
+    assert attrs["atc_code"]["populated"] is False
+
+
+def test_nested_attribute_uris_are_never_mistaken_for_types(
+    client, mock_neptune, auth_headers
+):
+    # `…/types/Drug/attrs/x` lives under the type namespace but is a property
+    # declaration, not a type.
+    stats = {
+        "entity_count": _rows(
+            {"type": TYPES + "Drug", "ec": "3", "sp": "", "tp": ""},
+            {"type": TYPES + "Drug/attrs/brand_name", "ec": "3", "sp": "", "tp": ""},
+        ),
+        "preds": _rows(),
+    }
+    mock_neptune.query.side_effect = _route_factory(stats)
+
+    body = client.get(SCHEMA_URL, headers=auth_headers).json()
+    assert [t["name"] for t in body["types"]] == ["Drug"]
+
+
+def test_live_scan_fallback_applies_the_primary_type_guard(
+    client, mock_neptune, auth_headers
+):
+    # The guard is what keeps the live and precomputed paths agreeing on
+    # entity_count for multi-typed entities. Assert it is actually in the query.
+    captured = []
+
+    def route(sparql, *a, **k):
+        if _is_live_scan_q(sparql):
+            captured.append(sparql)
+        return _rows()
+
+    mock_neptune.query.side_effect = route
+
+    client.get(SCHEMA_URL, headers=auth_headers)
+    assert len(captured) == 1
+    assert "FILTER NOT EXISTS" in captured[0]
+    assert "STR(?type2) < STR(?type)" in captured[0]
+
+
 def test_spatiotemporal_flags_survive(client, mock_neptune, auth_headers):
     stats = {
         "entity_count": _rows({"type": TYPES + "Venue", "ec": "3", "sp": "true", "tp": "1"}),

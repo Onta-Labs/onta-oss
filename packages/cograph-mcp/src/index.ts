@@ -577,12 +577,21 @@ export async function inspectGraphSchemaHandler(
       minCoverage: min_coverage,
     });
     if (!data.types.length) {
+      // Name what the graph DOES have, so a filter typo never reads as
+      // "that type does not exist" (the failure this tool exists to prevent).
+      const available = data.available_type_names ?? [];
       return textResult(
-        `Context graph "${kg_name}" has no types matching that request.`,
+        `Context graph "${kg_name}" has no types matching that request.` +
+          (available.length
+            ? ` Types it does have: ${available.join(", ")}.`
+            : " The graph has no types at all."),
       );
     }
+    // Say "matching" when a filter was applied, so a drill-in is never misread
+    // as "this graph has exactly one type".
+    const scope = type?.length ? "matching type(s)" : "type(s)";
     const lines: string[] = [
-      `Schema for context graph "${kg_name}" (${data.total_types} type(s))` +
+      `Schema for context graph "${kg_name}" (${data.total_types} ${scope})` +
         (data.stats_source === "live_scan"
           ? " (scanned live; precomputed stats not materialized yet)"
           : "") +

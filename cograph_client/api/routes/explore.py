@@ -93,6 +93,7 @@ ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 # Re-exported here (including the private aliases some tests import) for
 # back-compat with existing importers of `explore._is_internal_predicate`.
 from cograph_client.graph.predicates import (  # noqa: E402
+    ATTR_META_SUFFIXES,
     ER_NS,
     INTERNAL_ONTO_MARKERS as _INTERNAL_ONTO_MARKERS,
     ONTO_NORM_PREFIX,
@@ -1592,10 +1593,12 @@ async def get_kg_schema(
         if current is None or count > stats_by_uri[current][0]:
             stats_uri_by_name[leaf] = t_uri
 
-    wanted = {t for t in (type_names or []) if t}
-    names = sorted(set(decl_uri_by_name) | set(stats_uri_by_name))
-    if wanted:
-        names = [n for n in names if n in wanted]
+    # Case-INSENSITIVE, because the caller is usually an LLM that may lowercase a
+    # type name. An exact-match miss would answer "no such type", which is the
+    # very failure mode this endpoint exists to prevent.
+    wanted = {t.lower() for t in (type_names or []) if t}
+    all_names = sorted(set(decl_uri_by_name) | set(stats_uri_by_name))
+    names = [n for n in all_names if n.lower() in wanted] if wanted else all_names
 
     assembled: list[dict] = []
     for name in names:
@@ -1620,14 +1623,23 @@ async def get_kg_schema(
         # never a silently shortened list. Deduped by display name because a
         # populated relationship's instance predicate (`onto/<leaf>`) differs
         # from its ontology declaration URI (`types/<T>/attrs/<leaf>`).
-        seen = {
+        real_names = {
             (attr_defs.get(r.get("p", ""), {}).get("name")
-             or r.get("p", "").rstrip("/").split("/")[-1]).lower()
+             or r.get("p", "").rstrip("/").split("/")[-1])
             for r in records
         }
+        seen = {n.lower() for n in real_names}
         for a_uri, defn in attr_defs.items():
             nm = defn.get("name") or a_uri.rstrip("/").split("/")[-1]
             if not nm or nm.lower() in seen:
+                continue
+            # Do not synthesize a base name that would retroactively turn a
+            # POPULATED `<nm>_<suffix>` record into a legacy provenance companion:
+            # `_assemble_summary`'s set-wise classifier hides `<base>_<suffix>`
+            # only when `<base>` is present, so adding an empty `data` would make
+            # a real, populated `data_provenance` disappear. Never trade a
+            # populated slot for a declared-empty one.
+            if any(f"{nm}_{sfx}" in real_names for sfx in ATTR_META_SUFFIXES):
                 continue
             seen.add(nm.lower())
             records.append({"p": a_uri, "cnt": 0, "rel": 0, "target": None})
@@ -1663,6 +1675,10 @@ async def get_kg_schema(
         # Names only: cheap, and it keeps "this type EXISTS" true even when the
         # cap withholds its slots (the caller can drill in with ?type=).
         "omitted_type_names": [t["name"] for t in assembled[limit:]],
+        # A `type=` filter that matched nothing answers with the names that DO
+        # exist, so a typo reads as "you meant one of these" instead of the
+        # "that type does not exist" conclusion this endpoint exists to prevent.
+        "available_type_names": all_names if (wanted and not assembled) else [],
         "stats_source": stats_source,
         "coverage_note": _SCHEMA_COVERAGE_NOTE,
     }
