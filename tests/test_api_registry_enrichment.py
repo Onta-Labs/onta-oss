@@ -344,6 +344,132 @@ def test_attribute_binding_resolves_from_entity_attrs():
     assert adapter._build_bindings(ep, "Roma tomatoes", {"bls_series_id": ""}) == {}
 
 
+# --------------------------------------------------------------------------- #
+# NCT id format guard (ClinicalTrials.gov attribute:nct_id bindings)
+# --------------------------------------------------------------------------- #
+def test_nct_id_helpers_accept_real_reject_placeholders():
+    from cograph_client.api_registry.ids import (
+        is_valid_nct_id,
+        normalize_attribute_binding,
+        normalize_nct_id,
+    )
+
+    assert is_valid_nct_id("NCT04660344")
+    assert is_valid_nct_id("nct04660344")  # case-insensitive
+    assert normalize_nct_id("nct04660344") == "NCT04660344"
+    assert normalize_attribute_binding("nct_id", "NCT04660344") == "NCT04660344"
+
+    for bad in (
+        "NO-TRIAL-R053",
+        "NO-TRIAL-001",
+        "",
+        "   ",
+        "NCT123",          # too short
+        "NCT0466034",      # 7 digits
+        "NCT046603445",    # 9 digits
+        "04660344",        # missing NCT prefix
+        "NCT 04660344",
+    ):
+        assert not is_valid_nct_id(bad), bad
+        assert normalize_nct_id(bad) is None, bad
+        assert normalize_attribute_binding("nct_id", bad) == "", bad
+
+    # Unrelated attributes still pass through unchanged.
+    assert normalize_attribute_binding("bls_series_id", "APU0000712311") == "APU0000712311"
+
+
+def test_clinicaltrials_binding_rejects_placeholder_nct_ids():
+    """Demo-ingest placeholders like NO-TRIAL-* must not become query.id."""
+    cat = make_api_source_catalog()
+    spec = cat.get("clinicaltrials_gov")
+    assert spec is not None, "clinicaltrials_gov seed entry missing"
+    adapter = RegistrySourceAdapter(spec)
+    ep = spec.endpoint()
+    assert ep is not None
+
+    # Real NCT → bound (canonical uppercase) on the `id` param.
+    assert adapter._build_bindings(
+        ep, "Some trial", {"nct_id": "NCT04660344"},
+    ) == {"id": "NCT04660344"}
+    assert adapter._build_bindings(
+        ep, "Some trial", {"nct_id": "nct04660344"},
+    ) == {"id": "NCT04660344"}
+
+    # Placeholders / empty / missing → no bindings (lookup no-ops, no API call).
+    for attrs in (
+        {"nct_id": "NO-TRIAL-R053"},
+        {"nct_id": "NO-TRIAL-001"},
+        {"nct_id": ""},
+        {},
+        {"nct_id": "NCT123"},
+    ):
+        assert adapter._build_bindings(ep, "Some trial", attrs) == {}, attrs
+
+
+def test_clinicaltrials_lookup_skips_api_for_placeholder_nct():
+    """Invalid nct_id must short-circuit before RegistryApiSource.execute."""
+    cat = make_api_source_catalog()
+    spec = cat.get("clinicaltrials_gov")
+
+    class _FakeExec:
+        def __init__(self):
+            self.calls = 0
+            self.bindings = None
+
+        async def execute(self, spec_, bindings, **kw):
+            self.calls += 1
+            self.bindings = bindings
+            return type("R", (), {
+                "dormant": False, "error": None, "rows": [],
+                "sources": [], "provenance": {},
+            })()
+
+    fake = _FakeExec()
+    adapter = RegistrySourceAdapter(spec, executor=fake)
+
+    async def run():
+        # Placeholder → no bindings → lookup returns [] without calling the API.
+        v = await adapter.lookup(
+            "Placeholder trial",
+            "lead_sponsor",
+            {
+                "entity_type": "ClinicalTrial",
+                "entity_attributes": {"nct_id": "NO-TRIAL-R053"},
+            },
+        )
+        assert v == []
+        assert fake.calls == 0
+
+        # Real NCT → execute is called with query.id bound.
+        class _Hit:
+            dormant = False
+            error = None
+            rows = [{"lead_sponsor": "Hoffmann-La Roche"}]
+            sources = ["https://clinicaltrials.gov/study/NCT04660344"]
+            provenance: dict = {}
+
+        async def _ok(spec_, bindings, **kw):
+            fake.calls += 1
+            fake.bindings = bindings
+            return _Hit()
+
+        fake.execute = _ok  # type: ignore[method-assign]
+        v2 = await adapter.lookup(
+            "Real trial",
+            "lead_sponsor",
+            {
+                "entity_type": "ClinicalTrial",
+                "entity_attributes": {"nct_id": "NCT04660344"},
+            },
+        )
+        assert fake.calls == 1
+        assert fake.bindings == {"id": "NCT04660344"}
+        assert len(v2) == 1
+        assert v2[0].value == "Hoffmann-La Roche"
+
+    asyncio.run(run())
+
+
 def test_attribute_binding_flows_through_lookup_context():
     spec = _attr_binding_spec()
 
