@@ -1,6 +1,6 @@
 {
   "name": "@onta/mcp",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "description": "Onta MCP server — expose context graph tools to AI agents",
   "type": "module",
   "main": "./dist/index.js",
