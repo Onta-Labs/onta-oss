@@ -411,7 +411,7 @@ def test_secret_refs_only_rejects_resolved_credential():
     )
     for bad in [
         PLAINTEXT_CREDENTIAL,            # sk-… prefix + '-' → not a ref
-        "AKIAIOSFODNN7EXAMPLE",          # uppercase key material
+        "AKIAIOSFODNN7EXAMPLE",          # uppercase key material  # boundary-ok: AWS's own documentation example key, not a credential
         "Zm9vYmFy=",                     # base64-ish (has '=')
         "a b c",                         # whitespace
         "secret/with/slash",             # path chars
