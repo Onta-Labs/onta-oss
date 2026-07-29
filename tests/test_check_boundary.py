@@ -114,6 +114,39 @@ LEAKS = [
         id="aws-access-key",
     ),
     pytest.param(
+        "probe_sts.cfg",
+        "aws_access_key_id = ASIAQ7WXYZ12ABCD34EF",  # boundary-ok: fake infra string planted for this self-test
+        id="aws-sts-temporary-key",
+    ),
+    pytest.param(
+        "probe_clerk.env",
+        # Assembled at runtime, not written as a literal: Clerk and Stripe share
+        # the `sk_live_` prefix, so a literal here trips GitHub's push
+        # protection on this very file. The guard still sees the joined string.
+        "CLERK_SECRET_KEY=" + "sk_" + "live_" + ("NOTAREALKEY" * 3),
+        id="clerk-secret-key",
+    ),
+    pytest.param(
+        "probe_neptune.py",
+        'ENDPOINT = "mycluster.abc.us-east-1.neptune.amazonaws.com"',  # boundary-ok: fake infra string planted for this self-test
+        id="neptune-writer-endpoint",
+    ),
+    pytest.param(
+        "probe_rds.py",
+        'DSN = "mydb.abc.us-east-1.rds.amazonaws.com"',  # boundary-ok: fake infra string planted for this self-test
+        id="rds-endpoint",
+    ),
+    pytest.param(
+        "probe_pem.txt",
+        "-----BEGIN RSA PRIVATE KEY-----",  # boundary-ok: fake credential planted for this self-test
+        id="private-key-pem",
+    ),
+    pytest.param(
+        "probe_dsn.py",
+        'DSN = "postgresql://svc:Hunter2CorrectHorse@db.internal:5432/app"',  # boundary-ok: fake credential planted for this self-test
+        id="postgres-dsn-with-real-password",
+    ),
+    pytest.param(
         "probe_contact.py",
         'CONTACT = "notarealperson@gmail.com"',  # boundary-ok: fabricated address planted for this self-test
         id="personal-email",
@@ -216,6 +249,20 @@ def test_stock_placeholder_email_is_allowed_capitalized(sandbox):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_local_dummy_postgres_dsn_is_allowed(sandbox):
+    """`postgres:postgres` and `u:p` test DSNs must not make this check noisy.
+
+    A check people learn to ignore is a check that gets weakened; the pattern
+    requires a 12+ character password so only plausible credentials fire.
+    """
+    result = sandbox(
+        "probe.yml",
+        'URL: "postgresql://postgres:postgres@localhost:5432/postgres"\n'
+        'ALT: "postgresql://u:p@localhost/db"\n',
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_docs_placeholder_keys_are_not_secrets(sandbox):
     """`sk-or-...` style placeholders in .env.example / README must stay green."""
     result = sandbox(
@@ -239,6 +286,90 @@ def test_prose_about_secrets_manager_is_allowed(sandbox):
 
 
 # --- Fail-closed ------------------------------------------------------------
+
+
+def test_marker_is_ignored_on_a_minified_single_line_file(sandbox, tmp_path):
+    """One marker must not disarm a whole machine-generated artifact.
+
+    Every match in a single-line JSON blob shares line 1, so honoring a marker
+    there would suppress the file entirely — and these artifacts are generated
+    from scraped web data, so the string could land in one without any human
+    choosing it. This is exactly the file class that caused the incident.
+    """
+    blob = (
+        '{"a":"http://omnix-demo-tenant-dev-9.us-east-1.elb.amazonaws.com",'  # boundary-ok: fake infra string planted for this self-test
+        '"k":"sk-ant-api03-9xQvT2mKp4Lw8Rn6Bz1Yc3Hd5Fg7Jk9Mq",'  # boundary-ok: fake credential planted for this self-test
+        '"note":"boundary-ok: generated artifact",'
+        '"pad":"' + "x" * 600 + '"}'
+    )
+    result = sandbox("artifact.json", blob)
+    assert result.returncode == 1, (
+        "a marker inside a minified artifact disarmed the whole file\n"
+        f"{result.stdout}{result.stderr}"
+    )
+
+
+def test_secret_in_the_sibling_guard_script_is_caught(sandbox):
+    """The guard scripts are exempt from the INFRA check only, never secrets."""
+    result = sandbox(
+        "scripts/check_npm_bundle.sh",
+        'KEY="sk-ant-api03-9xQvT2mKp4Lw8Rn6Bz1Yc3Hd5Fg7Jk9Mq"',  # boundary-ok: fake credential planted for this self-test
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_colon_in_a_tracked_path_is_refused(sandbox):
+    """Hits are parsed positionally as path:line:match.
+
+    A file named `notes:3` could otherwise impersonate line 3 of `notes` and
+    borrow its escape-hatch marker. Refuse to run rather than guess.
+    """
+    result = sandbox("weird:name.py", "X = 1")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "ambiguous" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "shim,label",
+    [
+        ("exit 2\n", "silent-error"),
+        ("exit 127\n", "missing-binary"),
+    ],
+)
+def test_fails_loudly_when_grep_itself_fails(tmp_path, shim, label):
+    """A grep that cannot RUN must not read as "nothing found".
+
+    xargs collapses grep's "no match" (1) and "error" (2) into its own 123, so
+    the script runs each batch under a shell that maps them apart.
+    """
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(SCRIPT, tmp_path / "scripts" / "check_boundary.sh")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "leak.txt").write_text("KEY=AKIAQ7WXYZ12ABCD34EF")  # boundary-ok: fake infra string planted for this self-test
+
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir()
+    fake_grep = shim_dir / "grep"
+    fake_grep.write_text("#!/bin/sh\n" + shim)
+    fake_grep.chmod(0o755)
+
+    import os
+
+    env = dict(os.environ, PATH=f"{shim_dir}:{os.environ['PATH']}")
+    result = subprocess.run(
+        ["bash", str(tmp_path / "scripts" / "check_boundary.sh")],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env=env,
+    )
+
+    assert result.returncode == 2, (
+        f"[{label}] guard reported success with a broken grep: "
+        f"{result.returncode}: {result.stdout}{result.stderr}"
+    )
+    assert "passed" not in result.stdout.lower()
 
 
 def test_fails_loudly_outside_a_git_repo(tmp_path):
