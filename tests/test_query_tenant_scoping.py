@@ -184,6 +184,49 @@ def test_keyword_lookalike_tokens_cannot_fake_a_dataset_clause(
 
 
 @pytest.mark.parametrize(
+    ("label", "query"),
+    [
+        # A PrefixedName is legal in SourceSelector, and parseQuery leaves it
+        # UNEXPANDED. A guard that kept only the resolved IRIs would silently
+        # DROP this clause and call the query scoped to its owned one, while the
+        # store expands the second clause and reads the victim.
+        (
+            "prefixed name alongside an owned clause",
+            "PREFIX g: <https://cograph.tech/graphs/> "
+            f"SELECT * FROM <{OWN_GRAPH}> FROM g:victim-tenant "
+            "WHERE { ?s ?p ?o }",
+        ),
+        # PN_LOCAL_ESC allows a backslash-escaped "/" inside a local name, so the
+        # prefix can be split anywhere and the literal namespace text never
+        # appears. That blinds the raw-text scan as well, which is why the clause
+        # must be REJECTED rather than skipped.
+        (
+            "prefixed name with an escaped slash",
+            "PREFIX g: <https://cograph.tech/gr> "
+            f"SELECT * FROM <{OWN_GRAPH}> FROM g:aphs\\/victim-tenant "
+            "WHERE { ?s ?p ?o }",
+        ),
+        (
+            "prefixed name as the only clause",
+            "PREFIX g: <https://cograph.tech/graphs/> "
+            "SELECT * FROM g:victim-tenant WHERE { ?s ?p ?o }",
+        ),
+        (
+            "namespace-only prefixed name",
+            "PREFIX g: <https://cograph.tech/graphs/victim-tenant> "
+            "SELECT * FROM g: WHERE { ?s ?p ?o }",
+        ),
+    ],
+)
+def test_prefixed_name_dataset_clauses_are_rejected_not_skipped(
+    client, auth_headers, mock_neptune, label, query
+):
+    res = _post_query(client, auth_headers, query)
+    assert res.status_code in (400, 403), f"{label}: {res.text}"
+    mock_neptune.query.assert_not_called()
+
+
+@pytest.mark.parametrize(
     "graph",
     [
         f"{OWN_GRAPH}/../victim-tenant",

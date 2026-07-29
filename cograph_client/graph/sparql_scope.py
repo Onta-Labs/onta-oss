@@ -167,11 +167,28 @@ def _walk(node, seen_names: set[str]) -> None:
 def dataset_graphs(query_part) -> list[str]:
     """Every graph IRI named by a FROM / FROM NAMED clause, as plain strings.
 
-    rdflib's ``CompValue`` has a trap worth spelling out: ``.get(key)`` on an
-    ABSENT key returns the key's own NAME as a string, so ``get("datasetClause")``
-    is truthy on a query that has no dataset clause at all, and each clause
-    reports the string ``"named"`` for whichever alternative it is not.
-    Membership tests plus an explicit ``URIRef`` check are the only safe reads.
+    Raises :class:`TenantScopeError` on any clause this cannot resolve to a
+    concrete IRI. DROPPING such a clause instead would be a silent fail-open,
+    and it is a real one: ``SourceSelector`` accepts a PrefixedName, which
+    ``parseQuery`` leaves UNEXPANDED as a ``CompValue``. A filter that kept only
+    the ``URIRef`` values would report this query as scoped to its first clause
+    while the store reads the second:
+
+        PREFIX g: <https://cograph.tech/gr>
+        SELECT * FROM <...own graph...> FROM g:aphs\\/victim WHERE { ?s ?p ?o }
+
+    ``PN_LOCAL_ESC`` allows a backslash-escaped ``/`` inside a local name, so the
+    prefix can be split anywhere and the literal text
+    ``https://cograph.tech/graphs/`` never appears, which keeps rule B blind too.
+    Rejecting prefixed names outright is the honest fix: resolving one means
+    trusting a PREFIX declaration to expand exactly the way the store will, and
+    the escape rules are precisely where that assumption breaks.
+
+    rdflib's ``CompValue`` has a second trap: ``.get(key)`` on an ABSENT key
+    returns the key's own NAME as a string, so ``get("datasetClause")`` is truthy
+    on a query with no dataset clause at all, and each clause reports the string
+    ``"named"`` for whichever alternative it is not. Membership tests plus an
+    explicit ``URIRef`` check are the only safe reads.
     """
     from rdflib.term import URIRef
 
@@ -179,12 +196,22 @@ def dataset_graphs(query_part) -> list[str]:
         return []
     graphs: list[str] = []
     for clause in query_part["datasetClause"]:
-        for key in ("default", "named"):
-            if key not in clause:
-                continue
-            value = clause[key]
-            if isinstance(value, URIRef):
-                graphs.append(str(value))
+        values = [clause[key] for key in ("default", "named") if key in clause]
+        if not values:
+            raise TenantScopeError(
+                "A FROM / FROM NAMED clause names no graph this endpoint can "
+                "resolve.",
+                400,
+            )
+        for value in values:
+            if not isinstance(value, URIRef):
+                raise TenantScopeError(
+                    "Every FROM / FROM NAMED clause must name a full IRI in "
+                    f"angle brackets, e.g. FROM <{GRAPH_NAMESPACE}WORKSPACE>. "
+                    "Prefixed names are not accepted here.",
+                    400,
+                )
+            graphs.append(str(value))
     return graphs
 
 
