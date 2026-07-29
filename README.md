@@ -168,7 +168,7 @@ Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
   "mcpServers": {
     "onta": {
       "command": "npx",
-      "args": ["-y", "@onta/mcp"]
+      "args": ["-y", "-p", "@onta/mcp", "onta-mcp"]
     }
   }
 }
