@@ -363,6 +363,17 @@ def test_dangling_symlink_does_not_hide_a_leak(sandbox):
     assert result.returncode == 1, result.stdout + result.stderr
 
 
+def test_dangling_symlink_still_honors_the_marker(sandbox):
+    """The skip path must not disturb normal suppression either."""
+    (sandbox.repo / "dangling.txt").symlink_to("/nonexistent/target")
+
+    result = sandbox(
+        "leak.txt", "K=AKIAQ7WXYZ12ABCD34EF  boundary-ok: fixture"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_secret_in_the_sibling_guard_script_is_caught(sandbox):
     """The guard scripts are exempt from the INFRA check only, never secrets."""
     result = sandbox(
@@ -383,19 +394,61 @@ def test_colon_in_a_tracked_path_is_refused(sandbox):
     assert "ambiguous" in result.stdout
 
 
-@pytest.mark.parametrize(
-    "shim,label",
-    [
-        ("exit 2\n", "silent-error"),
-        ("exit 127\n", "missing-binary"),
-    ],
-)
-def test_fails_loudly_when_grep_itself_fails(tmp_path, shim, label):
-    """A grep that cannot RUN must not read as "nothing found".
+BROKEN_TOOLCHAIN = [
+    pytest.param(
+        "grep", "exit 2\n", id="grep-silent-error",
+    ),
+    pytest.param(
+        "grep", "exit 127\n", id="grep-missing-binary",
+    ),
+    pytest.param(
+        "grep", "exit 1\n", id="grep-busybox-no-o-support",
+    ),
+    pytest.param(
+        "grep",
+        'echo "grep: foo.txt: No such file or directory" >&2\nexit 2\n',
+        id="grep-error-with-benign-looking-stderr",
+    ),
+    pytest.param(
+        # A grep whose shared library is missing prints a message ENDING in
+        # "No such file or directory". An unanchored benign-error filter reads
+        # that as "just skip the file" and waves the whole failure through.
+        "grep",
+        'echo "grep: error while loading shared libraries: libpcre2-8.so.0:'
+        ' cannot open shared object file: No such file or directory" >&2\n'
+        "exit 127\n",
+        id="grep-linker-error-mimicking-benign",
+    ),
+    pytest.param(
+        # The classifier must not itself be grep: with a broken grep it would
+        # find no fatal lines and pass the mixed case.
+        "grep",
+        'echo "grep: a.txt: Permission denied" >&2\n'
+        'echo "grep: invalid option -- o" >&2\nexit 2\n',
+        id="grep-mixed-benign-and-fatal-stderr",
+    ),
+    pytest.param(
+        "xargs",
+        'echo "xargs: sh: No such file or directory" >&2\nexit 127\n',
+        id="xargs-cannot-find-sh",
+    ),
+    pytest.param(
+        "xargs", "exit 127\n", id="xargs-silent-failure",
+    ),
+]
 
-    xargs collapses grep's "no match" (1) and "error" (2) into its own 123, so
-    the script runs each batch under a shell that maps them apart.
+
+@pytest.mark.parametrize("tool,shim", BROKEN_TOOLCHAIN)
+def test_fails_loudly_when_the_toolchain_is_broken(tmp_path, tool, shim):
+    """A scanner that cannot prove it works must not certify a repo as clean.
+
+    Inferring health from error text is not enough — several real failures
+    produce output that reads like "nothing found". `verify_toolchain` runs the
+    exact pipeline over a known match first, so a broken environment is caught
+    before any conclusion is drawn from it.
     """
+    import os
+
     (tmp_path / "scripts").mkdir()
     shutil.copy(SCRIPT, tmp_path / "scripts" / "check_boundary.sh")
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
@@ -403,25 +456,22 @@ def test_fails_loudly_when_grep_itself_fails(tmp_path, shim, label):
 
     shim_dir = tmp_path / "shim"
     shim_dir.mkdir()
-    fake_grep = shim_dir / "grep"
-    fake_grep.write_text("#!/bin/sh\n" + shim)
-    fake_grep.chmod(0o755)
+    fake = shim_dir / tool
+    fake.write_text("#!/bin/sh\n" + shim)
+    fake.chmod(0o755)
 
-    import os
-
-    env = dict(os.environ, PATH=f"{shim_dir}:{os.environ['PATH']}")
     result = subprocess.run(
         ["bash", str(tmp_path / "scripts" / "check_boundary.sh")],
         cwd=tmp_path,
         capture_output=True,
         text=True,
         timeout=300,
-        env=env,
+        env=dict(os.environ, PATH=f"{shim_dir}:{os.environ['PATH']}"),
     )
 
     assert result.returncode == 2, (
-        f"[{label}] guard reported success with a broken grep: "
-        f"{result.returncode}: {result.stdout}{result.stderr}"
+        f"guard reported {result.returncode} with a broken {tool}, "
+        f"leaving a planted key unscanned: {result.stdout}{result.stderr}"
     )
     assert "passed" not in result.stdout.lower()
 

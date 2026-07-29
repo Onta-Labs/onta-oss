@@ -113,6 +113,33 @@ if tr '\0' '\n' < "$FILE_LIST" | grep -q ':'; then
     tr '\0' '\n' < "$FILE_LIST" | grep ':' | head -3 | tr '\n' ' ')"
 fi
 
+# Whole per-file grep complaints that mean "skip this path", not "the scan is
+# broken". Anchored on purpose — see the classification comment in
+# run_repo_check for why an unanchored version is dangerous.
+BENIGN_GREP_ERR='^grep: .+: (No such file or directory|Permission denied|Is a directory)$'
+
+# --- Toolchain self-test ----------------------------------------------------
+# Inferring health from error messages is not enough: a grep with a missing
+# shared library, a BusyBox grep with no -o, or a container with no /bin/sh can
+# all produce output that LOOKS like nothing was found. So prove the exact
+# pipeline works by running it over a file with a known match, before trusting
+# it to report on the real tree. A scanner that cannot demonstrate it works is
+# not evidence of a clean repo.
+verify_toolchain() {
+  local canary out
+  canary="$(mktemp)"
+  printf 'boundary-canary-MATCHME\n' > "$canary"
+  out="$(printf '%s\0' "$canary" | xargs -0r sh -c \
+    'grep -IoHnE "$@"; rc=$?; [ "$rc" -le 1 ] || exit 99' \
+    sh -- 'boundary-canary-[A-Z]+' 2>/dev/null)"
+  rm -f "$canary"
+  [[ "$out" == *"boundary-canary-MATCHME"* ]] || die \
+    "toolchain self-test failed — grep/xargs/sh did not return a known match. \
+A scan that cannot prove it works cannot certify this repo as clean."
+}
+
+verify_toolchain
+
 # --- Check runners ----------------------------------------------------------
 
 run_check() {
@@ -148,22 +175,44 @@ run_repo_check() {
   #     which xargs then surfaces as 123 = a real failure.
   #   * stderr, captured rather than discarded, for a grep that complains but
   #     still exits 0.
-  local status fatal
+  local status line benign_only
   : > "$GREP_ERR"
   hits="$(xargs -0r sh -c \
     'grep -IoHnE "$@"; rc=$?; [ "$rc" -le 1 ] || exit 99' \
     sh $flags -- "$pattern" < "$FILE_LIST" 2>"$GREP_ERR")"
   status=$?
+
   # A single unreadable path is not a broken environment: `--others` lists
   # untracked files, so a dangling symlink in a dev tree, or a temp file a
   # concurrent build removed between `git ls-files` and here, would otherwise
-  # turn a clean run into a hard failure. Warn and skip those; anything else —
-  # including a non-zero status with NO stderr, which is the silent-failure
-  # case this exists to catch — still stops the run.
+  # turn a clean run into a hard failure. Warn and skip exactly those.
+  #
+  # Everything about this classification is deliberately paranoid, because a
+  # sloppy version of it re-opens the very fail-open it sits on top of:
+  #   * matched with bash, NOT grep — the thing being diagnosed may BE a broken
+  #     grep, in which case a grep-based classifier returns "no fatal lines"
+  #     and waves the failure through;
+  #   * ANCHORED to a whole per-file message, so a linker error ending in
+  #     "...cannot open shared object file: No such file or directory" is fatal,
+  #     not benign, and a file NAMED after a benign phrase cannot launder an
+  #     unrelated error on itself;
+  #   * status must be one of xargs' "a child exited non-zero" codes — GNU uses
+  #     123, BSD uses 1 — which is what an unreadable file produces. 127 (no
+  #     `sh`, no `grep`) is never benign. This allowlist is the weakest of the
+  #     three checks precisely because it is the platform-dependent one, so it
+  #     leans on `verify_toolchain` having already proven grep/xargs/sh work;
+  #     a genuinely broken scanner never reaches this branch.
   if [[ "$status" -ne 0 || -s "$GREP_ERR" ]]; then
-    fatal="$(grep -vE 'No such file or directory|Permission denied|Is a directory' \
-      "$GREP_ERR" 2>/dev/null || true)"
-    if [[ -s "$GREP_ERR" && -z "$fatal" ]]; then
+    benign_only=1
+    [[ -s "$GREP_ERR" ]] || benign_only=0   # non-zero status, silent: fatal
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      [[ "$line" =~ $BENIGN_GREP_ERR ]] && continue
+      benign_only=0
+      break
+    done < "$GREP_ERR"
+
+    if [[ "$benign_only" -eq 1 && ( "$status" -eq 123 || "$status" -eq 1 ) ]]; then
       echo "note: skipped unreadable path(s): $(head -2 "$GREP_ERR" | tr '\n' ' ')"
     else
       die "grep failed while scanning (exit $status$(
@@ -188,6 +237,10 @@ run_repo_check() {
     [[ "${#src}" -le 500 ]] || continue
     printf '%s:%s\n' "$hit_file" "$hit_line"
   done)"
+  # NOTE: this guard is load-bearing, not just an optimization. awk's NR==FNR
+  # idiom treats an EMPTY first file as "still reading keys", so every hit row
+  # would be consumed as a key and nothing would be emitted — silently dropping
+  # all findings. Do not remove it without restructuring the awk.
   if [[ -n "$suppressed" ]]; then
     # EXACT key compare on (path, line). `grep -vF` matched the key as an
     # unanchored substring, so a marker on `notes.md:3` also silenced a real
