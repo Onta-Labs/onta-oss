@@ -25,6 +25,7 @@ from pydantic import BaseModel, ValidationError, field_validator
 
 from cograph_client.api.deps import get_schedule_store
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.enrichment.models import JobCategory
 from cograph_client.scheduling.models import (
     USER_SCHEDULABLE_ACTIONS,
@@ -124,7 +125,7 @@ def _build_schedule(**kwargs) -> Schedule:
 @router.post("", response_model=Schedule, status_code=201)
 async def create_schedule(
     body: ScheduleCreateRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     store=Depends(get_schedule_store),
 ):
     """Create a recurring schedule and compute its initial ``next_run``.
@@ -182,7 +183,7 @@ async def get_schedule(
 async def update_schedule(
     schedule_id: str,
     body: ScheduleUpdateRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     store=Depends(get_schedule_store),
 ):
     """Enable/disable or update a schedule.
@@ -240,7 +241,7 @@ async def update_schedule(
 @router.delete("/{schedule_id}", status_code=204)
 async def delete_schedule(
     schedule_id: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     store=Depends(get_schedule_store),
 ):
     """Delete a schedule (scoped to the authorized tenant).

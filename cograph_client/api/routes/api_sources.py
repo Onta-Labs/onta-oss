@@ -48,6 +48,7 @@ from cograph_client.api_registry import (
 from cograph_client.api_registry.secret_store import secret_aad  # noqa: F401 (documented seam)
 from cograph_client.api_registry.spec import ApiSourceSpec, validate_spec
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 
 logger = structlog.stdlib.get_logger("cograph.api_registry.routes")
 
@@ -295,7 +296,7 @@ async def get_api_source(
 @router.post("", response_model=ApiSourceSummary, status_code=201)
 async def create_api_source(
     req: CreateApiSourceRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Create a tenant-custom source. 403 if the slug shadows a global one is NOT
     enforced — a tenant MAY shadow a global slug for its own workspace (that's the
@@ -328,7 +329,7 @@ async def create_api_source(
 async def update_api_source(
     slug: str,
     req: UpdateApiSourceRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Edit a tenant-custom source (spec body, enabled, and/or secrets). A global
     slug => 403. Missing tenant entry => 404."""
@@ -362,7 +363,7 @@ async def update_api_source(
 @router.delete("/{slug}", response_model=OkResponse)
 async def delete_api_source(
     slug: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Delete a tenant-custom source + its stored secrets. Global slug => 403,
     missing tenant entry => 404."""
@@ -382,7 +383,7 @@ async def delete_api_source(
 @router.post("/validate", response_model=ValidateResponse)
 async def validate_api_source(
     req: CreateApiSourceRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Validate a spec against ``ApiSourceSpec`` (schema + URL lint + auth
     coherence). No write. Returns structured ``{valid, errors:[{path,message}]}``."""
@@ -394,7 +395,7 @@ async def validate_api_source(
 @router.post("/test", response_model=TestApiSourceResponse)
 async def test_api_source(
     req: TestApiSourceRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Run ONE smoke request through the executor (SSRF-guarded). No KG write, no
     persistence. Provide an inline ``spec`` OR an existing ``slug``.

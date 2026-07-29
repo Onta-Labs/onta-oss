@@ -46,6 +46,11 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from cograph_client.auth.api_keys import api_key_header
+from cograph_client.auth.capabilities import (
+    INVITABLE_ROLES,
+    capability_for_role,
+    normalize_role,
+)
 from cograph_client.auth.workspace_store import (
     PENDING_INVITE_CAP,
     DuplicatePendingInviteError,
@@ -81,7 +86,14 @@ _MAX_EMAIL_LEN = 254
 
 class InviteCreate(BaseModel):
     email: str = Field(..., description="Invitee email address.")
-    role: str = Field("member", description="Invited role (v1: 'member' only).")
+    role: str = Field(
+        "writer",
+        description=(
+            "Invited tenant role: 'writer' (may mutate data/schema) or "
+            "'reader' (read-only). Legacy 'member' is accepted and stored as "
+            "'writer'. 'owner' cannot be invited."
+        ),
+    )
 
 
 class InviteOut(BaseModel):
@@ -89,6 +101,7 @@ class InviteOut(BaseModel):
     tenant_id: str
     email: str
     role: str
+    capability: str = "write"
     status: str  # read-time status: a pending row past expiry reads "expired"
     invited_by: str
     created_at: datetime
@@ -111,6 +124,7 @@ class MyInviteOut(BaseModel):
     workspace_label: str
     email: str
     role: str
+    capability: str = "write"
     created_at: datetime
     expires_at: datetime
 
@@ -118,6 +132,7 @@ class MyInviteOut(BaseModel):
 class MemberOut(BaseModel):
     subject: str
     role: str
+    capability: str = "write"
     joined_at: datetime
     email: Optional[str] = None
     name: Optional[str] = None
@@ -127,6 +142,7 @@ class AcceptOut(BaseModel):
     tenant_id: str
     label: str
     role: str
+    capability: str = "write"
     status: str
 
 
@@ -210,11 +226,13 @@ def _accept_url(token: str) -> Optional[str]:
 
 
 def _invite_out(invite: WorkspaceInvite) -> InviteOut:
+    role = normalize_role(invite.role)
     return InviteOut(
         id=invite.id,
         tenant_id=invite.tenant_id,
         email=invite.email,
-        role=invite.role,
+        role=role,
+        capability=capability_for_role(role),
         status=effective_status(invite),
         invited_by=invite.invited_by,
         created_at=invite.created_at,
@@ -239,10 +257,12 @@ def _reject_settled(invite: WorkspaceInvite, subject: str) -> Optional[AcceptOut
         return None
     if status == "accepted" and invite.accepted_by == subject:
         # Idempotent re-accept: grant + membership + status all already done.
+        role = normalize_role(invite.role)
         return AcceptOut(
             tenant_id=invite.tenant_id,
             label=invite.tenant_id,
-            role=invite.role,
+            role=role,
+            capability=capability_for_role(role),
             status="accepted",
         )
     if status == "accepted":
@@ -279,7 +299,8 @@ async def _accept(
         raise HTTPException(
             status_code=502, detail="Granting workspace access failed; retry."
         )
-    await store.add_member(invite.tenant_id, subject, invite.role)
+    role = normalize_role(invite.role)
+    await store.add_member(invite.tenant_id, subject, role)
     if not await store.mark_accepted(invite.id, subject):
         # Lost a race with a concurrent settle — re-read and re-gate. A
         # same-subject concurrent accept still returns 200 here.
@@ -297,9 +318,14 @@ async def _accept(
         tenant=invite.tenant_id,
         invite_id=invite.id,
         subject=subject,
+        role=role,
     )
     return AcceptOut(
-        tenant_id=invite.tenant_id, label=label, role=invite.role, status="accepted"
+        tenant_id=invite.tenant_id,
+        label=label,
+        role=role,
+        capability=capability_for_role(role),
+        status="accepted",
     )
 
 
@@ -325,13 +351,16 @@ async def create_invite(
     email = body.email.strip().lower()
     if len(email) > _MAX_EMAIL_LEN or not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="Invalid email address.")
-    role = (body.role or "member").strip().lower()
-    if role != "member":
-        # v1 has exactly one owner (the registry row) — invited roles are
-        # 'member' only until ownership transfer exists.
+    raw_role = (body.role or "writer").strip().lower()
+    # Accept legacy "member" as writer; reject owner and unknowns.
+    if raw_role == "member":
+        raw_role = "writer"
+    if raw_role not in INVITABLE_ROLES:
         raise HTTPException(
-            status_code=400, detail="Only the 'member' role can be invited in v1."
+            status_code=400,
+            detail="Invite role must be 'writer' (edit) or 'reader' (view only).",
         )
+    role = normalize_role(raw_role)
     if await store.count_pending(tenant_id) >= PENDING_INVITE_CAP:
         raise HTTPException(
             status_code=429,
@@ -531,10 +560,12 @@ async def list_members(
             if profile:
                 email = profile.get("email")
                 name = profile.get("name")
+        role = normalize_role(m.role)
         out.append(
             MemberOut(
                 subject=m.subject,
-                role=m.role,
+                role=role,
+                capability=capability_for_role(role),
                 joined_at=m.joined_at,
                 email=email,
                 name=name,
@@ -595,13 +626,15 @@ async def my_invites(api_key: Optional[str] = Security(api_key_header)):
     out: list[MyInviteOut] = []
     for inv in invites:
         ws = await store.get_workspace(inv.tenant_id)
+        role = normalize_role(inv.role)
         out.append(
             MyInviteOut(
                 id=inv.id,
                 tenant_id=inv.tenant_id,
                 workspace_label=ws.label if ws else inv.tenant_id,
                 email=inv.email,
-                role=inv.role,
+                role=role,
+                capability=capability_for_role(role),
                 created_at=inv.created_at,
                 expires_at=inv.expires_at,
             )

@@ -16,7 +16,9 @@ from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from cograph_client.auth.access import resolve_member_role
 from cograph_client.auth.api_keys import api_key_header
+from cograph_client.auth.capabilities import capability_for_role
 from cograph_client.auth.tenant_directory import (
     Tenant,
     TenantProvider,
@@ -38,6 +40,10 @@ router = APIRouter(prefix="/v1/me/tenants")
 class TenantOut(BaseModel):
     id: str
     label: str
+    #: Membership role on this workspace: owner | writer | reader.
+    role: str = "writer"
+    #: Derived capability: read | write (write implies read).
+    capability: str = "write"
 
 
 class TenantCreate(BaseModel):
@@ -61,18 +67,29 @@ def _require_key(api_key: str | None) -> str:
     return api_key
 
 
-def _out(t: Tenant) -> TenantOut:
-    return TenantOut(id=t.id, label=t.label)
+def _out(t: Tenant, *, role: str = "writer") -> TenantOut:
+    return TenantOut(
+        id=t.id,
+        label=t.label,
+        role=role,
+        capability=capability_for_role(role),
+    )
 
 
 @router.get("", response_model=list[TenantOut])
-def list_tenants(api_key: str | None = Security(api_key_header)):
+async def list_tenants(api_key: str | None = Security(api_key_header)):
     provider = _require_provider()
     key = _require_key(api_key)
     try:
-        return [_out(t) for t in provider.list_tenants(key)]
+        tenants = await run_in_threadpool(provider.list_tenants, key)
     except TenantProviderError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    subject = resolve_subject(key)
+    out: list[TenantOut] = []
+    for t in tenants:
+        role = await resolve_member_role(t.id, subject)
+        out.append(_out(t, role=role))
+    return out
 
 
 async def _claim_or_check_ownership(api_key: str, tenant_id: str, label: str) -> None:
@@ -145,7 +162,8 @@ async def add_tenant(body: TenantCreate, api_key: str | None = Security(api_key_
         tenant_id, label = validate_new_tenant(body.id, body.label)
         # Registry row first, provider second — see _claim_or_check_ownership.
         await _claim_or_check_ownership(key, tenant_id, label)
-        return _out(await run_in_threadpool(provider.add_tenant, key, tenant_id, label))
+        created = await run_in_threadpool(provider.add_tenant, key, tenant_id, label)
+        return _out(created, role="owner")
     except TenantProviderError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 

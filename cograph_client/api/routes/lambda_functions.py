@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.functions.executor import FunctionExecutor
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.kg_writer import delete_facts, insert_facts, refresh_after_write
@@ -59,7 +60,7 @@ class SECFilingResponse(BaseModel):
 @router.post("/functions/sec-latest-filing", response_model=SECFilingResponse)
 async def sec_latest_filing(
     body: SECFilingRequest,
-    _tenant: TenantContext = Depends(get_tenant),
+    _tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Fetch a company's most recent SEC filing from EDGAR.
 
@@ -191,7 +192,7 @@ def _get_executor() -> FunctionExecutor:
 async def invoke_function(
     function_name: str,
     body: InvokeRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Invoke a registered function for one entity and materialize the result as triples.
@@ -463,7 +464,7 @@ class PortfolioResponse(BaseModel):
 @router.post("/functions/investor-portfolio", response_model=PortfolioResponse)
 async def investor_portfolio(
     body: PortfolioRequest,
-    _tenant: TenantContext = Depends(get_tenant),
+    _tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Query the KG for all companies in an investor's portfolio.
@@ -528,7 +529,7 @@ async def investor_portfolio(
 )
 async def invoke_investor_portfolio(
     body: InvokeRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Invoke investor-portfolio for an Investor entity.

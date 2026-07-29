@@ -507,13 +507,14 @@ def test_token_accept_grants_then_membership_then_status(client, verifier, grant
     assert r.json() == {
         "tenant_id": "acme-co",
         "label": "Acme",
-        "role": "member",
+        "role": "writer",
+        "capability": "write",
         "status": "accepted",
     }
     assert grants.grants == [("user_b", "acme-co", "Acme")]
     store = make_workspace_store()
     member = _run(store.get_member("acme-co", "user_b"))
-    assert member is not None and member.role == "member"
+    assert member is not None and member.role == "writer"
     # Idempotent re-accept by the same subject: 200 no-op, no second grant.
     r2 = client.post("/v1/invites/accept", headers=HB, json={"token": token})
     assert r2.status_code == 200
@@ -656,13 +657,15 @@ def test_list_members_any_member_with_decoration(client, verifier):
     )
     _seed_workspace()
     store = make_workspace_store()
-    _run(store.add_member("acme-co", "user_b", "member"))
-    r = client.get("/v1/me/tenants/acme-co/members", headers=HB)  # member can list
+    _run(store.add_member("acme-co", "user_b", "writer"))
+    r = client.get("/v1/me/tenants/acme-co/members", headers=HB)  # writer can list
     assert r.status_code == 200
     by_subject = {m["subject"]: m for m in r.json()}
     assert by_subject["user_a"]["role"] == "owner"
+    assert by_subject["user_a"]["capability"] == "write"
     assert by_subject["user_a"]["email"] == "alice@example.com"
-    assert by_subject["user_b"]["role"] == "member"
+    assert by_subject["user_b"]["role"] == "writer"
+    assert by_subject["user_b"]["capability"] == "write"
     # Non-members cannot.
     assert (
         client.get("/v1/me/tenants/acme-co/members", headers=HC).status_code == 403

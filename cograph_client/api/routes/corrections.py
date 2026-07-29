@@ -28,7 +28,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from cograph_client.api.deps import get_neptune_client
-from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.api_keys import TenantContext
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.queries import kg_graph_uri
 from cograph_client.pipeline.corrections import (
@@ -78,7 +79,7 @@ class CorrectionResponse(BaseModel):
 @router.post("/corrections", response_model=CorrectionResponse)
 async def create_correction(
     req: CorrectionRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Apply an A10 user correction and return its A6 receipt.
