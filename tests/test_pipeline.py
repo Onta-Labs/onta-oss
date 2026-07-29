@@ -128,3 +128,92 @@ async def test_ask_falls_back_when_no_embeddings(pipeline, mock_neptune):
 
     assert result.timing.get("ontology_source") == "full"
     assert result.answer == "Central Park"
+
+
+@pytest.mark.asyncio
+async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, mock_neptune):
+    """Zero rows under a semantic ontology subset widen to full schema once.
+
+    Oliver demo RCA: semantic retrieval returned a wrong ClinicalTrial shape
+    (interventions/conditions); the first SPARQL was valid but empty. Without
+    escalation the pipeline answered "No results found" in one attempt.
+    """
+    mock_svc = AsyncMock()
+    mock_svc.retrieve.return_value = (
+        "Type: ClinicalTrial\n  Attributes: name, nct_id\n"
+        "  Relationships: interventions, conditions"
+    )
+
+    empty = {"head": {"vars": ["x"]}, "results": {"bindings": []}}
+    hit = {
+        "head": {"vars": ["name"]},
+        "results": {
+            "bindings": [{"name": {"type": "literal", "value": "IMvigor011"}}]
+        },
+    }
+    # Empty first attempt (+ any name-lookup broaden probes); hit on retry.
+    mock_neptune.query.side_effect = lambda *a, **k: (
+        hit if mock_neptune.query.call_count > 3 else empty
+    )
+    # call_count doesn't work that way with side_effect lambda easily — use list
+    calls = {"n": 0}
+
+    async def _query(*_a, **_k):
+        calls["n"] += 1
+        return hit if calls["n"] >= 4 else empty
+
+    mock_neptune.query.side_effect = _query
+
+    bad = json.dumps({
+        "sparql": (
+            "SELECT ?x WHERE { "
+            "?t a <https://cograph.tech/types/ClinicalTrial> . "
+            "?t <https://cograph.tech/onto/interventions> ?x }"
+        ),
+        "explanation": "wrong shape",
+        "functions_needed": [],
+    })
+    good = json.dumps({
+        "sparql": (
+            "SELECT ?name WHERE { "
+            "?t a <https://cograph.tech/types/ClinicalTrial> . "
+            "?t <https://cograph.tech/types/ClinicalTrial/attrs/name> ?name }"
+        ),
+        "explanation": "full schema",
+        "functions_needed": [],
+    })
+    msg_bad = MagicMock()
+    msg_bad.content = [MagicMock(text=bad)]
+    msg_good = MagicMock()
+    msg_good.content = [MagicMock(text=good)]
+
+    full_ont = (
+        "Type: Drug\n  Attributes: brand_name\n"
+        "Type: Indication\n  Attributes: disease, label_status\n"
+        "Type: ClinicalTrial\n  Attributes: name, nct_id\n"
+        "  Relationships: supported_by_trial (via Indication)\n"
+    )
+
+    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
+        with patch.object(
+            pipeline, "_fetch_ontology", new_callable=AsyncMock, return_value=full_ont
+        ):
+            with patch.object(
+                pipeline.anthropic.messages, "create", new_callable=AsyncMock
+            ) as mock_create:
+                mock_create.side_effect = [msg_bad, msg_good]
+                with patch.object(
+                    pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value=None
+                ):
+                    result = await pipeline.ask(
+                        "What trial supports Tecentriq after bladder surgery?",
+                        "https://cograph.tech/graphs/t1",
+                    )
+
+    assert result.timing.get("ontology_zero_row_escalation") == 1.0
+    assert result.timing.get("ontology_source") == "full" or result.timing.get(
+        "ontology_escalated_to_full_attempt"
+    )
+    assert mock_create.call_count >= 2
+    # Eventually answered from the second SPARQL hit.
+    assert "IMvigor011" in result.answer or "No results" not in result.answer
