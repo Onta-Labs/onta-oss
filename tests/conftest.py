@@ -7,6 +7,44 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
+# Hermetic-by-default LLM credentials.
+#
+# The SPARQL-gen and schema-inference paths fall back to a LIVE provider whenever
+# a key happens to sit in the ambient environment: `nlp/pipeline.py` ends its
+# provider dispatch with a bare `if self._openrouter_key: return await
+# self._generate_via_openrouter(...)`, and `resolver/csv_resolver.py` /
+# `resolver/llm_router.py` read OPENROUTER_API_KEY / CEREBRAS_API_KEY straight off
+# os.environ. Tests that mock only `pipeline.anthropic.messages.create` therefore
+# sail PAST their mock and hit openrouter.ai for real on any machine with a key
+# exported — the normal state of a dev shell.
+#
+# That made the suite 10 tests redder on a developer's machine than in CI, and
+# meant the CI gate was green only because the runner exports no provider key:
+# adding one to the workflow env would have turned `test` red with no product
+# change. Clearing the keys here makes the default run hermetic and reproducible —
+# the dispatch falls through to the Anthropic path the tests actually mock.
+#
+# This has to happen at MODULE scope, before cograph_client is imported, because
+# `config.settings` is a module-level pydantic-settings singleton that snapshots
+# the environment at import time; a fixture would run too late to affect it.
+#
+# Tests that need a key PRESENT set a fake one with `monkeypatch.setenv` (see
+# test_multityping_saas.py, test_llm_router.py) — that still works, since
+# monkeypatch applies after this and undoes itself afterwards.
+#
+# Escape hatch: export ONTA_TEST_ALLOW_LIVE_LLM=1 for a deliberate live-provider
+# run (e.g. porting the obsolete tests/test_integration.py back to life).
+if os.environ.get("ONTA_TEST_ALLOW_LIVE_LLM") != "1":
+    for _live_provider_key in (
+        "OPENROUTER_API_KEY",
+        "CEREBRAS_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OMNIX_OPENROUTER_API_KEY",
+        "OMNIX_CEREBRAS_API_KEY",
+        "OMNIX_ANTHROPIC_API_KEY",
+    ):
+        os.environ.pop(_live_provider_key, None)
+
 from cograph_client.api.app import create_app
 from cograph_client.graph.client import NeptuneClient
 
