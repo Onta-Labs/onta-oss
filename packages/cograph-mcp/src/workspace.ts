@@ -31,7 +31,16 @@
 // misread as a tenant.
 
 import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { delimiter, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  delimiter,
+  extname,
+  isAbsolute,
+  join,
+  parse,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 
 // Env vars consulted for the root, in precedence order. This MIRRORS the SDK's
 // private `envVar()` helper (packages/cograph/src/client.ts): ONTA_ (current
@@ -65,11 +74,13 @@ export const MAX_NAME_LEN = 120;
 const MAX_PATTERN_LEN = 100;
 const MAX_PATTERN_WILDCARDS = 4;
 
-// Control characters (C0 + DEL) plus the Unicode bidi overrides / isolates that
-// are the classic filename-spoofing primitive. Filenames in a Downloads or
-// shared directory are ATTACKER-CONTROLLABLE, and this module is the first place
-// in this server that renders untrusted local strings into model context.
-const UNSAFE_NAME_RE = /[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/;
+// Control characters (C0 + DEL), the Unicode bidi overrides / isolates that are
+// the classic filename-spoofing primitive, and the zero-width characters (ZWSP /
+// ZWNJ / ZWJ / BOM) that let two visually identical names differ. Filenames in a
+// Downloads or shared directory are ATTACKER-CONTROLLABLE, and this module is the
+// first place in this server that renders untrusted local strings into model
+// context.
+const UNSAFE_NAME_RE = /[\u0000-\u001F\u007F\u200B-\u200D\u202A-\u202E\u2066-\u2069\uFEFF]/;
 
 export interface LocalFile {
   /** Absolute path, directly passable to `ingest_csv`. */
@@ -113,6 +124,8 @@ export interface RootResolution {
   varName?: string;
   /** Entries that did not resolve to an existing absolute directory. */
   rejected: string[];
+  /** Entries rejected for naming a filesystem root such as "/". */
+  fsRoots: string[];
   /** Entries dropped for exceeding MAX_ROOTS. */
   dropped: number;
 }
@@ -125,6 +138,33 @@ function clamp(n: number, lo: number, hi: number): number {
 /** True when `p` is the root itself or lies underneath it. */
 export function isContained(root: string, p: string): boolean {
   return p === root || p.startsWith(root + sep);
+}
+
+/**
+ * True for a filesystem root ("/" on POSIX, "C:\\" on Windows).
+ *
+ * Such a root is REFUSED rather than supported. Two independent reasons:
+ * granting the whole filesystem defeats the entire point of a scoped opt-in;
+ * and `isContained` would be wrong for it anyway, since `"/" + sep` is `"//"`
+ * and nothing would ever compare as contained. Refusing explicitly turns a
+ * confusing "enabled, but every listing is empty" state into a clear message.
+ */
+export function isFilesystemRoot(p: string): boolean {
+  return parse(p).root === p;
+}
+
+/**
+ * Drop any root that lies inside another configured root.
+ *
+ * Without this, configuring both `/a` and `/a/b` returns every file under
+ * `/a/b` TWICE (once per root), which reads to the model as two distinct files.
+ * The outer root already covers the inner one, so keeping the outer is lossless.
+ */
+export function dedupeNestedRoots(roots: string[]): string[] {
+  const unique = [...new Set(roots)];
+  return unique.filter(
+    (candidate) => !unique.some((other) => other !== candidate && isContained(other, candidate)),
+  );
 }
 
 /**
@@ -144,6 +184,10 @@ export function isContained(root: string, p: string): boolean {
 export function safeName(name: string): string | null {
   if (!name || name.length > MAX_NAME_LEN) return null;
   if (UNSAFE_NAME_RE.test(name)) return null;
+  // Leading / trailing whitespace (including NBSP, which `trim` also strips) is
+  // invisible once rendered, so " report.csv" and "report.csv" would look like
+  // the same file to the model while being two different paths.
+  if (name !== name.trim()) return null;
   return name;
 }
 
@@ -192,7 +236,7 @@ export function resolveRoots(env: NodeJS.ProcessEnv = process.env): RootResoluti
       break;
     }
   }
-  if (!raw) return { roots: [], rejected: [], dropped: 0 };
+  if (!raw) return { roots: [], rejected: [], fsRoots: [], dropped: 0 };
 
   const parts = raw
     .split(delimiter)
@@ -201,6 +245,7 @@ export function resolveRoots(env: NodeJS.ProcessEnv = process.env): RootResoluti
   const dropped = Math.max(0, parts.length - MAX_ROOTS);
   const roots: string[] = [];
   const rejected: string[] = [];
+  const fsRoots: string[] = [];
   for (const part of parts.slice(0, MAX_ROOTS)) {
     if (!isAbsolute(part)) {
       rejected.push(part);
@@ -212,12 +257,16 @@ export function resolveRoots(env: NodeJS.ProcessEnv = process.env): RootResoluti
         rejected.push(part);
         continue;
       }
+      if (isFilesystemRoot(real)) {
+        fsRoots.push(part);
+        continue;
+      }
       if (!roots.includes(real)) roots.push(real);
     } catch {
       rejected.push(part);
     }
   }
-  return { roots, varName, rejected, dropped };
+  return { roots: dedupeNestedRoots(roots), varName, rejected, fsRoots, dropped };
 }
 
 /** One stderr line at startup, so a typo in the env var is diagnosable. */
@@ -236,12 +285,18 @@ export function describeRootResolution(res: RootResolution): string {
         `absolute directories: ${res.rejected.join(", ")}`,
     );
   }
+  if (res.fsRoots.length) {
+    notes.push(
+      `refused ${res.fsRoots.join(", ")}: the whole filesystem cannot be a ` +
+        `root, point ${primary} at the specific directory holding your data`,
+    );
+  }
   if (res.dropped) notes.push(`dropped ${res.dropped} entry/entries over the ${MAX_ROOTS}-root cap`);
   const suffix = notes.length ? ` (${notes.join("; ")})` : "";
   if (!res.roots.length) {
     return (
       `onta-mcp: list_local_files is disabled (not registered). ${res.varName} ` +
-      `is set but no entry resolved to an existing absolute directory${suffix}.`
+      `is set but no entry was usable as a root${suffix}.`
     );
   }
   return (
@@ -278,15 +333,19 @@ export function listWorkspaceFiles(roots: string[], opts: ListOptions = {}): Lis
 
   // Canonicalize the roots here too: `resolveRoots` already does it, but this
   // function is the guard, so it must not depend on its caller having done so.
-  const canonical: string[] = [];
+  const resolved: string[] = [];
   for (const root of roots) {
     try {
       const real = realpathSync(root);
-      if (statSync(real).isDirectory() && !canonical.includes(real)) canonical.push(real);
+      // A filesystem root is refused here too, not just in `resolveRoots`: this
+      // function is THE guard and must not depend on its caller having filtered.
+      if (isFilesystemRoot(real)) continue;
+      if (statSync(real).isDirectory() && !resolved.includes(real)) resolved.push(real);
     } catch {
       // A root that vanished since startup simply contributes nothing.
     }
   }
+  const canonical = dedupeNestedRoots(resolved);
 
   const matches: LocalFile[] = [];
   let scanned = 0;
@@ -443,9 +502,13 @@ export function renderListResult(res: ListResult, roots: string[], maxDepth: num
   } else {
     lines.push(`${res.total} file(s) matched under ${where} (depth <= ${maxDepth}), most recently modified first:`);
     lines.push("");
+    // Filenames are attacker-controllable text being rendered into model
+    // context, so they are backtick-fenced as data rather than left bare. This
+    // is a weak signal, not a security boundary (a name may itself contain a
+    // backtick); the real containment is that only the granted root is visible.
     res.files.forEach((f, i) => {
-      lines.push(`${i + 1}. ${f.relative_path} | ${formatBytes(f.size)} | modified ${f.mtime}`);
-      lines.push(`   ${f.path}`);
+      lines.push(`${i + 1}. \`${f.relative_path}\` | ${formatBytes(f.size)} | modified ${f.mtime}`);
+      lines.push(`   \`${f.path}\``);
     });
   }
   const notes: string[] = [];

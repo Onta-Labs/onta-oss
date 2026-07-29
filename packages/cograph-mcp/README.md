@@ -84,7 +84,12 @@ What you are granting, precisely:
   only when you ingest a specific file.
 - Nothing outside the directory is visible: directory symlinks are not followed,
   every returned file must resolve back inside the root, and `..` is rejected.
+  The filesystem root (`/`) is refused as a value.
 - Dotfiles, dot-directories and `node_modules` are skipped.
+- One exception to the containment rule: a **hardlink** placed inside the
+  directory that points at a file outside it *is* listed (name, size and
+  modification time, never content). A hardlink cannot be distinguished from an
+  ordinary file, and creating one already requires write access to the directory.
 
 Point it at a directory that holds the data you intend to ingest, not at your
 home directory or `/`. Filenames inside the granted directory are themselves

@@ -13,11 +13,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_LIMIT,
   LOCAL_FILES_ENV_VARS,
+  MAX_DIRENTS,
   MAX_RESULTS,
   MAX_ROOTS,
   compilePattern,
+  dedupeNestedRoots,
   describeRootResolution,
   isContained,
+  isFilesystemRoot,
   listWorkspaceFiles,
   resolveRoots,
   safeName,
@@ -291,6 +294,98 @@ describe("listWorkspaceFiles: depth and result caps", () => {
   });
 });
 
+describe("listWorkspaceFiles: dirent budget", () => {
+  // This cap is the one guard a mutation test slipped past: raising MAX_DIRENTS
+  // to 20,000,000 left the whole suite green, so nothing stopped a future edit
+  // from raising or deleting it. This test plants MORE THAN the budget worth of
+  // entries and asserts the walk stops, which fails if the constant is raised.
+  //
+  // The planted count is a LITERAL on purpose. Sizing the tree from MAX_DIRENTS
+  // would make a raised constant simply plant more files, and the test would
+  // keep passing (or hang) instead of failing.
+  const PLANTED = 21_000;
+
+  it("stops walking once the dirent budget is exhausted", () => {
+    expect(MAX_DIRENTS).toBeLessThan(PLANTED);
+
+    // Spread across a few directories so this is a realistic tree, and use
+    // empty files so creating it stays fast.
+    const perDir = 2000;
+    let made = 0;
+    for (let d = 0; made < PLANTED; d++) {
+      const dir = join(root, `bulk${d}`);
+      mkdirSync(dir);
+      for (let i = 0; i < perDir && made < PLANTED; i++, made++) {
+        writeFileSync(join(dir, `f${made}.csv`), "");
+      }
+    }
+    expect(made).toBe(PLANTED);
+
+    const res = listWorkspaceFiles([root], { maxDepth: 2, limit: MAX_RESULTS });
+    expect(res.budgetExhausted).toBe(true);
+    // The walk stopped AT the budget rather than visiting everything planted.
+    expect(res.scanned).toBeLessThanOrEqual(MAX_DIRENTS + 1);
+    expect(res.scanned).toBeLessThan(PLANTED);
+  });
+
+  it("does not report budget exhaustion for an ordinary tree", () => {
+    touch(join(root, "a.csv"));
+    const res = listWorkspaceFiles([root]);
+    expect(res.budgetExhausted).toBe(false);
+    expect(res.scanned).toBeLessThan(MAX_DIRENTS);
+  });
+});
+
+describe("listWorkspaceFiles: filesystem root is refused", () => {
+  it("isFilesystemRoot recognizes the filesystem root", () => {
+    expect(isFilesystemRoot("/")).toBe(true);
+    expect(isFilesystemRoot(root)).toBe(false);
+  });
+
+  it('resolveRoots refuses "/" instead of "enabling" a root that lists nothing', () => {
+    // "/" exists and is a directory, so it used to resolve as a valid root while
+    // isContained("/", p) was always false ("/" + sep is "//"). The server
+    // printed "enabled" and every listing came back empty, which reads as a bug.
+    const res = resolveRoots({ ONTA_LOCAL_FILES_DIR: "/" });
+    expect(res.roots).toEqual([]);
+    expect(res.fsRoots).toEqual(["/"]);
+    const msg = describeRootResolution(res);
+    expect(msg).toContain("disabled");
+    expect(msg).toMatch(/whole filesystem/i);
+  });
+
+  it("listWorkspaceFiles refuses a filesystem root even if handed one directly", () => {
+    // The guard must not depend on its caller having filtered.
+    expect(listWorkspaceFiles(["/"]).files).toEqual([]);
+  });
+
+  it("keeps the valid roots when one entry is the filesystem root", () => {
+    const res = resolveRoots({ ONTA_LOCAL_FILES_DIR: ["/", root].join(delimiter) });
+    expect(res.roots).toEqual([root]);
+    expect(res.fsRoots).toEqual(["/"]);
+  });
+});
+
+describe("listWorkspaceFiles: nested roots", () => {
+  it("dedupeNestedRoots keeps the outer root and drops the inner one", () => {
+    expect(dedupeNestedRoots(["/a", "/a/b"])).toEqual(["/a"]);
+    expect(dedupeNestedRoots(["/a/b", "/a"])).toEqual(["/a"]);
+    expect(dedupeNestedRoots(["/a", "/b"])).toEqual(["/a", "/b"]);
+    expect(dedupeNestedRoots(["/a", "/a"])).toEqual(["/a"]);
+    // A sibling with a shared prefix is NOT nested.
+    expect(dedupeNestedRoots(["/a", "/ab"])).toEqual(["/a", "/ab"]);
+  });
+
+  it("does not return the same file twice when a root nests inside another", () => {
+    const sub = join(root, "sub");
+    mkdirSync(sub);
+    const file = touch(join(sub, "dupe.csv"));
+    const res = listWorkspaceFiles([root, sub]);
+    expect(res.files.map((f) => f.path)).toEqual([file]);
+    expect(res.total).toBe(1);
+  });
+});
+
 describe("listWorkspaceFiles: untrusted filename rendering", () => {
   it("safeName drops control characters, bidi overrides and overlong names", () => {
     expect(safeName("normal-file.csv")).toBe("normal-file.csv");
@@ -300,6 +395,19 @@ describe("listWorkspaceFiles: untrusted filename rendering", () => {
     // U+202E RIGHT-TO-LEFT OVERRIDE: the classic filename-spoofing primitive.
     expect(safeName(`invoice${String.fromCharCode(0x202e)}fdp.csv`)).toBeNull();
     expect(safeName(`${"x".repeat(200)}.csv`)).toBeNull();
+  });
+
+  it("safeName drops zero-width characters and edge whitespace", () => {
+    // Two names that RENDER identically must not both reach the model as if
+    // they were the same file.
+    expect(safeName(`zw${String.fromCharCode(0x200b)}sp.csv`)).toBeNull(); // ZWSP
+    expect(safeName(`zw${String.fromCharCode(0x200d)}j.csv`)).toBeNull(); // ZWJ
+    expect(safeName(`bom${String.fromCharCode(0xfeff)}.csv`)).toBeNull();
+    expect(safeName(" leading.csv")).toBeNull();
+    expect(safeName("trailing.csv ")).toBeNull();
+    expect(safeName(`${String.fromCharCode(0xa0)}nbsp.csv`)).toBeNull();
+    // An ordinary name with an interior space is still fine.
+    expect(safeName("quarterly report.csv")).toBe("quarterly report.csv");
   });
 
   it("drops (rather than renders) a file whose name carries a control character", () => {

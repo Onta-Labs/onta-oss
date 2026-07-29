@@ -34,12 +34,16 @@ const VERSION = "0.1.0";
 // not appear in tools/list and burns no context in a session that has no root.
 const LOCAL_FILE_ROOTS: string[] = (() => {
   const res = resolveRoots();
-  // One stderr line either way, so a typo in the env var is diagnosable rather
-  // than presenting as a silently missing tool.
-  try {
-    process.stderr.write(`${describeRootResolution(res)}\n`);
-  } catch {
-    // stderr unavailable; the resolution itself still stands.
+  // One stderr line, but ONLY for a user who actually set the var: a bad path,
+  // a refused filesystem root, or a successful grant are all worth reporting,
+  // whereas the overwhelming majority who never opt in should get no noise at
+  // all for a feature they are not using.
+  if (res.varName) {
+    try {
+      process.stderr.write(`${describeRootResolution(res)}\n`);
+    } catch {
+      // stderr unavailable; the resolution itself still stands.
+    }
   }
   return res.roots;
 })();
@@ -271,7 +275,9 @@ function notFoundHint(filePath: string, roots: string[]): string {
     : ` Local files available under the configured root (most recent first):`;
   return (
     `${lead}\n` +
-    shown.map((r) => `  ${r.path}`).join("\n") +
+    // Backtick-fenced for the same reason as in `renderListResult`: these are
+    // attacker-controllable filenames being rendered into model context.
+    shown.map((r) => `  \`${r.path}\``).join("\n") +
     `\nCall list_local_files for the full list.`
   );
 }
