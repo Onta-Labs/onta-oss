@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
-import { readConfig } from "./config.js";
+import { isClerkUserId, readConfig, writeConfig } from "./config.js";
 
 export class OntaError extends Error {
   status?: number;
@@ -201,6 +201,9 @@ export class Client {
    */
   readonly raw: RawApi;
 
+  /** In-flight heal for configs that still have tenant = Clerk user id. */
+  private tenantHealPromise: Promise<void> | null = null;
+
   constructor(opts: ClientOptions = {}) {
     // Resolution order for each field: explicit opts → env var → ~/.onta/config.json
     // (written by `cograph login`) → built-in default. Reading the config eagerly
@@ -210,8 +213,74 @@ export class Client {
     const url =
       opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.onta.sh";
     this.baseUrl = url.replace(/\/+$/, "");
+    // May still be a Clerk user id from a legacy login; healTenantIfNeeded()
+    // rewrites it to a real workspace on the first graph request.
     this.tenant = opts.tenant ?? envVar("TENANT") ?? cfg.tenant ?? "demo-tenant";
     this.raw = new RawApi(this);
+  }
+
+  /**
+   * If `this.tenant` is a Clerk user id (legacy login bug), resolve the first
+   * real workspace via GET /v1/me/tenants and rewrite config + this.tenant.
+   */
+  private async healTenantIfNeeded(): Promise<void> {
+    if (!isClerkUserId(this.tenant)) return;
+    if (!this.apiKey) {
+      throw new OntaError(
+        `Configured tenant "${this.tenant}" looks like a Clerk user id, not a workspace. ` +
+          `Set ONTA_TENANT to a workspace id from the dashboard (or re-run \`onta login\`).`,
+      );
+    }
+    if (!this.tenantHealPromise) {
+      const bogus = this.tenant;
+      this.tenantHealPromise = (async () => {
+        const res = await fetch(`${this.baseUrl}/v1/me/tenants`, {
+          headers: {
+            "X-API-Key": this.apiKey!,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) {
+          throw new OntaError(
+            `Configured tenant "${bogus}" is a user id, not a workspace, and ` +
+              `listing workspaces failed (HTTP ${res.status}). Set ONTA_TENANT ` +
+              `to a real workspace id.`,
+            { status: res.status },
+          );
+        }
+        const data = (await res.json()) as unknown;
+        const list = Array.isArray(data) ? data : [];
+        let first: string | undefined;
+        for (const entry of list) {
+          const id =
+            typeof entry === "string"
+              ? entry
+              : entry &&
+                  typeof entry === "object" &&
+                  typeof (entry as { id?: unknown }).id === "string"
+                ? (entry as { id: string }).id
+                : "";
+          if (id && !isClerkUserId(id)) {
+            first = id;
+            break;
+          }
+        }
+        if (!first) {
+          throw new OntaError(
+            `Configured tenant "${bogus}" is a user id, and this key has no workspaces. ` +
+              `Create a workspace in the dashboard, then set ONTA_TENANT.`,
+          );
+        }
+        this.tenant = first;
+        try {
+          writeConfig({ tenant: first });
+        } catch {
+          // best-effort migrate of ~/.onta/config.json
+        }
+      })();
+    }
+    await this.tenantHealPromise;
   }
 
   private headers(): Record<string, string> {
@@ -515,6 +584,18 @@ export class Client {
     body?: unknown,
     timeoutMs: number = 120_000,
   ): Promise<T> {
+    // Rewrite legacy tenant=userId before hitting /graphs/{tenant}/…
+    if (isClerkUserId(this.tenant) || /\/graphs\/user_[A-Za-z0-9]+(?:\/|$)/.test(url)) {
+      const before = this.tenant;
+      await this.healTenantIfNeeded();
+      if (before !== this.tenant) {
+        url = url.replace(
+          /\/graphs\/user_[A-Za-z0-9]+/g,
+          `/graphs/${this.tenant}`,
+        );
+      }
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
@@ -542,6 +623,18 @@ export class Client {
         text = await res.text();
       } catch {
         // ignore
+      }
+      // Friendlier hint when a stale config still points at a user id path.
+      if (
+        res.status === 403 &&
+        /grant access to tenant ['"]user_/i.test(text)
+      ) {
+        throw new OntaError(
+          `HTTP 403: ${text}\n` +
+            `Hint: ONTA_TENANT / config tenant is set to a Clerk user id. ` +
+            `Set it to a workspace id (dashboard → workspace switcher) or re-run \`onta login\`.`,
+          { status: res.status, body: text },
+        );
       }
       throw new OntaError(`HTTP ${res.status}: ${text}`, {
         status: res.status,
