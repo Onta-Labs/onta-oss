@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,6 +62,80 @@ describe("ingest_csv handler — missing file (ONTA-253)", () => {
 
     expect(res.isError).toBe(true);
     expect(ingest).not.toHaveBeenCalled();
+  });
+});
+
+// ONTA-415: the not-found error grew a "did you mean" suffix driven by the SAME
+// containment-guarded primitive as `list_local_files`. The suffix must be
+// CONDITIONAL on a root being configured: naming a tool that is absent from
+// tools/list is the ONTA-243 failure class (the model is sent after a capability
+// it cannot call).
+describe("ingest_csv handler: did-you-mean hint (ONTA-415)", () => {
+  it("suggests real local files and names list_local_files WHEN a root is configured", async () => {
+    const root = realpathSync(dir);
+    const real = join(root, "tecentriq-label-demo.csv");
+    writeFileSync(real, "sku,color\nW-1,red\n", "utf-8");
+    const { client, ingest } = stubClient(() => {
+      throw new Error("SDK ingest must not be called for a missing file");
+    });
+
+    const res = await ingestCsvHandler(
+      { file_path: "/workspace/tecentriq-label-demo.csv", kg_name: "widget-catalog" },
+      () => client,
+      [root],
+    );
+
+    expect(res.isError).toBe(true);
+    const text = res.content.map((c) => c.text).join("\n");
+    // Still a clear failure, never a fabricated success (ONTA-253 holds).
+    expect(text).toContain("/workspace/tecentriq-label-demo.csv");
+    expect(text).not.toMatch(/entities resolved/i);
+    expect(ingest).not.toHaveBeenCalled();
+    // The actionable part: the real absolute path, plus the tool to see more.
+    expect(text).toContain(real);
+    expect(text).toContain("list_local_files");
+  });
+
+  it("says NOTHING about list_local_files when no root is configured", async () => {
+    const missing = join(dir, "does-not-exist.csv");
+    const { client } = stubClient(() => {
+      throw new Error("SDK ingest must not be called for a missing file");
+    });
+
+    const res = await ingestCsvHandler(
+      { file_path: missing, kg_name: "widget-catalog" },
+      () => client,
+      [],
+    );
+
+    const text = res.content.map((c) => c.text).join("\n");
+    expect(res.isError).toBe(true);
+    // The tool is not registered in this configuration, so pointing the model at
+    // it would strand the task.
+    expect(text).not.toContain("list_local_files");
+    expect(text.toLowerCase()).toContain("not found");
+  });
+
+  it("does not leak paths from outside the configured root", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "cograph-mcp-root-")));
+    const outsideFile = join(realpathSync(dir), "secret.csv");
+    writeFileSync(outsideFile, "a,b\n1,2\n", "utf-8");
+    const { client } = stubClient(() => {
+      throw new Error("SDK ingest must not be called for a missing file");
+    });
+
+    try {
+      const res = await ingestCsvHandler(
+        { file_path: join(root, "nope.csv"), kg_name: "widget-catalog" },
+        () => client,
+        [root],
+      );
+      const text = res.content.map((c) => c.text).join("\n");
+      expect(text).not.toContain("secret.csv");
+      expect(text).not.toContain(outsideFile);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
