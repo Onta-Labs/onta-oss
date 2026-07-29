@@ -35,6 +35,7 @@ from cograph_client.resolver.models import (
     TypeExtension,
 )
 from cograph_client.resolver.profiler import profile_table
+from tests._hermetic import ALLOW_LIVE_VAR
 
 # The dataset CSVs live in the proprietary parent repo and are gitignored —
 # present on dev machines, absent in fresh OSS clones. Tests that need them
@@ -1772,15 +1773,23 @@ class TestCompletionRetry:
 @pytest.mark.integration
 @pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
-    reason="live reason+refute inference needs OPENROUTER_API_KEY (network)",
+    reason=(
+        "live reason+refute inference needs OPENROUTER_API_KEY (network) AND "
+        f"{ALLOW_LIVE_VAR}=1, since conftest strips provider keys by default"
+    ),
 )
 class TestLiveHotelPMSInference:
     """End-to-end Pass A→B→C against the real model (deepseek/deepseek-v3.2
     via OpenRouter) on the hotel PMS export — ADR 0003's generality check:
     zero domain hints anywhere in the prompts. Run on a dev machine with:
 
-        COGRAPH_DATASETS_ROOT=<parent repo> OPENROUTER_API_KEY=sk-or-... \
+        ONTA_TEST_ALLOW_LIVE_LLM=1 COGRAPH_DATASETS_ROOT=<parent repo> \
+            OPENROUTER_API_KEY=sk-or-... \
             pytest tests/test_csv_resolver.py -m integration -v
+
+    The ONTA_TEST_ALLOW_LIVE_LLM=1 opt-in is required: tests/conftest.py clears
+    the provider credentials by default so the unit suite can never egress to a
+    live LLM, and without it the key above is stripped and this class skips.
     """
 
     @pytest.mark.asyncio
@@ -1831,15 +1840,23 @@ class TestLiveHotelPMSInference:
 @pytest.mark.integration
 @pytest.mark.skipif(
     not os.environ.get("OPENROUTER_API_KEY"),
-    reason="live completion inference needs OPENROUTER_API_KEY (network)",
+    reason=(
+        "live completion inference needs OPENROUTER_API_KEY (network) AND "
+        f"{ALLOW_LIVE_VAR}=1, since conftest strips provider keys by default"
+    ),
 )
 class TestLiveGraingerCompletion:
     """End-to-end Pass A→B→C→D against the real model (deepseek/deepseek-v3.2
     via OpenRouter) on the Grainger-shaped catalog — the COG-52 acceptance
     scenario with zero domain hints in any prompt. Run on a dev machine with:
 
-        COGRAPH_DATASETS_ROOT=<parent repo> OPENROUTER_API_KEY=sk-or-... \
+        ONTA_TEST_ALLOW_LIVE_LLM=1 COGRAPH_DATASETS_ROOT=<parent repo> \
+            OPENROUTER_API_KEY=sk-or-... \
             pytest tests/test_csv_resolver.py -m integration -v
+
+    The ONTA_TEST_ALLOW_LIVE_LLM=1 opt-in is required: tests/conftest.py clears
+    the provider credentials by default so the unit suite can never egress to a
+    live LLM, and without it the key above is stripped and this class skips.
     """
 
     @pytest.mark.asyncio

@@ -4,21 +4,29 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
+from tests._hermetic import (
+    HERMETIC_SENTINEL_VAR,
+    LIVE_PROVIDER_KEY_VARS,
+    live_llm_opted_in,
+)
+
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 # Hermetic-by-default LLM credentials.
 #
-# The SPARQL-gen and schema-inference paths fall back to a LIVE provider whenever
-# a key happens to sit in the ambient environment: `nlp/pipeline.py` ends its
-# provider dispatch with a bare `if self._openrouter_key: return await
-# self._generate_via_openrouter(...)`, and `resolver/csv_resolver.py` /
-# `resolver/llm_router.py` read OPENROUTER_API_KEY / CEREBRAS_API_KEY straight off
-# os.environ. Tests that mock only `pipeline.anthropic.messages.create` therefore
-# sail PAST their mock and hit openrouter.ai for real on any machine with a key
-# exported — the normal state of a dev shell.
+# The SPARQL-gen and schema-inference paths reach a LIVE provider whenever a key
+# happens to sit in the ambient environment. `nlp/pipeline.py`'s dispatch takes the
+# Cerebras branch first (OMNIX_QUERY_PROVIDER defaults to "cerebras") and then ends
+# with a bare `if self._openrouter_key: return await
+# self._generate_via_openrouter(...)`, while `resolver/schema_resolver.py`,
+# `resolver/csv_resolver.py` and `resolver/llm_router.py` read OPENROUTER_API_KEY /
+# CEREBRAS_API_KEY straight off os.environ. Tests that mock only
+# `pipeline.anthropic.messages.create` therefore sail PAST their mock and call
+# openrouter.ai or api.cerebras.ai for real on any machine with a key exported —
+# the normal state of a dev shell.
 #
-# That made the suite 10 tests redder on a developer's machine than in CI, and
+# That made the suite ~10 tests redder on a developer's machine than in CI, and
 # meant the CI gate was green only because the runner exports no provider key:
 # adding one to the workflow env would have turned `test` red with no product
 # change. Clearing the keys here makes the default run hermetic and reproducible —
@@ -33,23 +41,13 @@ os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 # monkeypatch applies after this and undoes itself afterwards.
 #
 # Escape hatch: export ONTA_TEST_ALLOW_LIVE_LLM=1 for a deliberate live-provider
-# run (e.g. porting the obsolete tests/test_integration.py back to life).
+# run — the opt-in live tests in test_csv_resolver.py need it.
 #
-# tests/test_hermetic_llm_env.py imports both names below and asserts the outcome,
-# so this stays honest. It checks HERMETIC_SENTINEL_VAR rather than only "is a key
-# absent": absence is unfalsifiable on a machine that never had a key (CI), so a
-# sentinel is what lets the guard fail in CI if this block is ever deleted.
-LIVE_PROVIDER_KEY_VARS = (
-    "OPENROUTER_API_KEY",
-    "CEREBRAS_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "OMNIX_OPENROUTER_API_KEY",
-    "OMNIX_CEREBRAS_API_KEY",
-    "OMNIX_ANTHROPIC_API_KEY",
-)
-HERMETIC_SENTINEL_VAR = "_ONTA_TEST_HERMETIC_LLM"
-
-if os.environ.get("ONTA_TEST_ALLOW_LIVE_LLM") != "1":
+# tests/test_hermetic_llm_env.py asserts the outcome, so this stays honest. It
+# checks HERMETIC_SENTINEL_VAR rather than only "is a key absent": absence is
+# unfalsifiable on a machine that never had a key (CI), so the sentinel is what
+# lets the guard fail in CI if this block is ever deleted.
+if not live_llm_opted_in():
     for _live_provider_key in LIVE_PROVIDER_KEY_VARS:
         os.environ.pop(_live_provider_key, None)
     os.environ[HERMETIC_SENTINEL_VAR] = "1"

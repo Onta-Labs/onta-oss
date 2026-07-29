@@ -29,12 +29,17 @@ import os
 import pytest
 
 from cograph_client.nlp.pipeline import NLQueryPipeline
-from tests.conftest import HERMETIC_SENTINEL_VAR, LIVE_PROVIDER_KEY_VARS
+from tests._hermetic import (
+    ALLOW_LIVE_VAR,
+    HERMETIC_SENTINEL_VAR,
+    LIVE_PROVIDER_KEY_VARS,
+    live_llm_opted_in,
+)
 
-_live_run = os.environ.get("ONTA_TEST_ALLOW_LIVE_LLM") == "1"
+_live_run = live_llm_opted_in()
 _live_skip = pytest.mark.skipif(
     _live_run,
-    reason="ONTA_TEST_ALLOW_LIVE_LLM=1 deliberately opts into live providers",
+    reason=f"{ALLOW_LIVE_VAR}=1 deliberately opts into live providers",
 )
 
 
@@ -47,7 +52,7 @@ def test_conftest_declares_the_run_hermetic():
     """
     if _live_run:
         assert os.environ.get(HERMETIC_SENTINEL_VAR) != "1", (
-            f"{HERMETIC_SENTINEL_VAR} set despite ONTA_TEST_ALLOW_LIVE_LLM=1 — "
+            f"{HERMETIC_SENTINEL_VAR} set despite {ALLOW_LIVE_VAR}=1 — "
             "the escape hatch is not being honored"
         )
         return
