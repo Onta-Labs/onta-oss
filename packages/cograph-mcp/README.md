@@ -30,13 +30,14 @@ npx -y -p @onta/mcp onta-mcp
 
 ## Tools exposed
 
-The server registers **15** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `ONTA_LOCAL_FILES_DIR` (see [Environment](#environment)):
+The server registers **16** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `ONTA_LOCAL_FILES_DIR` (see [Environment](#environment)):
 
 - `agent` — the single conversational front door to the Ask-AI agent. Send a natural-language message; the agent classifies intent and either answers a question, asks a clarifying question, or proposes a multi-step plan (enrich attributes, clean/normalize values, merge duplicates, inspect/extend the ontology). A plan is **not executed** until you confirm it by calling `agent` again with the returned `plan_id` as `confirm_plan_id`. Planning is free; any paid step a plan contains (e.g. web enrichment) is authorized server-side at execute time, so confirming honors your tenant's entitlements.
 - `list_knowledge_graphs` — list available KGs and their descriptions.
 - `ask` — ask a natural-language question against a context graph; returns the answer (and an explanation when available).
 - `search` — semantic + keyword (hybrid) search over the free-text attributes of entities: find *which* entities mention/discuss a topic, with a matching snippet as the citation. Use `ask` for aggregate or structured questions.
-- `view_ontology` — show the ontology (types, attributes, relationships) across your context graphs.
+- `view_ontology` — show the ontology (types, attributes, relationships) across your context graphs. Tenant-wide and declaration-only; for one graph's actual data coverage use `inspect_graph_schema`.
+- `inspect_graph_schema`: inspect ONE context graph's schema *with population data*, i.e. per type, which attributes and relationships actually carry data there and on what share of its entities. Declared-but-empty types and attributes are listed and marked `EMPTY`, so a missing slot is never confused with a non-existent one. Use it before asking for specific attributes so you never guess between similar names.
 - `create_knowledge_graph` — create a new, empty KG (optionally with a description).
 - `delete_knowledge_graph` — delete a KG and all of its data (irreversible).
 - `ingest_csv` — ingest a CSV file by absolute path into a named KG; the schema is inferred automatically. Set `join_on` to merge each row onto the existing entity that carries the same key value instead of minting duplicates.
