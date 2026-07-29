@@ -140,6 +140,16 @@ class Settings(BaseSettings):
     # in the clear. env: OMNIX_SECRETS_KEY.
     secrets_key: str = ""
 
+    # Contact string sent as the User-Agent on SEC EDGAR requests
+    # (POST /functions/sec-latest-filing). SEC's fair-access policy asks every
+    # automated client to declare itself with a real contact, and throttles
+    # requests that do not. Each DEPLOYMENT must supply its OWN contact — this
+    # is deliberately empty in OSS so a published build can never make requests
+    # under some other operator's identity. When unset, the route falls back to
+    # a neutral project-level UA (no personal address) and logs a one-time
+    # warning. env: OMNIX_SEC_USER_AGENT — e.g. "Acme Corp ops@acme.com".
+    sec_user_agent: str = ""
+
     def get_api_keys_map(self) -> dict[str, str]:
         return json.loads(self.api_keys)
 
