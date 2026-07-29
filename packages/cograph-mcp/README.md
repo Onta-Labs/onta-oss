@@ -7,7 +7,7 @@ MCP (Model Context Protocol) server for [Onta](https://getonta.com). Gives AI ag
 No install needed — use `npx`:
 
 ```bash
-npx -y @onta/mcp
+npx -y -p @onta/mcp onta-mcp
 ```
 
 ## Claude Desktop / Cursor / Claude Code
@@ -17,7 +17,7 @@ npx -y @onta/mcp
   "mcpServers": {
     "onta": {
       "command": "npx",
-      "args": ["-y", "@onta/mcp"],
+      "args": ["-y", "-p", "@onta/mcp", "onta-mcp"],
       "env": {
         "ONTA_API_KEY": "your-key",
         "ONTA_API_URL": "https://api.onta.sh",
