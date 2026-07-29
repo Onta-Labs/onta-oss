@@ -79,10 +79,24 @@ def test_add_list_remove_roundtrip(client):
         "/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"}
     )
     assert r.status_code == 201
-    assert r.json() == {"id": "acme-co", "label": "Acme"}
+    # Creator is owner (write capability); TenantOut always includes role + capability.
+    assert r.json() == {
+        "id": "acme-co",
+        "label": "Acme",
+        "role": "owner",
+        "capability": "write",
+    }
 
+    # List attaches role via resolve_member_role; static keys have no subject →
+    # default writer (still write capability). POST hardcodes owner for the
+    # create response because the caller just claimed the workspace.
     assert client.get("/v1/me/tenants", headers=h).json() == [
-        {"id": "acme-co", "label": "Acme"}
+        {
+            "id": "acme-co",
+            "label": "Acme",
+            "role": "writer",
+            "capability": "write",
+        }
     ]
 
     r = client.delete("/v1/me/tenants/acme-co", headers=h)

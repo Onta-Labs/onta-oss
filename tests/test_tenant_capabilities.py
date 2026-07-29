@@ -50,7 +50,8 @@ from cograph_client.auth.workspace_store import make_workspace_store
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Python 3.12+: get_event_loop() no longer auto-creates a loop on MainThread.
+    return asyncio.run(coro)
 
 
 def test_resolve_member_role_reader_and_writer():
