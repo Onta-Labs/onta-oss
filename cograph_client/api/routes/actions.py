@@ -31,7 +31,8 @@ from cograph_client.api.deps import (
     get_executor,
     get_neptune_client,
 )
-from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.api_keys import TenantContext
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.enrichment.executor import EnrichmentExecutor
 from cograph_client.enrichment.models import (
     ConflictPolicy,
@@ -545,7 +546,7 @@ async def _run_dedupe(
 @router.post("/find-merge-duplicates", status_code=202)
 async def find_merge_duplicates(
     body: KGActionRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
@@ -572,7 +573,7 @@ async def find_merge_duplicates(
 @router.post("/enrich", status_code=202)
 async def enrich_action(
     body: EnrichActionRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store=Depends(get_enrichment_job_store),
 ):
@@ -658,7 +659,7 @@ async def _run_suggest(
 @router.post("/suggest-relationships", status_code=202)
 async def suggest_relationships(
     body: KGActionRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
