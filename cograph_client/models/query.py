@@ -16,7 +16,16 @@ class SPARQLUpdate(BaseModel):
 
 class NLQuery(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-    kg_name: str | None = Field(default=None, description="Query a specific knowledge graph")
+    # ONTA-414: the SAME pattern create enforces (KGCreate.name). kg_name is
+    # interpolated into a graph IRI inside generated SPARQL (`FROM <...>`), so a
+    # name carrying ">" would close the IRI early and let a second FROM naming
+    # ANOTHER tenant's graph be injected. "*" (not "+") so an explicit empty
+    # string keeps its existing meaning of "no KG selected, use the tenant graph".
+    kg_name: str | None = Field(
+        default=None,
+        pattern=r"^[a-zA-Z0-9_-]*$",
+        description="Query a specific knowledge graph",
+    )
     model: str | None = Field(default=None, description="Override the query generation model (OpenRouter model ID)")
     exclude_questions: list[str] = Field(default_factory=list, description="Questions to exclude from example bank retrieval (anti-cheat for evals)")
 

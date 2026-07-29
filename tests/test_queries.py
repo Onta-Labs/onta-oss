@@ -1,3 +1,5 @@
+import pytest
+
 from cograph_client.graph.queries import (
     tenant_graph_uri,
     insert_triples,
@@ -114,3 +116,50 @@ def test_list_functions_query_by_enhanced_type():
     )
     assert "FILTER" in sparql
     assert layer_type_uri(Layer.ENHANCED, "Organization") in sparql
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-414: kg_name can never break out of the graph IRI
+# --------------------------------------------------------------------------- #
+def test_kg_graph_uri_accepts_a_legal_name():
+    from cograph_client.graph.queries import kg_graph_uri
+
+    assert (
+        kg_graph_uri("acme", "imdb-movies_2")
+        == "https://cograph.tech/graphs/acme/kg/imdb-movies_2"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        # The tenant-isolation break: ">" closes the <...> wrapper so a second
+        # FROM naming ANOTHER tenant's graph can be appended to the query.
+        "kg> FROM <https://cograph.tech/graphs/victim",
+        "kg name",
+        "kg\nname",
+        'kg"name',
+        "kg/sub",
+        "kg{}",
+        "",
+        None,
+    ],
+)
+def test_kg_graph_uri_rejects_iri_breaking_names(bad):
+    from cograph_client.graph.queries import InvalidKGName, kg_graph_uri
+
+    with pytest.raises(InvalidKGName):
+        kg_graph_uri("acme", bad)
+
+
+def test_invalid_kg_name_is_a_value_error():
+    """Subclassing ValueError keeps any pre-existing `except ValueError` intact."""
+    from cograph_client.graph.queries import InvalidKGName
+
+    assert issubclass(InvalidKGName, ValueError)
+
+
+def test_kg_graph_uri_round_trips_through_parse():
+    from cograph_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
+
+    assert parse_kg_graph_uri(kg_graph_uri("acme", "imdb")) == ("acme", "imdb")

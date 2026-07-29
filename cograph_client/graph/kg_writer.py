@@ -74,6 +74,7 @@ from cograph_client.graph.provenance import (
 from cograph_client.graph.suppression import suppression_graph_uri
 from cograph_client.graph.validity import reopen_interval_update, validity_graph_uri
 from cograph_client.graph.queries import (
+    KG_NAME_PRED,
     _escape_literal,
     batched_delete_triples,
     batched_insert_triples,
@@ -81,6 +82,7 @@ from cograph_client.graph.queries import (
     count_subjects_query,
     delete_subject_predicates_query,
     delete_subjects_query,
+    kg_meta_uri,
     parse_kg_graph_uri,
     rewrite_predicate_update,
     rewrite_subject_update,
@@ -170,23 +172,22 @@ async def _count_matching(neptune, count_sparql: str) -> int:
 
 # KG-registration triple shape — the `<kg_uri> <onto/kg_name> "name"` record in
 # the tenant metadata graph that ``list_kgs`` reads to populate the Explorer
-# dropdown. Kept here (not imported from the API route) so this module stays in
-# the ``graph/`` layer with no dependency on ``api.routes``. Must match the
-# shape ``api/routes/knowledge_graphs.py`` writes/reads (``OMNIX_ONTO/kg_name``
-# and the ``_kg_meta_uri`` URI).
-_OMNIX_ONTO = "https://cograph.tech/onto"
-_KG_NAME_PRED = f"{_OMNIX_ONTO}/kg_name"
+# dropdown, and that the ONTA-413 existence probe ASKs for. The predicate + URI
+# shape now live in ``graph/queries.py`` (the same layer, no dependency on
+# ``api.routes``) so the writer here, ``create_kg``, ``list_kgs`` and the probe
+# cannot drift apart.
+_KG_NAME_PRED = KG_NAME_PRED
+_kg_meta_uri = kg_meta_uri
 
 # A KG name that can legally be created via the Explorer ("New KG" button). Must
 # match ``KGCreate.name``'s pattern in ``api/routes/knowledge_graphs.py`` — a
 # name that can't be created via the UI must not be allowed to silently corrupt
 # the registration URI (``<{kg_uri}>`` interpolates the raw name, so a `>` or
-# whitespace would break the URI even when the literal is escaped).
+# whitespace would break the URI even when the literal is escaped). Same pattern
+# ``kg_graph_uri`` enforces (ONTA-414); kept as a warn-and-skip here because
+# registration is best-effort post-write housekeeping that must never fail a
+# write.
 _KG_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
-
-
-def _kg_meta_uri(tenant_id: str, kg_name: str) -> str:
-    return f"https://cograph.tech/kgs/{tenant_id}/{kg_name}"
 
 
 async def ensure_kg_registered(neptune, tenant_id: str, kg_name: str) -> None:
