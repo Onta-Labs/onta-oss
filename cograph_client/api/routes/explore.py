@@ -29,6 +29,7 @@ from cograph_client.graph.layers import (
     Layer,
     fetch_types_by_layer,
     layer_type_uri,
+    type_namespace,
 )
 from cograph_client.graph.ontology_queries import attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
@@ -488,6 +489,216 @@ async def _read_type_stats(
         target = target_uri[len(TYPE_URI_PREFIX):] if target_uri.startswith(TYPE_URI_PREFIX) else None
         records.append({"p": r.get("pred", ""), "cnt": cnt, "rel": rel, "target": target})
     return entity_count, records, flags
+
+
+# --- Whole-KG schema reads (ONTA-418) -----------------------------------------
+# The per-type reads above bind ONE type URI by choice; the underlying stats are
+# already materialized for every (type, predicate) pair in the KG. Dropping the
+# binding turns the same two queries into a whole-KG schema read, so the
+# population-aware schema endpoint costs a constant 3-4 queries instead of the
+# 1+N round trips a client-side fan-out over the per-type summary would.
+
+# Type-URI namespaces across all ontology layers, longest first so
+# `types/public/Person` is not mis-parsed by the tenant namespace (a prefix of it).
+_LAYER_TYPE_NAMESPACES = sorted(
+    (type_namespace(layer) for layer in Layer), key=len, reverse=True
+)
+
+
+def _type_leaf(uri: str) -> str | None:
+    """Bare type name for a type URI in ANY layer namespace, else ``None``.
+
+    Rejects nested URIs (``…/types/Person/attrs/email``), which are attribute
+    declarations rather than types. Same guard the per-type reads apply with
+    their ``"/" in leaf`` check, extended to the layered namespaces.
+    """
+    for ns in _LAYER_TYPE_NAMESPACES:
+        if uri.startswith(ns):
+            leaf = uri[len(ns):]
+            return leaf if leaf and "/" not in leaf else None
+    return None
+
+
+async def _read_all_type_stats(
+    client: NeptuneClient, tenant_id: str, kg_name: str
+) -> dict[str, tuple[int, list[dict], dict]]:
+    """Precomputed stats for EVERY type in a KG → ``{type_uri: (count, records, flags)}``.
+
+    :func:`_read_type_stats` with the type binding dropped: two queries over the
+    tiny stats graph, grouped by type. Returns ``{}`` when the KG has no
+    materialized entity counts (legacy KG), so the caller can fall back to
+    :func:`_live_scan_all`.
+    """
+    stats = _stats_graph_uri(tenant_id, kg_name)
+    ec_q = (
+        f"SELECT ?type ?ec ?sp ?tp FROM <{stats}> WHERE {{\n"
+        f"  ?type <{_STAT_ENTITY_COUNT}> ?ec .\n"
+        f"  OPTIONAL {{ ?type <{_STAT_SPATIAL}> ?sp }}\n"
+        f"  OPTIONAL {{ ?type <{_STAT_TEMPORAL}> ?tp }}\n"
+        f"}}"
+    )
+    pred_q = (
+        f"SELECT ?type ?pred ?cnt ?rel ?target FROM <{stats}> WHERE {{\n"
+        f"  ?s <{_STAT_FOR_TYPE}> ?type ; <{_STAT_FOR_PRED}> ?pred ; <{_STAT_CNT}> ?cnt .\n"
+        f"  OPTIONAL {{ ?s <{_STAT_REL}> ?rel }}\n"
+        f"  OPTIONAL {{ ?s <{_STAT_TARGET}> ?target }}\n"
+        f"}}"
+    )
+    ec_raw, pred_raw = await asyncio.gather(client.query(ec_q), client.query(pred_q))
+    _, ec_rows = parse_sparql_results(ec_raw)
+    out: dict[str, tuple[int, list[dict], dict]] = {}
+    for r in ec_rows:
+        t_uri = r.get("type", "")
+        if _type_leaf(t_uri) is None:
+            continue
+        # Accept both boolean lexical forms (see _read_type_stats).
+        out[t_uri] = (
+            _to_int(r.get("ec")),
+            [],
+            {
+                "spatially_indexed": r.get("sp", "") in ("true", "1"),
+                "temporally_indexed": r.get("tp", "") in ("true", "1"),
+            },
+        )
+    if not out:
+        return {}
+    _, pred_rows = parse_sparql_results(pred_raw)
+    for r in pred_rows:
+        entry = out.get(r.get("type", ""))
+        if entry is None:
+            continue
+        target_uri = r.get("target", "")
+        entry[1].append({
+            "p": r.get("pred", ""),
+            "cnt": _to_int(r.get("cnt")),
+            "rel": _to_int(r.get("rel")),
+            "target": (
+                target_uri[len(TYPE_URI_PREFIX):]
+                if target_uri.startswith(TYPE_URI_PREFIX) else None
+            ),
+        })
+    return out
+
+
+async def _live_scan_all(
+    client: NeptuneClient, kg_graph: str
+) -> dict[str, tuple[int, list[dict], dict]]:
+    """Fallback for a KG with no materialized stats: ONE whole-KG scan.
+
+    Same ``GROUP BY ?type ?p`` shape :func:`recompute_kg_stats` uses (including
+    the primary-type attribution guard), so the fallback and the precomputed
+    path agree. One query for the whole KG, never one per type.
+    """
+    scan = (
+        f"SELECT ?type ?p (COUNT(DISTINCT ?e) AS ?cnt) (SAMPLE(?o) AS ?sample)\n"
+        f'  (SUM(IF(STRSTARTS(STR(?o), "{ENTITY_URI_PREFIX}"), 1, 0)) AS ?rel)\n'
+        f"{_ST_FLAG_AGGREGATES}"
+        f"FROM <{kg_graph}> WHERE {{\n"
+        f"  ?e <{RDF_TYPE}> ?type .\n"
+        f"  ?e ?p ?o .\n"
+        f'  FILTER(STRSTARTS(STR(?type), "{TYPE_URI_PREFIX}"))\n'
+        f"{_PRIMARY_TYPE_GUARD}"
+        f"}} GROUP BY ?type ?p"
+    )
+    _, rows = parse_sparql_results(await client.query(scan))
+    counts: dict[str, int] = {}
+    records: dict[str, list[dict]] = {}
+    faccs: dict[str, _IndexFlagAccumulator] = {}
+    for r in rows:
+        t_uri = r.get("type", "")
+        if _type_leaf(t_uri) is None:
+            continue
+        p_uri = r.get("p", "")
+        cnt = _to_int(r.get("cnt"))
+        rel = _to_int(r.get("rel"))
+        if p_uri == RDF_TYPE:
+            counts[t_uri] = cnt
+            continue
+        # Same hygiene as the per-type live scan: housekeeping predicates never
+        # become user-facing attributes/relationships.
+        if _is_internal_predicate(p_uri, is_relationship=rel > 0):
+            continue
+        geo, tmp = _to_int(r.get("geo")), _to_int(r.get("tmp"))
+        if geo or tmp:
+            faccs.setdefault(t_uri, _IndexFlagAccumulator()).add(p_uri, geo, tmp)
+        records.setdefault(t_uri, []).append({
+            "p": p_uri,
+            "cnt": cnt,
+            "rel": rel,
+            "target": _target_from_entity_uri(r.get("sample", "")),
+        })
+    out: dict[str, tuple[int, list[dict], dict]] = {}
+    for t_uri in set(counts) | set(records):
+        facc = faccs.get(t_uri)
+        out[t_uri] = (
+            counts.get(t_uri, 0),
+            records.get(t_uri, []),
+            facc.flags() if facc else {},
+        )
+    return out
+
+
+async def _read_declared_schema(
+    client: NeptuneClient, graph_uris: list[str]
+) -> tuple[dict[str, dict], dict[str, dict[str, dict[str, str]]]]:
+    """Declared types + attribute definitions across the visible ontology layers.
+
+    Returns ``({type_uri: {label, comment, parent}}, {type_uri: {attr_uri:
+    {name, range}}})``: the ``get_type_summary`` ontology queries with the
+    ``<t_uri>`` binding replaced by a selected ``?type`` / ``?domain``.
+
+    Both reads degrade to empty on failure (mirroring
+    ``fetch_types_by_layer``): the declarations decorate the population data,
+    so an ontology hiccup must not sink the schema read.
+    """
+    from_clause = _from_graphs(graph_uris)
+    type_q = (
+        f"SELECT ?type ?label ?comment ?parent {from_clause} WHERE {{\n"
+        f"  ?type <{RDF_TYPE}> <{RDFS}#Class> .\n"
+        f"  ?type <{RDFS}#label> ?label .\n"
+        f"  OPTIONAL {{ ?type <{RDFS}#comment> ?comment }}\n"
+        f"  OPTIONAL {{ ?type <{RDFS}#subClassOf> ?parent }}\n"
+        f"}}"
+    )
+    attr_q = (
+        f"SELECT ?domain ?attr ?attrLabel ?range {from_clause} WHERE {{\n"
+        f"  ?attr <{RDF_TYPE}> <{RDF_PROPERTY}> .\n"
+        f"  ?attr <{RDFS}#domain> ?domain .\n"
+        f"  ?attr <{RDFS}#label> ?attrLabel .\n"
+        f"  OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
+        f"}}"
+    )
+    type_raw, attr_raw = await asyncio.gather(
+        client.query(type_q), client.query(attr_q), return_exceptions=True
+    )
+    types: dict[str, dict] = {}
+    if isinstance(type_raw, BaseException):
+        logger.warning("schema_type_declarations_failed", exc_info=type_raw)
+    else:
+        _, type_rows = parse_sparql_results(type_raw)
+        for r in type_rows:
+            t_uri = r.get("type", "")
+            if _type_leaf(t_uri) is None:
+                continue
+            types.setdefault(t_uri, {
+                "label": r.get("label", ""),
+                "comment": r.get("comment", ""),
+                "parent": r.get("parent", ""),
+            })
+    attrs: dict[str, dict[str, dict[str, str]]] = {}
+    if isinstance(attr_raw, BaseException):
+        logger.warning("schema_attr_declarations_failed", exc_info=attr_raw)
+    else:
+        _, attr_rows = parse_sparql_results(attr_raw)
+        for r in attr_rows:
+            domain, a_uri = r.get("domain", ""), r.get("attr", "")
+            if not a_uri or _type_leaf(domain) is None:
+                continue
+            attrs.setdefault(domain, {})[a_uri] = {
+                "name": r.get("attrLabel", ""),
+                "range": r.get("range", ""),
+            }
+    return types, attrs
 
 
 def _dedupe_undirected(pairs: list[tuple[str, str]]) -> list[dict]:
@@ -1264,6 +1475,197 @@ async def get_type_summary(
     )
     _summary_cache[cache_key] = (time.monotonic(), result)
     return result
+
+
+# Note (ONTA-418): the whole-KG schema read below deliberately does NOT use
+# `_summary_cache`. That memo is per-PROCESS and evicted only in-process, so on
+# a multi-task ECS service a caller can read up to `_SUMMARY_TTL_SECONDS`
+# (30 min) of stale coverage from a task that never saw the write. The stats-graph
+# read is 2 tiny queries, so the schema endpoint just pays them every time rather
+# than handing an agent stale "which attributes are populated" data.
+_SCHEMA_COVERAGE_NOTE = (
+    "coverage_pct is relative to entity_count, which attributes a multi-typed "
+    "entity only to its lexicographically-smallest type URI (the primary-type "
+    "guard that keeps live and precomputed counts consistent). Types sharing "
+    "multi-typed entities can therefore show coverage below 100% even when every "
+    "instance carries the attribute."
+)
+
+
+def _sorted_slots(slots: list[dict], min_coverage: float) -> tuple[list[dict], int]:
+    """Coverage-desc slots + how many the floor dropped.
+
+    Marks each slot `populated` instead of removing zero-count ones: a count of
+    0 is returned identically by a genuinely-empty attribute and by a transient
+    Neptune throttle, so dropping on `count == 0` makes attributes flicker in and
+    out across identical calls (ONTA-248). Only an EXPLICIT `min_coverage > 0`
+    filters, and the caller is told how many were withheld.
+    """
+    kept, omitted = [], 0
+    for s in slots:
+        s["populated"] = s.get("count", 0) > 0
+        if min_coverage > 0 and s.get("coverage_pct", 0.0) < min_coverage:
+            omitted += 1
+            continue
+        kept.append(s)
+    kept.sort(key=lambda s: (-s.get("coverage_pct", 0.0), s.get("name", "")))
+    return kept, omitted
+
+
+@router.get("/kgs/{kg_name}/schema")
+async def get_kg_schema(
+    kg_name: str,
+    type_names: list[str] | None = Query(
+        None, alias="type",
+        description="Repeatable. Narrows to these type names (drill-in).",
+    ),
+    min_coverage: float = Query(
+        0.0, ge=0.0, le=100.0,
+        description="Withhold attributes/relationships below this coverage PERCENT.",
+    ),
+    include_empty: bool = Query(
+        True, description="Include types declared in the ontology with 0 instances here."
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Max types returned (entity_count desc)."),
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Population-aware schema for ONE KG: every type with its POPULATED slots.
+
+    The whole-KG counterpart of ``/types/{type}/summary``, same per-type shape,
+    assembled by the same ``_assemble_summary`` (so the same predicate hygiene
+    applies: internal ER/batch predicates and legacy per-attribute provenance
+    companions never surface), but for every type in one request. This is a
+    BACKEND join on purpose: the stats it reads are already materialized for the
+    whole KG, so it costs 3-4 queries, where a client-side loop over the per-type
+    summary would be 1+N round trips.
+
+    Declared-but-empty types and attributes are INCLUDED and marked
+    (``populated: false`` / ``declared_only: true``), never hidden. Hiding them
+    made agents assert "that type does not exist" or substitute a wrong type
+    (ONTA-248 / ONTA-258). ``min_coverage`` is the one filter that withholds
+    slots, and it only acts when the caller explicitly sets it.
+
+    Not exposed here: sample VALUES. Nothing serves them over HTTP today (the NL
+    pipeline computes them inside ``/ask`` only). Deliberately out of scope.
+    """
+    stack = layer_stack_for(tenant)
+    kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
+
+    (declared_types, declared_attrs), stats_by_uri = await asyncio.gather(
+        _read_declared_schema(client, stack.visible_graph_uris()),
+        _read_all_type_stats(client, tenant.tenant_id, kg_name),
+    )
+    stats_source = "precomputed"
+    if not stats_by_uri:
+        # Legacy KG with no materialized stats: ONE whole-KG scan, not one per type.
+        stats_by_uri = await _live_scan_all(client, kg_graph)
+        stats_source = "live_scan"
+
+    # Collapse type URIs onto type NAMES. Declarations shadow by layer precedence
+    # (first visible layer wins); instance stats pick the URI carrying the most
+    # entities, so a Public declaration whose instances were written under the
+    # historical tenant namespace resolves to ONE entry rather than a populated
+    # orphan plus a phantom empty type.
+    layer_rank = {type_namespace(layer): i for i, layer in enumerate(stack.layers)}
+
+    def _rank(uri: str) -> int:
+        for ns in _LAYER_TYPE_NAMESPACES:
+            if uri.startswith(ns):
+                return layer_rank.get(ns, len(layer_rank))
+        return len(layer_rank)
+
+    decl_uri_by_name: dict[str, str] = {}
+    for t_uri in declared_types:
+        leaf = _type_leaf(t_uri)
+        if leaf is None:
+            continue
+        current = decl_uri_by_name.get(leaf)
+        if current is None or _rank(t_uri) < _rank(current):
+            decl_uri_by_name[leaf] = t_uri
+    stats_uri_by_name: dict[str, str] = {}
+    for t_uri, (count, _recs, _flags) in stats_by_uri.items():
+        leaf = _type_leaf(t_uri)
+        if leaf is None:
+            continue
+        current = stats_uri_by_name.get(leaf)
+        if current is None or count > stats_by_uri[current][0]:
+            stats_uri_by_name[leaf] = t_uri
+
+    wanted = {t for t in (type_names or []) if t}
+    names = sorted(set(decl_uri_by_name) | set(stats_uri_by_name))
+    if wanted:
+        names = [n for n in names if n in wanted]
+
+    assembled: list[dict] = []
+    for name in names:
+        d_uri = decl_uri_by_name.get(name)
+        s_uri = stats_uri_by_name.get(name)
+        onto_row = declared_types.get(d_uri, {}) if d_uri else {}
+        parent_uri = onto_row.get("parent", "")
+        parent_type = parent_uri.rstrip("/").split("/")[-1] if parent_uri else None
+        # Attribute declarations from the winning layer AND from the URI the
+        # instances actually use, so the predicate→name/range lookup resolves in
+        # either namespace.
+        attr_defs: dict[str, dict[str, str]] = {}
+        for u in (d_uri, s_uri):
+            if u:
+                attr_defs.update(declared_attrs.get(u, {}))
+        entity_count, records, flags = (
+            stats_by_uri[s_uri] if s_uri else (0, [], {})
+        )
+        records = list(records)
+        # DECLARED-but-unpopulated slots: synthesized as count-0 records so the
+        # agent sees every attribute the schema promises (marked unpopulated),
+        # never a silently shortened list. Deduped by display name because a
+        # populated relationship's instance predicate (`onto/<leaf>`) differs
+        # from its ontology declaration URI (`types/<T>/attrs/<leaf>`).
+        seen = {
+            (attr_defs.get(r.get("p", ""), {}).get("name")
+             or r.get("p", "").rstrip("/").split("/")[-1]).lower()
+            for r in records
+        }
+        for a_uri, defn in attr_defs.items():
+            nm = defn.get("name") or a_uri.rstrip("/").split("/")[-1]
+            if not nm or nm.lower() in seen:
+                continue
+            seen.add(nm.lower())
+            records.append({"p": a_uri, "cnt": 0, "rel": 0, "target": None})
+
+        summary = _assemble_summary(
+            name, onto_row, parent_type, entity_count, records, attr_defs,
+            index_flags=flags,
+        )
+        summary["attributes"], attrs_omitted = _sorted_slots(
+            summary["attributes"], min_coverage
+        )
+        summary["relationships"], rels_omitted = _sorted_slots(
+            summary["relationships"], min_coverage
+        )
+        summary["populated"] = entity_count > 0
+        summary["declared_only"] = s_uri is None
+        summary["attributes_withheld"] = attrs_omitted
+        summary["relationships_withheld"] = rels_omitted
+        assembled.append(summary)
+
+    # Drop zero-instance types only on explicit request, and never when the
+    # caller named the types it wants.
+    if not include_empty and not wanted:
+        assembled = [t for t in assembled if t["entity_count"] > 0]
+
+    assembled.sort(key=lambda t: (-t["entity_count"], t["name"]))
+    kept = assembled[:limit]
+    return {
+        "kg": kg_name,
+        "types": kept,
+        "total_types": len(assembled),
+        "truncated": len(assembled) > len(kept),
+        # Names only: cheap, and it keeps "this type EXISTS" true even when the
+        # cap withholds its slots (the caller can drill in with ?type=).
+        "omitted_type_names": [t["name"] for t in assembled[limit:]],
+        "stats_source": stats_source,
+        "coverage_note": _SCHEMA_COVERAGE_NOTE,
+    }
 
 
 @router.get("/kgs/{kg_name}/type-edges")

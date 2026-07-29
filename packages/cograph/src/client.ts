@@ -367,6 +367,10 @@ export class Client {
   /** @internal */ pExploreTypeEdges(kg: string): string {
     return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/type-edges`;
   }
+  /** @internal KG-scoped, population-aware whole schema (ONTA-418). */
+  pExploreSchema(kg: string, query?: string): string {
+    return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/schema${query ?? ""}`;
+  }
   /** @internal */ pExploreSearch(query: string): string {
     return `${this.base()}/explore/search${query}`;
   }
@@ -1158,7 +1162,49 @@ export class Client {
   async typeSummary(kg: string, typeName: string): Promise<TypeSummary> {
     return this.request<TypeSummary>(
       "GET",
-      `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/summary`,
+      this.pExploreSummary(kg, typeName),
+      undefined,
+      30_000,
+    );
+  }
+
+  /**
+   * Population-aware schema for ONE context graph (`GET
+   * /graphs/{tenant}/explore/kgs/{kg}/schema`, ONTA-418): every type with the
+   * attributes/relationships that are actually POPULATED in that KG, with real
+   * coverage percentages.
+   *
+   * Complements {@link ontologyTypes} (tenant-wide, declaration-only): this one
+   * is KG-scoped and tells you which of the declared slots carry data, so a
+   * caller never has to guess between similar names.
+   *
+   * Declared-but-empty types and attributes are returned MARKED
+   * (`populated: false` / `declared_only: true`), never omitted. `minCoverage`
+   * is the only filter that withholds slots, and the response reports how many
+   * it withheld.
+   *
+   * A backend join by design (the interface-convergence rule): the whole-KG
+   * stats are already materialized server-side, so this is one request rather
+   * than a per-type fan-out.
+   */
+  async kgSchema(
+    kg: string,
+    opts: {
+      types?: string[];
+      minCoverage?: number;
+      includeEmpty?: boolean;
+      limit?: number;
+    } = {},
+  ): Promise<KgSchema> {
+    const qs = new URLSearchParams();
+    for (const t of opts.types ?? []) qs.append("type", t);
+    if (opts.minCoverage != null) qs.set("min_coverage", String(opts.minCoverage));
+    if (opts.includeEmpty != null) qs.set("include_empty", String(opts.includeEmpty));
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<KgSchema>(
+      "GET",
+      this.pExploreSchema(kg, query),
       undefined,
       30_000,
     );
@@ -1439,6 +1485,11 @@ export interface OntologyApplyBatchResult {
 export interface TypeCount {
   name: string;
   entity_count: number;
+  /** Instances carry geometry, so the type is in the spatio-temporal index.
+   *  The backend has always returned this; the type just never declared it. */
+  spatially_indexed?: boolean;
+  /** Instances carry validity (an explicit bound, or a start+end pair). */
+  temporally_indexed?: boolean;
 }
 
 export interface AttributeUsage {
@@ -1492,6 +1543,56 @@ export interface TypeSummary {
   entity_count: number;
   attributes: AttributeSummary[];
   relationships: RelationshipSummary[];
+  /** See {@link TypeCount.spatially_indexed} (also returned here). */
+  spatially_indexed?: boolean;
+  /** See {@link TypeCount.temporally_indexed} (also returned here). */
+  temporally_indexed?: boolean;
+}
+
+/** An {@link AttributeSummary} inside a {@link KgSchema}, annotated with whether
+ *  any instance in this KG actually carries it. A declared attribute with no
+ *  data is returned with `populated: false` rather than dropped: a count of 0
+ *  is indistinguishable from a transient backend throttle, so dropping makes
+ *  slots flicker across identical calls. */
+export interface SchemaAttribute extends AttributeSummary {
+  populated: boolean;
+}
+
+/** A {@link RelationshipSummary} inside a {@link KgSchema}. See
+ *  {@link SchemaAttribute} for the `populated` semantics. */
+export interface SchemaRelationship extends RelationshipSummary {
+  populated: boolean;
+}
+
+/** One type inside a {@link KgSchema}: the {@link TypeSummary} shape plus the
+ *  population annotations that make declared-but-empty schema visible instead
+ *  of hidden. */
+export interface KgSchemaType extends TypeSummary {
+  attributes: SchemaAttribute[];
+  relationships: SchemaRelationship[];
+  /** This KG has at least one instance of the type. */
+  populated: boolean;
+  /** Declared in the ontology but with no instances in THIS KG. */
+  declared_only: boolean;
+  /** How many slots the `minCoverage` floor withheld (0 when unfiltered). */
+  attributes_withheld: number;
+  relationships_withheld: number;
+}
+
+/** Response of {@link Client.kgSchema}: the whole KG's population-aware schema. */
+export interface KgSchema {
+  kg: string;
+  /** Types sorted by `entity_count` descending, capped by `limit`. */
+  types: KgSchemaType[];
+  total_types: number;
+  truncated: boolean;
+  /** Names of the types the `limit` cap withheld, so a capped type is still
+   *  known to EXIST and can be fetched with `types: [...]`. */
+  omitted_type_names: string[];
+  /** `"precomputed"` (materialized stats) or `"live_scan"` (legacy KG). */
+  stats_source: string;
+  /** How `coverage_pct` is computed, including the multi-typed-entity caveat. */
+  coverage_note: string;
 }
 
 export type EnrichmentTier = "auto" | "lite" | "base" | "core" | "pro";
@@ -2251,6 +2352,26 @@ export class RawApi {
   /** `GET /graphs/{tenant}/explore/kgs/{kg}/type-edges`. */
   exploreTypeEdges(kg: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pExploreTypeEdges(kg), init);
+  }
+
+  /** `GET /graphs/{tenant}/explore/kgs/{kg}/schema?type&min_coverage&include_empty&limit`. */
+  exploreSchema(
+    kg: string,
+    opts: {
+      types?: string[];
+      minCoverage?: number;
+      includeEmpty?: boolean;
+      limit?: number;
+    } = {},
+    init?: RawInit,
+  ): Promise<Response> {
+    const qs = new URLSearchParams();
+    for (const t of opts.types ?? []) qs.append("type", t);
+    if (opts.minCoverage != null) qs.set("min_coverage", String(opts.minCoverage));
+    if (opts.includeEmpty != null) qs.set("include_empty", String(opts.includeEmpty));
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.client.requestRaw("GET", this.client.pExploreSchema(kg, query), init);
   }
 
   /** `GET /graphs/{tenant}/kgs/{kg}/type-counts`. */
