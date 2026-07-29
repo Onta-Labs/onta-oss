@@ -251,12 +251,23 @@ async def test_execute_runs_registry_and_ingests_with_api_provenance(monkeypatch
     monkeypatch.setattr(RegistryApiSource, "execute", fake_execute)
 
     captured: dict = {}
+    unstructured_calls: list = []
+
+    async def fake_ingest_structured_rows(
+        self, rows, tenant_id, type_name=None, attributes=None,
+        source="", instance_graph=None, **_kw
+    ):
+        captured.update(rows=rows, source=source, type_name=type_name)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
     async def fake_ingest(self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw):
-        captured.update(content=content, source=source, content_type=content_type)
+        # The unstructured LLM re-extract detour. A registry pull must never
+        # land here; see the assertion at the bottom of this test.
+        unstructured_calls.append(content_type)
         rows = json.loads(content)
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
+    monkeypatch.setattr(SchemaResolver, "ingest_structured_rows", fake_ingest_structured_rows)
     monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
 
     spawned: dict = {}
@@ -287,7 +298,21 @@ async def test_execute_runs_registry_and_ingests_with_api_provenance(monkeypatch
     await spawned["task"]
 
     # The NPPES rows were ingested, tagged with the api:nppes run-level source.
-    assert captured["content_type"] == "json"
+    #
+    # ONTA-272: a registry pull is PRE-STRUCTURED, so it commits through
+    # ``ingest_structured_rows`` (the deterministic mapping seam, no LLM
+    # ``_extract``) rather than the ``ingest`` JSON detour. The registry provider
+    # opts in explicitly at ``api_registry/discovery.py`` (``self.structured =
+    # True``), and ``web_ingest_cap`` branches on it.
+    #
+    # This replaces a pre-ONTA-272 ``content_type == "json"`` assertion. That flag
+    # was how the OLD seam said "these rows are already structured, do not
+    # re-extract them"; the new seam says it by construction. So the guarantee is
+    # now asserted directly, which is strictly stronger than the flag was: the
+    # unstructured path must not run at all.
+    assert unstructured_calls == [], (
+        f"registry rows must not take the LLM re-extract detour, got {unstructured_calls}"
+    )
+    assert captured["type_name"] == "Physician"
     assert captured["source"] == "web:api:nppes:cardiologists in San Francisco"
-    rows_back = json.loads(captured["content"])
-    assert rows_back[0]["last_name"] == "GARCIA"
+    assert captured["rows"][0]["last_name"] == "GARCIA"
