@@ -21,6 +21,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.entitlement import is_entitled, layer_stack_for_tenant
@@ -230,7 +231,7 @@ async def workspace_type_counts(
 @router.post("/types", status_code=201)
 async def create_type(
     body: TypeCreate,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     # WRITE path: tenant graph only. Never a global layer.
@@ -294,7 +295,7 @@ async def get_type(
 async def add_attributes(
     type_name: str,
     body: AttributeAdd,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     # WRITE path: tenant graph only.
@@ -327,7 +328,7 @@ async def add_attributes(
 async def add_subtype(
     type_name: str,
     body: SubtypeAdd,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     # WRITE path: tenant graph only.
@@ -585,7 +586,7 @@ async def preview_workspace_base_upgrade(
 @router.post("/base-pin/upgrade", response_model=BasePinResponse)
 async def post_workspace_base_upgrade(
     body: BasePinUpgradeRequest = Body(default_factory=BasePinUpgradeRequest),
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Upgrade the workspace base pin to ``to_version`` (or latest)."""
@@ -615,7 +616,7 @@ async def post_workspace_base_upgrade(
 
 @router.post("/base-pin/rollback", response_model=BasePinResponse)
 async def post_workspace_base_rollback(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Roll the workspace base pin back to its previous version."""
@@ -882,7 +883,7 @@ async def get_ontology_diff(
 @router.post("/aliases", status_code=201)
 async def register_attribute_alias(
     body: AliasRegister,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Register an attribute alias (old → new) on the tenant ontology graph.
@@ -929,7 +930,7 @@ async def register_attribute_alias(
 @router.post("/aliases/rename", status_code=201)
 async def rename_attribute_with_alias(
     body: AliasRename,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Full attribute rename — ALWAYS creates an alias (ONTA-407b).
@@ -980,7 +981,7 @@ async def rename_attribute_with_alias(
 @router.post("/aliases/backfill")
 async def backfill_attribute_aliases(
     body: AliasBackfill,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Rewrite old-predicate instance triples onto their alias targets.
@@ -1012,7 +1013,7 @@ async def backfill_attribute_aliases(
 @router.delete("/aliases")
 async def retire_attribute_alias(
     body: AliasRetire,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Retire an alias after backfill — 409 while instance refs remain."""
@@ -1150,7 +1151,7 @@ async def _apply_change(change: ResolvedChange, graph_uri: str, client: NeptuneC
 @router.post("/resolve", response_model=ResolutionResult)
 async def resolve_ontology(
     body: ResolveRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ) -> ResolutionResult:
     """Resolve a fuzzy NL ask into ontology changes; auto-apply the confident
@@ -1184,7 +1185,7 @@ async def resolve_ontology(
 @router.post("/apply")
 async def apply_ontology_change(
     body: ResolvedChange,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Commit a single proposal previously returned by `/resolve` (stateless —
@@ -1204,7 +1205,7 @@ async def apply_ontology_change(
 @router.post("/apply/batch", response_model=ApplyBatchResult)
 async def apply_ontology_changes(
     body: ApplyBatchRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ) -> ApplyBatchResult:
     """Commit MANY proposals from one `/resolve` call in a single round-trip.

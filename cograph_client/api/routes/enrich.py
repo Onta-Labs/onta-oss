@@ -17,6 +17,7 @@ from cograph_client.api.deps import (
     get_neptune_client,
 )
 from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.enrichment.executor import EnrichmentExecutor
 from cograph_client.enrichment.job_store import InMemoryJobStore
 from cograph_client.enrichment.models import (
@@ -117,7 +118,7 @@ class ApplyRequest(BaseModel):
 @router.post("/jobs", status_code=202, response_model=CreateJobResponse)
 async def create_job(
     body: EnrichRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
     neptune: NeptuneClient = Depends(get_neptune_client),
@@ -397,7 +398,7 @@ async def list_conflicts(
 async def apply_job(
     job_id: str,
     body: ApplyRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
 ):
@@ -411,7 +412,7 @@ async def apply_job(
 @router.delete("/jobs/{job_id}")
 async def cancel_job(
     job_id: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     job_store: InMemoryJobStore = Depends(get_enrichment_job_store),
 ):
     job = await job_store.get(job_id)
