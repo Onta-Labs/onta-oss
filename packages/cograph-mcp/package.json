@@ -5,6 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
+    "mcp": "./dist/index.js",
     "onta-mcp": "./dist/index.js"
   },
   "publishConfig": {
