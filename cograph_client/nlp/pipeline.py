@@ -487,7 +487,12 @@ class NLQueryPipeline:
                     top_k=3,
                 )
                 if examples:
-                    examples_text = format_examples_for_prompt(examples)
+                    # ONTA-420: the bank is process-scoped, not tenant-scoped, so
+                    # every stored example carries the graph IRI of whoever
+                    # answered it first. Pass the target graph so each example's
+                    # FROM is rewritten to THIS caller's graph instead of leaking
+                    # ours into their prompt.
+                    examples_text = format_examples_for_prompt(examples, data_graph)
                     timing["examples_retrieved"] = len(examples)
         except Exception:
             pass

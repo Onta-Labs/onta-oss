@@ -619,12 +619,65 @@ class ExampleBank:
 
 # ── Prompt formatting ────────────────────────────────────────────────────
 
+# Placeholder used when a caller formats examples without naming a target graph.
+# Never reaches production /ask (the pipeline always passes the target graph);
+# it exists so a bank example can be rendered standalone (docs, tests, tooling)
+# without carrying whatever tenant happened to answer it first.
+TARGET_GRAPH_PLACEHOLDER = "TARGET_GRAPH"
 
-def format_examples_for_prompt(examples: list[Example]) -> str:
-    """Format retrieved examples into a string for injection into the SPARQL generation prompt.
+# Matches the graph IRI of a dataset clause: `FROM <...>` / `FROM NAMED <...>`.
+# Group 1 keeps the keyword (and its original spacing/case) so only the IRI is
+# swapped.
+_FROM_GRAPH_RE = re.compile(r"(FROM\s+(?:NAMED\s+)?)<[^>]*>", re.IGNORECASE)
+
+
+def sanitize_example_sparql(sparql: str, target_graph_uri: str = "") -> str:
+    """Rewrite an example's dataset clause onto the CURRENT caller's graph.
+
+    ONTA-420. The example bank is scoped per PROCESS, not per tenant: one JSONL
+    file, and ``Example`` has a ``kg_name`` but no tenant. Every stored example
+    was answered against whichever graph produced it (the shipped bank is 262
+    examples, all ``demo-tenant``), and ``format_examples_for_prompt`` used to
+    emit the SPARQL verbatim. So every self-hosted or third-party tenant's
+    NL->SPARQL prompt carried our ``demo-tenant`` graph IRIs, defended only by a
+    prose "adapt the URIs" instruction in the system prompt.
+
+    The graph IRI is the ONLY tenant-identifying token in a stored example, so it
+    is the only thing rewritten here. Type and attribute IRIs are left ALONE on
+    purpose: they are the pattern the examples exist to teach (correct
+    ``types/<T>/attrs/<a>`` and ``onto/<leaf>`` shapes, aggregation, joins), they
+    name public benchmark schemas rather than customer data, and abstracting them
+    into placeholders would delete the pedagogical value while adding no privacy.
+
+    Rewriting to the caller's real target graph (rather than leaving a
+    placeholder in the prompt) also means the model never sees a token it could
+    echo into generated SPARQL, and a cross-KG example can no longer point the
+    model at a DIFFERENT KG than the one being asked about.
+    """
+    replacement = target_graph_uri or TARGET_GRAPH_PLACEHOLDER
+    return _FROM_GRAPH_RE.sub(lambda m: f"{m.group(1)}<{replacement}>", sparql)
+
+
+def format_examples_for_prompt(
+    examples: list[Example],
+    target_graph_uri: str = "",
+) -> str:
+    """Format retrieved examples for injection into the SPARQL generation prompt.
+
+    Args:
+        examples: Retrieved examples, in prompt order.
+        target_graph_uri: The graph the CURRENT question runs against. Every
+            example's ``FROM`` clause is rewritten to it (see
+            :func:`sanitize_example_sparql`). When empty, a ``<TARGET_GRAPH>``
+            placeholder is emitted instead and the header tells the model to
+            substitute it.
 
     Output format:
-        Similar queries that worked:
+        Similar queries that worked (patterns from OTHER graphs, so reuse their
+        SHAPE, not their URIs). Their FROM clause has been rewritten to your
+        target graph. Every type/attribute URI below belongs to a DIFFERENT
+        ontology and is illustrative only: build yours from the ontology schema
+        above.
 
         Example 1 (count + join):
           Q: How many events are in the Mission District?
@@ -637,12 +690,25 @@ def format_examples_for_prompt(examples: list[Example]) -> str:
     if not examples:
         return ""
 
-    lines = ["Similar queries that worked:"]
+    if target_graph_uri:
+        from_note = "Their FROM clause has been rewritten to your target graph."
+    else:
+        from_note = (
+            f"Their FROM clause shows <{TARGET_GRAPH_PLACEHOLDER}> as a placeholder: "
+            "substitute the named graph URI given above."
+        )
+
+    lines = [
+        "Similar queries that worked (patterns from OTHER graphs, so reuse their "
+        "SHAPE, not their URIs).",
+        f"{from_note} Every type/attribute URI below belongs to a DIFFERENT "
+        "ontology and is illustrative only: build yours from the ontology schema above.",
+    ]
 
     for i, ex in enumerate(examples, 1):
         tag_str = " + ".join(ex.pattern_tags) if ex.pattern_tags else "basic"
         # Compact the SPARQL — collapse excessive whitespace but keep it readable
-        sparql_compact = " ".join(ex.sparql.split())
+        sparql_compact = " ".join(sanitize_example_sparql(ex.sparql, target_graph_uri).split())
         lines.append("")
         lines.append(f"Example {i} ({tag_str}):")
         lines.append(f"  Q: {ex.question}")
