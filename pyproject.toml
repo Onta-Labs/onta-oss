@@ -27,6 +27,20 @@ dependencies = [
     "asyncpg>=0.30.0",
     "pgvector>=0.4.0",
     "cryptography>=43.0.0",
+    # SPARQL 1.1 grammar for the tenant-confinement guard on the raw-SPARQL
+    # route (ONTA-412, graph/sparql_scope.py). Pure Python, and used ONLY to
+    # parse caller-supplied query text, never to store or reason over RDF.
+    # A parser is not a luxury here: deciding "does this query declare a
+    # dataset" by scanning for the FROM keyword is exploitable, because
+    # PN_LOCAL / BLANK_NODE_LABEL let a name like `_:b-FROM` contain the
+    # keyword, so the guard sees a clause the store does not.
+    # sparql_scope imports it LAZILY and 503s the route if it is missing, so a
+    # deployment without it boots and stays safe rather than crashing or
+    # silently skipping the check. Must ALSO be added to the PARENT repo's
+    # pyproject.toml: the deployed image runs `pip install .` against THAT dep
+    # list (same reason asyncpg / pgvector / cryptography are dual-listed), so
+    # without it the raw-SPARQL route 503s in production.
+    "rdflib>=7.0.0",
 ]
 
 [project.optional-dependencies]
