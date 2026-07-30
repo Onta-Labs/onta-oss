@@ -396,22 +396,116 @@ def _is_interrogative(message: str) -> bool:
     return bool(msg) and (msg.endswith("?") or bool(_QUESTION_LEAD_RE.match(msg)))
 
 
-def _format_history(history: list[Turn] | None) -> str:
-    """Render the prior turns as a transcript block for the classifier prompt."""
+def _turn_matches_kg(turn: Turn, kg_name: str | None) -> bool:
+    """True when ``turn`` belongs to the knowledge graph this request targets.
+
+    ONTA-419. A turn with no recorded ``kg_name`` matches EVERYTHING: transcripts
+    persisted before the field existed, and turns made with no KG scope at all,
+    keep their pre-change behavior instead of silently disappearing from the
+    window. Likewise a request with no ``kg_name`` (tenant-scoped only) sees the
+    whole transcript, exactly as before.
+    """
+    if not turn.kg_name or not kg_name:
+        return True
+    return turn.kg_name == kg_name
+
+
+def _same_kg_turns(history: list[Turn] | None, kg_name: str | None) -> list[Turn]:
+    """Drop the turns that belong to a DIFFERENT knowledge graph."""
+    return [t for t in history or [] if _turn_matches_kg(t, kg_name)]
+
+
+# A KG name is rendered INTO the classifier's transcript block, which is a
+# line-oriented, role-prefixed format. Anything outside this class (most of all a
+# newline) could forge a turn the model reads as the user's own words, so the
+# label is sanitized at the point of interpolation.
+_KG_LABEL_UNSAFE_RE = re.compile(r"[^A-Za-z0-9_-]")
+_KG_LABEL_MAX = 64
+
+
+def _kg_label(name: str | None) -> str:
+    """Render a knowledge-graph name safe to interpolate into a prompt.
+
+    Real KG names already match ``^[a-zA-Z0-9_-]+$`` (``graph/kg_writer.py``),
+    but the ``/agent`` request body does not enforce that pattern before the name
+    reaches here, so an arbitrary string can be stamped onto a turn today. Escape
+    at the interpolation point rather than trusting an upstream check to arrive:
+    every character outside the safe class becomes ``_`` and the result is
+    length-capped. Only the LABEL is rewritten -- ``_turn_matches_kg`` still
+    compares the raw values, so scoping is unaffected.
+    """
+    safe = _KG_LABEL_UNSAFE_RE.sub("_", str(name or ""))
+    return safe[:_KG_LABEL_MAX]
+
+
+def _recent_window(
+    history: list[Turn] | None, kg_name: str | None, limit: int = _PROMPT_HISTORY_TURNS
+) -> list[Turn]:
+    """A bounded transcript tail that always carries this graph's own turns.
+
+    Trimming the raw tail and only THEN scoping by KG (the shape this code had
+    before) can leave zero same-graph turns: in a session where the user works on
+    graph B, switches to graph A and stays there for ``limit`` turns, B's own
+    open ask falls off the end and the accumulation window comes back empty. That
+    was equally true pre-ONTA-419, so it is a reach limitation rather than a
+    regression, but it is one line to fix now that the KG is known.
+
+    So keep the last ``limit`` turns overall AND the last ``limit`` turns for
+    THIS graph, restored to transcript order (bounded at ``2 * limit``). Foreign
+    turns still reach :func:`_format_history`, where they are labelled rather
+    than dropped; :func:`_open_ask_user_turns` still filters them out.
+    """
+    turns = list(history or [])
+    if len(turns) <= limit:
+        return turns
+    keep = set(range(len(turns) - limit, len(turns)))
+    same = [i for i, t in enumerate(turns) if _turn_matches_kg(t, kg_name)]
+    keep.update(same[-limit:])
+    return [turns[i] for i in sorted(keep)]
+
+
+def _format_history(history: list[Turn] | None, kg_name: str | None = None) -> str:
+    """Render the prior turns as a transcript block for the classifier prompt.
+
+    Foreign-KG turns (ONTA-419) are LABELLED rather than dropped here. The
+    classifier is a semantic router, not a parameter extractor: a genuine
+    cross-graph reference ("do the same thing here") is only legible if its
+    antecedent is still visible, and silently deleting one half of a
+    clarify/reply pair would leave the remaining half reading as a non sequitur.
+    Labelling gives the model the fact it needs -- that turn was about another
+    graph -- and lets it decide. The accumulation window
+    (:func:`_open_ask_user_turns`) takes the opposite, stricter line, because
+    there the text is spliced verbatim into a capability's parameter extraction.
+    """
     if not history:
         return ""
     lines = []
+    saw_foreign = False
     for t in history:
         if t.role == "assistant":
             who = f"Assistant ({t.kind})" if t.kind else "Assistant"
         else:
             who = "User"
+        if not _turn_matches_kg(t, kg_name):
+            who = f"{who} [on a different knowledge graph: {_kg_label(t.kg_name)}]"
+            saw_foreign = True
         text = (t.text or "").strip()
         if text:
             lines.append(f"{who}: {text}")
     if not lines:
         return ""
-    return "Conversation so far:\n" + "\n".join(lines) + "\n\n"
+    # Only spend prompt tokens on the cross-graph preamble when the transcript
+    # actually contains a foreign turn; an ordinary single-graph thread renders
+    # byte-for-byte as it did before ONTA-419.
+    header = "Conversation so far:"
+    if saw_foreign:
+        header = (
+            f"Conversation so far (the latest message targets the "
+            f"'{_kg_label(kg_name)}' knowledge graph; turns marked as being on a "
+            "different knowledge graph are about other data and usually should "
+            "not be continued):"
+        )
+    return header + "\n" + "\n".join(lines) + "\n\n"
 
 
 # Assistant reply kinds that COMMIT / resolve an intent, ending the current ask.
@@ -422,7 +516,9 @@ def _format_history(history: list[Turn] | None) -> str:
 _COMMITTED_REPLY_KINDS = frozenset({"answer", "plan", "result"})
 
 
-def _open_ask_user_turns(history: list[Turn] | None) -> list[str]:
+def _open_ask_user_turns(
+    history: list[Turn] | None, kg_name: str | None = None
+) -> list[str]:
     """The user turns belonging to the CURRENT, still-open ask (oldest→newest).
 
     Walk the transcript backwards collecting user turns, stopping as soon as we
@@ -433,9 +529,17 @@ def _open_ask_user_turns(history: list[Turn] | None) -> list[str]:
     ``answer``ed, that intent is DONE and its text is dropped from the window so
     a later, unrelated request is not contaminated by it (the session-context
     bleed the planner previously suffered — every prior user turn was replayed).
+
+    ONTA-419: turns made against a DIFFERENT knowledge graph are removed before
+    the walk, not merely skipped during it. Removing them first is what makes an
+    interleaved session behave: an open clarify on graph B stays open across a
+    detour to graph A, and graph A's committed reply no longer closes B's window
+    (nor does A's user text get spliced into B's instruction, where it would feed
+    a capability a field/type name from a graph that may not even have it). A
+    turn with no recorded ``kg_name`` is kept -- see :func:`_turn_matches_kg`.
     """
     out: list[str] = []
-    for t in reversed(history or []):
+    for t in reversed(_same_kg_turns(history, kg_name)):
         if t.role == "assistant":
             # A clarify keeps the window open; anything else closes it.
             if t.kind == "clarify":
@@ -447,7 +551,9 @@ def _open_ask_user_turns(history: list[Turn] | None) -> list[str]:
     return out
 
 
-def _effective_instruction(history: list[Turn] | None, message: str) -> str:
+def _effective_instruction(
+    history: list[Turn] | None, message: str, kg_name: str | None = None
+) -> str:
     """Accumulate the user's answers so capability extraction sees the full ask.
 
     A capability's parameter extraction (which field, which attribute, which
@@ -458,9 +564,10 @@ def _effective_instruction(history: list[Turn] | None, message: str) -> str:
     the window, so a finished prior request never replays into a new one. The
     current ``message`` is always appended LAST so it dominates. With no
     (in-window) prior turns this is just the message (unchanged single-turn
-    behavior).
+    behavior). ``kg_name`` scopes the window to the graph this turn targets
+    (ONTA-419).
     """
-    prior_user = _open_ask_user_turns(history)
+    prior_user = _open_ask_user_turns(history, kg_name)
     if not prior_user:
         return message
     return "\n".join([*prior_user, message])
@@ -480,7 +587,7 @@ async def _classify(
     never 500s on classification.
     """
     caps = "\n".join(f"- {c.name}: {c.describe()}" for c in get_capabilities())
-    convo = _format_history(history)
+    convo = _format_history(history, getattr(ctx, "kg_name", None))
     guard = ""
     if prior_clarify_count >= _MAX_CLARIFY_ROUNDS:
         guard = (
@@ -587,12 +694,22 @@ async def handle(ctx: AgentContext, message: str, session: dict | None = None) -
     turn (the user message + the assistant's reply) is appended to the session's
     transcript. NO data writes happen here — an action returns a persisted plan
     the caller confirms via :func:`execute_plan`.
+
+    KG-aware (ONTA-419): one session id can span several knowledge graphs, so
+    history is scoped to ``ctx.kg_name`` before it grounds the classifier, the
+    accumulation window, or the clarify-convergence guard.
     """
     session_id = (session or {}).get("id")
     owner = (session or {}).get("owner")
     history = await _load_history(ctx, session_id)
+    # Count only the clarify rounds spent on THIS graph (ONTA-419). The guard
+    # exists to stop the agent re-asking the SAME question; clarifies spent on
+    # another graph are a different ask, and letting them count would force the
+    # classifier to commit blind on the first message against a new graph.
     prior_clarify_count = sum(
-        1 for t in history if t.role == "assistant" and t.kind == "clarify"
+        1
+        for t in _same_kg_turns(history, getattr(ctx, "kg_name", None))
+        if t.role == "assistant" and t.kind == "clarify"
     )
 
     result = await _respond(ctx, message, session_id, history, prior_clarify_count)
@@ -623,12 +740,10 @@ async def _respond(
     # TYPE from what the user just said, not a stale mention still in the window.
     ctx.extras["current_message"] = message
     # Only the recent tail grounds the prompt — a long history-backed thread
-    # shouldn't blow up the classifier context (COG-131).
-    recent = (
-        history[-_PROMPT_HISTORY_TURNS:]
-        if len(history) > _PROMPT_HISTORY_TURNS
-        else history
-    )
+    # shouldn't blow up the classifier context (COG-131). The tail is chosen
+    # KG-aware (ONTA-419) so a long detour onto another graph can't push this
+    # graph's own open ask off the end of the window.
+    recent = _recent_window(history, getattr(ctx, "kg_name", None))
     classification = await _classify(ctx, message, recent, prior_clarify_count)
     intents = classification.get("intents", ["ambiguous"])
 
@@ -745,7 +860,12 @@ async def _respond(
     if "question" in intents:
         cap = get_capability("query") or QueryCapability()
         out = await cap.answer(ctx, message)  # type: ignore[attr-defined]
-        return {"kind": "answer", **out}
+        # The capability may return its OWN kind. ONTA-413 short-circuits a
+        # question about a NONEXISTENT kg_name to {kind:"clarify"} naming the
+        # available graphs, instead of an "answer" that is really a silent
+        # "No results found." Defaulting to "answer" keeps every other path
+        # byte-identical.
+        return {**out, "kind": out.get("kind", "answer")}
 
     actionable = [i for i in intents if i in _INTENT_TO_CAPABILITY]
     if not actionable:
@@ -778,7 +898,9 @@ async def _respond(
 
     # Accumulate the user's answers across the dialogue so each capability's
     # field/attribute extraction sees the full ask, not just the latest reply.
-    instruction = _effective_instruction(recent, message)
+    instruction = _effective_instruction(
+        recent, message, getattr(ctx, "kg_name", None)
+    )
     steps = await _plan_intents(ctx, available, instruction)
     if not steps:
         labels = " and ".join(i for i, _ in available)
@@ -926,13 +1048,23 @@ async def _record_turn(
 
     ``owner`` (the auth subject) tags the thread so a signed-in user can find it
     in their history; it's None for ownerless (demo) sessions.
+
+    Both turns are stamped with the knowledge graph they were made against
+    (ONTA-419) so a later turn on a different graph can scope them out.
     """
     if not session_id:
         return
     text, intent = _result_summary(result)
+    kg_name = getattr(ctx, "kg_name", None) or None
     turns = [
-        Turn(role="user", text=message),
-        Turn(role="assistant", text=text, kind=result.get("kind"), intent=intent),
+        Turn(role="user", text=message, kg_name=kg_name),
+        Turn(
+            role="assistant",
+            text=text,
+            kind=result.get("kind"),
+            intent=intent,
+            kg_name=kg_name,
+        ),
     ]
     try:
         await make_conversation_store().append(

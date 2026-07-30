@@ -640,7 +640,7 @@ Defined in `template.yaml` (AWS SAM).
 
 Push to `main` or `feat/phase-1-core-platform` triggers `.github/workflows/deploy.yml`:
 1. Build Docker image
-2. Push to ECR (`omnix-demo-tenant`)
+2. Push to ECR (`omnix-demo-tenant`) <!-- boundary-ok: the ECR repository NAME is deliberately public deploy documentation; it is not a host, ARN, or credential -->
 3. Force new ECS deployment (rolling update)
 
 Deploy takes ~45s. Do NOT deploy during bulk ingestion — ECS rolling restart kills the

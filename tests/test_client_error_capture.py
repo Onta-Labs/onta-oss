@@ -89,7 +89,7 @@ async def test_query_error_scrubs_scheme_less_host_port():
             502,
             text=(
                 "upstream connect error to "
-                "omnix-cluster.abc123.us-east-1.neptune.amazonaws.com:8182 "
+                "omnix-cluster.abc123.us-east-1.neptune.amazonaws.com:8182 "  # boundary-ok: synthetic hostname in a simulated upstream error
                 "MalformedQueryException at line 5"
             ),
         )

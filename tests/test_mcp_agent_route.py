@@ -285,6 +285,40 @@ def test_agent_route_uses_same_tenant_dep_as_direct_path():
     assert get_tenant in _tenant_deps(enrich_route)
 
 
+# --------------------------------------------------------------------------- #
+# ONTA-414: the agent route validates kg_name the same way /ask does.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        "kg1> FROM <https://cograph.tech/graphs/other-tenant",
+        "kg 1",
+        "kg/1",
+    ],
+)
+def test_agent_route_rejects_iri_breaking_kg_name(app_client, bad_name):
+    body = {"message": "how many", "context": {"kg_name": bad_name}}
+    r = app_client.post(f"/graphs/{TENANT}/agent", json=body, headers=HEADERS)
+    assert r.status_code == 422, r.text
+
+
+def test_agent_route_allows_empty_kg_name(app_client, monkeypatch):
+    """`""` (no KG selected) is what the Explorer sends and must stay legal."""
+    _stub_classifier(monkeypatch, "question")
+
+    from cograph_client.agent.capabilities.query import QueryCapability
+
+    async def fake_answer(self, ctx, q):
+        return {"answer": "42", "sparql": "SELECT ...", "rows": [], "narrative": ""}
+
+    monkeypatch.setattr(QueryCapability, "answer", fake_answer)
+
+    body = {"message": "how many", "context": {"kg_name": ""}}
+    r = app_client.post(f"/graphs/{TENANT}/agent", json=body, headers=HEADERS)
+    assert r.status_code == 200, r.text
+    assert r.json()["kind"] == "answer"
+
+
 def test_get_tenant_grants_owned_tenant(monkeypatch):
     """Sanity: the same dependency DOES grant an owned tenant (no false 403)."""
     monkeypatch.setattr("cograph_client.auth.api_keys.settings.api_keys", "{}")

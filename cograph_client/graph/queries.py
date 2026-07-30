@@ -6,9 +6,70 @@ def tenant_graph_uri(tenant_id: str) -> str:
     return f"https://cograph.tech/graphs/{tenant_id}"
 
 
+# A KG name that may legally be interpolated into a graph IRI. Deliberately the
+# SAME pattern ``KGCreate.name`` enforces on create (api/routes/knowledge_graphs.py)
+# and that ``kg_writer.ensure_kg_registered`` enforces before registering: a name
+# that could never be created must never reach a generated SPARQL string.
+#
+# ``\Z``, not ``$``: Python's ``$`` also matches immediately BEFORE a final
+# newline, so ``re.match(r"^[a-zA-Z0-9_-]+$", "kg\n")`` succeeds and a trailing
+# ``%0A`` on a path or query param would have slipped through. Nothing can follow
+# that newline (so it was not itself an injection), but it broke the stated
+# invariant that this is exactly the pattern create enforces: pydantic compiles
+# its patterns with Rust regex, whose ``$`` is a strict end-of-text, so
+# ``KGCreate.name`` rejects ``"kg\n"``. ``\Z`` makes the two agree.
+_KG_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+\Z")
+
+
+def is_valid_kg_name(kg_name: object) -> bool:
+    """Whether ``kg_name`` may be interpolated into a graph IRI.
+
+    THE predicate. Callers that must not raise (the best-effort registration in
+    the shared write path) branch on this instead of keeping a second copy of the
+    pattern that can drift, as one did before ONTA-414.
+    """
+    return isinstance(kg_name, str) and _KG_NAME_RE.match(kg_name) is not None
+
+
+class InvalidKGName(ValueError):
+    """A ``kg_name`` that cannot legally appear inside a graph IRI (ONTA-414).
+
+    Mapped to HTTP 422 by the app-level handler in ``api/app.py`` so every route
+    that funnels user input into :func:`kg_graph_uri` rejects it identically,
+    instead of each route re-deriving its own validation (or forgetting to).
+    """
+
+
 def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
-    """Named graph URI for a specific knowledge graph within a tenant."""
+    """Named graph URI for a specific knowledge graph within a tenant.
+
+    ONTA-414: validates ``kg_name`` HERE rather than at each of the ~20 call
+    sites, several of which take the name straight off a request body. The
+    returned URI is interpolated verbatim into generated SPARQL inside an IRI
+    (``FROM <...>``, ``GRAPH <...>``), so a name carrying ``>`` closes the IRI
+    early and lets the caller append a second ``FROM`` naming ANOTHER tenant's
+    graph. That is a tenant-isolation break, not a cosmetic bug, so this fails
+    closed with :class:`InvalidKGName` instead of emitting a malformed IRI.
+    """
+    if not is_valid_kg_name(kg_name):
+        raise InvalidKGName(
+            f"Invalid kg_name {kg_name!r}: must be one or more of [a-zA-Z0-9_-] "
+            "with nothing else, including no trailing whitespace or newline"
+        )
     return f"https://cograph.tech/graphs/{tenant_id}/kg/{kg_name}"
+
+
+# Registry record every KG is announced with in the tenant's BASE graph. Written
+# by ``create_kg`` (the Explorer's "New KG" button) and by the shared write path
+# (``kg_writer.ensure_kg_registered``, which covers CLI / MCP / agent writers);
+# read by ``list_kgs`` and by the ONTA-413 existence probe. Canonical here so the
+# three producers/consumers cannot drift on the URI or predicate shape.
+KG_NAME_PRED = "https://cograph.tech/onto/kg_name"
+
+
+def kg_meta_uri(tenant_id: str, kg_name: str) -> str:
+    """Subject URI of a KG's registration record in the tenant base graph."""
+    return f"https://cograph.tech/kgs/{tenant_id}/{kg_name}"
 
 
 # The kg segment is anchored to a single path component ([^/]+, no slashes) so a
@@ -74,8 +135,44 @@ def _escape_value(value: str) -> str:
     return f'"{_escape_literal(value)}"'
 
 
+def sparql_string_literal(value: str) -> str:
+    """Escape ``value`` for embedding INSIDE a SPARQL ``"…"`` string literal.
+
+    THE one hardened string-literal escaper (ONTA-416). Returns the escaped
+    *body* — the caller supplies the surrounding quotes — so it composes with
+    both plain (``"…"``) and typed (``"…"^^<xsd:…>``) literal forms.
+
+    SPARQL's ``STRING_LITERAL2`` production forbids a raw ``"``, ``\\``, LF and
+    CR inside the quotes, so every one of them MUST be escaped: a value carrying
+    an interior newline (a pasted multi-line string, a CSV cell with an embedded
+    line break, a search needle) otherwise produces an UNTERMINATED literal and a
+    hard parse error at the store — surfacing to the caller as an opaque 500
+    rather than the honest 400 the input deserves. ``\\t`` is legal verbatim but
+    escaped anyway so the emitted query stays single-line and greppable.
+
+    Order matters: backslash FIRST, so the escape sequences added afterwards are
+    not themselves re-escaped. (That ordering was already correct in the three
+    partial copies this function replaces, which is why none of them was ever a
+    breakout/injection hole — the gap was only the missing ``\\r``/``\\t``/``\\n``
+    coverage, i.e. malformed SPARQL rather than injected SPARQL.)
+    """
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+
+
 def _escape_literal(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    """Back-compat alias for :func:`sparql_string_literal`.
+
+    Kept because the write path (``kg_writer``, ``normalization``, ``history``,
+    ``ontology_changelog``) imports this name; it must never grow a second,
+    divergent escaping rule — delegate, don't copy.
+    """
+    return sparql_string_literal(value)
 
 
 def insert_triples(graph_uri: str, triples: list[tuple[str, str, str]]) -> str:

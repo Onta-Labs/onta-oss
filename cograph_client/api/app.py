@@ -2,15 +2,17 @@ import importlib
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from cograph_client.api.middleware import RequestLoggingMiddleware
 from cograph_client.api.rate_limit import limiter
-from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
+from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
+from cograph_client.graph.queries import InvalidKGName
 from cograph_client.logging import setup_logging
 
 logger = structlog.stdlib.get_logger("cograph.app")
@@ -359,6 +361,11 @@ async def lifespan(app: FastAPI):
     logger.info("shutdown")
 
 
+async def _invalid_kg_name_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Render :class:`InvalidKGName` as a 422 (ONTA-414)."""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 def create_app() -> FastAPI:
     _load_auth_plugin()
     _load_enrichment_plugin()
@@ -377,6 +384,12 @@ def create_app() -> FastAPI:
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # ONTA-414: kg_graph_uri validates the KG name at the ONE place every route
+    # funnels through, so a route that takes kg_name off a request body without
+    # its own pattern still fails closed. Map that to 422 (the same status a
+    # pydantic pattern violation produces) rather than letting it surface as an
+    # opaque 500.
+    app.add_exception_handler(InvalidKGName, _invalid_kg_name_handler)
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(health.router, tags=["health"])
     app.include_router(triples.router, tags=["triples"])
@@ -410,6 +423,11 @@ def create_app() -> FastAPI:
     # ONTA-178: the canonical semantic instance search (webapp/CLI/MCP all ride
     # this one route — interface-convergence rule).
     app.include_router(search.router, tags=["search"])
+    # ONTA-416: index-free literal grep over ONE KG's triples — the debugging
+    # counterpart to /search (live triple scan, no derived index), a SEPARATE
+    # canonical route because its contract inverts /search's on every axis
+    # (see routes/grep.py). Webapp/CLI/MCP all ride this one route.
+    app.include_router(grep.router, tags=["grep"])
     # ONTA-2xx: the per-tenant API source registry (webapp/CLI/MCP all ride these
     # canonical routes via the shared SDK — interface-convergence rule).
     app.include_router(api_sources.router, tags=["api_sources"])

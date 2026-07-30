@@ -3,11 +3,18 @@ import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
 import { spawn } from "node:child_process";
 import { stdout } from "node:process";
-import { writeConfig, configPathForDisplay } from "./config.js";
+import { writeConfig, configPathForDisplay, isClerkUserId } from "./config.js";
 
 // Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at getonta.com.
 const WEB_URL =
   process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://getonta.com";
+
+// Same default as Client — used when resolving the first workspace after login.
+const DEFAULT_API_URL =
+  process.env.ONTA_API_URL ||
+  process.env.COGRAPH_API_URL ||
+  process.env.OMNIX_API_URL ||
+  "https://api.onta.sh";
 
 interface CallbackPayload {
   state?: string;
@@ -15,6 +22,42 @@ interface CallbackPayload {
   name?: string;
   userId?: string;
   email?: string | null;
+}
+
+/**
+ * Resolve a real workspace id for the new key via GET /v1/me/tenants.
+ * Never returns a Clerk user id — those are not tenants.
+ */
+async function resolveWorkspaceId(apiKey: string): Promise<string | undefined> {
+  const base = DEFAULT_API_URL.replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}/v1/me/tenants`, {
+      headers: {
+        "X-API-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as unknown;
+    const list = Array.isArray(data)
+      ? data
+      : data && typeof data === "object" && Array.isArray((data as { tenants?: unknown }).tenants)
+        ? (data as { tenants: unknown[] }).tenants
+        : [];
+    for (const entry of list) {
+      const id =
+        typeof entry === "string"
+          ? entry
+          : entry && typeof entry === "object" && typeof (entry as { id?: unknown }).id === "string"
+            ? (entry as { id: string }).id
+            : "";
+      if (id && !isClerkUserId(id)) return id;
+    }
+  } catch {
+    // Soft-fail: login still saves the key; user can set ONTA_TENANT later.
+  }
+  return undefined;
 }
 
 /**
@@ -72,15 +115,29 @@ export async function runLogin(): Promise<void> {
     process.exit(1);
   }
 
+  // Workspace id (tenant), NOT the Clerk user id. Historical bug wrote
+  // tenant: userId which makes every /graphs/{tenant}/… call 403.
+  const workspaceId = await resolveWorkspaceId(result.apiKey);
+
   writeConfig({
     apiKey: result.apiKey,
-    tenant: result.userId,
+    ...(workspaceId ? { tenant: workspaceId } : {}),
     email: result.email ?? undefined,
   });
 
-  stdout.write(
-    `  ✓ Logged in${result.email ? ` as ${result.email}` : ""}. Key saved to ${configPathForDisplay()}\n\n`,
-  );
+  if (workspaceId) {
+    stdout.write(
+      `  ✓ Logged in${result.email ? ` as ${result.email}` : ""}. Key saved to ${configPathForDisplay()}\n` +
+        `    Default workspace: ${workspaceId}\n` +
+        `    (override with ONTA_TENANT or \`onta use\`)\n\n`,
+    );
+  } else {
+    stdout.write(
+      `  ✓ Logged in${result.email ? ` as ${result.email}` : ""}. Key saved to ${configPathForDisplay()}\n` +
+        `    No workspace found yet — create one in the dashboard, then set ONTA_TENANT\n` +
+        `    to its id (not your user id).\n\n`,
+    );
+  }
 }
 
 function handleRequest(

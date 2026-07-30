@@ -26,7 +26,9 @@ from cograph_client.graph.ontology_queries import (
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
     _escape_literal,
+    is_valid_kg_name,
     kg_graph_uri,
+    kg_meta_uri,
     tenant_graph_uri,
 )
 
@@ -48,17 +50,89 @@ NAME_ATTRS = ("name", "title", "label", "headline")
 KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
 
 
-def _kg_meta_uri(tenant_id: str, name: str) -> str:
-    return f"https://cograph.tech/kgs/{tenant_id}/{name}"
+# Canonical in ``graph/queries.py`` so create_kg, list_kgs, the shared write
+# path's ``ensure_kg_registered`` and the ONTA-413 existence probe all mint the
+# SAME registration URI. Aliased (not redefined) to keep this module's callers
+# unchanged.
+#
+# NOTE: unlike ``kg_graph_uri``, ``kg_meta_uri`` does NOT validate its name — so
+# the count helpers below branch on ``is_valid_kg_name`` (THE predicate, per
+# ONTA-414) before interpolating a name into an IRI. They fail soft (skip, no
+# raise) because all are called from paths that must never fail their caller.
+#
+# The guard in ``_store_triple_count`` is LOAD-BEARING, not decorative: it is the
+# only thing between a ``>``-bearing registered name and a top-level injection on
+# the tenant metadata graph. The ``<kg_uri>`` IRI closes early and the rest of the
+# name becomes statement-level SPARQL on a ``client.update`` — e.g.
+# ``; DROP SILENT GRAPH <…/graphs/other-tenant> ;``, a cross-tenant WRITE. Do not
+# "simplify" it away. ``invalidate_triple_count``'s guard is defense-in-depth
+# today (its only caller trips ``explore._stats_graph_uri`` first) but is kept so
+# the helper stays safe for any future caller.
+_kg_meta_uri = kg_meta_uri
+
+
+def _skip_invalid_kg_name(name: str, op: str) -> bool:
+    """Whether ``name`` can't legally sit in an IRI — log and skip if so.
+
+    A REGISTERED name that fails ``is_valid_kg_name`` means a corrupt row in the
+    tenant metadata graph, so it must stay observable. Before this module
+    degraded such rows, the corruption was loud (a 422 on every Explorer load);
+    serving ``triple_count: 0`` instead would make it silent, since that is
+    indistinguishable from a legitimately empty KG. Mirrors the
+    ``ensure_kg_registered_invalid_name`` warning the shared write path emits on
+    exactly this condition, so an operator can find the offending row.
+    """
+    if is_valid_kg_name(name):
+        return False
+    # Per-call logger rather than the module-level ``logger = ...`` most route
+    # modules use, deliberately: ``cache_logger_on_first_use=True`` freezes a
+    # module-level proxy at import, after which ``structlog.testing.capture_logs``
+    # can no longer intercept it — the hazard that forces the import-order
+    # workarounds in test_sec_user_agent.py / test_web_ingest_fastpath.py. Minting
+    # the proxy per call keeps this warning assertable regardless of test order.
+    # Not hot: the valid-name fast path above returns before ever getting here.
+    import structlog
+
+    structlog.get_logger("cograph.kg").warning(
+        "kg_name_invalid_skipped", kg_name=name, op=op
+    )
+    return True
 
 
 async def _live_triple_count(
     client: "NeptuneClient", tenant_id: str, name: str
 ) -> int:
-    """Full-scan COUNT(*) for one KG graph. Slow — fallback path only."""
-    graph = kg_graph_uri(tenant_id, name)
-    sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
+    """Full-scan COUNT(*) for one KG graph. Slow — fallback path only.
+
+    Fails soft per KG on an un-IRI-able name, because ``list_kgs`` fans this out
+    over EVERY registered KG under ``asyncio.gather``: since ONTA-414
+    ``kg_graph_uri`` raises :class:`InvalidKGName` (→ 422 app-wide), so one bad
+    registration used to 422 the WHOLE workspace's KG listing rather than
+    degrading that single row to 0. This is a best-effort count, not a validation
+    boundary — routes that act on ONE user-named KG still 422 by design.
+
+    Such a name does NOT require out-of-band DB access to arrive. Both KG
+    registration paths validate (``KGCreate.name``'s pattern and
+    ``ensure_kg_registered``'s ``is_valid_kg_name`` branch) — but
+    ``POST /graphs/{tenant}/triples`` (an ordinary API-key-authenticated route)
+    writes arbitrary triples via ``insert_triples`` straight into
+    ``tenant_graph_uri``, the SAME base graph ``list_kgs`` reads registrations
+    from, and SPARQL literal escaping does not escape ``>``. So a caller with
+    write on their own tenant can plant a ``kg_name`` literal this module will
+    later read back. A pre-ONTA-414 registration (the ``$``→``\\Z`` tightening
+    invalidated trailing-newline names) is the other arrival vector.
+
+    EVERYTHING that can raise lives inside the ``try`` — including the
+    ``_skip_invalid_kg_name`` pre-check and its log call, not just
+    ``kg_graph_uri``. ``list_kgs`` gathers this WITHOUT ``return_exceptions``, so
+    anything escaping here 500s the whole listing — the exact all-or-nothing
+    failure mode this helper exists to prevent. Don't hoist a statement out.
+    """
     try:
+        if _skip_invalid_kg_name(name, "live_triple_count"):
+            return 0
+        graph = kg_graph_uri(tenant_id, name)
+        sparql = f"SELECT (COUNT(*) as ?c) FROM <{graph}> WHERE {{ ?s ?p ?o }}"
         _, rows = parse_sparql_results(await client.query(sparql))
         return int(rows[0].get("c", "0")) if rows else 0
     except Exception:
@@ -69,6 +143,8 @@ async def _store_triple_count(
     client: "NeptuneClient", tenant_id: str, name: str, count: int
 ) -> None:
     """Persist a KG's triple count in the tenant metadata graph (best-effort)."""
+    if _skip_invalid_kg_name(name, "store_triple_count"):
+        return
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
     try:
@@ -90,6 +166,8 @@ async def invalidate_triple_count(
     Called after ingest (data changed → count stale). Best-effort: a failure
     just means the stale count lingers until the next write.
     """
+    if _skip_invalid_kg_name(name, "invalidate_triple_count"):
+        return
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
     try:

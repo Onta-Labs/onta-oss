@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync, statSync } from "node:fs";
+import { basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -12,8 +13,40 @@ import type {
   Schedule,
 } from "@onta/cli";
 import { z } from "zod";
+import {
+  ALLOWED_EXTENSIONS,
+  DEFAULT_DEPTH,
+  DEFAULT_LIMIT,
+  MAX_DEPTH,
+  MAX_RESULTS,
+  describeRootResolution,
+  listWorkspaceFiles,
+  renderListResult,
+  resolveRoots,
+} from "./workspace.js";
 
 const VERSION = "0.1.0";
+
+// ONTA-415: the local directory the user has explicitly granted this server, if
+// any. Resolved ONCE at startup from ONTA_LOCAL_FILES_DIR (see workspace.ts for
+// the precedence and for why there is no default root). Empty means the
+// capability stays DORMANT: `list_local_files` is never registered, so it does
+// not appear in tools/list and burns no context in a session that has no root.
+const LOCAL_FILE_ROOTS: string[] = (() => {
+  const res = resolveRoots();
+  // One stderr line, but ONLY for a user who actually set the var: a bad path,
+  // a refused filesystem root, or a successful grant are all worth reporting,
+  // whereas the overwhelming majority who never opt in should get no noise at
+  // all for a feature they are not using.
+  if (res.varName) {
+    try {
+      process.stderr.write(`${describeRootResolution(res)}\n`);
+    } catch {
+      // stderr unavailable; the resolution itself still stands.
+    }
+  }
+  return res.roots;
+})();
 
 // The job categories the `list_jobs` filter accepts. This MUST stay in lockstep
 // with the backend `JobCategory` enum (cograph_client/enrichment/models.py) — a
@@ -210,6 +243,153 @@ server.registerTool(
   },
 );
 
+// ONTA-415: the "did you mean" suffix on a not-found path. This is the SECOND
+// consumer of the one containment-guarded primitive, not a second enumeration
+// path, so there is a single guard and a single test surface.
+//
+// The suffix is CONDITIONAL on a root actually being configured. Naming a tool
+// that is absent from tools/list is the ONTA-243 failure class documented at the
+// top of this file: the model is sent after a capability it cannot call and
+// strands the task. With no root there is no lister and no hint.
+function notFoundHint(filePath: string, roots: string[]): string {
+  if (!roots.length) return "";
+  let rows: ReturnType<typeof listWorkspaceFiles>["files"] = [];
+  try {
+    rows = listWorkspaceFiles(roots, { limit: MAX_RESULTS }).files;
+  } catch {
+    rows = [];
+  }
+  if (!rows.length) {
+    return (
+      ` No ${ALLOWED_EXTENSIONS.join(" / ")} files were found under the ` +
+      `configured local root either. Call list_local_files to check.`
+    );
+  }
+  // Prefer an exact basename match (the classic "right file, wrong directory"),
+  // otherwise show the most recently modified candidates.
+  const want = basename(filePath).toLowerCase();
+  const exact = rows.filter((r) => basename(r.path).toLowerCase() === want);
+  const shown = (exact.length ? exact : rows).slice(0, 5);
+  const lead = exact.length
+    ? ` A file with that name does exist under the configured local root:`
+    : ` Local files available under the configured root (most recent first):`;
+  return (
+    `${lead}\n` +
+    // Backtick-fenced for the same reason as in `renderListResult`: these are
+    // attacker-controllable filenames being rendered into model context.
+    shown.map((r) => `  \`${r.path}\``).join("\n") +
+    `\nCall list_local_files for the full list.`
+  );
+}
+
+// ONTA-416: thin over the canonical `POST /graphs/{tenant}/grep` route (via the
+// SDK's `grep`) — the ONE literal-scan endpoint every interface rides. The
+// handler is EXPORTED so its rendering contract can be tested with a stubbed
+// client (same pattern as `ingestCsvHandler`), since the rendering is what keeps
+// an unbounded literal out of the agent's context window.
+export async function grepHandler(
+  {
+    q,
+    kg_name,
+    type,
+    predicate,
+    case_sensitive,
+    limit,
+  }: {
+    q: string;
+    kg_name: string;
+    type?: string;
+    predicate?: string;
+    case_sensitive?: boolean;
+    limit?: number;
+  },
+  makeClient: () => Client = client,
+) {
+  try {
+    const res = await makeClient().grep(q, kg_name, {
+      type,
+      predicate,
+      caseSensitive: case_sensitive,
+      limit,
+    });
+    if (!res.matches.length) {
+      return textResult(
+        `No literal matches for ${JSON.stringify(q)} in "${kg_name}".`,
+      );
+    }
+    const lines = res.matches.map((m, i) => {
+      const who = m.label || m.entity_uri;
+      const kind = m.type ? ` (${m.type})` : "";
+      return `${i + 1}. ${who}${kind} — ${m.entity_uri}\n   [${m.attr}] ${m.snippet}`;
+    });
+    if (res.truncated) {
+      // Never let a capped page read as an exhaustive answer: an agent that
+      // concludes "only N exist" from a truncated grep draws a false negative.
+      lines.push(
+        "",
+        `Note: stopped at the limit of ${res.limit} matches — MORE EXIST. ` +
+          "Narrow with `type`/`predicate`, or raise `limit` (max 200).",
+      );
+    }
+    return textResult(lines.join("\n"));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+server.registerTool(
+  "grep",
+  {
+    description:
+      "Literal substring search across every literal value in ONE context " +
+      "graph, by scanning its triples directly (no index). Use it for exact " +
+      'string debugging — "is this value anywhere in the graph?", "which ' +
+      'entities contain this id/typo/URL?" — and for data that `search` ' +
+      "cannot see because it was never indexed. Plain substring matching, not " +
+      "regex. Prefer `search` for meaning/topic questions and `ask` for " +
+      "aggregate or structured ones: this scan is unranked and can be slow on " +
+      "a large graph.",
+    inputSchema: {
+      q: z
+        .string()
+        .min(2)
+        .describe(
+          "Exact substring to look for (at least 2 non-whitespace characters).",
+        ),
+      kg_name: z
+        .string()
+        .describe(
+          "REQUIRED context graph to scan — the scan is index-free, so it must " +
+            "be bounded to one graph. Use list_knowledge_graphs to see them.",
+        ),
+      type: z
+        .string()
+        .optional()
+        .describe('Only match entities of this type (e.g. "Person").'),
+      predicate: z
+        .string()
+        .optional()
+        .describe(
+          'Only match this attribute — a leaf name ("title") or a full predicate URI.',
+        ),
+      case_sensitive: z
+        .boolean()
+        .optional()
+        .describe("Match case-sensitively (default false)."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe("Max matches to return (server clamps to 1..200; default 50)."),
+    },
+  },
+  // Wrapped, not passed directly: the MCP SDK calls the callback with a second
+  // `extra` argument, which would otherwise land in `makeClient`.
+  (args) => grepHandler(args),
+);
+
 // ONTA-253: this tool's contract is "ingest a CSV FILE" — so a path that does
 // not resolve to a readable file must be a CLEAR error, never a silent
 // text-ingest of the filename. We stat the path up front (returning a specific
@@ -226,6 +406,7 @@ export async function ingestCsvHandler(
     join_on,
   }: { file_path: string; kg_name: string; join_on?: string },
   makeClient: () => Client = client,
+  roots: string[] = LOCAL_FILE_ROOTS,
 ) {
   let ok = false;
   try {
@@ -238,7 +419,8 @@ export async function ingestCsvHandler(
       new Error(
         `CSV file not found or not a readable file: ${file_path}. ` +
           `ingest_csv requires an absolute path to an existing CSV file — ` +
-          `nothing was ingested.`,
+          `nothing was ingested.` +
+          notFoundHint(file_path, roots),
       ),
     );
   }
@@ -294,6 +476,90 @@ server.registerTool(
   async ({ file_path, kg_name, join_on }) =>
     ingestCsvHandler({ file_path, kg_name, join_on }),
 );
+
+// ONTA-415: attacks the ROOT CAUSE of ONTA-253. That fix made a guessed path
+// fail LOUDLY (local stat + `asFile:true`) but did nothing to stop the guessing:
+// because `ingest_csv` demands an absolute path, an agent with no way to see the
+// filesystem had to invent one. This tool removes the guess.
+export async function listLocalFilesHandler(
+  {
+    subdir,
+    pattern,
+    max_depth,
+    limit,
+  }: { subdir?: string; pattern?: string; max_depth?: number; limit?: number },
+  roots: string[] = LOCAL_FILE_ROOTS,
+) {
+  const depth = max_depth ?? DEFAULT_DEPTH;
+  try {
+    const res = listWorkspaceFiles(roots, {
+      subdir,
+      pattern,
+      maxDepth: depth,
+      limit: limit ?? DEFAULT_LIMIT,
+    });
+    return textResult(renderListResult(res, roots, Math.min(depth, MAX_DEPTH)));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+// Registered ONLY when a root resolved. A registered-but-always-erroring tool
+// would still advertise the capability in every tools/list and burn context in
+// every session, so the dormant state is "absent", not "present and broken".
+if (LOCAL_FILE_ROOTS.length) {
+  server.registerTool(
+    "list_local_files",
+    {
+      description:
+        "List data files (" +
+        ALLOWED_EXTENSIONS.join(", ") +
+        ") that exist on the user's LOCAL machine, so you can pass a real " +
+        "absolute path to ingest_csv instead of guessing one. IMPORTANT: only a " +
+        "directory the user explicitly configured is visible to this server. It " +
+        "cannot see the rest of the filesystem, so if a file is not listed here " +
+        "it is not reachable: do NOT retry with '/' or some other path, ask the " +
+        "user instead. Results are the most recently modified files first, and " +
+        "no file contents are read.",
+      inputSchema: {
+        subdir: z
+          .string()
+          .optional()
+          .describe(
+            "Optional subdirectory, relative to the configured root, to list " +
+              "instead of the whole root. Paths outside the root are rejected.",
+          ),
+        pattern: z
+          .string()
+          .optional()
+          .describe(
+            "Optional filename filter. Plain text is a case-insensitive " +
+              'substring match (e.g. "tecentriq"); `*` and `?` make it an ' +
+              'anchored glob (e.g. "*-demo.csv").',
+          ),
+        max_depth: z
+          .number()
+          .int()
+          .min(0)
+          .max(MAX_DEPTH)
+          .optional()
+          .describe(
+            `How many directory levels below the root to descend (0 = the root ` +
+              `only). Default ${DEFAULT_DEPTH}, max ${MAX_DEPTH}.`,
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_RESULTS)
+          .optional()
+          .describe(`Max files to return. Default ${DEFAULT_LIMIT}, max ${MAX_RESULTS}.`),
+      },
+    },
+    async ({ subdir, pattern, max_depth, limit }) =>
+      listLocalFilesHandler({ subdir, pattern, max_depth, limit }),
+  );
+}
 
 server.registerTool(
   "create_knowledge_graph",
@@ -382,6 +648,137 @@ server.registerTool(
       return errorResult(err);
     }
   },
+);
+
+// ONTA-418: `view_ontology` is tenant-wide and DECLARATION-only, so an agent
+// could see that a type has an attribute but never whether that attribute
+// carries data in the graph it is about to query. So it guessed between similar
+// names (`fda_indications` vs `indications`). This tool rides the backend's
+// KG-scoped schema route (via the SDK's `kgSchema`), which assembles the whole
+// KG's population data server-side from stats that are already materialized:
+// ONE request, not a per-type fan-out from here.
+function renderSlot(s: {
+  name: string;
+  coverage_pct: number;
+  populated: boolean;
+  datatype?: string;
+  target_type?: string | null;
+}): string {
+  const kind = s.target_type ? ` -> ${s.target_type}` : s.datatype ? ` (${s.datatype})` : "";
+  // EMPTY, not "0%": the agent must not read an unpopulated slot as a weak
+  // signal it can still query. It is a declaration with nothing behind it.
+  const cov = s.populated ? `${s.coverage_pct}%` : "EMPTY";
+  return `${s.name}${kind} ${cov}`;
+}
+
+export async function inspectGraphSchemaHandler(
+  {
+    kg_name,
+    type,
+    min_coverage,
+  }: { kg_name: string; type?: string[]; min_coverage?: number },
+  makeClient: () => Client = client,
+) {
+  try {
+    const data = await makeClient().kgSchema(kg_name, {
+      types: type,
+      minCoverage: min_coverage,
+    });
+    if (!data.types.length) {
+      // Name what the graph DOES have, so a filter typo never reads as
+      // "that type does not exist" (the failure this tool exists to prevent).
+      const available = data.available_type_names ?? [];
+      return textResult(
+        `Context graph "${kg_name}" has no types matching that request.` +
+          (available.length
+            ? ` Types it does have: ${available.join(", ")}.`
+            : " The graph has no types at all."),
+      );
+    }
+    // Say "matching" when a filter was applied, so a drill-in is never misread
+    // as "this graph has exactly one type".
+    const scope = type?.length ? "matching type(s)" : "type(s)";
+    const lines: string[] = [
+      `Schema for context graph "${kg_name}" (${data.total_types} ${scope})` +
+        (data.stats_source === "live_scan"
+          ? " (scanned live; precomputed stats not materialized yet)"
+          : "") +
+        ". Percentages are the share of that type's entities carrying the slot; " +
+        "EMPTY means declared but with no data in this graph.",
+    ];
+    for (const t of data.types) {
+      const suffix = t.declared_only
+        ? " (declared in the ontology, NO instances in this graph)"
+        : "";
+      lines.push("", `${t.name}: ${t.entity_count} entities${suffix}`);
+      if (t.description) lines.push(`  ${t.description}`);
+      if (t.attributes.length) {
+        lines.push(`  attributes: ${t.attributes.map(renderSlot).join(", ")}`);
+      }
+      if (t.relationships.length) {
+        lines.push(`  relationships: ${t.relationships.map(renderSlot).join(", ")}`);
+      }
+      const withheld = t.attributes_withheld + t.relationships_withheld;
+      if (withheld) {
+        lines.push(
+          `  (${withheld} more below the min_coverage floor; lower or drop it to see them)`,
+        );
+      }
+    }
+    if (data.truncated) {
+      lines.push(
+        "",
+        `Also present, not expanded here (pass type= to drill in): ${data.omitted_type_names.join(", ")}`,
+      );
+    }
+    lines.push("", `Note: ${data.coverage_note}`);
+    return textResult(lines.join("\n"));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+server.registerTool(
+  "inspect_graph_schema",
+  {
+    description:
+      "Inspect ONE context graph's schema WITH population data: for every type, " +
+      "which attributes and relationships actually carry data there, and on what " +
+      "share of that type's entities. Use this before asking for specific " +
+      "attributes so you never guess between similar names (e.g. " +
+      '"fda_indications" vs "indications") or query a slot that is declared but ' +
+      "empty. Differs from view_ontology, which is tenant-wide and " +
+      "DECLARATION-only (every type in the workspace, no population): this tool " +
+      "is scoped to one graph and population-aware. Declared-but-empty types and " +
+      "attributes are still listed, marked EMPTY, so an absent slot is never " +
+      "confused with a non-existent one. Coverage is relative to each type's own " +
+      "entity count, which attributes an entity carrying several types to only " +
+      "one of them, so types that share multi-typed entities can legitimately " +
+      "read below 100%. Sample VALUES are not returned.",
+    inputSchema: {
+      kg_name: z
+        .string()
+        .describe(
+          "Name of the context graph to inspect. Use list_knowledge_graphs to see available KGs.",
+        ),
+      type: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Optional type names to drill into (e.g. [\"Drug\"]). Omit for the whole graph.",
+        ),
+      min_coverage: z
+        .number()
+        .optional()
+        .describe(
+          "Optional coverage floor as a PERCENT (0-100). Withholds slots below it " +
+            "to keep a wide schema readable; the response says how many were withheld. " +
+            "Omit to see every slot, including empty ones.",
+        ),
+    },
+  },
+  async ({ kg_name, type, min_coverage }) =>
+    inspectGraphSchemaHandler({ kg_name, type, min_coverage }),
 );
 
 function describeChange(c: ResolvedChange): string {

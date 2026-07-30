@@ -152,9 +152,15 @@ def _resolve_allowed(
             is_operator=is_operator,
             enhanced_entitled=requested in entitled,
         )
+    allowed_hint = ", ".join(allowed) if allowed else "(none)"
     raise HTTPException(
         status_code=403,
-        detail=f"API key does not grant access to tenant '{requested}'",
+        detail=(
+            f"API key does not grant access to tenant '{requested}'. "
+            f"This key can access: {allowed_hint}. "
+            f"Set ONTA_TENANT to one of those workspace ids "
+            f"(or create an unscoped key for all workspaces)."
+        ),
     )
 
 

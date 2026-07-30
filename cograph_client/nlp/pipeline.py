@@ -684,6 +684,46 @@ class NLQueryPipeline:
                             continue
                     except Exception:
                         logger.debug("enum_filter_mismatch_check_failed", exc_info=True)
+                    # Semantic-subset miss: a valid query over a REDUCED ontology
+                    # can invent predicates/types that don't exist in this KG
+                    # (Oliver demo: ClinicalTrial.interventions/conditions) and
+                    # return zero rows. Widen to the FULL tenant ontology once
+                    # and regenerate with the empty-query feedback path so the
+                    # planner sees Drug→Indication→Trial. Only when still on a
+                    # semantic subset — full-ontology zeros are honest empties.
+                    if not full_ontology_loaded and ontology_source == "semantic":
+                        try:
+                            full_ontology = await self._fetch_ontology(
+                                graph_uri, data_graph, layer_graph_uris=layer_graph_uris
+                            )
+                            if full_ontology and full_ontology.strip():
+                                ontology = full_ontology
+                                ontology_source = "full"
+                                timing["ontology_escalated_to_full_attempt"] = attempt + 1
+                                timing["ontology_zero_row_escalation"] = 1.0
+                                # Reuse the enum-mismatch retry arm so the
+                                # custom zero-row feedback is passed through
+                                # (the empty-SPARQL arm overwrites feedback).
+                                last_was_enum_filter_mismatch = True
+                                last_error = (
+                                    "The previous SPARQL returned ZERO rows. It may have "
+                                    "used types or predicates that are not in this "
+                                    "knowledge graph's schema. Regenerate a valid SELECT "
+                                    "using ONLY the type, attribute, and relationship "
+                                    "URIs from the ontology schema below."
+                                )
+                                full_ontology_loaded = True
+                                logger.info(
+                                    "ontology_zero_row_escalation",
+                                    question=question,
+                                    attempt=attempt,
+                                )
+                                continue
+                        except Exception:
+                            logger.debug(
+                                "ontology_zero_row_escalation_failed", exc_info=True
+                            )
+                            full_ontology_loaded = True
                 # Projected vars that bound in ZERO rows (e.g. an OPTIONAL
                 # attribute absent from every matching entity, or a drifted
                 # attribute URI). Reported honestly instead of silently omitted,

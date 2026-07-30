@@ -21,7 +21,7 @@ npx -y -p @onta/mcp onta-mcp
       "env": {
         "ONTA_API_KEY": "your-key",
         "ONTA_API_URL": "https://api.onta.sh",
-        "ONTA_TENANT": "demo-tenant"
+        "ONTA_TENANT": "your-workspace-id"
       }
     }
   }
@@ -30,13 +30,15 @@ npx -y -p @onta/mcp onta-mcp
 
 ## Tools exposed
 
-The server registers **15** tools:
+The server registers **17** tools, plus **1 more** (`list_local_files`) when you opt in by configuring `ONTA_LOCAL_FILES_DIR` (see [Environment](#environment)):
 
 - `agent` — the single conversational front door to the Ask-AI agent. Send a natural-language message; the agent classifies intent and either answers a question, asks a clarifying question, or proposes a multi-step plan (enrich attributes, clean/normalize values, merge duplicates, inspect/extend the ontology). A plan is **not executed** until you confirm it by calling `agent` again with the returned `plan_id` as `confirm_plan_id`. Planning is free; any paid step a plan contains (e.g. web enrichment) is authorized server-side at execute time, so confirming honors your tenant's entitlements.
 - `list_knowledge_graphs` — list available KGs and their descriptions.
 - `ask` — ask a natural-language question against a context graph; returns the answer (and an explanation when available).
 - `search` — semantic + keyword (hybrid) search over the free-text attributes of entities: find *which* entities mention/discuss a topic, with a matching snippet as the citation. Use `ask` for aggregate or structured questions.
-- `view_ontology` — show the ontology (types, attributes, relationships) across your context graphs.
+- `grep` — literal substring search across every literal value in **one** context graph, by scanning its triples directly (no index). The exact-string debugging counterpart to `search`: it finds values `search` cannot see because they were never indexed. Plain substring matching, not regex; unranked, and can be slow on a large graph, so it is bounded to one KG and rate-limited.
+- `view_ontology` — show the ontology (types, attributes, relationships) across your context graphs. Tenant-wide and declaration-only; for one graph's actual data coverage use `inspect_graph_schema`.
+- `inspect_graph_schema`: inspect ONE context graph's schema *with population data*, i.e. per type, which attributes and relationships actually carry data there and on what share of its entities. Declared-but-empty types and attributes are listed and marked `EMPTY`, so a missing slot is never confused with a non-existent one. Use it before asking for specific attributes so you never guess between similar names.
 - `create_knowledge_graph` — create a new, empty KG (optionally with a description).
 - `delete_knowledge_graph` — delete a KG and all of its data (irreversible).
 - `ingest_csv` — ingest a CSV file by absolute path into a named KG; the schema is inferred automatically. Set `join_on` to merge each row onto the existing entity that carries the same key value instead of minting duplicates.
@@ -47,6 +49,7 @@ The server registers **15** tools:
 - `list_jobs` — list background jobs (enrichment, dedupe, reconciliation, web-discovery) for the tenant; use it to check on async work the `agent` tool kicked off.
 - `get_job` — full record + live progress of a single background job by id (returns instantly with current status).
 - `wait_for_job` — block server-side until a background job settles (or a bounded timeout), then return its status + progress — so one call covers a whole wait window instead of polling `get_job` in a loop.
+- `list_local_files`: **opt-in, off by default.** List the `.csv` / `.json` / `.jsonl` files in a directory you have explicitly granted, so the agent can pass a real absolute path to `ingest_csv` instead of guessing one. Only registered when `ONTA_LOCAL_FILES_DIR` resolves to an existing directory; otherwise it does not appear at all.
 
 > Enrichment, cleaning/normalization and duplicate-merging are reached **through
 > the `agent` tool** — it plans them and, on confirm, runs them as background
@@ -58,8 +61,41 @@ The server registers **15** tools:
 - `ONTA_API_KEY` — required
 - `ONTA_API_URL` — default `https://api.onta.sh`
 - `ONTA_TENANT` — default `demo-tenant`
+- `ONTA_LOCAL_FILES_DIR`: **optional, unset by default.** An absolute path to one directory (or several, joined by your platform's path separator, max 4) that the agent may LIST. Setting it registers the `list_local_files` tool; leaving it unset means that tool does not exist.
 
 Older env-var prefixes are still accepted for back-compat, so existing configs keep working unchanged.
+
+### `ONTA_LOCAL_FILES_DIR` and what it grants
+
+This MCP server runs as a local process with your own filesystem permissions, and
+anything it returns is sent to a remote model. So local file listing is off until
+you name a directory, and it is scoped to exactly that directory:
+
+```json
+"env": {
+  "ONTA_API_KEY": "your-key",
+  "ONTA_LOCAL_FILES_DIR": "/Users/you/onta-data"
+}
+```
+
+What you are granting, precisely:
+
+- The agent can see **filenames, sizes and modification times** of `.csv`,
+  `.json` and `.jsonl` files inside that directory, up to 3 levels deep.
+- **No file contents are ever read** by this tool. Contents leave your machine
+  only when you ingest a specific file.
+- Nothing outside the directory is visible: directory symlinks are not followed,
+  every returned file must resolve back inside the root, and `..` is rejected.
+  The filesystem root (`/`) is refused as a value.
+- Dotfiles, dot-directories and `node_modules` are skipped.
+- One exception to the containment rule: a **hardlink** placed inside the
+  directory that points at a file outside it *is* listed (name, size and
+  modification time, never content). A hardlink cannot be distinguished from an
+  ordinary file, and creating one already requires write access to the directory.
+
+Point it at a directory that holds the data you intend to ingest, not at your
+home directory or `/`. Filenames inside the granted directory are themselves
+visible to the model, so avoid granting a directory whose filenames are sensitive.
 
 ## License
 

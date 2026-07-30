@@ -45,10 +45,19 @@ export type {
   TypeRecord,
   TypeRecordsPage,
   TypeEdge,
+  // ONTA-418: KG-scoped, population-aware schema (which slots actually carry
+  // data in ONE graph), as opposed to the tenant-wide declaration-only ontology.
+  KgSchema,
+  KgSchemaType,
+  SchemaAttribute,
+  SchemaRelationship,
   NormalizationRule,
   // ONTA-178 — canonical semantic instance search
   SemanticSearchHit,
   SemanticSearchResponse,
+  // ONTA-416 — index-free literal grep over one KG
+  GrepMatch,
+  GrepResponse,
   // ONTA-2xx — per-tenant API source registry
   ApiSourceSummary,
   ApiSourceValidationError,

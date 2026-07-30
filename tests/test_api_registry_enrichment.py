@@ -179,33 +179,52 @@ async def test_adapter_dormant_entry_returns_no_verdict(monkeypatch):
 # --------------------------------------------------------------------------- #
 # Chain wiring / authority ordering
 # --------------------------------------------------------------------------- #
+# Enrich-ready seed adapters, ordered by authority rank then slug (see
+# register_registry_enrichment). SoT leads (clinicaltrials_gov, nppes) come
+# before authoritative fred entries; within a rank, slug sort decides the
+# order — do not hard-require a specific SoT slug as chain[0].
+_SOT_LEAD_NAMES = frozenset({"api:clinicaltrials_gov", "api:nppes"})
+_AUTHORITATIVE_LEAD_NAMES = frozenset({"api:fred", "api:fred_series_search"})
+_ENRICH_READY_NAMES = _SOT_LEAD_NAMES | _AUTHORITATIVE_LEAD_NAMES
+
+
 def test_register_registry_enrichment_leads_chain():
     names = register_registry_enrichment(make_api_source_catalog())
-    assert "api:nppes" in names
+    assert _SOT_LEAD_NAMES <= set(names)
     chain = get_chain(EnrichmentTier.core)
-    assert chain[0] == "api:nppes"   # registry leads
+    # Registry prefix leads the tier chain; lead is some source_of_truth entry.
+    assert chain[0] in _SOT_LEAD_NAMES
+    assert chain[0].startswith("api:")
     assert "wikidata" in chain
+    # Every SoT lead appears before wikidata (authority prefix, not web tail).
+    wikidata_i = chain.index("wikidata")
+    for lead in _SOT_LEAD_NAMES:
+        assert chain.index(lead) < wikidata_i
 
 
 def test_only_enrich_ready_entries_are_registered():
-    # NPPES + the two FRED entries have enrich_from params; geonames/openfoodfacts/
-    # clinicaltrials (seed) do not, so they aren't registered as enrichment
-    # adapters. Order is by authority rank then slug: nppes (source_of_truth)
-    # leads the authoritative fred entries (alphabetical within rank).
+    # NPPES + ClinicalTrials.gov + the two FRED entries have enrich_from params;
+    # geonames/openfoodfacts do not, so they aren't registered as enrichment
+    # adapters. Order is by authority rank then slug: SoT leads (alphabetical
+    # within rank) then the authoritative fred entries.
     names = register_registry_enrichment(make_api_source_catalog())
-    assert names == ["api:nppes", "api:fred", "api:fred_series_search"]
+    assert set(names) == _ENRICH_READY_NAMES
+    # SoT block first, then authoritative — within each block, slug order.
+    assert all(n in _SOT_LEAD_NAMES for n in names[: len(_SOT_LEAD_NAMES)])
+    assert all(n in _AUTHORITATIVE_LEAD_NAMES for n in names[len(_SOT_LEAD_NAMES) :])
+    assert names[: len(_SOT_LEAD_NAMES)] == sorted(names[: len(_SOT_LEAD_NAMES)])
+    assert names[len(_SOT_LEAD_NAMES) :] == sorted(names[len(_SOT_LEAD_NAMES) :])
 
 
 def test_chain_prefix_survives_a_later_register_tier_override():
-    register_registry_enrichment(make_api_source_catalog())
+    registry_names = register_registry_enrichment(make_api_source_catalog())
     # The proprietary plugin would override tiers AFTER registration; the prefix
     # is recomputed per get_chain(), so the registry still leads.
     register_tier(EnrichmentTier.core, ["wikidata", "exa", "perplexity"])
     chain = get_chain(EnrichmentTier.core)
-    assert chain == [
-        "api:nppes", "api:fred", "api:fred_series_search",
-        "wikidata", "exa", "perplexity",
-    ]
+    assert chain[: len(registry_names)] == registry_names
+    assert chain[len(registry_names) :] == ["wikidata", "exa", "perplexity"]
+    assert set(registry_names) == _ENRICH_READY_NAMES
 
 
 # --------------------------------------------------------------------------- #
@@ -239,16 +258,21 @@ class _WebFake:
 
 def test_registry_verdict_outranks_web_adapter():
     async def run():
-        # NPPES leads the chain; a web adapter sits behind it.
-        register_registry_enrichment(make_api_source_catalog(),
-                                     executor=RegistryApiSource(transport=httpx.MockTransport(
-                                         lambda r: httpx.Response(200, json=_NPPES_REC))))
+        # Registry SoT/authoritative adapters lead the chain; a web adapter sits
+        # behind them. NPPES is still in the chain (not necessarily index 0 —
+        # clinicaltrials_gov sorts first among SoT by slug).
+        registry_names = register_registry_enrichment(
+            make_api_source_catalog(),
+            executor=RegistryApiSource(transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, json=_NPPES_REC))),
+        )
         web = _WebFake()
         register_adapter(web)
         register_tier(EnrichmentTier.lite, ["webfake"])   # get_chain -> [registry…, webfake]
-        assert get_chain(EnrichmentTier.lite) == [
-            "api:nppes", "api:fred", "api:fred_series_search", "webfake",
-        ]
+        chain = get_chain(EnrichmentTier.lite)
+        assert chain == [*registry_names, "webfake"]
+        assert "api:nppes" in chain
+        assert chain.index("api:nppes") < chain.index("webfake")
 
         neptune = _physician_neptune()
         store = InMemoryJobStore()
@@ -266,7 +290,8 @@ def test_registry_verdict_outranks_web_adapter():
         final = await store.get(job.id)
         assert final.progress.filled == 1
         # The web adapter was NEVER consulted — NPPES (source-of-truth) short-
-        # circuited the chain, so the authoritative NPI won.
+        # circuited the chain once it filled npi, so the authoritative NPI won.
+        # clinicaltrials_gov leads alphabetically but self-gates off Physician/npi.
         assert web.calls == []
 
     asyncio.run(run())
@@ -342,6 +367,132 @@ def test_attribute_binding_resolves_from_entity_attrs():
     # Missing/empty attribute -> no binding -> graceful no-op (chain falls through).
     assert adapter._build_bindings(ep, "Roma tomatoes", {}) == {}
     assert adapter._build_bindings(ep, "Roma tomatoes", {"bls_series_id": ""}) == {}
+
+
+# --------------------------------------------------------------------------- #
+# NCT id format guard (ClinicalTrials.gov attribute:nct_id bindings)
+# --------------------------------------------------------------------------- #
+def test_nct_id_helpers_accept_real_reject_placeholders():
+    from cograph_client.api_registry.ids import (
+        is_valid_nct_id,
+        normalize_attribute_binding,
+        normalize_nct_id,
+    )
+
+    assert is_valid_nct_id("NCT04660344")
+    assert is_valid_nct_id("nct04660344")  # case-insensitive
+    assert normalize_nct_id("nct04660344") == "NCT04660344"
+    assert normalize_attribute_binding("nct_id", "NCT04660344") == "NCT04660344"
+
+    for bad in (
+        "NO-TRIAL-R053",
+        "NO-TRIAL-001",
+        "",
+        "   ",
+        "NCT123",          # too short
+        "NCT0466034",      # 7 digits
+        "NCT046603445",    # 9 digits
+        "04660344",        # missing NCT prefix
+        "NCT 04660344",
+    ):
+        assert not is_valid_nct_id(bad), bad
+        assert normalize_nct_id(bad) is None, bad
+        assert normalize_attribute_binding("nct_id", bad) == "", bad
+
+    # Unrelated attributes still pass through unchanged.
+    assert normalize_attribute_binding("bls_series_id", "APU0000712311") == "APU0000712311"
+
+
+def test_clinicaltrials_binding_rejects_placeholder_nct_ids():
+    """Demo-ingest placeholders like NO-TRIAL-* must not become query.id."""
+    cat = make_api_source_catalog()
+    spec = cat.get("clinicaltrials_gov")
+    assert spec is not None, "clinicaltrials_gov seed entry missing"
+    adapter = RegistrySourceAdapter(spec)
+    ep = spec.endpoint()
+    assert ep is not None
+
+    # Real NCT → bound (canonical uppercase) on the `id` param.
+    assert adapter._build_bindings(
+        ep, "Some trial", {"nct_id": "NCT04660344"},
+    ) == {"id": "NCT04660344"}
+    assert adapter._build_bindings(
+        ep, "Some trial", {"nct_id": "nct04660344"},
+    ) == {"id": "NCT04660344"}
+
+    # Placeholders / empty / missing → no bindings (lookup no-ops, no API call).
+    for attrs in (
+        {"nct_id": "NO-TRIAL-R053"},
+        {"nct_id": "NO-TRIAL-001"},
+        {"nct_id": ""},
+        {},
+        {"nct_id": "NCT123"},
+    ):
+        assert adapter._build_bindings(ep, "Some trial", attrs) == {}, attrs
+
+
+def test_clinicaltrials_lookup_skips_api_for_placeholder_nct():
+    """Invalid nct_id must short-circuit before RegistryApiSource.execute."""
+    cat = make_api_source_catalog()
+    spec = cat.get("clinicaltrials_gov")
+
+    class _FakeExec:
+        def __init__(self):
+            self.calls = 0
+            self.bindings = None
+
+        async def execute(self, spec_, bindings, **kw):
+            self.calls += 1
+            self.bindings = bindings
+            return type("R", (), {
+                "dormant": False, "error": None, "rows": [],
+                "sources": [], "provenance": {},
+            })()
+
+    fake = _FakeExec()
+    adapter = RegistrySourceAdapter(spec, executor=fake)
+
+    async def run():
+        # Placeholder → no bindings → lookup returns [] without calling the API.
+        v = await adapter.lookup(
+            "Placeholder trial",
+            "lead_sponsor",
+            {
+                "entity_type": "ClinicalTrial",
+                "entity_attributes": {"nct_id": "NO-TRIAL-R053"},
+            },
+        )
+        assert v == []
+        assert fake.calls == 0
+
+        # Real NCT → execute is called with query.id bound.
+        class _Hit:
+            dormant = False
+            error = None
+            rows = [{"lead_sponsor": "Hoffmann-La Roche"}]
+            sources = ["https://clinicaltrials.gov/study/NCT04660344"]
+            provenance: dict = {}
+
+        async def _ok(spec_, bindings, **kw):
+            fake.calls += 1
+            fake.bindings = bindings
+            return _Hit()
+
+        fake.execute = _ok  # type: ignore[method-assign]
+        v2 = await adapter.lookup(
+            "Real trial",
+            "lead_sponsor",
+            {
+                "entity_type": "ClinicalTrial",
+                "entity_attributes": {"nct_id": "NCT04660344"},
+            },
+        )
+        assert fake.calls == 1
+        assert fake.bindings == {"id": "NCT04660344"}
+        assert len(v2) == 1
+        assert v2[0].value == "Hoffmann-La Roche"
+
+    asyncio.run(run())
 
 
 def test_attribute_binding_flows_through_lookup_context():

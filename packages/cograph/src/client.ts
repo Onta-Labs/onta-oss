@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
-import { readConfig } from "./config.js";
+import { isClerkUserId, readConfig, writeConfig } from "./config.js";
 
 export class OntaError extends Error {
   status?: number;
@@ -201,6 +201,9 @@ export class Client {
    */
   readonly raw: RawApi;
 
+  /** In-flight heal for configs that still have tenant = Clerk user id. */
+  private tenantHealPromise: Promise<void> | null = null;
+
   constructor(opts: ClientOptions = {}) {
     // Resolution order for each field: explicit opts → env var → ~/.onta/config.json
     // (written by `cograph login`) → built-in default. Reading the config eagerly
@@ -210,8 +213,74 @@ export class Client {
     const url =
       opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.onta.sh";
     this.baseUrl = url.replace(/\/+$/, "");
+    // May still be a Clerk user id from a legacy login; healTenantIfNeeded()
+    // rewrites it to a real workspace on the first graph request.
     this.tenant = opts.tenant ?? envVar("TENANT") ?? cfg.tenant ?? "demo-tenant";
     this.raw = new RawApi(this);
+  }
+
+  /**
+   * If `this.tenant` is a Clerk user id (legacy login bug), resolve the first
+   * real workspace via GET /v1/me/tenants and rewrite config + this.tenant.
+   */
+  private async healTenantIfNeeded(): Promise<void> {
+    if (!isClerkUserId(this.tenant)) return;
+    if (!this.apiKey) {
+      throw new OntaError(
+        `Configured tenant "${this.tenant}" looks like a Clerk user id, not a workspace. ` +
+          `Set ONTA_TENANT to a workspace id from the dashboard (or re-run \`onta login\`).`,
+      );
+    }
+    if (!this.tenantHealPromise) {
+      const bogus = this.tenant;
+      this.tenantHealPromise = (async () => {
+        const res = await fetch(`${this.baseUrl}/v1/me/tenants`, {
+          headers: {
+            "X-API-Key": this.apiKey!,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) {
+          throw new OntaError(
+            `Configured tenant "${bogus}" is a user id, not a workspace, and ` +
+              `listing workspaces failed (HTTP ${res.status}). Set ONTA_TENANT ` +
+              `to a real workspace id.`,
+            { status: res.status },
+          );
+        }
+        const data = (await res.json()) as unknown;
+        const list = Array.isArray(data) ? data : [];
+        let first: string | undefined;
+        for (const entry of list) {
+          const id =
+            typeof entry === "string"
+              ? entry
+              : entry &&
+                  typeof entry === "object" &&
+                  typeof (entry as { id?: unknown }).id === "string"
+                ? (entry as { id: string }).id
+                : "";
+          if (id && !isClerkUserId(id)) {
+            first = id;
+            break;
+          }
+        }
+        if (!first) {
+          throw new OntaError(
+            `Configured tenant "${bogus}" is a user id, and this key has no workspaces. ` +
+              `Create a workspace in the dashboard, then set ONTA_TENANT.`,
+          );
+        }
+        this.tenant = first;
+        try {
+          writeConfig({ tenant: first });
+        } catch {
+          // best-effort migrate of ~/.onta/config.json
+        }
+      })();
+    }
+    await this.tenantHealPromise;
   }
 
   private headers(): Record<string, string> {
@@ -367,6 +436,10 @@ export class Client {
   /** @internal */ pExploreTypeEdges(kg: string): string {
     return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/type-edges`;
   }
+  /** @internal KG-scoped, population-aware whole schema (ONTA-418). */
+  pExploreSchema(kg: string, query?: string): string {
+    return `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/schema${query ?? ""}`;
+  }
   /** @internal */ pExploreSearch(query: string): string {
     return `${this.base()}/explore/search${query}`;
   }
@@ -375,6 +448,12 @@ export class Client {
    *  entity. ONE route for every interface (webapp/CLI/MCP). */
   pSearch(): string {
     return `${this.base()}/search`;
+  }
+  /** @internal Index-free literal grep over ONE KG (ONTA-416) — a live triple
+   *  scan, deliberately a SEPARATE route from `/search` (whose contract it
+   *  inverts on every axis). ONE route for every interface (webapp/CLI/MCP). */
+  pGrep(): string {
+    return `${this.base()}/grep`;
   }
   /** @internal */ pNormalizeSuggest(query: string): string {
     return `${this.base()}/normalize/suggest${query}`;
@@ -505,6 +584,18 @@ export class Client {
     body?: unknown,
     timeoutMs: number = 120_000,
   ): Promise<T> {
+    // Rewrite legacy tenant=userId before hitting /graphs/{tenant}/…
+    if (isClerkUserId(this.tenant) || /\/graphs\/user_[A-Za-z0-9]+(?:\/|$)/.test(url)) {
+      const before = this.tenant;
+      await this.healTenantIfNeeded();
+      if (before !== this.tenant) {
+        url = url.replace(
+          /\/graphs\/user_[A-Za-z0-9]+/g,
+          `/graphs/${this.tenant}`,
+        );
+      }
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
@@ -532,6 +623,18 @@ export class Client {
         text = await res.text();
       } catch {
         // ignore
+      }
+      // Friendlier hint when a stale config still points at a user id path.
+      if (
+        res.status === 403 &&
+        /grant access to tenant ['"]user_/i.test(text)
+      ) {
+        throw new OntaError(
+          `HTTP 403: ${text}\n` +
+            `Hint: ONTA_TENANT / config tenant is set to a Clerk user id. ` +
+            `Set it to a workspace id (dashboard → workspace switcher) or re-run \`onta login\`.`,
+          { status: res.status, body: text },
+        );
       }
       throw new OntaError(`HTTP ${res.status}: ${text}`, {
         status: res.status,
@@ -1158,7 +1261,49 @@ export class Client {
   async typeSummary(kg: string, typeName: string): Promise<TypeSummary> {
     return this.request<TypeSummary>(
       "GET",
-      `${this.base()}/explore/kgs/${encodeURIComponent(kg)}/types/${encodeURIComponent(typeName)}/summary`,
+      this.pExploreSummary(kg, typeName),
+      undefined,
+      30_000,
+    );
+  }
+
+  /**
+   * Population-aware schema for ONE context graph (`GET
+   * /graphs/{tenant}/explore/kgs/{kg}/schema`, ONTA-418): every type with the
+   * attributes/relationships that are actually POPULATED in that KG, with real
+   * coverage percentages.
+   *
+   * Complements {@link ontologyTypes} (tenant-wide, declaration-only): this one
+   * is KG-scoped and tells you which of the declared slots carry data, so a
+   * caller never has to guess between similar names.
+   *
+   * Declared-but-empty types and attributes are returned MARKED
+   * (`populated: false` / `declared_only: true`), never omitted. `minCoverage`
+   * is the only filter that withholds slots, and the response reports how many
+   * it withheld.
+   *
+   * A backend join by design (the interface-convergence rule): the whole-KG
+   * stats are already materialized server-side, so this is one request rather
+   * than a per-type fan-out.
+   */
+  async kgSchema(
+    kg: string,
+    opts: {
+      types?: string[];
+      minCoverage?: number;
+      includeEmpty?: boolean;
+      limit?: number;
+    } = {},
+  ): Promise<KgSchema> {
+    const qs = new URLSearchParams();
+    for (const t of opts.types ?? []) qs.append("type", t);
+    if (opts.minCoverage != null) qs.set("min_coverage", String(opts.minCoverage));
+    if (opts.includeEmpty != null) qs.set("include_empty", String(opts.includeEmpty));
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<KgSchema>(
+      "GET",
+      this.pExploreSchema(kg, query),
       undefined,
       30_000,
     );
@@ -1178,8 +1323,14 @@ export class Client {
    *
    * `topK` is clamped server-side to 1..50 (the response echoes the effective
    * value). An unknown `kg` yields empty hits, not an error. A deployment with
-   * the semantic index disabled answers 503 naming the
-   * `COGRAPH_SEMANTIC_INDEX_ENABLED` gate (thrown here as an OntaError).
+   * the semantic index gate (`COGRAPH_SEMANTIC_INDEX_ENABLED`) OFF does NOT
+   * error: the vector leg is simply never populated, so the route degrades to
+   * the keyword leg and answers 200 with `degraded: true`. (It historically
+   * 503'd there; that dead-ended callers for no correctness benefit.)
+   *
+   * Both legs read the derived chunk index, so `search` cannot see a value that
+   * has not been indexed yet — use {@link Client.grep} for an index-free literal
+   * scan of a single KG when you need "is this exact string in my graph?".
    */
   async search(
     query: string,
@@ -1195,6 +1346,44 @@ export class Client {
       body,
       30_000,
     );
+  }
+
+  /**
+   * Index-free literal grep over ONE knowledge graph
+   * (`POST /graphs/{tenant}/grep`, ONTA-416) — "is this exact string anywhere in
+   * my graph?" answered by a live SPARQL scan of the KG's triples.
+   *
+   * The debugging counterpart to {@link Client.search}, and a SEPARATE canonical
+   * route because its contract inverts search's on every axis: it reads the
+   * triple store (not the derived chunk index), so it finds values that were
+   * never indexed; `kg` is REQUIRED (an index-free scan must be bounded); a hit
+   * is ONE matching triple, not a ranked entity; and results are in scan order,
+   * not ranked.
+   *
+   * Because the scan has no supporting index, the server guards it: the needle
+   * must carry >= 2 non-whitespace characters (else 400), `limit` is clamped to
+   * 1..200 and echoed, the scan runs under a short dedicated timeout, and the
+   * route is rate-limited. `truncated: true` means the limit was hit and more
+   * matches exist. A deployment may disable the surface entirely
+   * (`COGRAPH_GREP_ENABLED=false`), which answers 503 naming the gate (thrown
+   * here as an OntaError).
+   */
+  async grep(
+    q: string,
+    kg: string,
+    opts: {
+      type?: string;
+      predicate?: string;
+      caseSensitive?: boolean;
+      limit?: number;
+    } = {},
+  ): Promise<GrepResponse> {
+    const body: Record<string, unknown> = { q, kg_name: kg };
+    if (opts.type) body.type = opts.type;
+    if (opts.predicate) body.predicate = opts.predicate;
+    if (opts.caseSensitive != null) body.case_sensitive = opts.caseSensitive;
+    if (opts.limit != null) body.limit = opts.limit;
+    return this.request<GrepResponse>("POST", this.pGrep(), body, 30_000);
   }
 
   /** Search types or attributes by name substring within a KG. */
@@ -1439,6 +1628,11 @@ export interface OntologyApplyBatchResult {
 export interface TypeCount {
   name: string;
   entity_count: number;
+  /** Instances carry geometry, so the type is in the spatio-temporal index.
+   *  The backend has always returned this; the type just never declared it. */
+  spatially_indexed?: boolean;
+  /** Instances carry validity (an explicit bound, or a start+end pair). */
+  temporally_indexed?: boolean;
 }
 
 export interface AttributeUsage {
@@ -1492,6 +1686,60 @@ export interface TypeSummary {
   entity_count: number;
   attributes: AttributeSummary[];
   relationships: RelationshipSummary[];
+  /** See {@link TypeCount.spatially_indexed} (also returned here). */
+  spatially_indexed?: boolean;
+  /** See {@link TypeCount.temporally_indexed} (also returned here). */
+  temporally_indexed?: boolean;
+}
+
+/** An {@link AttributeSummary} inside a {@link KgSchema}, annotated with whether
+ *  any instance in this KG actually carries it. A declared attribute with no
+ *  data is returned with `populated: false` rather than dropped: a count of 0
+ *  is indistinguishable from a transient backend throttle, so dropping makes
+ *  slots flicker across identical calls. */
+export interface SchemaAttribute extends AttributeSummary {
+  populated: boolean;
+}
+
+/** A {@link RelationshipSummary} inside a {@link KgSchema}. See
+ *  {@link SchemaAttribute} for the `populated` semantics. */
+export interface SchemaRelationship extends RelationshipSummary {
+  populated: boolean;
+}
+
+/** One type inside a {@link KgSchema}: the {@link TypeSummary} shape plus the
+ *  population annotations that make declared-but-empty schema visible instead
+ *  of hidden. */
+export interface KgSchemaType extends TypeSummary {
+  attributes: SchemaAttribute[];
+  relationships: SchemaRelationship[];
+  /** This KG has at least one instance of the type. */
+  populated: boolean;
+  /** Declared in the ontology but with no instances in THIS KG. */
+  declared_only: boolean;
+  /** How many slots the `minCoverage` floor withheld (0 when unfiltered). */
+  attributes_withheld: number;
+  relationships_withheld: number;
+}
+
+/** Response of {@link Client.kgSchema}: the whole KG's population-aware schema. */
+export interface KgSchema {
+  kg: string;
+  /** Types sorted by `entity_count` descending, capped by `limit`. */
+  types: KgSchemaType[];
+  total_types: number;
+  truncated: boolean;
+  /** Names of the types the `limit` cap withheld, so a capped type is still
+   *  known to EXIST and can be fetched with `types: [...]`. */
+  omitted_type_names: string[];
+  /** Populated ONLY when a `types` filter matched nothing: every type name the
+   *  graph does have, so a typo reads as "you meant one of these" rather than
+   *  "that type does not exist". Empty otherwise. */
+  available_type_names: string[];
+  /** `"precomputed"` (materialized stats) or `"live_scan"` (legacy KG). */
+  stats_source: string;
+  /** How `coverage_pct` is computed, including the multi-typed-entity caveat. */
+  coverage_note: string;
 }
 
 export type EnrichmentTier = "auto" | "lite" | "base" | "core" | "pro";
@@ -1932,6 +2180,35 @@ export interface SemanticSearchResponse {
   top_k: number;
 }
 
+// --- Index-free literal grep (ONTA-416) --------------------------------------- #
+
+/** ONE matching triple from the `/grep` route. The unit is a TRIPLE, not an
+ *  entity (contrast {@link SemanticSearchHit}): the same entity appears once per
+ *  matching attribute, because "which field did this match in?" is the point of
+ *  a grep. `value` is the literal (truncated), `snippet` a bounded window
+ *  centered on the match, `attr` the predicate's leaf name. `label` / `type` are
+ *  empty when the subject carries neither. */
+export interface GrepMatch {
+  entity_uri: string;
+  label: string;
+  type: string;
+  predicate: string;
+  attr: string;
+  value: string;
+  snippet: string;
+}
+
+/** The `/grep` response envelope. `truncated: true` means the scan hit `limit`
+ *  and more matches exist (the server over-fetches by one row, so this is
+ *  observed, not inferred). `limit` echoes the server-side clamped value
+ *  (1..200) actually used. */
+export interface GrepResponse {
+  matches: GrepMatch[];
+  count: number;
+  limit: number;
+  truncated: boolean;
+}
+
 // --- Raw / passthrough API (COG-128) ----------------------------------------- #
 
 /**
@@ -2253,6 +2530,26 @@ export class RawApi {
     return this.client.requestRaw("GET", this.client.pExploreTypeEdges(kg), init);
   }
 
+  /** `GET /graphs/{tenant}/explore/kgs/{kg}/schema?type&min_coverage&include_empty&limit`. */
+  exploreSchema(
+    kg: string,
+    opts: {
+      types?: string[];
+      minCoverage?: number;
+      includeEmpty?: boolean;
+      limit?: number;
+    } = {},
+    init?: RawInit,
+  ): Promise<Response> {
+    const qs = new URLSearchParams();
+    for (const t of opts.types ?? []) qs.append("type", t);
+    if (opts.minCoverage != null) qs.set("min_coverage", String(opts.minCoverage));
+    if (opts.includeEmpty != null) qs.set("include_empty", String(opts.includeEmpty));
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.client.requestRaw("GET", this.client.pExploreSchema(kg, query), init);
+  }
+
   /** `GET /graphs/{tenant}/kgs/{kg}/type-counts`. */
   typeCounts(kg: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("GET", this.client.pTypeCounts(kg), init);
@@ -2262,6 +2559,12 @@ export class RawApi {
    *  (ONTA-178). Body `{query, kg_name?, type?, top_k?}`. */
   search(body: unknown, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("POST", this.client.pSearch(), { body, ...init });
+  }
+
+  /** `POST /graphs/{tenant}/grep` — index-free literal scan of ONE KG
+   *  (ONTA-416). Body `{q, kg_name, type?, predicate?, case_sensitive?, limit?}`. */
+  grep(body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("POST", this.client.pGrep(), { body, ...init });
   }
 
   /** `GET /graphs/{tenant}/explore/search?kg&q&kind`. */
