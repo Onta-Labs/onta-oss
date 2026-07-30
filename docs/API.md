@@ -215,10 +215,19 @@ Get the complete ontology schema. Used by the NL pipeline.
 
 Execute Query
 
+The query must declare the graphs it reads. Every `FROM` / `FROM NAMED` clause
+has to name a full IRI inside the calling workspace, for example
+`FROM <https://cograph.tech/graphs/{tenant}/kg/{kg_name}>`. The store defines its
+default graph as the union of every named graph, so a query with no dataset
+clause would read every workspace.
+
 **Request body:** `SPARQLQuery`
 
 **200:** Successful Response
+**400:** No dataset clause, unparseable SPARQL, or `SERVICE`
+**403:** A graph outside this workspace
 **422:** Validation Error
+**503:** The SPARQL parser used to confine the query is not installed
 
 ---
 
@@ -226,9 +235,15 @@ Execute Query
 
 Execute Update
 
+Operator only wherever authentication is configured. Arbitrary SPARQL Update
+cannot be confined to one workspace by inspecting its text: `DROP ALL` and
+graph-less removals act on everything while naming no graph. Use `/triples`,
+`/kgs` or the ingest routes for workspace-scoped writes.
+
 **Request body:** `SPARQLUpdate`
 
 **200:** Successful Response
+**403:** Not an operator
 **422:** Validation Error
 
 ---

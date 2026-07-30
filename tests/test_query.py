@@ -1,3 +1,14 @@
+"""Raw SPARQL passthrough, happy path.
+
+The queries here carry an explicit ``FROM <tenant graph>`` because
+``/graphs/{tenant}/query`` now requires one (ONTA-412): without a dataset clause
+Neptune reads the union of every named graph, i.e. every workspace. The
+confinement rules themselves live in ``tests/test_query_tenant_scoping.py``.
+"""
+
+TENANT_GRAPH = "https://cograph.tech/graphs/test-tenant"
+
+
 def test_execute_sparql(client, auth_headers, mock_neptune):
     mock_neptune.query.return_value = {
         "head": {"vars": ["name"]},
@@ -10,7 +21,12 @@ def test_execute_sparql(client, auth_headers, mock_neptune):
     response = client.post(
         "/graphs/test-tenant/query",
         headers=auth_headers,
-        json={"query": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }"},
+        json={
+            "query": (
+                f"SELECT ?name FROM <{TENANT_GRAPH}> "
+                "WHERE { ?s <https://schema.org/name> ?name }"
+            )
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -23,7 +39,7 @@ def test_execute_sparql_empty_result(client, auth_headers, mock_neptune):
     response = client.post(
         "/graphs/test-tenant/query",
         headers=auth_headers,
-        json={"query": "SELECT ?s WHERE { ?s ?p ?o }"},
+        json={"query": f"SELECT ?s FROM <{TENANT_GRAPH}> WHERE {{ ?s ?p ?o }}"},
     )
     assert response.status_code == 200
     assert response.json()["bindings"] == []

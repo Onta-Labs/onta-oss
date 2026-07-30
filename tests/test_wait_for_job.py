@@ -343,8 +343,9 @@ def test_partial_graph_is_queryable_mid_job(
         headers=auth_headers,
         json={
             "query": (
-                "SELECT (COUNT(?e) AS ?cnt) WHERE "
-                "{ ?e a <https://cograph.tech/types/Widget> }"
+                "SELECT (COUNT(?e) AS ?cnt) "
+                "FROM <https://cograph.tech/graphs/test-tenant/kg/widgets> "
+                "WHERE { ?e a <https://cograph.tech/types/Widget> }"
             )
         },
     )
