@@ -190,7 +190,7 @@ All endpoints at `http://localhost:8000`. No auth required for local usage.
 | POST | `/graphs/{tenant}/ingest/csv/schema` | Infer CSV schema |
 | POST | `/graphs/{tenant}/ingest/csv/rows` | Insert rows |
 | GET | `/graphs/{tenant}/kgs` | List context graphs |
-| POST | `/graphs/{tenant}/query` | Raw SPARQL query |
+| POST | `/graphs/{tenant}/query` | Raw SPARQL query (must name its graphs, see below) |
 | GET | `/graphs/{tenant}/ontology/schema` | View ontology |
 | POST | `/graphs/{tenant}/enrich/jobs` | Create + queue an enrichment job |
 | GET | `/graphs/{tenant}/enrich/jobs` | List enrichment jobs |
@@ -201,6 +201,30 @@ All endpoints at `http://localhost:8000`. No auth required for local usage.
 | GET | `/health` | Health check |
 
 Interactive docs at [localhost:8000/docs](http://localhost:8000/docs) when running.
+
+### Raw SPARQL
+
+`POST /graphs/{tenant}/query` requires the query to declare the graphs it reads,
+with every `FROM` / `FROM NAMED` naming a graph inside the calling workspace:
+
+```sparql
+SELECT ?s ?p ?o
+FROM <https://cograph.tech/graphs/{tenant}/kg/{kg_name}>
+WHERE { ?s ?p ?o }
+```
+
+A query with no dataset clause is rejected with a 400, and one naming another
+workspace's graph with a 403. This is not a style preference: the backing store
+defines its default graph as the union of every named graph, so an unscoped
+query reads everything the store holds rather than just your workspace. The
+check parses the query with `rdflib` rather than scanning it for keywords, since
+SPARQL names may legally contain `FROM` (`_:b-FROM` is one token) and a scanner
+can be fooled into seeing a dataset clause the store does not.
+
+`POST /graphs/{tenant}/update` (raw SPARQL Update) is restricted to operators on
+any deployment that has authentication configured, because no equivalent rule
+can confine an arbitrary update. Use `/triples`, `/kgs` and the ingest routes for
+workspace-scoped writes.
 
 ## Model Configuration
 
