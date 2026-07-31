@@ -758,7 +758,7 @@ program
   .option("--kg <name>", "Context graph (or set one once with `onta use <kg>`)")
   .option("--type <Type>", "Entity type to enrich (alternative to the Type.attribute argument)")
   .option("--attribute <attr>", "Attribute to fill (alternative to the Type.attribute argument)")
-  .option("--tier <tier>", "auto | lite | base | core | pro (auto lets the backend pick free vs paid web search)", "auto")
+  .option("--tier <tier>", "auto | lite | base | core | pro (auto routes free Wikidata vs richer chains; OSS has no paid web search)", "auto")
   .option("--limit <n>", "Max entities to enrich (default: every matched entity; 3 with --wait)")
   .option("--apply", "Write results to the graph (with provenance), not just stage")
   .option("--wait", "Block until the job settles and print the results (default: queue and return)")
@@ -817,20 +817,19 @@ program
         let created = await runEnrich(
           opts.tier as "auto" | "lite" | "base" | "core" | "pro",
         );
-        // Non-interactive: we can't ask the user, so on an ambiguous "auto"
-        // route we default to web search (core) per the product decision.
+        // Non-interactive: on ambiguous "auto" default to core. In OSS core is
+        // still the free Wikidata chain unless a paid plugin registered adapters
+        // (OSS dogfood S7 — never claim "web search" here).
         if (created.needs_clarification || created.status === "needs_clarification") {
           process.stdout.write(
-            "Source ambiguous — defaulting to web search (core).\n",
+            "Source ambiguous — defaulting to core (registered adapters + Wikidata in OSS).\n",
           );
           created = await runEnrich("core");
         } else if (created.resolved_tier) {
-          // The tier picks the CHAIN (registered data APIs lead every concrete
-          // tier, then web search); the winning source is reported per value.
           const sourceLabel =
             created.resolved_tier === "lite"
               ? "Wikidata (free)"
-              : "registered data APIs + web search";
+              : `${created.resolved_tier} (registered adapters + Wikidata — no paid web search in OSS)`;
           process.stdout.write(
             `Sources: ${sourceLabel}${created.routing_note ? ` — ${created.routing_note}` : ""}\n`,
           );

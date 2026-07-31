@@ -208,6 +208,20 @@ DEFAULT_PROPERTY_CONFIG = ERConfig(
     decisive_signals=(),
 )
 
+# Org / supplier / vendor shaped — OSS dogfood S4. Master-data users ingest
+# "Acme Corp" / "ACME Corporation" / "Acme Corp." and expect ER to fire.
+# Signal handlers today only score name/address/email/phone/dob (no tax_id
+# comparator yet), so we weight name heavily with a slightly looser auto-merge
+# threshold than person configs. Legal-suffix normalization is a follow-up.
+DEFAULT_ORG_CONFIG = ERConfig(
+    type_name="Organization",
+    signals=("name", "address"),
+    weights=(0.85, 0.15),
+    auto_merge_threshold=0.88,
+    review_threshold=0.70,
+    decisive_signals=(),
+)
+
 DEFAULTS_BY_TYPE: dict[str, ERConfig] = {
     # Person-shaped types — Guest config (email decisive, phone + name +
     # address + dob weighted). The LLM ontology inferrer doesn't always
@@ -231,6 +245,15 @@ DEFAULTS_BY_TYPE: dict[str, ERConfig] = {
     "Building": DEFAULT_PROPERTY_CONFIG,
     "Location": DEFAULT_PROPERTY_CONFIG,
     "Venue": DEFAULT_PROPERTY_CONFIG,
+    # Organization / master-data types (OSS dogfood S4).
+    "Organization": DEFAULT_ORG_CONFIG,
+    "Organisation": DEFAULT_ORG_CONFIG,
+    "Company": DEFAULT_ORG_CONFIG,
+    "Supplier": DEFAULT_ORG_CONFIG,
+    "Vendor": DEFAULT_ORG_CONFIG,
+    "Business": DEFAULT_ORG_CONFIG,
+    "Account": DEFAULT_ORG_CONFIG,
+    "Partner": DEFAULT_ORG_CONFIG,
 }
 
 

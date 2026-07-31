@@ -19,8 +19,27 @@ from __future__ import annotations
 import httpx
 import numpy as np
 
-OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
-EMBEDDING_MODEL = "openai/text-embedding-3-small"
+import os
+
+def _embeddings_url() -> str:
+    """OpenAI-compatible embeddings endpoint.
+
+    Honors ``OMNIX_EMBED_BASE_URL`` / ``OMNIX_LLM_BASE_URL`` so self-hosted
+    stacks (OSS dogfood S8) can keep embeddings on-prem with chat.
+    """
+    base = (
+        os.environ.get("OMNIX_EMBED_BASE_URL")
+        or os.environ.get("OMNIX_LLM_BASE_URL")
+        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
+    return f"{base}/embeddings"
+
+
+OPENROUTER_EMBEDDINGS_URL = _embeddings_url()  # back-compat name; re-read at call time
+EMBEDDING_MODEL = os.environ.get(
+    "OMNIX_EMBED_MODEL", "openai/text-embedding-3-small"
+)
 EMBEDDING_DIM = 1536
 EMBEDDING_BATCH_SIZE = 100
 
@@ -43,17 +62,19 @@ async def embed_texts(
     Raises :class:`EmbeddingError` on any non-200 response.
     """
     all_embeddings: list[list[float]] = []
+    embeddings_url = _embeddings_url()
+    model = os.environ.get("OMNIX_EMBED_MODEL", EMBEDDING_MODEL)
 
     for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
         batch = texts[i : i + EMBEDDING_BATCH_SIZE]
         async with httpx.AsyncClient(timeout=timeout) as client:
             res = await client.post(
-                OPENROUTER_EMBEDDINGS_URL,
+                embeddings_url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"model": EMBEDDING_MODEL, "input": batch},
+                json={"model": model, "input": batch},
             )
             if res.status_code != 200:
                 raise EmbeddingError(
