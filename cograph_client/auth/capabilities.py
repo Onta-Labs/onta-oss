@@ -56,3 +56,15 @@ def can_admin_members(role: str | None) -> bool:
 
 def can_write(role: str | None) -> bool:
     return capability_for_role(role) == "write"
+
+
+#: The message a read-only member gets from ANY refused mutation. Lives here so
+#: the two enforcement points — :func:`cograph_client.auth.access.require_tenant_write`
+#: (single-purpose mutating routes) and
+#: :class:`cograph_client.agent.registry.ReadOnlyMembershipError` (the read/write
+#: mixed ``/agent`` surface, ONTA-451) — cannot drift into two different wordings
+#: for the same refusal.
+READ_ONLY_DETAIL = (
+    "This workspace membership is read-only. "
+    "Ask the owner for write access to make changes."
+)

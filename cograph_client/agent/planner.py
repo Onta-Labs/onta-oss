@@ -1016,6 +1016,13 @@ def _assert_may_commit(ctx: AgentContext, steps: list) -> None:
     Capability classification is deny-by-default
     (:func:`~cograph_client.agent.registry.capability_writes`): an unknown or
     undeclared capability counts as mutating.
+
+    Scope note: this governs PLAN STEPS. The question fast-path in
+    :func:`_respond` dispatches ``get_capability("query").answer`` by NAME
+    without consulting ``capability_writes`` — sound in OSS because
+    ``QueryCapability.answer`` only reads, but a downstream that replaces the
+    ``query`` capability with a writing one would not be gated by this. Give a
+    replacement the same read-only contract, or gate it there too.
     """
     if ctx.can_write():
         return
@@ -1043,9 +1050,15 @@ async def _assert_confirm_may_commit(ctx: AgentContext, store, plan_id: str) -> 
     than stranding it in ``executing`` until the stale cutoff.
 
     Unlike the KG-scope gate — best-effort, deferring to the authoritative claim
-    read — this one fails CLOSED: a plan that cannot be read is a plan that
-    cannot be shown to be read-only, so a read-only caller is refused rather
+    read — the PLAN READ here fails closed: a plan that cannot be read is a plan
+    that cannot be shown to be read-only, so a read-only caller is refused rather
     than allowed through to the claim.
+
+    That is a property of this read only, not of the gate end-to-end: the ROLE
+    this depends on is resolved by ``resolve_member_role``, which deliberately
+    fails OPEN to ``writer`` on a workspace-registry outage so a DB blip cannot
+    freeze production for entitled users. Same posture as ``require_tenant_write``
+    — this change neither introduces nor worsens it.
     """
     if ctx.can_write():
         return
@@ -1194,8 +1207,10 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     payload is persisted on the plan for the duplicate-confirm replay above.
     """
     store = make_plan_store()
-    # Authorization precedes validation: a read-only member is refused before the
-    # KG-scope gate below tells them anything about which graphs exist.
+    # Authorization before validation ON THIS PATH: a refused confirm is a plain
+    # 403 rather than a KG-scope error about a plan the caller could never run.
+    # (The plan-time path deliberately runs check_kg_scope first — a reader may
+    # list graphs, so its clarify reveals nothing the read routes don't.)
     await _assert_confirm_may_commit(ctx, store, plan_id)
     gate = await _kg_scope_gate_for_confirm(ctx, store, plan_id)
     if gate is not None:

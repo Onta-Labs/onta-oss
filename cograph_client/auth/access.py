@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException
 
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.auth.capabilities import (
+    READ_ONLY_DETAIL,
     can_write,
     capability_for_role,
     normalize_role,
@@ -77,11 +78,5 @@ async def require_tenant_write(
     """
     ctx = await attach_tenant_capability(tenant)
     if not can_write(ctx.role):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "This workspace membership is read-only. "
-                "Ask the owner for write access to make changes."
-            ),
-        )
+        raise HTTPException(status_code=403, detail=READ_ONLY_DETAIL)
     return ctx

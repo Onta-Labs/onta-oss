@@ -28,6 +28,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
+from cograph_client.auth.capabilities import READ_ONLY_DETAIL
 from cograph_client.graph.client import NeptuneClient
 
 
@@ -179,12 +180,10 @@ class ReadOnlyMembershipError(PermissionError):
     mutating routes, so every interface (Explorer / CLI / MCP) sees one shape.
     """
 
-    #: Wording shared with ``require_tenant_write`` so a reader gets the same
-    #: message whichever mutating surface they hit.
-    DETAIL = (
-        "This workspace membership is read-only. "
-        "Ask the owner for write access to make changes."
-    )
+    #: The ONE shared wording (``auth.capabilities.READ_ONLY_DETAIL``), imported
+    #: rather than copied so a reader gets the same message whichever mutating
+    #: surface they hit and the two cannot drift.
+    DETAIL = READ_ONLY_DETAIL
 
     def __init__(self, capabilities: "list[str] | None" = None):
         self.capabilities = sorted({c for c in (capabilities or []) if c})
