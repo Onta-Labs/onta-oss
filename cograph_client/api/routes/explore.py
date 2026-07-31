@@ -31,10 +31,15 @@ from cograph_client.graph.layers import (
     layer_type_uri,
     type_namespace,
 )
-from cograph_client.graph.ontology_queries import attr_uri, type_uri
+# TYPE_URI_PREFIX was a local copy of the same literal; imported now so the
+# prefix this module strips is by construction the one type_uri() mints.
+from cograph_client.graph.ontology_queries import TYPE_URI_PREFIX, attr_uri, type_uri
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import (
+    is_valid_type_name,
     kg_graph_uri,
+    require_valid_type_name,
+    skip_invalid_type_name,
     sparql_string_literal,
     tenant_graph_uri,
 )
@@ -60,6 +65,23 @@ _CORE_SLOT_PRED = "https://cograph.tech/onto/coreSlot"
 def _from_graphs(graph_uris: list[str]) -> str:
     """``FROM <g1> FROM <g2> …`` so a SPARQL default-graph union covers layers."""
     return " ".join(f"FROM <{g}>" for g in graph_uris)
+
+
+def _is_core_slot(type_leaf: str, pred_leaf: str, core_slots: set[str]) -> bool:
+    """Is the attribute URI for ``(type_leaf, pred_leaf)`` a declared core slot?
+
+    A MEMBERSHIP TEST, so it answers False rather than raising (ONTA-425). Both
+    leaves are DERIVED by string-slicing a stored URI, and a URI outside the
+    expected shape slices to ``""`` — e.g. a bare ``…/onto/`` predicate, or a
+    type URI outside the tenant namespace. Since ``core_slots`` only ever holds
+    well-formed attribute URIs, a leaf that cannot mint one is by definition not
+    in the set, and False is the correct answer, not an error. These call sites
+    are drift-report enumerations over every stored edge: raising here would fail
+    the whole report over one malformed row.
+    """
+    if not (is_valid_type_name(type_leaf) and is_valid_type_name(pred_leaf)):
+        return False
+    return attr_uri(type_leaf, pred_leaf) in core_slots
 
 
 async def _resolve_layered_type(
@@ -89,7 +111,6 @@ RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
 RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#"
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
 ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 # Predicate-hygiene: the ONE definition of "is this an internal/housekeeping
 # predicate?" lives in cograph_client.graph.predicates and is shared with the NL
@@ -817,7 +838,7 @@ async def _read_edges_from_stats_drift(
             p_uri[len(ONTO_PRED_PREFIX):] if p_uri.startswith(ONTO_PRED_PREFIX)
             else p_uri.rstrip("/").split("/")[-1]
         )
-        is_core = attr_uri(src_leaf, pred_leaf) in core_slots
+        is_core = _is_core_slot(src_leaf, pred_leaf, core_slots)
         if not drift_control.should_declare(support, source_count, is_core):
             continue
         out.append((su[len(TYPE_URI_PREFIX):], tu[len(TYPE_URI_PREFIX):]))
@@ -936,7 +957,7 @@ async def _live_edge_scan_drift(
             p_uri[len(ONTO_PRED_PREFIX):] if p_uri.startswith(ONTO_PRED_PREFIX)
             else p_uri.rstrip("/").split("/")[-1]
         )
-        is_core = attr_uri(src, pred_leaf) in core_slots
+        is_core = _is_core_slot(src, pred_leaf, core_slots)
         if not drift_control.should_declare(support, source_count, is_core):
             continue
         out.append((src, tgt))
@@ -1168,7 +1189,7 @@ async def _build_drift_report(
             "source_count": entity_counts.get(type_uri_str, 0),
             # pred_uri is …/onto/<pred>; core_slots holds ontology attr URIs, so
             # match on attr_uri(type_leaf, pred_leaf), not the raw predicate URI.
-            "is_core_slot": attr_uri(type_leaf, pred_leaf) in core_slots,
+            "is_core_slot": _is_core_slot(type_leaf, pred_leaf, core_slots),
         })
     report = drift_control.drift_report(declarations)
     logger.info(
@@ -1414,7 +1435,12 @@ async def get_type_summary(
     Serves from precomputed stats (fast); falls back to a live scan if stats
     for this type are not yet materialized. All percentages are relative to
     entity_count.
+
+    A ``type_name`` that cannot sit inside an IRI is a 422 (ONTA-425), rejected
+    here rather than three store round trips later, so the caller is told what is
+    wrong instead of getting a 500 out of the store's parser.
     """
+    require_valid_type_name(type_name)
     cache_key = (tenant.tenant_id, kg_name, type_name)
     cached = _summary_cache.get(cache_key)
     if cached is not None and (time.monotonic() - cached[0]) < _SUMMARY_TTL_SECONDS:
@@ -1862,7 +1888,11 @@ async def get_type_records(
         }
 
     Never errors on an empty/missing type; returns the empty sentinel instead.
+    A type name that could not exist at all — one carrying a character no IRI may
+    contain — is a different thing from a type with no rows, and is a 422
+    (ONTA-425). The sentinel keeps covering every name that is merely absent.
     """
+    require_valid_type_name(type_name)
     _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
 
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
@@ -2176,6 +2206,15 @@ async def search_explorer(
 
         results = []
         for type_name in matched:
+            # Fail SOFT here, unlike the single-type routes above (ONTA-425).
+            # These names come back from the ONTOLOGY, not from the caller, and
+            # this loop is an ENUMERATION: letting `layer_type_uri` raise on one
+            # corrupt stored name would 422 the whole search for every other
+            # type, the all-or-nothing failure onta-oss#274 had to fix for KG
+            # names. Skipping keeps the corruption observable in logs (and the
+            # bad type genuinely unqueryable) without taking the listing down.
+            if skip_invalid_type_name(type_name, "explore_search"):
+                continue
             resolved = stack.resolve_type(type_name, types_by_layer)
             if resolved is None:
                 continue

@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
 from cograph_client.config import settings
+from cograph_client.graph.queries import is_valid_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +219,33 @@ def _resolve_tenant(tenant: Optional[str], api_key: Optional[str]) -> TenantCont
     has_external = _external_verifier is not None
 
     # No auth configured at all — open access; honor the requested tenant.
+    #
+    # ONTA-422: "honor the requested tenant" means the caller's raw URL segment
+    # becomes ``tenant_id``, which every route interpolates into a graph IRI
+    # (``tenant_graph_uri`` / ``kg_graph_uri``). This is the ONE mode where that
+    # value is unconstrained — a static key maps to a fixed tenant and a verifier
+    # authorizes the path tenant against a grant list, so neither can be crafted.
+    # Reject a tenant that cannot legally sit inside an IRI before it becomes
+    # one. The check is the shared structural predicate (no shape rule), so a
+    # self-hosted deployment's existing workspace id keeps working; only ids that
+    # could not have produced a valid query anyway are refused.
+    #
+    # 400 rather than the 422 ``tenant_graph_uri`` raises: this is a rejection at
+    # the auth boundary, before any route body runs, and it sits beside the 401 /
+    # 403 this function already raises. The 422 stays as the backstop for any
+    # caller that reaches a URI builder some other way.
     if not has_static_keys and not has_external:
-        return TenantContext(tenant_id=tenant or "default", api_key="")
+        requested = tenant or "default"
+        if not is_valid_tenant_id(requested):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid workspace id {requested!r}: must be a single "
+                    "path segment with no whitespace, control character, '/', "
+                    "'%', or any of <>\"{}|^`\\"
+                ),
+            )
+        return TenantContext(tenant_id=requested, api_key="")
 
     if not api_key:
         raise HTTPException(status_code=401, detail="Not authenticated")
