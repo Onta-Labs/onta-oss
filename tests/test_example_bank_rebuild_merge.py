@@ -342,6 +342,89 @@ async def test_a_full_bank_still_accepts_refreshes(tmp_path, make_bank, monkeypa
     assert saved[0]["sparql"] == "SELECT ?fresh WHERE { ?x a ?t }"
 
 
+async def test_rebuild_is_idempotent_when_one_key_has_two_pairs(tmp_path, make_bank):
+    """The idempotence test above, on the fixture last-wins exists for.
+
+    A namespace rename leaves TWO pairs for one question in
+    ``finetune_pairs.jsonl`` permanently: that file keys on
+    ``(question, graph_uri)`` and the IRIs differ, while the rebuild truncates
+    both to the same ``kg_name``. Refreshing eagerly per item flipped the stored
+    example old -> new -> old within a single batch, so BOTH writes reported
+    "changed" and every later eval re-saved a byte-identical bank while logging
+    a bogus accepted count. Collapsing the batch by key first is what fixes it.
+    (Found by independent review.)
+    """
+    bank = make_bank([])
+    ft = tmp_path / "finetune_pairs.jsonl"
+    _write_jsonl(
+        ft,
+        [
+            _pair("imdb-movies", "how many films", sparql="SELECT ?stale", graph=LEGACY_GRAPH),
+            _pair("imdb-movies", "how many films", sparql="SELECT ?fresh"),
+        ],
+    )
+
+    assert await rebuild_example_bank(ft, bank=bank) == 1
+    first = bank._bank_path.read_text()
+
+    # A second bank over the SAME file — not make_bank(), which would rewrite it.
+    bank2 = ExampleBank(openrouter_api_key="unused", bank_path=bank._bank_path)
+
+    async def _boom(_texts):
+        raise AssertionError("nothing new; must not embed")
+
+    bank2._embed_texts = _boom  # type: ignore[method-assign]
+    saves = _spy_on_save(bank2)
+
+    assert await rebuild_example_bank(ft, bank=bank2) == 0, "the same two pairs changed nothing"
+    assert saves == []
+    assert bank._bank_path.read_text() == first
+    assert "SELECT ?fresh" in first and "SELECT ?stale" not in first
+
+
+# ── save() must not be able to destroy the bank it is rewriting ──────────
+
+
+def test_a_failed_save_leaves_the_previous_bank_intact(tmp_path, monkeypatch, make_bank):
+    """``open(path, "w")`` truncates before the first byte lands.
+
+    This file is committed to git and is now rewritten routinely, so a save that
+    dies partway must not be able to leave a truncated bank -- losing it is the
+    exact thing this PR exists to prevent. save() writes a temp file and
+    os.replace()s it. (Found by independent review.)
+    """
+    bank = make_bank([_row("imdb-movies", "how many films"), _row("events-sf", "how many events")])
+    bank.load()
+    before = bank._bank_path.read_text()
+
+    real_dumps = bank_mod.json.dumps
+    calls = {"n": 0}
+
+    def _explode(obj, *a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("disk went away mid-save")
+        return real_dumps(obj, *a, **kw)
+
+    monkeypatch.setattr(bank_mod.json, "dumps", _explode)
+
+    with pytest.raises(RuntimeError):
+        bank.save()
+
+    assert bank._bank_path.read_text() == before, "a failed save truncated the committed bank"
+    assert list(tmp_path.glob("*.tmp")) == [], "the temp file must be cleaned up"
+
+
+def test_save_clears_the_pending_benchmark_purge(tmp_path, make_bank):
+    """Otherwise a second save-gated cycle on the same instance fires blind."""
+    bank = make_bank([_row("spider-world-1", "how many countries"), _row("imdb-movies", "how many films")])
+
+    assert bank.load() == 1
+    assert bank.skipped_benchmark_on_load == 1
+    bank.save()
+    assert bank.skipped_benchmark_on_load == 0
+
+
 # ── The same semantics on the singular add() ─────────────────────────────
 #
 # add() has no production caller today (only the class docstring's example), but
@@ -393,6 +476,30 @@ async def test_add_rejects_a_new_example_at_capacity_but_still_refreshes(make_ba
 
 
 # ── populate_from_eval_reports carries the same save gate ────────────────
+
+
+async def test_populate_keeps_the_same_question_from_two_different_kgs(tmp_path, make_bank):
+    """The other ingestion path must use the same identity as add_batch.
+
+    It deduped on question alone, dropping the second KG's example BEFORE
+    add_batch could apply the (question, kg_name) identity -- so the winner was
+    whichever KG ``sorted(glob("eval-*.json"))`` reached first. (Found by
+    independent review.)
+    """
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    for kg in ("events-sf", "imdb-movies"):
+        (reports / f"eval-{kg}.json").write_text(json.dumps({
+            "kg_name": kg,
+            "ontology": f"ontology of {kg}",
+            "queries": {"results": [
+                {"question": "how many rows", "sparql": f"SELECT ?x # {kg}", "verdict": "correct"},
+            ]},
+        }))
+
+    bank = make_bank([])
+    assert await bank.populate_from_eval_reports(reports) == 2
+    assert sorted(ex.kg_name for ex in bank._examples) == ["events-sf", "imdb-movies"]
 
 
 async def test_populate_does_not_rewrite_the_bank_when_nothing_is_accepted(tmp_path, make_bank):

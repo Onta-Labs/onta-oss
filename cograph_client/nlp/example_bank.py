@@ -386,11 +386,25 @@ class ExampleBank:
         return len(self._examples)
 
     def save(self) -> None:
-        """Persist all examples to JSONL file."""
+        """Persist all examples to JSONL file.
+
+        Writes a sibling temp file and ``os.replace``s it, so an interrupted or
+        failing save leaves the previous bank intact instead of a truncated one.
+        Opening the real path ``"w"`` truncates before the first byte lands --
+        an unacceptable failure mode for a file that is committed to git, is
+        rewritten routinely now that the eval rebuild merges into it, and whose
+        loss is the exact thing that motivated onta-oss#291.
+        """
         self._bank_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._bank_path, "w") as f:
-            for ex in self._examples:
-                f.write(json.dumps(ex.to_dict()) + "\n")
+        tmp_path = self._bank_path.with_name(self._bank_path.name + ".tmp")
+        try:
+            with open(tmp_path, "w") as f:
+                for ex in self._examples:
+                    f.write(json.dumps(ex.to_dict()) + "\n")
+            os.replace(tmp_path, self._bank_path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
         # The benchmark rows load() filtered are now gone from disk, so the
         # debt is paid; leaving the counter set would make a SECOND save-gated
         # cycle on the same instance fire unconditionally. Read it before
@@ -479,16 +493,32 @@ class ExampleBank:
         a full bank must still be correctable.
         """
         by_key = {ex.key: ex for ex in self._examples}
-        refreshed: set[tuple[str, str]] = set()
-        # Keyed dict, not a list: preserves first-appearance ORDER while letting
-        # a later item overwrite an earlier one's CONTENT (last-wins, above).
-        pending: dict[tuple[str, str], dict] = {}
 
+        # Collapse the batch by key FIRST, then decide refresh-vs-new. Keyed
+        # dict, not a list: preserves first-appearance ORDER while letting a
+        # later item overwrite an earlier one's CONTENT (last-wins, above).
+        #
+        # Collapsing before the refresh (rather than refreshing eagerly as each
+        # item arrives) is what makes last-wins uniform across both branches and
+        # the returned count exact. Eager refresh applied every duplicate in
+        # turn, so a batch holding A then B for one key flipped the example
+        # A->B->A -- both writes report "changed", and the caller's
+        # "don't rewrite the bank for nothing" gate fires on a net no-op. Not
+        # hypothetical: a namespace rename leaves TWO pairs for one question in
+        # finetune_pairs.jsonl permanently (it keys on graph_uri, which differs;
+        # the rebuild truncates both to the same kg_name), so every subsequent
+        # eval re-saved a byte-identical bank and logged a bogus accepted count.
+        # Found by independent review of onta-oss#291.
+        collapsed: dict[tuple[str, str], dict] = {}
         for item in items:
             kg_name = item.get("kg_name", "")
             if is_benchmark_kg(kg_name):
                 continue
-            key = example_key(item["question"], kg_name)
+            collapsed[example_key(item["question"], kg_name)] = item
+
+        refreshed: set[tuple[str, str]] = set()
+        pending: dict[tuple[str, str], dict] = {}
+        for key, item in collapsed.items():
             existing = by_key.get(key)
             if existing is not None:
                 if existing.refresh_from(item["sparql"], item.get("ontology_context", "")):
@@ -692,7 +722,12 @@ class ExampleBank:
         """
         reports_path = Path(reports_dir) if reports_dir else EVAL_REPORTS_DIR
         items: list[dict] = []
-        seen_questions: set[str] = set()
+        # Keyed by :func:`example_key`, not by question alone. Question-alone
+        # dropped the same wording asked of a DIFFERENT KG before add_batch ever
+        # saw it, so the identity fix could not take effect on this path and the
+        # winner was whichever KG `sorted(glob(...))` happened to reach first.
+        # Found by independent review of onta-oss#291.
+        seen_keys: set[tuple[str, str]] = set()
 
         # 1. Scan eval report JSON files
         for json_file in sorted(reports_path.glob("eval-*.json")):
@@ -725,10 +760,10 @@ class ExampleBank:
                     sparql = result.get("sparql", "").strip()
                     if not question or not sparql:
                         continue
-                    q_key = question.lower()
-                    if q_key in seen_questions:
+                    key = example_key(question, kg_name)
+                    if key in seen_keys:
                         continue
-                    seen_questions.add(q_key)
+                    seen_keys.add(key)
                     items.append({
                         "question": question,
                         "sparql": sparql,
@@ -753,13 +788,17 @@ class ExampleBank:
                             sparql = pair.get("sparql", "").strip()
                             if not question or not sparql:
                                 continue
-                            q_key = question.lower()
-                            if q_key in seen_questions:
-                                continue
-                            seen_questions.add(q_key)
-                            # Extract kg_name from graph_uri if available
+                            # Derive kg_name BEFORE the dedup check: the key
+                            # needs it, so the old question-only check had to
+                            # run first and could drop a pair belonging to a
+                            # different KG than the one that claimed the
+                            # question.
                             graph_uri = pair.get("graph_uri", "")
                             kg_name = graph_uri.split("/kg/")[-1] if "/kg/" in graph_uri else ""
+                            key = example_key(question, kg_name)
+                            if key in seen_keys:
+                                continue
+                            seen_keys.add(key)
                             if kg_name in HOLDOUT_V2_KGS:
                                 logger.debug(
                                     "example_bank: skipping holdout-v2 KG %s from finetune pair",
