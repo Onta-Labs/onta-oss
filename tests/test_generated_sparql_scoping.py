@@ -533,6 +533,8 @@ BUILT_HERE_QUERY_VARS = {
     # `FROM <instance_graph>` / `FROM <target_graph>`.
     "type_query": "f-string template carrying its own FROM",
     "pred_query": "f-string template carrying its own FROM",
+    # `_scan_instance_types` (ONTA-427): template over `FROM <instance_graph>`.
+    "type_scan_query": "f-string template carrying its own FROM <instance_graph>",
     # `_resolve_uri_labels`: template, scoped by ONTA-424 to `FROM <data_graph>`
     # when the caller threads one.
     "label_query": "f-string template, scoped to FROM <data_graph> (ONTA-424)",

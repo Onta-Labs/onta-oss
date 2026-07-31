@@ -1655,11 +1655,15 @@ class NLQueryPipeline:
         """
         from cograph_client.graph.layers import type_name_from_uri
 
-        query = (
+        # Named for what it is, not `query`: the confinement drift guard in
+        # tests/test_generated_sparql_scoping.py is deny-by-default and a
+        # generically-named local would have to be allowlisted, which would then
+        # wave through the next generated query that happened to reuse the name.
+        type_scan_query = (
             f"SELECT DISTINCT ?type FROM <{instance_graph}> "
             f"WHERE {{ ?s <{RDF_TYPE_URI}> ?type }}"
         )
-        _, rows = parse_sparql_results(await self.neptune.query(query))
+        _, rows = parse_sparql_results(await self.neptune.query(type_scan_query))
         out: set[str] = set()
         for row in rows:
             # type_name_from_uri understands tenant / public / enhanced
