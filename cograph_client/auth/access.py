@@ -66,6 +66,14 @@ async def require_tenant_write(
     Static / subject-less keys keep write access. Use as
     ``Depends(require_tenant_write)`` on ingest, enrich write, ontology
     mutations, KG create/delete, etc. Read routes keep plain ``get_tenant``.
+
+    **The one sanctioned exception** is ``POST /graphs/{tenant}/agent``
+    (ONTA-451): it is the single read/write MIXED route, so a blanket dependency
+    here would also block the read-only turns a reader is entitled to. It uses
+    :func:`get_tenant_with_capability` and gates at capability dispatch inside
+    the planner instead, raising the same 403 wording. Any OTHER mutating route
+    belongs on this dependency — a route that "mostly reads" is not a reason to
+    hand-roll a second gate.
     """
     ctx = await attach_tenant_capability(tenant)
     if not can_write(ctx.role):

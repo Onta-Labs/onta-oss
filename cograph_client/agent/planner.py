@@ -68,8 +68,10 @@ from cograph_client.agent.kg_scope import (
 )
 from cograph_client.agent.registry import (
     AgentContext,
+    ReadOnlyMembershipError,
     get_capabilities,
     get_capability,
+    mutating_step_capabilities,
     order_steps,
 )
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
@@ -973,6 +975,8 @@ async def _respond(
             out["questions"] = p["questions"]
         return out
 
+    _assert_may_commit(ctx, steps)
+
     steps = order_steps(steps)
     plan_id = _new_plan_id()
     await make_plan_store().save(
@@ -991,6 +995,72 @@ async def _respond(
         "plan_id": plan_id,
         "steps": [s.to_dict() for s in steps],
     }
+
+
+def _assert_may_commit(ctx: AgentContext, steps: list) -> None:
+    """Refuse to commit a mutating plan for a read-only member (ONTA-451).
+
+    ``/agent`` is the one read/write MIXED surface: the same endpoint answers a
+    question and ingests a dataset, so a blanket ``require_tenant_write`` route
+    dependency would lock a reader out of the read-only turns their role is
+    supposed to allow. The gate therefore sits at CAPABILITY DISPATCH — here,
+    where a mutating plan is about to be persisted, and again in
+    :func:`execute_plan`, the only path that actually runs one.
+
+    Everything upstream of this point is read-only by contract: the classifier,
+    ``QueryCapability.answer``, a capability's ``plan()`` (protocol: "NO
+    writes"), and the ``answer`` / ``clarify`` short-circuits — all of which
+    return before this call. So a reader keeps questions, web research, ontology
+    inspection and clarify rounds, and loses exactly the mutations.
+
+    Capability classification is deny-by-default
+    (:func:`~cograph_client.agent.registry.capability_writes`): an unknown or
+    undeclared capability counts as mutating.
+    """
+    if ctx.can_write():
+        return
+    blocked = mutating_step_capabilities(steps)
+    if not blocked:
+        return
+    logger.info(
+        "agent_write_denied_read_only",
+        tenant=ctx.tenant_id,
+        kg=getattr(ctx, "kg_name", ""),
+        capabilities=blocked,
+    )
+    raise ReadOnlyMembershipError(blocked)
+
+
+async def _assert_confirm_may_commit(ctx: AgentContext, store, plan_id: str) -> None:
+    """The ONTA-451 authorization gate for a CONFIRM. Fails CLOSED.
+
+    Re-checked here and not only at plan time because a plan can sit
+    un-confirmed indefinitely: one persisted while the caller had write access
+    must not stay runnable after their role is downgraded to reader.
+
+    Runs BEFORE ``claim_for_execution`` (like the KG-scope gate) so a refused
+    confirm leaves the plan ``proposed`` and re-confirmable by a writer, rather
+    than stranding it in ``executing`` until the stale cutoff.
+
+    Unlike the KG-scope gate — best-effort, deferring to the authoritative claim
+    read — this one fails CLOSED: a plan that cannot be read is a plan that
+    cannot be shown to be read-only, so a read-only caller is refused rather
+    than allowed through to the claim.
+    """
+    if ctx.can_write():
+        return
+    try:
+        plan = await store.get(plan_id, ctx.tenant_id)
+    except Exception as exc:  # noqa: BLE001 — unreadable ⇒ unprovable ⇒ refuse
+        logger.warning(
+            "agent_plan_capability_read_failed", plan_id=plan_id, exc_info=True
+        )
+        raise ReadOnlyMembershipError() from exc
+    if plan is None:
+        # Nothing to run anyway; refusing rather than reporting "not found" also
+        # keeps the confirm path from being a plan-existence oracle for a reader.
+        raise ReadOnlyMembershipError()
+    _assert_may_commit(ctx, plan.steps)
 
 
 async def _plan_intents(
@@ -1124,6 +1194,9 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     payload is persisted on the plan for the duplicate-confirm replay above.
     """
     store = make_plan_store()
+    # Authorization precedes validation: a read-only member is refused before the
+    # KG-scope gate below tells them anything about which graphs exist.
+    await _assert_confirm_may_commit(ctx, store, plan_id)
     gate = await _kg_scope_gate_for_confirm(ctx, store, plan_id)
     if gate is not None:
         return gate
