@@ -1,8 +1,9 @@
 """Default Normalizer implementation for cross-file entity resolution.
 
-Pure-stdlib normalization: diacritic stripping, honorific/suffix removal,
-nickname expansion, gmail-dot canonicalization, E.164 phone shaping,
-USPS-style address abbreviation, and best-effort DOB ISO parsing.
+Pure-stdlib normalization: diacritic stripping, honorific/person-suffix and
+legal-entity-suffix removal, nickname expansion, gmail-dot canonicalization,
+E.164 phone shaping, USPS-style address abbreviation, and best-effort DOB
+ISO parsing.
 
 This module intentionally avoids any external dependency (no phonenumbers,
 no usaddress, no dateutil) so it can run inside the OSS client without
@@ -26,14 +27,55 @@ from .types import EntitySignals, NormalizedSignals
 _HONORIFICS: frozenset[str] = frozenset({"mr", "mrs", "ms", "miss", "dr", "sir", "dame"})
 _SUFFIXES: frozenset[str] = frozenset({"jr", "sr", "ii", "iii", "iv", "phd", "md"})
 
+# Legal-entity trailing tokens (org ER / OSS dogfood S4). Case-insensitive
+# because names are lowercased before tokenize. Trailing-only so "Company
+# Store" keeps "company" as a content word while "Acme Company" → "acme".
+_LEGAL_ENTITY_SUFFIXES: frozenset[str] = frozenset({
+    "corp",
+    "corporation",
+    "inc",
+    "incorporated",
+    "llc",
+    "ltd",
+    "limited",
+    "co",
+    "company",
+})
+
+# Multi-token forms produced when "L.L.C." is punct-stripped to "l l c".
+_LEGAL_ENTITY_MULTI_SUFFIXES: frozenset[tuple[str, ...]] = frozenset({
+    ("l", "l", "c"),
+})
+
 # Keep letters, hyphen, apostrophe, whitespace; nuke periods/commas/etc.
 _NAME_KEEP_RE = re.compile(r"[^a-z\s'\-]")
 _WS_RE = re.compile(r"\s+")
+# Collapse dotted LLC/PLC spellings before general punct strip so they land
+# as a single token the suffix set recognizes ("l.l.c." → "llc").
+_DOTTED_LEGAL_RE = re.compile(r"\b(l\.l\.c|p\.l\.c)\.?\b")
 
 
 def _strip_diacritics(s: str) -> str:
     decomposed = unicodedata.normalize("NFD", s)
     return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+
+
+def _strip_trailing_legal_suffixes(tokens: list[str]) -> list[str]:
+    """Drop trailing Corp/Inc/LLC/… tokens so org variants share a core name."""
+    while tokens:
+        if tokens[-1] in _LEGAL_ENTITY_SUFFIXES:
+            tokens.pop()
+            continue
+        stripped_multi = False
+        for multi in _LEGAL_ENTITY_MULTI_SUFFIXES:
+            n = len(multi)
+            if len(tokens) >= n and tuple(tokens[-n:]) == multi:
+                del tokens[-n:]
+                stripped_multi = True
+                break
+        if not stripped_multi:
+            break
+    return tokens
 
 
 def _normalize_name(raw: str | None) -> tuple[str | None, tuple[str, ...]]:
@@ -42,14 +84,18 @@ def _normalize_name(raw: str | None) -> tuple[str | None, tuple[str, ...]]:
     s = _strip_diacritics(raw).lower().strip()
     if not s:
         return None, ()
-    # strip periods etc. before tokenizing so "mr." -> "mr"
+    # "l.l.c." / "p.l.c." → single tokens before periods become spaces
+    s = _DOTTED_LEGAL_RE.sub(lambda m: m.group(1).replace(".", ""), s)
+    # strip periods etc. before tokenizing so "mr." -> "mr", "corp." -> "corp"
     s = _NAME_KEEP_RE.sub(" ", s)
     s = _WS_RE.sub(" ", s).strip()
     if not s:
         return None, ()
     tokens = [t for t in s.split(" ") if t]
-    # drop honorifics / suffixes (token-level)
+    # drop honorifics / person suffixes (token-level, any position)
     tokens = [t for t in tokens if t not in _HONORIFICS and t not in _SUFFIXES]
+    # drop trailing legal-entity suffixes (org ER — Acme Corp ≈ ACME Corporation)
+    tokens = _strip_trailing_legal_suffixes(tokens)
     if not tokens:
         return None, ()
     # expand first-token nickname

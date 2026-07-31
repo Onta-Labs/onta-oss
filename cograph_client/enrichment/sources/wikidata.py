@@ -20,6 +20,7 @@ import httpx
 import structlog
 
 from cograph_client.enrichment.models import Verdict
+from cograph_client.offline import assert_online_url
 
 logger = structlog.stdlib.get_logger("cograph.enrichment")
 
@@ -191,6 +192,11 @@ class WikidataAdapter:
             return []
         if not entity_label:
             return []
+
+        # Fail closed under OMNIX_OFFLINE=1 — Wikidata is an external host and
+        # is not on the default localhost allowlist. Raise (don't silently [])
+        # so the operator sees why enrichment produced no verdicts.
+        assert_online_url(WIKIDATA_API, purpose="Wikidata enrichment lookup")
 
         try:
             qid, penalty = await self._search_entity_with_fallback(entity_label)

@@ -322,10 +322,10 @@ def test_unauthenticated_pre_auth_responses_record_nothing(client):
     assert rows == []
 
 
-def test_cross_tenant_path_records_under_key_tenant(client, auth_headers):
-    """A legacy single-tenant key on another tenant's path is SERVED as its
-    own tenant (documented get_tenant semantics) — the usage row must land
-    under that same authenticated tenant, never the path tenant."""
+def test_cross_tenant_path_is_403_and_records_nothing(client, auth_headers):
+    """A static key on another tenant's path is 403 — never silently served
+    as the key's tenant. Auth fails before stash, so no usage lands under
+    either the path tenant or the key's tenant for that request."""
     import asyncio
 
     from cograph_client.usage.recorder import get_usage_recorder
@@ -333,7 +333,7 @@ def test_cross_tenant_path_records_under_key_tenant(client, auth_headers):
 
     assert (
         client.get("/graphs/other-tenant/jobs", headers=auth_headers).status_code
-        == 200
+        == 403
     )
     asyncio.run(get_usage_recorder().flush())
     store = get_usage_store()
@@ -343,20 +343,33 @@ def test_cross_tenant_path_records_under_key_tenant(client, auth_headers):
         )
         == []
     )
-    own = asyncio.run(
-        store.query_range("test-tenant", TODAY - timedelta(days=1), TODAY)
+    # The 403 itself must not attribute traffic to the key's tenant either
+    # (get_tenant raises before the request.state stash).
+    own_before_ok = sum(
+        r.requests
+        for r in asyncio.run(
+            store.query_range("test-tenant", TODAY - timedelta(days=1), TODAY)
+        )
     )
-    assert sum(r.requests for r in own) >= 1
+    assert (
+        client.get("/graphs/test-tenant/jobs", headers=auth_headers).status_code
+        == 200
+    )
+    asyncio.run(get_usage_recorder().flush())
+    own_after = sum(
+        r.requests
+        for r in asyncio.run(
+            store.query_range("test-tenant", TODAY - timedelta(days=1), TODAY)
+        )
+    )
+    assert own_after >= own_before_ok + 1
 
 
 def test_usage_route_tenant_isolation(client, auth_headers):
-    """The report is always scoped to the KEY's tenant, never the path's.
-
-    Legacy single-tenant static keys route to their own tenant regardless of
-    the path (documented `get_tenant` semantics — multi-tenant keys get a 403
-    from `_resolve_allowed`, covered in test_auth_multi_tenant.py). So a
-    static key asking for another tenant's usage must see its OWN numbers,
-    not the other tenant's.
+    """A static key asking for another tenant's usage gets 403 — never a
+    silent report of the key's own numbers under a foreign path. Matching
+    path still returns the key's report (multi-tenant 403 covered in
+    test_auth_multi_tenant.py).
     """
     # Traffic attributed to test-tenant (the key's own tenant)...
     client.get("/graphs/test-tenant/jobs", headers=auth_headers)
@@ -372,8 +385,13 @@ def test_usage_route_tenant_isolation(client, auth_headers):
     )
 
     res = client.get("/graphs/other-tenant/usage?days=7", headers=auth_headers)
-    assert res.status_code == 200
-    report = res.json()
+    assert res.status_code == 403
+    assert "other-tenant" in res.json()["detail"]
+
+    # Matching path still works and never includes the foreign tenant's seed.
+    own = client.get("/graphs/test-tenant/usage?days=7", headers=auth_headers)
+    assert own.status_code == 200
+    report = own.json()
     assert report["totals"]["requests"] < 999
     assert report["route_class_requests"].get("ask", 0) == 0
 

@@ -22,8 +22,9 @@ ones) but are identical in *how those facts get written and refreshed*:
   size limit.
 - :func:`refresh_after_write` — invalidate the NL-planning ontology cache,
   re-embed the affected types (so semantic retrieval never serves a stale schema
-  embedding after a new attribute lands), and schedule the Explorer type-stats
-  recompute. Every successful write calls this with the types it touched.
+  embedding after a new attribute lands), invalidate the stored ``kg_triple_count``
+  so ``list_kgs`` recomputes after data changes, and schedule the Explorer
+  type-stats recompute. Every successful write calls this with the types it touched.
 
 Removals join the same path (ADR 0007). A fact *leaving* the graph or a subject
 being *renamed* carries the identical fan-out obligation as an insert, so:
@@ -1002,9 +1003,15 @@ async def refresh_after_write(
        ``kg_name`` is given, so a non-UI writer (web-discovery, CLI, MCP) that
        ingested into a brand-new KG still shows up in the Explorer dropdown —
        not just KGs created via the "New KG" button (ONTA-153).
-    4. **Schedule the Explorer type-stats recompute** for the KG (coverage %,
+    4. **Invalidate the stored triple count** for the KG when ``kg_name`` is
+       given, so the next ``list_kgs`` / ``kg list`` live-counts instead of
+       serving a stale ``kg_triple_count`` (commonly a sticky ``0`` written when
+       the empty KG was first listed). Kept HERE rather than only on the
+       Explorer recompute path so every converged writer benefits immediately —
+       recompute is background and may lag or fail without clearing the count.
+    5. **Schedule the Explorer type-stats recompute** for the KG (coverage %,
        counts) when ``kg_name`` is given and ``recompute_stats`` is set.
-    5. **Evict / re-key derived secondary indexes** for removals and renames:
+    6. **Evict / re-key derived secondary indexes** for removals and renames:
        ``deleted_subjects`` are dropped from the spatiotemporal index (and the
        upcoming semantic index); ``rewritten_subjects`` (old → new, from an ER
        merge) are re-keyed rather than evicted. Both default empty so every
@@ -1057,7 +1064,25 @@ async def refresh_after_write(
     if kg_name:
         await ensure_kg_registered(neptune, tenant_id, kg_name)
 
-    # 4. Explorer type-stats recompute (background, best-effort).
+    # 4. Drop the stored triple count so list_kgs recomputes on next read.
+    #    Must run on every successful instance write (not only Explorer recompute):
+    #    a stored 0 from listing an empty KG otherwise sticks after ingest.
+    #    Lazy import avoids an import cycle with api.routes.knowledge_graphs.
+    if kg_name:
+        try:
+            from cograph_client.api.routes.knowledge_graphs import (
+                invalidate_triple_count,
+            )
+
+            await invalidate_triple_count(neptune, tenant_id, kg_name)
+        except Exception:  # noqa: BLE001 — never fail a write on a count hiccup
+            logger.warning(
+                "invalidate_triple_count_failed",
+                kg_name=kg_name,
+                exc_info=True,
+            )
+
+    # 5. Explorer type-stats recompute (background, best-effort).
     if recompute_stats and kg_name:
         try:
             from cograph_client.api.routes.explore import schedule_recompute
@@ -1066,7 +1091,7 @@ async def refresh_after_write(
         except Exception:  # noqa: BLE001
             logger.warning("schedule_recompute_failed", exc_info=True)
 
-    # 5. Derived secondary-index maintenance for removals / renames.
+    # 6. Derived secondary-index maintenance for removals / renames.
     await _deindex_secondary(
         tenant_id, kg_name, list(deleted_subjects), rewritten_subjects or {}
     )
