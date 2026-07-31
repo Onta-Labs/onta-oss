@@ -197,6 +197,28 @@ def is_benchmark_kg(kg_name: str) -> bool:
     return (kg_name or "").strip().lower().startswith(BENCHMARK_KG_PREFIXES)
 
 
+def example_key(question: str, kg_name: str | None) -> tuple[str, str]:
+    """Identity of an example for dedup/refresh: its question, within its KG.
+
+    This used to be the question text ALONE, which conflated two different
+    things and got both wrong:
+
+    - The same question asked of two different KGs ("how many rows?") is two
+      different examples -- different ontology, different ``FROM`` graph. Keying
+      on question alone dropped whichever the eval happened to reach second, so
+      the bank's contents depended on eval ORDER.
+    - The same question asked of the SAME KG is one example that may have a
+      better answer now (reingest changed the predicate URIs; a later run
+      produced a corrected SPARQL). Keying on question alone made that a
+      "duplicate" to be dropped, so fresh data lost to whatever was in the bank
+      first. See :meth:`ExampleBank.add_batch`, which now refreshes instead.
+
+    ``question`` is normalized (strip + lowercase) because it is free text a
+    human typed; ``kg_name`` is a slug and is only stripped.
+    """
+    return (question.strip().lower(), (kg_name or "").strip())
+
+
 @dataclass
 class Example:
     """A single (question, SPARQL) example with metadata."""
@@ -207,6 +229,33 @@ class Example:
     ontology_context: str
     pattern_tags: list[str] = field(default_factory=list)
     embedding: list[float] = field(default_factory=list)
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """See :func:`example_key`."""
+        return example_key(self.question, self.kg_name)
+
+    def refresh_from(self, sparql: str, ontology_context: str) -> bool:
+        """Update this example's answer in place. True if anything changed.
+
+        The embedding is NOT recomputed: it is keyed on the question, and the
+        question is part of this example's identity, so by construction it has
+        not changed. A refresh therefore costs zero embedding calls, which is
+        also why it stays allowed when the bank is at ``MAX_BANK_SIZE``.
+
+        Empty inputs are ignored rather than written: a caller with no ontology
+        text on hand (``populate_from_eval_reports`` reading a report that
+        omitted it) must not blank out context the bank already has.
+        """
+        changed = False
+        if sparql and sparql != self.sparql:
+            self.sparql = sparql
+            self.pattern_tags = detect_pattern_tags(sparql)
+            changed = True
+        if ontology_context and ontology_context != self.ontology_context:
+            self.ontology_context = ontology_context
+            changed = True
+        return changed
 
     def to_dict(self) -> dict:
         return {
@@ -275,6 +324,10 @@ class ExampleBank:
         self._api_key = openrouter_api_key
         self._bank_path = Path(bank_path) if bank_path else DEFAULT_BANK_PATH
         self._examples: list[Example] = []
+        # How many rows the last load() dropped as benchmark KGs. A writer that
+        # is about to save() can use it to persist that read-side filter and
+        # actually clean the file (ONTA-449 note in load()).
+        self.skipped_benchmark_on_load = 0
 
     @property
     def size(self) -> int:
@@ -286,6 +339,7 @@ class ExampleBank:
     def load(self) -> int:
         """Load examples from JSONL file. Returns number loaded."""
         self._examples = []
+        self.skipped_benchmark_on_load = 0
         if not self._bank_path.exists():
             logger.info("Example bank file not found, starting empty: %s", self._bank_path)
             return 0
@@ -321,21 +375,41 @@ class ExampleBank:
                     continue
                 self._examples.append(example)
 
+        self.skipped_benchmark_on_load = skipped_benchmark
         if skipped_benchmark:
             logger.warning(
                 "Example bank at %s contains %d benchmark-KG example(s); "
-                "skipped (ONTA-449). Regenerate the file to drop them permanently.",
+                "skipped (ONTA-449). The next save() drops them permanently.",
                 self._bank_path, skipped_benchmark,
             )
         logger.info("Loaded %d examples from %s", len(self._examples), self._bank_path)
         return len(self._examples)
 
     def save(self) -> None:
-        """Persist all examples to JSONL file."""
+        """Persist all examples to JSONL file.
+
+        Writes a sibling temp file and ``os.replace``s it, so an interrupted or
+        failing save leaves the previous bank intact instead of a truncated one.
+        Opening the real path ``"w"`` truncates before the first byte lands --
+        an unacceptable failure mode for a file that is committed to git, is
+        rewritten routinely now that the eval rebuild merges into it, and whose
+        loss is the exact thing that motivated onta-oss#291.
+        """
         self._bank_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._bank_path, "w") as f:
-            for ex in self._examples:
-                f.write(json.dumps(ex.to_dict()) + "\n")
+        tmp_path = self._bank_path.with_name(self._bank_path.name + ".tmp")
+        try:
+            with open(tmp_path, "w") as f:
+                for ex in self._examples:
+                    f.write(json.dumps(ex.to_dict()) + "\n")
+            os.replace(tmp_path, self._bank_path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        # The benchmark rows load() filtered are now gone from disk, so the
+        # debt is paid; leaving the counter set would make a SECOND save-gated
+        # cycle on the same instance fire unconditionally. Read it before
+        # save() if you want it for a log line.
+        self.skipped_benchmark_on_load = 0
         logger.info("Saved %d examples to %s", len(self._examples), self._bank_path)
 
     # ── Add examples ─────────────────────────────────────────────────────
@@ -347,20 +421,28 @@ class ExampleBank:
         kg_name: str,
         ontology_context: str,
     ) -> bool:
-        """Embed and store a new example. Returns True if added, False if duplicate or bank full.
+        """Embed and store an example. Returns True if the bank changed.
 
-        Deduplicates by checking if an example with the exact same question text
-        already exists. Enforces MAX_BANK_SIZE cap. Benchmark KGs are refused
-        outright (ONTA-449).
+        Identity is ``(question, kg_name)`` -- see :func:`example_key`. An
+        example that is already in the bank is REFRESHED with the new SPARQL /
+        ontology context rather than dropped, and refreshing counts as a change
+        (a re-add with identical content does not). Enforces MAX_BANK_SIZE for
+        NEW examples only; a refresh is always allowed, since it cannot grow the
+        bank. Benchmark KGs are refused outright (ONTA-449).
         """
         if is_benchmark_kg(kg_name):
             logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)
             return False
 
-        # Dedup by exact question match
+        # Already present for this KG -> refresh in place instead of dropping
+        # the newer answer on the floor (onta-oss#280 follow-up).
+        key = example_key(question, kg_name)
         for ex in self._examples:
-            if ex.question.strip().lower() == question.strip().lower():
-                logger.debug("Skipping duplicate question: %s", question[:80])
+            if ex.key == key:
+                if ex.refresh_from(sparql, ontology_context):
+                    logger.debug("Refreshed existing example: %s", question[:80])
+                    return True
+                logger.debug("Skipping unchanged duplicate question: %s", question[:80])
                 return False
 
         if len(self._examples) >= MAX_BANK_SIZE:
@@ -388,49 +470,104 @@ class ExampleBank:
     ) -> int:
         """Bulk-add examples. Each dict must have: question, sparql, kg_name, ontology_context.
 
-        Deduplicates, embeds in batches, and appends. Returns count of newly added examples.
-        Benchmark-KG items are dropped (ONTA-449).
+        Embeds in batches and appends. Returns the number of examples ACCEPTED
+        -- newly added PLUS refreshed in place -- so a caller can use it as
+        "did the bank change?" (``eval.rebuild_example_bank`` gates its
+        ``save()`` on exactly that). Benchmark-KG items are dropped (ONTA-449).
+
+        Identity is ``(question, kg_name)`` -- see :func:`example_key`. Two
+        consequences, both deliberate (the onta-oss#280 follow-up):
+
+        - An item already in the bank REFRESHES it rather than being dropped.
+          This is what lets a re-eval land a corrected SPARQL, and what lets the
+          post-eval rebuild run repeatedly against an accumulating
+          ``finetune_pairs.jsonl`` instead of no-opping forever after the first
+          run.
+        - Within one batch, LAST write wins. ``finetune_pairs.jsonl`` is keyed
+          on ``(question, graph_uri)`` and appended in time order, so when the
+          graph IRI changes under a fixed question -- a namespace rename, the
+          exact case that stranded this bank on ``omnix.dev`` -- the file holds
+          both pairs and the fresher one is later. First-wins kept the stale one.
+
+        Refreshes are exempt from MAX_BANK_SIZE: they cannot grow the bank, and
+        a full bank must still be correctable.
         """
-        # Filter out duplicates and existing
-        existing_questions = {ex.question.strip().lower() for ex in self._examples}
-        new_items: list[dict] = []
+        by_key = {ex.key: ex for ex in self._examples}
+
+        # Collapse the batch by key FIRST, then decide refresh-vs-new. Keyed
+        # dict, not a list: preserves first-appearance ORDER while letting a
+        # later item overwrite an earlier one's CONTENT (last-wins, above).
+        #
+        # Collapsing before the refresh (rather than refreshing eagerly as each
+        # item arrives) is what makes last-wins uniform across both branches and
+        # the returned count exact. Eager refresh applied every duplicate in
+        # turn, so a batch holding A then B for one key flipped the example
+        # A->B->A -- both writes report "changed", and the caller's
+        # "don't rewrite the bank for nothing" gate fires on a net no-op. Not
+        # hypothetical: a namespace rename leaves TWO pairs for one question in
+        # finetune_pairs.jsonl permanently (it keys on graph_uri, which differs;
+        # the rebuild truncates both to the same kg_name), so every subsequent
+        # eval re-saved a byte-identical bank and logged a bogus accepted count.
+        # Found by independent review of onta-oss#291.
+        collapsed: dict[tuple[str, str], dict] = {}
         for item in items:
-            if is_benchmark_kg(item.get("kg_name", "")):
+            kg_name = item.get("kg_name", "")
+            if is_benchmark_kg(kg_name):
                 continue
-            q = item["question"].strip().lower()
-            if q in existing_questions:
+            collapsed[example_key(item["question"], kg_name)] = item
+
+        refreshed: set[tuple[str, str]] = set()
+        pending: dict[tuple[str, str], dict] = {}
+        for key, item in collapsed.items():
+            existing = by_key.get(key)
+            if existing is not None:
+                if existing.refresh_from(item["sparql"], item.get("ontology_context", "")):
+                    refreshed.add(key)
                 continue
-            existing_questions.add(q)
-            new_items.append(item)
+            pending[key] = item
 
-        # Enforce cap
-        capacity = MAX_BANK_SIZE - len(self._examples)
-        if capacity <= 0:
-            logger.warning("Example bank at capacity, skipping batch add")
-            return 0
-        new_items = new_items[:capacity]
+        new_items = list(pending.values())
 
-        if not new_items:
-            return 0
-
-        # Batch embed all questions
-        questions = [item["question"] for item in new_items]
-        embeddings = await self._embed_texts(questions)
-
-        for item, emb in zip(new_items, embeddings):
-            self._examples.append(
-                Example(
-                    question=item["question"],
-                    sparql=item["sparql"],
-                    kg_name=item.get("kg_name", ""),
-                    ontology_context=item.get("ontology_context", ""),
-                    pattern_tags=detect_pattern_tags(item["sparql"]),
-                    embedding=emb,
+        # Enforce cap on NEW examples only.
+        if new_items:
+            capacity = MAX_BANK_SIZE - len(self._examples)
+            if capacity <= 0:
+                logger.warning(
+                    "Example bank at capacity (%d), skipping %d new example(s); "
+                    "%d existing refreshed",
+                    MAX_BANK_SIZE, len(new_items), len(refreshed),
                 )
-            )
+                new_items = []
+            elif len(new_items) > capacity:
+                logger.warning(
+                    "Example bank near capacity: keeping %d of %d new example(s)",
+                    capacity, len(new_items),
+                )
+                new_items = new_items[:capacity]
 
-        logger.info("Added %d examples (batch), bank now has %d", len(new_items), len(self._examples))
-        return len(new_items)
+        if new_items:
+            # Batch embed all questions
+            questions = [item["question"] for item in new_items]
+            embeddings = await self._embed_texts(questions)
+
+            for item, emb in zip(new_items, embeddings):
+                self._examples.append(
+                    Example(
+                        question=item["question"],
+                        sparql=item["sparql"],
+                        kg_name=item.get("kg_name", ""),
+                        ontology_context=item.get("ontology_context", ""),
+                        pattern_tags=detect_pattern_tags(item["sparql"]),
+                        embedding=emb,
+                    )
+                )
+
+        if new_items or refreshed:
+            logger.info(
+                "Added %d and refreshed %d examples (batch), bank now has %d",
+                len(new_items), len(refreshed), len(self._examples),
+            )
+        return len(new_items) + len(refreshed)
 
     # ── Retrieval ────────────────────────────────────────────────────────
 
@@ -566,7 +703,13 @@ class ExampleBank:
     async def populate_from_eval_reports(self, reports_dir: str | Path | None = None) -> int:
         """Scan eval_reports/*.json for correct answers and bulk-add them.
 
-        Also reads finetune_pairs.jsonl if present. Returns total examples added.
+        Also reads finetune_pairs.jsonl if present. Returns total examples
+        accepted (added + refreshed).
+
+        Adds to whatever is already in memory: call :meth:`load` first to MERGE
+        into the committed bank, or don't to build one from the reports alone.
+        The ``save()`` at the end is skipped when nothing was accepted, so this
+        can never replace a bank on disk with an empty one (ONTA-449 and its follow-up).
 
         Each eval report JSON has structure:
             {
@@ -579,7 +722,12 @@ class ExampleBank:
         """
         reports_path = Path(reports_dir) if reports_dir else EVAL_REPORTS_DIR
         items: list[dict] = []
-        seen_questions: set[str] = set()
+        # Keyed by :func:`example_key`, not by question alone. Question-alone
+        # dropped the same wording asked of a DIFFERENT KG before add_batch ever
+        # saw it, so the identity fix could not take effect on this path and the
+        # winner was whichever KG `sorted(glob(...))` happened to reach first.
+        # Found by independent review of onta-oss#291.
+        seen_keys: set[tuple[str, str]] = set()
 
         # 1. Scan eval report JSON files
         for json_file in sorted(reports_path.glob("eval-*.json")):
@@ -612,10 +760,10 @@ class ExampleBank:
                     sparql = result.get("sparql", "").strip()
                     if not question or not sparql:
                         continue
-                    q_key = question.lower()
-                    if q_key in seen_questions:
+                    key = example_key(question, kg_name)
+                    if key in seen_keys:
                         continue
-                    seen_questions.add(q_key)
+                    seen_keys.add(key)
                     items.append({
                         "question": question,
                         "sparql": sparql,
@@ -640,13 +788,17 @@ class ExampleBank:
                             sparql = pair.get("sparql", "").strip()
                             if not question or not sparql:
                                 continue
-                            q_key = question.lower()
-                            if q_key in seen_questions:
-                                continue
-                            seen_questions.add(q_key)
-                            # Extract kg_name from graph_uri if available
+                            # Derive kg_name BEFORE the dedup check: the key
+                            # needs it, so the old question-only check had to
+                            # run first and could drop a pair belonging to a
+                            # different KG than the one that claimed the
+                            # question.
                             graph_uri = pair.get("graph_uri", "")
                             kg_name = graph_uri.split("/kg/")[-1] if "/kg/" in graph_uri else ""
+                            key = example_key(question, kg_name)
+                            if key in seen_keys:
+                                continue
+                            seen_keys.add(key)
                             if kg_name in HOLDOUT_V2_KGS:
                                 logger.debug(
                                     "example_bank: skipping holdout-v2 KG %s from finetune pair",
@@ -694,7 +846,10 @@ class ExampleBank:
 
         logger.info("Found %d correct examples, balanced to %d across %d KGs", len(items), len(balanced), num_kgs)
         added = await self.add_batch(balanced)
-        self.save()
+        if added or self.skipped_benchmark_on_load:
+            self.save()
+        else:
+            logger.info("Example bank unchanged by populate; not rewriting %s", self._bank_path)
         return added
 
     # ── Embedding API ────────────────────────────────────────────────────
