@@ -38,6 +38,7 @@ from cograph_client.semantic.postgres import (
     _vector_text,
     _version_at_least,
 )
+from cograph_client.semantic.protocol import IDENTITY_ATTR
 
 DSN = os.environ.get("OMNIX_DATABASE_URL", "")
 
@@ -679,8 +680,12 @@ async def test_fetch_pending_sql_and_hydration(pg):
     sql = _fetch_sql(recorder)
     assert "WHERE embedding IS NULL" in sql
     assert "attempt_count < $1::int" in sql
+    # ONTA-421: identity docs are lexical-only — permanently NULL-embedding, so
+    # the queue must exclude them by attr or the sweep would try to embed one
+    # short name per entity forever.
+    assert "attr <> $4::text" in sql
     assert "ORDER BY tenant_id, kg_name, entity_uri, attr, chunk_ix" in sql
-    assert _fetch_args(recorder) == (3, TENANT, KG, 7)
+    assert _fetch_args(recorder) == (3, TENANT, KG, IDENTITY_ATTR, 7)
     [c] = rows
     assert c.embedding is None
     assert c.attempt_count == 2 and c.last_error == "429"

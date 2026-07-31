@@ -42,7 +42,7 @@ from cograph_client.graph.ontology_queries import attr_uri
 from cograph_client.scheduling.models import Schedule
 from cograph_client.scheduling.store import InMemoryScheduleStore, reset_schedule_store
 from cograph_client.semantic.memory import InMemorySemanticIndex
-from cograph_client.semantic.protocol import SemanticChunk
+from cograph_client.semantic.protocol import IDENTITY_ATTR, SemanticChunk
 from cograph_client.semantic.registry import reset_semantic_index
 
 TENANT = "t1"
@@ -52,6 +52,7 @@ DOC_TYPE = "https://cograph.tech/types/Doc"
 DESC_PRED = attr_uri("Doc", "description")
 SUMMARY_PRED = attr_uri("Doc", "summary")
 SKU_PRED = attr_uri("Doc", "sku")
+NAME_PRED = attr_uri("Doc", "name")
 
 PROSE = (
     "The committee heard extensive testimony about the proposed changes to the "
@@ -227,6 +228,20 @@ def _doc_entities(n: int = 2) -> dict:
     }
 
 
+def _named_entities(n: int = 2) -> dict:
+    """Entities with a NAME and no free-text attribute at all — the ONTA-421
+    shape. Nothing here is markable: a name is too short to be
+    ``ValueShape.TEXT``, so the candidacy heuristic can only ever decide
+    ``not_text`` for it."""
+    return {
+        _entity(i): {
+            RDF_TYPE: [DOC_TYPE],
+            NAME_PRED: [f"Acme Corporation {i}"],
+        }
+        for i in range(1, n + 1)
+    }
+
+
 def _chunk(entity_n: int, text: str, *, attr: str = "description") -> SemanticChunk:
     from cograph_client.semantic.extract import content_hash
 
@@ -260,6 +275,80 @@ def test_first_reconcile_is_the_backfill():
         assert len(hits.hits) == 3
         # Display attrs came through the scan (type via rdf:type).
         assert hits.hits[0].attrs.get("type") == "Doc"
+
+    asyncio.run(run())
+
+
+def test_reconcile_backfills_identity_docs_for_a_kg_with_no_marked_attrs():
+    """ONTA-421 backfill: a KG of names and codes has ZERO markable attributes,
+    so before the identity arm the reconciler skipped its scan entirely and the
+    index stayed permanently empty. It must now scan, index one identity doc
+    per named entity, and make them findable by exact name.
+
+    This is also the migration story for graphs that already exist: no manual
+    backfill job — the per-KG reconcile schedule converges them on its own
+    cadence.
+    """
+    neptune = _kg(_named_entities(3))
+    index = InMemorySemanticIndex()
+
+    async def run():
+        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        assert counters["chunks_written"] == 3
+        assert counters["ghosts_deleted"] == 0
+        docs = await index.list_docs(TENANT, kg_name=KG)
+        assert {d[1] for d in docs} == {IDENTITY_ATTR}
+        hits = await index.search(TENANT, "Acme Corporation 2", kg_name=KG)
+        assert hits.hits[0].entity_uri == _entity(2)
+
+    asyncio.run(run())
+
+
+def test_reconcile_does_not_ghost_delete_identity_docs():
+    """Identity docs must be part of the EXPECTED set, or every hourly run
+    would delete what the previous run (and the write hook) just wrote."""
+    neptune = _kg(_named_entities(2))
+    index = InMemorySemanticIndex()
+
+    async def run():
+        await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        assert counters["ghosts_deleted"] == 0
+        assert counters["skipped_unchanged_hash"] == 2
+        assert len(await index.list_docs(TENANT, kg_name=KG)) == 2
+
+    asyncio.run(run())
+
+
+def test_reconcile_ghosts_identity_docs_of_merged_entities():
+    """Ghost repair still applies to identity docs: an entity gone from Neptune
+    loses its name row too (ER merges bypass the write hook)."""
+    neptune = _kg(_named_entities(2))
+    index = InMemorySemanticIndex()
+
+    async def run():
+        await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        del neptune.entities[_entity(1)]
+        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        assert counters["ghosts_deleted"] == 1
+        docs = await index.list_docs(TENANT, kg_name=KG)
+        assert {d[0] for d in docs} == {_entity(2)}
+
+    asyncio.run(run())
+
+
+def test_reconcile_skips_the_scan_entirely_when_the_identity_arm_is_off(monkeypatch):
+    """The kill switch restores the pre-ONTA-421 cost profile exactly: a KG
+    with no marked attribute pays ZERO scan pages."""
+    monkeypatch.setenv("COGRAPH_SEMANTIC_IDENTITY_INDEX", "0")
+    neptune = _kg(_named_entities(2))
+    index = InMemorySemanticIndex()
+
+    async def run():
+        counters = await rec.reconcile_kg(neptune, TENANT, KG, index=index)
+        assert counters["chunks_written"] == 0
+        assert await index.list_docs(TENANT, kg_name=KG) == []
+        assert not [q for q in neptune.queries if "VALUES ?p" in q]
 
     asyncio.run(run())
 

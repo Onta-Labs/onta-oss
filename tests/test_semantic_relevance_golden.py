@@ -57,6 +57,7 @@ from cograph_client.semantic.extract import (
     extract_semantic_chunks,
 )
 from cograph_client.semantic.postgres import PostgresSemanticIndex
+from cograph_client.semantic.protocol import IDENTITY_ATTR
 
 DSN = os.environ.get("OMNIX_DATABASE_URL", "")
 needs_pg_reason = "OMNIX_DATABASE_URL not set; needs live Postgres with pgvector"
@@ -131,7 +132,17 @@ async def _seed(backend, tenant: str) -> list[SemanticChunk]:
         [doc_vec[c.entity_uri] for c in pending],
         embed_model=GOLDEN_MODEL,
     )
-    assert filled == len(pending) == len(chunks), "corpus did not fully embed"
+    # ONTA-421: the corpus also carries one identity row per entity (each doc
+    # has a `name`). Those are lexical-only by contract — never queued, never
+    # embedded — so "fully embedded" means every EMBEDDABLE chunk, and the
+    # identity rows must be absent from the queue. Both halves are asserted:
+    # if the arm silently stopped emitting, the second assert catches it, and
+    # the hit@k assertions below then run WITH those extra rows present, which
+    # is what makes this suite the free-text non-regression guard for the arm.
+    embeddable = [c for c in chunks if c.attr != IDENTITY_ATTR]
+    assert filled == len(pending) == len(embeddable), "corpus did not fully embed"
+    assert not [c for c in pending if c.attr == IDENTITY_ATTR]
+    assert len(embeddable) < len(chunks), "identity rows missing from the corpus"
     return chunks
 
 

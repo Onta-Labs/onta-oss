@@ -53,7 +53,9 @@ Hybrid query (ONE SQL round-trip)
 
 * **FTS leg**: top-50 by ``ts_rank_cd`` over ``tsv @@ websearch_to_tsquery`` —
   NULL-embedding rows participate here (a just-written chunk is lexically
-  findable before the embed sweep fills it);
+  findable before the embed sweep fills it). This is also the leg that answers
+  "find the entity CALLED X": the ONTA-421 identity rows are permanently
+  NULL-embedding, so they live in this leg and only this leg;
 * **ANN leg**: top-50 by cosine distance ``embedding <=> $query_vec``, only
   over rows with a filled embedding **whose ``embed_model`` equals the current
   model** (vectors from an older model are not comparable to the query vector);
@@ -144,6 +146,7 @@ from cograph_client.config import settings
 from cograph_client.nlp.embed_client import EMBEDDING_DIM, EMBEDDING_MODEL
 from cograph_client.semantic.memory import _CANDIDATES_PER_LEG, _RRF_K, _snippet
 from cograph_client.semantic.protocol import (
+    IDENTITY_ATTR,
     SemanticChunk,
     SemanticHit,
     SemanticSearchResult,
@@ -880,15 +883,25 @@ class PostgresSemanticIndex:
                    content_hash, embed_model, attempt_count, last_error, attrs
             FROM {self._TABLE}
             WHERE embedding IS NULL
+              -- Identity docs are lexical-only by contract (ONTA-421): never
+              -- queued for embedding, so they add no embed spend and never
+              -- enter the ANN leg. Their embedding stays NULL forever, which is
+              -- exactly why the queue has to exclude them explicitly.
+              AND attr <> $4::text
               AND ($1::int IS NULL OR attempt_count < $1::int)
               AND ($2::text IS NULL OR tenant_id = $2::text)
               AND ($3::text IS NULL OR kg_name = $3::text)
             ORDER BY {_PK_COLS}
-            LIMIT $4
+            LIMIT $5
         """
         async with pool.acquire() as conn:
             rows = await conn.fetch(
-                sql, max_attempts, tenant_id, kg_name, max(int(limit), 0)
+                sql,
+                max_attempts,
+                tenant_id,
+                kg_name,
+                IDENTITY_ATTR,
+                max(int(limit), 0),
             )
         return [
             SemanticChunk(
