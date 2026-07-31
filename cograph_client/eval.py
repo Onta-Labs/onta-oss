@@ -1535,9 +1535,9 @@ async def run_full_eval(
             neg_path.write_text("\n".join(neg_existing.values()) + "\n")
             logger.info("finetune_negatives_saved", count=neg_added, total=len(neg_existing), path=str(neg_path))
 
-        # Auto-rebuild example bank from finetune pairs.
-        # This ensures the bank stays in sync when KGs are reingested
-        # with new ontology types or schema changes.
+        # Merge this run's finetune pairs into the example bank, so the bank
+        # stays in sync when KGs are reingested with new ontology types or
+        # schema changes. NOT a regenerate -- see rebuild_example_bank.
         try:
             await rebuild_example_bank(ft_path)
         except Exception:
@@ -1568,9 +1568,12 @@ async def rebuild_example_bank(
     it did not stop 114 entries being replaced by 12).
 
     Merge is the right semantics rather than regenerate because the bank is the
-    durable artifact -- it is the file in git, the file the Dockerfile COPYs,
-    and the file the per-KG purge in ``api/routes/knowledge_graphs.py`` already
-    treats as load-mutate-save. ``finetune_pairs.jsonl`` is a per-machine
+    durable artifact -- it is the file in git, and the file the per-KG purge in
+    ``api/routes/knowledge_graphs.py`` already treats as
+    load-mutate-save. (The bank the parent repo's Dockerfile bakes into the
+    image is the PARENT's own 507-entry copy, not this one -- keep the two
+    straight; this rebuild writes package-relative and never reaches that one.)
+    ``finetune_pairs.jsonl`` is a per-machine
     scratch log of one dev's eval history; making IT the source of truth would
     mean committing a multi-megabyte append-only file carrying a full ontology
     dump per pair, and would still lose every example from a KG that machine
@@ -1612,13 +1615,14 @@ async def rebuild_example_bank(
     # 114 identical lines only invites a confusing no-op diff. The one exception
     # is a bank whose file still carries benchmark rows that load() filtered:
     # saving is what finally removes them from disk.
-    if rebuilt or bank.skipped_benchmark_on_load:
+    purged = bank.skipped_benchmark_on_load  # save() clears it
+    if rebuilt or purged:
         bank.save()
         logger.info(
             "example_bank_rebuilt",
             loaded=loaded,
             accepted=rebuilt,
-            purged=bank.skipped_benchmark_on_load,
+            purged=purged,
             total=bank.size,
         )
     else:

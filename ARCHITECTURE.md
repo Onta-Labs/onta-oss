@@ -443,7 +443,7 @@ The example bank must stay in sync with the ontology. Stale examples (referencin
 old predicate URIs or wrong datatypes) cause regressions because the LLM copies
 broken SPARQL patterns.
 
-**Auto-purge on KG delete** (`omnix/api/routes/knowledge_graphs.py`):
+**Auto-purge on KG delete** (`cograph_client/api/routes/knowledge_graphs.py`):
 When `DELETE /kgs/{name}` is called, all examples for that KG are removed from
 the bank. This prevents stale SPARQL patterns from poisoning few-shot retrieval
 after reingest. The clear → reingest cycle starts with a clean slate.
@@ -471,10 +471,11 @@ plausible way 148 Spider4SPARQL entries came to be 148 of the OSS bank's 262
 (ONTA-449). onta-oss#280 skipped `save()` when `add_batch` accepted nothing,
 which stopped truncate-to-zero but not replace-114-with-12.
 
-The bank is the durable artifact — the file in git, the file the parent's
-`Dockerfile` COPYs, the file the KG-delete purge already treats as
-load-mutate-save — so merging into it is the semantics that matches how it is
-actually used. Making `finetune_pairs.jsonl` the source of truth instead would
+The bank is the durable artifact — the file in git, the file the KG-delete purge
+already treats as load-mutate-save — so merging into it is the semantics that
+matches how it is actually used. (The copy the parent's `Dockerfile` bakes into
+the image is the parent's own, not this one; see "what auto-sync still does NOT
+cover" below.) Making `finetune_pairs.jsonl` the source of truth instead would
 mean committing a multi-megabyte append-only log carrying a full ontology dump
 per pair, and would still drop every example from a KG that machine never
 evaluated.
@@ -510,7 +511,8 @@ reasons remain:
    edits the file.
 
 A stale-namespace bank does now heal itself on the next eval of the affected KG
-(property 2 above), and a bank carrying benchmark rows heals on the next eval of
+(refresh-on-re-add, plus last-wins when both pairs land in one batch), and a
+bank carrying benchmark rows heals on the next eval of
 any KG — `load()` filters them and the rebuild saves the filtered result even
 when it accepted no new pairs. Neither was true when the `omnix.dev` →
 `cograph.tech` rename (2026-04-27) left both banks priming every `/ask` prompt

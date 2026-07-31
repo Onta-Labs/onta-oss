@@ -2,9 +2,13 @@
 
 Follow-up to onta-oss#280, from an independent review of it.
 
-``eval_reports/example_bank.jsonl`` is committed, shared state -- it is the file
-in git, the file the parent repo's Dockerfile bakes into the image, and the file
-injected verbatim into every ``/ask`` few-shot prompt. The rebuild that runs
+``eval_reports/example_bank.jsonl`` is committed, shared state: it is the file in
+git, and the file an OSS checkout / local dev / CI feeds into every ``/ask``
+few-shot prompt. (Two things it is NOT: the copy the parent's Dockerfile bakes
+into the image is the PARENT's own 507-entry file, which this rebuild writes
+package-relative and so never reaches; and since onta-oss#261 the examples are
+not injected verbatim -- ``format_examples_for_prompt`` rewrites each one's
+``FROM`` to the caller's own target graph.) The rebuild that runs
 after each eval used to build an ``ExampleBank``, never ``load()`` it, and
 ``save()`` it; since ``save()`` writes ``self._examples`` wholesale, the shared
 bank was REPLACED by whatever ``eval_reports/finetune_pairs.jsonl`` held on the
@@ -27,10 +31,12 @@ Merge needs three things to hold, and each has a test below:
 3. Within one batch, LAST wins. ``finetune_pairs.jsonl`` is keyed on
    ``(question, graph_uri)``, so a namespace rename (``omnix.dev`` ->
    ``cograph.tech``, 2026-04-27) appends a SECOND pair for the same question
-   instead of replacing the first. First-wins kept the stale one -- the exact
-   mechanism ``tests/test_example_bank_namespace.py`` and the parent's
-   ``tests/test_shipped_example_bank_namespace.py`` describe as "the loop cannot
-   self-heal".
+   instead of replacing the first. First-wins kept the stale one. That was the
+   first of the three reasons ``ARCHITECTURE.md`` gave for why this loop could
+   not heal a stale entry; the other two (the rebuild cannot reach the shipped
+   bank, production never rebuilds) are untouched and still hold, which is why
+   ``tests/test_example_bank_namespace.py`` and the parent's
+   ``tests/test_shipped_example_bank_namespace.py`` are still needed.
 """
 
 import json
@@ -74,6 +80,24 @@ def _write_jsonl(path, rows: list[dict]) -> None:
 
 def _read_bank(path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def _spy_on_save(bank) -> list[int]:
+    """Record each ``save()`` call (as the size written) and still perform it.
+
+    Needed because a load/save round-trip of an already-clean bank is
+    byte-identical, so comparing file contents cannot detect a save that should
+    not have happened.
+    """
+    calls: list[int] = []
+    real_save = bank.save
+
+    def _save():
+        calls.append(bank.size)
+        real_save()
+
+    bank.save = _save  # type: ignore[method-assign]
+    return calls
 
 
 @pytest.fixture
@@ -192,8 +216,10 @@ async def test_rebuild_is_idempotent(tmp_path, make_bank):
         raise AssertionError("nothing new; must not embed")
 
     bank2._embed_texts = _boom  # type: ignore[method-assign]
+    saves = _spy_on_save(bank2)
 
     assert await rebuild_example_bank(ft, bank=bank2) == 0
+    assert saves == [], "nothing changed; the second run must not rewrite the file"
     assert bank._bank_path.read_text() == first
 
 
@@ -236,6 +262,12 @@ async def test_rebuild_leaves_the_bank_untouched_when_nothing_is_accepted(tmp_pa
     It was previously pinned by a source-level ``"if rebuilt:" in block``
     assertion because ``run_full_eval`` needs a live API and graph store. The
     rebuild is its own function now, so the real path is reachable.
+
+    Asserts that ``save()`` is not CALLED, not merely that the bytes are equal.
+    A load/save round-trip of a clean bank is byte-identical -- the fixture rows
+    are already in ``Example.to_dict()`` order -- so a content comparison alone
+    cannot tell "skipped the write" from "rewrote the same bytes", and an
+    unconditional ``save()`` passed it. (Found by independent review.)
     """
     committed = [_row("imdb-movies", "how many films"), _row("events-sf", "how many events")]
     bank = make_bank(committed)
@@ -243,7 +275,10 @@ async def test_rebuild_leaves_the_bank_untouched_when_nothing_is_accepted(tmp_pa
     ft = tmp_path / "finetune_pairs.jsonl"
     _write_jsonl(ft, [_pair("spider-concert-singer", "how many singers"), _pair("spider-world-1", "how many countries")])
 
+    saves = _spy_on_save(bank)
+
     assert await rebuild_example_bank(ft, bank=bank) == 0
+    assert saves == [], "nothing was accepted; the committed bank must not be rewritten at all"
     assert bank._bank_path.read_text() == before
 
 
@@ -305,6 +340,86 @@ async def test_a_full_bank_still_accepts_refreshes(tmp_path, make_bank, monkeypa
     saved = _read_bank(bank._bank_path)
     assert [r["kg_name"] for r in saved] == ["imdb-movies", "events-sf"], "cap must still hold for NEW examples"
     assert saved[0]["sparql"] == "SELECT ?fresh WHERE { ?x a ?t }"
+
+
+# ── The same semantics on the singular add() ─────────────────────────────
+#
+# add() has no production caller today (only the class docstring's example), but
+# its docstring makes the same three promises add_batch does, and an independent
+# review found every one of them survived a mutation that reverted the method
+# wholesale to question-only drop. A documented public API that no test pins is
+# a trap for the next caller.
+
+
+async def test_add_refreshes_an_existing_example_for_the_same_kg(make_bank):
+    bank = make_bank([_row("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x a <stale> }")])
+    bank.load()
+
+    changed = await bank.add("how many films", "SELECT ?x WHERE { ?x a <fresh> }", "imdb-movies", "ctx")
+
+    assert changed is True
+    assert bank.size == 1, "a refresh must not append a twin"
+    assert bank._examples[0].sparql == "SELECT ?x WHERE { ?x a <fresh> }"
+    assert bank.embedded == [], "the question is unchanged; no re-embedding"
+
+
+async def test_add_reports_no_change_for_an_identical_re_add(make_bank):
+    bank = make_bank([_row("imdb-movies", "how many films")])
+    bank.load()
+    same = bank._examples[0].sparql
+
+    assert await bank.add("How Many Films", same, "imdb-movies", "ontology of imdb-movies") is False
+    assert bank.size == 1
+
+
+async def test_add_keeps_the_same_question_asked_of_a_different_kg(make_bank):
+    bank = make_bank([_row("imdb-movies", "how many rows")])
+    bank.load()
+
+    assert await bank.add("how many rows", "SELECT ?x", "events-sf", "ctx") is True
+    assert [ex.kg_name for ex in bank._examples] == ["imdb-movies", "events-sf"]
+
+
+async def test_add_rejects_a_new_example_at_capacity_but_still_refreshes(make_bank, monkeypatch):
+    monkeypatch.setattr(bank_mod, "MAX_BANK_SIZE", 1)
+    bank = make_bank([_row("imdb-movies", "how many films")])
+    bank.load()
+
+    assert await bank.add("how many events", "SELECT ?x", "events-sf", "ctx") is False
+    assert bank.size == 1
+
+    assert await bank.add("how many films", "SELECT ?fresh", "imdb-movies", "ctx") is True
+    assert bank._examples[0].sparql == "SELECT ?fresh"
+
+
+# ── populate_from_eval_reports carries the same save gate ────────────────
+
+
+async def test_populate_does_not_rewrite_the_bank_when_nothing_is_accepted(tmp_path, make_bank):
+    """It had the same unconditional save() the rebuild did.
+
+    The report must offer a REAL example that happens to be a no-op re-add:
+    an all-benchmark report leaves ``items`` empty and returns before reaching
+    the gate at all, so it would pass this test either way.
+    """
+    committed = _row("imdb-movies", "how many films")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "eval-imdb.json").write_text(json.dumps({
+        "kg_name": "imdb-movies",
+        "ontology": committed["ontology_context"],
+        "queries": {"results": [
+            {"question": "how many films", "sparql": committed["sparql"], "verdict": "correct"},
+        ]},
+    }))
+
+    bank = make_bank([committed])
+    bank.load()
+    saves = _spy_on_save(bank)
+
+    assert await bank.populate_from_eval_reports(reports) == 0
+    assert saves == [], "nothing accepted; the bank on disk must not be rewritten"
+    assert [r["kg_name"] for r in _read_bank(bank._bank_path)] == ["imdb-movies"]
 
 
 # ── The wiring ───────────────────────────────────────────────────────────

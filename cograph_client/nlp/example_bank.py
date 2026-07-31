@@ -391,6 +391,11 @@ class ExampleBank:
         with open(self._bank_path, "w") as f:
             for ex in self._examples:
                 f.write(json.dumps(ex.to_dict()) + "\n")
+        # The benchmark rows load() filtered are now gone from disk, so the
+        # debt is paid; leaving the counter set would make a SECOND save-gated
+        # cycle on the same instance fire unconditionally. Read it before
+        # save() if you want it for a log line.
+        self.skipped_benchmark_on_load = 0
         logger.info("Saved %d examples to %s", len(self._examples), self._bank_path)
 
     # ── Add examples ─────────────────────────────────────────────────────
