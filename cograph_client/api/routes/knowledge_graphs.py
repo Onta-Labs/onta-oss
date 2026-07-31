@@ -152,11 +152,13 @@ async def _store_triple_count(
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
     try:
+        # GRAPH-form (not WITH … DELETE WHERE): pyoxigraph's update parser
+        # rejects WITH-style DELETE WHERE (dogfood R4: invalidation silently
+        # failed, stored 0 stuck forever on the local OSS store).
         await client.update(
-            f"WITH <{base}>\n"
-            f"DELETE {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }}\n"
-            f"INSERT {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> {int(count)} }}\n"
-            f"WHERE {{ OPTIONAL {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }} }}"
+            f"DELETE {{ GRAPH <{base}> {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }} }}\n"
+            f"INSERT {{ GRAPH <{base}> {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> {int(count)} }} }}\n"
+            f"WHERE {{ OPTIONAL {{ GRAPH <{base}> {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }} }} }}"
         )
     except Exception:
         pass
@@ -179,8 +181,10 @@ async def invalidate_triple_count(
     base = tenant_graph_uri(tenant_id)
     kg_uri = _kg_meta_uri(tenant_id, name)
     try:
+        # GRAPH-form required for pyoxigraph (WITH DELETE WHERE → SyntaxError).
         await client.update(
-            f"WITH <{base}> DELETE WHERE {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }}"
+            f"DELETE WHERE {{ GRAPH <{base}> {{ "
+            f"<{kg_uri}> <{KG_TRIPLE_COUNT}> ?old }} }}"
         )
     except Exception:
         pass
