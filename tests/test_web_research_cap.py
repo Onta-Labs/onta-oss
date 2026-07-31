@@ -127,21 +127,44 @@ async def test_plan_with_urls_returns_research_step():
     assert "estimated_usd" in step.cost
 
 
+class _Provider:
+    name = "fake"
+
+    async def discover(self, query, **kw):  # pragma: no cover - not called in plan
+        from cograph_client.web_sources.base import DiscoverResult
+
+        return DiscoverResult()
+
+
 async def test_plan_available_via_registered_provider_without_urls():
-    # A registered discovery provider makes open-web research available even with
-    # no URLs supplied.
-    class _Provider:
-        name = "fake"
-
-        async def discover(self, query, **kw):  # pragma: no cover - not called in plan
-            from cograph_client.web_sources.base import DiscoverResult
-
-            return DiscoverResult()
-
+    # A registered discovery provider makes open-web research available with no
+    # URLs supplied — but ONLY alongside a registered fetcher, since the harness
+    # reads every page the provider returns through the ladder.
     register_web_source(_Provider())
+    register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
     steps = await cap.plan(_ctx(), "research the S&P 500 and give me a CSV")
     assert steps[0].action == "research"
+
+
+async def test_provider_without_fetcher_does_not_resurrect_an_implicit_fetcher():
+    """ONTA-293 regression guard, caught in review of onta-oss#287.
+
+    The first cut gated only on `provider is None and not can_read_urls`, so a
+    registered web source satisfied the gate on its own. `execute` then built the
+    harness, whose `default_ladder()` fell back to an unregistered
+    StaticHttpFetcher and fetched live pages — exactly the implicit behaviour this
+    work removes, just one branch over. A provider with NO fetcher must degrade.
+    """
+    register_web_source(_Provider())  # deliberately no fetcher
+    cap = WebResearchCapability()
+    steps = await cap.plan(_ctx(), "research the S&P 500 and give me a CSV")
+    assert steps[0].action == "answer"
+    assert "don't retrieve pages from the web" in steps[0].params["answer_payload"]["answer"]
+    # ...and the substrate agrees: nothing registered means nothing to fetch with.
+    from cograph_client.retrieval import default_ladder
+
+    assert default_ladder() == []
 
 
 async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):

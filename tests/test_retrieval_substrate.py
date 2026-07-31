@@ -172,10 +172,14 @@ def test_register_default_fetchers_and_default_ladder():
     register_default_fetchers()
     ladder = get_page_fetchers()
     assert len(ladder) == 1 and isinstance(ladder[0], StaticHttpFetcher)
+    assert [type(f) for f in default_ladder()] == [StaticHttpFetcher]
     reset_page_fetchers()
-    # default_ladder falls back to a lone static fetcher when nothing is registered.
-    fallback = default_ladder()
-    assert len(fallback) == 1 and isinstance(fallback[0], StaticHttpFetcher)
+    # ONTA-293: default_ladder returns EXACTLY the registered fetchers and does NOT
+    # fall back to an implicit StaticHttpFetcher. Open-web retrieval is out of OSS
+    # scope, so an empty registry means an empty ladder and callers must degrade
+    # rather than fetch. The old fallback silently resurrected an unregistered
+    # fetcher on any path that reached the harness.
+    assert default_ladder() == []
 
 
 def test_fetcher_cost_reads_generically():

@@ -134,16 +134,18 @@ class WebResearchCapability:
     async def plan(self, ctx: AgentContext, instruction: str) -> list[PlanStep]:
         urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
         provider = get_web_source()
-        # A URL is only readable if a page fetcher is actually REGISTERED. OSS
-        # registers none — open-web retrieval is out of OSS scope (ONTA-293) — so
-        # URL mode lights up only in a deployment that opted in by calling
-        # `register_default_fetchers()` or registering a premium fetcher.
-        can_read_urls = bool(urls) and bool(get_page_fetchers())
+        # A page fetcher must actually be REGISTERED, whatever else is available:
+        # the harness reads EVERY candidate page through the ladder, including the
+        # ones a discovery provider returns. Gating on the provider alone would let
+        # a registered web source reach `default_ladder()` and fetch — the implicit
+        # behaviour ONTA-293 removes. OSS registers no fetcher, so this is the
+        # branch a plain OSS deployment takes.
+        has_fetcher = bool(get_page_fetchers())
 
-        # Availability: research needs SOMETHING to read — a discovery provider for
-        # open-web search, or explicit URLs AND a fetcher able to read them. Absent
-        # both, degrade to a plain answer (the same no-op pattern web-ingest uses).
-        if provider is None and not can_read_urls:
+        # Availability: research needs a fetcher AND something to point it at —
+        # a discovery provider for open-web search, or explicit URLs. Absent either,
+        # degrade to a plain answer (the same no-op pattern web-ingest uses).
+        if not has_fetcher or (provider is None and not urls):
             return [
                 _answer_step(
                     "I don't retrieve pages from the web in this deployment. If your "
