@@ -22,6 +22,8 @@ turns do **not** mint a job.
 
 from __future__ import annotations
 
+import structlog
+
 from cograph_client.agent.kg_scope import SCOPE_NONE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.graph.kg_status import (
@@ -33,7 +35,10 @@ from cograph_client.graph.kg_status import (
     missing_kg_message,
 )
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from cograph_client.graph.sparql_scope import CrossTenantQueryError
 from cograph_client.pipeline.answer_run import record_answer_run
+
+logger = structlog.stdlib.get_logger("cograph.agent.capabilities.query")
 
 
 class QueryCapability:
@@ -93,7 +98,35 @@ class QueryCapability:
         instance_graph = (
             kg_graph_uri(ctx.tenant_id, ctx.kg_name) if ctx.kg_name else ontology_graph
         )
-        result = await pipeline.ask(question, ontology_graph, instance_graph)
+        try:
+            result = await pipeline.ask(question, ontology_graph, instance_graph)
+        except CrossTenantQueryError:
+            # ONTA-424: the generated query reached outside this workspace and
+            # was refused before the store saw it. `/ask` has a route-level
+            # boundary handler that turns this into a degraded NLResult; the
+            # agent has none — `planner.handle` does not catch, and `api/app.py`
+            # registers no handler for it — so letting it escape here would be a
+            # bare 500 that also breaks the `{kind: …}` response contract and
+            # loses the conversation turn. Degrade in-contract instead. The
+            # security event is already logged by `graph/sparql_scope.py`, and
+            # nothing about the offending query is echoed back to the user.
+            logger.warning(
+                "agent_answer_cross_tenant_query_refused",
+                tenant=ctx.tenant_id,
+                kg_name=ctx.kg_name or "",
+            )
+            return {
+                "answer": (
+                    "Could not answer this question: the query that was "
+                    "generated for it could not be confined to this workspace, "
+                    "so it was not run. Please rephrase and try again."
+                ),
+                "sparql": "",
+                "narrative": "",
+                "citations": [],
+                "coverage_caveat": "",
+                "rows": [],
+            }
         out = {
             "answer": result.answer,
             "sparql": result.sparql,
