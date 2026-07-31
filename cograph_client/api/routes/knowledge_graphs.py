@@ -45,8 +45,10 @@ NAME_ATTRS = ("name", "title", "label", "headline")
 # live on each request (the Explorer's load was dominated by N serial scans).
 # Instead the count is stored once and served as a tiny lookup inside the
 # metadata query that already lists the KGs. It is (re)materialized lazily on
-# read when absent and invalidated after ingest (see `invalidate_triple_count`,
-# called from explore.recompute_kg_stats).
+# read when absent and invalidated after every successful instance write via
+# the shared post-write path (`kg_writer.refresh_after_write` →
+# `invalidate_triple_count`), plus again from explore.recompute_kg_stats when
+# type-stats recompute finishes.
 KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
 
 
@@ -65,9 +67,11 @@ KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
 # the tenant metadata graph. The ``<kg_uri>`` IRI closes early and the rest of the
 # name becomes statement-level SPARQL on a ``client.update`` — e.g.
 # ``; DROP SILENT GRAPH <…/graphs/other-tenant> ;``, a cross-tenant WRITE. Do not
-# "simplify" it away. ``invalidate_triple_count``'s guard is defense-in-depth
-# today (its only caller trips ``explore._stats_graph_uri`` first) but is kept so
-# the helper stays safe for any future caller.
+# "simplify" it away. ``invalidate_triple_count``'s guard is the same shape and is
+# load-bearing for the shared write path: ``refresh_after_write`` passes
+# ``kg_name`` through without re-validating, so the helper must refuse
+# un-IRI-able names itself (``explore.recompute`` still trips
+# ``_stats_graph_uri`` first as defense-in-depth).
 _kg_meta_uri = kg_meta_uri
 
 
@@ -163,8 +167,12 @@ async def invalidate_triple_count(
 ) -> None:
     """Drop a KG's stored triple count so the next `list_kgs` recomputes it.
 
-    Called after ingest (data changed → count stale). Best-effort: a failure
-    just means the stale count lingers until the next write.
+    Called from the shared post-write path (`kg_writer.refresh_after_write`)
+    after every successful instance write, and again from Explorer type-stats
+    recompute. Without this, a stored ``0`` (or any pre-write count) sticks and
+    ``list_kgs`` / ``kg list`` reports ``triple_count: 0`` after ingest.
+    Best-effort: a failure just means the stale count lingers until the next
+    successful invalidation.
     """
     if _skip_invalid_kg_name(name, "invalidate_triple_count"):
         return

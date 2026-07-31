@@ -72,11 +72,17 @@ def test_insert_facts_noop_on_empty():
 
 
 def test_refresh_after_write_runs_all_three(monkeypatch):
-    """Cache-invalidate, re-embed affected types, and recompute stats all fire
-    with the right args — the housekeeping enrichment used to skip entirely."""
+    """Cache-invalidate, re-embed affected types, drop stored triple count, and
+    recompute stats all fire with the right args — the housekeeping enrichment
+    used to skip entirely."""
 
     async def run():
-        calls = {"invalidate": [], "embed": [], "recompute": []}
+        calls = {
+            "invalidate": [],
+            "embed": [],
+            "recompute": [],
+            "triple_count": [],
+        }
 
         monkeypatch.setattr(
             pipeline_mod.NLQueryPipeline,
@@ -95,6 +101,14 @@ def test_refresh_after_write_runs_all_three(monkeypatch):
             lambda neptune, tenant_id, kg_name: calls["recompute"].append((tenant_id, kg_name)),
         )
 
+        async def fake_invalidate_triple_count(client, tenant_id, name):
+            calls["triple_count"].append((tenant_id, name))
+
+        monkeypatch.setattr(
+            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            fake_invalidate_triple_count,
+        )
+
         neptune = AsyncMock()
         await refresh_after_write(
             neptune, tenant_id="t", kg_name="k", affected_types={"Company"},
@@ -104,6 +118,9 @@ def test_refresh_after_write_runs_all_three(monkeypatch):
         assert calls["invalidate"] == [onto]
         assert calls["embed"] == [(onto, ["Company"])]
         assert calls["recompute"] == [("t", "k")]
+        # Stored kg_triple_count must be dropped so list_kgs does not serve a
+        # sticky pre-ingest 0 after this write.
+        assert calls["triple_count"] == [("t", "k")]
 
     asyncio.run(run())
 
@@ -159,7 +176,72 @@ def test_refresh_after_write_is_best_effort(monkeypatch):
 
 
 def test_refresh_after_write_skips_recompute_without_kg(monkeypatch):
-    """No kg_name (tenant-graph-only write) → no stats recompute."""
+    """No kg_name (tenant-graph-only write) → no stats recompute or triple-count invalidate."""
+
+    async def run():
+        recomputed = []
+        triple_counts = []
+        monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None)
+        monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
+        monkeypatch.setattr(
+            explore_mod, "schedule_recompute",
+            lambda neptune, tenant_id, kg_name: recomputed.append(kg_name),
+        )
+
+        async def fake_invalidate_triple_count(client, tenant_id, name):
+            triple_counts.append((tenant_id, name))
+
+        monkeypatch.setattr(
+            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            fake_invalidate_triple_count,
+        )
+        await refresh_after_write(AsyncMock(), tenant_id="t", kg_name=None, affected_types={"X"})
+        assert recomputed == []
+        assert triple_counts == []
+
+    asyncio.run(run())
+
+
+def test_refresh_after_write_invalidates_triple_count_even_without_recompute(monkeypatch):
+    """Triple-count invalidation is independent of recompute_stats.
+
+    An attribute update / rewrite that skips Explorer type-stats still changes
+    the graph's triple cardinality, so list_kgs must not keep a stale stored
+    count.
+    """
+
+    async def run():
+        triple_counts = []
+        recomputed = []
+        monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda graph: None)
+        monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
+        monkeypatch.setattr(
+            explore_mod, "schedule_recompute",
+            lambda neptune, tenant_id, kg_name: recomputed.append(kg_name),
+        )
+
+        async def fake_invalidate_triple_count(client, tenant_id, name):
+            triple_counts.append((tenant_id, name))
+
+        monkeypatch.setattr(
+            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            fake_invalidate_triple_count,
+        )
+        await refresh_after_write(
+            AsyncMock(),
+            tenant_id="t",
+            kg_name="k",
+            affected_types=set(),
+            recompute_stats=False,
+        )
+        assert triple_counts == [("t", "k")]
+        assert recomputed == []
+
+    asyncio.run(run())
+
+
+def test_refresh_after_write_triple_count_invalidate_is_best_effort(monkeypatch):
+    """A triple-count invalidation failure must not fail the write path."""
 
     async def run():
         recomputed = []
@@ -169,8 +251,17 @@ def test_refresh_after_write_skips_recompute_without_kg(monkeypatch):
             explore_mod, "schedule_recompute",
             lambda neptune, tenant_id, kg_name: recomputed.append(kg_name),
         )
-        await refresh_after_write(AsyncMock(), tenant_id="t", kg_name=None, affected_types={"X"})
-        assert recomputed == []
+
+        async def boom(*_a, **_k):
+            raise RuntimeError("metadata graph down")
+
+        monkeypatch.setattr(
+            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            boom,
+        )
+        await refresh_after_write(AsyncMock(), tenant_id="t", kg_name="k")
+        # recompute still ran after the failed invalidate
+        assert recomputed == ["k"]
 
     asyncio.run(run())
 
