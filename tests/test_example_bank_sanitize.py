@@ -305,7 +305,7 @@ def test_sanitizing_a_shipped_example_onto_its_own_graph_is_byte_identical():
     for ex in examples:
         own = re.findall(r"FROM\s+(?:NAMED\s+)?<([^>]+)>", ex.sparql, re.IGNORECASE)
         if not own:
-            continue  # the bank has one example with no dataset clause
+            continue  # an example with no dataset clause has nothing to rewrite
         # An example scoped to several graphs has no single "own" graph, so a
         # rewrite legitimately changes it. Out of scope for this property.
         if len(set(own)) != 1:
