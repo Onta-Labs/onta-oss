@@ -11,6 +11,11 @@ import structlog
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.parser import parse_sparql_results, unbound_projection_vars
 from cograph_client.graph.queries import parse_kg_graph_uri, skip_invalid_type_name
+from cograph_client.graph.sparql_scope import (
+    CrossTenantQueryError,
+    confine_generated_query,
+    tenant_of_graph,
+)
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
@@ -783,6 +788,12 @@ class NLQueryPipeline:
                 last_was_empty_sparql = False
 
                 t2 = time.time()
+                # ONTA-424: the prompt ASKS for a scoped query; this is what
+                # ENFORCES one. A generated query with no dataset clause reads
+                # the union of every named graph on the instance, so nothing
+                # reaches the store until it is provably confined to the graphs
+                # this request already targets.
+                sparql = self._confine_generated(sparql, data_graph, layer_graph_uris)
                 raw = await self.neptune.query(sparql)
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
                 variables, bindings = parse_sparql_results(raw)
@@ -794,7 +805,9 @@ class NLQueryPipeline:
                 # behavior — whenever the first query already returned rows, isn't a
                 # single-subtype name lookup, or the type has no supertype.
                 if not bindings:
-                    broadened = await self._broaden_name_lookup(sparql, graph_uri)
+                    broadened = await self._broaden_name_lookup(
+                        sparql, graph_uri, data_graph, layer_graph_uris
+                    )
                     if broadened is not None:
                         b_sparql, b_raw = broadened
                         b_variables, b_bindings = parse_sparql_results(b_raw)
@@ -1009,6 +1022,13 @@ class NLQueryPipeline:
                     citations=citations,
                     coverage_caveat=coverage_caveat,
                 )
+            except CrossTenantQueryError:
+                # ONTA-424: a generated query that reached at another workspace is
+                # a security event, not a syntax slip. Never retried, and never
+                # summarised back to the model as `last_error` feedback it could
+                # iterate against. `api/routes/ask.py` catches it at the boundary
+                # and returns the generic degraded NLResult.
+                raise
             except Exception as e:
                 last_error = str(e)
                 # If the attempt died BEFORE producing a query (generation raised,
@@ -1036,6 +1056,37 @@ class NLQueryPipeline:
             explanation=explanation,
             ontology=ontology,
             timing=timing,
+        )
+
+    # ------------------------------------------------ generated-query confinement
+
+    @staticmethod
+    def _confine_generated(
+        sparql: str, data_graph: str, layer_graph_uris: list[str] | None = None
+    ) -> str:
+        """Confine LLM-generated SPARQL to this request's graphs (ONTA-424).
+
+        The single choke point every generated query passes through before it
+        reaches Neptune. Returns the query to run, which is either ``sparql``
+        unchanged or a repaired copy carrying ``FROM <data_graph>``; raises
+        :class:`CrossTenantQueryError` when the generated text reaches outside
+        the request's scope.
+
+        The tenant is derived from ``data_graph`` rather than passed in, and that
+        is deliberate. ``data_graph`` is resolved by the route from the
+        AUTHENTICATED tenant (``/ask`` and the agent's ``QueryCapability`` both
+        build it with ``kg_graph_uri(tenant.tenant_id, ...)``), so it is already
+        the trusted boundary; deriving it means a future caller of ``ask()``
+        cannot forget to thread a tenant and silently lose the guard. A
+        ``data_graph`` outside the platform namespace (a self-hosted store) yields
+        no tenant, and confinement then falls back to the graphs the request
+        itself named, which is strictly tighter than tenant ownership.
+        """
+        return confine_generated_query(
+            sparql,
+            default_graphs=[data_graph],
+            tenant_id=tenant_of_graph(data_graph),
+            allowed_graphs=layer_graph_uris or (),
         )
 
     # ------------------------------------------------ name-lookup broadening
@@ -1084,7 +1135,11 @@ class NLQueryPipeline:
         return False
 
     async def _broaden_name_lookup(
-        self, sparql: str, graph_uri: str
+        self,
+        sparql: str,
+        graph_uri: str,
+        data_graph: str | None = None,
+        layer_graph_uris: list[str] | None = None,
     ) -> tuple[str, dict] | None:
         """Retry a zero-row NAME lookup against the type's SUPERTYPE.
 
@@ -1102,7 +1157,11 @@ class NLQueryPipeline:
 
         Returns ``(broadened_sparql, raw_result)`` from the re-query, or ``None``
         when the query is not a single-subtype NAME lookup, the type has no
-        supertype, or anything errors — best-effort, never raises into ``ask()``.
+        supertype, or anything errors — best-effort. The one exception it lets
+        through is :class:`CrossTenantQueryError` (ONTA-424): swallowing a
+        confinement failure into ``None`` would turn a security event into a
+        silent "no broadening happened", so it propagates to ``ask()``, which
+        re-raises it.
         """
         try:
             if not self._targets_label_name_var(sparql):
@@ -1137,8 +1196,17 @@ class NLQueryPipeline:
             broadened = sparql.replace(f"<{sub_uri}>", f"<{super_uri}>")
             if broadened == sparql:
                 return None
+            # ONTA-424: re-confine rather than inherit the caller's verdict. The
+            # substitution above only rewrites a `types/` URI today, so the
+            # dataset cannot change, but the guard belongs at the store call and
+            # not at whichever transform happens to precede it.
+            broadened = self._confine_generated(
+                broadened, data_graph or graph_uri, layer_graph_uris
+            )
             raw = await self.neptune.query(broadened)
             return broadened, raw
+        except CrossTenantQueryError:
+            raise
         except Exception:
             logger.debug("name_lookup_broaden_failed", exc_info=True)
             return None
@@ -1404,9 +1472,12 @@ class NLQueryPipeline:
         constrains the projection to the entity IRI (``?uri``) and extracts it.
 
         Returns a deduped, order-preserving list capped at ``limit``. Returns
-        ``[]`` on any failure (unparseable/invalid SPARQL, Neptune error, or no
-        IRI column) — never raises; the caller decides how to handle "couldn't
-        resolve".
+        ``[]`` on any failure (unparseable/invalid SPARQL, Neptune error, a
+        generated query that could not be confined to this workspace, or no IRI
+        column) — never raises; the caller decides how to handle "couldn't
+        resolve". ``[]`` is the fail-closed outcome here: the store is never
+        called, and a confinement failure is logged as its own security event by
+        ``graph/sparql_scope.py`` before it is swallowed.
         """
         data_graph = instance_graph or graph_uri
         try:
@@ -1431,6 +1502,9 @@ class NLQueryPipeline:
             if not is_valid:
                 logger.warning("select_entity_uris_invalid_sparql", error=error)
                 return []
+            # ONTA-424: same enforcement as ask(); this path generates SPARQL
+            # from the same prompt and runs it against the same store.
+            sparql = self._confine_generated(sparql, data_graph)
             raw = await self.neptune.query(sparql)
             _, bindings = parse_sparql_results(raw)
         except Exception:
