@@ -953,7 +953,10 @@ class NLQueryPipeline:
                 if missing_vars:
                     timing["unbound_projection_vars"] = ", ".join(missing_vars)
                     logger.info("unbound_projection_vars", vars=missing_vars, question=question)
-                answer = await self._format_answer(bindings, explanation, missing_vars=missing_vars)
+                answer = await self._format_answer(
+                    bindings, explanation, missing_vars=missing_vars,
+                    data_graph=data_graph,
+                )
                 # ONTA-258/ONTA-450: "" unless the zero rows are explained by a
                 # declared-but-empty type the question named.
                 answer += honest_empty_note
@@ -2842,11 +2845,23 @@ class NLQueryPipeline:
         path = unquote(uri.replace("https://cograph.tech/", ""))
         return path.split("/")[-1]
 
-    async def _resolve_uri_labels(self, bindings: list[dict]) -> dict[str, str]:
+    async def _resolve_uri_labels(
+        self, bindings: list[dict], data_graph: str | None = None
+    ) -> dict[str, str]:
         """Batch-resolve rdfs:label for all Omnix entity/type URIs in bindings.
 
         Returns a mapping from URI → human-readable label.
         Falls back to extracting the last URI path segment if no label is found.
+
+        ONTA-424: ``data_graph`` scopes the lookup. This query named no graph,
+        and on Neptune that means the union of every named graph on the
+        instance. It is not generated SPARQL, but it is the same leak: entity
+        IRIs are minted from the TYPE and the value
+        (``entities/<Type>/<safe_id>``, see ``graph/ontology_queries.py``) with
+        no tenant segment, so two workspaces holding the same real-world thing
+        mint the SAME IRI. An unscoped ``VALUES ?uri { … } ?uri rdfs:label
+        ?label`` therefore returns whatever label ANOTHER workspace attached to
+        that IRI, and the answer renders it as ours.
         """
         # Collect all unique URIs that look like Omnix entities or types
         uris: set[str] = set()
@@ -2865,8 +2880,9 @@ class NLQueryPipeline:
 
         # Batch SPARQL query to fetch rdfs:label for all URIs at once
         values_clause = " ".join(f"<{u}>" for u in uris)
+        scope = f"FROM <{data_graph}> " if data_graph else ""
         label_query = (
-            f"SELECT ?uri ?label WHERE {{ "
+            f"SELECT ?uri ?label {scope}WHERE {{ "
             f"VALUES ?uri {{ {values_clause} }} "
             f"?uri <http://www.w3.org/2000/01/rdf-schema#label> ?label . "
             f"}}"
@@ -2894,6 +2910,7 @@ class NLQueryPipeline:
         bindings: list[dict],
         explanation: str,
         missing_vars: list[str] | None = None,
+        data_graph: str | None = None,
     ) -> str:
         # `missing_vars` are projected columns that bound in zero rows — reported
         # honestly (see `unbound_projection_vars`) so the caller can tell "column
@@ -2926,7 +2943,7 @@ class NLQueryPipeline:
             return "No results found." + _missing_note()
 
         # Resolve any entity/type URIs to human-readable labels
-        uri_labels = await self._resolve_uri_labels(bindings)
+        uri_labels = await self._resolve_uri_labels(bindings, data_graph)
 
         def _display(value: str) -> str:
             """Return the display form of a binding value, resolving URIs."""

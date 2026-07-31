@@ -518,36 +518,169 @@ def test_ask_route_degrades_and_never_forwards_the_foreign_query(
         assert VICTIM_GRAPH not in str(call), call
 
 
+#: Store calls in ``nlp/pipeline.py`` that pass a BARE VARIABLE holding SPARQL
+#: this module built itself, with a justification for why each is confined by
+#: construction. Deliberately keyed on the variable NAME so adding a new one is
+#: a decision someone has to write down here, not something a rename can slip
+#: past. Anything else must go through ``_confine_generated``.
+BUILT_HERE_QUERY_VARS = {
+    # `_resolve_anchor_via_neptune`: an f-string template that carries its own
+    # `FROM <data_graph>`, with the description sanitised into a FILTER literal.
+    # A literal inside the WHERE cannot introduce a dataset clause: the grammar
+    # puts DatasetClause* before the WhereClause.
+    "q": "f-string template carrying its own FROM <data_graph>",
+    # `_fetch_ontology` / `_instance_graph_ontology_fallback`: templates over
+    # `FROM <instance_graph>` / `FROM <target_graph>`.
+    "type_query": "f-string template carrying its own FROM",
+    "pred_query": "f-string template carrying its own FROM",
+    # `_resolve_uri_labels`: template, scoped by ONTA-424 to `FROM <data_graph>`
+    # when the caller threads one.
+    "label_query": "f-string template, scoped to FROM <data_graph> (ONTA-424)",
+}
+
+
+def _scan_execution_sites(lines: list[str]) -> tuple[list[str], list[str]]:
+    """``(confined, unconfined)`` store-call lines, deny-by-default.
+
+    A call is exempt only when its argument is a builder CALL (scoped by
+    construction, e.g. ``parent_map_query(graph_uri)``) or a bare variable
+    listed in :data:`BUILT_HERE_QUERY_VARS`. Everything else must be preceded by
+    a ``_confine_generated`` call.
+    """
+    import re
+
+    call_re = re.compile(r"neptune\.query\(([^)]*)\)")
+    identifier_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    confined: list[str] = []
+    unconfined: list[str] = []
+    for i, line in enumerate(lines):
+        match = call_re.search(line)
+        if not match:
+            continue
+        argument = match.group(1).strip()
+        if not identifier_re.match(argument) or argument in BUILT_HERE_QUERY_VARS:
+            continue
+        window = "\n".join(lines[max(0, i - 8) : i])
+        (confined if "_confine_generated(" in window else unconfined).append(
+            f"line {i + 1}: {line.strip()}"
+        )
+    return confined, unconfined
+
+
 def test_every_generated_sparql_execution_site_is_guarded():
     """Structural guard, mirroring the raw router's own test.
 
-    A new ``neptune.query`` added to the NL pipeline that skipped confinement
-    would reopen this exact hole. Enumerate the store calls in the module and
-    require each to be immediately preceded by a confinement call, so a fourth
-    execution site fails in CI rather than in review.
+    DENY BY DEFAULT, like ``test_write_path_convergence`` and
+    ``test_retrieval_path_convergence``. An earlier draft of this test matched
+    the two variable names this change happened to use, which meant a new
+    execution site called anything else would sail straight past it — the same
+    enumerated-allowlist weakness that let ``api/routes/lambda_functions.py``
+    escape the old write-path guard. Every store call in the module is now
+    enumerated instead, and anything not justified must be confined.
     """
     import inspect
-    import re
 
     from cograph_client.nlp import pipeline as pipeline_mod
 
-    source = inspect.getsource(pipeline_mod)
-    lines = source.splitlines()
-    # Every store call whose argument is a GENERATED query variable. The
-    # pipeline's other neptune.query calls pass a query built by our own
-    # builders (parent_map_query, get_full_ontology_query, an f-string template
-    # carrying its own FROM), which are scoped by construction.
-    generated = [
-        i
-        for i, line in enumerate(lines)
-        if re.search(r"neptune\.query\((sparql|broadened)\)", line)
-    ]
-    assert len(generated) == 3, (
-        "the set of generated-SPARQL execution sites changed; confirm the new "
-        f"one is confined, then update this count (found {len(generated)})"
+    confined, unconfined = _scan_execution_sites(
+        inspect.getsource(pipeline_mod).splitlines()
     )
-    for i in generated:
-        window = "\n".join(lines[max(0, i - 8) : i])
-        assert "_confine_generated(" in window, (
-            f"unconfined generated-SPARQL execution at line {i + 1}: {lines[i].strip()}"
-        )
+    assert not unconfined, (
+        "unconfined SPARQL execution in nlp/pipeline.py:\n"
+        + "\n".join(unconfined)
+        + "\nEither route it through _confine_generated(), or, if it is a query "
+        "this module builds with its own FROM clause, add its variable to "
+        "BUILT_HERE_QUERY_VARS with a justification."
+    )
+    assert len(confined) == 3, (
+        "the set of confined execution sites changed; confirm each new one is "
+        f"correct, then update this count (found {confined})"
+    )
+
+
+def test_the_structural_guard_catches_a_planted_violation():
+    """The guard is only worth having if it fails on the thing it describes.
+
+    Both planted shapes matter: a brand-new variable name (which the earlier
+    name-matching draft was blind to), and a RENAME of an existing confined
+    site (which would otherwise silently drop out of the count).
+    """
+    planted = [
+        "        generated = build_something()",
+        "        raw = await self.neptune.query(generated)",
+    ]
+    confined, unconfined = _scan_execution_sites(planted)
+    assert unconfined and not confined
+
+    renamed = [
+        "        sparql = self._confine_generated(sparql, data_graph)",
+        "        raw = await self.neptune.query(sparql)",
+    ]
+    confined, unconfined = _scan_execution_sites(renamed)
+    assert confined and not unconfined
+
+    # A builder call stays exempt without needing an allowlist entry.
+    builder = ["        raw = await self.neptune.query(parent_map_query(g))"]
+    assert _scan_execution_sites(builder) == ([], [])
+
+
+@pytest.mark.asyncio
+async def test_label_resolution_is_scoped_to_the_requests_own_graph():
+    """Entity IRIs carry no tenant segment, so an unscoped label lookup leaks.
+
+    ``entity_uri`` mints ``entities/<Type>/<safe_id>`` from the type and the
+    value alone, so two workspaces holding the same real-world thing mint the
+    SAME IRI. This lookup named no graph, which on Neptune means the union of
+    every named graph, so it returned whatever label ANOTHER workspace attached
+    to that IRI and the answer rendered it as ours.
+    """
+    from cograph_client.nlp.pipeline import NLQueryPipeline
+
+    seen: list[str] = []
+
+    async def query(sparql, *a, **k):
+        seen.append(sparql)
+        return {"head": {"vars": ["uri", "label"]}, "results": {"bindings": []}}
+
+    neptune = AsyncMock()
+    neptune.query = AsyncMock(side_effect=query)
+    p = NLQueryPipeline(neptune, "invented-anthropic-key")
+
+    bindings = [{"x": "https://cograph.tech/entities/Film/some_film"}]
+    await p._resolve_uri_labels(bindings, DATA_GRAPH)
+
+    assert seen, "the label lookup never ran"
+    assert _dataset_of(seen[0]) == [DATA_GRAPH]
+
+
+@pytest.mark.asyncio
+async def test_agent_degrades_in_contract_instead_of_raising_a_500():
+    """``/agent`` has no route-level boundary handler, so this one degrades here.
+
+    ``planner.handle`` does not catch, and ``api/app.py`` registers no handler
+    for :class:`CrossTenantQueryError`, so letting it escape would be a bare 500
+    that also breaks the documented ``{kind: answer|clarify|plan|result}``
+    contract and loses the conversation turn.
+    """
+    from unittest.mock import patch
+
+    from cograph_client.agent.capabilities.query import QueryCapability
+
+    ctx = AsyncMock()
+    ctx.tenant_id = TENANT
+    ctx.kg_name = ""
+    ctx.neptune = AsyncMock()
+    ctx.anthropic_key = "invented-anthropic-key"
+    ctx.extras = {}
+
+    with patch(
+        "cograph_client.nlp.pipeline.NLQueryPipeline.ask",
+        side_effect=CrossTenantQueryError("nope"),
+    ):
+        out = await QueryCapability().answer(ctx, "how many things")
+
+    assert out.get("kind") in (None, "answer")
+    assert not out["sparql"]
+    assert out["rows"] == []
+    # Nothing about the refused query is echoed back to the caller.
+    assert VICTIM_GRAPH not in out["answer"]
