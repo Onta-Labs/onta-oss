@@ -15,14 +15,20 @@ holes were left open, and both are worse on an action turn than on a question:
   zero rows, or (on a create-capable rail) a brand-new graph was implicitly minted
   under the typo'd name. The user is told the work happened.
 
-* **ONTA-426**: an OMITTED ``kg_name`` was silently unscoped. The action fell
-  back to the tenant BASE graph, so an enrich turn meant for one of the
-  workspace's graphs wrote its results somewhere the user never named and cannot
-  see in the Explorer's KG dropdown. Naming nothing is not the same as naming the
-  default, and an unscoped read is exactly the shape that ONTA-424 is separately
-  closing at the SPARQL layer (Neptune's default graph is the UNION of all named
-  graphs). This gate makes the omission EXPLICIT at the turn boundary rather than
-  leaving it to be caught downstream.
+* **ONTA-426**: an OMITTED ``kg_name`` was never handled as its own case, and the
+  three rails disagreed about what it meant. ``enrich_cap`` resolved its scope
+  against the tenant BASE graph (``kg_graph_uri(...) if ctx.kg_name else
+  onto_graph``), so the turn silently operated on a dataset the user never named
+  and cannot select in the Explorer's KG dropdown; ``dedup_cap`` and
+  ``subscribe_cap`` returned ``[]``, which the planner rendered as a vague "I
+  couldn't determine the specifics"; and the normalization / enrichment executors
+  call ``kg_graph_uri(tenant, "")``, which RAISES ``InvalidKGName``. Three
+  different wrong answers, none of which says the one true thing: you did not tell
+  me which graph. Naming nothing is not the same as naming the default, and an
+  unscoped read is the shape ONTA-424 is separately closing at the SPARQL layer
+  (Neptune's default graph is the UNION of all named graphs). This gate makes the
+  omission EXPLICIT at the turn boundary rather than leaving it to be caught
+  downstream.
 
 Where the check lives, and why not in ``kg_writer``
 --------------------------------------------------
@@ -97,6 +103,7 @@ DEFAULT_SCOPE_POLICY = SCOPE_REQUIRE
 # built by a test or a downstream caller keeps working.
 CTX_KG_STATUS = "kg_status"
 CTX_KG_RESOLVED = "kg_scope_resolved"
+CTX_KG_AVAILABLE = "kg_scope_available"
 
 # Machine-readable reason on the returned clarify, so a client (or an MCP agent
 # deciding how to retry) can tell "you named a graph that isn't there" from "you
@@ -133,6 +140,25 @@ def ambiguous_kg_message(names: list[str]) -> str:
     )
 
 
+def missing_kg_mixed_message(kg_name: str) -> str:
+    """Clarify text for a turn that mixes a ``create`` rail with a ``require`` one.
+
+    "Find X from the web and clean up the names" against a graph that does not
+    exist yet. Discovery alone would be fine (it mints the graph), but the clean /
+    dedup / enrich half has nothing to operate on, and ``_INTENT_PLAN_ORDER`` runs
+    cleaning BEFORE discovery anyway. Refusing is right; using the plain
+    "does not exist, here are the real ones" text would not be, because it reads
+    as if the user asked for something impossible when half their request is
+    perfectly runnable. Name the actual split instead.
+    """
+    return (
+        f"Knowledge graph '{kg_name}' does not exist yet. I can create it by "
+        "adding data, but the rest of this request (cleaning, merging, enriching "
+        "or watching existing records) needs data that is already there. Ask me "
+        "to add the data first, then follow up with the rest."
+    )
+
+
 def resolved_kg_note(kg_name: str) -> str:
     """The note shown when an omitted ``kg_name`` resolved to the only graph there is."""
     return (
@@ -141,7 +167,9 @@ def resolved_kg_note(kg_name: str) -> str:
     )
 
 
-async def check_kg_scope(ctx, capabilities: list) -> dict | None:
+async def check_kg_scope(
+    ctx, capabilities: list, *, resolve_omitted: bool = True
+) -> dict | None:
     """Resolve / validate the KG scope of one ``/agent`` turn.
 
     ``capabilities`` are the capability instances (or names) this turn is about to
@@ -150,11 +178,21 @@ async def check_kg_scope(ctx, capabilities: list) -> dict | None:
     ``{kind: answer|clarify|plan|result}``, so a clarify is both in-contract and
     directly actionable, exactly as ONTA-413 chose for the read path).
 
+    ``resolve_omitted=False`` turns this into a pure VALIDATOR: an omitted
+    ``kg_name`` is left exactly as it is. The confirm path passes it, because a
+    plan proposed with no KG scope was already gated when it was proposed, and
+    re-inferring at confirm time against a workspace that has since grown a graph
+    would silently retarget a plan the user already approved.
+
     Side effects on ``ctx`` when the turn proceeds:
 
     * ``ctx.extras[CTX_KG_STATUS]``: the probe verdict, so a create-capable
       capability can say "this graph does not exist yet and will be created" on
       the plan card instead of creating one silently.
+    * ``ctx.extras[CTX_KG_AVAILABLE]``: the workspace's other graphs, looked up
+      once on the missing path and shared by the refusal message and the discovery
+      rail (which withholds auto-confirm when a MISSING target sits in a workspace
+      that already has graphs, i.e. the typo shape).
     * ``ctx.kg_name``: set when an omitted name resolved to the workspace's ONLY
       graph, with ``ctx.extras[CTX_KG_RESOLVED]`` recording that it was inferred
       rather than asked for.
@@ -179,25 +217,45 @@ async def check_kg_scope(ctx, capabilities: list) -> dict | None:
     if kg_name:
         status = await kg_data_status(neptune, tenant_id, kg_name)
         extras[CTX_KG_STATUS] = status
-        if status == KG_MISSING and SCOPE_REQUIRE in policies:
-            # ONTA-428. The named graph does not exist and every rail on this turn
-            # needs data that would already be in it, so there is nothing to act
-            # on. Refuse with the real graph names so an MCP/CLI agent can retry
-            # in one hop instead of "succeeding" over zero rows.
-            available = await list_kg_names(neptune, tenant_id)
+        if status != KG_MISSING:
+            return None
+        # ONE lookup, shared by the refusal message below and by the discovery
+        # rail's auto-confirm decision. A workspace that already HAS graphs and
+        # was handed a name that is not one of them is the typo shape; an empty
+        # list is a genuine cold start.
+        available = await list_kg_names(neptune, tenant_id)
+        extras[CTX_KG_AVAILABLE] = list(available)
+        if SCOPE_REQUIRE in policies:
+            # ONTA-428. The named graph does not exist and at least one rail on
+            # this turn needs data that would already be in it, so there is
+            # nothing for that rail to act on. Refuse with the real graph names so
+            # an MCP/CLI agent can retry in one hop instead of "succeeding" over
+            # zero rows.
             logger.info(
-                "agent_kg_scope_missing", tenant=tenant_id, kg_name=kg_name
+                "agent_kg_scope_missing",
+                tenant=tenant_id,
+                kg_name=kg_name,
+                mixed=SCOPE_CREATE in policies,
+            )
+            question = (
+                missing_kg_mixed_message(kg_name)
+                if SCOPE_CREATE in policies
+                else missing_kg_message(kg_name, available)
             )
             return {
                 "kind": "clarify",
                 "code": CODE_KG_MISSING,
-                "question": missing_kg_message(kg_name, available),
+                "question": question,
                 "options": list(available),
             }
-        # A create-capable turn against a missing graph is NOT refused: "the KG
-        # does not exist yet" is a legitimate cold start for discovery. It is no
-        # longer SILENT either. The verdict is on ctx.extras and the plan card
-        # says the graph will be created, so the confirm is an informed one.
+        # A purely create-capable turn against a missing graph is NOT refused:
+        # "the KG does not exist yet" is a legitimate cold start for discovery. It
+        # is no longer SILENT either. The verdict and the workspace's other graphs
+        # are on ctx.extras, so the plan card says the graph will be created and
+        # withholds auto-confirm when the name looks like a typo.
+        return None
+
+    if not resolve_omitted:
         return None
 
     # ONTA-426: nothing was named. Resolve it or ask; never act unscoped.
@@ -230,6 +288,7 @@ async def check_kg_scope(ctx, capabilities: list) -> dict | None:
 __all__ = [
     "CODE_KG_AMBIGUOUS",
     "CODE_KG_MISSING",
+    "CTX_KG_AVAILABLE",
     "CTX_KG_RESOLVED",
     "CTX_KG_STATUS",
     "DEFAULT_SCOPE_POLICY",
@@ -239,6 +298,7 @@ __all__ = [
     "SCOPE_REQUIRE",
     "ambiguous_kg_message",
     "check_kg_scope",
+    "missing_kg_mixed_message",
     "resolved_kg_note",
     "scope_policy",
 ]

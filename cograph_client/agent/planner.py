@@ -1217,9 +1217,16 @@ async def _kg_scope_gate_for_confirm(ctx, store, plan_id: str) -> dict | None:
 
     * the graph existed when the plan was proposed and was deleted before the user
       confirmed (a plan can sit un-confirmed indefinitely);
-    * a confirm whose request body carries NO ``context.kg_name``, in which case the plan's own
-      recorded scope is restored onto the context instead of letting the execution
-      fall through to the tenant base graph.
+    * a confirm whose request body carries NO ``context.kg_name``, in which case
+      the plan's own recorded scope is restored onto the context instead of
+      letting the execution fall through to the tenant base graph.
+
+    This VALIDATES, it never re-resolves (``resolve_omitted=False``). A plan
+    proposed with no KG scope at all was already gated when it was proposed, in a
+    workspace that had no graphs to choose between; inferring one now, because the
+    workspace has since grown a graph, would silently retarget a plan the user
+    already approved, and would do it without the ``kg_scope_note`` the plan-time
+    path attaches.
 
     Runs BEFORE ``claim_for_execution`` deliberately: a refused confirm must leave
     the plan ``proposed`` and re-confirmable once the user creates (or corrects)
@@ -1243,7 +1250,7 @@ async def _kg_scope_gate_for_confirm(ctx, store, plan_id: str) -> dict | None:
     if not getattr(ctx, "kg_name", "") and plan.kg_name:
         ctx.kg_name = plan.kg_name
     caps = [s.capability for s in plan.steps]
-    clarify = await check_kg_scope(ctx, caps)
+    clarify = await check_kg_scope(ctx, caps, resolve_omitted=False)
     if clarify is None:
         return None
     logger.info("agent_plan_kg_scope_refused", plan_id=plan_id, kg_name=ctx.kg_name)

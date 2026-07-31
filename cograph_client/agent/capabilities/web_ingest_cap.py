@@ -62,7 +62,11 @@ from urllib.parse import urlparse
 
 import structlog
 
-from cograph_client.agent.kg_scope import CTX_KG_STATUS, SCOPE_CREATE
+from cograph_client.agent.kg_scope import (
+    CTX_KG_AVAILABLE,
+    CTX_KG_STATUS,
+    SCOPE_CREATE,
+)
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.graph.kg_status import KG_MISSING
 from cograph_client.obs import timed
@@ -708,8 +712,9 @@ class WebIngestCapability:
         # created a second, near-identical graph and the user was told the ingest
         # succeeded. The planner leaves its probe verdict on ctx.extras; surface it
         # on the plan card so the confirm is an informed one.
+        _extras = getattr(ctx, "extras", None) or {}
         creates_kg = bool(ctx.kg_name) and (
-            (getattr(ctx, "extras", None) or {}).get(CTX_KG_STATUS) == KG_MISSING
+            _extras.get(CTX_KG_STATUS) == KG_MISSING
         )
         new_kg_note = (
             f"Knowledge graph '{ctx.kg_name}' does not exist yet and will be "
@@ -717,6 +722,12 @@ class WebIngestCapability:
             if creates_kg
             else ""
         )
+        # A missing target in a workspace that ALREADY HAS graphs is the typo
+        # shape (the reported ONTA-428 case); a missing target in a workspace with
+        # none is a genuine cold start. Only the former withholds the lean path's
+        # server-owned auto-confirm below, so a typo costs one human confirm while
+        # a first-ever discovery run stays frictionless.
+        looks_like_a_typo = creates_kg and bool(_extras.get(CTX_KG_AVAILABLE))
 
         # ONTA-239 (Cluster 2b) — ONTOLOGY GROUNDING. Fetch the target type's
         # already-declared attribute names so this second rail converges on the
@@ -922,7 +933,12 @@ class WebIngestCapability:
             # hardcoded twin constant (interface-drift risk: a client whose
             # threshold skews from COGRAPH_WEB_PREVIEW_GATE_USD would either
             # show a preview-less spend card or auto-run an ungated plan).
-            lean_cost["auto_confirm"] = True
+            # ONTA-428: withhold the auto-confirm when the target graph is missing
+            # AND the workspace has others, i.e. the typo shape. Everywhere else
+            # (existing graph, or a first-ever graph in an empty workspace) the
+            # gate keeps its previous behaviour exactly.
+            if not looks_like_a_typo:
+                lean_cost["auto_confirm"] = True
             return [
                 PlanStep(
                     capability=self.name,
@@ -946,6 +962,7 @@ class WebIngestCapability:
                     },
                     rationale=(
                         degraded_prefix
+                        + new_kg_note
                         + (f"{registry_card}. " if registry_card else "")
                         + f"Find {query} on the web and add them to this graph as "
                         f"{type_name} records."
@@ -954,10 +971,14 @@ class WebIngestCapability:
                     preview={
                         "summary": (
                             degraded_prefix
+                            + new_kg_note
                             + (f"{registry_card}. " if registry_card else "")
                             + f"Search the web for {query} and add the results as "
                             f"{type_name} records (up to {cap})."
                         ),
+                        # Same key the rich preview carries, so a client reads ONE
+                        # contract regardless of which tier built the card.
+                        "creates_kg": creates_kg,
                     },
                     cost=lean_cost,
                 )

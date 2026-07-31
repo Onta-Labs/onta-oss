@@ -3465,3 +3465,75 @@ async def test_confirm_of_a_finished_plan_still_replays():
     assert out["kind"] == "result"
     assert out["replayed"] is True
     assert cap.executed == []
+
+
+@pytest.mark.asyncio
+async def test_mixed_create_and_require_turn_names_the_actual_split(monkeypatch):
+    """"Find X from the web AND clean up the names" against a graph that does not
+    exist yet. Discovery alone would be fine; the clean half has nothing to act on
+    (and _INTENT_PLAN_ORDER runs cleaning FIRST anyway), so the turn is refused.
+    The message must say which half is the problem rather than implying the whole
+    request was impossible."""
+
+    async def fake_chat(*args, **kwargs):
+        import json
+
+        return json.dumps({"intents": ["discover", "clean"], "clarify": ""})
+
+    monkeypatch.setattr(planner_mod, "openrouter_chat", fake_chat)
+    discover = _ScopeCap("web_ingest")
+    clean = _ScopeCap("normalize")
+    register_capability(discover)
+    register_capability(clean)
+
+    ctx = _ctx_kg(KGStateNeptune(registered=False, has_data=False, others=["imdb"]))
+    out = await asyncio.wait_for(
+        handle(ctx, "find the S&P 500 companies and clean up the names"), TIMEOUT
+    )
+
+    assert out["kind"] == "clarify"
+    assert out["code"] == "kg_missing"
+    assert "does not exist yet" in out["question"]
+    assert "add the data first" in out["question"]
+    # NOT the plain missing-KG text, which would read as if nothing were runnable.
+    assert "Available knowledge graphs" not in out["question"]
+    assert discover.planned == [] and clean.planned == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_never_re_resolves_an_intentionally_unscoped_plan():
+    """A plan proposed with NO kg_name was already gated at plan time, in a
+    workspace that had no graphs to choose between. If a graph appears before the
+    confirm, the confirm must NOT silently retarget the approved plan onto it."""
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+    plan_id = await _save_scope_plan(kg_name="")
+
+    # The workspace has since grown a graph.
+    ctx = _ctx_kg(
+        KGStateNeptune(registered=True, has_data=True, others=["brand_new"]),
+        kg_name="",
+    )
+    out = await asyncio.wait_for(execute_plan(ctx, plan_id), TIMEOUT)
+
+    assert out["kind"] == "result"
+    assert ctx.kg_name == ""
+    assert cap.executed == [""]
+
+
+@pytest.mark.asyncio
+async def test_confirm_of_an_unscoped_plan_is_not_turned_into_an_error():
+    """Same reasoning, the ambiguous arm: two graphs appearing after the plan was
+    proposed must not turn a previously-runnable confirm into a hard error."""
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+    plan_id = await _save_scope_plan(kg_name="")
+
+    ctx = _ctx_kg(
+        KGStateNeptune(registered=True, has_data=True, others=["a", "b"]),
+        kg_name="",
+    )
+    out = await asyncio.wait_for(execute_plan(ctx, plan_id), TIMEOUT)
+
+    assert out["kind"] == "result"
+    assert cap.executed == [""]
