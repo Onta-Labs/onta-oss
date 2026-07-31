@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from cograph_client.auth.api_keys import AuthVerdict, register_external_verifier
+from cograph_client.auth.capabilities import INVITABLE_ROLES
 from cograph_client.auth.tenant_directory import (
     Tenant,
     TenantProviderError,
@@ -42,6 +43,12 @@ _SUBJECTS = {"key-a": "user_a", "key-b": "user_b", "key-c": "user_c"}
 HA = {"X-API-Key": "key-a"}
 HB = {"X-API-Key": "key-b"}
 HC = {"X-API-Key": "key-c"}
+
+#: Independent oracle for the capability each invitable role must carry.
+#: Spelled out here rather than derived from ``capability_for_role`` — that is
+#: the function the routes themselves call, so asserting against it would only
+#: prove the route calls it, not that the answer is right.
+_EXPECTED_CAPABILITY = {"writer": "write", "reader": "read"}
 
 
 def _fake_verifier(key):
@@ -329,6 +336,67 @@ def test_create_invite_validates_email_and_role(client, verifier):
         json={"email": "bob@example.com", "role": "owner"},
     )
     assert r.status_code == 400
+
+
+def test_expected_capability_covers_every_invitable_role():
+    """A role added to ``INVITABLE_ROLES`` must get an explicit capability
+    decision here rather than silently inheriting one."""
+    assert set(_EXPECTED_CAPABILITY) == INVITABLE_ROLES
+
+
+@pytest.mark.parametrize("role", sorted(INVITABLE_ROLES))
+def test_invite_role_round_trips_through_the_whole_lifecycle(
+    client, verifier, grants, role
+):
+    """Every invitable role survives create → owner list → invitee list →
+    accept → membership, carrying its capability the whole way.
+
+    ONTA-451: ``reader`` landed in the role model (#257) and reached the CLI
+    (onta#326), but no test here ever sent it at the canonical routes — every
+    invite case used ``member``/``writer``, so the reader path was pinned only
+    at the CLI's argparse layer and by the pure-unit capability helpers, never
+    against the routes + store that actually carry it. Parametrizing over
+    ``INVITABLE_ROLES`` itself keeps a future role covered end to end instead
+    of shipping unexercised.
+    """
+    capability = _EXPECTED_CAPABILITY[role]
+    _seed_workspace()
+    register_invite_delivery_provider(
+        FakeDeliveryProvider(emails_by_subject={"user_b": ["bob@example.com"]})
+    )
+
+    r = client.post(
+        "/v1/me/tenants/acme-co/invites",
+        headers=HA,
+        json={"email": "bob@example.com", "role": role},
+    )
+    assert r.status_code == 201
+    created = r.json()
+    assert created["invite"]["role"] == role
+    assert created["invite"]["capability"] == capability
+    # The STORED row, not just the response projection.
+    stored = _run(make_workspace_store().get_invite(created["invite"]["id"]))
+    assert stored.role == role
+
+    owner_list = client.get("/v1/me/tenants/acme-co/invites", headers=HA).json()
+    assert [(i["role"], i["capability"]) for i in owner_list] == [(role, capability)]
+
+    invitee_list = client.get("/v1/me/invites", headers=HB).json()
+    assert [(i["role"], i["capability"]) for i in invitee_list] == [(role, capability)]
+
+    accepted = client.post(
+        "/v1/invites/accept", headers=HB, json={"token": created["accept_token"]}
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["role"] == role
+    assert accepted.json()["capability"] == capability
+
+    member = _run(make_workspace_store().get_member("acme-co", "user_b"))
+    assert member is not None and member.role == role
+    members = client.get("/v1/me/tenants/acme-co/members", headers=HA).json()
+    by_subject = {m["subject"]: m for m in members}
+    assert by_subject["user_b"]["role"] == role
+    assert by_subject["user_b"]["capability"] == capability
 
 
 def test_duplicate_pending_invite_409_carries_existing_id(client, verifier):
