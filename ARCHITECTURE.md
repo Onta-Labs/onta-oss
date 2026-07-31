@@ -428,10 +428,11 @@ This is not the same thing as the cross-domain examples below, which are
 deliberate. The committed bank previously held 148 spider entries out of 262,
 and replaying production retrieval with each real KG held out (so the query
 looks like a domain the bank has never seen, i.e. a real user) they took 97 of
-342 top-3 few-shot slots. Dropping them cost a mean 0.024 cosine on the selected
-set, because the non-benchmark example just below in the ranking is nearly as
-close, and the 8 remaining real KGs still span finance, film, science, events,
-sport, and retail.
+342 top-3 few-shot slots. Dropping them cost a mean **0.0125** cosine on the
+selected set across all 114 held-out queries (0.024 if you look only at the 60
+queries whose selection changed at all), because the non-benchmark example just
+below in the ranking is nearly as close, and the 8 remaining real KGs still span
+finance, film, science, events, sport, and retail.
 
 ### Lifecycle: Auto-sync with Ontology
 

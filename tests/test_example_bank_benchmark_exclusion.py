@@ -86,6 +86,17 @@ def test_prefixes_carry_the_separator():
     assert all(p.endswith("-") for p in BENCHMARK_KG_PREFIXES), BENCHMARK_KG_PREFIXES
 
 
+def test_a_null_kg_name_does_not_raise():
+    """``Example.from_dict`` does ``d.get("kg_name", "")``, so an explicit
+    ``"kg_name": null`` in the JSONL yields None, not a string. ``load()``
+    calls this OUTSIDE its malformed-line ``except``, so raising here would
+    take down the whole load and leave the bank empty for the process
+    lifetime -- and because ``get_example_bank`` assigns the singleton before
+    calling ``load()``, it would fail silently rather than loudly.
+    """
+    assert is_benchmark_kg(None) is False  # type: ignore[arg-type]
+
+
 # ── Layer 1: the committed data ──────────────────────────────────────────
 
 
@@ -221,3 +232,67 @@ def test_load_still_survives_a_malformed_line(tmp_path):
 
     bank = ExampleBank(openrouter_api_key="unused", bank_path=path)
     assert bank.load() == 1
+
+
+def test_load_survives_a_null_kg_name(tmp_path):
+    """The new filter runs outside the malformed-line except; it must not raise."""
+    path = tmp_path / "bank.jsonl"
+    null_kg = _row("imdb-movies", "how many films")
+    null_kg["kg_name"] = None
+    _write_bank(path, [null_kg, _row("events-sf", "how many events")])
+
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=path)
+    assert bank.load() == 2
+
+
+# ── The eval rebuild must not truncate the bank to nothing ───────────────
+
+
+async def test_an_all_benchmark_rebuild_batch_adds_nothing(tmp_path):
+    """The trigger condition for the guard below.
+
+    ``eval.run_full_eval``'s rebuild constructs an ExampleBank and calls
+    ``save()`` WITHOUT a ``load()``, so it writes only what ``add_batch``
+    accepted. Now that add_batch drops benchmark KGs, a benchmark-tenant eval
+    run produces an empty bank object.
+    """
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=tmp_path / "bank.jsonl")
+
+    async def _boom(_texts):
+        raise AssertionError("nothing survived filtering; must not embed")
+
+    bank._embed_texts = _boom  # type: ignore[method-assign]
+
+    added = await bank.add_batch(
+        [
+            {"question": "how many singers", "sparql": "SELECT ?x", "kg_name": "spider-concert-singer", "ontology_context": ""},
+            {"question": "how many countries", "sparql": "SELECT ?x", "kg_name": "spider-world-1", "ontology_context": ""},
+        ]
+    )
+    assert added == 0
+    assert bank.size == 0
+
+
+def test_eval_rebuild_guards_its_save_on_a_nonempty_result():
+    """...and that empty bank must not be written over the committed one.
+
+    A source-level guard (the same shape as this repo's other drift guards)
+    because ``run_full_eval`` needs a live API, an ingested graph store and a
+    provider key, so the real path is not reachable from a unit test. What is
+    checked is that the ``save()`` in the rebuild block is conditional at all --
+    unconditional, it truncates ``eval_reports/example_bank.jsonl`` to zero
+    entries after any all-benchmark eval run.
+    """
+    import inspect
+
+    from cograph_client import eval as eval_mod
+
+    src = inspect.getsource(eval_mod)
+    start = src.index("example_bank_rebuilt")
+    block = src[max(0, start - 1500):start]
+    assert "if rebuilt:" in block, (
+        "cograph_client/eval.py's example-bank rebuild no longer guards save() on a "
+        "non-empty result. Unconditional, an eval run whose finetune pairs are all "
+        "from a benchmark tenant rewrites the committed bank to zero entries, "
+        "because the rebuild never load()s and add_batch now drops benchmark KGs."
+    )

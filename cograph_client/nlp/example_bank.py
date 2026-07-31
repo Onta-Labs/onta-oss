@@ -168,11 +168,12 @@ HOLDOUT_V2_KGS: frozenset[str] = _load_holdout_v2_kgs()
 # (28.4%)** and changed the selected set for 60 of 114 questions. Five of them
 # also teach a malformed shape: a bare ``types/<T>`` IRI in PREDICATE position.
 #
-# Removing them is close to free. Over those same held-out queries the mean
-# cosine similarity of the selected set drops by 0.024, because the
-# non-benchmark replacement sitting just below in the ranking is almost as
-# close. Cross-domain transfer -- the reason the bank tolerates examples from
-# other datasets at all -- is preserved by the 8 real KGs that remain.
+# Removing them is close to free. The mean cosine similarity of the selected
+# set drops 0.0125 across all 114 held-out queries (0.024 if you look only at
+# the 60 whose selection changed at all), because the non-benchmark replacement
+# sitting just below in the ranking is almost as close. Cross-domain transfer --
+# the reason the bank tolerates examples from other datasets at all -- is
+# preserved by the 8 real KGs that remain.
 #
 # Matched by KG-name prefix rather than an exact set so a NEW benchmark split
 # (``spider-tvshow``, ...) is excluded the day it is first evaluated, without
@@ -185,8 +186,15 @@ def is_benchmark_kg(kg_name: str) -> bool:
 
     Benchmark corpora live in a disposable tenant and must not reach any real
     user's prompt. See :data:`BENCHMARK_KG_PREFIXES`.
+
+    Tolerates ``None``: ``Example.from_dict`` does ``d.get("kg_name", "")``, so
+    a bank line with an explicit ``"kg_name": null`` yields ``None`` rather than
+    a string. This is called from ``load()`` OUTSIDE its malformed-line
+    ``except``, so raising here would take down the whole load -- and because
+    ``get_example_bank`` assigns the singleton before calling ``load()``, it
+    would fail silently, leaving the bank empty for the process lifetime.
     """
-    return kg_name.strip().lower().startswith(BENCHMARK_KG_PREFIXES)
+    return (kg_name or "").strip().lower().startswith(BENCHMARK_KG_PREFIXES)
 
 
 @dataclass
@@ -298,6 +306,16 @@ class ExampleBank:
                 # already on disk -- a machine-local one regenerated before
                 # this landed, or a stale copy in a deployed image. Filtering
                 # on read is what makes the exclusion hold for those too.
+                #
+                # Note this filter is DESTRUCTIVE the next time anything saves:
+                # `save()` writes `self._examples`, so a load() followed by the
+                # KG-delete purge in api/routes/knowledge_graphs.py rewrites the
+                # file without these rows even though the delete targeted an
+                # unrelated KG. Intended here (the whole point is that they go
+                # away), but it means any future addition to
+                # BENCHMARK_KG_PREFIXES turns a false positive into permanent,
+                # unprompted deletion of a user's examples. Weigh that before
+                # widening the tuple.
                 if is_benchmark_kg(example.kg_name):
                     skipped_benchmark += 1
                     continue

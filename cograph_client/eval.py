@@ -1550,8 +1550,22 @@ async def run_full_eval(
                     continue
             if items:
                 rebuilt = await bank.add_batch(items)
-                bank.save()
-                logger.info("example_bank_rebuilt", added=rebuilt, total=bank.size)
+                # Never overwrite the committed bank with nothing (ONTA-449).
+                # This rebuild is a REGENERATE: `bank` is constructed without a
+                # load(), so save() writes only what add_batch accepted. Since
+                # add_batch now drops benchmark KGs, an eval run whose pairs are
+                # all from a benchmark tenant would otherwise truncate the file
+                # to zero entries. A rebuild that produced nothing is not a
+                # rebuild; leave the existing bank alone and say so.
+                if rebuilt:
+                    bank.save()
+                    logger.info("example_bank_rebuilt", added=rebuilt, total=bank.size)
+                else:
+                    logger.warning(
+                        "example_bank_rebuild_empty",
+                        candidates=len(items),
+                        detail="no eligible pairs; existing bank left untouched",
+                    )
         except Exception:
             logger.warning("example_bank_rebuild_failed", exc_info=True)
 
