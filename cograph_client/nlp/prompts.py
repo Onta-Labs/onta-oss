@@ -71,13 +71,19 @@ phrase. Prefer OR-ing the free-text phrase across disease + indication_summary w
 unsure which free-text field holds it. Attributes annotated only as \
 `[N unique values]` are open free-text and may be filtered with question phrases.
 - "[no instances]": a Type, attribute, or relationship marked "[no instances]" in the schema IS \
-DECLARED and valid — it exists in the ontology, it simply has no data in THIS graph yet. When the \
-question targets such a type/attribute, STILL generate a correct query against it using its exact \
-URI; it will legitimately return zero rows. In the explanation, state plainly that the \
-type/attribute is declared in the ontology but currently has no instances. NEVER claim the type \
-"does not exist" / "is not in the schema", and NEVER silently substitute a different, populated \
-type — a zero-row answer for a declared-but-empty target is the correct, honest answer, not a reason \
-to answer a different question.
+DECLARED and valid. It exists in the ontology, it simply has no data in the graph you are querying. \
+The schema is drawn from the TENANT's ontology, which is shared across every knowledge graph that \
+tenant owns, so a marked entry may be declared for this graph but still unpopulated, or may belong \
+to another of the tenant's graphs. You cannot tell which from the schema alone, and you do not need \
+to: the handling is identical. When the question targets such a type/attribute, STILL generate a \
+correct query against it using its exact URI; it will legitimately return zero rows. In the \
+explanation, state plainly that the type/attribute is declared in the ontology but has no data in \
+this graph. NEVER claim the type "does not exist" / "is not in the schema", and NEVER silently \
+substitute a different, populated type. A zero-row answer for a declared-but-empty target is the \
+correct, honest answer, not a reason to answer a different question. ONLY when the question names \
+NO specific type and several types could plausibly answer it, prefer an UNMARKED (populated) type \
+over a marked one. That is a tie-break for an open-ended question, never a licence to redirect a \
+question that named its own target.
 - For numeric comparisons, use typed literals: "2000"^^<http://www.w3.org/2001/XMLSchema#integer> for \
 integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast with xsd:integer()/xsd:float().
 - NEVER use the `a` shorthand for rdf:type. Always write the full URI: \
@@ -119,6 +125,7 @@ def build_generation_prompt(
     ontology_summary: str,
     graph_uri: str = "",
     examples_text: str = "",
+    kg_name: str = "",
 ) -> str:
     """Build the user prompt for SPARQL generation.
 
@@ -127,11 +134,26 @@ def build_generation_prompt(
         ontology_summary: Types, attributes, relationships available in the graph.
         graph_uri: Named graph URI for the FROM clause.
         examples_text: Few-shot examples of similar working queries (from ExampleBank).
+        kg_name: Name of the knowledge graph being queried. Named explicitly
+            (ONTA-417) because the ontology summary is drawn from the TENANT's
+            ontology graph, which spans every KG the tenant owns, while the query
+            runs against ONE KG's instance graph. Without the target named, the
+            "[no instances]" rule reads as "declared but empty here" when it
+            often means "belongs to another one of your graphs". Omitted when the
+            graph is not a per-KG instance graph, leaving the prompt unchanged.
     """
     graph_line = f"\nNamed graph URI (use in FROM clause): <{graph_uri}>" if graph_uri else ""
     examples_section = f"\n{examples_text}\n" if examples_text else ""
+    kg_header = (
+        f"Target knowledge graph: {kg_name}\n"
+        "The schema below is the TENANT's ontology, shared across every knowledge "
+        "graph this tenant owns. Entries marked [no instances] are declared but "
+        f"hold no data in \"{kg_name}\".\n\n"
+        if kg_name
+        else ""
+    )
 
-    return f"""Ontology schema:
+    return f"""{kg_header}Ontology schema:
 {ontology_summary}{graph_line}
 {examples_section}
 User question: {question}
