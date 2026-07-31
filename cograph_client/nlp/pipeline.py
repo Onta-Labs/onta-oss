@@ -1681,7 +1681,15 @@ class NLQueryPipeline:
             # graph" from one probe rather than each running their own.
             if instance_graph and instance_graph != graph_uri:
                 cached_active = _active_types_cache.get(instance_graph)
-                if cached_active and (time.time() - cached_active[1]) < ONTOLOGY_CACHE_TTL:
+                # `cached_active[0]` for the same reason `_active_types` checks it:
+                # an EMPTY probe result is exactly the "might be mid-ingest" case,
+                # and serving it for the rest of the TTL would mark every declared
+                # type "[no instances]" on a KG that has just been populated.
+                if (
+                    cached_active
+                    and cached_active[0]
+                    and (time.time() - cached_active[1]) < ONTOLOGY_CACHE_TTL
+                ):
                     active_types = cached_active[0]
                 else:
                     active_types, scanned_instance_types = await self._resolve_active_types(

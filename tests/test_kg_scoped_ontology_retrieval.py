@@ -226,10 +226,12 @@ class ProbeNeptune:
     def __init__(self, active=("Widget",)):
         self.active = tuple(active)
         self.probe_count = 0
+        self.probe_queries: list[str] = []
 
     async def query(self, sparql: str):
         if "SELECT DISTINCT ?type" in sparql:
             self.probe_count += 1
+            self.probe_queries.append(sparql)
             return {
                 "head": {"vars": ["type"]},
                 "results": {
@@ -353,8 +355,15 @@ async def test_invalidate_cache_clears_active_types_for_the_tenant():
 class _RecordingService:
     """Stand-in for OntologyEmbeddingService that records the retrieve() call."""
 
-    def __init__(self):
+    def __init__(self, declared=("Widget", "Gadget")):
         self.calls: list[dict] = []
+        self.declared = set(declared)
+
+    async def type_names(self, graph_uri):
+        # The real service answers from its embedding store, whose keys are the
+        # tenant's declared types. They keep the scope probe on ONTA-427's
+        # bounded form (no schema read is available on this path).
+        return set(self.declared)
 
     async def retrieve(self, graph_uri, question, top_k=15, active_types=None):
         self.calls.append({"graph_uri": graph_uri, "active_types": active_types})
@@ -394,6 +403,51 @@ async def test_ask_scopes_semantic_retrieval_to_the_target_kg(monkeypatch):
     assert svc.calls[0]["graph_uri"] == GRAPH
     assert result.timing.get("ontology_source") == "semantic"
     assert result.timing.get("ontology_scope") == "kg"
+
+
+async def test_ask_scope_probe_stays_bounded(monkeypatch):
+    """ONTA-411 + ONTA-427 compose: scoping the semantic path must NOT put the
+    unbounded `?s rdf:type ?type` scan back on every ask. The store's declared
+    type names are what keep the probe on the LIMIT-1 existence form."""
+    _ontology_cache.clear()
+    neptune = ProbeNeptune(active=("Widget",))
+    svc, result = await _ask_with_recorder(monkeypatch, neptune, KG)
+
+    assert result.timing.get("ontology_scope") == "kg"
+    assert neptune.probe_queries, "the scope probe never ran"
+    # The FIRST probe is the scoping one, issued before retrieval. (A later
+    # full-ontology fetch may still scan: this stub declares no types, so its
+    # probe has no candidates. That is the cold path, not the ask path.)
+    scope_probe = neptune.probe_queries[0]
+    assert "LIMIT 1" in scope_probe, f"unbounded scan on the hot path: {scope_probe}"
+    assert (
+        "WHERE { ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?type }"
+        not in scope_probe
+    )
+
+
+async def test_ask_falls_back_to_the_scan_when_the_store_is_empty(monkeypatch):
+    """No embeddings => no declared names => no scoping and NO per-ask scan; the
+    full-ontology path runs its own (bounded) probe instead."""
+    _ontology_cache.clear()
+    neptune = ProbeNeptune(active=("Widget",))
+    svc = _RecordingService(declared=())
+    monkeypatch.setattr("cograph_client.nlp.pipeline.get_embedding_service", lambda: svc)
+    pipe = _pipe(neptune)
+
+    async def fake_generate(question, ontology, graph_uri="", **kwargs):
+        return {"sparql": f"SELECT ?s FROM <{graph_uri}> WHERE {{ ?s ?p ?o }}",
+                "explanation": "", "functions_needed": []}
+
+    monkeypatch.setattr(pipe, "_generate_sparql", fake_generate)
+    monkeypatch.setattr(pipe, "_rephrase_via_openrouter", lambda *a, **k: _empty())
+    await pipe.ask("any question", GRAPH, instance_graph=KG)
+
+    assert svc.calls[0]["active_types"] is None
+
+
+async def _empty():
+    return ""
 
 
 async def test_ask_degrades_to_unscoped_retrieval_when_the_probe_fails(monkeypatch):
