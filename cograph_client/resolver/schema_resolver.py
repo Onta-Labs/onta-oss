@@ -2278,33 +2278,46 @@ class SchemaResolver:
                                     self._er._blocker.index_triples(entity_uri, normalized, keys)
                                 )
                         else:
-                            # No match — mint a new URI. For ER-enabled types
-                            # we add a short signal-hash suffix so two unrelated
-                            # humans sharing a name (e.g. two distinct John
-                            # Smiths) get distinct URIs and don't quietly
-                            # contaminate each other's signal store.
-                            if er_applies:
+                            # No match — mint a new URI via entity_uri(type, id).
+                            #
+                            # We deliberately do NOT append an ER signal-hash
+                            # suffix. That suffix was intended to keep two
+                            # "John Smith"s apart, but it silently forked every
+                            # multi-file join: customers.csv (email present)
+                            # minted Customer/C1001-<hash> while orders.csv FK
+                            # stubs minted Customer/C1001 — multi-hop then
+                            # returned empty on a graph that looked fine
+                            # (OSS dogfood S2/S5). Cross-rail URI convergence
+                            # (entity_uri) is the join contract; disambiguation
+                            # of same-name different people is ER's merge path
+                            # + future explicit type_id / decisive signals, not
+                            # a mint-time URI mutation.
+                            #
+                            # Opt back into the old suffix with
+                            # COGRAPH_ER_FINGERPRINT=1 (not recommended for
+                            # multi-table CSVs).
+                            normalized, keys = self._er.signals_and_keys(entity)
+                            if (
+                                er_applies
+                                and os.environ.get("COGRAPH_ER_FINGERPRINT", "0") == "1"
+                                and normalized is not None
+                            ):
                                 import hashlib
-                                normalized, keys = self._er.signals_and_keys(entity)
-                                if normalized is not None:
-                                    fingerprint_parts = [
-                                        normalized.email or "",
-                                        normalized.phone_e164 or "",
-                                        normalized.dob_iso or "",
-                                        "|".join(normalized.email_aliases),
-                                    ]
-                                    fp = hashlib.sha1("|".join(fingerprint_parts).encode("utf-8")).hexdigest()[:8]
+                                fingerprint_parts = [
+                                    normalized.email or "",
+                                    normalized.phone_e164 or "",
+                                    normalized.dob_iso or "",
+                                    "|".join(normalized.email_aliases),
+                                ]
+                                if any(fingerprint_parts):
+                                    fp = hashlib.sha1(
+                                        "|".join(fingerprint_parts).encode("utf-8")
+                                    ).hexdigest()[:8]
                                     entity_uri = f"{entity_uri}-{fp}"
-                                if normalized and keys:
-                                    er_index_triples.extend(
-                                        self._er._blocker.index_triples(entity_uri, normalized, keys)
-                                    )
-                            else:
-                                normalized, keys = self._er.signals_and_keys(entity)
-                                if normalized and keys:
-                                    er_index_triples.extend(
-                                        self._er._blocker.index_triples(entity_uri, normalized, keys)
-                                    )
+                            if normalized and keys:
+                                er_index_triples.extend(
+                                    self._er._blocker.index_triples(entity_uri, normalized, keys)
+                                )
                     except Exception as e:
                         logger.warning("er_pipeline_failed", error=str(e), entity_id=entity.id)
 

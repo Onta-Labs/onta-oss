@@ -703,10 +703,14 @@ async def fetch_ontology(
                 layer_types += 1
 
             if apply_shadowing:
-                # First-visible-layer-wins: skip types already claimed by a
-                # higher-precedence layer. Lower layers still contribute their
-                # status line (type_count) but not the effective type list.
-                if label in winning_layer:
+                # First-visible-layer-wins across layers — but the SPARQL result
+                # is one row per attribute/relationship slot. Once a type is
+                # claimed by THIS layer we must keep absorbing later rows for
+                # that type; only skip when a *higher-precedence* layer already
+                # owns it. (Bug found by OSS dogfood S6: the old `label in
+                # winning_layer → continue` dropped every attr after the first.)
+                prev_layer = winning_layer.get(label)
+                if prev_layer is not None and prev_layer != layer.value:
                     continue
                 winning_layer[label] = layer.value
                 key: Any = label

@@ -111,9 +111,18 @@ def register_default_fetchers() -> None:
 
 
 def default_ladder() -> list[PageFetcher]:
-    """The fetch ladder to use: the registered fetchers, or a lone
-    :class:`StaticHttpFetcher` when nothing is registered (so the harness works in
-    a bare unit test that never boots the app).
+    """The fetch ladder to use: exactly the REGISTERED fetchers, and nothing else.
+
+    Returns ``[]`` when nothing is registered, which is the default in OSS
+    (ONTA-293: open-web retrieval is out of OSS scope). Callers must degrade on an
+    empty ladder rather than fetch.
+
+    This used to fall back to a lone :class:`StaticHttpFetcher` "so the harness
+    works in a bare unit test that never boots the app". That implicit fallback
+    silently resurrected an unregistered fetcher on any path that reached the
+    harness some other way -- e.g. a registered web-source provider satisfying a
+    capability's availability gate -- which is precisely the behaviour ONTA-293
+    removes. A test that wants a fetcher now registers one explicitly.
 
     When the record-and-replay fetch cache is enabled (``COGRAPH_FETCH_CACHE`` is
     ``record`` / ``replay`` / ``auto``), each rung is transparently wrapped in a
@@ -123,8 +132,7 @@ def default_ladder() -> list[PageFetcher]:
     ``cache`` (which depends on this module's types) out of an import cycle."""
     from cograph_client.retrieval.cache import maybe_wrap_ladder
 
-    fetchers = get_page_fetchers() or [StaticHttpFetcher()]
-    return maybe_wrap_ladder(fetchers)
+    return maybe_wrap_ladder(get_page_fetchers())
 
 
 def fetcher_cost(fetcher: PageFetcher) -> tuple[bool, float]:

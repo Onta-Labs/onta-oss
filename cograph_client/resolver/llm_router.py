@@ -40,8 +40,31 @@ import httpx
 
 from cograph_client.retrieval.errors import classify_llm_status_error
 
-OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-CEREBRAS_BASE = "https://api.cerebras.ai/v1"
+def _openrouter_base() -> str:
+    """OpenAI-compatible chat base URL.
+
+    ``OMNIX_LLM_BASE_URL`` (preferred) or ``OMNIX_OPENROUTER_BASE_URL`` points
+    extraction/resolver LLM traffic at a self-hosted endpoint (vLLM, Ollama
+    with OpenAI shim, LiteLLM). Unset → public OpenRouter.
+    """
+    return (
+        os.environ.get("OMNIX_LLM_BASE_URL")
+        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
+
+
+def _cerebras_base() -> str:
+    return (
+        os.environ.get("OMNIX_CEREBRAS_BASE_URL")
+        or "https://api.cerebras.ai/v1"
+    ).rstrip("/")
+
+
+# Module-level names kept for back-compat imports/tests; re-read via helpers
+# at call time so env flips work without reimport.
+OPENROUTER_BASE = _openrouter_base()
+CEREBRAS_BASE = _cerebras_base()
 
 # Primary model for all LLM calls, and the automatic fallback applied via
 # OpenRouter's `models` routing. Env-overridable; defaults are the production
@@ -151,7 +174,7 @@ async def openrouter_chat(
                 "OMNIX_LLM_PROVIDER=cerebras but CEREBRAS_API_KEY is not set — "
                 "set the Cerebras key or unset OMNIX_LLM_PROVIDER to use OpenRouter."
             )
-        base = CEREBRAS_BASE
+        base = _cerebras_base()
         request_key = cerebras_key
         # Cerebras takes a BARE model slug (e.g. "gpt-oss-120b"), not an
         # OpenRouter-prefixed one, and has no `models` fallback array. Use the
@@ -166,7 +189,7 @@ async def openrouter_chat(
             "max_tokens": effective_max_tokens,
         }
     else:
-        base = OPENROUTER_BASE
+        base = _openrouter_base()
         request_key = api_key
         chain = model_chain(model)
         body = {
@@ -184,7 +207,7 @@ async def openrouter_chat(
     # provider can differ from the globally-configured _llm_provider() (a
     # vendor/model slug under provider=cerebras still routes to OpenRouter). Derive
     # it from the base we actually hit so provider + host never disagree.
-    active_provider = "cerebras" if base == CEREBRAS_BASE else "openrouter"
+    active_provider = "cerebras" if "cerebras.ai" in base else "openrouter"
     if response_format is not None:
         body["response_format"] = response_format
     async with httpx.AsyncClient(timeout=timeout) as client:

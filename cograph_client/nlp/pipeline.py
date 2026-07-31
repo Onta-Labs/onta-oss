@@ -147,10 +147,59 @@ RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 # Attribute-alias map cache (ADR 0002 §7): {graph_uri: (old->new map, timestamp)}
 _alias_cache: dict[str, tuple[dict[str, str], float]] = {}
 
-# Query generation provider config
-OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-DEFAULT_QUERY_MODEL = os.environ.get("OMNIX_QUERY_MODEL", "llama3.1-8b")
-DEFAULT_QUERY_PROVIDER = os.environ.get("OMNIX_QUERY_PROVIDER", "cerebras")  # cerebras, openrouter, or anthropic
+# Query generation provider config.
+# OMNIX_LLM_BASE_URL / OMNIX_QUERY_BASE_URL let self-hosted OpenAI-compatible
+# endpoints (vLLM, Ollama, LiteLLM) serve /ask without a source patch
+# (OSS dogfood S8). Fall back to the public OpenRouter host.
+def _openrouter_base() -> str:
+    return (
+        os.environ.get("OMNIX_QUERY_BASE_URL")
+        or os.environ.get("OMNIX_LLM_BASE_URL")
+        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
+
+
+OPENROUTER_BASE = _openrouter_base()
+
+
+def _default_query_provider() -> str:
+    """Prefer explicit env; otherwise pick a provider the process can actually call.
+
+    Historical default was ``cerebras`` + ``llama3.1-8b``. That silently fails
+    for the common OSS quickstart that only sets ``OPENROUTER_API_KEY`` —
+    /ask returned HTTP 200 with the provider 400 text as the answer
+    (OSS dogfood S1/S2/S4/S5). When Cerebras is not configured but OpenRouter
+    is, default to OpenRouter.
+    """
+    explicit = os.environ.get("OMNIX_QUERY_PROVIDER")
+    if explicit:
+        return explicit.strip().lower()
+    has_openrouter = bool(
+        os.environ.get("OPENROUTER_API_KEY")
+        or os.environ.get("OMNIX_OPENROUTER_API_KEY")
+    )
+    has_cerebras = bool(
+        os.environ.get("CEREBRAS_API_KEY")
+        or os.environ.get("OMNIX_CEREBRAS_API_KEY")
+    )
+    if has_openrouter and not has_cerebras:
+        return "openrouter"
+    return "cerebras"
+
+
+def _default_query_model(provider: str | None = None) -> str:
+    explicit = os.environ.get("OMNIX_QUERY_MODEL")
+    if explicit:
+        return explicit
+    prov = (provider or _default_query_provider()).lower()
+    if prov == "openrouter":
+        return "google/gemini-2.5-flash"
+    return "llama3.1-8b"
+
+
+DEFAULT_QUERY_MODEL = _default_query_model()
+DEFAULT_QUERY_PROVIDER = _default_query_provider()  # cerebras, openrouter, or anthropic
 
 # Reasoning-budget recovery for the Cerebras SPARQL-gen path (persona-eval RCA).
 # gpt-oss-120b is a reasoning model; on a hard question it can spend its ENTIRE
@@ -484,8 +533,13 @@ class NLQueryPipeline:
         from cograph_client.config import settings
         self._openrouter_key = settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self._cerebras_key = os.environ.get("CEREBRAS_API_KEY", getattr(settings, "cerebras_api_key", ""))
-        self._query_model = DEFAULT_QUERY_MODEL
-        self._query_provider = DEFAULT_QUERY_PROVIDER
+        # Re-resolve at construct time so env set after import (tests, uvicorn
+        # workers that load .env late) still get the smart OpenRouter default.
+        self._query_provider = _default_query_provider()
+        self._query_model = _default_query_model(self._query_provider)
+        # Refresh base URL live so OMNIX_LLM_BASE_URL is honored without reimport.
+        global OPENROUTER_BASE
+        OPENROUTER_BASE = _openrouter_base()
         # Attribute aliases (ADR 0002 §7): resolve renamed attribute IRIs in
         # generated SPARQL. Default OFF so the default Neptune call pattern
         # stays byte-identical (same gating pattern as COGRAPH_ER_ENABLED).
