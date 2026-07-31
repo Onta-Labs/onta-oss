@@ -547,6 +547,11 @@ class NLQueryPipeline:
         # fallback) advances instead of replaying the same truncation.
         last_was_length_truncated = False
         length_recovery_stage = 0
+        # ONTA-450: set when a zero-row result is explained by a declared-but-empty
+        # type the QUESTION named (see the guard in the retry loop). Appended to the
+        # answer so the empty result reads as "declared, no instances" rather than a
+        # bare "No results found." Empty on every other path.
+        honest_empty_note = ""
 
         for attempt in range(max_attempts):
             # The ENTIRE attempt — SPARQL generation, post-processing,
@@ -723,39 +728,86 @@ class NLQueryPipeline:
                     # and regenerate with the empty-query feedback path so the
                     # planner sees Drug→Indication→Trial. Only when still on a
                     # semantic subset — full-ontology zeros are honest empties.
+                    #
+                    # ONTA-450 GUARD. "Zero rows" is the SAME signal for a
+                    # retrieval miss and for an HONEST empty: the question named a
+                    # declared type that simply has no instances here, where zero
+                    # rows is the correct final answer (ONTA-258). The row count
+                    # cannot tell them apart, so escalating on it alone hands the
+                    # model every populated type in the tenant at the exact moment
+                    # it was told its query found nothing — an invitation to answer
+                    # about a different type. `honest_empty_targets` supplies the
+                    # discriminator the row count lacks (question-named + declared +
+                    # marked "[no instances]" + actually targeted by the query); on
+                    # a hit we do NOT widen, and answer honestly instead.
                     if not full_ontology_loaded and ontology_source == "semantic":
-                        try:
-                            full_ontology = await self._fetch_ontology(
-                                graph_uri, data_graph, layer_graph_uris=layer_graph_uris
-                            )
-                            if full_ontology and full_ontology.strip():
-                                ontology = full_ontology
-                                ontology_source = "full"
-                                timing["ontology_escalated_to_full_attempt"] = attempt + 1
-                                timing["ontology_zero_row_escalation"] = 1.0
-                                # Reuse the enum-mismatch retry arm so the
-                                # custom zero-row feedback is passed through
-                                # (the empty-SPARQL arm overwrites feedback).
-                                last_was_enum_filter_mismatch = True
-                                last_error = (
-                                    "The previous SPARQL returned ZERO rows. It may have "
-                                    "used types or predicates that are not in this "
-                                    "knowledge graph's schema. Regenerate a valid SELECT "
-                                    "using ONLY the type, attribute, and relationship "
-                                    "URIs from the ontology schema below."
+                        from cograph_client.nlp.empty_type_guard import (
+                            empty_declared_types,
+                            honest_empty_targets,
+                            zero_row_escalation_feedback,
+                        )
+                        # Cheap pre-check against the subset itself. Once the
+                        # retriever marks empty types (ONTA-411) this settles the
+                        # honest case with no extra ontology fetch; before that it
+                        # simply never fires and the full-ontology check below does
+                        # the work.
+                        honest = honest_empty_targets(question, sparql, ontology)
+                        full_ontology = ""
+                        if not honest:
+                            try:
+                                full_ontology = await self._fetch_ontology(
+                                    graph_uri, data_graph, layer_graph_uris=layer_graph_uris
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "ontology_zero_row_escalation_failed", exc_info=True
                                 )
                                 full_ontology_loaded = True
-                                logger.info(
-                                    "ontology_zero_row_escalation",
-                                    question=question,
-                                    attempt=attempt,
+                            if full_ontology and full_ontology.strip():
+                                honest = honest_empty_targets(
+                                    question, sparql, full_ontology
                                 )
-                                continue
-                        except Exception:
-                            logger.debug(
-                                "ontology_zero_row_escalation_failed", exc_info=True
+                        if honest:
+                            # Honest empty: the query is right, the type is empty.
+                            # Answer it plainly (ONTA-258) instead of regenerating.
+                            names = ", ".join(sorted(honest))
+                            timing["zero_row_honest_empty"] = 1.0
+                            timing["zero_row_honest_empty_types"] = names
+                            honest_empty_note = (
+                                f"\n\nNote: {names} "
+                                f"{'is' if len(honest) == 1 else 'are'} declared in the "
+                                "ontology but currently ha"
+                                f"{'s' if len(honest) == 1 else 've'} no instances in "
+                                "this knowledge graph."
+                            )
+                            logger.info(
+                                "zero_row_honest_empty",
+                                types=sorted(honest),
+                                question=question,
+                            )
+                        elif full_ontology and full_ontology.strip():
+                            ontology = full_ontology
+                            ontology_source = "full"
+                            timing["ontology_escalated_to_full_attempt"] = attempt + 1
+                            timing["ontology_zero_row_escalation"] = 1.0
+                            # Reuse the enum-mismatch retry arm so the
+                            # custom zero-row feedback is passed through
+                            # (the empty-SPARQL arm overwrites feedback).
+                            last_was_enum_filter_mismatch = True
+                            # Feedback that does NOT license substitution: it
+                            # restates the "[no instances]" rule verbatim at the
+                            # point of maximum substitution pressure instead of
+                            # asserting the previous query was wrong.
+                            last_error = zero_row_escalation_feedback(
+                                bool(empty_declared_types(full_ontology))
                             )
                             full_ontology_loaded = True
+                            logger.info(
+                                "ontology_zero_row_escalation",
+                                question=question,
+                                attempt=attempt,
+                            )
+                            continue
                 # Projected vars that bound in ZERO rows (e.g. an OPTIONAL
                 # attribute absent from every matching entity, or a drifted
                 # attribute URI). Reported honestly instead of silently omitted,
@@ -765,6 +817,9 @@ class NLQueryPipeline:
                     timing["unbound_projection_vars"] = ", ".join(missing_vars)
                     logger.info("unbound_projection_vars", vars=missing_vars, question=question)
                 answer = await self._format_answer(bindings, explanation, missing_vars=missing_vars)
+                # ONTA-258/ONTA-450: "" unless the zero rows are explained by a
+                # declared-but-empty type the question named.
+                answer += honest_empty_note
                 t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
                 timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)

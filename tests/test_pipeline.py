@@ -152,15 +152,14 @@ async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, mock_neptun
         },
     }
     # Empty first attempt (+ any name-lookup broaden probes); hit on retry.
-    mock_neptune.query.side_effect = lambda *a, **k: (
-        hit if mock_neptune.query.call_count > 3 else empty
-    )
-    # call_count doesn't work that way with side_effect lambda easily — use list
     calls = {"n": 0}
 
-    async def _query(*_a, **_k):
+    async def _query(sparql="", *_a, **_k):
         calls["n"] += 1
-        return hit if calls["n"] >= 4 else empty
+        # Only the post-escalation full-schema query (attrs/name) has data. Keyed
+        # on the query TEXT rather than a call counter, which drifted with the
+        # number of name-lookup broaden probes.
+        return hit if "attrs/name" in sparql else empty
 
     mock_neptune.query.side_effect = _query
 
@@ -203,7 +202,11 @@ async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, mock_neptun
             ) as mock_create:
                 mock_create.side_effect = [msg_bad, msg_good]
                 with patch.object(
-                    pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value=None
+                    # "" and not None: NLResult.narrative_answer is a str, so
+                    # None makes NLResult() raise and the attempt retries, which
+                    # made the assertions below pass vacuously off the
+                    # "Could not answer after 3 attempts" fallback.
+                    pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock, return_value=""
                 ):
                     result = await pipeline.ask(
                         "What trial supports Tecentriq after bladder surgery?",
@@ -216,4 +219,4 @@ async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, mock_neptun
     )
     assert mock_create.call_count >= 2
     # Eventually answered from the second SPARQL hit.
-    assert "IMvigor011" in result.answer or "No results" not in result.answer
+    assert "IMvigor011" in result.answer
