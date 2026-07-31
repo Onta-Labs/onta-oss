@@ -182,17 +182,70 @@ server.registerTool(
 
 // ONTA-178: thin over the canonical `POST /graphs/{tenant}/search` route (via
 // the SDK's `search`) — the ONE search endpoint every interface rides. The
-// server embeds the query and ranks; this tool only renders hits.
+// server embeds the query and ranks; this tool only renders hits. Exported so
+// the degraded-empty rendering contract can be unit-tested with a stub client.
+export async function searchHandler(
+  {
+    query,
+    kg_name,
+    type,
+    top_k,
+  }: { query: string; kg_name?: string; type?: string; top_k?: number },
+  makeClient: () => Client = client,
+) {
+  try {
+    const res = await makeClient().search(query, {
+      kg: kg_name,
+      type,
+      topK: top_k,
+    });
+    // Honesty first: when the index is off / embedding unavailable the route
+    // still returns 200 with degraded:true (keyword-only). An empty page under
+    // that mode must NOT read as "nothing exists" — it may simply be
+    // unindexed. Always surface the degraded note, even with zero hits, and
+    // point agents at `grep` for an index-free literal scan of one graph.
+    const degradedNote =
+      "Note: results are keyword-only (reduced recall) — the embedding " +
+      "service was unavailable or the semantic index is off for this query. " +
+      "Use `grep` for an index-free literal substring scan of one graph.";
+    if (!res.hits.length) {
+      return textResult(
+        res.degraded
+          ? `No matching entities found.\n\n${degradedNote}`
+          : "No matching entities found.",
+      );
+    }
+    const lines = res.hits.map((h, i) => {
+      const label =
+        typeof h.attrs?.label === "string" && h.attrs.label
+          ? h.attrs.label
+          : h.entity_uri;
+      const kind =
+        typeof h.attrs?.type === "string" && h.attrs.type
+          ? ` (${h.attrs.type})`
+          : "";
+      return `${i + 1}. ${label}${kind} — ${h.entity_uri}\n   [${h.attr}] ${h.snippet}`;
+    });
+    if (res.degraded) {
+      lines.push("", degradedNote);
+    }
+    return textResult(lines.join("\n"));
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 server.registerTool(
   "search",
   {
     description:
       "Search entities by NAME or by what their free-text attributes say " +
       "(descriptions, bios, notes, speeches, …). Hybrid keyword + meaning " +
-      "search, returning a matching snippet as the citation. Use it for " +
-      '"which entity is called X" and "which entities mention/discuss X"; use ' +
-      "`ask` for aggregate or structured questions, and `grep` when you need a " +
-      "literal SUBSTRING match rather than whole words.",
+      "search over the derived index, returning a matching snippet as the " +
+      "citation. Use it for \"which entity is called X\" and \"which entities " +
+      "mention/discuss X\"; use `ask` for aggregate or structured questions, " +
+      "and `grep` when you need a literal SUBSTRING match or when search " +
+      "reports reduced recall (keyword-only / index off) and returns nothing.",
     inputSchema: {
       query: z.string().describe("Free-text search query (topic, phrase, or quote)."),
       kg_name: z
@@ -215,33 +268,7 @@ server.registerTool(
         .describe("Max entities to return (server clamps to 1..50; default 10)."),
     },
   },
-  async ({ query, kg_name, type, top_k }) => {
-    try {
-      const res = await client().search(query, { kg: kg_name, type, topK: top_k });
-      if (!res.hits.length) return textResult("No matching entities found.");
-      const lines = res.hits.map((h, i) => {
-        const label =
-          typeof h.attrs?.label === "string" && h.attrs.label
-            ? h.attrs.label
-            : h.entity_uri;
-        const kind =
-          typeof h.attrs?.type === "string" && h.attrs.type
-            ? ` (${h.attrs.type})`
-            : "";
-        return `${i + 1}. ${label}${kind} — ${h.entity_uri}\n   [${h.attr}] ${h.snippet}`;
-      });
-      if (res.degraded) {
-        lines.push(
-          "",
-          "Note: results are keyword-only (reduced recall) — the embedding " +
-            "service was unavailable for this query.",
-        );
-      }
-      return textResult(lines.join("\n"));
-    } catch (err) {
-      return errorResult(err);
-    }
-  },
+  (args) => searchHandler(args),
 );
 
 // ONTA-415: the "did you mean" suffix on a not-found path. This is the SECOND
@@ -452,7 +479,8 @@ server.registerTool(
       "inferred. To JOIN an internal CSV onto an EXISTING graph — merging each " +
       "row onto the entity that already carries the same exact key value instead " +
       "of creating duplicates — set join_on to the key attribute (e.g. an id " +
-      "column).",
+      "column). For free-form notes / unstructured text (no file on disk), use " +
+      "`ingest_text` instead.",
     inputSchema: {
       file_path: z
         .string()
@@ -476,6 +504,96 @@ server.registerTool(
   },
   async ({ file_path, kg_name, join_on }) =>
     ingestCsvHandler({ file_path, kg_name, join_on }),
+);
+
+// Dogfood S1: agents previously could not write in-context knowledge without
+// first writing a CSV to disk and calling `ingest_csv`. This tool posts raw
+// text (or JSON) through the SAME canonical `POST /graphs/{tenant}/ingest`
+// route the CLI's `onta ingest --text` uses — no reimplementation, no local
+// write path. Exported for unit tests with a stubbed client.
+export async function ingestTextHandler(
+  {
+    text,
+    kg_name,
+    format,
+  }: { text: string; kg_name: string; format?: string },
+  makeClient: () => Client = client,
+) {
+  const content = text ?? "";
+  if (!content.trim()) {
+    return errorResult(
+      new Error(
+        "ingest_text requires non-empty `text` — nothing was ingested.",
+      ),
+    );
+  }
+  if (!kg_name?.trim()) {
+    return errorResult(
+      new Error(
+        "ingest_text requires `kg_name` — nothing was ingested.",
+      ),
+    );
+  }
+  try {
+    // asText:true forces the SDK's text path even if `text` happens to look
+    // like an existing file path — the caller's intent is raw content.
+    const result = await makeClient().ingest(content, {
+      kg: kg_name,
+      contentType: format ?? "text",
+      asText: true,
+    });
+    const extracted = Number(result.entities_extracted ?? 0);
+    const entities = Number(result.entities_resolved ?? 0);
+    const triples = Number(result.triples_inserted ?? 0);
+    // Text ingest has an extraction phase; surface that counter when present
+    // (mirrors the CLI's printIngestResult) so agents can see extraction vs
+    // resolution, not only the write counts.
+    const parts = [
+      result.entities_extracted !== undefined
+        ? `${extracted} entities extracted`
+        : null,
+      `${entities} entities resolved`,
+      `${triples} triples inserted into "${kg_name}"`,
+    ].filter(Boolean);
+    return textResult(`Ingestion complete: ${parts.join(", ")}.`);
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+server.registerTool(
+  "ingest_text",
+  {
+    description:
+      "Ingest free-form text (or JSON) into a context graph WITHOUT writing a " +
+      "file first. The backend extracts entities via LLM, resolves them " +
+      "against the ontology, and inserts triples — the same path as the CLI's " +
+      "`onta ingest --text`. Use this to remember notes, meeting summaries, " +
+      "or any unstructured knowledge in-context. For tabular CSV files on " +
+      "disk, use `ingest_csv` instead.",
+    inputSchema: {
+      text: z
+        .string()
+        .describe(
+          "Raw text (or JSON string) to extract entities from and write into the graph.",
+        ),
+      kg_name: z
+        .string()
+        .describe(
+          'Name of the context graph to write into (e.g. "notes", "crm"). ' +
+            "Created if it does not exist.",
+        ),
+      format: z
+        .enum(["text", "json"])
+        .optional()
+        .describe(
+          'Content format. Default "text". Pass "json" when `text` is a JSON ' +
+            "document/array so extraction skips free-text parsing.",
+        ),
+    },
+  },
+  async ({ text, kg_name, format }) =>
+    ingestTextHandler({ text, kg_name, format }),
 );
 
 // ONTA-415: attacks the ROOT CAUSE of ONTA-253. That fix made a guessed path
@@ -567,8 +685,8 @@ server.registerTool(
   {
     description:
       "Create a new, empty context graph in the current tenant. Use this " +
-      "before ingesting data into a fresh graph (ingest_csv also auto-creates a " +
-      "graph, so this is for setting one up explicitly / with a description).",
+      "before ingesting data into a fresh graph (ingest_csv / ingest_text also " +
+      "auto-create a graph, so this is for setting one up explicitly / with a description).",
     inputSchema: {
       name: z
         .string()
