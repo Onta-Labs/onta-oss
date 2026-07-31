@@ -2,9 +2,10 @@
 
 A verifier may return a SEQUENCE of tenant ids (the user's owned tenants):
 every key the user creates then works for all of them, authorized against
-the tenant requested in the route path. Single-tenant verdicts (str) and
-static keys keep the legacy behavior: they route to their own tenant
-regardless of the path.
+the tenant requested in the route path. Static keys map 1:1 to a tenant and
+403 when the path names a different one (never a silent reroute). Legacy
+single-tenant str verdicts still route to their own tenant regardless of
+the path.
 """
 
 import pytest
@@ -114,13 +115,39 @@ def test_sequence_verdict_has_no_subject(open_access):
     assert ctx.subject is None
 
 
-def test_static_key_keeps_legacy_routing(monkeypatch):
+def test_static_key_path_mismatch_is_403(monkeypatch):
+    """Dogfood S3: a static key for tenant-acme used with path tenant-beta
+    must 403 — never silently serve acme data under the beta path."""
     monkeypatch.setattr(
         "cograph_client.auth.api_keys.settings.api_keys",
         '{"static-key": "static-tenant"}',
     )
-    ctx = get_tenant(tenant="another", api_key="static-key")
+    with pytest.raises(HTTPException) as exc:
+        get_tenant(tenant="another", api_key="static-key")
+    assert exc.value.status_code == 403
+    assert "another" in exc.value.detail
+    assert "static-tenant" in exc.value.detail
+
+
+def test_static_key_path_match_works(monkeypatch):
+    monkeypatch.setattr(
+        "cograph_client.auth.api_keys.settings.api_keys",
+        '{"static-key": "static-tenant"}',
+    )
+    ctx = get_tenant(tenant="static-tenant", api_key="static-key")
+    assert ctx == TenantContext(tenant_id="static-tenant", api_key="static-key")
+
+
+def test_static_key_path_omitted_uses_key_tenant(monkeypatch):
+    """Back-compat for clients that only send the key (no path tenant)."""
+    monkeypatch.setattr(
+        "cograph_client.auth.api_keys.settings.api_keys",
+        '{"static-key": "static-tenant"}',
+    )
+    ctx = get_tenant(tenant=None, api_key="static-key")
     assert ctx.tenant_id == "static-tenant"
+    ctx_empty = get_tenant(tenant="", api_key="static-key")
+    assert ctx_empty.tenant_id == "static-tenant"
 
 
 # --------------------------------------------------------------------------- #
