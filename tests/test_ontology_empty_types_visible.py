@@ -23,6 +23,7 @@ from cograph_client.nlp.pipeline import (
     NLQueryPipeline,
     ONTOLOGY_EMPTY,
     ONTOLOGY_FETCH_ERROR,
+    _active_types_cache,
     _ontology_cache,
 )
 
@@ -184,6 +185,12 @@ async def test_mechanism_empty_set_equals_declared_minus_active():
     (declared − active), for ANY active subset — not tied to this example."""
     for active in (("Widget",), ("Sprocket",), ("Widget", "Gadget")):
         _ontology_cache.clear()
+        # The active-type probe is TTL-cached per instance graph since ONTA-411,
+        # and this loop reuses ONE instance graph with different active sets, so
+        # the summary cache alone is no longer enough to isolate an iteration.
+        # (The conftest autouse reset covers test-to-test leakage, not this
+        # within-test loop.)
+        _active_types_cache.clear()
         summary = await _pipe(WidgetNeptune(active=active))._fetch_ontology(GRAPH, KG)
         parsed = _parse_types(summary)
         declared = {"Widget", "Sprocket", "Gadget"}
