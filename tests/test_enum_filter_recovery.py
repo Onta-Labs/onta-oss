@@ -163,7 +163,7 @@ async def test_ask_retries_on_enum_filter_zero_rows():
             return {"sparql": BAD_SPARQL, "explanation": "bad", "functions_needed": []}
         return {"sparql": GOOD_SPARQL, "explanation": "good", "functions_needed": []}
 
-    async def fake_format(bindings, explanation, missing_vars=None):
+    async def fake_format(bindings, explanation, missing_vars=None, **kw):
         if not bindings:
             return "No results found."
         return "ok: " + bindings[0].get("requiredTest", "")

