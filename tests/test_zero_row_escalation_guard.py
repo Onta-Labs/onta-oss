@@ -271,6 +271,9 @@ def test_named_in_question_does_not_match_inside_another_word():
     assert _types_named_in_question("what is the age of the cat", types) == {"Age", "Cat"}
     # Plural of a compound name still matches.
     assert _types_named_in_question("show me clinicaltrials", types) == {"ClinicalTrial"}
+    # A type name ending in a non-word character keeps the verbatim arm: a
+    # trailing `\b` cannot match after a dot followed by a space.
+    assert _types_named_in_question("how many in the U.S. exist", ["U.S."]) == {"U.S."}
 
 
 @pytest.mark.asyncio
