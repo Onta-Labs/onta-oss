@@ -88,11 +88,19 @@ BaseLayerName = Literal["public", "enhanced"]
 
 
 def base_pin_graph_uri(tenant_id: str) -> str:
-    """Companion named graph holding the workspace base pin (schema-meta)."""
+    """Companion named graph holding the workspace base pin (schema-meta).
+
+    Built on ``tenant_graph_uri`` (ONTA-422) rather than its own f-string: this
+    URI reaches a whole-graph replace in ``set_base_pin``, and the old
+    ``.strip("/")`` silently ACCEPTED an id the shared builder rejects, which is
+    exactly the kind of near-copy that makes "one validated builder" untrue. The
+    empty check is kept ahead of it so the existing ``ValueError`` message
+    survives for a caller that passes nothing at all.
+    """
     tid = (tenant_id or "").strip().strip("/")
     if not tid:
         raise ValueError("tenant_id is required for base pin graph")
-    return f"https://cograph.tech/graphs/{tid}/base-pin"
+    return f"{tenant_graph_uri(tid)}/base-pin"
 
 
 # ---------------------------------------------------------------------------

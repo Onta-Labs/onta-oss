@@ -3,7 +3,10 @@
 import hashlib
 import re
 
-from cograph_client.graph.queries import sparql_string_literal
+from cograph_client.graph.queries import (
+    require_valid_type_name,
+    sparql_string_literal,
+)
 
 OMNIX_ONTO = "https://cograph.tech/onto"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
@@ -16,12 +19,47 @@ XSD = "http://www.w3.org/2001/XMLSchema"
 GEOSPARQL = "http://www.opengis.net/ont/geosparql"
 
 
+# The tenant-layer type namespace. A named constant for the same reason
+# ``GRAPH_URI_PREFIX`` is one: callers that want the PREFIX (to strip it off a
+# URI) used to spell it ``type_uri("")``, which only worked while the builder
+# accepted a name it should reject. ``layers._TYPE_NAMESPACES[Layer.TENANT]`` and
+# ``explore.TYPE_URI_PREFIX`` are the same string by definition; both now alias
+# this one.
+TYPE_URI_PREFIX = "https://cograph.tech/types/"
+
+
 def type_uri(type_name: str) -> str:
-    return f"https://cograph.tech/types/{type_name}"
+    """Ontology IRI for a type.
+
+    ONTA-425: validates HERE, not at the ~40 call sites, for the same reason
+    ``kg_graph_uri`` validates ``kg_name`` (ONTA-414). The result is
+    interpolated verbatim inside ``<…>`` in generated SPARQL, and several
+    callers take the name straight off a URL path segment
+    (``GET /explore/kgs/{kg}/types/{type_name}/summary``) or a request body
+    (``POST /ontology/types/{type_name}/attributes``). A name carrying ``>``
+    closes the IRI early and the remainder becomes query syntax — on the
+    ontology WRITE paths that syntax lands in a ``client.update``, where ``;``
+    starts a second operation.
+
+    Read paths that ENUMERATE stored names must not let one bad name break the
+    listing: they branch on :func:`is_valid_type_name` and skip, rather than
+    catching this. See ``api/routes/explore.search_explorer``.
+    """
+    return f"{TYPE_URI_PREFIX}{require_valid_type_name(type_name)}"
 
 
 def attr_uri(type_name: str, attr_name: str) -> str:
-    return f"https://cograph.tech/types/{type_name}/attrs/{attr_name}"
+    """Ontology IRI for one attribute of a type.
+
+    BOTH segments are validated (ONTA-425): an attribute leaf is interpolated
+    into the same IRI and reaches it from the same request bodies. Note the
+    validator deliberately still allows ``/`` — two attribute names in
+    production contain one — because ``/`` cannot escape ``<…>``.
+    """
+    return (
+        f"{TYPE_URI_PREFIX}{require_valid_type_name(type_name)}"
+        f"/attrs/{require_valid_type_name(attr_name, 'attribute name')}"
+    )
 
 
 # --- Entity-node URI minting (the ONE place instance-node IRIs are built) -----
