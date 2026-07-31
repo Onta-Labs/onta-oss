@@ -55,23 +55,32 @@ MAX_ENUM_DISCOVERY_CONCURRENCY = int(
 )
 
 # Active-type probe bounds (ONTA-427). The probe answers "which DECLARED types
-# actually carry instances in this KG?" — the signal behind the "[no instances]"
+# actually carry instances in this KG?", the signal behind the "[no instances]"
 # annotation (ONTA-258). It used to be one UNBOUNDED `SELECT DISTINCT ?type`
 # scan of the whole instance graph per ontology fetch; it is now one LIMIT-1
 # index probe per candidate type URI, which costs O(declared types) instead of
 # O(entities in the KG).
 #
-# Past MAX_ACTIVE_TYPE_PROBE_URIS candidates the bounded form stops being the
-# cheaper option (several hundred index seeks plus a multi-kilobyte query beats
-# nothing), so we deliberately fall back to the single scan — the pre-ONTA-427
-# behavior, which is correct, just expensive.
+# Past MAX_ACTIVE_TYPE_PROBE_URIS candidates the bounded form stops paying off:
+# several hundred index seeks plus a query tens of KB long is no longer cheaper
+# than one sequential scan, so we deliberately fall back to the scan there. That
+# is the pre-ONTA-427 behavior, which is correct, just expensive.
 MAX_ACTIVE_TYPE_PROBE_URIS = int(
     os.environ.get("OMNIX_ACTIVE_TYPE_PROBE_MAX", "600")
 )
-# Candidate URIs per probe query, so one query's text stays a few KB rather than
-# tens of KB. Chunks run concurrently.
+# Candidate URIs per probe query, keeping one query's text around 10 to 15 KB
+# (roughly 180 bytes per existence subselect) instead of one ~100 KB query.
+# Chunks run concurrently, bounded by MAX_ACTIVE_TYPE_PROBE_CONCURRENCY.
 ACTIVE_TYPE_PROBE_CHUNK = int(
     os.environ.get("OMNIX_ACTIVE_TYPE_PROBE_CHUNK", "60")
+)
+# Simultaneous probe queries. Mirrors the enum-discovery cap (COG-58) so the
+# probe can never exceed the concurrency this same fetch deliberately caps
+# elsewhere against serverless Neptune.
+MAX_ACTIVE_TYPE_PROBE_CONCURRENCY = int(
+    os.environ.get(
+        "OMNIX_ACTIVE_TYPE_PROBE_CONCURRENCY", str(MAX_ENUM_DISCOVERY_CONCURRENCY)
+    )
 )
 
 RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
@@ -1280,7 +1289,7 @@ class NLQueryPipeline:
     # (ONTA-258). Getting it wrong in the FALSE-EMPTY direction (a populated type
     # marked empty) is the regression that matters: the model would then tell the
     # user a type has no data when it does. Everything below is written to make
-    # the probe cheap WITHOUT ever risking that — a probe that cannot answer
+    # the probe cheap WITHOUT ever risking that: a probe that cannot answer
     # confidently returns None and the caller falls back to the full scan.
 
     @staticmethod
@@ -1327,16 +1336,15 @@ class NLQueryPipeline:
         """Which of ``candidate_uris`` have at least one instance? (bounded)
 
         Returns the set of type NAMES found, or ``None`` when the probe could not
-        be completed — ANY chunk failing invalidates the whole result, because a
+        be completed. ANY chunk failing invalidates the WHOLE result, because a
         partial answer would mark the missing chunk's types "[no instances]"
         (the exact ONTA-258 regression). ``None`` tells the caller to fall back to
         the unbounded scan, i.e. to the pre-ONTA-427 behavior, so a Neptune that
         dislikes this query shape degrades in cost, never in correctness.
 
-        Chunks run concurrently, and the fan-out is bounded by construction:
-        at most ``MAX_ACTIVE_TYPE_PROBE_URIS / ACTIVE_TYPE_PROBE_CHUNK`` queries
-        (10 with the defaults), each a handful of index seeks — well under the
-        enum-discovery fan-out this same fetch already issues (COG-58).
+        Chunks run concurrently under a semaphore, so the fan-out is bounded by
+        MAX_ACTIVE_TYPE_PROBE_CONCURRENCY regardless of how many types the KG
+        declares (the same treatment enum discovery gets, COG-58).
         """
         import asyncio
 
@@ -1346,21 +1354,27 @@ class NLQueryPipeline:
             candidate_uris[i : i + ACTIVE_TYPE_PROBE_CHUNK]
             for i in range(0, len(candidate_uris), ACTIVE_TYPE_PROBE_CHUNK)
         ]
-        try:
-            raws = await asyncio.gather(
-                *[
-                    self.neptune.query(
-                        self._active_type_probe_query(instance_graph, chunk)
-                    )
-                    for chunk in chunks
-                ]
-            )
-        except Exception:
+        sem = asyncio.Semaphore(MAX_ACTIVE_TYPE_PROBE_CONCURRENCY)
+
+        async def _one(chunk: list[str]):
+            async with sem:
+                return await self.neptune.query(
+                    self._active_type_probe_query(instance_graph, chunk)
+                )
+
+        # return_exceptions=True so a failing chunk cannot leave its siblings'
+        # results unretrieved; the failure is then treated as a whole-probe
+        # failure below, never as a partial answer.
+        raws = await asyncio.gather(
+            *[_one(chunk) for chunk in chunks], return_exceptions=True
+        )
+        if any(isinstance(r, BaseException) for r in raws):
+            first = next(r for r in raws if isinstance(r, BaseException))
             logger.warning(
                 "active_types_probe_failed",
                 instance_graph=instance_graph,
                 candidates=len(candidate_uris),
-                exc_info=True,
+                error=str(first),
             )
             return None
 
@@ -1391,7 +1405,7 @@ class NLQueryPipeline:
         out: set[str] = set()
         for row in rows:
             # type_name_from_uri understands tenant / public / enhanced
-            # namespaces (longest-prefix-first) — a bare strip of the tenant
+            # namespaces (longest-prefix-first), so a bare strip of the tenant
             # prefix would turn types/public/Person into "public/Person".
             name = type_name_from_uri(row.get("type", ""))
             if name:
@@ -1440,7 +1454,7 @@ class NLQueryPipeline:
 
         try:
             # Which types actually have instances is resolved AFTER the schema
-            # read below (ONTA-427) — the declared type list is what makes the
+            # read below (ONTA-427). The declared type list is what makes the
             # cheap, bounded form of that question possible.
             active_types: set[str] | None = None
             # Populated only if we end up running the UNBOUNDED scan, so the
@@ -1521,8 +1535,8 @@ class NLQueryPipeline:
             # written (ONTA-427).
             #
             # Now that `types` is known we ask the question the "[no instances]"
-            # annotation actually needs — "does THIS declared type have at least
-            # one instance?" — as one LIMIT-1 index probe per candidate URI. The
+            # annotation actually needs, "does THIS declared type have at least
+            # one instance?", as one LIMIT-1 index probe per candidate URI. The
             # signal is IDENTICAL (same name-based matching, same layer
             # namespaces, no caching, no staleness added); only the cost changes,
             # from O(entities in the KG) to O(declared types).
@@ -1532,7 +1546,7 @@ class NLQueryPipeline:
             # they are fire-and-forget and best-effort (a failed recompute is
             # swallowed), they only cover the tenant type namespace, and their
             # scan applies a PRIMARY-type guard that attributes each entity to a
-            # single type — so an entity asserting both a subtype and its
+            # single type, so an entity asserting both a subtype and its
             # supertype contributes to only one of them, and the other would read
             # as 0 instances. Any of those would produce a FALSE "[no instances]"
             # on a populated type, which is precisely the ONTA-258 failure.
@@ -1544,7 +1558,7 @@ class NLQueryPipeline:
                     )
                 if active_types is None:
                     # Nothing declared, too many candidates to probe cheaply, or
-                    # the probe failed — fall back to the pre-ONTA-427 scan.
+                    # the probe failed. Fall back to the pre-ONTA-427 scan.
                     scanned_instance_types = await self._scan_instance_types(
                         instance_graph
                     )

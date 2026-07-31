@@ -3,13 +3,13 @@
 `_fetch_ontology` computes which DECLARED types actually carry instances. That
 signal is what marks a declared-but-empty type "[no instances]" instead of
 hiding it (ONTA-258). It used to be one unbounded `SELECT DISTINCT ?type` scan
-of the whole instance graph, run on every ontology fetch — and since
+of the whole instance graph, run on every ontology fetch, and since
 `refresh_after_write` invalidates the ontology cache after every converged
 write, an active ingest made it fire on essentially every /ask.
 
 It is now one LIMIT-1 existence probe per DECLARED candidate type URI: cost
 tracks the declared type count, not the entity count. These tests pin BOTH
-halves — the probe is bounded, AND the empty-type signal it feeds is unchanged
+halves: the probe is bounded, AND the empty-type signal it feeds is unchanged
 (including the false-empty cases that would be the real ONTA-258 regression).
 
 The fake Neptune here is deliberately STRICTER than the one in
@@ -21,8 +21,6 @@ permissive superset.
 from __future__ import annotations
 
 import re
-
-import pytest
 
 from cograph_client.nlp import pipeline as pl
 from cograph_client.nlp.pipeline import (
@@ -165,7 +163,7 @@ async def test_instances_in_another_layer_namespace_count_as_active():
     """The old scan matched instance types to declared types by NAME, across
     layer namespaces. The bounded probe must ask about EVERY namespace for a
     declared name, or a type whose instances are typed `types/public/Widget`
-    would be falsely marked [no instances] — the ONTA-258 regression."""
+    would be falsely marked [no instances], the ONTA-258 regression."""
     _ontology_cache.clear()
     n = ProbeNeptune(populated=(f"{TYPES}public/Widget",))
     parsed = _parse_types(await _pipe(n)._fetch_ontology(GRAPH, KG))
@@ -207,7 +205,7 @@ async def test_probe_asks_only_about_declared_types_and_bounds_each():
 
 
 async def test_probe_query_is_read_only():
-    """Production probes are SELECT/ASK only — never a mutation."""
+    """Production probes are SELECT/ASK only, never a mutation."""
     _ontology_cache.clear()
     n = ProbeNeptune(populated=(f"{TYPES}Widget",))
     await _pipe(n)._fetch_ontology(GRAPH, KG)
@@ -219,7 +217,7 @@ async def test_probe_query_is_read_only():
 
 async def test_over_cap_falls_back_to_one_scan(monkeypatch):
     """When a KG declares more types than the probe cap, one sequential scan is
-    cheaper than hundreds of seeks — so we deliberately use the scan, and the
+    cheaper than hundreds of seeks, so we deliberately use the scan, and the
     empty-type signal is unchanged."""
     _ontology_cache.clear()
     monkeypatch.setattr(pl, "MAX_ACTIVE_TYPE_PROBE_URIS", 2)
@@ -238,7 +236,7 @@ async def test_over_cap_falls_back_to_one_scan(monkeypatch):
 
 async def test_probe_failure_degrades_to_the_scan_not_to_a_wrong_answer():
     """If the engine rejects the probe shape, fall back to the pre-ONTA-427
-    scan. A partial/failed probe must NEVER be treated as truth — that would
+    scan. A partial/failed probe must NEVER be treated as truth, since that would
     mark populated types [no instances]."""
     _ontology_cache.clear()
     n = ProbeNeptune(populated=(f"{TYPES}Widget",), probe_raises=True)
@@ -253,7 +251,7 @@ async def test_probe_failure_degrades_to_the_scan_not_to_a_wrong_answer():
 
 async def test_schema_missing_fallback_still_sees_undeclared_instance_types():
     """Cold start (schema not written yet): the instance-derived fallback needs
-    types the ontology never declared, so THAT path still scans — exactly once —
+    types the ontology never declared, so THAT path still scans, exactly once,
     and still produces the instance-derived summary."""
     _ontology_cache.clear()
     n = ProbeNeptune(
@@ -277,8 +275,8 @@ async def test_genuinely_empty_kg_still_reports_no_ontology():
 
 
 async def test_no_probe_when_there_is_no_distinct_instance_graph():
-    """Fetching the tenant ontology graph itself has no instance graph to probe
-    — no probe, no scan (unchanged behavior)."""
+    """Fetching the tenant ontology graph itself has no instance graph to probe,
+    so no probe and no scan (unchanged behavior)."""
     _ontology_cache.clear()
     n = ProbeNeptune(populated=(f"{TYPES}Widget",))
     await _pipe(n)._fetch_ontology(GRAPH)
