@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 import re
+import time
 
 import pytest
 
@@ -483,7 +484,7 @@ async def test_ask_scope_probe_stays_bounded(monkeypatch):
     )
 
 
-async def test_ask_falls_back_to_the_scan_when_the_store_is_empty(monkeypatch):
+async def test_ask_without_embeddings_is_unscoped_and_does_not_scan(monkeypatch):
     """No embeddings => no declared names => no scoping and NO per-ask scan; the
     full-ontology path runs its own (bounded) probe instead."""
     _ontology_cache.clear()
@@ -645,3 +646,20 @@ def test_delete_kg_evicts_ontology_and_active_type_caches(client, mock_neptune, 
 
     assert f"{base}|{instance}|" not in _ontology_cache
     assert instance not in _active_types_cache
+
+
+async def test_active_type_cache_reclaims_expired_entries():
+    """The TTL gates SERVING; without a sweep nothing was ever deleted, and the
+    key now has a second dimension (the candidate set), so a workspace whose
+    declared types churn would accumulate an entry per distinct set forever."""
+    import cograph_client.nlp.pipeline as pl
+
+    _active_types_cache.clear()
+    _active_types_cache["stale-entry"] = ({"Old"}, time.time() - pl.ONTOLOGY_CACHE_TTL - 1)
+    _active_types_cache["fresh-entry"] = ({"New"}, time.time())
+
+    neptune = ProbeNeptune()
+    await _pipe(neptune)._active_types(KG, GRAPH, declared_names={"Widget"})
+
+    assert "stale-entry" not in _active_types_cache
+    assert "fresh-entry" in _active_types_cache
