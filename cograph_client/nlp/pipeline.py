@@ -38,6 +38,26 @@ ONTOLOGY_CACHE_TTL = 60  # seconds
 _active_types_cache: dict[str, tuple[set[str], float]] = {}
 
 
+def _store_active_types(key: str, names: set[str]) -> None:
+    """Write one active-type answer, dropping entries that have already expired.
+
+    The TTL only ever gated SERVING; nothing ever deleted. That was survivable
+    while the key was one entry per KG, but the key now carries a second
+    dimension (the candidate set), so a workspace whose declared types churn
+    would accumulate an entry per distinct set forever. `invalidate_cache`
+    reclaims on every converged write and covers most churn; this covers the
+    rest, e.g. an embedding-store reload or a partial rebuild with no write
+    behind it.
+    """
+    now = time.time()
+    for k in [
+        k for k, v in _active_types_cache.items()
+        if (now - v[1]) >= ONTOLOGY_CACHE_TTL
+    ]:
+        _active_types_cache.pop(k, None)
+    _active_types_cache[key] = (names, now)
+
+
 def _active_types_cache_key(instance_graph: str, declared_names=None) -> str:
     """Cache key for one active-type answer: instance graph + CANDIDATE SET.
 
@@ -1644,7 +1664,7 @@ class NLQueryPipeline:
         if cached and cached[0] and (time.time() - cached[1]) < ONTOLOGY_CACHE_TTL:
             return cached[0]
         names, _ = await self._resolve_active_types(instance_graph, declared_names)
-        _active_types_cache[key] = (names, time.time())
+        _store_active_types(key, names)
         return names
 
     async def _fetch_ontology(
@@ -1822,7 +1842,7 @@ class NLQueryPipeline:
                     active_types, scanned_instance_types = await self._resolve_active_types(
                         instance_graph, types
                     )
-                    _active_types_cache[active_key] = (active_types, time.time())
+                    _store_active_types(active_key, active_types)
 
             # A DECLARED type with no correctly-typed instances in the queried KG
             # is KEPT and annotated "[no instances]" — NOT dropped (ONTA-258).

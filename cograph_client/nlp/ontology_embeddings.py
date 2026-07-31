@@ -89,7 +89,11 @@ def _types_named_in_question(question: str, type_names) -> set[str]:
     "medication", `Cat` in "categories" — which was harmless while a spurious
     match only force-INCLUDED a type into the context, but no longer is now that
     "the question named this type" also gates the zero-row escalation guard. A
-    trailing `s?` keeps the plural of a compound name ("clinicaltrials").
+    trailing `s?` keeps the plural of a compound name ("clinicaltrials"). The
+    boundaries are lookarounds rather than `\b` so a type name that ENDS in a
+    non-word character ("U.S.", "(Draft)") keeps the arm at all: a trailing
+    `\b` cannot match after a dot when the next character is a space, which
+    dropped such a name from the match entirely.
     """
     ql = question.lower()
     q_singulars = {_singularize(t) for t in re.findall(r"[a-z0-9]+", ql)}
@@ -98,7 +102,7 @@ def _types_named_in_question(question: str, type_names) -> set[str]:
         nl = tn.lower()
         if _singularize(nl) in q_singulars:
             named.add(tn)
-        elif len(nl) > 2 and re.search(rf"\b{re.escape(nl)}s?\b", ql):
+        elif len(nl) > 2 and re.search(rf"(?<!\w){re.escape(nl)}s?(?!\w)", ql):
             named.add(tn)  # compound / multi-word type named verbatim
     return named
 
