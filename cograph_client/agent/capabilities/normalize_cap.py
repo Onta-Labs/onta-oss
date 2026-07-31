@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 import structlog
 
+from cograph_client.agent.kg_scope import SCOPE_REQUIRE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.normalization.execute import apply_rule
 from cograph_client.normalization.inference import (
@@ -75,6 +76,10 @@ _WS = re.compile(r"\s+")
 
 class NormalizeCapability:
     name = "normalize"
+    # ONTA-428: a cleaning rule rewrites VALUES that already exist. Against a
+    # nonexistent graph the sampling finds nothing, the rule is persisted anyway,
+    # and the apply pass rewrites zero triples while reporting "applied".
+    kg_scope_policy = SCOPE_REQUIRE
 
     def describe(self) -> str:
         return (

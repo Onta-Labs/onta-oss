@@ -22,6 +22,7 @@ turns do **not** mint a job.
 
 from __future__ import annotations
 
+from cograph_client.agent.kg_scope import SCOPE_NONE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.graph.kg_status import (
     KG_EMPTY,
@@ -37,6 +38,13 @@ from cograph_client.pipeline.answer_run import record_answer_run
 
 class QueryCapability:
     name = "query"
+    # The planner's KG gate deliberately does NOT apply here: ``answer`` runs its
+    # own, richer ONTA-413 probe below, which additionally distinguishes
+    # registered-but-empty and honours the base-graph union (a workspace whose
+    # instances live in the tenant graph must still get an answer). Declaring
+    # "none" keeps that as the single read-path check rather than adding a second,
+    # coarser one on top of it.
+    kg_scope_policy = SCOPE_NONE
 
     def describe(self) -> str:
         return (
