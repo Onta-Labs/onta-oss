@@ -1247,11 +1247,19 @@ def register_default_capabilities() -> None:
     # register_delivery_sink.
     register_capability(SubscribeCapability())
     # Web research (ADR 0006): the read-only counterpart — answers a question from
-    # the web and returns a cited answer/artifact, no KG write. Works in OSS from
-    # user-supplied URLs via the default static fetcher; open-web search lights up
-    # when a web-source provider is registered. Register the default fetch ladder
-    # (the OSS static fetcher) so a plain deployment can read pages out of the box.
-    from cograph_client.retrieval import register_default_fetchers
-
-    register_default_fetchers()
+    # the web and returns a cited answer/artifact, no KG write.
+    #
+    # OPEN-WEB RETRIEVAL IS OUT OF OSS SCOPE (ONTA-293, decided 2026-07-29). OSS
+    # deliberately registers NO page fetcher and NO web-source provider, so this
+    # capability is dormant here exactly like WebIngestCapability above. It is
+    # still REGISTERED so the "research" intent routes and can explain itself —
+    # a dormant capability that says "hand me the content instead" is a signpost,
+    # not a dead button.
+    #
+    # The retrieval SUBSTRATE stays in OSS (`cograph_client/retrieval/`): the
+    # SSRF/DNS guards, HTML safety, the fetch ladder, the cost seam. That is what
+    # premium and self-hosters register INTO via `register_page_fetcher` /
+    # `register_web_source`, and ADR 0008 requires exactly one such substrate. A
+    # deployment that wants the previous behaviour calls `register_default_fetchers()`
+    # itself at boot; nothing was deleted.
     register_capability(WebResearchCapability())

@@ -134,17 +134,23 @@ class WebResearchCapability:
     async def plan(self, ctx: AgentContext, instruction: str) -> list[PlanStep]:
         urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
         provider = get_web_source()
+        # A URL is only readable if a page fetcher is actually REGISTERED. OSS
+        # registers none — open-web retrieval is out of OSS scope (ONTA-293) — so
+        # URL mode lights up only in a deployment that opted in by calling
+        # `register_default_fetchers()` or registering a premium fetcher.
+        can_read_urls = bool(urls) and bool(get_page_fetchers())
 
         # Availability: research needs SOMETHING to read — a discovery provider for
-        # open-web search, or explicit URLs for the static fetcher. Absent both,
-        # degrade to a plain answer (the same no-op pattern web-ingest uses).
-        if provider is None and not urls:
+        # open-web search, or explicit URLs AND a fetcher able to read them. Absent
+        # both, degrade to a plain answer (the same no-op pattern web-ingest uses).
+        if provider is None and not can_read_urls:
             return [
                 _answer_step(
-                    "Web research isn't fully enabled in this deployment. Share one "
-                    "or more page URLs and I'll read and structure them, or an admin "
-                    "can configure a web-discovery provider (e.g. Exa or Perplexity) "
-                    "for open-web search."
+                    "I don't retrieve pages from the web in this deployment. If your "
+                    "agent can already browse or search, have it read the source and "
+                    "hand me the content (or a CSV) and I'll structure it into your "
+                    "graph. An admin can also register a page fetcher or a "
+                    "web-discovery provider to enable open-web retrieval here."
                 )
             ]
 
