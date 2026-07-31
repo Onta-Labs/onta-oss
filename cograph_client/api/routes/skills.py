@@ -15,9 +15,12 @@ per-interface drift the convergence rule forbids; the MCP server and the CLI ask
 the backend for the same bytes the backend's own planner would inject.
 
 Authorization: ``get_tenant`` authorizes ``{tenant}`` against the caller's key
-(403 on an unowned tenant). The two GLOBAL layers are curated canon and are
-**read-only over HTTP**: any mutation targeting a non-tenant layer returns 403,
-mirroring the API-source registry's treatment of its global catalog.
+(403 on an unowned tenant); the three mutating routes (create / update / delete)
+additionally require ``require_tenant_write``, so a ``reader`` member is refused
+with 403 (ONTA-451). ``validate`` writes nothing and stays on plain
+``get_tenant``. The two GLOBAL layers are curated canon and are **read-only over
+HTTP**: any mutation targeting a non-tenant layer returns 403, mirroring the
+API-source registry's treatment of its global catalog.
 
 Boundary: OSS. Imports only ``cograph_client.*`` / stdlib.
 """
@@ -30,6 +33,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.graph.entitlement import is_entitled, layer_stack_for
 from cograph_client.graph.layers import Layer
@@ -215,7 +219,7 @@ async def list_skills(
 @router.post("", response_model=SkillDetail, status_code=201)
 async def create_skill(
     req: CreateSkillRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Create (or replace) a TENANT-layer skill.
 
@@ -329,7 +333,7 @@ async def update_skill(
     type_name: str,
     slug: str,
     req: UpdateSkillRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Partially update a TENANT skill. 403 on a curated global skill.
 
@@ -380,7 +384,7 @@ async def update_skill(
 async def delete_skill(
     type_name: str,
     slug: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ):
     """Delete a TENANT skill. 403 on a curated global skill, 404 if unknown."""
     deleted = await _store().delete(tenant.tenant_id, type_name, slug)

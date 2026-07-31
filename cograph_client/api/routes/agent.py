@@ -23,19 +23,20 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from cograph_client.agent import planner
 from cograph_client.agent.planner import register_default_capabilities
-from cograph_client.agent.registry import AgentContext
+from cograph_client.agent.registry import AgentContext, ReadOnlyMembershipError
 from cograph_client.api.deps import (
     get_enrichment_job_store,
     get_executor,
     get_neptune_client,
     get_schedule_store,
 )
-from cograph_client.auth.api_keys import TenantContext, get_tenant
+from cograph_client.auth.access import get_tenant_with_capability
+from cograph_client.auth.api_keys import TenantContext
 from cograph_client.config import settings
 from cograph_client.enrichment.executor import EnrichmentExecutor
 from cograph_client.graph.client import NeptuneClient
@@ -111,6 +112,11 @@ def _build_ctx(
         # Per-run HARD spend ceiling (ONTA-378): threaded so the enrich/discovery
         # capability bounds the single job it creates. None → deployment default.
         spend_ceiling_usd=body.spend_ceiling_usd,
+        # Tenant-level membership capability ("write" | "read") resolved by
+        # get_tenant_with_capability. The planner refuses to COMMIT a mutating
+        # plan when this is "read" (ONTA-451) — see agent_turn's docstring for
+        # why the gate lives at capability dispatch, not on the route.
+        capability=tenant.capability,
         openrouter_key=settings.openrouter_api_key
         or os.environ.get("OPENROUTER_API_KEY", ""),
         anthropic_key=settings.anthropic_api_key,
@@ -128,21 +134,43 @@ def _build_ctx(
 @router.post("")
 async def agent_turn(
     body: AgentRequest,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
     executor: EnrichmentExecutor = Depends(get_executor),
     job_store=Depends(get_enrichment_job_store),
     schedule_store=Depends(get_schedule_store),
 ):
-    """One agent turn: confirm→execute a plan, or classify+respond to a message."""
+    """One agent turn: confirm→execute a plan, or classify+respond to a message.
+
+    **Write authorization (ONTA-451).** This is the one READ/WRITE MIXED route in
+    the API: the same endpoint answers a question and ingests a dataset. A
+    blanket ``Depends(require_tenant_write)`` — the gate every single-purpose
+    mutating route uses — would therefore 403 a read-only member out of the
+    read-only turns their role explicitly permits (query / ask / research /
+    ontology inspection), which is the wrong product behavior, not just a
+    stricter one.
+
+    So the gate sits at CAPABILITY DISPATCH instead: ``get_tenant_with_capability``
+    resolves the membership capability, ``_build_ctx`` threads it onto
+    :class:`AgentContext`, and the planner refuses at the two points where a
+    mutation is actually committed — persisting a mutating plan, and
+    ``execute_plan`` (the only path that runs one). Capability classification is
+    deny-by-default, so a capability that does not declare ``writes = False`` is
+    treated as mutating. The resulting
+    :class:`~cograph_client.agent.registry.ReadOnlyMembershipError` is translated
+    to HTTP 403 here, with the same wording ``require_tenant_write`` uses.
+    """
     ctx = _build_ctx(tenant, body, client, executor, job_store, schedule_store)
-    if body.confirm is not None:
-        return await planner.execute_plan(ctx, body.confirm.plan_id)
-    # Tag the thread with the auth subject (the signed-in user) so it shows up in
-    # their conversation history (COG-131). Ownerless (static/demo key) sessions
-    # carry owner=None and never appear in anyone's list.
-    return await planner.handle(
-        ctx,
-        body.message,
-        session={"id": body.session_id, "owner": tenant.subject},
-    )
+    try:
+        if body.confirm is not None:
+            return await planner.execute_plan(ctx, body.confirm.plan_id)
+        # Tag the thread with the auth subject (the signed-in user) so it shows up
+        # in their conversation history (COG-131). Ownerless (static/demo key)
+        # sessions carry owner=None and never appear in anyone's list.
+        return await planner.handle(
+            ctx,
+            body.message,
+            session={"id": body.session_id, "owner": tenant.subject},
+        )
+    except ReadOnlyMembershipError as exc:
+        raise HTTPException(status_code=403, detail=exc.detail) from exc

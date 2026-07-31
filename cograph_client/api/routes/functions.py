@@ -23,6 +23,7 @@ Boundary: OSS. Imports only ``cograph_client.*`` / stdlib.
 from fastapi import APIRouter, Depends, HTTPException
 
 from cograph_client.api.deps import get_neptune_client
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.layers import Layer, enhanced_graph_uri
@@ -52,7 +53,7 @@ def _layer_from_body(body: FunctionRegister) -> Layer | None:
 @router.post("/graphs/{tenant}/functions", status_code=201)
 async def register_function(
     body: FunctionRegister,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Attach a function endpoint URL to a type.
@@ -60,6 +61,9 @@ async def register_function(
     Tenant attachments are the ordinary workspace write path. Enhanced
     attachments are operator-only (global-layer authoring); Public is refused
     by the writer (ONTA-400).
+
+    Mutating: ``require_tenant_write`` refuses a ``reader`` member with 403
+    (ONTA-451). The ``GET`` listing below stays on plain ``get_tenant``.
     """
     layer = _layer_from_body(body)
     try:

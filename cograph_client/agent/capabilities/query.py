@@ -50,6 +50,9 @@ class QueryCapability:
     # "none" keeps that as the single read-path check rather than adding a second,
     # coarser one on top of it.
     kg_scope_policy = SCOPE_NONE
+    #: Read-only: answering a question runs SPARQL SELECTs and writes nothing to
+    #: the tenant's graphs, so a read-only member may dispatch it (ONTA-451).
+    writes = False
 
     def describe(self) -> str:
         return (
