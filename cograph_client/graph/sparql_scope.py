@@ -27,7 +27,13 @@ A. The query MUST carry at least one dataset clause, and every graph named by a
 
 B. Independently of A, no IRI anywhere in the RAW query text may sit under
    ``https://cograph.tech/graphs/`` unless it belongs to the calling tenant.
-   This is the belt for A's suspenders and also covers inline ``GRAPH <victim>``.
+   This is the belt for A's suspenders. It CATCHES the plainly-spelled inline
+   ``GRAPH <victim>``, but do not lean on it there: it is a raw-text scan, so a
+   ``\\u``-escaped namespace or an IRI whose match its terminator class truncates
+   can read as owned. What actually confines an inline ``GRAPH`` is rule A —
+   with a ``FROM`` and no ``FROM NAMED`` the store's named-graph set is empty,
+   so the pattern binds nothing. Rule B's real job is defence in depth against a
+   divergence between our parser and the store's, not primary enforcement.
 
 C. ``SERVICE`` is rejected. Federation is an outbound channel (send this
    tenant's rows to an attacker-chosen endpoint), which is a different hole than
