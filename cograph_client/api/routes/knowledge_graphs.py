@@ -553,6 +553,19 @@ async def delete_kg(
     except Exception:
         pass  # Cache eviction is best-effort, don't fail the delete
 
+    # Drop the KG's cached "this graph holds data" verdict (ONTA-453). The probe
+    # caches POSITIVE verdicts for KG_STATUS_CACHE_TTL and never re-checks inside
+    # it, so without this eviction a question asked in the minute after a delete
+    # sails past the missing-KG guard and gets answered out of the tenant base
+    # graph plus the global layers, which is exactly the confidently-wrong answer
+    # that guard exists to stop. Every other derived index is evicted above; this
+    # is the one that was missed.
+    try:
+        from cograph_client.graph.kg_status import invalidate_kg_status
+        invalidate_kg_status(tenant.tenant_id, kg_name)
+    except Exception:
+        pass  # Cache eviction is best-effort, don't fail the delete
+
     # Drop the KG's recurring semantic-reconcile schedule row (ONTA-181) so the
     # runner doesn't keep scanning a graph that no longer exists. Best-effort.
     try:
