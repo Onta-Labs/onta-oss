@@ -251,10 +251,8 @@ def test_load_survives_a_null_kg_name(tmp_path):
 async def test_an_all_benchmark_rebuild_batch_adds_nothing(tmp_path):
     """The trigger condition for the guard below.
 
-    ``eval.run_full_eval``'s rebuild constructs an ExampleBank and calls
-    ``save()`` WITHOUT a ``load()``, so it writes only what ``add_batch``
-    accepted. Now that add_batch drops benchmark KGs, a benchmark-tenant eval
-    run produces an empty bank object.
+    Now that add_batch drops benchmark KGs, a benchmark-tenant eval run offers
+    the rebuild a batch from which nothing survives filtering.
     """
     bank = ExampleBank(openrouter_api_key="unused", bank_path=tmp_path / "bank.jsonl")
 
@@ -273,26 +271,38 @@ async def test_an_all_benchmark_rebuild_batch_adds_nothing(tmp_path):
     assert bank.size == 0
 
 
-def test_eval_rebuild_guards_its_save_on_a_nonempty_result():
-    """...and that empty bank must not be written over the committed one.
+async def test_an_all_benchmark_rebuild_leaves_the_committed_bank_alone(tmp_path):
+    """...and that empty result must not be written over the committed bank.
 
-    A source-level guard (the same shape as this repo's other drift guards)
-    because ``run_full_eval`` needs a live API, an ingested graph store and a
-    provider key, so the real path is not reachable from a unit test. What is
-    checked is that the ``save()`` in the rebuild block is conditional at all --
-    unconditional, it truncates ``eval_reports/example_bank.jsonl`` to zero
-    entries after any all-benchmark eval run.
+    This was a source-level guard (``"if rebuilt:" in block``) because
+    ``run_full_eval`` needs a live API, an ingested graph store and a provider
+    key. The follow-up lifted the rebuild into ``eval.rebuild_example_bank``, so the
+    real path is reachable and the guarantee is asserted directly. Note the
+    rebuild now ``load()``s first, so a stray ``save()`` would no longer zero
+    the file -- but it would still rewrite it for no reason, and the
+    load-then-merge property has its own tests in
+    ``test_example_bank_rebuild_merge.py``.
     """
-    import inspect
+    from cograph_client.eval import rebuild_example_bank
 
-    from cograph_client import eval as eval_mod
+    bank_path = tmp_path / "bank.jsonl"
+    _write_bank(bank_path, [_row("imdb-movies", "how many films"), _row("events-sf", "how many events")])
+    before = bank_path.read_text()
 
-    src = inspect.getsource(eval_mod)
-    start = src.index("example_bank_rebuilt")
-    block = src[max(0, start - 1500):start]
-    assert "if rebuilt:" in block, (
-        "cograph_client/eval.py's example-bank rebuild no longer guards save() on a "
-        "non-empty result. Unconditional, an eval run whose finetune pairs are all "
-        "from a benchmark tenant rewrites the committed bank to zero entries, "
-        "because the rebuild never load()s and add_batch now drops benchmark KGs."
+    pairs = tmp_path / "finetune_pairs.jsonl"
+    pairs.write_text(
+        "".join(
+            json.dumps({"question": q, "sparql": "SELECT ?x", "graph_uri": GRAPH.format(kg=kg), "ontology": ""}) + "\n"
+            for kg, q in [("spider-concert-singer", "how many singers"), ("spider-world-1", "how many countries")]
+        )
     )
+
+    bank = ExampleBank(openrouter_api_key="unused", bank_path=bank_path)
+
+    async def _boom(_texts):
+        raise AssertionError("nothing survived filtering; must not embed")
+
+    bank._embed_texts = _boom  # type: ignore[method-assign]
+
+    assert await rebuild_example_bank(pairs, bank=bank) == 0
+    assert bank_path.read_text() == before
