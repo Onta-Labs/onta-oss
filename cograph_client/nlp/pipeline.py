@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from typing import Iterable
 
 import anthropic
 import httpx
@@ -52,6 +53,37 @@ ONTOLOGY_EMPTY = "No ontology defined yet."
 MAX_ENUM_DISCOVERY_CONCURRENCY = int(
     os.environ.get("OMNIX_ENUM_DISCOVERY_CONCURRENCY", "8")
 )
+
+# Active-type probe bounds (ONTA-427). The probe answers "which DECLARED types
+# actually carry instances in this KG?", the signal behind the "[no instances]"
+# annotation (ONTA-258). It used to be one UNBOUNDED `SELECT DISTINCT ?type`
+# scan of the whole instance graph per ontology fetch; it is now one LIMIT-1
+# index probe per candidate type URI, which costs O(declared types) instead of
+# O(entities in the KG).
+#
+# Past MAX_ACTIVE_TYPE_PROBE_URIS candidates the bounded form stops paying off:
+# several hundred index seeks plus a query tens of KB long is no longer cheaper
+# than one sequential scan, so we deliberately fall back to the scan there. That
+# is the pre-ONTA-427 behavior, which is correct, just expensive.
+MAX_ACTIVE_TYPE_PROBE_URIS = int(
+    os.environ.get("OMNIX_ACTIVE_TYPE_PROBE_MAX", "600")
+)
+# Candidate URIs per probe query, keeping one query's text around 10 to 15 KB
+# (roughly 180 bytes per existence subselect) instead of one ~100 KB query.
+# Chunks run concurrently, bounded by MAX_ACTIVE_TYPE_PROBE_CONCURRENCY.
+ACTIVE_TYPE_PROBE_CHUNK = int(
+    os.environ.get("OMNIX_ACTIVE_TYPE_PROBE_CHUNK", "60")
+)
+# Simultaneous probe queries. Mirrors the enum-discovery cap (COG-58) so the
+# probe can never exceed the concurrency this same fetch deliberately caps
+# elsewhere against serverless Neptune.
+MAX_ACTIVE_TYPE_PROBE_CONCURRENCY = int(
+    os.environ.get(
+        "OMNIX_ACTIVE_TYPE_PROBE_CONCURRENCY", str(MAX_ENUM_DISCOVERY_CONCURRENCY)
+    )
+)
+
+RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
 # Attribute-alias map cache (ADR 0002 §7): {graph_uri: (old->new map, timestamp)}
 _alias_cache: dict[str, tuple[dict[str, str], float]] = {}
@@ -1252,6 +1284,134 @@ class NLQueryPipeline:
                     break
         return out
 
+    # ── Active-type probe (ONTA-427) ──────────────────────────────────────── #
+    # `active_types` decides which DECLARED types get the "[no instances]" mark
+    # (ONTA-258). Getting it wrong in the FALSE-EMPTY direction (a populated type
+    # marked empty) is the regression that matters: the model would then tell the
+    # user a type has no data when it does. Everything below is written to make
+    # the probe cheap WITHOUT ever risking that: a probe that cannot answer
+    # confidently returns None and the caller falls back to the full scan.
+
+    @staticmethod
+    def _active_type_candidate_uris(type_names: Iterable[str]) -> list[str]:
+        """Every type URI an instance of each declared name could plausibly carry.
+
+        The pre-ONTA-427 scan matched instance types to declared types by NAME
+        (``type_name_from_uri``), which is namespace-agnostic: an instance typed
+        ``types/public/Person`` marked a tenant-declared ``Person`` active.
+        Probing only the DECLARING layer's URI would silently turn such a type
+        into a false "[no instances]", so we probe every layer namespace for the
+        name (three URIs, deduped, order-preserving). That keeps the bounded
+        probe's answer identical to the scan's while staying O(declared types).
+        """
+        from cograph_client.graph.layers import Layer, layer_type_uri
+
+        uris: list[str] = []
+        seen: set[str] = set()
+        for name in type_names:
+            for layer in Layer:
+                u = layer_type_uri(layer, name)
+                if u not in seen:
+                    seen.add(u)
+                    uris.append(u)
+        return uris
+
+    @staticmethod
+    def _active_type_probe_query(instance_graph: str, uris: list[str]) -> str:
+        """One LIMIT-1 existence subselect per candidate type URI, UNIONed.
+
+        READ-ONLY (a SELECT). Each subselect is a first-match seek on the
+        (predicate, object) index, so the engine can stop at the first instance
+        of that type instead of scanning every rdf:type triple in the graph.
+        """
+        blocks = " UNION ".join(
+            f"{{ SELECT (<{u}> AS ?type) WHERE {{ ?s <{RDF_TYPE_URI}> <{u}> }} LIMIT 1 }}"
+            for u in uris
+        )
+        return f"SELECT DISTINCT ?type FROM <{instance_graph}> WHERE {{ {blocks} }}"
+
+    async def _probe_active_types(
+        self, instance_graph: str, candidate_uris: list[str]
+    ) -> set[str] | None:
+        """Which of ``candidate_uris`` have at least one instance? (bounded)
+
+        Returns the set of type NAMES found, or ``None`` when the probe could not
+        be completed. ANY chunk failing invalidates the WHOLE result, because a
+        partial answer would mark the missing chunk's types "[no instances]"
+        (the exact ONTA-258 regression). ``None`` tells the caller to fall back to
+        the unbounded scan, i.e. to the pre-ONTA-427 behavior, so a Neptune that
+        dislikes this query shape degrades in cost, never in correctness.
+
+        Chunks run concurrently under a semaphore, so the fan-out is bounded by
+        MAX_ACTIVE_TYPE_PROBE_CONCURRENCY regardless of how many types the KG
+        declares (the same treatment enum discovery gets, COG-58).
+        """
+        import asyncio
+
+        from cograph_client.graph.layers import type_name_from_uri
+
+        chunks = [
+            candidate_uris[i : i + ACTIVE_TYPE_PROBE_CHUNK]
+            for i in range(0, len(candidate_uris), ACTIVE_TYPE_PROBE_CHUNK)
+        ]
+        sem = asyncio.Semaphore(MAX_ACTIVE_TYPE_PROBE_CONCURRENCY)
+
+        async def _one(chunk: list[str]):
+            async with sem:
+                return await self.neptune.query(
+                    self._active_type_probe_query(instance_graph, chunk)
+                )
+
+        # return_exceptions=True so a failing chunk cannot leave its siblings'
+        # results unretrieved; the failure is then treated as a whole-probe
+        # failure below, never as a partial answer.
+        raws = await asyncio.gather(
+            *[_one(chunk) for chunk in chunks], return_exceptions=True
+        )
+        if any(isinstance(r, BaseException) for r in raws):
+            first = next(r for r in raws if isinstance(r, BaseException))
+            logger.warning(
+                "active_types_probe_failed",
+                instance_graph=instance_graph,
+                candidates=len(candidate_uris),
+                error=str(first),
+            )
+            return None
+
+        found: set[str] = set()
+        for raw in raws:
+            _, rows = parse_sparql_results(raw)
+            for row in rows:
+                name = type_name_from_uri(row.get("type", ""))
+                if name:
+                    found.add(name)
+        return found
+
+    async def _scan_instance_types(self, instance_graph: str) -> set[str]:
+        """Every type NAME present in the instance graph (the UNBOUNDED scan).
+
+        The pre-ONTA-427 probe verbatim. Still the right tool for the two jobs
+        that genuinely need types the ontology never declared: the schema-missing
+        instance fallback, and the over-cap case where one scan beats hundreds of
+        seeks. READ-ONLY (a SELECT).
+        """
+        from cograph_client.graph.layers import type_name_from_uri
+
+        query = (
+            f"SELECT DISTINCT ?type FROM <{instance_graph}> "
+            f"WHERE {{ ?s <{RDF_TYPE_URI}> ?type }}"
+        )
+        _, rows = parse_sparql_results(await self.neptune.query(query))
+        out: set[str] = set()
+        for row in rows:
+            # type_name_from_uri understands tenant / public / enhanced
+            # namespaces (longest-prefix-first), so a bare strip of the tenant
+            # prefix would turn types/public/Person into "public/Person".
+            name = type_name_from_uri(row.get("type", ""))
+            if name:
+                out.add(name)
+        return out
+
     async def _fetch_ontology(
         self,
         graph_uri: str,
@@ -1293,25 +1453,14 @@ class NLQueryPipeline:
             return layer_type_uri(layer, type_name)
 
         try:
-            # If querying a specific KG, find which types actually have instances
+            # Which types actually have instances is resolved AFTER the schema
+            # read below (ONTA-427). The declared type list is what makes the
+            # cheap, bounded form of that question possible.
             active_types: set[str] | None = None
-            if instance_graph and instance_graph != graph_uri:
-                type_query = (
-                    f"SELECT DISTINCT ?type FROM <{instance_graph}> "
-                    f"WHERE {{ ?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> ?type }}"
-                )
-                type_raw = await self.neptune.query(type_query)
-                _, type_bindings = parse_sparql_results(type_raw)
-                active_types = set()
-                for row in type_bindings:
-                    t = row.get("type", "")
-                    # type_name_from_uri understands tenant / public / enhanced
-                    # namespaces (longest-prefix-first) — bare strip of the
-                    # tenant prefix would turn types/public/Person into
-                    # "public/Person".
-                    name = type_name_from_uri(t)
-                    if name:
-                        active_types.add(name)
+            # Populated only if we end up running the UNBOUNDED scan, so the
+            # schema-missing fallback further down can reuse it instead of
+            # scanning the instance graph a second time.
+            scanned_instance_types: set[str] | None = None
 
             # Graphs in precedence order (first wins under shadowing). When no
             # layer stack is threaded, behaviour is exactly the pre-ONTA-397
@@ -1376,6 +1525,45 @@ class NLQueryPipeline:
                     if row.get("funcName"):
                         types[tl]["functions"].add(row["funcName"])
 
+            # ── Which declared types carry instances? (ONTA-258 signal) ──────
+            # This used to run BEFORE the schema read, as one unbounded
+            # `SELECT DISTINCT ?type` over the entire instance graph: a full scan
+            # of the KG's rdf:type index on every ontology fetch. Because
+            # `refresh_after_write` invalidates the ontology cache after EVERY
+            # converged write, an active ingest meant essentially every /ask paid
+            # for that scan, and paid for it while the same graph was being
+            # written (ONTA-427).
+            #
+            # Now that `types` is known we ask the question the "[no instances]"
+            # annotation actually needs, "does THIS declared type have at least
+            # one instance?", as one LIMIT-1 index probe per candidate URI. The
+            # signal is IDENTICAL (same name-based matching, same layer
+            # namespaces, no caching, no staleness added); only the cost changes,
+            # from O(entities in the KG) to O(declared types).
+            #
+            # NOT derived from the Explorer type-stats that `refresh_after_write`
+            # already recomputes, even though those carry per-type entity counts:
+            # they are fire-and-forget and best-effort (a failed recompute is
+            # swallowed), they only cover the tenant type namespace, and their
+            # scan applies a PRIMARY-type guard that attributes each entity to a
+            # single type, so an entity asserting both a subtype and its
+            # supertype contributes to only one of them, and the other would read
+            # as 0 instances. Any of those would produce a FALSE "[no instances]"
+            # on a populated type, which is precisely the ONTA-258 failure.
+            if instance_graph and instance_graph != graph_uri:
+                candidate_uris = self._active_type_candidate_uris(types)
+                if candidate_uris and len(candidate_uris) <= MAX_ACTIVE_TYPE_PROBE_URIS:
+                    active_types = await self._probe_active_types(
+                        instance_graph, candidate_uris
+                    )
+                if active_types is None:
+                    # Nothing declared, too many candidates to probe cheaply, or
+                    # the probe failed. Fall back to the pre-ONTA-427 scan.
+                    scanned_instance_types = await self._scan_instance_types(
+                        instance_graph
+                    )
+                    active_types = scanned_instance_types
+
             # A DECLARED type with no correctly-typed instances in the queried KG
             # is KEPT and annotated "[no instances]" — NOT dropped (ONTA-258).
             # This mirrors the ONTA-248 treatment of declared-but-empty
@@ -1408,14 +1596,24 @@ class NLQueryPipeline:
                 #      types present in the instance data and emit a distinct
                 #      diagnostic instead of the misleading "No ontology" text.
                 #  (b) the KG is genuinely empty — keep the original message.
-                # We already know `active_types` (the instance-graph types)
-                # from the probe above, so disambiguating adds NO extra query in
-                # the empty case. Only attempt this for a distinct instance
-                # graph; a bare tenant/ontology graph with no schema genuinely
-                # has no ontology.
-                if instance_graph and instance_graph != graph_uri and active_types:
+                # This fallback needs EVERY type present in the data, including
+                # ones the schema never declared, so it is the one caller that
+                # genuinely requires the unbounded scan (the bounded probe only
+                # answers about DECLARED types). Run it here rather than on every
+                # fetch: reaching this branch at all means no declared type is
+                # populated, i.e. the rare cold-start / disjoint-schema case, not
+                # the hot path. Reuses the scan if the probe already fell back to
+                # it, so this never costs two scans. Only attempt this for a
+                # distinct instance graph; a bare tenant/ontology graph with no
+                # schema genuinely has no ontology.
+                if instance_graph and instance_graph != graph_uri:
+                    if scanned_instance_types is None:
+                        scanned_instance_types = await self._scan_instance_types(
+                            instance_graph
+                        )
+                if scanned_instance_types:
                     fallback = await self._instance_graph_ontology_fallback(
-                        graph_uri, instance_graph, active_types
+                        graph_uri, instance_graph, scanned_instance_types
                     )
                     if fallback is not None:
                         summary, has_instances = fallback
@@ -1424,7 +1622,7 @@ class NLQueryPipeline:
                                 "ontology_schema_missing_instances_present",
                                 graph_uri=graph_uri,
                                 instance_graph=instance_graph,
-                                instance_types=len(active_types),
+                                instance_types=len(scanned_instance_types),
                             )
                             _ontology_cache[cache_key] = (summary, time.time())
                             return summary
