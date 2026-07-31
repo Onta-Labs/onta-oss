@@ -143,17 +143,25 @@ class WebResearchCapability:
     async def plan(self, ctx: AgentContext, instruction: str) -> list[PlanStep]:
         urls = (getattr(ctx, "urls", None) or []) or extract_urls(instruction)
         provider = get_web_source()
+        # A page fetcher must actually be REGISTERED, whatever else is available:
+        # the harness reads EVERY candidate page through the ladder, including the
+        # ones a discovery provider returns. Gating on the provider alone would let
+        # a registered web source reach `default_ladder()` and fetch — the implicit
+        # behaviour ONTA-293 removes. OSS registers no fetcher, so this is the
+        # branch a plain OSS deployment takes.
+        has_fetcher = bool(get_page_fetchers())
 
-        # Availability: research needs SOMETHING to read — a discovery provider for
-        # open-web search, or explicit URLs for the static fetcher. Absent both,
+        # Availability: research needs a fetcher AND something to point it at —
+        # a discovery provider for open-web search, or explicit URLs. Absent either,
         # degrade to a plain answer (the same no-op pattern web-ingest uses).
-        if provider is None and not urls:
+        if not has_fetcher or (provider is None and not urls):
             return [
                 _answer_step(
-                    "Web research isn't fully enabled in this deployment. Share one "
-                    "or more page URLs and I'll read and structure them, or an admin "
-                    "can configure a web-discovery provider (e.g. Exa or Perplexity) "
-                    "for open-web search."
+                    "I don't retrieve pages from the web in this deployment. If your "
+                    "agent can already browse or search, have it read the source and "
+                    "hand me the content (or a CSV) and I'll structure it into your "
+                    "graph. An admin can also register a page fetcher or a "
+                    "web-discovery provider to enable open-web retrieval here."
                 )
             ]
 

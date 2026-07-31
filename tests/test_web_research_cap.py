@@ -56,6 +56,29 @@ class _FakeFetcher:
         return FetchedPage(url=url, text="Alpha score 94. " * 30, ok=True)
 
 
+# --- OSS scope guard ----------------------------------------------------------- #
+def test_oss_boot_registers_no_page_fetcher():
+    """ONTA-293: a default OSS boot must leave the fetch ladder EMPTY.
+
+    Open-web retrieval is out of OSS scope: the user's own agent does the finding
+    and hands the content over. `register_default_capabilities()` used to call
+    `register_default_fetchers()`, which wired the static fetcher at boot and made
+    a bare OSS deployment browse the web on the user's behalf. The substrate
+    (guards, ladder, cost seam) deliberately STAYS importable — this asserts only
+    that nothing is wired by default. Premium registers into it; an OSS deployment
+    can opt back in by calling `register_default_fetchers()` itself.
+    """
+    from cograph_client.agent.planner import register_default_capabilities
+    from cograph_client.retrieval import get_page_fetchers, register_default_fetchers
+
+    register_default_capabilities()
+    assert get_page_fetchers() == []
+
+    # ...and the opt-in still works, so nothing was removed, only unwired.
+    register_default_fetchers()
+    assert [f.name for f in get_page_fetchers()] == ["static"]
+
+
 # --- plan -------------------------------------------------------------------- #
 async def test_plan_degrades_when_nothing_to_read():
     cap = WebResearchCapability()
@@ -63,10 +86,34 @@ async def test_plan_degrades_when_nothing_to_read():
     assert len(steps) == 1
     assert steps[0].action == "answer"
     payload = steps[0].params["answer_payload"]
-    assert "isn't fully enabled" in payload["answer"]
+    assert "don't retrieve pages from the web" in payload["answer"]
+
+
+async def test_plan_degrades_with_urls_when_no_fetcher_registered():
+    """OSS scope guard (ONTA-293): supplying URLs is NOT enough on its own.
+
+    Open-web retrieval is out of OSS scope, so OSS registers no page fetcher and
+    URL mode stays dormant. Before this decision a bare deployment fell through to
+    an implicit StaticHttpFetcher and silently fetched the page. The degraded
+    answer must point the caller at their OWN agent, which is the sanctioned way
+    to get web content into a graph in OSS.
+    """
+    cap = WebResearchCapability()
+    steps = await cap.plan(
+        _ctx(urls=["https://example.com/board"]),
+        "pull the scores from this page",
+    )
+    assert len(steps) == 1
+    assert steps[0].action == "answer"
+    answer = steps[0].params["answer_payload"]["answer"]
+    assert "don't retrieve pages from the web" in answer
+    assert "hand me the content" in answer
 
 
 async def test_plan_with_urls_returns_research_step():
+    # A registered fetcher is what makes URL mode available (premium, or an OSS
+    # deployment that opted in via register_default_fetchers()).
+    register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
     steps = await cap.plan(
         _ctx(urls=["https://example.com/board"]),
@@ -80,21 +127,44 @@ async def test_plan_with_urls_returns_research_step():
     assert "estimated_usd" in step.cost
 
 
+class _Provider:
+    name = "fake"
+
+    async def discover(self, query, **kw):  # pragma: no cover - not called in plan
+        from cograph_client.web_sources.base import DiscoverResult
+
+        return DiscoverResult()
+
+
 async def test_plan_available_via_registered_provider_without_urls():
-    # A registered discovery provider makes open-web research available even with
-    # no URLs supplied.
-    class _Provider:
-        name = "fake"
-
-        async def discover(self, query, **kw):  # pragma: no cover - not called in plan
-            from cograph_client.web_sources.base import DiscoverResult
-
-            return DiscoverResult()
-
+    # A registered discovery provider makes open-web research available with no
+    # URLs supplied — but ONLY alongside a registered fetcher, since the harness
+    # reads every page the provider returns through the ladder.
     register_web_source(_Provider())
+    register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
     steps = await cap.plan(_ctx(), "research the S&P 500 and give me a CSV")
     assert steps[0].action == "research"
+
+
+async def test_provider_without_fetcher_does_not_resurrect_an_implicit_fetcher():
+    """ONTA-293 regression guard, caught in review of onta-oss#287.
+
+    The first cut gated only on `provider is None and not can_read_urls`, so a
+    registered web source satisfied the gate on its own. `execute` then built the
+    harness, whose `default_ladder()` fell back to an unregistered
+    StaticHttpFetcher and fetched live pages — exactly the implicit behaviour this
+    work removes, just one branch over. A provider with NO fetcher must degrade.
+    """
+    register_web_source(_Provider())  # deliberately no fetcher
+    cap = WebResearchCapability()
+    steps = await cap.plan(_ctx(), "research the S&P 500 and give me a CSV")
+    assert steps[0].action == "answer"
+    assert "don't retrieve pages from the web" in steps[0].params["answer_payload"]["answer"]
+    # ...and the substrate agrees: nothing registered means nothing to fetch with.
+    from cograph_client.retrieval import default_ladder
+
+    assert default_ladder() == []
 
 
 async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
@@ -126,6 +196,7 @@ async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
     monkeypatch.setattr(
         "cograph_client.research.plan.plan_research", _ambiguous_plan
     )
+    register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
     steps = await cap.plan(
         _ctx(urls=["https://example.com/board"]), "list the best models"
@@ -157,6 +228,7 @@ async def test_plan_single_clarifying_question_is_canonical_chip(monkeypatch):
         )
 
     monkeypatch.setattr("cograph_client.research.plan.plan_research", _one_q)
+    register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
     steps = await cap.plan(_ctx(urls=["https://example.com/x"]), "best models?")
     assert steps[0].action == "clarify"

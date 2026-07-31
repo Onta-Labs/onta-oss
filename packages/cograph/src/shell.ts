@@ -757,9 +757,17 @@ async function cmdEnrichRun(
     if (!created) return;
   } else {
     // A job was created — surface the routing decision so the user sees which
-    // source ran and why.
+    // source ran and why. OSS chains for lite/base/core/pro are all Wikidata
+    // unless a paid plugin registered adapters; never claim "live web search"
+    // for a tier that only walks free sources (OSS dogfood S7).
     const sourceLabel =
-      created.resolved_tier === "lite" ? "Wikidata (free)" : "live web search";
+      created.resolved_tier === "lite"
+        ? "Wikidata (free)"
+        : created.resolved_tier === "base" ||
+            created.resolved_tier === "core" ||
+            created.resolved_tier === "pro"
+          ? `${created.resolved_tier} (registered adapters + Wikidata — no paid web search in OSS)`
+          : String(created.resolved_tier ?? "auto");
     stdout.write(
       `  ${DIM}Source:${RESET} ${sourceLabel}${created.routing_note ? ` — ${created.routing_note}` : ""}\n`,
     );
@@ -821,8 +829,10 @@ async function queueEnrich(
 
 // ALL-MISS FALLBACK: if the backend routed to FREE (Wikidata, resolved_tier
 // "lite") and that run found nothing — nothing filled/verified/conflicting AND
-// at least one miss — offer to escalate to live web search ("core"). When the
-// backend already chose "core", web search has run, so we never offer it again.
+// at least one miss — offer to re-try at "core". In OSS, core is still the
+// Wikidata chain unless a paid plugin registered web adapters, so we label
+// honestly and skip the offer when core would re-run the same free source
+// (OSS dogfood S7 — fake "paid web search" escalation).
 async function maybeEscalateToWeb(
   client: Client,
   rl: readline.Interface,
@@ -840,29 +850,20 @@ async function maybeEscalateToWeb(
   if (p.filled + p.verified + p.conflicts > 0) return;
   if (p.no_match <= 0) return;
 
-  const ans = (
-    await ask(
-      rl,
-      `  Nothing found in Wikidata. Try live web search? [Y/n]: `,
-    )
-  )
-    .trim()
-    .toLowerCase();
-  if (ans !== "" && ans !== "y" && ans !== "yes") {
-    stdout.write(
-      `  ${DIM}Tip: re-run /enrich ${typeName} ${attrs.join(" ")} to try again.${RESET}\n`,
-    );
-    return;
-  }
-
-  const created = await queueEnrich(client, typeName, attrs, kg, policy, "core");
-  if (!created || !created.job_id) return;
-
-  const cost = (created.estimated_cost_usd ?? 0).toFixed(4);
+  // OSS: core === wikidata. Do not re-queue the same free chain under a
+  // "live web search" label — tell the user nothing more is available.
+  // (Paid web escalation lives in premium shells that register real adapters.)
+  void client;
+  void rl;
+  void typeName;
+  void attrs;
+  void kg;
+  void policy;
   stdout.write(
-    `  ${GREEN}✓${RESET} Job queued: ${CYAN_BOLD}${created.job_id}${RESET} ${DIM}·${RESET} estimated cost ${BOLD}$${cost}${RESET} ${DIM}·${RESET} ${fmtNum(created.total_entities ?? 0)} entities\n`,
+    `  ${DIM}Nothing found in Wikidata. In this OSS build higher tiers still use free sources only` +
+      ` (no paid web adapters). Tip: re-run /enrich with attributes Wikidata covers` +
+      ` (e.g. industry, headquarters, website, founded).${RESET}\n`,
   );
-  await watchJob(client, created.job_id);
 }
 
 async function watchJob(
