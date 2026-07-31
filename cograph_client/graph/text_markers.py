@@ -46,7 +46,7 @@ from cograph_client.graph.ontology_queries import (
     TEXT_KIND_FREE_TEXT,
     text_kind_map_query,
 )
-from cograph_client.graph.queries import tenant_graph_uri
+from cograph_client.graph.queries import GRAPH_URI_PREFIX, tenant_graph_uri
 
 logger = structlog.stdlib.get_logger("cograph.graph.text_markers")
 
@@ -176,7 +176,7 @@ def invalidate_for_graph(graph_uri: str) -> None:
     unrecognized shape over-invalidates (drops everything) — safe, since the
     only cost is one refetch per tenant on the next read.
     """
-    prefix = tenant_graph_uri("")  # "https://cograph.tech/graphs/"
+    prefix = GRAPH_URI_PREFIX  # "https://cograph.tech/graphs/"
     if isinstance(graph_uri, str) and graph_uri.startswith(prefix):
         tenant_id = graph_uri[len(prefix):].split("/", 1)[0]
         if tenant_id:

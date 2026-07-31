@@ -83,6 +83,7 @@ from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
     RDF,
     RDFS,
+    TYPE_URI_PREFIX,
     _safe_id,
     attr_uri,
     entity_uri,
@@ -658,7 +659,7 @@ async def _sweep_orphan_composites(
 
 def _target_type_from_type_uri(t_uri: str) -> str | None:
     """``https://cograph.tech/types/<TargetType>`` → ``<TargetType>``."""
-    prefix = type_uri("")
+    prefix = TYPE_URI_PREFIX
     if not t_uri.startswith(prefix):
         return None
     tail = t_uri[len(prefix):].strip("/")

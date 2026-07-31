@@ -37,8 +37,9 @@ from typing import Any
 
 import structlog
 
-from .ontology_queries import list_types_query, type_uri
+from .ontology_queries import TYPE_URI_PREFIX, list_types_query, type_uri
 from .parser import parse_sparql_results
+from .queries import require_valid_type_name
 
 logger = structlog.stdlib.get_logger("cograph.graph.layers")
 
@@ -59,9 +60,9 @@ _ENHANCED_GRAPH_URI = "https://cograph.tech/graphs/global/enhanced"
 # Per-layer type-URI namespaces. TENANT is the existing namespace — do not
 # change it, or every URI already written to Neptune stops resolving.
 _TYPE_NAMESPACES = {
-    Layer.TENANT: "https://cograph.tech/types/",
-    Layer.ENHANCED: "https://cograph.tech/types/x/",
-    Layer.PUBLIC: "https://cograph.tech/types/public/",
+    Layer.TENANT: TYPE_URI_PREFIX,
+    Layer.ENHANCED: f"{TYPE_URI_PREFIX}x/",
+    Layer.PUBLIC: f"{TYPE_URI_PREFIX}public/",
 }
 
 
@@ -121,10 +122,16 @@ def layer_type_uri(layer: Layer, type_name: str) -> str:
 
     For TENANT this delegates to the existing type_uri() so the two can never
     drift — tenant URIs are exactly what they have always been.
+
+    ONTA-425: the non-TENANT branch validates the name the same way ``type_uri``
+    does. Without it this f-string would be the one way a caller-supplied name
+    still reached a generated IRI unchecked, since every Explorer read resolves
+    through here and a Public/Enhanced declaration is exactly as interpolatable
+    as a tenant one.
     """
     if layer is Layer.TENANT:
         return type_uri(type_name)
-    return f"{_TYPE_NAMESPACES[layer]}{type_name}"
+    return f"{_TYPE_NAMESPACES[layer]}{require_valid_type_name(type_name)}"
 
 
 @dataclass(frozen=True)
