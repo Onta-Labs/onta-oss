@@ -132,19 +132,23 @@ def test_search_multi_tenant_key_403_for_unowned_tenant(client):
     assert "other-tenant" in resp.json()["detail"]
 
 
-def test_search_scopes_to_the_keys_tenant(client, auth_headers):
-    """Legacy single-tenant static keys route to THEIR tenant regardless of the
-    path (documented get_tenant behavior, same as the reindex route test): the
-    search must run against the KEY's tenant — a foreign tenant named in the
-    path must never leak its rows."""
+def test_search_static_key_foreign_tenant_is_403(client, auth_headers):
+    """A static key used with a foreign path tenant is 403 — never silently
+    searches the key's tenant (or the path tenant) under the wrong path."""
     _seed(
         _chunk("e:mine", "confidential solar subsidies report", tenant=TENANT),
         _chunk("e:theirs", "confidential solar subsidies report", tenant="other-tenant"),
     )
     resp = _search(client, {"query": "confidential solar subsidies"},
                    headers=auth_headers, tenant="other-tenant")
-    assert resp.status_code == 200
-    uris = [h["entity_uri"] for h in resp.json()["hits"]]
+    assert resp.status_code == 403
+    assert "other-tenant" in resp.json()["detail"]
+
+    # Matching path still searches the key's tenant only.
+    ok = _search(client, {"query": "confidential solar subsidies"},
+                 headers=auth_headers, tenant=TENANT)
+    assert ok.status_code == 200
+    uris = [h["entity_uri"] for h in ok.json()["hits"]]
     assert uris == ["e:mine"]
 
 

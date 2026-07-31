@@ -173,10 +173,12 @@ def get_tenant(
     """Resolve the tenant for a request.
 
     `tenant` is injected from the route path (/graphs/{tenant}/...) when
-    present. Single-tenant keys (static map, legacy claims.tenant) keep
-    today's behavior: they route to THEIR tenant regardless of the path.
-    Multi-tenant keys (verifier returned a sequence) are authorized against
-    the requested path tenant.
+    present. Static keys map 1:1 to a tenant: path omitted → key's tenant
+    (back-compat); path present and equal → ok; path present and different
+    → 403 (never a silent reroute to the key's data). Multi-tenant keys
+    (verifier returned a sequence / AuthVerdict) are authorized against the
+    requested path tenant the same way. Legacy single-tenant str verdicts
+    (claims.tenant) still route to THEIR tenant regardless of the path.
 
     On success the AUTHENTICATED tenant id (and the auth subject, when the
     provider exposes one) is stashed on ``request.state`` so the usage-metering
@@ -251,9 +253,20 @@ def _resolve_tenant(tenant: Optional[str], api_key: Optional[str]) -> TenantCont
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     # Static keys take precedence: cheap dict lookup, no network round-trip.
+    # Path tenant present and different from the key's tenant is a 403 — never
+    # silently reroute to the key's data under a foreign path (dogfood S3).
+    # Path omitted (or empty) keeps back-compat: operate on the key's tenant.
     if has_static_keys:
         tenant_id = keys_map.get(api_key)
         if tenant_id is not None:
+            if tenant is not None and tenant != "" and tenant != tenant_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"API key does not grant access to tenant '{tenant}'. "
+                        f"This key can access: {tenant_id}."
+                    ),
+                )
             return TenantContext(tenant_id=tenant_id, api_key=api_key)
 
     # Fall back to the external verifier, if one is registered.

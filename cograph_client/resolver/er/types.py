@@ -212,7 +212,9 @@ DEFAULT_PROPERTY_CONFIG = ERConfig(
 # "Acme Corp" / "ACME Corporation" / "Acme Corp." and expect ER to fire.
 # Signal handlers today only score name/address/email/phone/dob (no tax_id
 # comparator yet), so we weight name heavily with a slightly looser auto-merge
-# threshold than person configs. Legal-suffix normalization is a follow-up.
+# threshold than person configs. Legal-suffix stripping lives in
+# normalize._normalize_name; org-friendly block keys (name_core /
+# soundex_core) live in blocking.generate_block_keys.
 DEFAULT_ORG_CONFIG = ERConfig(
     type_name="Organization",
     signals=("name", "address"),

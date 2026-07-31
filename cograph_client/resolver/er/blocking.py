@@ -95,6 +95,22 @@ def generate_block_keys(normalized: NormalizedSignals) -> list[BlockKey]:
         if len(last) >= 3:
             keys.append(BlockKey("dob_lname", f"{normalized.dob_iso}_{last[:3]}"))
 
+    # Strategy 5: org-friendly name core (OSS dogfood S4).
+    # After legal-suffix strip, "Acme Corp" / "ACME Corporation" both normalize
+    # to a single content token "acme". Person-shaped soundex_finit needs ≥2
+    # tokens, so pure brand names never co-blocked without these keys.
+    # name_core = compact cleaned name (order-preserving); soundex_core =
+    # soundex of the first content token (tolerant of minor brand typos).
+    if normalized.name:
+        ordered = [t for t in normalized.name.split() if t]
+        if ordered:
+            compact = "".join(ordered)[:24]
+            if len(compact) >= 2:
+                keys.append(BlockKey("name_core", compact))
+            sx = soundex(ordered[0])
+            if sx:
+                keys.append(BlockKey("soundex_core", sx))
+
     return keys
 
 
