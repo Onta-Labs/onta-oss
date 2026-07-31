@@ -1,9 +1,125 @@
 import re
 
+# Characters that CANNOT appear in a well-formed absolute IRI reference and would
+# let a value break out of the ``<…>`` wrapper generated SPARQL puts it in: the
+# angle brackets that delimit it, any whitespace, and control chars. SPARQL's own
+# IRIREF grammar forbids exactly these, so a value carrying one cannot produce a
+# query the store would accept ANYWAY — rejecting it turns a store-side parse
+# error (an opaque 500, or worse an injection) into an honest 422 and never
+# rejects a name that works today.
+#
+# Defined at the top because it is now the shared basis of THREE things: the
+# IRI branch of :func:`_escape_value`, :func:`is_valid_type_name` (ONTA-425) and
+# :func:`is_valid_tenant_id` (ONTA-422).
+_IRI_FORBIDDEN = re.compile(r'[<>"{}|\^`\\\x00-\x20]')
+
+
+class InvalidGraphIdentifier(ValueError):
+    """Base of the "this name cannot legally sit inside a generated IRI" family.
+
+    ``api/app.py`` registers ONE 422 handler on this base (Starlette resolves a
+    handler by walking the exception's MRO), so a new member — a fourth kind of
+    caller-supplied IRI segment — is rendered as 422 the moment it is added,
+    rather than surfacing as an opaque 500 until someone remembers to register
+    another handler. Subclasses stay distinct so a caller can still catch just
+    the kind it cares about.
+
+    Deliberately a ``ValueError`` subclass, like :class:`InvalidKGName` was
+    before it gained this base, so pre-existing ``except ValueError`` blocks keep
+    catching it.
+    """
+
+
+def is_iri_safe_segment(value: object) -> bool:
+    """Whether ``value`` may be interpolated verbatim inside a ``<…>`` IRI.
+
+    The STRUCTURAL predicate: non-empty, and free of every character SPARQL's
+    IRIREF production forbids. It says nothing about a value being a sensible
+    name — that is each identifier family's own, stricter business (see
+    :func:`is_valid_kg_name`). What it guarantees is the only thing security
+    depends on: the value cannot terminate the IRI it is embedded in, so it can
+    never become SPARQL syntax.
+    """
+    return (
+        isinstance(value, str)
+        and value != ""
+        and _IRI_FORBIDDEN.search(value) is None
+    )
+
+
+class InvalidTenantId(InvalidGraphIdentifier):
+    """A ``tenant_id`` that cannot legally appear inside a graph IRI (ONTA-422)."""
+
+
+def is_valid_tenant_id(tenant_id: object) -> bool:
+    """Whether ``tenant_id`` may be interpolated into a graph IRI.
+
+    Deliberately WEAKER than ``auth.tenant_directory.TENANT_ID_RE`` (the 3–40
+    char lowercase slug rule self-serve creation enforces). That rule governs
+    what a NEW workspace may be called; this one governs what may be
+    interpolated, and the two populations differ: a self-hosted deployment in
+    open-access mode picks its own workspace id with nothing to validate it, and
+    ids predating the slug rule keep working. Enforcing the slug shape here would
+    make an existing workspace's data unreachable to fix a problem it does not
+    have — the ONTA-414 → onta-oss#274 mistake, where a stricter-than-necessary
+    read-side pattern 422'd a whole listing over one pre-existing name.
+
+    So the rule is exactly "cannot break out of, or repoint, the IRI":
+
+    * no IRIREF-illegal character (see :func:`is_iri_safe_segment`) — a ``>``
+      closes ``<https://cograph.tech/graphs/{tenant}>`` early and the remainder
+      becomes SPARQL. On the ontology/ingest WRITE paths that remainder lands in
+      a ``client.update``, where ``;`` starts a second operation: ``DROP ALL``
+      needs no IRI of its own and destroys every graph in the store;
+    * no ``/`` — a tenant id is ONE path segment by construction, and a smuggled
+      slash repoints the IRI at a different graph (``victim/kg/secret``) without
+      ever leaving the ``<…>``;
+    * no ``%`` — percent-encoding could spell either of the above after the
+      store's own IRI resolution, and ``sparql_scope.tenant_owns_graph`` already
+      refuses it for exactly that reason;
+    * not a dot segment — RFC 3986 ``remove_dot_segments`` applies to a
+      reference even when it carries a scheme, so ``..`` starts inside our
+      namespace and lands outside it.
+    """
+    if not is_iri_safe_segment(tenant_id):
+        return False
+    assert isinstance(tenant_id, str)  # narrowed by is_iri_safe_segment
+    if "/" in tenant_id or "%" in tenant_id:
+        return False
+    return tenant_id not in (".", "..")
+
+
+def require_valid_tenant_id(tenant_id: object) -> str:
+    if not is_valid_tenant_id(tenant_id):
+        raise InvalidTenantId(
+            f"Invalid workspace id {tenant_id!r}: must be a single non-empty "
+            "path segment with no whitespace, control character, '/', '%', or "
+            "any of <>\"{}|^`\\"
+        )
+    assert isinstance(tenant_id, str)
+    return tenant_id
+
+
+# The namespace every workspace graph URI is minted under. A named constant
+# because ONE caller (``text_markers.invalidate_for_graph``) wants the PREFIX,
+# not a URI, and used to spell it ``tenant_graph_uri("")`` — an idiom that
+# silently depends on the builder accepting a name it should reject. Asking for
+# the prefix directly is both honest and unbreakable by validation.
+GRAPH_URI_PREFIX = "https://cograph.tech/graphs/"
+
 
 def tenant_graph_uri(tenant_id: str) -> str:
-    """Base graph URI for a tenant. Used as the ontology graph."""
-    return f"https://cograph.tech/graphs/{tenant_id}"
+    """Base graph URI for a tenant. Used as the ontology graph.
+
+    ONTA-422: validates ``tenant_id`` HERE, the same way :func:`kg_graph_uri`
+    validates ``kg_name``, because when NO auth provider is configured
+    (``auth/api_keys._resolve_tenant``'s open-access branch, the self-hosted
+    mode) the tenant is whatever the caller put in the URL and reaches this
+    f-string unchecked. ``auth`` rejects it at the door too; this is the
+    structural backstop that covers every other caller, including premium ones
+    and any future writer that mints a graph IRI without going through a route.
+    """
+    return f"{GRAPH_URI_PREFIX}{require_valid_tenant_id(tenant_id)}"
 
 
 # A KG name that may legally be interpolated into a graph IRI. Deliberately the
@@ -31,13 +147,51 @@ def is_valid_kg_name(kg_name: object) -> bool:
     return isinstance(kg_name, str) and _KG_NAME_RE.match(kg_name) is not None
 
 
-class InvalidKGName(ValueError):
+class InvalidKGName(InvalidGraphIdentifier):
     """A ``kg_name`` that cannot legally appear inside a graph IRI (ONTA-414).
 
     Mapped to HTTP 422 by the app-level handler in ``api/app.py`` so every route
     that funnels user input into :func:`kg_graph_uri` rejects it identically,
     instead of each route re-deriving its own validation (or forgetting to).
     """
+
+
+class InvalidTypeName(InvalidGraphIdentifier):
+    """A type / attribute name that cannot legally sit inside an IRI (ONTA-425)."""
+
+
+def is_valid_type_name(name: object) -> bool:
+    """Whether a type or attribute name may be interpolated into an ontology IRI.
+
+    THE predicate for both halves of ``types/<Type>/attrs/<attr>``: an attribute
+    leaf is interpolated into exactly the same IRI and needs exactly the same
+    guarantee.
+
+    Deliberately just :func:`is_iri_safe_segment`, NOT a slug pattern, and that
+    is the whole point of this function existing rather than a regex inlined at
+    the call site. Type and attribute names are minted by an LLM from real data,
+    not chosen from a keyboard-safe alphabet, so any pattern narrower than
+    "cannot break the IRI" risks rejecting names that exist and work. Checked
+    against the live registry rather than by grepping this repo (the ONTA-414
+    verification mistake that produced onta-oss#274): of 158 type names and 714
+    attribute names in the two live workspaces, ZERO carry an IRIREF-illegal
+    character, while TWO attribute names contain ``/`` (``city/town``,
+    ``county/parish``). A ``[A-Za-z0-9_-]+`` rule of the kind ``kg_name`` uses
+    would therefore have broken two attributes that are in production today,
+    for no security gain: a ``/`` cannot escape ``<…>``.
+    """
+    return is_iri_safe_segment(name)
+
+
+def require_valid_type_name(name: object, kind: str = "type name") -> str:
+    if not is_valid_type_name(name):
+        raise InvalidTypeName(
+            f"Invalid {kind} {name!r}: must be non-empty and free of whitespace, "
+            "control characters, and any of <>\"{}|^`\\ — none of which can "
+            "appear in an IRI"
+        )
+    assert isinstance(name, str)
+    return name
 
 
 def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
@@ -50,13 +204,18 @@ def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
     early and lets the caller append a second ``FROM`` naming ANOTHER tenant's
     graph. That is a tenant-isolation break, not a cosmetic bug, so this fails
     closed with :class:`InvalidKGName` instead of emitting a malformed IRI.
+
+    ONTA-422: the ``tenant_id`` half is validated for the same reason. It was
+    the unchecked half of this two-line f-string — a caller-supplied tenant in
+    open-access mode breaks out of the IRI exactly as a ``kg_name`` did.
     """
+    tenant_id = require_valid_tenant_id(tenant_id)
     if not is_valid_kg_name(kg_name):
         raise InvalidKGName(
             f"Invalid kg_name {kg_name!r}: must be one or more of [a-zA-Z0-9_-] "
             "with nothing else, including no trailing whitespace or newline"
         )
-    return f"https://cograph.tech/graphs/{tenant_id}/kg/{kg_name}"
+    return f"{GRAPH_URI_PREFIX}{tenant_id}/kg/{kg_name}"
 
 
 # Registry record every KG is announced with in the tenant's BASE graph. Written
@@ -68,8 +227,17 @@ KG_NAME_PRED = "https://cograph.tech/onto/kg_name"
 
 
 def kg_meta_uri(tenant_id: str, kg_name: str) -> str:
-    """Subject URI of a KG's registration record in the tenant base graph."""
-    return f"https://cograph.tech/kgs/{tenant_id}/{kg_name}"
+    """Subject URI of a KG's registration record in the tenant base graph.
+
+    The ``kg_name`` half stays deliberately UNVALIDATED (see the note in
+    ``api/routes/knowledge_graphs.py``: callers branch on ``is_valid_kg_name``
+    and skip, because a bad name here means a corrupt registry row that must not
+    take a listing down). The ``tenant_id`` half is validated (ONTA-422) — that
+    argument never comes from a registry row, only from an authenticated
+    ``TenantContext``, so there is no listing to fail soft for and nothing to
+    gain from emitting an IRI that cannot parse.
+    """
+    return f"https://cograph.tech/kgs/{require_valid_tenant_id(tenant_id)}/{kg_name}"
 
 
 # The kg segment is anchored to a single path component ([^/]+, no slashes) so a
@@ -97,13 +265,12 @@ def parse_kg_graph_uri(graph_uri: str) -> tuple[str, str] | None:
     return m.group("tenant"), m.group("kg")
 
 
-# Characters that CANNOT appear in a well-formed absolute IRI reference and would
-# let a value break out of the ``<…>`` wrapper: the angle brackets that delimit it,
-# any whitespace, and control chars. A user-supplied ``subject``/``predicate`` that
-# smuggles a ``>`` would otherwise terminate the IRI early and inject arbitrary
-# SPARQL (e.g. a ``GRAPH <other-tenant>`` block → cross-tenant read). SPARQL's own
-# IRIREF grammar forbids exactly these, so rejecting them never rejects a legit IRI.
-_IRI_FORBIDDEN = re.compile(r'[<>"{}|\^`\\\x00-\x20]')
+# ``_IRI_FORBIDDEN`` (defined at the top of this module) is what stops a
+# user-supplied ``subject``/``predicate`` here from smuggling a ``>``, which would
+# terminate the IRI early and inject arbitrary SPARQL (e.g. a
+# ``GRAPH <other-tenant>`` block → cross-tenant read). It used to be defined
+# twice in this file, character-for-character identical; ONTA-425 collapsed the
+# copies onto the one at the top rather than letting a third grow beside them.
 
 
 def _escape_value(value: str) -> str:

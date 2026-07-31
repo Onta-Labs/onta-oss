@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
+
 
 @dataclass
 class FailureDiagnosis:
@@ -147,7 +149,12 @@ async def _stage_a_graph_probe(
     kg_name: str,
 ) -> FailureDiagnosis | None:
     """Query Neptune to check if the data supports the expected answer."""
-    graph_uri = f"https://cograph.tech/graphs/{tenant}/kg/{kg_name}"
+    # Built by the shared helpers, not by hand (ONTA-422). The eval harness is
+    # not a request path, so this is not a live hole — but it was one of the two
+    # remaining places in this package that spelled the graph IRI itself, which
+    # is what makes "every caller funnels through one validated builder" false
+    # and lets the next copy be pasted from here.
+    graph_uri = kg_graph_uri(tenant, kg_name)
     base = f"{api_url}/graphs/{tenant}"
     headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
 
@@ -188,7 +195,7 @@ async def _stage_a_graph_probe(
         # Probe 2: If SPARQL has a specific predicate, check it exists in ontology
         if sparql:
             predicate_uris = re.findall(r"<(https://cograph\.tech/(?:onto|types)/[^>]+)>", sparql)
-            ontology_graph = f"https://cograph.tech/graphs/{tenant}"
+            ontology_graph = tenant_graph_uri(tenant)
             for pred_uri in predicate_uris:
                 if "/onto/" in pred_uri or "/attrs/" in pred_uri:
                     check_query = (

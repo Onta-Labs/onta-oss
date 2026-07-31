@@ -1465,7 +1465,11 @@ async def run_full_eval(
                     except (json.JSONDecodeError, KeyError):
                         pass
 
-        graph_uri = f"https://cograph.tech/graphs/{tenant}" + (f"/kg/{kg_name}" if kg_name else "")
+        # Shared builders, not a hand-rolled IRI (ONTA-422) — see the note in
+        # eval_diagnosis.py.
+        graph_uri = (
+            kg_graph_uri(tenant, kg_name) if kg_name else tenant_graph_uri(tenant)
+        )
         added = 0
         for r in report.queries.results:
             if r.verdict == "correct" and r.sparql:

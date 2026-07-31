@@ -616,7 +616,12 @@ async def _apply_one(
         if not mut.slot_name:
             raise ValueError("SET_CORE_SLOT requires slot_name")
         if mut.core_slot is False:
-            a_uri = f"https://cograph.tech/types/{mut.type_name}/attrs/{mut.slot_name}"
+            # ONTA-425: was an inline f-string, the one attribute IRI in this
+            # module that did not go through `attr_uri` and so kept its own
+            # unvalidated copy of the URI shape. It reaches a `neptune.update`,
+            # where a `>` in either name closes the IRI and the remainder becomes
+            # statement-level SPARQL.
+            a_uri = attr_uri(mut.type_name, mut.slot_name)
             await neptune.update(
                 f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{OMNIX_ONTO}/coreSlot> ?c }} }}\n"
                 f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{OMNIX_ONTO}/coreSlot> ?c }} }} }}"

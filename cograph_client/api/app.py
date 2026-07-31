@@ -12,7 +12,7 @@ from cograph_client.api.rate_limit import limiter
 from cograph_client.api.routes import actions, agent, api_sources, ask, conversations, corrections, enrich, explore, functions, grep, health, history, ingest, jobs, knowledge_graphs, lambda_functions, normalize, ontology, operator, query, schedules, search, skills, tenants, triples, usage, workspace_invites
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.queries import InvalidKGName
+from cograph_client.graph.queries import InvalidGraphIdentifier
 from cograph_client.logging import setup_logging
 
 logger = structlog.stdlib.get_logger("cograph.app")
@@ -361,8 +361,17 @@ async def lifespan(app: FastAPI):
     logger.info("shutdown")
 
 
-async def _invalid_kg_name_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Render :class:`InvalidKGName` as a 422 (ONTA-414)."""
+async def _invalid_graph_identifier_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Render an :class:`InvalidGraphIdentifier` as a 422 (ONTA-414 / 425 / 422).
+
+    Registered on the BASE class, so ``InvalidKGName``, ``InvalidTypeName``,
+    ``InvalidTenantId`` and any future member are all covered by one handler
+    (Starlette resolves handlers by walking the exception's MRO). A new member
+    can therefore never regress to an opaque 500 because someone forgot a
+    registration.
+    """
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
@@ -384,12 +393,16 @@ def create_app() -> FastAPI:
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    # ONTA-414: kg_graph_uri validates the KG name at the ONE place every route
-    # funnels through, so a route that takes kg_name off a request body without
-    # its own pattern still fails closed. Map that to 422 (the same status a
-    # pydantic pattern violation produces) rather than letting it surface as an
-    # opaque 500.
-    app.add_exception_handler(InvalidKGName, _invalid_kg_name_handler)
+    # ONTA-414 / 425 / 422: the URI builders validate the caller-supplied name at
+    # the ONE place every route funnels through (kg_graph_uri for a KG name,
+    # type_uri / attr_uri for a type or attribute name, tenant_graph_uri for the
+    # workspace), so a route that takes one off a request body or a path segment
+    # without its own pattern still fails closed. Map the whole family to 422 (the
+    # same status a pydantic pattern violation produces) rather than letting it
+    # surface as an opaque 500.
+    app.add_exception_handler(
+        InvalidGraphIdentifier, _invalid_graph_identifier_handler
+    )
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(health.router, tags=["health"])
     app.include_router(triples.router, tags=["triples"])
