@@ -15,10 +15,10 @@ bank exists for), but the graph IRI, the only tenant-identifying token in a
 stored example, is rewritten to the caller's own target graph at format time.
 
 Type and attribute IRIs are deliberately NOT abstracted. They teach the URI
-shapes the generator must produce, they name public benchmark schemas rather
-than customer data, and placeholdering them would destroy the pattern-transfer
-value with no privacy gain. These tests pin that decision so it stays a choice
-rather than an oversight.
+shapes the generator must produce, they name public open-data schemas (IMDB,
+CFPB, exoplanets, ...) rather than customer data, and placeholdering them would
+destroy the pattern-transfer value with no privacy gain. These tests pin that
+decision so it stays a choice rather than an oversight.
 """
 
 import json
@@ -275,6 +275,52 @@ def test_no_shipped_example_leaks_its_origin_graph_into_a_foreign_prompt():
         g for g in re.findall(r"https://cograph\.tech/graphs/[^\s>]+", text) if g != TARGET_GRAPH
     }
     assert not other_graphs, f"foreign graph IRIs survived formatting: {sorted(other_graphs)[:5]}"
+
+
+def test_sanitizing_a_shipped_example_onto_its_own_graph_is_byte_identical():
+    """The same-KG no-op. This is the load-bearing safety property.
+
+    This change ships WITHOUT an accuracy eval (see the PR body: `eval.py` has
+    no offline path, and no provider key was available). The argument for that
+    rests on a claim about the size of the prompt delta, and this is the half of
+    it that a regression can silently break.
+
+    When a retrieved example already belongs to the graph being asked about --
+    the common case in production `/ask`, where the same-KG filter and penalty
+    are OFF -- BOTH rewrite rules must be exact no-ops, so the SPARQL the model
+    sees is byte-for-byte what it saw before this change. Verified across every
+    example actually shipped, not on a synthetic fixture, because the risk being
+    guarded is a regex that over-matches on some real query shape.
+
+    (The other half of the argument, that a CROSS-KG example's `FROM` moves onto
+    the graph the question is genuinely about and so moves toward the SPARQL the
+    model must emit, is a directional claim about generation quality that no
+    unit test can settle. It needs the eval.)
+    """
+    examples = _bank_examples()
+    assert len(examples) >= 100, "bank unexpectedly small; guard may be vacuous"
+
+    altered: list[str] = []
+    checked = 0
+    for ex in examples:
+        own = re.findall(r"FROM\s+(?:NAMED\s+)?<([^>]+)>", ex.sparql, re.IGNORECASE)
+        if not own:
+            continue  # the bank has one example with no dataset clause
+        # An example scoped to several graphs has no single "own" graph, so a
+        # rewrite legitimately changes it. Out of scope for this property.
+        if len(set(own)) != 1:
+            continue
+        checked += 1
+        if sanitize_example_sparql(ex.sparql, own[0]) != ex.sparql:
+            altered.append(ex.question)
+
+    assert checked >= 100, f"only {checked} single-graph examples; guard may be vacuous"
+    assert not altered, (
+        f"{len(altered)} of {checked} shipped examples are MUTATED when sanitized "
+        f"onto their own graph, e.g. {altered[:3]}. A same-KG retrieval would then "
+        "hand the model different SPARQL than before ONTA-420, which is exactly "
+        "the risk the missing eval cannot rule out."
+    )
 
 
 # ── end to end through the pipeline ──────────────────────────────────────

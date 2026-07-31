@@ -664,7 +664,7 @@ def sanitize_example_sparql(sparql: str, target_graph_uri: str = "") -> str:
     is the only thing rewritten here. Type and attribute IRIs are left ALONE on
     purpose: they are the pattern the examples exist to teach (correct
     ``types/<T>/attrs/<a>`` and ``onto/<leaf>`` shapes, aggregation, joins), they
-    name public benchmark schemas rather than customer data, and abstracting them
+    name public open-data schemas rather than customer data, and abstracting them
     into placeholders would delete the pedagogical value while adding no privacy.
 
     Rewriting to the caller's real target graph (rather than leaving a
