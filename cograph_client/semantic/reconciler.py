@@ -104,6 +104,11 @@ and ops can tune without re-import):
 * ``COGRAPH_SEMANTIC_EMBED_MAX_ATTEMPTS`` — dead-letter cutoff for embed
   failures (default 5).
 * ``COGRAPH_SEMANTIC_SCAN_PAGE_SIZE`` — Neptune scan page size (default 10000).
+* ``COGRAPH_SEMANTIC_IDENTITY_INDEX`` — the ONTA-421 identity arm (default
+  **on**, read in ``semantic/extract.py``; listed here for one-stop docs).
+  Setting it to ``0`` makes the NEXT reconcile of every KG treat every identity
+  doc as a ghost and batch-delete it — self-healing when flipped back, but a
+  mass delete an operator should expect rather than discover.
 * ``COGRAPH_SEMANTIC_ENSURE_MEMO_TTL_S`` — TTL of the write hook's
   ensure-schedule memo (default 600; see
   :func:`ensure_reconcile_schedule_from_hook`).

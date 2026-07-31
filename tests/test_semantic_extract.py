@@ -20,6 +20,7 @@ import structlog
 from cograph_client.semantic.extract import (
     MAX_CHUNK_CHARS,
     MAX_CHUNKS_PER_ENTITY,
+    MAX_IDENTITY_CHUNKS,
     MIN_CHUNK_CHARS,
     VALUE_SEPARATOR,
     canonicalize_values,
@@ -393,6 +394,26 @@ def test_identity_survives_the_per_entity_chunk_cap():
     assert len(chunks) == MAX_CHUNKS_PER_ENTITY + 1
     (ident,) = _identity(chunks)
     assert ident.chunk_text == "Acme Corporation"
+
+
+def test_identity_doc_has_its_own_cap_so_exempt_never_means_unbounded():
+    """Being exempt from MAX_CHUNKS_PER_ENTITY leaves the identity doc with no
+    budget at all unless it carries its own. A pathological entity (an ER merge
+    collapsing thousands of subjects onto one URI) must not emit unbounded
+    identity rows — truncated and LOGGED, never silent."""
+    names = [f"Acme Corporation subsidiary number {i}" for i in range(20_000)]
+    triples = [
+        ("e:1", "https://cograph.tech/types/Company/attrs/name", n) for n in names
+    ]
+    with structlog.testing.capture_logs() as logs:
+        chunks = _extract(triples)
+    assert len(chunks) == MAX_IDENTITY_CHUNKS
+    assert [c.chunk_ix for c in chunks] == list(range(MAX_IDENTITY_CHUNKS))
+    assert all(c.attr == IDENTITY_ATTR for c in chunks)
+    cap_events = [l for l in logs if l["event"] == "semantic_extract_identity_cap"]
+    assert cap_events and cap_events[0]["log_level"] == "warning"
+    assert cap_events[0]["entity_uri"] == "e:1"
+    assert cap_events[0]["dropped"] > 0
 
 
 def test_identity_arm_can_be_switched_off(monkeypatch):

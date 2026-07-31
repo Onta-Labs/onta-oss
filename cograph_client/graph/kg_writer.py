@@ -528,7 +528,10 @@ async def _index_semantic(
     zero Neptune re-reads per write and now pays one bounded, VALUES-scoped
     SELECT (still capped by ``COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES``, still under
     the one timeout, still best-effort). ``COGRAPH_SEMANTIC_IDENTITY_INDEX=0``
-    restores the old behavior.
+    restores the old write-path behavior — but note it is not free to flip: the
+    next reconcile of each KG then sees every identity doc as a ghost and
+    batch-deletes it (symmetric and self-healing on flip-back, but a mass delete
+    to expect rather than discover).
 
     Completeness contract (the ONTA-173 partial-doc fix): the write's triples
     only tell the hook WHICH (entity, marked attr) docs were touched — the docs

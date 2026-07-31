@@ -66,9 +66,10 @@ Three properties keep it from disturbing free-text retrieval:
   when it exactly mirrors a marked doc — a marked ``title`` keeps its own attr
   name AND its embedding; the identity arm never relocates an existing doc out
   of the semantic leg;
-* it is exempt from :data:`MAX_CHUNKS_PER_ENTITY` (it is one short chunk, and a
-  text-heavy entity must not become unfindable by name because its prose spent
-  the budget);
+* it is exempt from :data:`MAX_CHUNKS_PER_ENTITY` (a text-heavy entity must
+  not become unfindable by name because its prose spent the budget) — and
+  therefore carries its own, much smaller :data:`MAX_IDENTITY_CHUNKS` bound, so
+  "exempt" never means "unbounded";
 * it is never embedded — enforced backend-side in ``fetch_pending`` — so the ANN
   leg's candidate pool is exactly what it was before.
 """
@@ -101,6 +102,17 @@ MAX_CHUNK_CHARS = 2048
 #: silent — so the cap is observable in ops before anyone wonders why an
 #: entity's tail text doesn't match.
 MAX_CHUNKS_PER_ENTITY = 200
+
+#: Chunk cap for the ONTA-421 identity doc, applied SEPARATELY from
+#: :data:`MAX_CHUNKS_PER_ENTITY` (the identity doc is deliberately exempt from
+#: that budget, so it needs its own or it would have none at all). Names are
+#: short and few, so the doc is normally ONE chunk — this is purely the bound on
+#: a pathological entity: an ER merge collapsing thousands of subjects onto one
+#: URI, or a bad ``promote_to_node``, can pile up an unbounded number of
+#: ``name`` values. Small on purpose: past a few chunks the doc has stopped
+#: being an identity and become a list, and a name that far down would not
+#: rank anyway. Overflow is truncated and logged, never silent.
+MAX_IDENTITY_CHUNKS = 4
 
 #: Deterministic separator between the sorted values of a multi-valued
 #: attribute. A blank line, so the chunker's paragraph-preference naturally
@@ -457,8 +469,21 @@ def extract_semantic_chunks(
                     content_hash=doc_hash,
                 )
             else:
-                # A handful of names — chunk_text always returns exactly one.
-                for ix, piece in enumerate(chunk_text(identity_doc)):
+                # Normally exactly one chunk (a handful of short names), but
+                # bounded anyway: this doc is exempt from the per-entity budget
+                # above, so MAX_IDENTITY_CHUNKS is the only thing standing
+                # between a pathological entity and an unbounded row count.
+                pieces = chunk_text(identity_doc)
+                if len(pieces) > MAX_IDENTITY_CHUNKS:
+                    logger.warning(
+                        "semantic_extract_identity_cap",
+                        entity_uri=uri,
+                        cap=MAX_IDENTITY_CHUNKS,
+                        produced=len(pieces),
+                        dropped=len(pieces) - MAX_IDENTITY_CHUNKS,
+                    )
+                    pieces = pieces[:MAX_IDENTITY_CHUNKS]
+                for ix, piece in enumerate(pieces):
                     chunks.append(
                         SemanticChunk(
                             tenant_id=tenant_id,

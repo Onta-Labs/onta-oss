@@ -198,6 +198,12 @@ class SemanticHit(BaseModel):
     entity_uri: str
     attrs: dict[str, Any] = Field(default_factory=dict)
     snippet: str = ""
+    #: The matched chunk's attribute local name — or the reserved
+    #: :data:`IDENTITY_ATTR` when the hit matched the entity's own NAME rather
+    #: than one of its attributes (ONTA-421). It is passed to clients verbatim,
+    #: so a renderer that prints ``attr`` will show ``__identity__``; that is
+    #: intended (it tells the reader WHY the entity matched) but it does mean
+    #: the constant is wire-visible and must not be renamed casually.
     attr: str = ""
     score: float = 0.0
 
