@@ -31,11 +31,39 @@ logger = structlog.stdlib.get_logger("cograph.nlp.pipeline")
 _ontology_cache: dict[str, tuple[str, float]] = {}
 ONTOLOGY_CACHE_TTL = 60  # seconds
 
-# Active-type cache: {instance_graph: (type names with instances, timestamp)}.
+# Active-type cache: {cache key: (type names with instances, timestamp)}.
 # The probe is one cheap DISTINCT query, but ONTA-411 puts it on the HOT
 # semantic-retrieval path (every /ask, not just a full-ontology fetch), so it
 # gets the same TTL as the ontology summary it scopes.
 _active_types_cache: dict[str, tuple[set[str], float]] = {}
+
+
+def _active_types_cache_key(instance_graph: str, declared_names=None) -> str:
+    """Cache key for one active-type answer: instance graph + CANDIDATE SET.
+
+    The bounded probe (ONTA-427) answers "which of THESE candidates carry
+    instances", so its result is only meaningful for the candidate set it was
+    asked about. The two callers derive candidates differently: the semantic path
+    from the embedding store's type names, the full path from the schema read.
+    Those sets are normally identical, and the shared key then makes them share
+    one probe. When they diverge (a type declared but not yet embedded, or
+    embedded then removed) a single key would let one caller serve the other an
+    answer that never asked about the missing type, marking a POPULATED type
+    "[no instances]", which is the exact ONTA-258 regression ONTA-427 took care
+    to avoid. Keying on the candidate set makes that unrepresentable rather than
+    unlikely.
+
+    Starts with the instance graph URI so `invalidate_cache`'s prefix sweep still
+    drops every entry for a tenant.
+    """
+    if not declared_names:
+        return f"{instance_graph}|scan"
+    import hashlib
+
+    digest = hashlib.sha1(
+        "\u0000".join(sorted(declared_names)).encode()
+    ).hexdigest()[:16]
+    return f"{instance_graph}|{digest}"
 
 # Distinct markers so a TRANSIENT fetch failure is never mistaken for a genuinely
 # empty graph (ONTA-248 A2: "errors masquerade as facts"). The old error text
@@ -1513,7 +1541,8 @@ class NLQueryPipeline:
 
         Returns ``None`` when there is nothing to scope: no instance graph, or
         the instance graph IS the ontology graph, in which case every declared
-        type is in scope by definition. TTL-cached per instance graph; raises on
+        type is in scope by definition. TTL-cached per instance graph AND
+        candidate set (see :func:`_active_types_cache_key`); raises on
         a probe failure so each caller applies its own degradation policy
         (:meth:`_fetch_ontology` keeps reporting ONTOLOGY_FETCH_ERROR, while
         :meth:`ask` degrades to unscoped retrieval).
@@ -1530,11 +1559,12 @@ class NLQueryPipeline:
         """
         if not instance_graph or instance_graph == ontology_graph:
             return None
-        cached = _active_types_cache.get(instance_graph)
+        key = _active_types_cache_key(instance_graph, declared_names)
+        cached = _active_types_cache.get(key)
         if cached and cached[0] and (time.time() - cached[1]) < ONTOLOGY_CACHE_TTL:
             return cached[0]
         names, _ = await self._resolve_active_types(instance_graph, declared_names)
-        _active_types_cache[instance_graph] = (names, time.time())
+        _active_types_cache[key] = (names, time.time())
         return names
 
     async def _fetch_ontology(
@@ -1680,7 +1710,8 @@ class NLQueryPipeline:
             # (ONTA-411) so both build the SAME notion of "in scope for THIS
             # graph" from one probe rather than each running their own.
             if instance_graph and instance_graph != graph_uri:
-                cached_active = _active_types_cache.get(instance_graph)
+                active_key = _active_types_cache_key(instance_graph, types)
+                cached_active = _active_types_cache.get(active_key)
                 # `cached_active[0]` for the same reason `_active_types` checks it:
                 # an EMPTY probe result is exactly the "might be mid-ingest" case,
                 # and serving it for the rest of the TTL would mark every declared
@@ -1695,7 +1726,7 @@ class NLQueryPipeline:
                     active_types, scanned_instance_types = await self._resolve_active_types(
                         instance_graph, types
                     )
-                    _active_types_cache[instance_graph] = (active_types, time.time())
+                    _active_types_cache[active_key] = (active_types, time.time())
 
             # A DECLARED type with no correctly-typed instances in the queried KG
             # is KEPT and annotated "[no instances]" — NOT dropped (ONTA-258).

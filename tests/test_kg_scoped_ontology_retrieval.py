@@ -25,6 +25,8 @@ MECHANISM, not any domain.
 from __future__ import annotations
 
 import numpy as np
+import re
+
 import pytest
 
 from cograph_client.nlp.ontology_embeddings import (
@@ -336,15 +338,70 @@ async def test_a_kg_populated_after_an_empty_ask_recovers_within_the_ttl():
     assert "Widget" in summary
 
 
+class HonestProbeNeptune:
+    """Answers the BOUNDED probe honestly: only the candidates it was asked
+    about, and only those that are active. `ProbeNeptune` returns its whole
+    active list for any probe, which cannot express a candidate-set difference.
+    """
+
+    def __init__(self, active=("Widget", "Gadget")):
+        self.active = set(active)
+        self.probe_count = 0
+
+    async def query(self, sparql: str):
+        if "SELECT DISTINCT ?type" in sparql:
+            self.probe_count += 1
+            asked = set(re.findall(r"<" + re.escape(TYPES) + r"([A-Za-z0-9_]+)>", sparql))
+            found = asked & self.active if asked else set(self.active)
+            return {
+                "head": {"vars": ["type"]},
+                "results": {
+                    "bindings": [
+                        {"type": {"type": "uri", "value": f"{TYPES}{t}"}}
+                        for t in sorted(found)
+                    ]
+                },
+            }
+        return {"head": {"vars": []}, "results": {"bindings": []}}
+
+
+async def test_a_narrower_candidate_set_never_answers_for_a_wider_one():
+    """The bounded probe answers "which of THESE candidates carry instances", so
+    its result is only valid for the candidate set it asked about. The semantic
+    path derives candidates from the embedding store and the full path from the
+    schema read; if those diverge, one caller serving the other from cache would
+    mark a POPULATED type "[no instances]" - the ONTA-258 regression."""
+    _active_types_cache.clear()
+    neptune = HonestProbeNeptune(active=("Widget", "Gadget"))
+    pipe = _pipe(neptune)
+
+    # Store knows only Widget (Gadget declared but not embedded yet).
+    assert await pipe._active_types(KG, GRAPH, declared_names={"Widget"}) == {"Widget"}
+    # The schema read knows both. It must NOT inherit the narrower answer.
+    assert await pipe._active_types(
+        KG, GRAPH, declared_names={"Widget", "Gadget"}
+    ) == {"Widget", "Gadget"}
+    assert neptune.probe_count == 2
+    # Same candidate set the second time round IS served from cache.
+    assert await pipe._active_types(
+        KG, GRAPH, declared_names={"Widget", "Gadget"}
+    ) == {"Widget", "Gadget"}
+    assert neptune.probe_count == 2
+
+
 async def test_invalidate_cache_clears_active_types_for_the_tenant():
     """A write that adds instances must not keep demoting the new types for the
     rest of the TTL. `invalidate_cache` runs after every converged write."""
     neptune = ProbeNeptune()
     pipe = _pipe(neptune)
+    # Two entries: one per candidate set (the scan form and a bounded probe),
+    # since the cache key is instance graph + candidates. The sweep must take
+    # BOTH, or a stale entry keeps demoting types an ingest just populated.
     await pipe._active_types(KG, GRAPH)
-    assert KG in _active_types_cache
+    await pipe._active_types(KG, GRAPH, declared_names={"Widget", "Gadget"})
+    assert len([k for k in _active_types_cache if k.startswith(KG)]) == 2
     NLQueryPipeline.invalidate_cache(GRAPH)
-    assert KG not in _active_types_cache
+    assert not [k for k in _active_types_cache if k.startswith(KG)]
 
 
 # --------------------------------------------------------------------------- #
