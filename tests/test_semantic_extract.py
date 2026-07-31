@@ -2,6 +2,13 @@
 chunking, and every edge case in the ONTA-175 contract (empty/whitespace → 0
 chunks, short → 1, multi-value sort-before-hash, intra-entity dedup, the
 per-entity chunk cap logged-never-silent).
+
+Plus the ONTA-421 IDENTITY ARM: the extra, marker-independent per-entity doc
+that makes an entity findable by its own name. Its contract is narrow on
+purpose — emitted last (so a marked name-source attribute wins the dedup),
+exempt from the chunk cap, never embedded — and every clause of it is pinned
+below, because each one exists to keep the fix from disturbing the free-text
+index it sits beside.
 """
 
 from __future__ import annotations
@@ -19,11 +26,15 @@ from cograph_client.semantic.extract import (
     chunk_text,
     content_hash,
     extract_semantic_chunks,
+    is_identity_predicate,
+    is_identity_value,
 )
+from cograph_client.semantic.protocol import IDENTITY_ATTR
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
+XSD_DATE = "http://www.w3.org/2001/XMLSchema#date"
 
 TENANT = "demo-tenant"
 KG = "EventsSF"
@@ -126,7 +137,10 @@ def test_extracts_marked_predicate_into_keyed_chunk():
             _desc("e:1", "An expo about solar panels."),
         ]
     )
-    assert len(chunks) == 1
+    # Two docs: the marked free-text one, plus the ONTA-421 identity doc built
+    # from the label. The marked doc is FIRST — ordering is contractual (the
+    # identity doc is emitted last so it loses the intra-entity dedup).
+    assert [c.attr for c in chunks] == ["description", IDENTITY_ATTR]
     c = chunks[0]
     assert c.key() == (TENANT, KG, "e:1", "description", 0)
     assert c.chunk_text == "An expo about solar panels."
@@ -283,6 +297,126 @@ def test_cap_does_not_leak_across_entities():
 def test_attrs_empty_when_no_label_or_type():
     chunks = _extract([_desc("e:1", "No display fields here.")])
     assert chunks[0].attrs == {}
+
+
+# ---------------------------------------------------------------------------
+# The identity arm (ONTA-421) — an entity must be findable by its own NAME
+# ---------------------------------------------------------------------------
+
+
+def _identity(chunks):
+    return [c for c in chunks if c.attr == IDENTITY_ATTR]
+
+
+def test_named_entity_with_no_marked_attribute_still_gets_a_chunk():
+    """The ONTA-421 regression itself.
+
+    Names are short, so they are LABEL/CODE_ID-shaped and can NEVER be marked
+    free text — which meant this entity produced NO chunks at all and was
+    permanently unfindable by its own name, no matter how often the index was
+    rebuilt. It must now produce exactly one identity chunk.
+    """
+    chunks = _extract(
+        [
+            ("e:1", RDF_TYPE, "https://cograph.tech/types/Company"),
+            ("e:1", RDFS_LABEL, "Acme Corporation"),
+            ("e:1", "https://cograph.tech/types/Company/attrs/sku", "AC-1"),
+        ]
+    )
+    assert len(chunks) == 1
+    c = chunks[0]
+    assert c.key() == (TENANT, KG, "e:1", IDENTITY_ATTR, 0)
+    assert c.chunk_text == "Acme Corporation"
+    assert c.content_hash == content_hash("Acme Corporation")
+    assert c.attrs == {"label": "Acme Corporation", "type": "Company"}
+    # Fresh row, like any other — but the backends' fetch_pending never hands
+    # it to the embed sweep, so this NULL is permanent by contract.
+    assert c.embedding is None and c.embed_model is None
+
+
+def test_identity_doc_collects_every_name_predicate():
+    """label / name / title all feed ONE doc, canonicalized like any other
+    (stripped, deduped, SORTED, blank-line joined) so the hash is stable."""
+    chunks = _extract(
+        [
+            ("e:1", RDFS_LABEL, "Acme Corp"),
+            ("e:1", "https://cograph.tech/types/Company/attrs/name", "Acme Corporation"),
+            ("e:1", "https://cograph.tech/types/Company/attrs/title", "ACME"),
+            ("e:1", "https://cograph.tech/types/Company/attrs/title", "  Acme Corp  "),
+        ]
+    )
+    (ident,) = _identity(chunks)
+    assert ident.chunk_text == VALUE_SEPARATOR.join(
+        ["ACME", "Acme Corp", "Acme Corporation"]
+    )
+    # `label` stays the FIRST name seen — it is one display field, not the doc.
+    assert ident.attrs["label"] == "Acme Corp"
+
+
+def test_identity_mirroring_a_marked_doc_is_deduped_and_the_marked_doc_wins():
+    """A marked attribute that is ALSO a name source keeps its own attr name.
+
+    This is what stops the identity arm from being a regression: if identity
+    won the dedup instead, a marked `title` would move to a doc that is never
+    embedded and would silently drop out of the vector leg.
+    """
+    chunks = _extract(
+        [("e:1", "https://cograph.tech/types/Doc/title", "Solar Expo")],
+        marked={"title"},
+    )
+    assert [c.attr for c in chunks] == ["title"]
+
+
+def test_identity_ignores_uri_and_typed_label_values():
+    """A URI object is an entity reference and a typed literal under a label
+    predicate is a date/number — neither is a name."""
+    chunks = _extract(
+        [
+            ("e:1", RDFS_LABEL, "https://cograph.tech/entities/Doc/e2"),
+            (
+                "e:1",
+                "https://cograph.tech/types/Doc/attrs/name",
+                f"2024-01-01^^{XSD_DATE}",
+            ),
+            ("e:1", "https://cograph.tech/types/Doc/attrs/title", "   "),
+        ]
+    )
+    assert chunks == []
+
+
+def test_identity_survives_the_per_entity_chunk_cap():
+    """Exempt from MAX_CHUNKS_PER_ENTITY: a text-heavy entity must not become
+    unfindable BY NAME because its prose spent the budget."""
+    big = " ".join(f"word{i}." for i in range(120_000))
+    with structlog.testing.capture_logs():
+        chunks = _extract([("e:1", RDFS_LABEL, "Acme Corporation"), _desc("e:1", big)])
+    assert len(chunks) == MAX_CHUNKS_PER_ENTITY + 1
+    (ident,) = _identity(chunks)
+    assert ident.chunk_text == "Acme Corporation"
+
+
+def test_identity_arm_can_be_switched_off(monkeypatch):
+    """Opt-OUT kill switch — and when it is off, the named-but-unmarked entity
+    goes back to producing nothing (i.e. the switch really governs the arm)."""
+    monkeypatch.setenv("COGRAPH_SEMANTIC_IDENTITY_INDEX", "0")
+    assert _extract([("e:1", RDFS_LABEL, "Acme Corporation")]) == []
+    # ...and a marked doc is completely unaffected by the switch.
+    chunks = _extract([("e:1", RDFS_LABEL, "Acme"), _desc("e:1", "Some prose.")])
+    assert [c.attr for c in chunks] == ["description"]
+
+
+def test_identity_predicate_and_value_helpers_mirror_the_extractor():
+    """The write hook and the reconciler decide which entities own an identity
+    doc through THESE helpers rather than re-deriving the rule; if they ever
+    disagreed with the extractor the hook would delete the docs it just
+    wrote."""
+    assert is_identity_predicate(RDFS_LABEL)
+    assert is_identity_predicate("https://cograph.tech/types/Doc/attrs/Name")
+    assert not is_identity_predicate("https://cograph.tech/types/Doc/attrs/venue_name")
+    assert is_identity_value("Acme Corporation")
+    assert not is_identity_value("https://cograph.tech/entities/Doc/e2")
+    assert not is_identity_value(f"2024-01-01^^{XSD_DATE}")
+    assert not is_identity_value("   ")
 
 
 def test_label_from_name_local_and_first_type_wins():

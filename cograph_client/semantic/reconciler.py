@@ -131,8 +131,15 @@ from cograph_client.semantic.extract import (
     _is_uri_object,
     _local_name,
     extract_semantic_chunks,
+    identity_index_enabled,
+    is_identity_predicate,
+    is_identity_value,
 )
-from cograph_client.semantic.protocol import SemanticChunk, SemanticIndex
+from cograph_client.semantic.protocol import (
+    IDENTITY_ATTR,
+    SemanticChunk,
+    SemanticIndex,
+)
 from cograph_client.semantic.registry import get_semantic_index
 
 logger = structlog.stdlib.get_logger("cograph.semantic.reconciler")
@@ -570,6 +577,46 @@ def marked_doc_keys(
     return keys
 
 
+def identity_doc_keys(triples: Sequence[Triple]) -> set[tuple[str, str]]:
+    """``(entity_uri, IDENTITY_ATTR)`` for every entity carrying a NAME here.
+
+    The identity-arm counterpart of :func:`marked_doc_keys` (ONTA-421), and
+    marker-independent for the same reason the doc itself is: whether a thing
+    has a name is not a candidacy question. Acceptance is delegated to the
+    extractor's own exported predicates (``is_identity_predicate`` /
+    ``is_identity_value``) so the two can never disagree about which entities
+    own an identity doc — a disagreement would make the write hook delete the
+    docs it just wrote.
+    """
+    keys: set[tuple[str, str]] = set()
+    for s, p, o in triples:
+        if not isinstance(s, str) or not isinstance(p, str) or not isinstance(o, str):
+            continue
+        if is_identity_predicate(p) and is_identity_value(o):
+            keys.add((s, IDENTITY_ATTR))
+    return keys
+
+
+def indexable_doc_keys(
+    triples: Sequence[Triple], marked_predicates: set[str]
+) -> set[tuple[str, str]]:
+    """Every doc key these triples imply: marked free-text docs PLUS identity
+    docs (when the identity arm is on).
+
+    This — not :func:`marked_doc_keys` — is what the write hook diffs, on BOTH
+    sides: it decides which entities a write TOUCHED, and which of a re-read
+    entity's docs came out EMPTY and must be deleted. Using the marked-only set
+    on either side would be a bug in a different direction: on the touched side
+    a name-only write would index nothing (the ONTA-421 symptom itself); on the
+    emptied side every identity doc the extractor had just written would
+    immediately be deleted again as an unexpected key.
+    """
+    keys = marked_doc_keys(triples, marked_predicates) if marked_predicates else set()
+    if identity_index_enabled():
+        keys |= identity_doc_keys(triples)
+    return keys
+
+
 async def _fetch_marker_map(neptune: Any, tenant_id: str) -> dict[str, bool]:
     """Uncached ``{attr URI -> is_free_text}`` fetch that RAISES on failure.
 
@@ -865,7 +912,10 @@ async def reconcile_kg(
        label predicates for display parity with hook-written rows) — keyset
        pagination by entity (whole-entity groups; see :func:`_scan_triples`) —
        matching the extractor's exact-URI-or-local-name semantics so
-       hook-written docs are never mistaken for ghosts;
+       hook-written docs are never mistaken for ghosts. Since ONTA-421 the scan
+       ALSO runs when the KG has no marked attribute but does have names: the
+       identity arm is marker-independent, and this scan is what backfills it
+       for KGs that were ingested before the arm existed;
     5. re-extract chunks and upsert by ``content_hash``: docs whose hash AND
        denormalized attrs are unchanged are skipped entirely when the backend
        supports doc listing (``skipped_unchanged_hash``); docs whose text is
@@ -960,9 +1010,18 @@ async def reconcile_kg(
     scan_preds.add(_RDFS_LABEL)
 
     # 4. Scan (keyset-paginated, whole-entity groups).
+    #
+    # Scanned when the KG has marked free-text attributes OR — since ONTA-421 —
+    # any name-bearing predicate, because the identity arm indexes names with no
+    # marker involved. Without that second trigger a KG of names, ids and codes
+    # (zero markable attributes: names are too short to be ``ValueShape.TEXT``)
+    # would never be scanned at all, so the reconciler could never backfill the
+    # identity docs that make its entities findable. A KG with NEITHER still
+    # costs zero scan pages, exactly as before.
+    label_preds = {p for p in literal_preds if is_identity_predicate(p)}
     triples: list[Triple] = []
     scan_truncated = False
-    if marked:
+    if marked or (identity_index_enabled() and label_preds):
         triples, scan_truncated = await _scan_triples(
             neptune, kg_graph, sorted(scan_preds)
         )

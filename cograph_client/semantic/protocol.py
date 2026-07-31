@@ -87,6 +87,34 @@ from pydantic import BaseModel, Field
 #: is the 0-based position of this chunk within it.
 ChunkKey = tuple[str, str, str, str, int]
 
+#: RESERVED ``attr`` value for an entity's IDENTITY document (ONTA-421): its
+#: own name(s) — ``rdfs:label`` plus the ``label`` / ``name`` / ``title``
+#: attribute locals — canonicalized into one tiny doc.
+#:
+#: Why it exists: candidacy for the free-text index is decided by VALUE SHAPE
+#: (``graph/text_markers.classify_text_candidacy`` → the profiler's
+#: ``ValueShape.TEXT``, which needs multi-word values averaging > 25 chars,
+#: with ``COGRAPH_FREE_TEXT_AUTO_MIN_AVG_LEN``=120 above that as the
+#: auto-mark line). Names are short, so they are ``LABEL`` / ``CODE_ID``-shaped
+#: and can NEVER be marked — which left ``/search`` structurally unable to find
+#: an entity by its own name, no matter how often the index was rebuilt. The
+#: identity doc is the separate LEXICAL arm that fixes that WITHOUT touching the
+#: free-text thresholds (lowering them would push short, low-information values
+#: into the semantic index and degrade exactly the retrieval it was built for).
+#:
+#: Two invariants keep it cheap and regression-free:
+#:
+#: * **never embedded** — :meth:`SemanticIndex.fetch_pending` excludes this
+#:   ``attr`` in every backend, so identity rows cost zero embedding spend and
+#:   never enter the ANN leg's candidate pool (vector ranking is unchanged);
+#: * **one row per entity** — the doc is a handful of short strings, so it is
+#:   always exactly one chunk.
+#:
+#: The name is deliberately dunder-wrapped: ``attr`` values elsewhere are
+#: predicate LOCAL NAMES, and no ontology attribute is plausibly called
+#: ``__identity__``.
+IDENTITY_ATTR = "__identity__"
+
 
 class SemanticChunk(BaseModel):
     """One indexed chunk of an (entity, attribute) free-text document.
@@ -118,6 +146,12 @@ class SemanticChunk(BaseModel):
       renders without a Neptune round-trip. Keep it small — it is stored
       verbatim as ``jsonb`` and shipped on every hit. ``attrs["type"]`` is also
       the ``type_filter`` predicate at query time.
+
+    One ``attr`` value is RESERVED: :data:`IDENTITY_ATTR` (ONTA-421) — see its
+    own docstring. An identity doc is an ordinary row in every respect except
+    that it is **never embedded**: :meth:`SemanticIndex.fetch_pending` excludes
+    it, so its ``embedding`` stays NULL forever and it participates in the
+    LEXICAL leg only.
     """
 
     tenant_id: str
@@ -359,6 +393,14 @@ class SemanticIndex(Protocol):
         MAINTENANCE-ONLY exception to tenant scoping: ``tenant_id=None`` spans
         all tenants because the sweep is a process-wide background worker, not
         a user query. Never expose this path to request handlers.
+
+        CONTRACT (ONTA-421): rows whose ``attr`` is :data:`IDENTITY_ATTR` are
+        EXCLUDED. Identity docs are lexical-only by design — embedding one short
+        name per entity would add unbounded embed spend and put N short vectors
+        into the ANN leg's candidate pool, competing with the free-text chunks
+        the vector ranking exists to serve. Their ``embedding`` stays NULL
+        forever, which is precisely why the queue must exclude them explicitly
+        rather than rely on a filled value.
         """
         ...
 
