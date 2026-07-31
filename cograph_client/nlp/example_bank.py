@@ -149,6 +149,46 @@ def _load_holdout_v2_kgs() -> frozenset[str]:
 HOLDOUT_V2_KGS: frozenset[str] = _load_holdout_v2_kgs()
 
 
+# ── Benchmark-KG exclusion (ONTA-449) ────────────────────────────────────
+#
+# Spider4SPARQL and friends are ingested into the isolated ``spider-bench``
+# tenant precisely so their schema (Singer, Stadium, Airline, Country, ...)
+# never pollutes a real ontology. The example bank is a SECOND path into a
+# real user's context that bypasses that isolation completely: it is scoped
+# per PROCESS, not per tenant, so a benchmark answer stored during an eval run
+# is few-shot injected into every LATER ``/ask``, whatever tenant asked and
+# whatever KG they are querying. That is the same contamination rule being
+# broken through the prompt path instead of the graph path.
+#
+# This is not hypothetical. The committed OSS bank carried 148 spider entries
+# out of 262. Replaying production retrieval (top-10 cosine over the stored
+# embeddings, then tag-diversify to 3) with each non-benchmark KG held out --
+# i.e. simulating a domain the bank has never seen, which is what a real user
+# looks like -- benchmark examples took **97 of 342 top-3 few-shot slots
+# (28.4%)** and changed the selected set for 60 of 114 questions. Five of them
+# also teach a malformed shape: a bare ``types/<T>`` IRI in PREDICATE position.
+#
+# Removing them is close to free. Over those same held-out queries the mean
+# cosine similarity of the selected set drops by 0.024, because the
+# non-benchmark replacement sitting just below in the ranking is almost as
+# close. Cross-domain transfer -- the reason the bank tolerates examples from
+# other datasets at all -- is preserved by the 8 real KGs that remain.
+#
+# Matched by KG-name prefix rather than an exact set so a NEW benchmark split
+# (``spider-tvshow``, ...) is excluded the day it is first evaluated, without
+# anyone remembering to extend a list.
+BENCHMARK_KG_PREFIXES: tuple[str, ...] = ("spider-",)
+
+
+def is_benchmark_kg(kg_name: str) -> bool:
+    """True if ``kg_name`` is an external-benchmark KG barred from the bank.
+
+    Benchmark corpora live in a disposable tenant and must not reach any real
+    user's prompt. See :data:`BENCHMARK_KG_PREFIXES`.
+    """
+    return kg_name.strip().lower().startswith(BENCHMARK_KG_PREFIXES)
+
+
 @dataclass
 class Example:
     """A single (question, SPARQL) example with metadata."""
@@ -242,16 +282,33 @@ class ExampleBank:
             logger.info("Example bank file not found, starting empty: %s", self._bank_path)
             return 0
 
+        skipped_benchmark = 0
         with open(self._bank_path) as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    self._examples.append(Example.from_dict(json.loads(line)))
+                    example = Example.from_dict(json.loads(line))
                 except (json.JSONDecodeError, KeyError) as exc:
                     logger.warning("Skipping malformed example bank line: %s", exc)
+                    continue
+                # ONTA-449. The write-side gates below keep new benchmark
+                # answers OUT, but they cannot clean a bank file that is
+                # already on disk -- a machine-local one regenerated before
+                # this landed, or a stale copy in a deployed image. Filtering
+                # on read is what makes the exclusion hold for those too.
+                if is_benchmark_kg(example.kg_name):
+                    skipped_benchmark += 1
+                    continue
+                self._examples.append(example)
 
+        if skipped_benchmark:
+            logger.warning(
+                "Example bank at %s contains %d benchmark-KG example(s); "
+                "skipped (ONTA-449). Regenerate the file to drop them permanently.",
+                self._bank_path, skipped_benchmark,
+            )
         logger.info("Loaded %d examples from %s", len(self._examples), self._bank_path)
         return len(self._examples)
 
@@ -275,8 +332,13 @@ class ExampleBank:
         """Embed and store a new example. Returns True if added, False if duplicate or bank full.
 
         Deduplicates by checking if an example with the exact same question text
-        already exists. Enforces MAX_BANK_SIZE cap.
+        already exists. Enforces MAX_BANK_SIZE cap. Benchmark KGs are refused
+        outright (ONTA-449).
         """
+        if is_benchmark_kg(kg_name):
+            logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)
+            return False
+
         # Dedup by exact question match
         for ex in self._examples:
             if ex.question.strip().lower() == question.strip().lower():
@@ -309,11 +371,14 @@ class ExampleBank:
         """Bulk-add examples. Each dict must have: question, sparql, kg_name, ontology_context.
 
         Deduplicates, embeds in batches, and appends. Returns count of newly added examples.
+        Benchmark-KG items are dropped (ONTA-449).
         """
         # Filter out duplicates and existing
         existing_questions = {ex.question.strip().lower() for ex in self._examples}
         new_items: list[dict] = []
         for item in items:
+            if is_benchmark_kg(item.get("kg_name", "")):
+                continue
             q = item["question"].strip().lower()
             if q in existing_questions:
                 continue
@@ -511,6 +576,14 @@ class ExampleBank:
                         kg_name, json_file,
                     )
                     continue
+                # ONTA-449 — gate it here as well as in add_batch so the
+                # per-KG balancing below divides capacity among REAL KGs only.
+                if is_benchmark_kg(kg_name):
+                    logger.debug(
+                        "example_bank: skipping benchmark KG %s from eval report %s",
+                        kg_name, json_file,
+                    )
+                    continue
                 ontology = report.get("ontology", "")
                 results = report.get("queries", {}).get("results", [])
 
@@ -559,6 +632,12 @@ class ExampleBank:
                             if kg_name in HOLDOUT_V2_KGS:
                                 logger.debug(
                                     "example_bank: skipping holdout-v2 KG %s from finetune pair",
+                                    kg_name,
+                                )
+                                continue
+                            if is_benchmark_kg(kg_name):  # ONTA-449
+                                logger.debug(
+                                    "example_bank: skipping benchmark KG %s from finetune pair",
                                     kg_name,
                                 )
                                 continue

@@ -408,6 +408,31 @@ current ontology.
 - **Cap:** 500 examples max (balanced across KGs)
 - **Source:** `eval_reports/finetune_pairs.jsonl` — deduped correct (question, SPARQL) pairs
 
+### Excluded: external benchmark KGs (ONTA-449)
+
+Spider4SPARQL and other external benchmarks are ingested into the disposable
+`spider-bench` tenant so their schema (Singer, Stadium, Airline, Country) never
+pollutes a real ontology. The bank is a **second path into a real user's context
+that bypasses that isolation**, because it is scoped per process: a benchmark
+answer stored during an eval run is few-shot injected into every later `/ask`,
+whatever tenant asked. So benchmark KGs are barred from the bank entirely
+(`is_benchmark_kg`, matched on the `spider-` KG-name prefix).
+
+Three layers, because each one alone leaks: the committed JSONL contains none;
+`add` / `add_batch` / `populate_from_eval_reports` refuse them, so the post-eval
+rebuild cannot put them back; and `load` filters them, which is the only layer
+that helps a bank file already sitting on disk. Guarded by
+`tests/test_example_bank_benchmark_exclusion.py`.
+
+This is not the same thing as the cross-domain examples below, which are
+deliberate. The committed bank previously held 148 spider entries out of 262,
+and replaying production retrieval with each real KG held out (so the query
+looks like a domain the bank has never seen, i.e. a real user) they took 97 of
+342 top-3 few-shot slots. Dropping them cost a mean 0.024 cosine on the selected
+set, because the non-benchmark example just below in the ranking is nearly as
+close, and the 8 remaining real KGs still span finance, film, science, events,
+sport, and retail.
+
 ### Lifecycle: Auto-sync with Ontology
 
 The example bank must stay in sync with the ontology. Stale examples (referencing
