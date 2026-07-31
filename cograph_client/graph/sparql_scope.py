@@ -520,6 +520,13 @@ def confine_generated_query(
     clause still in it.
     """
     defaults = [g for g in default_graphs if g]
+    # Materialise the allowlist before anything reads it. It is typed as an
+    # Iterable, and the repair path re-enters this function with it: a caller
+    # passing a generator would have it exhausted by the first pass and see an
+    # EMPTY allowlist on the second, which would 403 a legitimate layer-aware
+    # query. Fail-closed, but wrong, and only on the repair path, which is
+    # exactly the kind of bug that hides.
+    allowed_graphs = tuple(allowed_graphs)
     if not defaults:
         raise TenantScopeError(
             "Refusing to run a generated query with no target graph.", 400

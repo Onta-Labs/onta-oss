@@ -289,6 +289,21 @@ def test_a_layer_not_visible_to_this_tenant_is_still_rejected():
     assert _confine(query, allowed_graphs=[PUBLIC_LAYER, ENHANCED_LAYER]) == query
 
 
+def test_a_one_shot_allowlist_survives_the_repair_re_entry():
+    """The repair path re-enters the function, so a generator must not be lost.
+
+    ``allowed_graphs`` is typed as an Iterable. A caller passing a generator
+    would have it exhausted by the first pass and see an EMPTY allowlist on the
+    second, which 403s a legitimate layer-aware query. Fail-closed but wrong,
+    and only on the repair path, which is where a bug like this hides.
+    """
+    layers = (g for g in (OWN_GRAPH, PUBLIC_LAYER))
+    out = _confine(
+        f"SELECT ?s FROM <{PUBLIC_LAYER}> WHERE {{ ?s ?p ?o }}", allowed_graphs=layers
+    )
+    assert set(_dataset_of(out)) == {PUBLIC_LAYER, DATA_GRAPH}
+
+
 def test_an_allowlist_cannot_smuggle_in_another_workspace():
     """The allowlist admits shared schema, never a second workspace's data.
 
