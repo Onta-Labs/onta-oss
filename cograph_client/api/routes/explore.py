@@ -1302,13 +1302,19 @@ async def read_kg_summary_from_stats(
     return entity_total, edge_total, breakdown
 
 
-async def backfill_kg_summary(client: NeptuneClient, tenant_id: str, kg_name: str):
+async def backfill_kg_summary(
+    client: NeptuneClient, tenant_id: str, kg_name: str, *, persist: bool = True
+):
     """Seed the durable dashboard-summary store for one KG from existing stats.
 
     Used to lazily fill rows for KGs that predate the store (the first time
     they're listed) without a fresh whole-KG scan. Returns the upserted
     :class:`KgStats`, or ``None`` if the KG's stats graph isn't materialized yet
     (the caller schedules a recompute, which will populate the store directly).
+
+    ``persist=False`` computes the SAME row and returns it WITHOUT storing it
+    (ONTA-452). A read-only member gets identical numbers on the listing while
+    the lazy materialization stays a write only writers perform.
     """
     agg = await read_kg_summary_from_stats(client, tenant_id, kg_name)
     if agg is None:
@@ -1323,6 +1329,8 @@ async def backfill_kg_summary(client: NeptuneClient, tenant_id: str, kg_name: st
         edge_count=edge_total,
         type_breakdown=breakdown,
     )
+    if not persist:
+        return row
     await get_kg_stats_store().upsert(row)
     return row
 
@@ -1366,11 +1374,38 @@ async def _safe_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -
         pass  # best-effort; reads fall back to a live scan until it succeeds
 
 
+#: KGs with a recompute already in flight. Repeated scheduling for the SAME KG
+#: collapses to ONE scan instead of stacking N whole-KG scans. Load-bearing
+#: since ONTA-452: a read-only member's ``GET /kgs`` may schedule a recompute on
+#: a stats miss (otherwise they would see a permanent, indistinguishable 0), so
+#: that path must not be spammable into repeated full scans.
+_recompute_inflight: set[tuple[str, str]] = set()
+
+
 def schedule_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> None:
-    """Fire-and-forget a stats recompute (used by the endpoint + ingest hook)."""
-    task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
+    """Fire-and-forget a stats recompute (used by the endpoint + ingest hook).
+
+    De-duplicated per (tenant, KG): a second call while the first is still
+    running is a no-op, since both would produce the same snapshot.
+    """
+    key = (tenant_id, kg_name)
+    if key in _recompute_inflight:
+        return
+    _recompute_inflight.add(key)
+    try:
+        task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
+    except Exception:
+        # No running loop (a sync caller): never leave the key stuck marked
+        # in-flight, or this KG could never be recomputed again.
+        _recompute_inflight.discard(key)
+        raise
     _bg_tasks.add(task)
-    task.add_done_callback(_bg_tasks.discard)
+
+    def _done(t: asyncio.Task) -> None:
+        _bg_tasks.discard(t)
+        _recompute_inflight.discard(key)
+
+    task.add_done_callback(_done)
 
 
 # Cap on concurrent summary-generation LLM calls in a single backfill sweep, so a

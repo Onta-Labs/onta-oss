@@ -108,7 +108,13 @@ def layer_stack_for(tenant: TenantContext):
     )
 
 
-async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure: bool = True):
+async def layer_stack_for_tenant(
+    neptune,
+    tenant: TenantContext,
+    *,
+    auto_ensure: bool = True,
+    persist: bool | None = None,
+):
     """Versioned :class:`~cograph_client.graph.layers.LayerStack` for ``tenant``.
 
     Loads (and optionally backfills) the workspace base pin so reads resolve
@@ -119,7 +125,15 @@ async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure:
     :func:`~cograph_client.graph.ontology_base_pin.layer_stack_for_workspace`:
     degrade to an ephemeral unversioned (live) stack **without writing**.
     A read failure is never treated as "missing pin" (no silent re-pin).
+
+    ``persist`` defaults to the caller's own WRITE capability (ONTA-452), so an
+    ontology READ by a read-only member returns the pin it would have ensured
+    without backfilling or auto-upgrading it. Pass it explicitly to override.
+    The role is only populated when the route resolved it
+    (``get_tenant_with_capability``); an unresolved context keeps prior
+    behavior.
     """
+    from cograph_client.auth.capabilities import can_write
     from cograph_client.graph.ontology_base_pin import layer_stack_for_workspace
 
     return await layer_stack_for_workspace(
@@ -127,4 +141,5 @@ async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure:
         tenant.tenant_id,
         entitled=is_entitled(tenant),
         auto_ensure=auto_ensure,
+        persist=can_write(getattr(tenant, "role", "")) if persist is None else persist,
     )

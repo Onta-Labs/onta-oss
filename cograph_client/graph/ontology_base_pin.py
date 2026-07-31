@@ -359,6 +359,7 @@ async def ensure_workspace_base_pin(
     tenant_id: str,
     *,
     entitled: bool,
+    persist: bool = True,
 ) -> BasePin:
     """Return the workspace pin, creating / refreshing as needed.
 
@@ -376,6 +377,11 @@ async def ensure_workspace_base_pin(
     * Pin **write** failures (read-only store, network blip) degrade to an
       ephemeral in-memory pin so ensure can still return a value when the
       pin was confirmed missing; the next successful ensure persists.
+    * ``persist=False`` (ONTA-452) computes the same pin and returns it
+      EPHEMERALLY, writing nothing. Ontology READ routes pass the caller's
+      write capability here: a read-only member must not silently backfill or
+      auto-upgrade the workspace pin just by opening the ontology view, and
+      they see exactly what a writer's request would have produced.
     """
     # Read errors propagate (BasePinReadError) — do not catch and backfill.
     existing = await get_base_pin(neptune, tenant_id)
@@ -397,6 +403,8 @@ async def ensure_workspace_base_pin(
             has_previous=True,
             updated_at=None,
         )
+        if not persist:
+            return _ephemeral_pin(tenant_id, updated)
         return await _set_base_pin_soft(neptune, tenant_id, updated)
 
     # Backfill new pin.
@@ -409,7 +417,26 @@ async def ensure_workspace_base_pin(
         auto_upgrade=False,
         previous_version=None,
     )
+    if not persist:
+        return _ephemeral_pin(tenant_id, pin)
     return await _set_base_pin_soft(neptune, tenant_id, pin)
+
+
+def _ephemeral_pin(tenant_id: str, pin: BasePin) -> BasePin:
+    """The pin ensure WOULD have stored, returned without storing it.
+
+    One shape for both no-write paths: a write failure (below) and a read-only
+    caller passing ``persist=False`` (ONTA-452).
+    """
+    return BasePin(
+        tenant_id=tenant_id,
+        base_layer=pin.base_layer,
+        base_version=pin.base_version,
+        auto_upgrade=pin.auto_upgrade,
+        previous_version=pin.previous_version,
+        has_previous=pin.has_previous,
+        updated_at=pin.updated_at or _now_iso(),
+    )
 
 
 async def _set_base_pin_soft(
@@ -426,15 +453,7 @@ async def _set_base_pin_soft(
             base_version=pin.base_version,
             exc_info=True,
         )
-        return BasePin(
-            tenant_id=tenant_id,
-            base_layer=pin.base_layer,
-            base_version=pin.base_version,
-            auto_upgrade=pin.auto_upgrade,
-            previous_version=pin.previous_version,
-            has_previous=pin.has_previous,
-            updated_at=pin.updated_at or _now_iso(),
-        )
+        return _ephemeral_pin(tenant_id, pin)
 
 
 # ---------------------------------------------------------------------------
@@ -484,13 +503,15 @@ async def layer_stack_for_workspace(
     *,
     entitled: bool,
     auto_ensure: bool = True,
+    persist: bool = True,
 ) -> LayerStack:
     """Versioned :class:`LayerStack` for a workspace (ONTA-405).
 
     With ``auto_ensure=True`` (default), missing pins are backfilled so every
     workspace has an explicit inspectable pin. Pass ``auto_ensure=False`` for
     pure reads that must not write (still returns an unversioned stack when no
-    pin exists).
+    pin exists), or ``persist=False`` (ONTA-452) to keep the ensured pin's
+    RESULT while writing nothing, which is what a read-only member gets.
 
     On :class:`BasePinReadError` (pin graph unreadable): degrade to an
     **ephemeral unversioned/live** stack **without writing**. Availability over
@@ -499,7 +520,7 @@ async def layer_stack_for_workspace(
     try:
         if auto_ensure:
             pin = await ensure_workspace_base_pin(
-                neptune, tenant_id, entitled=entitled
+                neptune, tenant_id, entitled=entitled, persist=persist
             )
         else:
             pin = await get_base_pin(neptune, tenant_id)
@@ -663,6 +684,7 @@ async def preview_base_upgrade(
     *,
     entitled: bool,
     to_version: int | None = None,
+    persist: bool = True,
 ) -> UpgradePreview:
     """Preview upgrading the workspace base pin to ``to_version`` (or latest).
 
@@ -678,8 +700,10 @@ async def preview_base_upgrade(
     if pin is None:
         # Ensure so preview has a defined from_version without requiring a
         # prior ensure call from the UI — soft backfill for inspectability.
+        # ``persist=False`` (a read-only caller, ONTA-452) keeps the same
+        # from_version while writing no pin: a preview is a read.
         pin = await ensure_workspace_base_pin(
-            neptune, tenant_id, entitled=entitled
+            neptune, tenant_id, entitled=entitled, persist=persist
         )
 
     layer = pin.base_layer
