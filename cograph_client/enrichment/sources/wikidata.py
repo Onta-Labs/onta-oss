@@ -132,12 +132,26 @@ WIKIDATA_PROPS: dict[str, str] = {
     "instance_of": "P31",
     "founder": "P112",
     "headquarters": "P159",
+    "hq_city": "P159",
+    "hq": "P159",
     "ceo": "P169",
     "isbn": "P212",
     "duration": "P2047",
     "release_date": "P577",
     "director": "P57",
     "genre": "P136",
+    # Common blank-column enrich targets (OSS dogfood S7).
+    "website": "P856",
+    "url": "P856",
+    "homepage": "P856",
+    "founded": "P571",
+    "inception": "P571",
+    "founding_date": "P571",
+    "phone": "P1329",
+    "telephone": "P1329",
+    "employee_count": "P1128",
+    "employees": "P1128",
+    "revenue": "P2139",
 }
 
 

@@ -305,13 +305,21 @@ def _decision_from_llm(parsed: dict | None) -> TierDecision | None:
             candidates=["lite", "core"],
             routing_note=(
                 "Ambiguous whether the free Wikidata source covers these "
-                "attributes — choose 'lite' (free) or 'core' (paid web search)."
+                "attributes — choose 'lite' (free Wikidata) or 'core' "
+                "(richer chain; still free Wikidata-only in OSS unless paid "
+                "adapters are registered)."
                 + (f" {reason}" if reason else "")
             ),
         )
     if tier not in ("lite", "core"):
         return None
-    label = "free Wikidata" if tier == "lite" else "paid web search"
+    # OSS dogfood S7: core is NOT paid web search unless a premium plugin
+    # registered web adapters. Label the tier honestly.
+    label = (
+        "free Wikidata"
+        if tier == "lite"
+        else "core chain (Wikidata + any registered adapters; no paid web search in OSS)"
+    )
     return TierDecision(
         resolved_tier=tier,
         needs_clarification=False,
@@ -340,13 +348,13 @@ def _heuristic_decision(
         else "LLM classify failed; "
     )
 
-    # Any open-web fact present → core (a single web fact dominates the cost).
+    # Any open-web fact present → core (premium plugins may attach web adapters).
     if web:
         return TierDecision(
             resolved_tier="core",
             routing_note=(
-                f"{prefix}heuristic chose 'core' (paid web search): "
-                f"{', '.join(web)} are open-web facts Wikidata rarely holds."
+                f"{prefix}heuristic chose 'core' (richer chain; Wikidata-only in OSS): "
+                f"{', '.join(web)} are open-web facts free Wikidata may miss."
             ),
         )
     # No web fact and we have a clear structured-identifier signal → lite (free).
@@ -359,7 +367,7 @@ def _heuristic_decision(
             ),
         )
     # Mixed (some structured, some unknown) but no explicit web fact: still lean
-    # paid for the unknowns rather than risk a Wikidata miss.
+    # core for the unknowns rather than risk a Wikidata miss under lite.
     if not attributes:
         # Nothing to go on → free is the safe, no-cost default.
         return TierDecision(
@@ -369,8 +377,8 @@ def _heuristic_decision(
     return TierDecision(
         resolved_tier="core",
         routing_note=(
-            f"{prefix}heuristic chose 'core' (paid web search): no clear "
-            f"structured-identifier signal, leaning paid to avoid a Wikidata miss."
+            f"{prefix}heuristic chose 'core' (richer chain; Wikidata-only in OSS): "
+            f"no clear structured-identifier signal."
         ),
     )
 
