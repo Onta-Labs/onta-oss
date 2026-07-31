@@ -68,8 +68,10 @@ from cograph_client.agent.kg_scope import (
 )
 from cograph_client.agent.registry import (
     AgentContext,
+    ReadOnlyMembershipError,
     get_capabilities,
     get_capability,
+    mutating_step_capabilities,
     order_steps,
 )
 from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
@@ -973,6 +975,8 @@ async def _respond(
             out["questions"] = p["questions"]
         return out
 
+    _assert_may_commit(ctx, steps)
+
     steps = order_steps(steps)
     plan_id = _new_plan_id()
     await make_plan_store().save(
@@ -991,6 +995,85 @@ async def _respond(
         "plan_id": plan_id,
         "steps": [s.to_dict() for s in steps],
     }
+
+
+def _assert_may_commit(ctx: AgentContext, steps: list) -> None:
+    """Refuse to commit a mutating plan for a read-only member (ONTA-451).
+
+    ``/agent`` is the one read/write MIXED surface: the same endpoint answers a
+    question and ingests a dataset, so a blanket ``require_tenant_write`` route
+    dependency would lock a reader out of the read-only turns their role is
+    supposed to allow. The gate therefore sits at CAPABILITY DISPATCH — here,
+    where a mutating plan is about to be persisted, and again in
+    :func:`execute_plan`, the only path that actually runs one.
+
+    Everything upstream of this point is read-only by contract: the classifier,
+    ``QueryCapability.answer``, a capability's ``plan()`` (protocol: "NO
+    writes"), and the ``answer`` / ``clarify`` short-circuits — all of which
+    return before this call. So a reader keeps questions, web research, ontology
+    inspection and clarify rounds, and loses exactly the mutations.
+
+    Capability classification is deny-by-default
+    (:func:`~cograph_client.agent.registry.capability_writes`): an unknown or
+    undeclared capability counts as mutating.
+
+    Scope note: this governs PLAN STEPS. The question fast-path in
+    :func:`_respond` dispatches ``get_capability("query").answer`` by NAME
+    without consulting ``capability_writes`` — sound in OSS because
+    ``QueryCapability.answer`` only reads, but a downstream that replaces the
+    ``query`` capability with a writing one would not be gated by this. Give a
+    replacement the same read-only contract, or gate it there too.
+    """
+    if ctx.can_write():
+        return
+    blocked = mutating_step_capabilities(steps)
+    if not blocked:
+        return
+    logger.info(
+        "agent_write_denied_read_only",
+        tenant=ctx.tenant_id,
+        kg=getattr(ctx, "kg_name", ""),
+        capabilities=blocked,
+    )
+    raise ReadOnlyMembershipError(blocked)
+
+
+async def _assert_confirm_may_commit(ctx: AgentContext, store, plan_id: str) -> None:
+    """The ONTA-451 authorization gate for a CONFIRM. Fails CLOSED.
+
+    Re-checked here and not only at plan time because a plan can sit
+    un-confirmed indefinitely: one persisted while the caller had write access
+    must not stay runnable after their role is downgraded to reader.
+
+    Runs BEFORE ``claim_for_execution`` (like the KG-scope gate) so a refused
+    confirm leaves the plan ``proposed`` and re-confirmable by a writer, rather
+    than stranding it in ``executing`` until the stale cutoff.
+
+    Unlike the KG-scope gate — best-effort, deferring to the authoritative claim
+    read — the PLAN READ here fails closed: a plan that cannot be read is a plan
+    that cannot be shown to be read-only, so a read-only caller is refused rather
+    than allowed through to the claim.
+
+    That is a property of this read only, not of the gate end-to-end: the ROLE
+    this depends on is resolved by ``resolve_member_role``, which deliberately
+    fails OPEN to ``writer`` on a workspace-registry outage so a DB blip cannot
+    freeze production for entitled users. Same posture as ``require_tenant_write``
+    — this change neither introduces nor worsens it.
+    """
+    if ctx.can_write():
+        return
+    try:
+        plan = await store.get(plan_id, ctx.tenant_id)
+    except Exception as exc:  # noqa: BLE001 — unreadable ⇒ unprovable ⇒ refuse
+        logger.warning(
+            "agent_plan_capability_read_failed", plan_id=plan_id, exc_info=True
+        )
+        raise ReadOnlyMembershipError() from exc
+    if plan is None:
+        # Nothing to run anyway; refusing rather than reporting "not found" also
+        # keeps the confirm path from being a plan-existence oracle for a reader.
+        raise ReadOnlyMembershipError()
+    _assert_may_commit(ctx, plan.steps)
 
 
 async def _plan_intents(
@@ -1124,6 +1207,11 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     payload is persisted on the plan for the duplicate-confirm replay above.
     """
     store = make_plan_store()
+    # Authorization before validation ON THIS PATH: a refused confirm is a plain
+    # 403 rather than a KG-scope error about a plan the caller could never run.
+    # (The plan-time path deliberately runs check_kg_scope first — a reader may
+    # list graphs, so its clarify reveals nothing the read routes don't.)
+    await _assert_confirm_may_commit(ctx, store, plan_id)
     gate = await _kg_scope_gate_for_confirm(ctx, store, plan_id)
     if gate is not None:
         return gate

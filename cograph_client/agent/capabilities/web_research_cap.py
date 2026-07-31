@@ -123,6 +123,11 @@ class WebResearchCapability:
     # Read-only against the WEB; never reads from or writes to a KG (ADR 0006), so
     # a missing/omitted kg_name cannot make its answer wrong. Not KG-scoped.
     kg_scope_policy = SCOPE_NONE
+    #: Read-only by construction (ADR 0006): research answers FROM the web and
+    #: returns a cited answer/artifact, never writing to a KG — so a read-only
+    #: member may dispatch it (ONTA-451). If this capability ever grows a write,
+    #: this flag must go with it.
+    writes = False
 
     def describe(self) -> str:
         return (
