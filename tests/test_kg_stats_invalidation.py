@@ -39,6 +39,24 @@ def test_delete_kg_drops_stats_graph_and_busts_cache(client, mock_neptune, auth_
     assert cache_key not in _summary_cache
 
 
+def test_delete_kg_busts_the_kg_status_verdict_cache(client, mock_neptune, auth_headers):
+    """ONTA-453: a deleted KG must not stay "ok" for the probe's 60s TTL.
+
+    ``kg_data_status`` caches POSITIVE verdicts and short-circuits on them, so a
+    question asked in the minute after a delete would sail past the missing-KG
+    guard and be answered out of the tenant base graph plus the global layers,
+    which is the confidently-wrong answer that guard exists to stop.
+    """
+    from cograph_client.graph import kg_status
+
+    kg_status.invalidate_kg_status(TENANT)
+    kg_status._kg_ok_cache[(TENANT, KG)] = time.time()
+
+    assert client.delete(f"/graphs/{TENANT}/kgs/{KG}", headers=auth_headers).status_code == 200
+
+    assert (TENANT, KG) not in kg_status._kg_ok_cache
+
+
 def _summary_query_router(person_count: int):
     """Route the summary endpoint's reads so a fresh KG live-scans to N Persons.
 
