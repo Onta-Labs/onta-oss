@@ -38,6 +38,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from cograph_client.offline import assert_online_url
 from cograph_client.retrieval.errors import classify_llm_status_error
 
 def _openrouter_base() -> str:
@@ -210,9 +211,13 @@ async def openrouter_chat(
     active_provider = "cerebras" if "cerebras.ai" in base else "openrouter"
     if response_format is not None:
         body["response_format"] = response_format
+    chat_url = f"{base}/chat/completions"
+    # Fail closed under OMNIX_OFFLINE=1 unless base is allowlisted (localhost by
+    # default — self-hosted vLLM/Ollama). Cloud OpenRouter / Cerebras hosts raise.
+    assert_online_url(chat_url, purpose="LLM chat completion")
     async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.post(
-            f"{base}/chat/completions",
+            chat_url,
             headers={
                 "Authorization": f"Bearer {request_key}",
                 "Content-Type": "application/json",
@@ -362,9 +367,11 @@ async def openrouter_key_status(
     a failure path should wrap this best-effort — a diagnosis must never mask the
     original error.
     """
+    key_url = f"{base_url.rstrip('/')}/key"
+    assert_online_url(key_url, purpose="OpenRouter key status")
     async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.get(
-            f"{base_url}/key",
+            key_url,
             headers={"Authorization": f"Bearer {api_key}"},
         )
         try:
