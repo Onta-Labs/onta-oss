@@ -68,9 +68,8 @@ def multi_tenant_key():
     valid; the tenant grant is not) — the mechanism `get_tenant` enforces and the
     api-sources routes rely on. Cleared after the test.
 
-    (A legacy static single-tenant key like `test-key` routes to ITS tenant
-    regardless of the path — documented behavior — so it can never reach another
-    tenant's data but doesn't 403; the 403 path is the user-scoped-key path.)"""
+    (A static single-tenant key like `test-key` also 403s on a foreign path
+    tenant; this fixture exercises the user-scoped multi-tenant grant path.)"""
     from cograph_client.auth.api_keys import register_external_verifier
 
     def verifier(api_key: str):

@@ -120,3 +120,31 @@ describe("Client.ingest — text back-compat (asFile unset)", () => {
     expect(body.content).toBe(missing);
   });
 });
+
+describe("Client.ingest — asText forces content even when path exists", () => {
+  it("POSTs the string itself, never re-reads the on-disk file", async () => {
+    const { calls } = installFetch(
+      new Response(JSON.stringify({ entities_resolved: 0, triples_inserted: 0 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    // The string IS a real path whose file contents differ from the string —
+    // asText must POST the string, not the file body.
+    const file = join(dir, "note.txt");
+    writeFileSync(file, "ON DISK CONTENTS", "utf-8");
+
+    await makeClient().ingest(file, {
+      kg: "notes",
+      contentType: "text",
+      asText: true,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(`${BASE}/graphs/${TENANT}/ingest`);
+    const body = JSON.parse(String(calls[0]!.init.body));
+    expect(body.content).toBe(file);
+    expect(body.content).not.toBe("ON DISK CONTENTS");
+    expect(body.content_type).toBe("text");
+    expect(body.kg_name).toBe("notes");
+  });
+});

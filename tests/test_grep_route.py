@@ -160,16 +160,15 @@ def test_missing_api_key_is_401(store, make_client):
 def test_foreign_tenant_in_path_never_scans_that_tenants_graph(
     store, make_client, auth_headers
 ):
-    """A single-tenant key must not be able to grep another tenant's graph.
+    """A static key must not be able to grep another tenant's graph.
 
-    The static-key path scopes to the KEY's tenant; the load-bearing assertion is
-    that the emitted FROM clause names the key's tenant, never the path's.
+    Foreign path tenant is 403; the load-bearing assertion is that no SPARQL
+    ran against the path tenant (or anything else) on the rejected request.
     """
     client = make_client(store)
     res = _post(client, {"q": "matrix", "kg_name": KG}, auth_headers, tenant="other")
-    assert res.status_code in (200, 403)
-    for q in store.queries:
-        assert "graphs/other/" not in q
+    assert res.status_code == 403
+    assert store.queries == []
 
 
 # --- validation -------------------------------------------------------------- #

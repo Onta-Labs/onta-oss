@@ -16,10 +16,12 @@ consumers inherit it at once.
 
 from __future__ import annotations
 
+import os
+
 import httpx
 import numpy as np
 
-import os
+from cograph_client.offline import assert_online_url
 
 def _embeddings_url() -> str:
     """OpenAI-compatible embeddings endpoint.
@@ -64,6 +66,9 @@ async def embed_texts(
     all_embeddings: list[list[float]] = []
     embeddings_url = _embeddings_url()
     model = os.environ.get("OMNIX_EMBED_MODEL", EMBEDDING_MODEL)
+    # Fail closed under OMNIX_OFFLINE=1 unless the embed host is allowlisted
+    # (localhost by default). Cloud openrouter.ai is blocked.
+    assert_online_url(embeddings_url, purpose="embedding API")
 
     for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
         batch = texts[i : i + EMBEDDING_BATCH_SIZE]

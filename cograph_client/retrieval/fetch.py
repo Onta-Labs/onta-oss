@@ -163,6 +163,17 @@ class StaticHttpFetcher:
         self._timeout = timeout
 
     async def fetch(self, url: str, *, want: str = "") -> FetchedPage:
+        # Offline mode (OMNIX_OFFLINE=1) fails closed on non-allowlisted hosts
+        # before the SSRF string/DNS guards run — private dogfood must not hit
+        # arbitrary web. OfflineModeError propagates so callers see a clear
+        # message; is_fetchable_url still applies when offline is off.
+        from cograph_client.offline import OfflineModeError, assert_online_url
+
+        try:
+            assert_online_url(url, purpose="web page fetch")
+        except OfflineModeError as exc:
+            return FetchedPage(url=url, tier=self.name, ok=False, error=str(exc))
+
         if not is_fetchable_url(url):
             return FetchedPage(
                 url=url, tier=self.name, ok=False, error="blocked or non-http(s) URL"

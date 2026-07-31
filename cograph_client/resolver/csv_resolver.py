@@ -51,6 +51,10 @@ from cograph_client.graph.ontology_queries import (
 )
 from cograph_client.resolver.llm_router import openrouter_chat
 from cograph_client.resolver.profiler import profile_table
+from cograph_client.resolver.sensitivity import (
+    redact_privileged_profile_examples,
+    redact_privileged_sample_rows,
+)
 
 logger = structlog.stdlib.get_logger("cograph.resolver.csv")
 
@@ -576,6 +580,9 @@ class CSVResolver:
         # otherwise feed the LLM a near-blank sample, which reliably produces
         # malformed JSON keys (observed: `column118 name`).
         ranked_samples = _rank_sample_rows(sample_rows)[:10]
+        # Never send privileged column VALUES (ssn, secret*, privileged*, …)
+        # to the LLM — keep keys so the model can still invent a mapping.
+        ranked_samples = redact_privileged_sample_rows(ranked_samples)
         sample_str = "\n".join(
             json.dumps(row, default=str) for row in ranked_samples
         )
@@ -701,12 +708,17 @@ class CSVResolver:
         ``ontology_extensions``. No post-hoc keyword patches run on this path.
         """
         profile = profile_table(headers, sample_rows, total_rows)
+        # Scrub privileged examples (top-N values) before they enter any prompt.
+        redact_privileged_profile_examples(profile)
         profile_json = json.dumps(profile.to_prompt_dict())
         types_str = "\n".join(f"- {name}" for name in existing_types) if existing_types else "(none)"
 
         # Same density ranking as the legacy path: the sample exists for value
-        # context only — statistics come from the profile.
-        ranked_samples = _rank_sample_rows(sample_rows)[:6]
+        # context only — statistics come from the profile. Redact privileged
+        # column VALUES before the LLM sees them (keys kept for mapping).
+        ranked_samples = redact_privileged_sample_rows(
+            _rank_sample_rows(sample_rows)[:6]
+        )
         sample_str = "\n".join(json.dumps(row, default=str) for row in ranked_samples)
 
         # COG-58: scale each pass's output budget to the column count so the
@@ -1124,7 +1136,7 @@ class CSVResolver:
                 subject=subject, predicate=predicate, object=obj, why=rel.get("why"),
             ))
 
-        return CSVSchemaMapping(
+        mapping = CSVSchemaMapping(
             # entity_type is ignored in multi-entity mode; keep it meaningful
             # for older readers that only look at the headline type.
             entity_type=specs[0].type_name,
@@ -1140,6 +1152,16 @@ class CSVResolver:
             ),
             ontology_extensions=extensions,
         )
+        # Drop dual-world Pass D promotions (own key / FK relationship columns)
+        # before the mapping leaves inference — held-for-review UX, ontology
+        # pre-registration, and apply_mapping all consume this field.
+        if mapping.ontology_extensions is not None:
+            mapping = mapping.model_copy(update={
+                "ontology_extensions": _sanitize_ontology_extensions(
+                    mapping, mapping.ontology_extensions,
+                ),
+            })
+        return mapping
 
     async def _call_llm(self, user_content: str, temperature: float = 0.0) -> dict:
         if self.EXTRACT_PROVIDER == "openrouter" and self._openrouter_key:
@@ -1749,6 +1771,92 @@ def _find_source_column(mapping: CSVSchemaMapping, attr: str) -> ColumnMapping |
     return None
 
 
+def _column_is_entity_key(mapping: CSVSchemaMapping, col: ColumnMapping) -> bool:
+    """True when ``col`` is the owner's primary/natural key.
+
+    Used to refuse Pass D promotions of the entity's own key (product_id →
+    ProductIdentifier). That promotion mints a second entity with the SAME
+    ``safe_id`` as the owner; ``schema_resolver``'s ``entity_uri_map`` is
+    keyed by ``entity.id`` alone, so the Identifier overwrites the user-facing
+    type and multi-file FK stubs land on a different URI (dogfood S2/S5).
+    """
+    if col.role == ColumnRole.TYPE_ID:
+        return True
+    for spec in mapping.entities or []:
+        if col.entity is not None and col.entity != spec.name:
+            continue
+        if spec.id_column and col.column_name == spec.id_column:
+            return True
+        if spec.id_from and col.column_name in spec.id_from:
+            return True
+    return False
+
+
+def _promotion_skip_reason(
+    mapping: CSVSchemaMapping, col: ColumnMapping,
+) -> str | None:
+    """Return a structured skip reason for a dual-world Pass D promotion, or
+    None when the promotion is safe to materialize.
+
+    Skipped cases (OSS dogfood S2/S5 dual-world):
+    - The source column is already ``role: relationship`` (an FK cell).
+      Promoting it into TIdentifier forks Order→Product stubs from the
+      dimension-table Product nodes.
+    - The source column is the entity's own type_id / EntitySpec key. The
+      key already IS the entity's identity; it is not a dependent identifier
+      issued by an external party (contrast SKU/MPN/tax_id — those stay
+      promotable because they are non-key attributes).
+    """
+    if col.role == ColumnRole.RELATIONSHIP:
+        return "source_column_is_relationship"
+    if _column_is_entity_key(mapping, col):
+        return "source_column_is_entity_key"
+    return None
+
+
+def _sanitize_ontology_extensions(
+    mapping: CSVSchemaMapping,
+    extensions: OntologyExtensions | None,
+) -> OntologyExtensions | None:
+    """Drop dual-world promotions (entity key / relationship FK) from
+    Pass D output so they never reach held-for-review UX, ontology
+    pre-registration, or apply_mapping materialization.
+
+    True dependent-entity promotions (SKU, MPN, tax_id, …) are kept.
+    Ungroundable promotions (unknown source attribute) are also dropped
+    here — apply would skip them anyway; dropping early avoids empty
+    Identifier types in the ontology.
+    """
+    if extensions is None or not extensions.types:
+        return extensions
+    kept: list[TypeExtension] = []
+    for t in extensions.types:
+        if not t.promoted_from_attribute:
+            kept.append(t)
+            continue
+        col = _find_source_column(mapping, t.promoted_from_attribute)
+        if col is None:
+            logger.warning(
+                "csv_extension_promotion_dropped",
+                type=t.type_name,
+                attribute=t.promoted_from_attribute,
+                reason="source_column_missing",
+            )
+            continue
+        reason = _promotion_skip_reason(mapping, col)
+        if reason:
+            logger.info(
+                "csv_extension_promotion_dropped",
+                type=t.type_name,
+                attribute=t.promoted_from_attribute,
+                column=col.column_name,
+                reason=reason,
+            )
+            continue
+        kept.append(t)
+    return OntologyExtensions(types=kept)
+
+
 def _build_extension_plans(
     mapping: CSVSchemaMapping,
 ) -> tuple[list[_PromotionPlan], list[_TypeConstantPlan]]:
@@ -1760,6 +1868,11 @@ def _build_extension_plans(
     judge-panel gating). Extensions that cannot be grounded in the mapping
     (unknown source attribute / type) are skipped with a structured warning,
     never an error — they still pre-register in the ontology at ingest.
+
+    Dual-world promotions of the entity's own key or of a relationship-role
+    FK column are also skipped (see :func:`_promotion_skip_reason`) — even
+    if a client posts them — so multi-file natural-key joins cannot be
+    silently forked onto ``*Identifier`` types.
     """
     ext = mapping.ontology_extensions
     if ext is None or not ext.types:
@@ -1785,6 +1898,16 @@ def _build_extension_plans(
                 logger.warning(
                     "csv_extension_source_column_missing",
                     type=t.type_name, attribute=t.promoted_from_attribute,
+                )
+                continue
+            skip = _promotion_skip_reason(mapping, col)
+            if skip:
+                logger.info(
+                    "csv_extension_promotion_skipped",
+                    type=t.type_name,
+                    attribute=t.promoted_from_attribute,
+                    column=col.column_name,
+                    reason=skip,
                 )
                 continue
             owner = col.entity if (multi and col.entity in specs_by_name) else None

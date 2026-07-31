@@ -18,8 +18,10 @@ from cograph_client.resolver.csv_resolver import (
     CSVResolver,
     _check_complete_shape,
     _chunked,
+    _promotion_skip_reason,
     _rank_sample_rows,
     _safe_id,
+    _sanitize_ontology_extensions,
     _snake_case,
     _v2_max_tokens,
 )
@@ -1628,6 +1630,263 @@ class TestApplyMappingExtensions:
         applied = CSVResolver.apply_mapping(_code_mapping(None), rows)
         assert {e.type_name for e in applied.entities} == {"Item"}
         assert applied.relationships == []
+
+
+# --- Dogfood S2/S5: Pass D Identifier dual-world ---------------------------
+# Promoting the entity's own primary key (product_id → ProductIdentifier)
+# mints a second entity with the SAME safe_id as Product. schema_resolver's
+# entity_uri_map is keyed by entity.id alone, so the Identifier overwrites
+# the user-facing type: Product shows 0 instances, supplier edges land on
+# ProductIdentifier, and Order→Product FK stubs mint a different URI with no
+# supplier edges. Multi-hop Order→Product→Supplier then returns empty.
+
+
+def _sales_product_mapping(
+    *,
+    promote_key: bool = False,
+    promote_sku: bool = False,
+) -> CSVSchemaMapping:
+    """Multi-entity products.csv-shaped mapping used by dual-world tests.
+
+    Product is keyed by product_id (the natural key). supplier_id is an FK
+    relationship. sku is an optional non-key dependent identifier (the
+    intentional promotion case — must keep working).
+    """
+    columns = [
+        ColumnMapping(
+            column_name="product_id", role=ColumnRole.ATTRIBUTE,
+            datatype="string", attribute_name="product_id", entity="product",
+        ),
+        ColumnMapping(
+            column_name="name", role=ColumnRole.ATTRIBUTE,
+            datatype="string", attribute_name="name", entity="product",
+        ),
+        ColumnMapping(
+            column_name="supplier_id", role=ColumnRole.RELATIONSHIP,
+            target_type="Supplier", datatype="string",
+            attribute_name="supplied_by", entity="product",
+        ),
+        ColumnMapping(
+            column_name="unit_price", role=ColumnRole.ATTRIBUTE,
+            datatype="float", attribute_name="unit_price", entity="product",
+        ),
+        ColumnMapping(
+            column_name="sku", role=ColumnRole.ATTRIBUTE,
+            datatype="string", attribute_name="sku", entity="product",
+        ),
+    ]
+    ext_types: list[TypeExtension] = []
+    if promote_key:
+        ext_types.append(TypeExtension(
+            type_name="ProductIdentifier",
+            promoted_from_attribute="product_id",
+            core_slots=[
+                CoreSlot(name="identifies", kind="relationship", target_type="Product"),
+                CoreSlot(name="product_id", kind="attribute"),
+            ],
+            held_for_review=True,
+        ))
+    if promote_sku:
+        ext_types.append(TypeExtension(
+            type_name="SKU",
+            promoted_from_attribute="sku",
+            core_slots=[
+                CoreSlot(name="identifies", kind="relationship", target_type="Product"),
+                CoreSlot(name="sku", kind="attribute"),
+            ],
+            held_for_review=True,
+        ))
+    return CSVSchemaMapping(
+        entity_type="Product",
+        entities=[EntitySpec(
+            name="product", type_name="Product",
+            id_column="product_id", key_strategy="column",
+        )],
+        columns=columns,
+        ontology_extensions=OntologyExtensions(types=ext_types) if ext_types else None,
+    )
+
+
+def _orders_fk_mapping_with_promotion() -> CSVSchemaMapping:
+    """orders.csv where product_id is already a relationship to Product, and
+    Pass D wrongly also promotes it into ProductIdentifier."""
+    return CSVSchemaMapping(
+        entity_type="Order",
+        entities=[EntitySpec(
+            name="order", type_name="Order",
+            id_column="order_id", key_strategy="column",
+        )],
+        columns=[
+            ColumnMapping(
+                column_name="order_id", role=ColumnRole.ATTRIBUTE,
+                datatype="string", attribute_name="order_id", entity="order",
+            ),
+            ColumnMapping(
+                column_name="product_id", role=ColumnRole.RELATIONSHIP,
+                target_type="Product", datatype="string",
+                attribute_name="includes_product", entity="order",
+            ),
+        ],
+        ontology_extensions=OntologyExtensions(types=[TypeExtension(
+            type_name="ProductIdentifier",
+            promoted_from_attribute="product_id",
+            core_slots=[
+                CoreSlot(name="identifies", kind="relationship", target_type="Product"),
+            ],
+            held_for_review=True,
+        )]),
+    )
+
+
+_PRODUCT_ROWS = [
+    {"product_id": "P77", "name": "Widget Pro", "supplier_id": "S-ACME",
+     "unit_price": "120.00", "sku": "SKU-WPRO"},
+    {"product_id": "P12", "name": "Gadget Lite", "supplier_id": "S-BETA",
+     "unit_price": "99.00", "sku": "SKU-GLITE"},
+    {"product_id": "P55", "name": "Widget Max", "supplier_id": "S-ACME",
+     "unit_price": "100.00", "sku": "SKU-WMAX"},
+]
+
+
+class TestPassDIdentifierDualWorld:
+    """Refuse Pass D promotions that fork multi-file natural-key joins
+    onto *Identifier types (dogfood S2/S5)."""
+
+    def test_own_key_promotion_not_materialized(self):
+        # Reproduces the dual-world: product_id is the Product key AND Pass D
+        # promotes it to ProductIdentifier. Before the fix, apply_mapping
+        # minted both Product/P77 and ProductIdentifier/P77 — same id, later
+        # collided in entity_uri_map so Product showed 0 typed instances.
+        mapping = _sales_product_mapping(promote_key=True)
+        applied = CSVResolver.apply_mapping(mapping, _PRODUCT_ROWS)
+
+        by_type: dict[str, list] = {}
+        for e in applied.entities:
+            by_type.setdefault(e.type_name, []).append(e)
+
+        assert len(by_type.get("Product", [])) == 3
+        product_ids = {e.id for e in by_type["Product"]}
+        assert product_ids == {"P77", "P12", "P55"}
+        # Dual-world promotion must not mint Identifier instances.
+        assert "ProductIdentifier" not in by_type
+        # Supplier edges stay on the Product rail (FK stubs from orders join here).
+        supplied = [r for r in applied.relationships if r.predicate == "supplied_by"]
+        assert {r.source_id for r in supplied} == product_ids
+        assert {r.target_id for r in supplied} == {"S-ACME", "S-BETA"}
+
+    def test_relationship_fk_promotion_not_materialized(self):
+        # Option B: product_id is already role=relationship → Product.
+        # Promoting it to ProductIdentifier would fork Order→Product stubs
+        # from any ProductIdentifier dimension rows.
+        mapping = _orders_fk_mapping_with_promotion()
+        rows = [
+            {"order_id": "O9001", "product_id": "P77"},
+            {"order_id": "O9002", "product_id": "P12"},
+        ]
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        by_type: dict[str, list] = {}
+        for e in applied.entities:
+            by_type.setdefault(e.type_name, []).append(e)
+        assert len(by_type.get("Order", [])) == 2
+        assert len(by_type.get("Product", [])) == 2  # FK stubs
+        assert "ProductIdentifier" not in by_type
+        includes = [r for r in applied.relationships if r.predicate == "includes_product"]
+        assert {(r.source_id, r.target_id) for r in includes} == {
+            ("O9001", "P77"), ("O9002", "P12"),
+        }
+
+    def test_non_key_dependent_identifier_still_promoted(self):
+        # Intentional multi-entity decomposition: SKU is NOT the Product key
+        # (product_id is). Pass D must still promote it.
+        mapping = _sales_product_mapping(promote_sku=True)
+        applied = CSVResolver.apply_mapping(mapping, _PRODUCT_ROWS)
+        by_type: dict[str, list] = {}
+        for e in applied.entities:
+            by_type.setdefault(e.type_name, []).append(e)
+        assert len(by_type["Product"]) == 3
+        assert len(by_type["SKU"]) == 3
+        assert {e.id for e in by_type["SKU"]} == {"SKU-WPRO", "SKU-GLITE", "SKU-WMAX"}
+        identifies = [r for r in applied.relationships if r.predicate == "identifies"]
+        assert len(identifies) == 3
+        product_ids = {e.id for e in by_type["Product"]}
+        assert all(r.target_id in product_ids for r in identifies)
+
+    def test_single_entity_type_id_key_not_promoted(self):
+        # Legacy single-entity path: type_id column is the key.
+        mapping = CSVSchemaMapping(
+            entity_type="Customer",
+            columns=[
+                ColumnMapping(
+                    column_name="customer_id", role=ColumnRole.TYPE_ID,
+                    datatype="string", attribute_name="customer_id",
+                ),
+                ColumnMapping(
+                    column_name="name", role=ColumnRole.ATTRIBUTE,
+                    datatype="string", attribute_name="name",
+                ),
+            ],
+            ontology_extensions=OntologyExtensions(types=[TypeExtension(
+                type_name="CustomerIdentifier",
+                promoted_from_attribute="customer_id",
+                held_for_review=True,
+            )]),
+        )
+        rows = [
+            {"customer_id": "C1001", "name": "Alice"},
+            {"customer_id": "C1002", "name": "Bob"},
+        ]
+        applied = CSVResolver.apply_mapping(mapping, rows)
+        assert {e.type_name for e in applied.entities} == {"Customer"}
+        assert {e.id for e in applied.entities} == {"C1001", "C1002"}
+
+    def test_sanitize_drops_key_promotion_keeps_sku(self):
+        # Inference-time filter: dual-world promotions leave the mapping so
+        # held-for-review UX and ontology pre-registration never see them.
+        mapping = _sales_product_mapping(promote_key=True, promote_sku=True)
+        # Re-run sanitizer on a hand-built mapping (same path as _convert_v2).
+        cleaned = _sanitize_ontology_extensions(mapping, mapping.ontology_extensions)
+        assert cleaned is not None
+        names = {t.type_name for t in cleaned.types}
+        assert "SKU" in names
+        assert "ProductIdentifier" not in names
+
+    def test_promotion_skip_reason_for_key_and_relationship(self):
+        key_mapping = _sales_product_mapping()
+        key_col = next(c for c in key_mapping.columns if c.column_name == "product_id")
+        assert _promotion_skip_reason(key_mapping, key_col) == "source_column_is_entity_key"
+        sku_col = next(c for c in key_mapping.columns if c.column_name == "sku")
+        assert _promotion_skip_reason(key_mapping, sku_col) is None
+
+        fk_mapping = _orders_fk_mapping_with_promotion()
+        fk_col = next(c for c in fk_mapping.columns if c.column_name == "product_id")
+        assert _promotion_skip_reason(fk_mapping, fk_col) == "source_column_is_relationship"
+
+    def test_cross_file_product_ids_share_uri_space(self):
+        # Dimension + fact: same product_id cells mint Product/<id> on both
+        # rails — the join contract for multi-hop Order→Product→Supplier.
+        products = CSVResolver.apply_mapping(
+            _sales_product_mapping(promote_key=True), _PRODUCT_ROWS,
+        )
+        orders = CSVResolver.apply_mapping(
+            _orders_fk_mapping_with_promotion(),
+            [
+                {"order_id": "O9001", "product_id": "P77"},
+                {"order_id": "O9003", "product_id": "P12"},
+            ],
+        )
+        product_ids = {
+            e.id for e in products.entities if e.type_name == "Product"
+        }
+        order_product_stubs = {
+            e.id for e in orders.entities if e.type_name == "Product"
+        }
+        assert product_ids == {"P77", "P12", "P55"}
+        assert order_product_stubs <= product_ids
+        # No Identifier fork on either rail.
+        assert not any(
+            e.type_name.endswith("Identifier")
+            for e in products.entities + orders.entities
+        )
 
 
 class TestCompletionShapeValidation:

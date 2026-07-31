@@ -31,6 +31,11 @@ export interface IngestOptions {
    *  dual-mode default (`asFile` unset) keeps the CLI's intentional
    *  `ingest <raw text>` path working. */
   asFile?: boolean;
+  /** Treat `pathOrText` as RAW TEXT even if the string happens to resolve to an
+   *  existing file path. Use from text-intent callers (e.g. MCP `ingest_text`)
+   *  so a note that looks like a path is never silently re-read from disk.
+   *  Mutually exclusive with `asFile` — when both are set, `asFile` wins. */
+  asText?: boolean;
   /** Rows per batch for CSV ingest. Default 200. Larger = fewer round-trips
    *  but higher per-request memory; 200 is a good balance for typical KGs. */
   batchSize?: number;
@@ -674,10 +679,12 @@ export class Client {
     let fmt: string;
 
     let isFile = false;
-    try {
-      isFile = existsSync(pathOrText) && statSync(pathOrText).isFile();
-    } catch {
-      isFile = false;
+    if (!opts.asText || opts.asFile) {
+      try {
+        isFile = existsSync(pathOrText) && statSync(pathOrText).isFile();
+      } catch {
+        isFile = false;
+      }
     }
 
     // ONTA-253: a file-intent caller (asFile) must NEVER degrade to text. If the
@@ -685,7 +692,8 @@ export class Client {
     // POSTing the path string itself as content — otherwise the backend
     // LLM-extracts phantom entities out of the filename and reports a fabricated
     // success. The dual-mode default (asFile unset) still degrades to text for
-    // the CLI's intentional `ingest <raw text>` path.
+    // the CLI's intentional `ingest <raw text>` path. Text-intent callers pass
+    // asText so an existing path string is still POSTed as content, not re-read.
     if (opts.asFile && !isFile) {
       throw new OntaError(
         `File not found or not a readable file: ${pathOrText}. ` +

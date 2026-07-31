@@ -57,6 +57,46 @@ def test_name_keeps_hyphen_and_apostrophe():
     assert "o'hara" in out.name_tokens
 
 
+def test_name_strips_legal_entity_suffixes():
+    """Org variants collapse to the same core name (OSS dogfood S4)."""
+    cases = [
+        "Acme Corp",
+        "ACME Corporation",
+        "Acme Corp.",
+        "Acme Inc",
+        "Acme Incorporated",
+        "Acme LLC",
+        "Acme L.L.C.",
+        "Acme Ltd",
+        "Acme Limited",
+        "Acme Co",
+        "Acme Company",
+    ]
+    cores = {N.normalize(EntitySignals(name=n)).name for n in cases}
+    assert cores == {"acme"}
+    for n in cases:
+        out = N.normalize(EntitySignals(name=n))
+        assert out.name_tokens == ("acme",)
+        assert "corp" not in out.name_tokens
+        assert "corporation" not in out.name_tokens
+        assert "llc" not in out.name_tokens
+
+
+def test_name_legal_suffix_does_not_strip_person_names():
+    """Person-shaped names without trailing legal fluff are unchanged."""
+    out = N.normalize(EntitySignals(name="John Smith"))
+    assert out.name == "john smith"
+    assert out.name_tokens == ("john", "smith")
+
+
+def test_name_legal_suffix_only_trailing():
+    """'Company' mid-name is content, not a trailing legal suffix."""
+    out = N.normalize(EntitySignals(name="Company Store Inc"))
+    assert out.name == "company store"
+    assert "company" in out.name_tokens
+    assert "store" in out.name_tokens
+
+
 # ---------------------------------------------------------------------------
 # Email
 # ---------------------------------------------------------------------------

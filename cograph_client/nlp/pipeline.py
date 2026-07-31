@@ -20,6 +20,7 @@ from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
 from cograph_client.pipeline.manifest import RunCoverage, RunManifest
+from cograph_client.offline import assert_online_url
 from cograph_client.resolver.llm_router import model_chain
 from cograph_client.spatiotemporal.routing import (
     SPATIAL_INTENT_SCHEMA,
@@ -1495,6 +1496,7 @@ class NLQueryPipeline:
             key, model = self._openrouter_key, self._query_model
         else:
             return await self._structured_via_anthropic(system, user, schema)
+        assert_online_url(endpoint, purpose="query structured LLM")
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
                 endpoint,
@@ -2683,9 +2685,11 @@ class NLQueryPipeline:
             )
 
             t_rephrase = time.time()
+            rephrase_url = f"{OPENROUTER_BASE}/chat/completions"
+            assert_online_url(rephrase_url, purpose="answer rephrase LLM")
             async with httpx.AsyncClient(timeout=10) as client:
                 res = await client.post(
-                    f"{OPENROUTER_BASE}/chat/completions",
+                    rephrase_url,
                     headers={
                         "Authorization": f"Bearer {self._openrouter_key}",
                         "Content-Type": "application/json",
@@ -2771,9 +2775,11 @@ class NLQueryPipeline:
         BIGGER budget only on the reasoning-budget recovery retry (see
         `CEREBRAS_LENGTH_RECOVERY_TOKENS`) after a finish_reason="length" truncation.
         """
+        cerebras_url = "https://api.cerebras.ai/v1/chat/completions"
+        assert_online_url(cerebras_url, purpose="query SPARQL LLM (cerebras)")
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-                "https://api.cerebras.ai/v1/chat/completions",
+                cerebras_url,
                 headers={
                     "Authorization": f"Bearer {self._cerebras_key}",
                     "Content-Type": "application/json",
@@ -2833,9 +2839,11 @@ class NLQueryPipeline:
 
     async def _generate_via_openrouter(self, prompt: str) -> dict:
         """Generate SPARQL via OpenRouter (OpenAI-compatible API)."""
+        openrouter_url = f"{OPENROUTER_BASE}/chat/completions"
+        assert_online_url(openrouter_url, purpose="query SPARQL LLM")
         async with httpx.AsyncClient(timeout=30) as client:
             res = await client.post(
-                f"{OPENROUTER_BASE}/chat/completions",
+                openrouter_url,
                 headers={
                     "Authorization": f"Bearer {self._openrouter_key}",
                     "Content-Type": "application/json",

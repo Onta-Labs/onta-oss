@@ -558,13 +558,21 @@ def test_with_auth_configured_the_path_segment_was_never_the_tenant(
 ):
     """Why this is ONTA-422's low-severity half, pinned rather than assumed.
 
-    A static key maps to ITS tenant and the path is ignored; a verifier
-    authorizes the path tenant against a grant list. Neither can be crafted, so
-    the auth-configured deployments were never exposed — and the new check does
-    not change what they resolve to.
+    Auth-configured deployments never treat a crafted path segment as the
+    tenant: a static key 403s when the path differs from the key's tenant; a
+    verifier authorizes the path against a grant list. Matching path still
+    resolves to the key's tenant graph (not a crafted segment).
     """
-    res = client.get(
+    # Foreign path → 403 (no silent reroute, no Neptune query under a crafted id).
+    foreign = client.get(
         "/graphs/whatever-the-caller-typed/explore/kgs/movies/types/Movie/summary",
+        headers=auth_headers,
+    )
+    assert foreign.status_code == 403, foreign.text
+    assert "whatever-the-caller-typed" in foreign.json()["detail"]
+
+    res = client.get(
+        f"/graphs/{TENANT}/explore/kgs/movies/types/Movie/summary",
         headers=auth_headers,
     )
     assert res.status_code == 200, res.text

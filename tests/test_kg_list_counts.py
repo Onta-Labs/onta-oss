@@ -99,6 +99,53 @@ def test_missing_count_falls_back_to_live_scan_and_persists(
     ), f"computed count should be persisted; updates={updates}"
 
 
+def test_stored_zero_is_served_without_live_scan(client, mock_neptune, auth_headers):
+    """A stored ``0`` is a real value, not "missing" — list_kgs must not live-scan.
+
+    This is the sticky-zero trap: create KG → list (stores 0) → ingest without
+    invalidating → list still shows 0. The write-path fix is that
+    ``refresh_after_write`` drops the stored count; this test pins that a
+    *present* zero is still served as zero (no accidental fallback that would
+    mask the bug by always recounting).
+    """
+    mock_neptune.query.side_effect = _route(stored_count="0", live_count="999")
+
+    resp = client.get(f"/graphs/{TENANT}/kgs", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()[0]["triple_count"] == 0
+
+    queries = [c.args[0] for c in mock_neptune.query.call_args_list if c.args]
+    assert not any("COUNT(*)" in q for q in queries), (
+        f"stored zero must not trigger a live scan; queries={queries}"
+    )
+
+
+def test_invalidate_triple_count_drops_stored_value():
+    """After invalidation the next list_kgs path sees no stored count.
+
+    Unit-level: the DELETE emitted by ``invalidate_triple_count`` targets the
+    kg_triple_count predicate for that KG URI. Integration of
+    refresh_after_write → invalidate is covered in test_kg_writer.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from cograph_client.api.routes.knowledge_graphs import invalidate_triple_count
+    from cograph_client.graph.queries import kg_meta_uri, tenant_graph_uri
+
+    async def run():
+        neptune = AsyncMock()
+        await invalidate_triple_count(neptune, TENANT, "kg-a")
+        assert neptune.update.await_count == 1
+        sparql = neptune.update.await_args.args[0]
+        assert KG_TRIPLE_COUNT in sparql
+        assert "DELETE" in sparql
+        assert kg_meta_uri(TENANT, "kg-a") in sparql
+        assert tenant_graph_uri(TENANT) in sparql
+
+    asyncio.run(run())
+
+
 # A registered name that cannot legally be interpolated into a graph IRI. Both KG
 # registration paths validate (``KGCreate.name``'s pattern and
 # ``ensure_kg_registered``'s ``is_valid_kg_name`` branch) — but that does NOT make

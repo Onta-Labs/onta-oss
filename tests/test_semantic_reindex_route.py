@@ -111,24 +111,22 @@ def test_reindex_requires_auth(monkeypatch, client):
     assert resp.status_code in (401, 403)
 
 
-def test_reindex_scopes_to_the_keys_tenant(monkeypatch, client, auth_headers):
-    """The same get_tenant dependency as every KG route: a single-tenant static
-    key routes to ITS tenant regardless of the path (documented legacy
-    behavior), so the reconcile work is scheduled under the KEY's tenant —
-    never under the foreign tenant named in the path."""
+def test_reindex_static_key_foreign_tenant_is_403(monkeypatch, client, auth_headers):
+    """A static key on a foreign path tenant is 403 — never schedules reconcile
+    work under the key's tenant (or the path tenant) via silent reroute."""
     monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
     resp = client.post(
         "/graphs/other-tenant/kgs/kg1/search/reindex", headers=auth_headers
     )
-    assert resp.status_code == 202
-    # Scheduled under test-tenant (the key's tenant), not other-tenant.
-    assert resp.json()["schedule_id"] == rec.reconcile_schedule_id(TENANT, "kg1")
+    assert resp.status_code == 403
+    assert "other-tenant" in resp.json()["detail"]
 
     async def check():
         store = get_schedule_store()
         assert (
             await store.get(rec.reconcile_schedule_id("other-tenant", "kg1")) is None
         )
+        assert await store.get(rec.reconcile_schedule_id(TENANT, "kg1")) is None
 
     asyncio.run(check())
 
