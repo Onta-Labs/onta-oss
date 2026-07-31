@@ -60,6 +60,12 @@ from cograph_client.agent.plan_store import (  # noqa: F401  (re-exported for ba
     make_plan_store,
     reset_plan_store,
 )
+from cograph_client.agent.kg_scope import (
+    CODE_KG_MISSING,
+    CTX_KG_RESOLVED,
+    check_kg_scope,
+    resolved_kg_note,
+)
 from cograph_client.agent.registry import (
     AgentContext,
     get_capabilities,
@@ -714,6 +720,16 @@ async def handle(ctx: AgentContext, message: str, session: dict | None = None) -
 
     result = await _respond(ctx, message, session_id, history, prior_clarify_count)
 
+    # ONTA-426: when the turn named no knowledge graph and the gate inferred one,
+    # SAY so on the response. The inference is only ever made when the workspace
+    # has exactly one graph (there is nothing to get wrong), but the user still has
+    # to be able to see which dataset an action landed on. An unannounced default
+    # is the silent-scoping bug in a politer costume.
+    resolved = (getattr(ctx, "extras", None) or {}).get(CTX_KG_RESOLVED)
+    if resolved:
+        result.setdefault("kg_name", resolved)
+        result.setdefault("kg_scope_note", resolved_kg_note(resolved))
+
     await _record_turn(ctx, session_id, message, result, owner)
     if session_id:
         result.setdefault("session_id", session_id)
@@ -895,6 +911,18 @@ async def _respond(
             ),
             "options": list(_DEFAULT_ACTION_OPTIONS),
         }
+
+    # ONTA-426 / ONTA-428: resolve and validate the KG scope BEFORE any capability
+    # plans. A typo'd kg_name would otherwise plan (and, after a confirm, run) work
+    # against a graph that does not exist (SPARQL returns zero rows rather than an
+    # error, so the turn reports success over nothing), and an OMITTED kg_name
+    # would fall through to the tenant base graph, acting on a dataset the user
+    # never named. Returns a clarify to surface either case; may resolve an omitted
+    # name to the workspace's only graph. See agent/kg_scope.py for the policy and
+    # for why this lives here rather than at the kg_writer seam.
+    scope_clarify = await check_kg_scope(ctx, [c for _, c in available])
+    if scope_clarify is not None:
+        return scope_clarify
 
     # Accumulate the user's answers across the dialogue so each capability's
     # field/attribute extraction sees the full ask, not just the latest reply.
@@ -1096,6 +1124,9 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     payload is persisted on the plan for the duplicate-confirm replay above.
     """
     store = make_plan_store()
+    gate = await _kg_scope_gate_for_confirm(ctx, store, plan_id)
+    if gate is not None:
+        return gate
     stale_before = datetime.now(timezone.utc) - timedelta(
         seconds=_EXECUTING_STALE_S
     )
@@ -1175,6 +1206,63 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
             "agent_plan_done_persist_failed", plan_id=plan_id, exc_info=True
         )
     return result
+
+
+async def _kg_scope_gate_for_confirm(ctx, store, plan_id: str) -> dict | None:
+    """Re-check the KG scope of a plan at CONFIRM time (ONTA-426 / ONTA-428).
+
+    ``execute_plan`` is the only mutating path, so the guarantee "no /agent turn
+    writes to a graph that does not exist" has to hold here too, not only at plan
+    time. Two things this catches that the plan-time gate cannot:
+
+    * the graph existed when the plan was proposed and was deleted before the user
+      confirmed (a plan can sit un-confirmed indefinitely);
+    * a confirm whose request body carries NO ``context.kg_name``, in which case
+      the plan's own recorded scope is restored onto the context instead of
+      letting the execution fall through to the tenant base graph.
+
+    This VALIDATES, it never re-resolves (``resolve_omitted=False``). A plan
+    proposed with no KG scope at all was already gated when it was proposed, in a
+    workspace that had no graphs to choose between; inferring one now, because the
+    workspace has since grown a graph, would silently retarget a plan the user
+    already approved, and would do it without the ``kg_scope_note`` the plan-time
+    path attaches.
+
+    Runs BEFORE ``claim_for_execution`` deliberately: a refused confirm must leave
+    the plan ``proposed`` and re-confirmable once the user creates (or corrects)
+    the graph, rather than stranding it in ``executing`` until the stale cutoff.
+    Returns ``None`` to proceed, or a typed ``{"kind": "error"}`` payload.
+    ``execute_plan``'s contract is ``{kind: result|error}``, so a clarify would be
+    off-contract here even though the plan-time gate returns one.
+
+    Best-effort: an unreadable plan (or any store hiccup) falls through to the
+    normal claim path, which reports "plan not found" as it always did.
+    """
+    try:
+        plan = await store.get(plan_id, ctx.tenant_id)
+    except Exception:  # noqa: BLE001 - the claim below is the authoritative read
+        logger.warning("agent_plan_scope_read_failed", plan_id=plan_id, exc_info=True)
+        return None
+    if plan is None or plan.status != "proposed":
+        # Not found, or already claimed/finished. Leave the duplicate-confirm
+        # replay and the not-found response exactly as they were.
+        return None
+    if not getattr(ctx, "kg_name", "") and plan.kg_name:
+        ctx.kg_name = plan.kg_name
+    caps = [s.capability for s in plan.steps]
+    clarify = await check_kg_scope(ctx, caps, resolve_omitted=False)
+    if clarify is None:
+        return None
+    logger.info("agent_plan_kg_scope_refused", plan_id=plan_id, kg_name=ctx.kg_name)
+    return {
+        "kind": "error",
+        # The gate's own typed reason (kg_missing / kg_ambiguous) rather than a
+        # second, hardcoded copy that could drift from it.
+        "code": clarify.get("code", CODE_KG_MISSING),
+        "error": clarify.get("question", ""),
+        "plan_id": plan_id,
+        "options": clarify.get("options", []),
+    }
 
 
 def _already_confirmed_response(plan: StoredPlan) -> dict:

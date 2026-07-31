@@ -3784,3 +3784,101 @@ async def test_plan_query_ignores_chip_confirm_turn(monkeypatch):
     assert "use these" not in q and "npi" not in q
     # The chip fields still survive into the plan's attributes.
     assert {"npi", "taxonomy", "affiliation"} <= set(step.params["attributes"])
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-428: discovery is the one rail the planner's KG gate does NOT refuse when
+# the target graph is missing, because minting records into a graph that does not exist
+# yet is a legitimate cold start. What was wrong was doing it SILENTLY, so the
+# plan the user confirms has to say the graph will be created.
+# --------------------------------------------------------------------------- #
+def _ctx_missing_kg(available=()) -> AgentContext:
+    """The context the planner hands discovery when its probe said KG_MISSING.
+
+    ``available`` is the workspace's OTHER graphs, which the gate looks up once on
+    the missing path. Non-empty = the typo shape; empty = a genuine cold start.
+    """
+    from cograph_client.agent.kg_scope import CTX_KG_AVAILABLE, CTX_KG_STATUS
+    from cograph_client.graph.kg_status import KG_MISSING
+
+    ctx = _ctx()
+    ctx.extras[CTX_KG_STATUS] = KG_MISSING
+    ctx.extras[CTX_KG_AVAILABLE] = list(available)
+    return ctx
+
+
+async def test_plan_announces_that_a_missing_kg_will_be_created(monkeypatch):
+    register_web_source(FakeProvider(**RICH))
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx_missing_kg(), "add the OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.preview["creates_kg"] is True
+    assert "'models' does not exist yet and will be created" in step.rationale
+    assert "does not exist yet and will be created" in step.preview["summary"]
+
+
+async def test_plan_says_nothing_about_creation_for_an_existing_kg(monkeypatch):
+    """The note must not leak onto the ordinary path: an existing (or unprobed)
+    graph carries no creation claim at all."""
+    register_web_source(FakeProvider(**RICH))
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "add the OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.preview["creates_kg"] is False
+    assert "will be created" not in step.rationale
+    assert "will be created" not in step.preview["summary"]
+
+
+# The LEAN tier is the one that AUTO-CONFIRMS (no human plan card at all), so the
+# creation note matters MORE there, not less. FakeProvider() is free, which puts
+# it under _PREVIEW_GATE_USD.
+async def test_lean_autoconfirm_plan_also_announces_kg_creation():
+    register_web_source(FakeProvider())
+
+    steps = await WebIngestCapability().plan(
+        _ctx_missing_kg(), "add the OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.cost["auto_confirm"] is True  # cold start stays frictionless
+    assert step.preview["creates_kg"] is True
+    assert "'models' does not exist yet and will be created" in step.rationale
+    assert "does not exist yet and will be created" in step.preview["summary"]
+
+
+async def test_lean_plan_withholds_autoconfirm_when_the_kg_name_looks_like_a_typo():
+    """A missing target in a workspace that ALREADY has graphs is the reported
+    ONTA-428 shape. Auto-confirming there would mint a second, near-identical
+    graph with no human ever seeing the name."""
+    register_web_source(FakeProvider())
+
+    steps = await WebIngestCapability().plan(
+        _ctx_missing_kg(available=["models_v1", "imdb"]),
+        "add the OpenRouter models",
+        parsed=CONFIRMED_SPEC,
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert "auto_confirm" not in step.cost
+    assert step.preview["creates_kg"] is True
+
+
+async def test_lean_plan_for_an_existing_kg_is_unchanged():
+    """The auto-confirm gate keeps its previous behaviour everywhere else."""
+    register_web_source(FakeProvider())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "add the OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.cost["auto_confirm"] is True
+    assert step.preview["creates_kg"] is False
+    assert "will be created" not in step.rationale

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import structlog
 
+from cograph_client.agent.kg_scope import SCOPE_NONE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.retrieval import fetcher_cost, get_page_fetchers
 from cograph_client.research.harness import WebResearchHarness
@@ -119,6 +120,9 @@ def _estimate_cost(max_fetches: int) -> dict:
 
 class WebResearchCapability:
     name = "web_research"
+    # Read-only against the WEB; never reads from or writes to a KG (ADR 0006), so
+    # a missing/omitted kg_name cannot make its answer wrong. Not KG-scoped.
+    kg_scope_policy = SCOPE_NONE
 
     def describe(self) -> str:
         return (
