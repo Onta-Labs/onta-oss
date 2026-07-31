@@ -23,6 +23,7 @@ earlier fix went wrong:
 """
 
 import os
+import re
 from unittest.mock import AsyncMock
 
 import pytest
@@ -74,6 +75,9 @@ BREAKOUT_PAYLOADS = [
     "Movie\r\n",
     "Movie\t",
     "\x00Movie",
+    "Movie\x7f",      # DEL and the C1 block are IRI-illegal too: RFC 3987's
+    "Movie\x85",      # ucschar starts at U+00A0, so everything below it that is
+    "Movie\x9f",      # not already covered by \x00-\x20 is equally illegal.
     "",
 ]
 
@@ -96,7 +100,20 @@ REAL_NAMES = [
     "price(usd)",
     "share%",
     "Type#1",
+    "no\xa0break",   # U+00A0 is the first ucschar: legal, and NOT swept up by
+                       # the C1 range that ends one codepoint earlier
 ]
+
+
+def test_the_forbidden_range_stops_exactly_where_ucschar_begins():
+    """Boundary pin for the ``\\x7f-\\x9f`` extension.
+
+    One codepoint too far and every name containing a non-breaking space is
+    rejected; one codepoint short and DEL slips through to the store. Both are
+    silent until production, so the boundary is asserted rather than eyeballed.
+    """
+    assert is_valid_type_name("a\x9fb") is False
+    assert is_valid_type_name("a\xa0b") is True
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +387,134 @@ def test_search_skips_one_corrupt_stored_name_instead_of_failing_the_listing(
     assert any(e.get("event") == "type_name_invalid_skipped" for e in logs), (
         "the skip must stay observable, or the corruption becomes silent"
     )
+
+
+# ---------------------------------------------------------------------------
+# Fail-soft on every path that ENUMERATES stored names.
+#
+# The rule this section defends: a corrupt stored name costs you THAT name, and
+# nothing else. Every case below was a real regression caught in review — the
+# first draft of this change fail-softed only the Explorer's search and left the
+# NL planner's ontology summary, the embedding chunks and the drift report to
+# raise, which is onta-oss#274 all over again on hotter paths.
+# ---------------------------------------------------------------------------
+
+CORRUPT_LABEL = "Movie> <injected"
+TYPES_NS = "https://cograph.tech/types/"
+XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
+
+
+def _onto_rows(*labels):
+    """`?type ?typeLabel ?attr ?attrLabel ?range` rows, one attribute per type."""
+    rows = []
+    for label in labels:
+        rows.append({
+            "type": {"value": f"{TYPES_NS}{label}"},
+            "typeLabel": {"value": label},
+            "attr": {"value": f"{TYPES_NS}{label}/attrs/title"},
+            "attrLabel": {"value": "title"},
+            "range": {"value": XSD_STRING},
+        })
+    return {
+        "head": {"vars": ["type", "typeLabel", "attr", "attrLabel", "range"]},
+        "results": {"bindings": rows},
+    }
+
+
+async def test_the_nl_ontology_summary_survives_one_corrupt_stored_name():
+    """The hottest read path: every ``/ask`` builds this summary.
+
+    The whole fetch sits under one ``except Exception: return
+    ONTOLOGY_FETCH_ERROR``, so a raise does not degrade the bad type — it tells
+    the planner the schema is UNKNOWN for the entire workspace, on every
+    question.
+    """
+    from cograph_client.nlp.pipeline import (
+        ONTOLOGY_FETCH_ERROR,
+        NLQueryPipeline,
+        _ontology_cache,
+    )
+
+    _ontology_cache.clear()
+
+    class _Neptune:
+        async def query(self, sparql):
+            if "?typeLabel" in sparql:
+                return _onto_rows("Movie", CORRUPT_LABEL, "Director")
+            # The ONTA-427 active-types probe: answer "populated" for every URI
+            # it asks about, so the summary is assembled rather than short-
+            # circuiting to ONTOLOGY_EMPTY (which would make this test pass for
+            # the wrong reason).
+            probed = re.findall(r"SELECT \(<([^>]+)> AS \?type\)", sparql)
+            return {
+                "head": {"vars": ["type"]},
+                "results": {"bindings": [{"type": {"value": u}} for u in probed]},
+            }
+
+    summary = await NLQueryPipeline(_Neptune(), anthropic_key="dummy")._fetch_ontology(
+        f"{GRAPH_URI_PREFIX}{TENANT}", f"{GRAPH_URI_PREFIX}{TENANT}/kg/{KG}"
+    )
+    _ontology_cache.clear()
+
+    assert summary != ONTOLOGY_FETCH_ERROR
+    assert "Movie" in summary and "Director" in summary
+    assert "injected" not in summary
+
+
+def test_ontology_embedding_chunks_survive_one_corrupt_stored_name():
+    from cograph_client.nlp.ontology_embeddings import _parse_ontology_bindings
+
+    _, rows = __import__(
+        "cograph_client.graph.parser", fromlist=["parse_sparql_results"]
+    ).parse_sparql_results(_onto_rows("Movie", CORRUPT_LABEL))
+    parsed = _parse_ontology_bindings(rows)
+    assert "Movie" in parsed
+    assert CORRUPT_LABEL not in parsed
+
+
+def test_a_corrupt_attribute_label_costs_only_that_attribute():
+    """Attribute labels are stored literals too, and mint the same IRI."""
+    from cograph_client.graph.parser import parse_sparql_results
+    from cograph_client.nlp.ontology_embeddings import _parse_ontology_bindings
+
+    raw = _onto_rows("Movie")
+    raw["results"]["bindings"][0]["attrLabel"] = {"value": "title> <injected"}
+    _, rows = parse_sparql_results(raw)
+    parsed = _parse_ontology_bindings(rows)
+    assert "Movie" in parsed, "the TYPE must survive its attribute being corrupt"
+    assert parsed["Movie"]["attributes"] == []
+
+
+def test_the_core_slot_membership_test_answers_false_rather_than_raising():
+    """``_is_core_slot`` takes leaves SLICED off stored URIs.
+
+    A URI outside the expected shape slices to ``""`` (a bare ``…/onto/``
+    predicate does exactly this), and ``core_slots`` only holds well-formed
+    attribute URIs, so False is the correct answer. Raising would fail a whole
+    drift report over one malformed row.
+    """
+    from cograph_client.api.routes.explore import _is_core_slot
+
+    core = {"https://cograph.tech/types/Movie/attrs/title"}
+    assert _is_core_slot("Movie", "title", core) is True
+    assert _is_core_slot("", "title", core) is False
+    assert _is_core_slot("Movie", "", core) is False
+    assert _is_core_slot("Movie> <injected", "title", core) is False
+
+
+def test_the_skip_helper_is_shared_not_re_implemented():
+    """One fail-soft helper, imported by every enumeration site.
+
+    Four copies of "is this name safe" is how the two ``kg_name`` patterns
+    drifted apart before ONTA-414. Pinned structurally so the next enumeration
+    site imports it instead of pasting it.
+    """
+    from cograph_client.api.routes import explore
+    from cograph_client.graph.queries import skip_invalid_type_name
+    from cograph_client.nlp import ontology_embeddings, pipeline
+
+    for module in (explore, pipeline, ontology_embeddings):
+        assert module.skip_invalid_type_name is skip_invalid_type_name
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,15 @@ import re
 # Defined at the top because it is now the shared basis of THREE things: the
 # IRI branch of :func:`_escape_value`, :func:`is_valid_type_name` (ONTA-425) and
 # :func:`is_valid_tenant_id` (ONTA-422).
-_IRI_FORBIDDEN = re.compile(r'[<>"{}|\^`\\\x00-\x20]')
+#
+# ``\x7f-\x9f`` (DEL + the C1 controls) is part of the same class and was missing
+# while this range only guarded ``_escape_value``: RFC 3987's ``ucschar`` starts
+# at U+00A0, so every codepoint below it that is not already covered by
+# ``\x00-\x20`` is equally illegal in an IRI. Left out, a name carrying one
+# passed validation and then failed at the STORE — the opaque 500 this whole
+# family exists to convert into an honest 422. Checked against the live registry:
+# no real type or attribute name contains one.
+_IRI_FORBIDDEN = re.compile(r'[<>"{}|\^`\\\x00-\x20\x7f-\x9f]')
 
 
 class InvalidGraphIdentifier(ValueError):
@@ -184,6 +192,13 @@ def is_valid_type_name(name: object) -> bool:
 
 
 def require_valid_type_name(name: object, kind: str = "type name") -> str:
+    """Raise flavour: for a name the CALLER supplied and can fix.
+
+    Use on a single-resource operation (one type's summary, one ontology
+    mutation). For a read that fans out over STORED names use
+    :func:`skip_invalid_type_name` instead — see its docstring for why the
+    difference is load-bearing.
+    """
     if not is_valid_type_name(name):
         raise InvalidTypeName(
             f"Invalid {kind} {name!r}: must be non-empty and free of whitespace, "
@@ -192,6 +207,44 @@ def require_valid_type_name(name: object, kind: str = "type name") -> str:
         )
     assert isinstance(name, str)
     return name
+
+
+def skip_invalid_type_name(name: object, op: str) -> bool:
+    """Fail-soft flavour: whether to SKIP ``name``, logging it as it goes.
+
+    THE helper for any read that enumerates names coming back FROM THE STORE:
+    the ontology summary the NL planner builds, the Explorer's type search, the
+    ontology embedding chunks. All of them fan out over every declared name, so
+    letting :func:`require_valid_type_name` raise on ONE corrupt row would take
+    the whole answer down for every healthy type — the all-or-nothing failure
+    onta-oss#274 had to fix after ONTA-414 (a single pre-existing malformed
+    ``kg_name`` 422'd an entire workspace's KG listing).
+
+    Shared rather than copied per module BECAUSE of that history: the enumeration
+    sites are spread across ``nlp/``, ``api/routes/`` and ``graph/``, and a
+    per-module copy is how the two ``kg_name`` patterns drifted in the first
+    place. The ``kg_name`` twin, ``knowledge_graphs._skip_invalid_kg_name``,
+    stays separate only because its message and predicate differ.
+
+    A corrupt row does not need out-of-band DB access to arrive:
+    ``POST /graphs/{tenant}/triples`` writes arbitrary triples into the same
+    tenant base graph the ontology lives in, and SPARQL literal escaping does not
+    escape ``>``, so a caller with write access to their OWN workspace can plant
+    a ``rdfs:label`` that later reads back here. The skip stays LOUD for exactly
+    that reason: a silent drop would make the corruption unfindable.
+    """
+    if is_valid_type_name(name):
+        return False
+    # Per-call logger, matching knowledge_graphs._skip_invalid_kg_name: a
+    # module-level structlog proxy is frozen at import by
+    # cache_logger_on_first_use, after which structlog.testing.capture_logs can
+    # no longer intercept it. Not hot — the valid-name fast path returns above.
+    import structlog
+
+    structlog.get_logger("cograph.graph").warning(
+        "type_name_invalid_skipped", type_name=name, op=op
+    )
+    return True
 
 
 def kg_graph_uri(tenant_id: str, kg_name: str) -> str:

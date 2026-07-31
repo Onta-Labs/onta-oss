@@ -39,6 +39,7 @@ from cograph_client.graph.queries import (
     is_valid_type_name,
     kg_graph_uri,
     require_valid_type_name,
+    skip_invalid_type_name,
     sparql_string_literal,
     tenant_graph_uri,
 )
@@ -66,32 +67,21 @@ def _from_graphs(graph_uris: list[str]) -> str:
     return " ".join(f"FROM <{g}>" for g in graph_uris)
 
 
-def _skip_invalid_type_name(name: str, op: str) -> bool:
-    """Whether ``name`` can't legally sit in an IRI — log and skip if so.
+def _is_core_slot(type_leaf: str, pred_leaf: str, core_slots: set[str]) -> bool:
+    """Is the attribute URI for ``(type_leaf, pred_leaf)`` a declared core slot?
 
-    The type-name twin of ``knowledge_graphs._skip_invalid_kg_name``, and it
-    exists for the same reason: since ONTA-425 ``type_uri`` / ``layer_type_uri``
-    raise :class:`InvalidTypeName` (→ 422 app-wide), so a read path that FANS OUT
-    over every stored name must branch on the predicate instead, or one corrupt
-    ontology row takes down the whole enumeration for every other type.
-
-    A name like that does not need out-of-band DB access to arrive:
-    ``POST /graphs/{tenant}/triples`` writes arbitrary triples into the same
-    tenant base graph the ontology lives in, and SPARQL literal escaping does not
-    escape ``>``. Keeping the skip LOUD (a warning, not a silent drop) is what
-    makes such a row findable instead of merely invisible.
+    A MEMBERSHIP TEST, so it answers False rather than raising (ONTA-425). Both
+    leaves are DERIVED by string-slicing a stored URI, and a URI outside the
+    expected shape slices to ``""`` — e.g. a bare ``…/onto/`` predicate, or a
+    type URI outside the tenant namespace. Since ``core_slots`` only ever holds
+    well-formed attribute URIs, a leaf that cannot mint one is by definition not
+    in the set, and False is the correct answer, not an error. These call sites
+    are drift-report enumerations over every stored edge: raising here would fail
+    the whole report over one malformed row.
     """
-    if is_valid_type_name(name):
+    if not (is_valid_type_name(type_leaf) and is_valid_type_name(pred_leaf)):
         return False
-    # Per-call logger, matching knowledge_graphs._skip_invalid_kg_name: a
-    # module-level structlog proxy is frozen at import by
-    # cache_logger_on_first_use, after which capture_logs cannot intercept it.
-    import structlog as _structlog
-
-    _structlog.get_logger("cograph.explore").warning(
-        "type_name_invalid_skipped", type_name=name, op=op
-    )
-    return True
+    return attr_uri(type_leaf, pred_leaf) in core_slots
 
 
 async def _resolve_layered_type(
@@ -848,7 +838,7 @@ async def _read_edges_from_stats_drift(
             p_uri[len(ONTO_PRED_PREFIX):] if p_uri.startswith(ONTO_PRED_PREFIX)
             else p_uri.rstrip("/").split("/")[-1]
         )
-        is_core = attr_uri(src_leaf, pred_leaf) in core_slots
+        is_core = _is_core_slot(src_leaf, pred_leaf, core_slots)
         if not drift_control.should_declare(support, source_count, is_core):
             continue
         out.append((su[len(TYPE_URI_PREFIX):], tu[len(TYPE_URI_PREFIX):]))
@@ -967,7 +957,7 @@ async def _live_edge_scan_drift(
             p_uri[len(ONTO_PRED_PREFIX):] if p_uri.startswith(ONTO_PRED_PREFIX)
             else p_uri.rstrip("/").split("/")[-1]
         )
-        is_core = attr_uri(src, pred_leaf) in core_slots
+        is_core = _is_core_slot(src, pred_leaf, core_slots)
         if not drift_control.should_declare(support, source_count, is_core):
             continue
         out.append((src, tgt))
@@ -1199,7 +1189,7 @@ async def _build_drift_report(
             "source_count": entity_counts.get(type_uri_str, 0),
             # pred_uri is …/onto/<pred>; core_slots holds ontology attr URIs, so
             # match on attr_uri(type_leaf, pred_leaf), not the raw predicate URI.
-            "is_core_slot": attr_uri(type_leaf, pred_leaf) in core_slots,
+            "is_core_slot": _is_core_slot(type_leaf, pred_leaf, core_slots),
         })
     report = drift_control.drift_report(declarations)
     logger.info(
@@ -2223,7 +2213,7 @@ async def search_explorer(
             # type, the all-or-nothing failure onta-oss#274 had to fix for KG
             # names. Skipping keeps the corruption observable in logs (and the
             # bad type genuinely unqueryable) without taking the listing down.
-            if _skip_invalid_type_name(type_name, "search"):
+            if skip_invalid_type_name(type_name, "explore_search"):
                 continue
             resolved = stack.resolve_type(type_name, types_by_layer)
             if resolved is None:

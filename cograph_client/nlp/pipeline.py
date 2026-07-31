@@ -10,7 +10,7 @@ import structlog
 
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.parser import parse_sparql_results, unbound_projection_vars
-from cograph_client.graph.queries import parse_kg_graph_uri
+from cograph_client.graph.queries import parse_kg_graph_uri, skip_invalid_type_name
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
@@ -1488,6 +1488,16 @@ class NLQueryPipeline:
                     tl = row.get("typeLabel", "")
                     if not tl:
                         continue
+                    # Fail SOFT on a corrupt stored label (ONTA-425). This whole
+                    # block sits under one `except Exception: return
+                    # ONTOLOGY_FETCH_ERROR`, so letting `_type_uri_for` /
+                    # `_attr_uri_for` raise on ONE bad name would replace the
+                    # ENTIRE schema summary with "ontology unavailable" for every
+                    # NL query in the workspace — the onta-oss#274 all-or-nothing
+                    # failure, on the hottest read path there is. One unqueryable
+                    # type is the honest cost; a blinded planner is not.
+                    if skip_invalid_type_name(tl, "ask_ontology_summary"):
+                        continue
                     # NOTE: we no longer drop a declared type that is absent from
                     # `active_types` here (ONTA-258). Every declared type is parsed
                     # in; types with no instances in the queried KG are annotated
@@ -1506,7 +1516,13 @@ class NLQueryPipeline:
                     elif type_layers.get(tl) is not layer:
                         # Already claimed by a higher-precedence layer.
                         continue
-                    if row.get("attrLabel"):
+                    # Same fail-soft rule for the ATTRIBUTE half: its label is
+                    # equally a stored literal, and `_attr_uri_for` mints an IRI
+                    # from it below. Skipping only the attribute (not the whole
+                    # row) keeps the row's function binding.
+                    if row.get("attrLabel") and not skip_invalid_type_name(
+                        row["attrLabel"], "ask_ontology_attr"
+                    ):
                         attr_name = row["attrLabel"]
                         range_str = row.get("range", "")
                         target_type = type_name_from_uri(range_str) if range_str else None

@@ -465,7 +465,9 @@ async def delete_kg(
     """Delete a knowledge graph and all its data."""
     base = tenant_graph_uri(tenant.tenant_id)
     graph = kg_graph_uri(tenant.tenant_id, kg_name)
-    kg_uri = f"https://cograph.tech/kgs/{tenant.tenant_id}/{kg_name}"
+    # The shared builder, not a fourth hand-rolled copy of this URI (ONTA-422):
+    # `kg_meta_uri` is the canonical one and now validates the tenant half.
+    kg_uri = kg_meta_uri(tenant.tenant_id, kg_name)
 
     # Drop all triples in the KG graph
     await client.update(f"DROP SILENT GRAPH <{graph}>")

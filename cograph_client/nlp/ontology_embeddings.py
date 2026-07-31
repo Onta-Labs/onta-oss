@@ -15,8 +15,14 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.ontology_queries import get_full_ontology_query, type_uri, attr_uri
+from cograph_client.graph.ontology_queries import (
+    TYPE_URI_PREFIX,
+    attr_uri,
+    get_full_ontology_query,
+    type_uri,
+)
 from cograph_client.graph.parser import parse_sparql_results
+from cograph_client.graph.queries import skip_invalid_type_name
 
 # Shared embed client (ONTA-174) — model/batching/errors live in ONE place.
 # EmbeddingError and the embedding constants are re-exported here so existing
@@ -33,7 +39,6 @@ from cograph_client.nlp.embed_client import cosine_similarity as _cosine_similar
 
 logger = logging.getLogger(__name__)
 
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
 LARGE_TYPE_ATTR_THRESHOLD = 200
 LARGE_TYPE_ATTR_KEEP = 50
 
@@ -356,6 +361,13 @@ def _parse_ontology_bindings(bindings: list[dict]) -> dict[str, dict]:
         tl = row.get("typeLabel", "")
         if not tl:
             continue
+        # Fail SOFT (ONTA-425): these labels are stored literals, and
+        # `_format_chunk_text` / `attr_uri` mint IRIs from them. Raising on one
+        # corrupt row would lose EVERY type's embedding chunk, which is the
+        # semantic-retrieval half of the same all-or-nothing failure the NL
+        # ontology summary avoids.
+        if skip_invalid_type_name(tl, "ontology_embeddings"):
+            continue
         if tl not in types:
             types[tl] = {
                 "attributes": [],
@@ -363,7 +375,9 @@ def _parse_ontology_bindings(bindings: list[dict]) -> dict[str, dict]:
                 "relationship_target_types": [],
                 "functions": set(),
             }
-        if row.get("attrLabel"):
+        if row.get("attrLabel") and not skip_invalid_type_name(
+            row["attrLabel"], "ontology_embeddings_attr"
+        ):
             attr_name = row["attrLabel"]
             range_str = row.get("range", "")
             if range_str.startswith(TYPE_URI_PREFIX):
