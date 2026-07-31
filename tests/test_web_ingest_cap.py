@@ -3784,3 +3784,49 @@ async def test_plan_query_ignores_chip_confirm_turn(monkeypatch):
     assert "use these" not in q and "npi" not in q
     # The chip fields still survive into the plan's attributes.
     assert {"npi", "taxonomy", "affiliation"} <= set(step.params["attributes"])
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-428: discovery is the one rail the planner's KG gate does NOT refuse when
+# the target graph is missing, because minting records into a graph that does not exist
+# yet is a legitimate cold start. What was wrong was doing it SILENTLY, so the
+# plan the user confirms has to say the graph will be created.
+# --------------------------------------------------------------------------- #
+def _ctx_missing_kg() -> AgentContext:
+    """The context the planner hands discovery when its probe said KG_MISSING."""
+    from cograph_client.agent.kg_scope import CTX_KG_STATUS
+    from cograph_client.graph.kg_status import KG_MISSING
+
+    ctx = _ctx()
+    ctx.extras[CTX_KG_STATUS] = KG_MISSING
+    return ctx
+
+
+async def test_plan_announces_that_a_missing_kg_will_be_created(monkeypatch):
+    register_web_source(FakeProvider(**RICH))
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx_missing_kg(), "add the OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.preview["creates_kg"] is True
+    assert "'models' does not exist yet and will be created" in step.rationale
+    assert "does not exist yet and will be created" in step.preview["summary"]
+
+
+async def test_plan_says_nothing_about_creation_for_an_existing_kg(monkeypatch):
+    """The note must not leak onto the ordinary path: an existing (or unprobed)
+    graph carries no creation claim at all."""
+    register_web_source(FakeProvider(**RICH))
+    _patch_preview(monkeypatch, entities=_single_type_entities())
+
+    steps = await WebIngestCapability().plan(
+        _ctx(), "add the OpenRouter models", parsed=CONFIRMED_SPEC
+    )
+    step = steps[0]
+    assert step.action == "discover_ingest"
+    assert step.preview["creates_kg"] is False
+    assert "will be created" not in step.rationale
+    assert "will be created" not in step.preview["summary"]

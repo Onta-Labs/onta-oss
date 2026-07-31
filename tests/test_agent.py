@@ -3136,3 +3136,332 @@ async def test_question_about_populated_kg_runs_the_pipeline(monkeypatch):
     assert seen.get("ran") is True
     assert out["kind"] == "answer"
     assert out["answer"] == "42"
+
+
+# --------------------------------------------------------------------------- #
+# ONTA-426 / ONTA-428: the SAME honesty ONTA-413 gave the read path, applied to
+# the ACTION turns. A typo'd kg_name must not plan (or run) work against a graph
+# that does not exist, and an OMITTED kg_name must not act on a dataset the user
+# never named.
+# --------------------------------------------------------------------------- #
+def _ctx_kg(neptune, kg_name: str = "kg1"):
+    """``_ctx()`` with an explicit neptune fake and KG scope (``""`` = omitted)."""
+    import dataclasses
+
+    return dataclasses.replace(_ctx(neptune=neptune), kg_name=kg_name)
+
+
+class _ScopeCap:
+    """A capability that records the ctx it was planned/executed with.
+
+    Registered UNDER AN EXISTING NAME so the classifier's intent routes to it,
+    which keeps these tests about the planner's gate rather than about any one
+    capability's own parameter extraction.
+    """
+
+    def __init__(self, name: str, steps=None):
+        from cograph_client.agent.kg_scope import scope_policy
+
+        self.name = name
+        self.planned: list[str] = []
+        self.executed: list[str] = []
+        self._steps = steps
+        # Inherit the policy the REAL capability of this name declares, so these
+        # tests exercise the shipped declarations, not one the test invented.
+        self.kg_scope_policy = scope_policy(get_capability(name))
+
+    def describe(self) -> str:
+        return f"recording {self.name}"
+
+    async def plan(self, ctx, instruction):
+        self.planned.append(ctx.kg_name)
+        if self._steps is not None:
+            return self._steps
+        return [
+            PlanStep(
+                capability=self.name,
+                action="do_it",
+                params={"kg_name": ctx.kg_name},
+                confidence=0.9,
+            )
+        ]
+
+    async def execute(self, ctx, step):
+        self.executed.append(ctx.kg_name)
+        return {"kind": "ack", "capability": self.name}
+
+
+@pytest.mark.parametrize(
+    "intent,cap_name",
+    [("enrich", "enrich"), ("dedup", "dedup"), ("clean", "normalize"),
+     ("subscribe", "subscribe")],
+)
+@pytest.mark.asyncio
+async def test_action_against_missing_kg_clarifies_and_never_plans(
+    monkeypatch, intent, cap_name
+):
+    """ONTA-428. Every rail that operates on EXISTING data must refuse a graph
+    that does not exist, instead of planning work whose SPARQL would match zero
+    rows and report success."""
+    _stub_classifier(monkeypatch, intent)
+    cap = _ScopeCap(cap_name)
+    register_capability(cap)
+
+    ctx = _ctx_kg(
+        KGStateNeptune(registered=False, has_data=False, others=["imdb", "events"])
+    )
+    out = await asyncio.wait_for(handle(ctx, "do the thing to the mentors"), TIMEOUT)
+
+    assert out["kind"] == "clarify"
+    # A machine-readable reason so an MCP/CLI agent can retry in one hop instead
+    # of parsing the prose.
+    assert out["code"] == "kg_missing"
+    assert "kg1" in out["question"]
+    assert "does not exist" in out["question"]
+    assert out["options"] == ["imdb", "events"]
+    # The capability was never given the chance to plan against the ghost graph.
+    assert cap.planned == []
+
+
+@pytest.mark.asyncio
+async def test_missing_kg_does_not_refuse_the_create_capable_discovery_rail(
+    monkeypatch,
+):
+    """ONTA-428's deliberate exception: "the graph does not exist yet" is a
+    legitimate cold start for web discovery (the shared write path registers the
+    new graph), so it plans, but the probe verdict is handed to the capability
+    so the plan card can SAY the graph will be created."""
+    _stub_classifier(monkeypatch, "discover")
+    cap = _ScopeCap("web_ingest")
+    register_capability(cap)
+
+    ctx = _ctx_kg(KGStateNeptune(registered=False, has_data=False, others=["imdb"]))
+    out = await asyncio.wait_for(
+        handle(ctx, "add the S&P 500 companies from the web"), TIMEOUT
+    )
+
+    assert out["kind"] == "plan"
+    assert cap.planned == ["kg1"]
+    from cograph_client.agent.kg_scope import CTX_KG_STATUS
+
+    assert ctx.extras[CTX_KG_STATUS] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_registered_but_empty_kg_is_not_refused_on_an_action_turn(monkeypatch):
+    """An EMPTY graph is a real graph the user named. Refusing it would break
+    "create the KG, then enrich into it", so only MISSING is refused."""
+    _stub_classifier(monkeypatch, "dedup")
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+
+    ctx = _ctx_kg(KGStateNeptune(registered=True, has_data=False))
+    out = await asyncio.wait_for(handle(ctx, "merge the duplicates"), TIMEOUT)
+
+    assert out["kind"] == "plan"
+    assert cap.planned == ["kg1"]
+
+
+@pytest.mark.asyncio
+async def test_kg_scope_probe_failure_fails_open(monkeypatch):
+    """A Neptune hiccup must degrade to today's behaviour, never invent a
+    "your graph does not exist" claim."""
+    _stub_classifier(monkeypatch, "dedup")
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+
+    class _BoomAsk(FakeNeptune):
+        async def ask(self, q):
+            raise RuntimeError("neptune down")
+
+    out = await asyncio.wait_for(
+        handle(_ctx_kg(_BoomAsk()), "merge the duplicates"), TIMEOUT
+    )
+    assert out["kind"] == "plan"
+    assert cap.planned == ["kg1"]
+
+
+@pytest.mark.asyncio
+async def test_omitted_kg_name_with_several_graphs_asks_which_one(monkeypatch):
+    """ONTA-426. Naming nothing is not the same as naming the default: with more
+    than one candidate the agent asks instead of silently acting on the tenant
+    base graph."""
+    _stub_classifier(monkeypatch, "dedup")
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+
+    ctx = _ctx_kg(
+        KGStateNeptune(registered=True, has_data=True, others=["imdb", "events"]),
+        kg_name="",
+    )
+    out = await asyncio.wait_for(handle(ctx, "merge the duplicates"), TIMEOUT)
+
+    assert out["kind"] == "clarify"
+    assert out["code"] == "kg_ambiguous"
+    assert "No knowledge graph was specified" in out["question"]
+    assert out["options"] == ["imdb", "events"]
+    assert cap.planned == []
+
+
+@pytest.mark.asyncio
+async def test_omitted_kg_name_resolves_to_the_only_graph_and_says_so(monkeypatch):
+    """One candidate is not ambiguous, so resolve it, but ANNOUNCE it, or the
+    fix is just the same silent default wearing a nicer hat."""
+    _stub_classifier(monkeypatch, "dedup")
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+
+    ctx = _ctx_kg(
+        KGStateNeptune(registered=True, has_data=True, others=["imdb"]), kg_name=""
+    )
+    out = await asyncio.wait_for(handle(ctx, "merge the duplicates"), TIMEOUT)
+
+    assert out["kind"] == "plan"
+    assert cap.planned == ["imdb"]
+    assert out["steps"][0]["params"]["kg_name"] == "imdb"
+    assert out["kg_name"] == "imdb"
+    assert "imdb" in out["kg_scope_note"]
+
+
+@pytest.mark.asyncio
+async def test_omitted_kg_name_with_no_registered_graphs_is_unchanged(monkeypatch):
+    """A workspace can legitimately keep its instances in the tenant BASE graph
+    (``api/routes/ingest.py`` writes there when kg_name is absent). With nothing
+    to disambiguate, do not block a cold start on a question with no answers."""
+    _stub_classifier(monkeypatch, "dedup")
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+
+    ctx = _ctx_kg(KGStateNeptune(registered=False, has_data=False), kg_name="")
+    out = await asyncio.wait_for(handle(ctx, "merge the duplicates"), TIMEOUT)
+
+    assert out["kind"] == "plan"
+    assert cap.planned == [""]
+
+
+@pytest.mark.asyncio
+async def test_not_kg_scoped_capabilities_are_never_gated(monkeypatch):
+    """Ontology edits are TENANT-scoped and web research never touches the KG, so
+    a missing/omitted kg_name cannot make either of them wrong."""
+    for intent, cap_name in (("ontology", "ontology"), ("research", "web_research")):
+        _stub_classifier(monkeypatch, intent)
+        cap = _ScopeCap(cap_name)
+        register_capability(cap)
+        ctx = _ctx_kg(
+            KGStateNeptune(registered=False, has_data=False, others=["a", "b"])
+        )
+        out = await asyncio.wait_for(handle(ctx, "do the schema thing"), TIMEOUT)
+        assert out["kind"] == "plan", cap_name
+        assert cap.planned == ["kg1"], cap_name
+
+
+def test_scope_policy_defaults_to_require_for_an_undeclared_capability():
+    """A downstream/premium capability that declares nothing gets the
+    conservative verdict, the one that ASKS rather than silently acts."""
+    from cograph_client.agent.kg_scope import (
+        DEFAULT_SCOPE_POLICY,
+        SCOPE_REQUIRE,
+        scope_policy,
+    )
+
+    class _Bare:
+        name = "premium_thing"
+
+    assert DEFAULT_SCOPE_POLICY == SCOPE_REQUIRE
+    assert scope_policy(_Bare()) == SCOPE_REQUIRE
+    # A garbage declaration also falls back rather than disabling the gate.
+    class _Garbage:
+        name = "x"
+        kg_scope_policy = "whatever"
+
+    assert scope_policy(_Garbage()) == SCOPE_REQUIRE
+    # An unresolvable capability NAME too.
+    assert scope_policy("no-such-capability") == SCOPE_REQUIRE
+
+
+def test_query_declares_itself_out_of_the_planner_gate():
+    """The read path keeps ONE check, its own richer ONTA-413 probe, which also
+    distinguishes registered-but-empty and honours the base-graph union."""
+    from cograph_client.agent.kg_scope import SCOPE_NONE, scope_policy
+
+    assert scope_policy(QueryCapability()) == SCOPE_NONE
+
+
+# --- confirm-time (execute_plan is the ONLY mutating path) ------------------- #
+async def _save_scope_plan(kg_name: str = "kg1", capability: str = "dedup") -> str:
+    store = make_plan_store()
+    step = PlanStep(
+        capability=capability, action="do_it", params={"kg_name": kg_name}
+    )
+    await store.save(
+        StoredPlan(
+            plan_id="plan-1",
+            tenant_id="t1",
+            kg_name=kg_name,
+            type_name=None,
+            message="do it",
+            steps=[step],
+        )
+    )
+    return "plan-1"
+
+
+@pytest.mark.asyncio
+async def test_confirm_against_a_deleted_kg_errors_without_claiming_the_plan():
+    """The graph existed when the plan was proposed and is gone by the time the
+    user confirms. The confirm must not run the steps, and must leave the plan
+    ``proposed`` so it is still confirmable once the graph is restored, rather
+    than stranding it in ``executing`` until the stale cutoff."""
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+    plan_id = await _save_scope_plan()
+
+    ctx = _ctx_kg(
+        KGStateNeptune(registered=False, has_data=False, others=["imdb"])
+    )
+    out = await asyncio.wait_for(execute_plan(ctx, plan_id), TIMEOUT)
+
+    assert out["kind"] == "error"
+    assert out["code"] == "kg_missing"
+    assert "does not exist" in out["error"]
+    assert cap.executed == []
+    plan = await make_plan_store().get(plan_id, "t1")
+    assert plan.status == "proposed"
+
+
+@pytest.mark.asyncio
+async def test_confirm_restores_the_plans_kg_scope_when_the_request_omits_it():
+    """ONTA-426 at confirm time: a confirm whose body carries no context.kg_name
+    must run against the graph the plan was PROPOSED for, not fall through to the
+    tenant base graph."""
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+    plan_id = await _save_scope_plan(kg_name="kg1")
+
+    ctx = _ctx_kg(KGStateNeptune(registered=True, has_data=True), kg_name="")
+    out = await asyncio.wait_for(execute_plan(ctx, plan_id), TIMEOUT)
+
+    assert out["kind"] == "result"
+    assert ctx.kg_name == "kg1"
+    assert cap.executed == ["kg1"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_of_a_finished_plan_still_replays():
+    """The gate runs only on a ``proposed`` plan, so the one-shot duplicate-confirm
+    replay is untouched."""
+    cap = _ScopeCap("dedup")
+    register_capability(cap)
+    plan_id = await _save_scope_plan()
+    store = make_plan_store()
+    plan = await store.get(plan_id, "t1")
+    plan.status = "done"
+    plan.result = {"kind": "result", "plan_id": plan_id, "steps": []}
+    await store.save(plan)
+
+    ctx = _ctx_kg(KGStateNeptune(registered=False, has_data=False))
+    out = await asyncio.wait_for(execute_plan(ctx, plan_id), TIMEOUT)
+
+    assert out["kind"] == "result"
+    assert out["replayed"] is True
+    assert cap.executed == []
