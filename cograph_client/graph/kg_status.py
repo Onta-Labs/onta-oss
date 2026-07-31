@@ -113,8 +113,8 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     regression than the bug being fixed. Only "no record AND no data" is
     :data:`KG_MISSING`.
 
-    The dataset is a UNION, not one graph — but only for a REGISTERED KG
-    --------------------------------------------------------------------
+    The dataset is a UNION, not one graph, but only for a REGISTERED KG
+    -------------------------------------------------------------------
     A THIRD ASK fires only when a REGISTERED KG's own graph is empty, because
     "empty" has to mean what the ANSWER QUERY means by empty. ``/ask`` threads
     ``layer_stack_for(tenant).visible_graph_uris()`` into the pipeline, that
@@ -143,7 +143,7 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     keeps the rescue; an unregistered name is a typo and is now
     :data:`KG_MISSING` regardless of what the base graph holds. This also makes
     the verdict cheaper on that path (two ASKs, not three) and honest for every
-    caller of this probe at once — ``/ask``'s 404, ``QueryCapability``'s
+    caller of this probe at once: ``/ask``'s 404, ``QueryCapability``'s
     clarify, and ``agent/kg_scope``'s write-turn gate.
 
     An OMITTED ``kg_name`` is untouched: it short-circuits to :data:`KG_OK`
@@ -192,7 +192,7 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
         if not registered:
             # ONTA-453. No record and no triples: the name the caller supplied
             # is not a graph in this workspace. The base-graph rescue below must
-            # NOT cover this case — it would answer a question about a graph
+            # NOT cover this case, it would answer a question about a graph
             # that does not exist, out of data that is not in it.
             logger.info(
                 "kg_status_missing", tenant=tenant_id, kg_name=kg_name
