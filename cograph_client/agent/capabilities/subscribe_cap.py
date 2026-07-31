@@ -34,6 +34,7 @@ from typing import Optional
 
 import structlog
 
+from cograph_client.agent.kg_scope import SCOPE_REQUIRE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.enrichment.models import JobCategory
 from cograph_client.scheduling.models import Schedule
@@ -88,6 +89,10 @@ class SubscribeCapability:
     """Set-up-a-standing-alert capability behind the single agent endpoint."""
 
     name = "subscribe"
+    # ONTA-428: a standing alert WATCHES an existing graph for changes. Pointed at
+    # a nonexistent one it is a schedule that can never fire, and the failure is
+    # invisible for as long as the cadence runs.
+    kg_scope_policy = SCOPE_REQUIRE
 
     def describe(self) -> str:
         return (

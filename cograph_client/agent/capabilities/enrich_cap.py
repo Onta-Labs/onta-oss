@@ -33,6 +33,7 @@ from typing import Optional
 import structlog
 
 from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
+from cograph_client.agent.kg_scope import SCOPE_REQUIRE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.enrichment.models import (
     EnrichJob,
@@ -136,6 +137,12 @@ def _split_scope_values(value: str) -> list[str]:
 
 class EnrichCapability:
     name = "enrich"
+    # ONTA-428: enrichment FILLS attributes on entities that already exist. A
+    # nonexistent graph resolves an empty scope, so the run would burn (paid)
+    # provider calls or report success over zero rows. ONTA-426: an omitted name
+    # previously fell through to the tenant BASE graph, writing enriched values
+    # into a graph the user never named. The planner gates both.
+    kg_scope_policy = SCOPE_REQUIRE
 
     def __init__(self, normalize: NormalizeCapability | None = None) -> None:
         # Reuse the normalize capability to BUILD the prerequisite step so the

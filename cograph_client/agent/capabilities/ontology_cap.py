@@ -27,6 +27,7 @@ import json
 
 import structlog
 
+from cograph_client.agent.kg_scope import SCOPE_NONE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.graph.ontology_commit import commit_ontology
 from cograph_client.graph.ontology_queries import (
@@ -50,6 +51,10 @@ _FREE_COST = {"paid_calls": 0, "estimated_usd": 0.0}
 
 class OntologyCapability:
     name = "ontology"
+    # Schema lives in the TENANT graph, not a per-KG instance graph, and declaring
+    # a type before any KG holds data is a legitimate first step. Not KG-scoped →
+    # the planner's KG gate does not apply (see agent/kg_scope.py).
+    kg_scope_policy = SCOPE_NONE
 
     def describe(self) -> str:
         return (

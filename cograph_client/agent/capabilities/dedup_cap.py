@@ -39,6 +39,7 @@ from datetime import datetime, timezone
 
 import structlog
 
+from cograph_client.agent.kg_scope import SCOPE_REQUIRE
 from cograph_client.agent.registry import AgentContext, PlanStep
 from cograph_client.enrichment.models import (
     ConflictPolicy,
@@ -75,6 +76,10 @@ class DedupCapability:
     """Find-and-merge-duplicates capability behind the single agent endpoint."""
 
     name = "dedup"
+    # ONTA-428: an ER rebuild only ever re-blocks entities that are ALREADY in the
+    # named graph, so a graph that does not exist means zero work reported as a
+    # successful merge pass. The planner refuses instead (see agent/kg_scope.py).
+    kg_scope_policy = SCOPE_REQUIRE
 
     def describe(self) -> str:
         return (
