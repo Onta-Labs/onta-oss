@@ -448,43 +448,77 @@ When `DELETE /kgs/{name}` is called, all examples for that KG are removed from
 the bank. This prevents stale SPARQL patterns from poisoning few-shot retrieval
 after reingest. The clear → reingest cycle starts with a clean slate.
 
-**Auto-rebuild on eval completion** (`omnix/eval.py:run_full_eval`):
-After each eval run saves correct pairs to `finetune_pairs.jsonl`, the example
-bank is automatically rebuilt from ALL pairs with fresh embeddings. Every eval
-round produces a better bank. The flow:
+**Auto-merge on eval completion** (`cograph_client/eval.py:rebuild_example_bank`):
+After each eval run saves correct pairs to `finetune_pairs.jsonl`, those pairs
+are merged into the example bank. Every eval round produces a better bank. The
+flow:
 
 ```
 clear KG → bank purges stale examples for that KG
 reingest KG → fresh ontology types, rdfs:label on entities
-run eval → correct pairs saved → bank auto-rebuilt from all pairs
+run eval → correct pairs saved → bank loaded, pairs merged in, saved
 ```
 
-**What auto-sync does NOT cover.** The KG-delete purge above evicts by `kg_name`;
-nothing evicts by *content*, so a stale URI namespace or datatype survives it.
-Three separate reasons the loop cannot self-heal:
+**It is a MERGE, not a regenerate.** This matters more than it sounds.
+`eval_reports/example_bank.jsonl` is committed, shared state;
+`finetune_pairs.jsonl` is gitignored and machine-local. Until the onta-oss#280
+follow-up, the rebuild constructed an `ExampleBank`, never `load()`ed it, and
+`save()`d — and
+`save()` writes `self._examples` wholesale, so the shared bank was *replaced* by
+one developer's local pair file. Anyone who evaluated a subset of KGs and
+committed the result silently shrank the bank to that subset; that is the most
+plausible way 148 Spider4SPARQL entries came to be 148 of the OSS bank's 262
+(ONTA-449). onta-oss#280 skipped `save()` when `add_batch` accepted nothing,
+which stopped truncate-to-zero but not replace-114-with-12.
 
-1. **The rebuild's source is a machine-local upsert.** `finetune_pairs.jsonl` is
-   gitignored and keyed on `(question, graph_uri)`, newer replacing older
-   (`eval.py`). But `graph_uri` *carries the namespace*, so a post-rename run
-   writes a **second** pair for the same question instead of replacing the stale
-   one. The rebuild's `add_batch` then dedups on question text alone and keeps
-   whichever came first in file order — the stale one. Fresh data loses.
-2. **The rebuild can't even reach the shipped bank.** `eval.py` reads
-   `finetune_pairs.jsonl` **cwd-relative** but `save()` writes `DEFAULT_BANK_PATH`
-   **package-relative**, so a rebuild run from the parent repo root reads the
-   parent's pairs and clobbers the *OSS* copy. The image-baked bank is orphaned
-   from auto-sync entirely.
-3. **Production never rebuilds.** `run_full_eval` has no caller outside the eval
+The bank is the durable artifact — the file in git, the file the parent's
+`Dockerfile` COPYs, the file the KG-delete purge already treats as
+load-mutate-save — so merging into it is the semantics that matches how it is
+actually used. Making `finetune_pairs.jsonl` the source of truth instead would
+mean committing a multi-megabyte append-only log carrying a full ontology dump
+per pair, and would still drop every example from a KG that machine never
+evaluated.
+
+Two properties in `add_batch` make the merge converge instead of ossifying:
+
+- **Identity is `(question, kg_name)`, and a re-add REFRESHES.** It used to be
+  the question text alone, and a match was *dropped*. So a corrected SPARQL for
+  a question already in the bank lost to the stale one, and the same question
+  asked of two KGs collapsed to whichever the eval reached first. Refresh reuses
+  the stored embedding (the question is part of the identity, so it has not
+  changed), which also means a bank at `MAX_BANK_SIZE` stays correctable.
+- **Last write wins within a batch.** `finetune_pairs.jsonl` upserts on
+  `(question, graph_uri)`, and `graph_uri` carries the namespace — so a
+  post-rename run appends a *second* pair rather than replacing the first. Under
+  the old first-wins rule the pre-rename answer won forever.
+
+Tests: `tests/test_example_bank_rebuild_merge.py`.
+
+**What auto-sync still does NOT cover.** The KG-delete purge above evicts by
+`kg_name`; nothing evicts by *content*, so a stale datatype survives it. Two
+reasons remain:
+
+1. **The rebuild can't reach the shipped bank.** `eval.py` reads
+   `finetune_pairs.jsonl` **cwd-relative** but `save()` writes
+   `DEFAULT_BANK_PATH` **package-relative**, so a rebuild run from the parent
+   repo root reads the parent's pairs and writes the *OSS* copy. Now that the
+   rebuild merges this is no longer destructive, but the image-baked bank is
+   still orphaned from auto-sync.
+2. **Production never rebuilds.** `run_full_eval` has no caller outside the eval
    CLI, so no deployed code path regenerates the bank. Production writes it only
    via the per-KG purge above; its *contents* otherwise change only when a human
    edits the file.
 
-That is how the `omnix.dev` → `cograph.tech` rename (2026-04-27) left both banks
-priming every `/ask` prompt with predicates that resolve to nothing — while the
-*system* prompt was already teaching the new namespace, so each prompt
-contradicted itself. Guarded now by `tests/test_example_bank_namespace.py` (OSS
-bank) and the parent repo's `tests/test_shipped_example_bank_namespace.py` (the
-image-baked bank).
+A stale-namespace bank does now heal itself on the next eval of the affected KG
+(property 2 above), and a bank carrying benchmark rows heals on the next eval of
+any KG — `load()` filters them and the rebuild saves the filtered result even
+when it accepted no new pairs. Neither was true when the `omnix.dev` →
+`cograph.tech` rename (2026-04-27) left both banks priming every `/ask` prompt
+with predicates that resolve to nothing, while the *system* prompt already
+taught the new namespace, so each prompt contradicted itself. Still guarded by
+`tests/test_example_bank_namespace.py` (OSS bank) and the parent repo's
+`tests/test_shipped_example_bank_namespace.py` (the image-baked bank), because
+neither self-heal fires for a KG nobody re-evaluates.
 
 ### Retrieval Algorithm
 
