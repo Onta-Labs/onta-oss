@@ -112,7 +112,7 @@ async def test_hot_path_costs_exactly_two_asks():
 
 
 @pytest.mark.asyncio
-async def test_third_ask_only_fires_when_the_kg_graph_is_empty():
+async def test_third_ask_only_fires_when_a_registered_kg_graph_is_empty():
     n = ProbeNeptune(registered=True, has_data=False)
     await kg_data_status(n, TENANT, "fresh")
     assert len(n.asks) == 3
@@ -130,16 +130,48 @@ async def test_third_ask_only_fires_when_the_kg_graph_is_empty():
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_base_graph_instances_rescue_an_otherwise_empty_kg():
-    """Would have been a false "nothing to query" refusal; must answer instead."""
+    """Would have been a false "nothing to query" refusal; must answer instead.
+
+    Deliberately still true after ONTA-453: this KG EXISTS (the caller picked a
+    real name out of the Explorer dropdown), and a workspace that ingested
+    without a ``kg_name`` keeps its instances in the base graph, so the union
+    answer is plausibly about what was named. The narrower ONTA-453 rule only
+    removes the rescue for a name that answers to nothing at all.
+    """
     n = ProbeNeptune(registered=True, has_data=False, base_instances=True)
     assert await kg_data_status(n, TENANT, "fresh") == KG_OK
 
 
 @pytest.mark.asyncio
-async def test_base_graph_instances_also_prevent_a_missing_verdict():
-    """Do-no-harm: main would have answered this from the base graph."""
+async def test_base_graph_instances_do_not_rescue_an_unregistered_name():
+    """ONTA-453: the union rescue stops at EXISTENCE.
+
+    It used to cover this case on a do-no-harm argument ("main would have
+    answered it from the base graph"). Live on demo-tenant, what main actually
+    answered was 255210 for a question about a graph that does not exist, every
+    row of it drawn from the tenant base graph and the global public layer. A
+    rescue that fabricates an answer about a nonexistent thing is not do-no-harm;
+    it is the confident-wrong-answer failure this probe exists to remove.
+    """
     n = ProbeNeptune(registered=False, has_data=False, base_instances=True)
-    assert await kg_data_status(n, TENANT, "typo") == KG_OK
+    assert await kg_data_status(n, TENANT, "typo") == KG_MISSING
+
+
+@pytest.mark.asyncio
+async def test_unregistered_name_costs_only_two_asks():
+    """A typo settles on the two hot-path ASKs; the base check is never paid for."""
+    n = ProbeNeptune(registered=False, has_data=False, base_instances=True)
+    await kg_data_status(n, TENANT, "typo")
+    assert len(n.asks) == 2
+    assert not any("rdf-syntax-ns#type" in q for q in n.asks)
+
+
+@pytest.mark.asyncio
+async def test_omitted_kg_name_is_untouched_by_the_missing_rule():
+    """ONTA-426 pin: naming nothing still reads the base graph, unprobed."""
+    n = ProbeNeptune(registered=False, has_data=False, base_instances=True)
+    assert await kg_data_status(n, TENANT, "") == KG_OK
+    assert n.asks == []
 
 
 @pytest.mark.asyncio

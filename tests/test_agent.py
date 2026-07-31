@@ -3116,6 +3116,39 @@ async def test_question_about_empty_kg_still_answers_from_the_base_graph(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_question_about_missing_kg_clarifies_even_with_base_instances(
+    monkeypatch,
+):
+    """ONTA-453: base-graph data must not rescue a name that answers to nothing.
+
+    The read path's own probe (this capability declares ``kg_scope_policy =
+    "none"`` precisely so it stays the single check) used to report KG_OK here
+    because the tenant base graph held instances, and the turn came back as a
+    confident number computed entirely from graphs the user did not name.
+    """
+    _stub_classifier(monkeypatch, "question")
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("pipeline must not run against a nonexistent KG")
+
+    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", boom)
+
+    ctx = _ctx(
+        neptune=KGStateNeptune(
+            registered=False,
+            has_data=False,
+            base_instances=True,
+            others=["imdb", "events"],
+        )
+    )
+    out = await asyncio.wait_for(handle(ctx, "how many records are there?"), TIMEOUT)
+
+    assert out["kind"] == "clarify"
+    assert "does not exist" in out["question"]
+    assert out["options"] == ["imdb", "events"]
+
+
+@pytest.mark.asyncio
 async def test_question_about_populated_kg_runs_the_pipeline(monkeypatch):
     """State (c) unchanged: a KG with data still goes through the normal path."""
     _stub_classifier(monkeypatch, "question")
