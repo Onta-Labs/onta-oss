@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException
 
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.auth.capabilities import (
+    READ_ONLY_DETAIL,
     can_write,
     capability_for_role,
     normalize_role,
@@ -66,14 +67,16 @@ async def require_tenant_write(
     Static / subject-less keys keep write access. Use as
     ``Depends(require_tenant_write)`` on ingest, enrich write, ontology
     mutations, KG create/delete, etc. Read routes keep plain ``get_tenant``.
+
+    **The one sanctioned exception** is ``POST /graphs/{tenant}/agent``
+    (ONTA-451): it is the single read/write MIXED route, so a blanket dependency
+    here would also block the read-only turns a reader is entitled to. It uses
+    :func:`get_tenant_with_capability` and gates at capability dispatch inside
+    the planner instead, raising the same 403 wording. Any OTHER mutating route
+    belongs on this dependency — a route that "mostly reads" is not a reason to
+    hand-roll a second gate.
     """
     ctx = await attach_tenant_capability(tenant)
     if not can_write(ctx.role):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "This workspace membership is read-only. "
-                "Ask the owner for write access to make changes."
-            ),
-        )
+        raise HTTPException(status_code=403, detail=READ_ONLY_DETAIL)
     return ctx

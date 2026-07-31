@@ -268,17 +268,31 @@ def test_agent_confirm_for_ungranted_tenant_is_403(monkeypatch):
 def test_agent_route_uses_same_tenant_dep_as_direct_path():
     """Lock the safeguard structurally: the agent route depends on the very same
     ``get_tenant`` callable the direct enrich route depends on — so paid work
-    routed through the agent is authorized identically and cannot bypass it."""
+    routed through the agent is authorized identically and cannot bypass it.
+
+    The walk is RECURSIVE because neither route reaches ``get_tenant`` directly
+    any more: both go through a wrapper that itself ``Depends(get_tenant)`` —
+    ``require_tenant_write`` on enrich, ``get_tenant_with_capability`` on the
+    agent (ONTA-451). Tenant authorization is unchanged in either case (the
+    wrapper only ATTACHES the membership capability / rejects read-only members
+    on top of it), which is exactly what recursing proves: the same callable is
+    still in the tree. ``test_agent_confirm_for_ungranted_tenant_is_403`` above
+    pins the resulting behavior.
+    """
     from cograph_client.api.routes import agent as agent_route
     from cograph_client.api.routes import enrich as enrich_route
 
+    def _walk(dependant, seen):
+        for dep in getattr(dependant, "dependencies", []):
+            if dep.call is not None:
+                seen.add(dep.call)
+                _walk(dep, seen)
+
     def _tenant_deps(module):
-        deps = set()
+        seen = set()
         for route in module.router.routes:
-            for dep in getattr(getattr(route, "dependant", None), "dependencies", []):
-                if dep.call is get_tenant:
-                    deps.add(dep.call)
-        return deps
+            _walk(getattr(route, "dependant", None), seen)
+        return seen
 
     # Both routers wire get_tenant; same callable object → same authorization.
     assert get_tenant in _tenant_deps(agent_route)

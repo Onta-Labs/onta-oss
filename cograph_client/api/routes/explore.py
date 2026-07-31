@@ -21,6 +21,7 @@ import structlog
 from fastapi import APIRouter, Depends, Query
 
 from cograph_client.api.deps import get_neptune_client
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.auth.api_keys import TenantContext, get_tenant
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.entitlement import layer_stack_for
@@ -1758,13 +1759,19 @@ async def get_type_edges(
 @router.post("/kgs/{kg_name}/recompute-stats")
 async def recompute_stats(
     kg_name: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Schedule a recompute of the precomputed type-stats for a KG.
 
     Returns immediately; the ~15s whole-KG scan runs in the background so it
     never hits the ALB response timeout.
+
+    Mutating: it rewrites the per-KG stats graph (and schedules a whole-KG
+    scan), so ``require_tenant_write`` refuses a ``reader`` member with 403
+    (ONTA-451). Being allowlisted in the write-path convergence guard — it IS
+    the stats action rather than a writer of instance data — says nothing about
+    who may trigger it.
     """
     schedule_recompute(client, tenant.tenant_id, kg_name)
     return {"status": "scheduled", "kg": kg_name}
@@ -2149,10 +2156,13 @@ async def get_type_records(
 @router.post("/kgs/{kg_name}/er-rebuild")
 async def er_rebuild(
     kg_name: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Second-pass entity resolution (MOE-22): collapse intra-batch fragments.
+
+    Mutating: a real ER merge (``rewrite_subject``) plus post-write housekeeping,
+    so ``require_tenant_write`` refuses a ``reader`` member with 403 (ONTA-451).
 
     Re-runs ER over the already-ingested KG so same-entity rows that couldn't
     see each other's index triples mid-batch now merge. Runs synchronously and

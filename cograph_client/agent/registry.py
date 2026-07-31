@@ -28,6 +28,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
+from cograph_client.auth.capabilities import READ_ONLY_DETAIL
 from cograph_client.graph.client import NeptuneClient
 
 
@@ -71,10 +72,22 @@ class AgentContext:
     # deployment default and bound that single job. None → deployment default
     # (unchanged behavior) so older contexts keep working.
     spend_ceiling_usd: Optional[float] = None
+    # The caller's tenant-level capability for this workspace: ``"write"`` |
+    # ``"read"`` (ONTA-451). Mirrors ``TenantContext.capability``, threaded from
+    # the canonical /agent route so the planner can refuse to COMMIT a mutating
+    # plan for a read-only member while still answering their read-only turns.
+    # Defaults to ``"write"`` so a context built by an older caller (or a
+    # downstream that predates this field) keeps today's behavior — the HTTP
+    # route is what resolves the real value from membership.
+    capability: str = "write"
     # Free-form extras (e.g. the enrichment executor/job-store stashed on
     # app.state) so a capability can reuse app-scoped singletons without the
     # context model needing to know about every engine.
     extras: dict = field(default_factory=dict)
+
+    def can_write(self) -> bool:
+        """True when this caller may commit mutations through the agent."""
+        return str(self.capability or "write").strip().lower() != "read"
 
 
 @dataclass
@@ -139,6 +152,13 @@ class AgentCapability(Protocol):
       prerequisite steps wired via ``depends_on``). NO writes.
     * ``execute(ctx, step)`` — run one step; for long work, spawn a background
       job (strong-ref pattern, like ``enrich.py``) and return an ack summary.
+
+    A capability MAY also declare ``writes: bool`` (a plain class attribute) to
+    say whether ``execute`` mutates tenant state. It is deliberately NOT a
+    protocol member: :func:`capability_writes` reads it with ``getattr`` and
+    **defaults to True**, so a capability (including a downstream/premium one
+    registered without knowing about ONTA-451) is treated as mutating until it
+    opts out. Only genuinely read-only capabilities set ``writes = False``.
     """
 
     name: str
@@ -148,6 +168,54 @@ class AgentCapability(Protocol):
     async def plan(self, ctx: AgentContext, instruction: str) -> list[PlanStep]: ...
 
     async def execute(self, ctx: AgentContext, step: PlanStep) -> dict: ...
+
+
+class ReadOnlyMembershipError(PermissionError):
+    """A read-only member tried to COMMIT a mutating capability (ONTA-451).
+
+    Raised by the planner, not by HTTP code: the planner is engine-level and
+    must stay importable without FastAPI. The canonical ``/agent`` route
+    translates it into HTTP 403 with the same wording
+    :func:`cograph_client.auth.access.require_tenant_write` uses on the other
+    mutating routes, so every interface (Explorer / CLI / MCP) sees one shape.
+    """
+
+    #: The ONE shared wording (``auth.capabilities.READ_ONLY_DETAIL``), imported
+    #: rather than copied so a reader gets the same message whichever mutating
+    #: surface they hit and the two cannot drift.
+    DETAIL = READ_ONLY_DETAIL
+
+    def __init__(self, capabilities: "list[str] | None" = None):
+        self.capabilities = sorted({c for c in (capabilities or []) if c})
+        detail = self.DETAIL
+        if self.capabilities:
+            detail = f"{detail} (blocked: {', '.join(self.capabilities)})"
+        self.detail = detail
+        super().__init__(detail)
+
+
+def capability_writes(cap: object) -> bool:
+    """Does dispatching ``cap`` mutate tenant state? **Deny-by-default.**
+
+    A capability opts out with a ``writes = False`` class attribute (see
+    :class:`AgentCapability`). Anything else — including an unregistered name on
+    a persisted plan step and any capability a downstream registers without
+    declaring the flag — counts as mutating, so a new capability cannot silently
+    become reachable by a read-only member just by forgetting to say so.
+    """
+    return bool(getattr(cap, "writes", True))
+
+
+def mutating_step_capabilities(steps: "list[PlanStep]") -> list[str]:
+    """The distinct capability names in ``steps`` that would mutate on execute."""
+    names: list[str] = []
+    for step in steps:
+        name = getattr(step, "capability", "") or ""
+        if name in names:
+            continue
+        if capability_writes(get_capability(name)):
+            names.append(name)
+    return names
 
 
 # Module-level registry — same shape as register_adapter / register_tier.
@@ -213,8 +281,11 @@ __all__ = [
     "AgentCapability",
     "AgentContext",
     "PlanStep",
+    "ReadOnlyMembershipError",
+    "capability_writes",
     "get_capabilities",
     "get_capability",
+    "mutating_step_capabilities",
     "order_steps",
     "register_capability",
     "reset_capabilities",
