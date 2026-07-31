@@ -560,6 +560,17 @@ BUILT_HERE_QUERY_VARS = {
     "label_query": "template: FROM <data_graph> + IRIREF-safe interpolation",
 }
 
+#: Query BUILDERS whose output is scoped by construction, so a store call that
+#: passes one directly needs no confinement. An explicit list rather than a
+#: ``*_query`` naming convention: a convention exempts anything a future author
+#: happens to name that way, including a builder that is not actually scoped,
+#: which is the enumerated-allowlist failure mode in reverse.
+BUILT_HERE_QUERY_BUILDERS = {
+    "parent_map_query": "graph/ontology_queries: emits FROM <graph_uri>",
+    "get_full_ontology_query": "graph/ontology_queries: emits FROM <graph_uri>",
+    "_active_type_probe_query": "pipeline-local: emits FROM <instance_graph>",
+}
+
 
 def _scan_execution_sites(source: str) -> tuple[list[str], list[str]]:
     """``(confined, unconfined)`` store-call sites, deny-by-default.
@@ -593,7 +604,21 @@ def _scan_execution_sites(source: str) -> tuple[list[str], list[str]]:
             if isinstance(func, ast.Attribute)
             else ""
         )
-        return name.endswith("_query")
+        return name in BUILT_HERE_QUERY_BUILDERS
+
+    def _query_argument(node):
+        """The expression carrying the SPARQL, positional or keyword.
+
+        Reading ``node.args[0]`` alone would skip ``query(sparql=x)`` entirely,
+        which is not a theoretical shape: it is what anyone writes the moment the
+        signature grows a second parameter.
+        """
+        if node.args:
+            return node.args[0]
+        for keyword in node.keywords:
+            if keyword.arg is not None:
+                return keyword.value
+        return None
 
     tree = ast.parse(source)
     lines = source.splitlines()
@@ -607,9 +632,9 @@ def _scan_execution_sites(source: str) -> tuple[list[str], list[str]]:
         # (`client = self.neptune; client.query(...)`) cannot hide a site.
         if not (isinstance(func, ast.Attribute) and func.attr == "query"):
             continue
-        if not node.args:
+        argument = _query_argument(node)
+        if argument is None:
             continue
-        argument = node.args[0]
         if _is_builder_call(argument):
             continue
         if isinstance(argument, ast.Name) and argument.id in BUILT_HERE_QUERY_VARS:
@@ -669,6 +694,21 @@ def test_every_generated_sparql_execution_site_is_guarded():
         "generated = build_it()\nraw = await self.neptune.query(generated.strip())",
         # The receiver aliased to a local, hiding the word `neptune`.
         "client = self.neptune\nraw = await client.query(generated)",
+        # A keyword-only first argument. Not theoretical: it is what anyone
+        # writes the moment the signature grows a second parameter, and
+        # `api/routes/grep.py` already passes kwargs to this method.
+        "generated = build_it()\nraw = await self.neptune.query(sparql=generated)",
+        # Argument unpacking hides the expression entirely, so deny it.
+        "raw = await self.neptune.query(*args)",
+        # A builder this module has not vetted. Exemption is an explicit list,
+        # not a `*_query` naming convention: a convention would exempt anything
+        # a future author happens to name that way, scoped or not.
+        "raw = await self.neptune.query(evil_query(x))",
+        # Shapes that hide the call from a line-oriented scan.
+        "def inner():\n    raw = self.neptune.query(generated)",
+        "rows = [await self.neptune.query(g) for g in gs]",
+        "raw = await self.neptune.query(g := build_it())",
+        "raw = await self.neptune.query(a if b else c)",
     ],
 )
 def test_the_structural_guard_catches_a_planted_violation(planted):
@@ -697,6 +737,8 @@ def test_the_structural_guard_does_not_cry_wolf():
         "raw = await self.neptune.query(parent_map_query(g))",
         "raw = await self.neptune.query(\n    parent_map_query(g),\n)",
         "raw = await self.neptune.query(parent_map_query(g), timeout=5)",
+        "raw = await self.neptune.query(sparql=parent_map_query(g))",
+        "raw = await self.neptune.query(get_full_ontology_query(g))",
     ):
         assert _scan_execution_sites(builder) == ([], []), builder
 
