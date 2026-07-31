@@ -66,11 +66,18 @@ def _types_named_in_question(question: str, type_names) -> set[str]:
 
     Matches each declared type against the question's word tokens with loose
     singular/plural normalization (so "list all Sprockets" surfaces "Sprocket"),
-    plus a verbatim-substring check for compound/multi-word type names. Used to
+    plus a verbatim WORD match for compound/multi-word type names. Used to
     force-include a named type into the retrieved subset even when it ranks below
     top-K or has no instances (ONTA-258) — a declared type dropped from the
     subset is invisible to the SPARQL LLM, which then wrongly claims it "does not
     exist".
+
+    The verbatim arm is word-BOUNDED (ONTA-450). A bare substring test matched a
+    short declared type inside an unrelated word — `Age` in "manages", `Ion` in
+    "medication", `Cat` in "categories" — which was harmless while a spurious
+    match only force-INCLUDED a type into the context, but no longer is now that
+    "the question named this type" also gates the zero-row escalation guard. A
+    trailing `s?` keeps the plural of a compound name ("clinicaltrials").
     """
     ql = question.lower()
     q_singulars = {_singularize(t) for t in re.findall(r"[a-z0-9]+", ql)}
@@ -79,8 +86,8 @@ def _types_named_in_question(question: str, type_names) -> set[str]:
         nl = tn.lower()
         if _singularize(nl) in q_singulars:
             named.add(tn)
-        elif len(nl) > 2 and nl in ql:  # compound / multi-word type named verbatim
-            named.add(tn)
+        elif len(nl) > 2 and re.search(rf"\b{re.escape(nl)}s?\b", ql):
+            named.add(tn)  # compound / multi-word type named verbatim
     return named
 
 
