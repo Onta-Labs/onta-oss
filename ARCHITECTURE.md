@@ -600,7 +600,7 @@ is preferred for all new eval work.
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/q2forge.py` | Generate execution-verified ground truth |
+| `scripts/q2forge.py` | Generate execution-derived ground truth (gold SPARQL is LLM-authored, kept only if it runs and returns results) |
 | `scripts/eval_baseline.py` | Run baseline eval with answer-equivalence |
 | `scripts/cross_domain_eval.py` | Test cross-domain queries |
 | `scripts/spider_bench.py` | Spider4SPARQL benchmark runner |
