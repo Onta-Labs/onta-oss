@@ -2296,11 +2296,10 @@ class SchemaResolver:
                             # Opt back into the old suffix with
                             # COGRAPH_ER_FINGERPRINT=1 (not recommended for
                             # multi-table CSVs).
-                            import os as _os
                             normalized, keys = self._er.signals_and_keys(entity)
                             if (
                                 er_applies
-                                and _os.environ.get("COGRAPH_ER_FINGERPRINT", "0") == "1"
+                                and os.environ.get("COGRAPH_ER_FINGERPRINT", "0") == "1"
                                 and normalized is not None
                             ):
                                 import hashlib
