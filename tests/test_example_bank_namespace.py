@@ -12,12 +12,14 @@ resolve to nothing in any graph — while the SYSTEM prompt already taught
 This file is the bank an OSS checkout or standalone install serves; the hosted
 image ships the parent repo's own copy, guarded separately there. Both drifted.
 
-Nothing evicts a stale entry on its own. ``ExampleBank.add_batch`` is
-append-only (deduped by question text), and the post-eval rebuild in
-``eval.run_full_eval`` regenerates the bank from ``eval_reports/finetune_pairs.jsonl``
-— a gitignored, machine-local file that is itself append-only. So a dev whose
-local finetune pairs still carry the old namespace can silently regenerate a
-stale bank and commit it. This guard is what catches that.
+Nothing evicts a stale entry by *content*. ``eval.rebuild_example_bank`` merges
+``eval_reports/finetune_pairs.jsonl`` into the bank after every eval run, and
+since onta-oss#280's follow-up a pair does refresh the entry it supersedes — so
+a re-evaluated KG heals its own namespace drift. But that only fires for a KG
+someone actually re-evaluates, the pairs file is gitignored and machine-local,
+and until that follow-up the rebuild REPLACED the committed bank with that local
+file rather than merging into it. A dev whose local pairs still carry the old
+namespace could silently commit a stale bank. This guard is what catches that.
 
 Two layers:
 - **Bank** — no retired namespace in the committed JSONL, and every minted URI
