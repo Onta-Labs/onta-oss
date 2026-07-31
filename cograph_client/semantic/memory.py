@@ -36,6 +36,7 @@ import structlog
 
 from cograph_client.nlp.embed_client import EMBEDDING_MODEL
 from cograph_client.semantic.protocol import (
+    IDENTITY_ATTR,
     ChunkKey,
     SemanticChunk,
     SemanticHit,
@@ -367,6 +368,10 @@ class InMemorySemanticIndex:
                 c
                 for c in self._chunks.values()
                 if c.embedding is None
+                # Identity docs are lexical-only by contract (ONTA-421): never
+                # queued, so they cost no embed spend and never reach the vector
+                # leg. Mirrors the SQL backend's `attr <> $4`.
+                and c.attr != IDENTITY_ATTR
                 and (max_attempts is None or c.attempt_count < max_attempts)
                 and (tenant_id is None or c.tenant_id == tenant_id)
                 and (kg_name is None or c.kg_name == kg_name)

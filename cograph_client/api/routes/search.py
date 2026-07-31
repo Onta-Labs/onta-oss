@@ -2,7 +2,12 @@
 
 ``POST /graphs/{tenant}/search`` is the single user surface of the semantic
 instance index (ONTA-173): "which entities talk about X?" answered from the
-derived chunk index with **no Neptune round-trip**. Per the
+derived chunk index with **no Neptune round-trip**. Since ONTA-421 it also
+answers "which entity is CALLED X?": every named entity carries a small
+identity doc (``semantic/extract.py``) that rides the LEXICAL leg, so an exact
+name matches even though names are far too short to be marked as free text.
+Substring and fuzzy name matching are still NOT this route's job — the
+index-free ``POST /graphs/{tenant}/grep`` owns those (``routes/grep.py``). Per the
 interface-convergence rule (CLAUDE.md), every client — the Explorer webapp,
 the CLI, the MCP ``search`` tool, the ``cograph`` SDK — rides THIS route;
 none may mint a bespoke endpoint or re-implement ranking client-side, because

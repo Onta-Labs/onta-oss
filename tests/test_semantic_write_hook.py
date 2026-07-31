@@ -36,12 +36,15 @@ from cograph_client.semantic.extract import (
     canonicalize_values,
     extract_semantic_chunks,
 )
+from cograph_client.semantic.protocol import IDENTITY_ATTR
 from cograph_client.semantic.memory import InMemorySemanticIndex
 from cograph_client.semantic.protocol import SemanticChunk
 from cograph_client.semantic.registry import (
     register_semantic_index,
     reset_semantic_index,
 )
+
+RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 
 TENANT = "t1"
 KG = "kg1"
@@ -191,6 +194,68 @@ def test_hook_enabled_writes_pending_chunks(monkeypatch):
         # Lexical search works before any embedding exists.
         hits = await index.search(TENANT, "watershed management", kg_name=KG)
         assert [h.entity_uri for h in hits.hits] == [ENTITY]
+
+    asyncio.run(run())
+
+
+def test_hook_indexes_a_name_only_write_with_no_markers_at_all(monkeypatch):
+    """ONTA-421: a write carrying only a name, on a tenant with ZERO markers,
+    used to touch nothing — the entity was then unfindable by its own name.
+
+    Note the assertion goes through ``list_docs``, not ``fetch_pending``: the
+    identity row is deliberately invisible to the embed queue.
+    """
+    _enable(monkeypatch)
+    index = InMemorySemanticIndex()
+    register_semantic_index(index)
+    neptune = _FakeNeptune({})  # no textKind markers whatsoever
+
+    async def run():
+        await _write(neptune, GRAPH, [(ENTITY, RDFS_LABEL, "Acme Corporation")])
+        docs = await index.list_docs(TENANT, kg_name=KG)
+        assert [(d[0], d[1]) for d in docs] == [(ENTITY, IDENTITY_ATTR)]
+        # Never queued for embedding.
+        assert await _all_rows(index) == []
+        # And the entity is findable by its exact name — the whole point.
+        hits = await index.search(TENANT, "Acme Corporation", kg_name=KG)
+        assert [h.entity_uri for h in hits.hits] == [ENTITY]
+
+    asyncio.run(run())
+
+
+def test_hook_leaves_identity_docs_alone_on_a_later_unrelated_write(monkeypatch):
+    """The empty-doc delete diff must count identity docs as EXPECTED.
+
+    If it diffed against the marked-only key set, the identity doc the
+    extractor had just written would be deleted again in the same call.
+    """
+    _enable(monkeypatch)
+    index = InMemorySemanticIndex()
+    register_semantic_index(index)
+    neptune = _FakeNeptune({DESC_PRED: "free_text"})
+
+    async def run():
+        await _write(neptune, GRAPH, [(ENTITY, RDFS_LABEL, "Acme Corporation")])
+        await _write(neptune, GRAPH, [(ENTITY, DESC_PRED, PROSE)])
+        docs = {(d[0], d[1]) for d in await index.list_docs(TENANT, kg_name=KG)}
+        assert docs == {(ENTITY, IDENTITY_ATTR), (ENTITY, "description")}
+
+    asyncio.run(run())
+
+
+def test_identity_arm_off_restores_the_old_zero_cost_behavior(monkeypatch):
+    """With the kill switch off, a name-only write on an unmarked tenant costs
+    no entity re-read and writes nothing — the pre-ONTA-421 behavior."""
+    _enable(monkeypatch)
+    monkeypatch.setenv("COGRAPH_SEMANTIC_IDENTITY_INDEX", "0")
+    index = InMemorySemanticIndex()
+    register_semantic_index(index)
+    neptune = _FakeNeptune({})
+
+    async def run():
+        await _write(neptune, GRAPH, [(ENTITY, RDFS_LABEL, "Acme Corporation")])
+        assert await index.list_docs(TENANT, kg_name=KG) == []
+        assert neptune.fetches() == []
 
     asyncio.run(run())
 

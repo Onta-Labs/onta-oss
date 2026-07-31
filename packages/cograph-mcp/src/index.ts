@@ -187,11 +187,12 @@ server.registerTool(
   "search",
   {
     description:
-      "Semantic search over the free-text attributes of entities (descriptions, " +
-      "bios, notes, speeches, …): find WHICH entities talk about a topic, with a " +
-      "matching snippet as the citation. Hybrid keyword + meaning search — use it " +
-      'for "which entities mention/discuss X"; use `ask` for aggregate or ' +
-      "structured questions.",
+      "Search entities by NAME or by what their free-text attributes say " +
+      "(descriptions, bios, notes, speeches, …). Hybrid keyword + meaning " +
+      "search, returning a matching snippet as the citation. Use it for " +
+      '"which entity is called X" and "which entities mention/discuss X"; use ' +
+      "`ask` for aggregate or structured questions, and `grep` when you need a " +
+      "literal SUBSTRING match rather than whole words.",
     inputSchema: {
       query: z.string().describe("Free-text search query (topic, phrase, or quote)."),
       kg_name: z

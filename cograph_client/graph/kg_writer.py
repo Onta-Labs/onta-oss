@@ -521,6 +521,18 @@ async def _index_semantic(
     unlike the spatio-temporal hook this one needs the ``neptune`` handle to
     consult the (TTL-cached) marker map.
 
+    ONE exception, marker-INDEPENDENT (ONTA-421): every named entity also gets
+    an identity doc, so a write that carries only ``rdfs:label`` / ``name`` /
+    ``title`` now touches the index where it previously touched nothing. That is
+    the cost side of the fix: a KG with no marked attribute at all used to pay
+    zero Neptune re-reads per write and now pays one bounded, VALUES-scoped
+    SELECT (still capped by ``COGRAPH_SEMANTIC_HOOK_MAX_ENTITIES``, still under
+    the one timeout, still best-effort). ``COGRAPH_SEMANTIC_IDENTITY_INDEX=0``
+    restores the old write-path behavior — but note it is not free to flip: the
+    next reconcile of each KG then sees every identity doc as a ghost and
+    batch-deletes it (symmetric and self-healing on flip-back, but a mass delete
+    to expect rather than discover).
+
     Completeness contract (the ONTA-173 partial-doc fix): the write's triples
     only tell the hook WHICH (entity, marked attr) docs were touched — the docs
     themselves are rebuilt from a re-read of the touched entities' FULL current
@@ -584,15 +596,19 @@ async def _index_semantic_inner(
     from cograph_client.semantic.extract import extract_semantic_chunks
     from cograph_client.semantic.reconciler import (
         ensure_reconcile_schedule_from_hook,
-        marked_doc_keys,
+        indexable_doc_keys,
     )
     from cograph_client.semantic.registry import get_semantic_index
 
     marker_map = await get_free_text_map(neptune, tenant_id)
     marked = {uri for uri, is_free_text in marker_map.items() if is_free_text}
-    # Which (entity, marked attr) docs did THIS write touch? Only those
-    # entities are re-read — an unmarked write costs zero extra Neptune reads.
-    touched = marked_doc_keys(instance_triples, marked) if marked else set()
+    # Which docs did THIS write touch? Marked free-text docs AND identity docs
+    # (ONTA-421 — an entity's own name is indexed with no marker involved, so a
+    # name-only write must be picked up here too; before, such a write indexed
+    # nothing and the entity stayed permanently unfindable by name). Only the
+    # touched entities are re-read, so a write carrying neither a marked value
+    # nor a name still costs zero extra Neptune reads.
+    touched = indexable_doc_keys(instance_triples, marked)
     if touched:
         entity_uris = sorted({entity_uri for entity_uri, _ in touched})
         cap = _semantic_hook_max_entities()
@@ -645,7 +661,7 @@ async def _index_semantic_inner(
         # considered — full ghost repair (deleted entities, marker flips) is
         # the reconciler's job.
         emitted = {(c.entity_uri, c.attr) for c in chunks}
-        emptied = marked_doc_keys(fetched, marked) - emitted
+        emptied = indexable_doc_keys(fetched, marked) - emitted
         for entity_uri, attr in sorted(emptied):
             await index.delete(entity_uri, tenant_id, kg_name=kg_name, attr=attr)
         logger.info(

@@ -44,17 +44,46 @@ URI-vs-literal decision (URI objects are entity references, never text) and
 strip the ``^^`` datatype tail the way ``spatiotemporal/extract.py`` does. The
 small helpers are duplicated from there deliberately, so this leaf module stays
 importable on its own without reaching into a sibling subsystem.
+
+The identity arm (ONTA-421)
+---------------------------
+
+Marker-driven extraction alone left ``/search`` structurally unable to find an
+entity **by its own name**: candidacy is decided from VALUE SHAPE
+(``graph/text_markers.classify_text_candidacy``), and a name is short, so it is
+never ``ValueShape.TEXT`` and therefore never markable — no amount of
+reindexing helps. On top of the marked free-text docs this module therefore
+emits ONE extra doc per entity under the reserved attr
+:data:`~cograph_client.semantic.protocol.IDENTITY_ATTR`, built from the entity's
+own name(s) (``rdfs:label`` plus the ``label`` / ``name`` / ``title`` locals —
+the same values already harvested for the denormalized display ``attrs``). It is
+marker-INDEPENDENT by construction: whether a thing has a name is not a
+candidacy question.
+
+Three properties keep it from disturbing free-text retrieval:
+
+* it is emitted **after** every marked doc, so the intra-entity dedup drops it
+  when it exactly mirrors a marked doc — a marked ``title`` keeps its own attr
+  name AND its embedding; the identity arm never relocates an existing doc out
+  of the semantic leg;
+* it is exempt from :data:`MAX_CHUNKS_PER_ENTITY` (a text-heavy entity must
+  not become unfindable by name because its prose spent the budget) — and
+  therefore carries its own, much smaller :data:`MAX_IDENTITY_CHUNKS` bound, so
+  "exempt" never means "unbounded";
+* it is never embedded — enforced backend-side in ``fetch_pending`` — so the ANN
+  leg's candidate pool is exactly what it was before.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from typing import Collection, Iterable, Optional
 
 import structlog
 
-from cograph_client.semantic.protocol import SemanticChunk
+from cograph_client.semantic.protocol import IDENTITY_ATTR, SemanticChunk
 
 logger = structlog.stdlib.get_logger("cograph.semantic.extract")
 
@@ -74,6 +103,17 @@ MAX_CHUNK_CHARS = 2048
 #: entity's tail text doesn't match.
 MAX_CHUNKS_PER_ENTITY = 200
 
+#: Chunk cap for the ONTA-421 identity doc, applied SEPARATELY from
+#: :data:`MAX_CHUNKS_PER_ENTITY` (the identity doc is deliberately exempt from
+#: that budget, so it needs its own or it would have none at all). Names are
+#: short and few, so the doc is normally ONE chunk — this is purely the bound on
+#: a pathological entity: an ER merge collapsing thousands of subjects onto one
+#: URI, or a bad ``promote_to_node``, can pile up an unbounded number of
+#: ``name`` values. Small on purpose: past a few chunks the doc has stopped
+#: being an identity and become a list, and a name that far down would not
+#: rank anyway. Overflow is truncated and logged, never silent.
+MAX_IDENTITY_CHUNKS = 4
+
 #: Deterministic separator between the sorted values of a multi-valued
 #: attribute. A blank line, so the chunker's paragraph-preference naturally
 #: avoids splitting mid-value.
@@ -87,6 +127,49 @@ _RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 _LABEL_LOCALS = {"label", "name", "title"}
 
 _SENTENCE_END_RE = re.compile(r"[.!?][)\"”']*(?:\s|$)")
+
+#: Opt-OUT kill switch for the identity arm (ONTA-421), default **on**. It sits
+#: INSIDE the already-opt-in ``COGRAPH_SEMANTIC_INDEX_ENABLED`` gate, so it can
+#: only ever narrow an index that is already running. Read per call so ops can
+#: flip it without a re-import, and consulted HERE — inside the one extractor
+#: that BOTH the write hook and the reconciler call — so the two can never
+#: disagree about whether an identity doc is expected. (A disagreement would be
+#: catastrophic in the ordinary way this subsystem is catastrophic: the
+#: reconciler would ghost-delete every identity doc the hook just wrote, every
+#: hour, forever.)
+IDENTITY_INDEX_ENV = "COGRAPH_SEMANTIC_IDENTITY_INDEX"
+
+
+def identity_index_enabled() -> bool:
+    """Whether to emit the per-entity identity doc (:data:`IDENTITY_INDEX_ENV`)."""
+    raw = os.environ.get(IDENTITY_INDEX_ENV, "").strip().lower()
+    if not raw:
+        return True
+    return raw in ("1", "true", "yes", "on")
+
+
+def is_identity_predicate(predicate: str) -> bool:
+    """True when ``predicate`` carries one of an entity's own names.
+
+    ``rdfs:label`` by exact URI, or a ``label`` / ``name`` / ``title`` local
+    name — exactly the set :func:`extract_semantic_chunks` harvests into the
+    identity doc. Exported so the write hook and the reconciler can decide which
+    entities own an identity doc without re-deriving the rule.
+    """
+    return predicate == _RDFS_LABEL or _local_name(predicate) in _LABEL_LOCALS
+
+
+def is_identity_value(obj: str) -> bool:
+    """True when ``obj`` is usable as a name: a NON-EMPTY, UNTYPED plain literal.
+
+    Mirrors the acceptance test inside :func:`extract_semantic_chunks` exactly —
+    a URI object is an entity reference, and a typed literal under a label
+    predicate is a date or a number, not a name.
+    """
+    if not isinstance(obj, str) or _is_uri_object(obj):
+        return False
+    lexical, type_uri = _split_typed(obj)
+    return bool(lexical.strip()) and type_uri is None
 
 
 def _local_name(uri: str, *, lower: bool = True) -> str:
@@ -212,7 +295,7 @@ def chunk_text(
 class _EntityAccumulator:
     """Per-subject scratch state collected in a single pass over the triples."""
 
-    __slots__ = ("values", "label", "type_name")
+    __slots__ = ("values", "label", "type_name", "identity_values")
 
     def __init__(self) -> None:
         # attr local name -> raw values, both in first-seen order (output
@@ -220,6 +303,10 @@ class _EntityAccumulator:
         self.values: dict[str, list[str]] = {}
         self.label: Optional[str] = None
         self.type_name: Optional[str] = None
+        # EVERY name-shaped value (label / name / title), not just the first:
+        # the identity doc (ONTA-421) should match on ANY of an entity's names,
+        # whereas ``label`` is a single display field.
+        self.identity_values: list[str] = []
 
 
 def extract_semantic_chunks(
@@ -252,6 +339,14 @@ def extract_semantic_chunks(
       in every ranking);
     * at most :data:`MAX_CHUNKS_PER_ENTITY` chunks per entity across all its
       attributes — overflow truncated + logged (never silent).
+
+    Plus, marker-INDEPENDENTLY, one identity doc per entity under
+    :data:`~cograph_client.semantic.protocol.IDENTITY_ATTR` (ONTA-421, see the
+    module docstring): the entity's own names, emitted last so a marked
+    name-source attribute wins the dedup, exempt from the chunk cap, and never
+    embedded. Suppressed wholesale by ``COGRAPH_SEMANTIC_IDENTITY_INDEX=0``. An
+    entity that has a name but NO marked attribute now yields a chunk where it
+    previously yielded none — that is the whole point of the fix.
     """
     # Normalize the marker set once: exact entries as given, plus each entry's
     # lowered local name (a non-URI entry's local name is itself).
@@ -279,10 +374,15 @@ def extract_semantic_chunks(
             continue
         lexical, type_uri = _split_typed(o)
 
-        # Label / name for denormalized display (plain literals only).
-        if ent.label is None and (p == _RDFS_LABEL or _local_name(p) in _LABEL_LOCALS):
+        # Label / name for the denormalized display fields (plain literals
+        # only) AND for the identity doc (ONTA-421). ``label`` keeps its
+        # first-wins semantics — it is ONE display field — while
+        # ``identity_values`` collects every name the entity carries.
+        if p == _RDFS_LABEL or _local_name(p) in _LABEL_LOCALS:
             if lexical and type_uri is None and not _is_uri_object(o):
-                ent.label = lexical
+                if ent.label is None:
+                    ent.label = lexical
+                ent.identity_values.append(lexical)
             # NOT `continue`: a label predicate may itself be marked (e.g.
             # `title` on an Article) — it still contributes text below.
 
@@ -295,9 +395,13 @@ def extract_semantic_chunks(
         ent.values.setdefault(_local_name(p), []).append(lexical)
 
     chunks: list[SemanticChunk] = []
+    emit_identity = identity_index_enabled()
     for uri in order:
         ent = acc[uri]
-        if not ent.values:
+        identity_doc = (
+            canonicalize_values(ent.identity_values) if emit_identity else ""
+        )
+        if not ent.values and not identity_doc:
             continue
         display: dict[str, str] = {}
         if ent.label:
@@ -348,4 +452,48 @@ def extract_semantic_chunks(
                     )
                 )
             entity_chunk_count += len(pieces)
+
+        # The identity doc, LAST (ONTA-421). Last so that a marked attribute
+        # which happens to BE a name source (a marked ``title``) wins the
+        # intra-entity dedup and keeps both its own attr name and its
+        # embedding: the identity arm adds findability, it never relocates an
+        # existing free-text doc out of the semantic leg. Exempt from the
+        # per-entity chunk budget — it is one short chunk, and an entity must
+        # not become unfindable BY NAME because its prose used up the cap.
+        if identity_doc:
+            doc_hash = content_hash(identity_doc)
+            if doc_hash in seen_hashes:
+                logger.debug(
+                    "semantic_extract_identity_mirrors_marked_doc",
+                    entity_uri=uri,
+                    content_hash=doc_hash,
+                )
+            else:
+                # Normally exactly one chunk (a handful of short names), but
+                # bounded anyway: this doc is exempt from the per-entity budget
+                # above, so MAX_IDENTITY_CHUNKS is the only thing standing
+                # between a pathological entity and an unbounded row count.
+                pieces = chunk_text(identity_doc)
+                if len(pieces) > MAX_IDENTITY_CHUNKS:
+                    logger.warning(
+                        "semantic_extract_identity_cap",
+                        entity_uri=uri,
+                        cap=MAX_IDENTITY_CHUNKS,
+                        produced=len(pieces),
+                        dropped=len(pieces) - MAX_IDENTITY_CHUNKS,
+                    )
+                    pieces = pieces[:MAX_IDENTITY_CHUNKS]
+                for ix, piece in enumerate(pieces):
+                    chunks.append(
+                        SemanticChunk(
+                            tenant_id=tenant_id,
+                            kg_name=kg_name,
+                            entity_uri=uri,
+                            attr=IDENTITY_ATTR,
+                            chunk_ix=ix,
+                            chunk_text=piece,
+                            content_hash=doc_hash,
+                            attrs=dict(display),
+                        )
+                    )
     return chunks
