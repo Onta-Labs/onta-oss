@@ -159,7 +159,7 @@ def test_escalation_feedback_never_licenses_substitution():
 # ── end to end through ask() ──────────────────────────────────────────────
 
 
-async def _ask(pipeline, neptune, question, llm_messages):
+async def _ask(pipeline, neptune, question, llm_messages, fetch_ontology=FULL_ONTOLOGY):
     svc = AsyncMock()
     svc.retrieve.return_value = SEMANTIC_SUBSET
 
@@ -178,7 +178,7 @@ async def _ask(pipeline, neptune, question, llm_messages):
     with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=svc):
         with patch.object(
             pipeline, "_fetch_ontology", new_callable=AsyncMock,
-            return_value=FULL_ONTOLOGY,
+            return_value=fetch_ontology,
         ):
             with patch.object(
                 # NLResult.narrative_answer is a str, so "" (not None) is the
@@ -255,3 +255,83 @@ async def test_escalation_feedback_reaches_the_regeneration(pipeline, neptune):
     assert "Do NOT substitute" in captured["feedback"]
     assert NO_INSTANCES_MARK in captured["feedback"]
     assert captured["ontology"] == FULL_ONTOLOGY
+
+
+# ── review follow-ups ─────────────────────────────────────────────────────
+
+
+def test_named_in_question_does_not_match_inside_another_word():
+    """The verbatim arm is word-BOUNDED. A bare substring test matched a short
+    declared type inside an unrelated word, which now also gates the escalation
+    guard, so a spurious match would suppress a legitimate escalation."""
+    from cograph_client.nlp.ontology_embeddings import _types_named_in_question
+
+    types = ["Age", "Ion", "Cat", "Rat", "ClinicalTrial"]
+    assert _types_named_in_question("who manages the medication categories?", types) == set()
+    assert _types_named_in_question("what is the age of the cat", types) == {"Age", "Cat"}
+    # Plural of a compound name still matches.
+    assert _types_named_in_question("show me clinicaltrials", types) == {"ClinicalTrial"}
+
+
+@pytest.mark.asyncio
+async def test_honest_note_does_not_ride_onto_a_later_non_empty_answer(
+    pipeline, neptune
+):
+    """The note is per-ATTEMPT. An attempt that sets it and then dies before
+    returning must not leave it to be appended to a later attempt's rows, which
+    would assert "no instances" over actual data."""
+    calls = {"n": 0}
+
+    async def _rephrase(*_a, **_k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient rephrase failure")
+        return ""
+
+    with patch.object(pipeline, "_rephrase_via_openrouter", _rephrase):
+        svc = AsyncMock()
+        svc.retrieve.return_value = SEMANTIC_SUBSET
+
+        async def _query(sparql="", *_a, **_k):
+            if "DISTINCT ?type" in sparql:
+                return ACTIVE_TYPE_PROBE
+            return WIDGET_ROWS if "types/Widget" in sparql else EMPTY_RESULT
+
+        neptune.query.side_effect = _query
+        with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=svc):
+            with patch.object(
+                pipeline, "_fetch_ontology", new_callable=AsyncMock,
+                return_value=FULL_ONTOLOGY,
+            ):
+                with patch.object(
+                    pipeline.anthropic.messages, "create", new_callable=AsyncMock
+                ) as create:
+                    create.side_effect = [
+                        _llm(SPROCKET_SPARQL, "Sprockets"),
+                        _llm(WIDGET_SPARQL, "Widgets"),
+                    ]
+                    result = await pipeline.ask(
+                        "list all Sprockets", TENANT_GRAPH, instance_graph=KG_GRAPH
+                    )
+
+    assert "Widget A" in result.answer, "second attempt should have returned rows"
+    assert "no instances" not in result.answer.lower()
+    assert "no instances" not in (result.narrative_answer or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_no_escalation_onto_an_ontology_sentinel(pipeline, neptune):
+    """`_fetch_ontology` does not raise on failure, it RETURNS a sentinel string,
+    and both sentinels are truthy. Escalating onto one would swap a working
+    semantic subset for prose and ask the model to regenerate against it."""
+    from cograph_client.nlp.pipeline import ONTOLOGY_EMPTY
+
+    result, create = await _ask(
+        pipeline, neptune, "how many things are there?",
+        [_llm(SPROCKET_SPARQL, "guess"), _llm(WIDGET_SPARQL, "would substitute")],
+        fetch_ontology=ONTOLOGY_EMPTY,
+    )
+
+    assert create.call_count == 1, "regenerated against the sentinel"
+    assert result.timing.get("ontology_zero_row_escalation") is None
+    assert result.ontology == SEMANTIC_SUBSET

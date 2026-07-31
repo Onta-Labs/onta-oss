@@ -554,6 +554,10 @@ class NLQueryPipeline:
         honest_empty_note = ""
 
         for attempt in range(max_attempts):
+            # Per-ATTEMPT, not per-ask: an attempt that set the note and then died
+            # before returning must not leave it to ride onto a later attempt's
+            # NON-EMPTY answer (it would assert "no instances" over actual rows).
+            honest_empty_note = ""
             # The ENTIRE attempt — SPARQL generation, post-processing,
             # validation, execution, and formatting — runs inside one
             # try/except so a transient failure at ANY stage retries instead of
@@ -763,10 +767,21 @@ class NLQueryPipeline:
                                     "ontology_zero_row_escalation_failed", exc_info=True
                                 )
                                 full_ontology_loaded = True
-                            if full_ontology and full_ontology.strip():
-                                honest = honest_empty_targets(
-                                    question, sparql, full_ontology
-                                )
+                        # `_fetch_ontology` does NOT raise on failure: it RETURNS a
+                        # sentinel ("Could not fetch the ontology…" / "No ontology
+                        # defined yet."), both truthy. Escalating onto one would
+                        # replace a working semantic subset with prose and ask the
+                        # model to regenerate against it, which is strictly worse
+                        # than the subset it already had.
+                        full_ontology_usable = bool(
+                            full_ontology
+                            and full_ontology.strip()
+                            and full_ontology not in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY)
+                        )
+                        if full_ontology_usable and not honest:
+                            honest = honest_empty_targets(
+                                question, sparql, full_ontology
+                            )
                         if honest:
                             # Honest empty: the query is right, the type is empty.
                             # Answer it plainly (ONTA-258) instead of regenerating.
@@ -785,7 +800,10 @@ class NLQueryPipeline:
                                 types=sorted(honest),
                                 question=question,
                             )
-                        elif full_ontology and full_ontology.strip():
+                            # A successful full fetch is not repeated if a later
+                            # attempt runs (it is TTL-cached anyway).
+                            full_ontology_loaded = full_ontology_loaded or full_ontology_usable
+                        elif full_ontology_usable:
                             ontology = full_ontology
                             ontology_source = "full"
                             timing["ontology_escalated_to_full_attempt"] = attempt + 1
@@ -822,6 +840,8 @@ class NLQueryPipeline:
                 answer += honest_empty_note
                 t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
+                if honest_empty_note and narrative_answer:
+                    narrative_answer += honest_empty_note
                 timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
                 # Honest-answer metadata (ONTA-280, P7): per-cited-fact
                 # verdict/confidence/recency + a coverage caveat. Read-only,
