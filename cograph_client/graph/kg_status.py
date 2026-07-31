@@ -13,14 +13,16 @@ one indistinguishable answer, ``"No results found."``:
 Only (c) is an answer. (a) and (b) are states the caller has to know about to
 act, and an MCP/CLI agent in particular cannot self-correct a typo it is never
 told about. This module separates them with two ASK queries on the hot path
-(three on the rare empty/missing path), all O(1) in any triple store, and every
-interface (webapp, CLI, MCP) reaches it through the SAME canonical backend
+(three on the rare registered-but-empty path), all O(1) in any triple store, and
+every interface (webapp, CLI, MCP) reaches it through the SAME canonical backend
 routes rather than re-deriving the check client-side.
 
 "Empty" is defined against the query's ACTUAL dataset, which is a union of named
 graphs rather than the one per-KG graph, so the probe can never call a workspace
-empty that the answer query could still have answered from. See
-:func:`kg_data_status` for the mechanics.
+empty that the answer query could still have answered from. That union rule
+stops at EXISTENCE: a name with no registration record and no triples of its own
+is :data:`KG_MISSING` however much data the rest of the union holds (ONTA-453).
+See :func:`kg_data_status` for the mechanics.
 
 Deliberately NOT ``knowledge_graphs._live_triple_count``: that is a full
 ``COUNT(*)`` scan, seconds slow on a large KG, and its own docstring forbids the
@@ -111,10 +113,10 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     regression than the bug being fixed. Only "no record AND no data" is
     :data:`KG_MISSING`.
 
-    The dataset is a UNION, not one graph
-    -------------------------------------
-    A THIRD ASK fires only when the KG's own graph is empty, because "empty" has
-    to mean what the ANSWER QUERY means by empty. ``/ask`` threads
+    The dataset is a UNION, not one graph — but only for a REGISTERED KG
+    --------------------------------------------------------------------
+    A THIRD ASK fires only when a REGISTERED KG's own graph is empty, because
+    "empty" has to mean what the ANSWER QUERY means by empty. ``/ask`` threads
     ``layer_stack_for(tenant).visible_graph_uris()`` into the pipeline, that
     stack ALWAYS contains the tenant BASE graph (``LayerStack.visible_layers``
     always includes ``Layer.TENANT``), and ``add_layer_from_clauses`` splices
@@ -128,6 +130,24 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     and short-circuiting on the per-KG ASK alone would turn a working answer
     into a confident refusal. That is the same class of dishonesty this probe
     exists to remove, just pointed the other way.
+
+    ONTA-453: that rescue used to apply to UNREGISTERED names too, and that was
+    wrong. The user supplied a name; if no record and no triples answer to it,
+    it is not a graph. Rescuing it does not preserve an answer, it fabricates
+    one: the reproduction on demo-tenant asked "how many records are there?"
+    against ``deffinitely_not_a_real_kg_xyz`` and got a confident 255210, every
+    row of which came from the tenant base graph and the global public layer
+    and none from the graph named in the question. "Do no harm" only holds when
+    the union answer is plausibly ABOUT the thing the caller named, which
+    requires the thing to exist. A registered-but-empty KG does exist, so it
+    keeps the rescue; an unregistered name is a typo and is now
+    :data:`KG_MISSING` regardless of what the base graph holds. This also makes
+    the verdict cheaper on that path (two ASKs, not three) and honest for every
+    caller of this probe at once — ``/ask``'s 404, ``QueryCapability``'s
+    clarify, and ``agent/kg_scope``'s write-turn gate.
+
+    An OMITTED ``kg_name`` is untouched: it short-circuits to :data:`KG_OK`
+    above and legitimately reads the base graph (ONTA-426).
 
     That third ASK is deliberately NOT a bare ``?s ?p ?o`` over the base graph:
     the base graph is also the ONTOLOGY graph and always holds at least the KG's
@@ -169,9 +189,18 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
         if kg_has_data:
             _kg_ok_cache[(tenant_id, kg_name)] = time.time()
             return KG_OK
-        # Only now, on the rare path where we are about to declare a KG empty or
-        # missing, pay for the base-graph instance check. The common
-        # populated-KG case stays at exactly two ASKs.
+        if not registered:
+            # ONTA-453. No record and no triples: the name the caller supplied
+            # is not a graph in this workspace. The base-graph rescue below must
+            # NOT cover this case — it would answer a question about a graph
+            # that does not exist, out of data that is not in it.
+            logger.info(
+                "kg_status_missing", tenant=tenant_id, kg_name=kg_name
+            )
+            return KG_MISSING
+        # Only now, on the rare path where we are about to declare a REGISTERED
+        # KG empty, pay for the base-graph instance check. The common
+        # populated-KG case stays at exactly two ASKs, and so does a typo.
         if await neptune.ask(_base_has_instances_query(base)):
             _kg_ok_cache[(tenant_id, kg_name)] = time.time()
             return KG_OK
@@ -181,9 +210,7 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
         )
         return KG_OK
 
-    if registered:
-        return KG_EMPTY
-    return KG_MISSING
+    return KG_EMPTY
 
 
 async def list_kg_names(neptune, tenant_id: str, limit: int = 25) -> list[str]:

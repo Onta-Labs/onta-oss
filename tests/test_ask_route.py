@@ -242,11 +242,66 @@ def test_ask_empty_kg_still_answers_when_data_lives_in_the_base_graph(
     mock_ask.assert_called_once()
 
 
-def test_ask_missing_kg_still_answers_when_data_lives_in_the_base_graph(
+def test_ask_missing_kg_is_404_even_when_the_base_graph_has_instances(
     client, auth_headers, mock_neptune
 ):
-    """Same do-no-harm rule on the 404 path: main would have answered this."""
-    _wire_kg(mock_neptune, registered=False, has_data=False, base_instances=True)
+    """ONTA-453. The do-no-harm rescue must NOT cover an unregistered name.
+
+    Reproduced against production: ``kg_name="deffinitely_not_a_real_kg_xyz"``
+    on demo-tenant returned HTTP 200 and the answer "255210", narrated as "Two
+    hundred fifty-five thousand two hundred ten records match". The generated
+    SPARQL listed the nonexistent graph first, but SPARQL ``FROM`` unions every
+    listed graph, so 100% of that count came from the tenant base graph plus the
+    global public layer and 0% from the graph the user actually named.
+
+    ONTA-413's 404 never fired because the base-graph instance check rescued the
+    typo into ``KG_OK``. Answering a question "about" a graph that does not
+    exist, from data that is not in it, is worse than the silent empty this
+    feature was built to remove: a confident number does not make anyone
+    re-check their spelling.
+    """
+    _wire_kg(
+        mock_neptune,
+        registered=False,
+        has_data=False,
+        base_instances=True,
+        others=["imdb", "events"],
+    )
+
+    with patch(
+        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        new_callable=AsyncMock,
+    ) as mock_ask:
+        res = client.post(
+            f"/graphs/{TENANT}/ask",
+            json={"question": "how many records are there?", "kg_name": "typo"},
+            headers=auth_headers,
+        )
+
+    assert res.status_code == 404
+    detail = res.json()["detail"]
+    assert detail["error"] == "kg_not_found"
+    assert detail["kg_name"] == "typo"
+    assert detail["available_kgs"] == ["imdb", "events"]
+    mock_ask.assert_not_called()
+
+
+def test_ask_without_kg_name_still_answers_from_the_base_graph(
+    client, auth_headers, mock_neptune
+):
+    """ONTA-426 pin: an OMITTED kg_name is deliberately NOT narrowed (ONTA-453).
+
+    Naming nothing legitimately reads the tenant base graph (``ingest.py``
+    writes there whenever ``kg_name`` is absent), so the fix above must not
+    leak into this case. Only an explicitly supplied, nonexistent name changes.
+    """
+    _wire_kg(
+        mock_neptune,
+        registered=False,
+        has_data=False,
+        base_instances=True,
+        others=["imdb"],
+    )
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
@@ -256,12 +311,13 @@ def test_ask_missing_kg_still_answers_when_data_lives_in_the_base_graph(
         mock_ask.return_value = ok
         res = client.post(
             f"/graphs/{TENANT}/ask",
-            json={"question": "how many", "kg_name": "typo"},
+            json={"question": "how many"},
             headers=auth_headers,
         )
 
     assert res.status_code == 200
     assert res.json()["answer"] == "42"
+    mock_ask.assert_called_once()
 
 
 def test_ask_probe_failure_degrades_to_answering(client, auth_headers, mock_neptune):
