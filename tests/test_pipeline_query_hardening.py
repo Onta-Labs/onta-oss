@@ -40,7 +40,7 @@ FULL_ONTOLOGY = "FULL_ONTOLOGY_TOKEN"
 TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 SUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-TYPES = "https://cograph.tech/types"
+TYPES = "https://graph.onta.sh/types"
 
 
 def _rows(vars_, *value_rows) -> dict:
@@ -103,7 +103,7 @@ async def test_empty_first_sparql_escalates_to_full_ontology_and_recovers():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=embed), \
          patch.object(p, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)) as fetch_full, \
          patch.object(p, "_generate_sparql", new=gen):
-        result = await p.ask("show details for zzqx", "https://cograph.tech/graphs/t1")
+        result = await p.ask("show details for zzqx", "https://graph.onta.sh/graphs/t1")
 
     # Recovered, not the degraded message.
     assert "Could not answer" not in result.answer
@@ -143,7 +143,7 @@ async def test_empty_sparql_does_not_escalate_when_already_full():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
          patch.object(p, "_fetch_ontology", new=fetch_full), \
          patch.object(p, "_generate_sparql", new=gen):
-        result = await p.ask("show details for zzqx", "https://cograph.tech/graphs/t1")
+        result = await p.ask("show details for zzqx", "https://graph.onta.sh/graphs/t1")
 
     assert "Could not answer" not in result.answer
     # Fetched exactly once (the initial load); the retry did NOT re-fetch.
@@ -192,7 +192,7 @@ async def test_broaden_name_lookup_swaps_subtype_for_supertype_and_finds_row():
     p = NLQueryPipeline(neptune, "invented-anthropic-key")
 
     original = _single_subtype_name_lookup(sub)
-    out = await p._broaden_name_lookup(original, "https://cograph.tech/graphs/t1")
+    out = await p._broaden_name_lookup(original, "https://graph.onta.sh/graphs/t1")
 
     assert out is not None, "broadening should fire for a single-subtype name lookup"
     broadened_sparql, raw = out
@@ -211,7 +211,7 @@ async def test_broaden_name_lookup_noop_without_a_name_filter():
     neptune.query = AsyncMock(return_value=EMPTY_RESULT)
     p = NLQueryPipeline(neptune, "k")
     q = f"SELECT ?x WHERE {{ ?x <{TYPE}>/<{SUBCLASS}>* <{TYPES}/Cat> }}"
-    assert await p._broaden_name_lookup(q, "https://cograph.tech/graphs/t1") is None
+    assert await p._broaden_name_lookup(q, "https://graph.onta.sh/graphs/t1") is None
 
 
 @pytest.mark.asyncio
@@ -227,7 +227,7 @@ async def test_broaden_name_lookup_noop_when_type_has_no_supertype():
     neptune.query = AsyncMock(side_effect=query)
     p = NLQueryPipeline(neptune, "k")
     q = _single_subtype_name_lookup("Cat")
-    assert await p._broaden_name_lookup(q, "https://cograph.tech/graphs/t1") is None
+    assert await p._broaden_name_lookup(q, "https://graph.onta.sh/graphs/t1") is None
 
 
 @pytest.mark.asyncio
@@ -267,7 +267,7 @@ async def test_ask_broadens_zero_row_name_lookup_end_to_end():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
          patch.object(p, "_fetch_ontology", new=AsyncMock(return_value=FULL_ONTOLOGY)), \
          patch.object(p, "_generate_sparql", new=gen):
-        result = await p.ask("show details for Rex", "https://cograph.tech/graphs/t1")
+        result = await p.ask("show details for Rex", "https://graph.onta.sh/graphs/t1")
 
     # NLResult.timing is typed dict[str, float], so the True flag surfaces as 1.0
     # — assert it fired (truthy), which is the mechanism we care about.
@@ -295,7 +295,7 @@ async def test_broaden_skips_contains_filter_on_non_name_attribute():
         f"?x <{TYPES}/MortgageComplaint/attrs/tags> ?tags . "
         f'FILTER(CONTAINS(LCASE(?tags), "escrow")) }}'
     )
-    assert await p._broaden_name_lookup(non_name, "https://cograph.tech/graphs/t1") is None
+    assert await p._broaden_name_lookup(non_name, "https://graph.onta.sh/graphs/t1") is None
     neptune.query.assert_not_awaited()  # gated out before the parent-map probe
 
     # Contrast, SAME hierarchy: a CONTAINS over an rdfs:label variable DOES qualify.
@@ -344,7 +344,7 @@ async def test_broaden_rewrites_only_the_type_object_not_prefixed_uris():
         f"?x <{TYPES}/CatFood/attrs/flavor> ?flavor . "  # sibling type sharing the 'Cat' prefix
         f'FILTER(CONTAINS(LCASE(?name), "rex")) }}'
     )
-    out = await p._broaden_name_lookup(original, "https://cograph.tech/graphs/t1")
+    out = await p._broaden_name_lookup(original, "https://graph.onta.sh/graphs/t1")
     assert out is not None
     broadened, _ = out
 

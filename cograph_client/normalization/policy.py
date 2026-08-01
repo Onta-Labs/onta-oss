@@ -36,8 +36,10 @@ here.
 Boundary: OSS. Imports only stdlib / ``cograph_client.*``. No ``from cograph.*``.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import json
 import re
 import unicodedata
@@ -92,15 +94,15 @@ REASON_UNCHANGED = "unchanged"  # value survived, already canonical
 
 
 # --------------------------------------------------------------------------- #
-# Namespaces — mirror NormalizationRuleStore's exact shape (an entity resource
+# Namespaces — mirror NormalizationRuleStoref's exact shape (an entity resource
 # with a dedicated `…/onto/policy/<field>` predicate namespace so fields never
 # collide with real ontology predicates).
 # --------------------------------------------------------------------------- #
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 XSD_BOOLEAN = "http://www.w3.org/2001/XMLSchema#boolean"
-POLICY_TYPE_URI = "https://cograph.tech/types/CleanPolicy"
-POLICY_ENTITY_PREFIX = "https://cograph.tech/entities/CleanPolicy/"
-POLICY_NS = "https://cograph.tech/onto/policy/"
+POLICY_TYPE_URI = f"{IRI_BASE}/types/CleanPolicy"
+POLICY_ENTITY_PREFIX = f"{IRI_BASE}/entities/CleanPolicy/"
+POLICY_NS = f"{IRI_BASE}/onto/policy/"
 
 P_KG = POLICY_NS + "kgName"
 P_TYPE = POLICY_NS + "typeName"

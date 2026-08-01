@@ -26,17 +26,23 @@ convention in CLAUDE.md), so a legitimate relationship such as
 Hence the curated-marker approach, plus the ``is_relationship`` exemption below.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import (
+    ATTR_META_NS,
+    ER_NS,
+    ONTO_PRED_PREFIX,
+    SUPPRESSION_NS,
+    VALIDITY_NS,
+)
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#"
 
 # Instance relationship predicates are minted as `…/onto/<predName>`; the whole
 # namespace therefore also carries the housekeeping markers below.
-ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
 # Entity-resolution internals (blockKey, erSignal_*) — never user-facing domain data.
-ER_NS = "https://cograph.tech/er/"
 # Normalization internals (canonical-value bookkeeping) live under …/onto/norm/.
 ONTO_NORM_PREFIX = ONTO_PRED_PREFIX + "norm/"
 # Per-attribute provenance companions (`attr_meta/<Type>/<attr>/<suffix>`) —
@@ -45,18 +51,15 @@ ONTO_NORM_PREFIX = ONTO_PRED_PREFIX + "norm/"
 # freshness FILTERs + citation rendering read it by convention), but excluded
 # from every surface that renders predicates as domain attributes. Minted by
 # graph/provenance.py::attr_provenance_companion_uri for BOTH rails.
-ATTR_META_NS = "https://cograph.tech/attr_meta/"
 # Valid-time interval predicates (ONTA-277). Live in a SEPARATE companion graph
 # (`<data-graph>/validity`, graph/validity.py) and so never actually appear on the
 # instance graph a user surface reads — but the whole namespace is classified
 # internal for defense-in-depth, so a validity predicate could never be surfaced
 # as a domain attribute even if one leaked onto the instance graph.
-VALIDITY_NS = "https://cograph.tech/validity/"
 # Suppression-list predicates (ONTA-279). The sticky, reopen-proof retraction
 # marker; like validity, lives in a SEPARATE companion graph
 # (`<data-graph>/suppression`, graph/suppression.py) and is classified internal
 # whole-namespace for the same defense-in-depth reason.
-SUPPRESSION_NS = "https://cograph.tech/suppression/"
 # The three companion suffixes (also the `<attr>_<suffix>` tails of the legacy
 # attrs/-namespace shape that pre-ONTA-262 graphs still carry).
 ATTR_META_SUFFIXES: tuple[str, ...] = ("source_url", "provenance", "verified_at")

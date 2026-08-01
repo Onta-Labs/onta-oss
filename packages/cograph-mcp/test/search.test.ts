@@ -62,7 +62,7 @@ describe("search tool — degraded honesty", () => {
         count: 1,
         hits: [
           {
-            entity_uri: "https://cograph.tech/entities/Speech/s1",
+            entity_uri: "https://graph.onta.sh/entities/Speech/s1",
             attr: "transcript",
             snippet: "…privacy…",
             score: 0.4,

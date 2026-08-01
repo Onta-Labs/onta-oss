@@ -305,7 +305,7 @@ def test_agent_route_uses_same_tenant_dep_as_direct_path():
 @pytest.mark.parametrize(
     "bad_name",
     [
-        "kg1> FROM <https://cograph.tech/graphs/other-tenant",
+        "kg1> FROM <https://graph.onta.sh/graphs/other-tenant",
         "kg 1",
         "kg/1",
     ],

@@ -40,7 +40,7 @@ provenance / validity / history companion-graph pattern exactly:
 
 For a suppressed fact ``(s, p, o)`` the suppression graph holds::
 
-    <https://cograph.tech/suppression/mark/{sha1(s|p|o)}>
+    <https://graph.onta.sh/suppression/mark/{sha1(s|p|o)}>
         sup:subject      <s> ;
         sup:predicate    <p> ;
         sup:object       o ;                       # literal or URI, as written
@@ -64,6 +64,9 @@ Boundary: OSS. Imports only stdlib / ``cograph_client.*``.
 
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE, SUPPRESSION_NS
+
+
 import hashlib
 from datetime import datetime
 
@@ -74,7 +77,6 @@ from cograph_client.graph.queries import _escape_value, delete_node_predicates_q
 # predicates live in a separate companion graph and never appear on the instance
 # graph, but classifying the namespace internal makes it structurally impossible
 # for a suppression predicate to be surfaced as a domain attribute if one leaked).
-SUPPRESSION_NS = "https://cograph.tech/suppression/"
 
 SUP_SUBJECT = f"{SUPPRESSION_NS}subject"
 SUP_PREDICATE = f"{SUPPRESSION_NS}predicate"

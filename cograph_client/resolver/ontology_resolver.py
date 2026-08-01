@@ -24,8 +24,10 @@ All reused primitives are OSS (``TypeMatcher``, ``OntologyEmbeddingService``,
 ``resolve_attribute``, ``normalize_predicate``). No proprietary imports.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import TYPE_URI_PREFIX
 import json
 import os
 
@@ -49,7 +51,6 @@ from cograph_client.resolver.type_matcher import TypeMatcher
 
 logger = structlog.stdlib.get_logger("cograph.resolver.ontology")
 
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
 
 # Primitive datatypes a relationship is NOT: anything else as a datatype_hint
 # (or a populated target_phrase) marks the intent as a relationship to a type.

@@ -42,7 +42,7 @@ def invoke_response(client, mock_neptune, auth_headers, monkeypatch):
             return _sparql(
                 [
                     {
-                        "investor": "https://cograph.tech/entities/Investor/Pear_VC",
+                        "investor": "https://graph.onta.sh/entities/Investor/Pear_VC",
                         "investorName": "Pear_VC",
                     }
                 ],
@@ -55,7 +55,7 @@ def invoke_response(client, mock_neptune, auth_headers, monkeypatch):
             [
                 {
                     "name": "sec-latest-filing",
-                    "type": "https://cograph.tech/types/Company",
+                    "type": "https://graph.onta.sh/types/Company",
                     "endpoint": "https://example.invalid/sec",
                     "desc": "latest filing",
                 }
@@ -83,7 +83,7 @@ def invoke_response(client, mock_neptune, auth_headers, monkeypatch):
     resp = client.post(
         "/graphs/test-tenant/functions/sec-latest-filing/invoke",
         json={
-            "entity_uri": "https://cograph.tech/entities/Company/Acme",
+            "entity_uri": "https://graph.onta.sh/entities/Company/Acme",
             "kg_name": "demo-kg",
         },
         headers=auth_headers,

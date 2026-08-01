@@ -43,7 +43,7 @@ async def test_generation_failure_retries_then_degrades_gracefully(pipeline):
         pipeline, "_generate_sparql", new_callable=AsyncMock
     ) as mock_gen:
         mock_gen.side_effect = RuntimeError("provider 503")
-        result = await pipeline.ask("List all attributes", "https://cograph.tech/graphs/t1")
+        result = await pipeline.ask("List all attributes", "https://graph.onta.sh/graphs/t1")
 
     # No exception escaped; we got a well-formed NLResult explaining the failure.
     assert "Could not answer" in result.answer
@@ -65,7 +65,7 @@ async def test_unbound_projection_column_reported(pipeline, mock_neptune):
         },
     }
     llm_response = json.dumps({
-        "sparql": "SELECT ?name ?latency WHERE { ?s <https://schema.org/name> ?name OPTIONAL { ?s <https://cograph.tech/types/Service/attrs/latency> ?latency } }",
+        "sparql": "SELECT ?name ?latency WHERE { ?s <https://schema.org/name> ?name OPTIONAL { ?s <https://graph.onta.sh/types/Service/attrs/latency> ?latency } }",
         "explanation": "svc",
         "functions_needed": [],
     })
@@ -73,7 +73,7 @@ async def test_unbound_projection_column_reported(pipeline, mock_neptune):
     mock_message.content = [MagicMock(text=llm_response)]
     with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mc:
         mc.return_value = mock_message
-        result = await pipeline.ask("services and latency", "https://cograph.tech/graphs/t1")
+        result = await pipeline.ask("services and latency", "https://graph.onta.sh/graphs/t1")
 
     assert "latency" in result.answer
     assert "not present" in result.answer
@@ -135,13 +135,13 @@ async def test_instance_graph_fallback_when_schema_missing(pipeline, mock_neptun
         "head": {"vars": ["p"]},
         "results": {
             "bindings": [
-                {"p": {"type": "uri", "value": "https://cograph.tech/types/Service/attrs/name"}},
+                {"p": {"type": "uri", "value": "https://graph.onta.sh/types/Service/attrs/name"}},
             ]
         },
     }
     summary, has_instances = await pipeline._instance_graph_ontology_fallback(
-        "https://cograph.tech/graphs/t1",
-        "https://cograph.tech/graphs/t1/kg/svc",
+        "https://graph.onta.sh/graphs/t1",
+        "https://graph.onta.sh/graphs/t1/kg/svc",
         {"Service"},
     )
     assert has_instances is True

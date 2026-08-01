@@ -27,7 +27,7 @@ diffing snapshots.
 For a value change on ``(subject, predicate)`` from ``old`` to ``new`` at
 ``changed_at`` the history graph holds::
 
-    <https://cograph.tech/history/ver/{sha1(s|p|old|new|ts)}>
+    <https://graph.onta.sh/history/ver/{sha1(s|p|old|new|ts)}>
         hist:subject    <s> ;
         hist:predicate  <p> ;
         hist:oldValue   old ;                       # literal or URI, as written
@@ -50,6 +50,9 @@ concern the same way provenance does.
 
 from __future__ import annotations
 
+from cograph_client.graph.iri import HIST_NS, IRI_BASE
+
+
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
@@ -57,7 +60,6 @@ from datetime import datetime
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import _escape_literal, _escape_value
 
-HIST_NS = "https://cograph.tech/history/"
 
 HIST_SUBJECT = f"{HIST_NS}subject"
 HIST_PREDICATE = f"{HIST_NS}predicate"

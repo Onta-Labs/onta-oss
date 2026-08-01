@@ -48,7 +48,7 @@ from cograph_client.enrichment.sources.wikidata import (
 _MENTOR_TYPED = (
     "?e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/"
     "<http://www.w3.org/2000/01/rdf-schema#subClassOf>* "
-    "<https://cograph.tech/types/Mentor> ."
+    "<https://graph.onta.sh/types/Mentor> ."
 )
 
 
@@ -478,9 +478,9 @@ def test_values_match():
 
 def test_build_select_query_includes_limit_and_attrs():
     q = _build_select_query("https://g/x", "Product", ["manufacturer", "country"], 50)
-    assert "<https://cograph.tech/types/Product>" in q
-    assert "<https://cograph.tech/types/Product/attrs/manufacturer>" in q
-    assert "<https://cograph.tech/types/Product/attrs/country>" in q
+    assert "<https://graph.onta.sh/types/Product>" in q
+    assert "<https://graph.onta.sh/types/Product/attrs/manufacturer>" in q
+    assert "<https://graph.onta.sh/types/Product/attrs/country>" in q
     assert "LIMIT 50" in q
 
 
@@ -495,7 +495,7 @@ def test_build_select_query_no_scope_is_unchanged():
     # Subclass-aware, reflexive type constraint (Fix B): matches Mentor AND any
     # subtype, and still matches a directly-typed Mentor (zero subClassOf hops).
     assert _MENTOR_TYPED in q
-    assert "?e a <https://cograph.tech/types/Mentor> ." not in q  # no bare `a`
+    assert "?e a <https://graph.onta.sh/types/Mentor> ." not in q  # no bare `a`
     # No subset machinery leaks in.
     assert "FILTER EXISTS" not in q
     assert "VALUES ?e" not in q
@@ -517,11 +517,11 @@ def test_enrich_selection_is_subclass_aware():
     assert (
         "?e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/"
         "<http://www.w3.org/2000/01/rdf-schema#subClassOf>* "
-        "<https://cograph.tech/types/Model> ." in q
+        "<https://graph.onta.sh/types/Model> ." in q
     )
-    assert "?e a <https://cograph.tech/types/Model> ." not in q
+    assert "?e a <https://graph.onta.sh/types/Model> ." not in q
     # Reflexive: the `*` (zero-or-more) means a directly-typed Model still matches.
-    assert "subClassOf>* <https://cograph.tech/types/Model>" in q
+    assert "subClassOf>* <https://graph.onta.sh/types/Model>" in q
 
 
 def test_build_select_query_scope_matches_bound_predicate_path():
@@ -537,8 +537,8 @@ def test_build_select_query_scope_matches_bound_predicate_path():
     scope = EnrichScope(predicate="haslevel", value="Manager")
     # The resolved instance IRI(s) for the predicate (attr_uri + onto/<leaf>).
     pred_iris = [
-        "https://cograph.tech/types/Mentor/attrs/haslevel",
-        "https://cograph.tech/onto/haslevel",
+        "https://graph.onta.sh/types/Mentor/attrs/haslevel",
+        "https://graph.onta.sh/onto/haslevel",
     ]
     q = _build_select_query(
         "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
@@ -557,8 +557,8 @@ def test_build_select_query_scope_matches_bound_predicate_path():
     # GROUP_CONCAT — that is not the scope predicate, so we assert specifically on
     # the scope's ?sv object var.)
     assert (
-        "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-        "<https://cograph.tech/onto/haslevel>) ?sv ." in q
+        "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+        "<https://graph.onta.sh/onto/haslevel>) ?sv ." in q
     )
     assert "?e ?p ?sv" not in q
     assert 'REPLACE(STR(?p)' not in q
@@ -580,7 +580,7 @@ def test_build_select_query_scope_matches_bound_predicate_path():
     # is the ?fp OPTIONAL, unrelated to the scope arm — so we assert on the
     # `?sv <pred>` shape rather than substring-absence in the whole query.)
     assert "?sv <http://www.w3.org/2000/01/rdf-schema#label>" not in q
-    assert "?sv <https://cograph.tech/types/Mentor/attrs/name>" not in q
+    assert "?sv <https://graph.onta.sh/types/Mentor/attrs/name>" not in q
     assert "?sv (<" not in q  # no property-path alternation pinned on the target
     # IRI local-name fallback for the relationship target.
     assert 'isIRI(?sv)' in q
@@ -603,7 +603,7 @@ def test_build_select_query_scope_unresolved_predicate_matches_nothing():
 def test_build_select_query_scope_escapes_value():
     """Quotes/backslashes in the scope value are escaped into the SPARQL literal."""
     scope = EnrichScope(predicate="title", value='Sr "Eng"')
-    pred_iris = ["https://cograph.tech/types/Mentor/attrs/title"]
+    pred_iris = ["https://graph.onta.sh/types/Mentor/attrs/title"]
     q = _build_select_query(
         "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
     )
@@ -615,11 +615,11 @@ def test_build_select_query_scope_single_iri_no_alternation():
     """A single resolved IRI is emitted as a bare bound predicate (no parens),
     not an alternation — still POS-indexed, never a variable predicate."""
     scope = EnrichScope(predicate="title", value="Director")
-    pred_iris = ["https://cograph.tech/types/Mentor/attrs/title"]
+    pred_iris = ["https://graph.onta.sh/types/Mentor/attrs/title"]
     q = _build_select_query(
         "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
     )
-    assert "?e <https://cograph.tech/types/Mentor/attrs/title> ?sv ." in q
+    assert "?e <https://graph.onta.sh/types/Mentor/attrs/title> ?sv ." in q
     assert "?e ?p ?sv" not in q
 
 
@@ -630,16 +630,16 @@ def test_build_select_query_literal_attribute_scope_matches_rdfs_label():
     regressing the bound-predicate attrs/<attr> literal arm."""
     scope = EnrichScope(predicate="name", value="Jane Doe")
     pred_iris = [
-        "https://cograph.tech/types/Mentor/attrs/name",
-        "https://cograph.tech/onto/name",
+        "https://graph.onta.sh/types/Mentor/attrs/name",
+        "https://graph.onta.sh/onto/name",
     ]
     q = _build_select_query(
         "https://g/x", "Mentor", ["bio"], None, scope=scope, scope_pred_iris=pred_iris
     )
     # attrs/<attr> literal arm (bound predicate, case-insensitive).
     assert (
-        "?e (<https://cograph.tech/types/Mentor/attrs/name>|"
-        "<https://cograph.tech/onto/name>) ?sv ." in q
+        "?e (<https://graph.onta.sh/types/Mentor/attrs/name>|"
+        "<https://graph.onta.sh/onto/name>) ?sv ." in q
     )
     assert 'isLiteral(?sv) && LCASE(STR(?sv)) = "jane doe"' in q
     # Displayed-name arm: the entity's rdfs:label matched directly.
@@ -653,30 +653,30 @@ def test_build_select_query_literal_attribute_scope_matches_rdfs_label():
 def test_build_select_query_entity_uris_uses_values_block():
     """entity_uris → a VALUES ?e block; still constrained to the type."""
     uris = [
-        "https://cograph.tech/entities/Mentor/m1",
-        "https://cograph.tech/entities/Mentor/m2",
+        "https://graph.onta.sh/entities/Mentor/m1",
+        "https://graph.onta.sh/entities/Mentor/m2",
     ]
     q = _build_select_query("https://g/x", "Mentor", ["bio"], None, entity_uris=uris)
     assert _MENTOR_TYPED in q  # subclass-aware, reflexive type guard (Fix B)
     assert "VALUES ?e {" in q
-    assert "<https://cograph.tech/entities/Mentor/m1>" in q
-    assert "<https://cograph.tech/entities/Mentor/m2>" in q
+    assert "<https://graph.onta.sh/entities/Mentor/m1>" in q
+    assert "<https://graph.onta.sh/entities/Mentor/m2>" in q
     # No scope EXISTS machinery when using the explicit-URI primitive.
     assert "FILTER EXISTS" not in q
 
 
 def test_build_select_query_entity_uris_wins_over_scope():
     """If both are passed, entity_uris is used (the documented precedence)."""
-    uris = ["https://cograph.tech/entities/Mentor/m1"]
+    uris = ["https://graph.onta.sh/entities/Mentor/m1"]
     scope = EnrichScope(predicate="haslevel", value="Manager")
     q = _build_select_query(
         "https://g/x", "Mentor", ["bio"], None, scope=scope, entity_uris=uris
     )
     assert "VALUES ?e {" in q
-    assert "<https://cograph.tech/entities/Mentor/m1>" in q
+    assert "<https://graph.onta.sh/entities/Mentor/m1>" in q
     # The scope constraint must NOT appear when entity_uris wins.
     assert "FILTER EXISTS" not in q
-    assert "<https://cograph.tech/onto/haslevel>" not in q
+    assert "<https://graph.onta.sh/onto/haslevel>" not in q
 
 
 def test_scope_block_is_pure_helper():
@@ -687,7 +687,7 @@ def test_scope_block_is_pure_helper():
     block = _scope_block(
         "Mentor",
         EnrichScope(predicate="haslevel", value="Manager"),
-        ["https://cograph.tech/onto/haslevel"],
+        ["https://graph.onta.sh/onto/haslevel"],
     )
     # No EXISTS wrapper — the patterns are inlined directly into the WHERE.
     assert "FILTER EXISTS" not in block
@@ -697,11 +697,11 @@ def test_scope_block_is_pure_helper():
     # branch leads, so the planner still drives from it — POS-indexed).
     first_branch = block.split("} UNION {")[0]
     assert first_branch.lstrip(" {\n").startswith(
-        "?e <https://cograph.tech/onto/haslevel> ?sv ."
+        "?e <https://graph.onta.sh/onto/haslevel> ?sv ."
     )
     # Predicate matched by a BOUND property path (single IRI → bare term) — no
     # variable predicate, no scan.
-    assert "?e <https://cograph.tech/onto/haslevel> ?sv ." in block
+    assert "?e <https://graph.onta.sh/onto/haslevel> ?sv ." in block
     assert "FILTER(?p IN (" not in block
     assert "?e ?p ?sv" not in block
     assert "REPLACE(STR(?p)" not in block
@@ -714,13 +714,13 @@ def test_scope_block_multiple_iris_emit_alternation():
         "Mentor",
         EnrichScope(predicate="haslevel", value="Manager"),
         [
-            "https://cograph.tech/types/Mentor/attrs/haslevel",
-            "https://cograph.tech/onto/haslevel",
+            "https://graph.onta.sh/types/Mentor/attrs/haslevel",
+            "https://graph.onta.sh/onto/haslevel",
         ],
     )
     assert (
-        "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-        "<https://cograph.tech/onto/haslevel>) ?sv ." in block
+        "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+        "<https://graph.onta.sh/onto/haslevel>) ?sv ." in block
     )
     assert "FILTER(?p IN (" not in block
     assert "?e ?p ?sv" not in block
@@ -744,8 +744,8 @@ def test_scope_block_literal_attribute_also_matches_rdfs_label():
         "Mentor",
         EnrichScope(predicate="name", value="Irina Igoshkina"),
         [
-            "https://cograph.tech/types/Mentor/attrs/name",
-            "https://cograph.tech/onto/name",
+            "https://graph.onta.sh/types/Mentor/attrs/name",
+            "https://graph.onta.sh/onto/name",
         ],
     )
     # The attrs/<attr> literal arm is preserved (case-insensitive, lower-cased).
@@ -768,8 +768,8 @@ def test_scope_subselect_dedups_and_caps():
     (COG-112 fix #4)."""
     scope = EnrichScope(predicate="haslevel", value="Manager")
     pred_iris = [
-        "https://cograph.tech/types/Mentor/attrs/haslevel",
-        "https://cograph.tech/onto/haslevel",
+        "https://graph.onta.sh/types/Mentor/attrs/haslevel",
+        "https://graph.onta.sh/onto/haslevel",
     ]
     sub = _scope_subselect("Mentor", scope, pred_iris, limit=50)
     # De-dup: a DISTINCT sub-select on ?e.
@@ -779,8 +779,8 @@ def test_scope_subselect_dedups_and_caps():
     # Inline bound-predicate scope triple — no EXISTS wrapper.
     assert "FILTER EXISTS" not in sub
     assert (
-        "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-        "<https://cograph.tech/onto/haslevel>) ?sv ." in sub
+        "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+        "<https://graph.onta.sh/onto/haslevel>) ?sv ." in sub
     )
     # LIMIT is INSIDE the sub-select (caps the selected entities).
     assert "LIMIT 50" in sub
@@ -795,7 +795,7 @@ def test_build_select_query_scope_limit_caps_inside_subselect():
     caps the SELECTED entities before the attribute OPTIONALs hydrate them), not
     as a top-level LIMIT on the GROUP BY (which would cap post-hydration rows)."""
     scope = EnrichScope(predicate="haslevel", value="Manager")
-    pred_iris = ["https://cograph.tech/types/Mentor/attrs/haslevel"]
+    pred_iris = ["https://graph.onta.sh/types/Mentor/attrs/haslevel"]
     q = _build_select_query(
         "https://g/x", "Mentor", ["bio"], 25, scope=scope, scope_pred_iris=pred_iris
     )
@@ -813,19 +813,19 @@ def test_resolve_pred_iris_from_bindings_case_insensitive():
     ontology-declared predicates to BOTH candidate instance IRIs; an unknown
     predicate resolves to []."""
     bindings = [
-        {"attr": "https://cograph.tech/types/Mentor/attrs/haslevel", "label": "haslevel"},
-        {"attr": "https://cograph.tech/types/Mentor/attrs/title", "label": "title"},
+        {"attr": "https://graph.onta.sh/types/Mentor/attrs/haslevel", "label": "haslevel"},
+        {"attr": "https://graph.onta.sh/types/Mentor/attrs/title", "label": "title"},
     ]
     # Mixed-case request matches the stored `haslevel` leaf/label.
     iris = _resolve_pred_iris_from_bindings("Mentor", "hasLevel", bindings)
     assert iris == [
-        "https://cograph.tech/types/Mentor/attrs/haslevel",
-        "https://cograph.tech/onto/haslevel",
+        "https://graph.onta.sh/types/Mentor/attrs/haslevel",
+        "https://graph.onta.sh/onto/haslevel",
     ]
     # Resolving by the declared label also works.
     assert _resolve_pred_iris_from_bindings("Mentor", "TITLE", bindings) == [
-        "https://cograph.tech/types/Mentor/attrs/title",
-        "https://cograph.tech/onto/title",
+        "https://graph.onta.sh/types/Mentor/attrs/title",
+        "https://graph.onta.sh/onto/title",
     ]
     # Unknown predicate → no IRIs (caller treats as matched 0, no scan).
     assert _resolve_pred_iris_from_bindings("Mentor", "nope", bindings) == []
@@ -874,7 +874,7 @@ def test_enrich_request_rejects_injecting_entity_uri():
     from cograph_client.enrichment.models import EnrichRequest
 
     bad = [
-        "https://cograph.tech/entities/Mentor/m1",  # valid
+        "https://graph.onta.sh/entities/Mentor/m1",  # valid
         "https://evil> } DROP",                      # injects out of <…>
     ]
     with pytest.raises(pydantic.ValidationError):
@@ -889,9 +889,9 @@ def test_enrich_request_rejects_injecting_entity_uri():
         type_name="Mentor",
         attributes=["bio"],
         kg_name="kg",
-        entity_uris=["https://cograph.tech/entities/Mentor/m1"],
+        entity_uris=["https://graph.onta.sh/entities/Mentor/m1"],
     )
-    assert ok.entity_uris == ["https://cograph.tech/entities/Mentor/m1"]
+    assert ok.entity_uris == ["https://graph.onta.sh/entities/Mentor/m1"]
 
 
 def test_build_select_query_rejects_injecting_entity_uri_at_executor():
@@ -933,7 +933,7 @@ def test_executor_prefers_name_attribute_over_slug_label():
         # (prod regression: 15/18, the 3 relaxation-dependent items unfindable).
         rows = [
             {
-                "uri": "https://cograph.tech/entities/Item/Roma_tomatoes",
+                "uri": "https://graph.onta.sh/entities/Item/Roma_tomatoes",
                 "label": "Roma_tomatoes",          # rdfs:label = entity-id slug
                 "nameAttr": "Roma tomatoes",       # attrs/name = human name
                 "vals": "",
@@ -942,7 +942,7 @@ def test_executor_prefers_name_attribute_over_slug_label():
             # name-ish fallback (title/headline are job titles/headlines on
             # many types, not names).
             {
-                "uri": "https://cograph.tech/entities/Person/p1",
+                "uri": "https://graph.onta.sh/entities/Person/p1",
                 "label": "Jane Smith",             # real human label
                 "nameAttr": "VP of Sales",         # attrs/title — not a name
                 "vals": "",
@@ -977,16 +977,16 @@ def test_executor_end_to_end_filled_verified_conflict():
     async def run():
         # Three entities: one missing manufacturer (filled), one with matching
         # value (verified), one with different value (conflict).
-        mfr_pred = "https://cograph.tech/types/Product/attrs/manufacturer"
+        mfr_pred = "https://graph.onta.sh/types/Product/attrs/manufacturer"
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
             {
-                "uri": "https://cograph.tech/entities/Product/p2",
+                "uri": "https://graph.onta.sh/entities/Product/p2",
                 "label": "Drill 18V",
                 "vals": f"{mfr_pred}::Bosch",
             },
             {
-                "uri": "https://cograph.tech/entities/Product/p3",
+                "uri": "https://graph.onta.sh/entities/Product/p3",
                 "label": "Saw",
                 "vals": f"{mfr_pred}::Acme Tools",
             },
@@ -1051,7 +1051,7 @@ def test_executor_end_to_end_filled_verified_conflict():
 def test_executor_overwrite_writes_triples():
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1082,10 +1082,10 @@ def test_executor_overwrite_writes_triples():
 
 def test_executor_cache_hit_increment():
     async def run():
-        mfr_pred = "https://cograph.tech/types/Product/attrs/manufacturer"
+        mfr_pred = "https://graph.onta.sh/types/Product/attrs/manufacturer"
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1115,7 +1115,7 @@ def test_executor_cache_hit_increment():
 def test_executor_no_match_when_no_verdict():
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Unknown", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Unknown", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1159,7 +1159,7 @@ def test_executor_apply_routes_through_shared_writer(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1187,7 +1187,7 @@ def test_executor_stage_with_no_results_completes_applied():
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Unknown", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Unknown", "vals": ""},
         ]
 
         # No verdicts → no_match for every row → nothing staged.
@@ -1222,9 +1222,9 @@ def test_executor_stage_with_no_results_completes_applied():
         neptune2.update.assert_called()
 
         # A verdict that DIFFERS from an existing value → real conflict → REVIEW.
-        mfr_pred = "https://cograph.tech/types/Product/attrs/manufacturer"
+        mfr_pred = "https://graph.onta.sh/types/Product/attrs/manufacturer"
         rows3 = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Widget",
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Widget",
              "vals": f"{mfr_pred}::Acme Tools"},
         ]
         neptune3 = AsyncMock()
@@ -1257,8 +1257,8 @@ def test_executor_no_match_is_counted_and_excluded_from_results():
     async def run():
         # 2 entities × 2 attributes = 4 pairs, all missing.
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "ZZZNOPE", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "QQQNADA", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "ZZZNOPE", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "QQQNADA", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1339,8 +1339,8 @@ def test_executor_hung_adapter_does_not_strand_job(monkeypatch):
         monkeypatch.setattr(ex_mod, "ADAPTER_LOOKUP_TIMEOUT_S", 0.2)
 
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Acme", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Globex", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Acme", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Globex", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1377,7 +1377,7 @@ def test_executor_completes_with_fast_adapter_under_wait_for():
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -1428,7 +1428,7 @@ class _NamedAdapter:
 
 def _single_product_neptune():
     rows = [
-        {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+        {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
     ]
     neptune = AsyncMock()
     neptune.query.return_value = _entities_query_response(rows)
@@ -1665,9 +1665,9 @@ def _ontology_predicates_response(predicates: list[dict]) -> dict:
 # tests: a `haslevel` relationship and `title` literal attribute, plus the
 # `name` display attribute. Keyed by ontology attr URI + its label.
 _MENTOR_ONTO_PREDS = [
-    {"attr": "https://cograph.tech/types/Mentor/attrs/haslevel", "label": "haslevel"},
-    {"attr": "https://cograph.tech/types/Mentor/attrs/title", "label": "title"},
-    {"attr": "https://cograph.tech/types/Mentor/attrs/name", "label": "name"},
+    {"attr": "https://graph.onta.sh/types/Mentor/attrs/haslevel", "label": "haslevel"},
+    {"attr": "https://graph.onta.sh/types/Mentor/attrs/title", "label": "title"},
+    {"attr": "https://graph.onta.sh/types/Mentor/attrs/name", "label": "name"},
 ]
 
 
@@ -1709,8 +1709,8 @@ def test_executor_scope_relationship_selects_only_scoped_entities():
         # Mocked Neptune returns ONLY the two Manager-level mentors for the
         # scoped SELECT (as a real Neptune would, given the constraint).
         scoped_rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Ada", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Mentor/m2", "label": "Grace", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m2", "label": "Grace", "vals": ""},
         ]
         neptune, captured = _capturing_neptune(scoped_rows)
 
@@ -1740,8 +1740,8 @@ def test_executor_scope_relationship_selects_only_scoped_entities():
         assert "FILTER EXISTS" not in sel
         assert "SELECT DISTINCT ?e WHERE {" in sel
         assert (
-            "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-            "<https://cograph.tech/onto/haslevel>) ?sv ." in sel
+            "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+            "<https://graph.onta.sh/onto/haslevel>) ?sv ." in sel
         )
         assert "?e ?p ?sv" not in sel
         assert "REPLACE(STR(?p)" not in sel
@@ -1754,7 +1754,7 @@ def test_executor_scope_relationship_selects_only_scoped_entities():
         # The target-label predicate is the free variable ?slp, never bound to the
         # SOURCE type's attr namespace (the bug). (…/attrs/name still appears in
         # the OUTER ?fp entity-label OPTIONAL — unrelated — so assert on shape.)
-        assert "?sv <https://cograph.tech/types/Mentor/attrs/name>" not in sel
+        assert "?sv <https://graph.onta.sh/types/Mentor/attrs/name>" not in sel
         assert "?sv (<" not in sel
 
         # (b) Only the two scoped entities were processed (not all Mentors).
@@ -1775,7 +1775,7 @@ def test_executor_scope_predicate_casing_matches_via_lcase():
     local-name and compares to the lower-cased request value (#2)."""
     async def run():
         scoped_rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Ada", "vals": ""},
         ]
         neptune, captured = _capturing_neptune(scoped_rows)
         store = InMemoryJobStore()
@@ -1800,8 +1800,8 @@ def test_executor_scope_predicate_casing_matches_via_lcase():
         # property path; the mixed-case form never leaks verbatim and there is no
         # variable-predicate scan.
         assert (
-            "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-            "<https://cograph.tech/onto/haslevel>) ?sv ." in sel
+            "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+            "<https://graph.onta.sh/onto/haslevel>) ?sv ." in sel
         )
         assert "?e ?p ?sv" not in sel
         assert "hasLevel" not in sel
@@ -1824,14 +1824,14 @@ def test_executor_scope_relationship_not_in_ontology_attrs_still_matches():
     relationships → FILTER(false) → matched 0 (the bug)."""
     async def run():
         scoped_rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Ada", "vals": ""},
         ]
         # Ontology declares only `title`/`name` as attributes — `haslevel`
         # (the relationship) is absent from the attribute bindings, exactly like
         # the live adp-mentors data.
         onto_preds = [
-            {"attr": "https://cograph.tech/types/Mentor/attrs/title", "label": "title"},
-            {"attr": "https://cograph.tech/types/Mentor/attrs/name", "label": "name"},
+            {"attr": "https://graph.onta.sh/types/Mentor/attrs/title", "label": "title"},
+            {"attr": "https://graph.onta.sh/types/Mentor/attrs/name", "label": "name"},
         ]
         neptune, captured = _capturing_neptune(scoped_rows, onto_preds=onto_preds)
         store = InMemoryJobStore()
@@ -1854,8 +1854,8 @@ def test_executor_scope_relationship_not_in_ontology_attrs_still_matches():
         # bound-predicate property path is emitted (NOT FILTER(false)).
         assert "FILTER(false)" not in sel
         assert (
-            "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-            "<https://cograph.tech/onto/haslevel>) ?sv ." in sel
+            "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+            "<https://graph.onta.sh/onto/haslevel>) ?sv ." in sel
         )
         # No unbounded scan, no FILTER EXISTS machinery.
         assert "FILTER EXISTS" not in sel
@@ -1881,7 +1881,7 @@ def test_resolve_scope_predicate_iris_unions_direct_build_for_relationships():
             # Ontology declares only `title` — `haslevel` is absent (relationship).
             if "#domain>" in sparql and "#Property>" in sparql:
                 return _ontology_predicates_response(
-                    [{"attr": "https://cograph.tech/types/Mentor/attrs/title", "label": "title"}]
+                    [{"attr": "https://graph.onta.sh/types/Mentor/attrs/title", "label": "title"}]
                 )
             return _strategy_query_response([])
 
@@ -1895,8 +1895,8 @@ def test_resolve_scope_predicate_iris_unions_direct_build_for_relationships():
         )
         # The relationship is NOT in the ontology attribute bindings, but the
         # direct build always yields the onto/<pred> candidate (the fix).
-        assert "https://cograph.tech/onto/haslevel" in iris
-        assert "https://cograph.tech/types/Mentor/attrs/haslevel" in iris
+        assert "https://graph.onta.sh/onto/haslevel" in iris
+        assert "https://graph.onta.sh/types/Mentor/attrs/haslevel" in iris
 
         # An ATTRIBUTE declared in the ontology still resolves (and the union
         # dedups: the ontology arm and the direct build agree on the same IRIs).
@@ -1904,8 +1904,8 @@ def test_resolve_scope_predicate_iris_unions_direct_build_for_relationships():
             "test-tenant", "Mentor", EnrichScope(predicate="TITLE", value="Senior")
         )
         assert attr_iris == [
-            "https://cograph.tech/types/Mentor/attrs/title",
-            "https://cograph.tech/onto/title",
+            "https://graph.onta.sh/types/Mentor/attrs/title",
+            "https://graph.onta.sh/onto/title",
         ]
 
     asyncio.run(run())
@@ -1915,7 +1915,7 @@ def test_executor_scope_literal_attribute_constraint_in_sparql():
     """A scope on a literal attribute emits the literal-match arm in the SELECT."""
     async def run():
         scoped_rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Ada", "vals": ""},
         ]
         neptune, captured = _capturing_neptune(scoped_rows)
         store = InMemoryJobStore()
@@ -1938,8 +1938,8 @@ def test_executor_scope_literal_attribute_constraint_in_sparql():
         # Predicate matched by the concrete IRI(s) it resolved to, bound as a
         # property-path alternation — no variable predicate, no scan.
         assert (
-            "?e (<https://cograph.tech/types/Mentor/attrs/title>|"
-            "<https://cograph.tech/onto/title>) ?sv ." in sel
+            "?e (<https://graph.onta.sh/types/Mentor/attrs/title>|"
+            "<https://graph.onta.sh/onto/title>) ?sv ." in sel
         )
         assert "?e ?p ?sv" not in sel
         assert "REPLACE(STR(?p)" not in sel
@@ -1962,7 +1962,7 @@ def test_executor_scope_literal_name_value_matches_via_rdfs_label():
     async def run():
         scoped_rows = [
             {
-                "uri": "https://cograph.tech/entities/Mentor/m1",
+                "uri": "https://graph.onta.sh/entities/Mentor/m1",
                 "label": "Irina Igoshkina",
                 "vals": "",
             },
@@ -2016,7 +2016,7 @@ def test_executor_scope_literal_attribute_value_emits_dedicated_attrs_arm():
     `…/onto/<attr>` (the shape that silently bound nothing on Neptune)."""
     async def run():
         scoped_rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Jane Doe", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Jane Doe", "vals": ""},
         ]
         neptune, captured = _capturing_neptune(scoped_rows)
         store = InMemoryJobStore()
@@ -2038,7 +2038,7 @@ def test_executor_scope_literal_attribute_value_emits_dedicated_attrs_arm():
         # Dedicated attrs/<attr> literal arm: a single BOUND predicate (no
         # alternation), the value lower-cased + escaped (case-insensitive).
         assert (
-            "?e <https://cograph.tech/types/Mentor/attrs/name> ?av .\n"
+            "?e <https://graph.onta.sh/types/Mentor/attrs/name> ?av .\n"
             in sel
         )
         assert 'isLiteral(?av) && LCASE(STR(?av)) = "jane doe"' in sel
@@ -2046,8 +2046,8 @@ def test_executor_scope_literal_attribute_value_emits_dedicated_attrs_arm():
         assert "?e <http://www.w3.org/2000/01/rdf-schema#label> ?lbl ." in sel
         # The original alternation arm is preserved too.
         assert (
-            "?e (<https://cograph.tech/types/Mentor/attrs/name>|"
-            "<https://cograph.tech/onto/name>) ?sv ." in sel
+            "?e (<https://graph.onta.sh/types/Mentor/attrs/name>|"
+            "<https://graph.onta.sh/onto/name>) ?sv ." in sel
         )
         assert "FILTER(false)" not in sel
         assert "FILTER EXISTS" not in sel
@@ -2073,19 +2073,19 @@ def test_scope_block_literal_attribute_matches_attrs_name_value():
     from rdflib import Graph, Literal, RDF, URIRef
     from rdflib.namespace import XSD
 
-    T = "https://cograph.tech/types/Mentor"
+    T = "https://graph.onta.sh/types/Mentor"
     g = Graph()
     # Entity whose name lives ONLY on attrs/name; rdfs:label is the id slug.
-    e1 = URIRef("https://cograph.tech/entities/Mentor/4akvVWgTcS")
+    e1 = URIRef("https://graph.onta.sh/entities/Mentor/4akvVWgTcS")
     g.add((e1, RDF.type, URIRef(T)))
     g.add((e1, URIRef("http://www.w3.org/2000/01/rdf-schema#label"), Literal("4akvVWgTcS")))
     g.add((e1, URIRef(f"{T}/attrs/name"), Literal("Jane Doe", datatype=XSD.string)))
     # A different mentor — must NOT match.
-    e2 = URIRef("https://cograph.tech/entities/Mentor/xY9")
+    e2 = URIRef("https://graph.onta.sh/entities/Mentor/xY9")
     g.add((e2, RDF.type, URIRef(T)))
     g.add((e2, URIRef(f"{T}/attrs/name"), Literal("John Smith")))
 
-    pred_iris = [f"{T}/attrs/name", "https://cograph.tech/onto/name"]
+    pred_iris = [f"{T}/attrs/name", "https://graph.onta.sh/onto/name"]
 
     def _matches(value: str) -> list[str]:
         q = _build_select_query(
@@ -2111,7 +2111,7 @@ def test_executor_entity_uris_subset_only_those_enriched():
     async def run():
         # Neptune returns only the requested subset for the VALUES query.
         subset_rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Ada", "vals": ""},
         ]
         neptune, captured = _capturing_neptune(subset_rows)
         store = InMemoryJobStore()
@@ -2124,14 +2124,14 @@ def test_executor_entity_uris_subset_only_those_enriched():
         job = _make_job(
             type_name="Mentor",
             attributes=["bio"],
-            entity_uris=["https://cograph.tech/entities/Mentor/m1"],
+            entity_uris=["https://graph.onta.sh/entities/Mentor/m1"],
         )
         await store.create(job)
         await executor.run(job, "test-tenant")
 
         sel = captured["select"]
         assert "VALUES ?e {" in sel
-        assert "<https://cograph.tech/entities/Mentor/m1>" in sel
+        assert "<https://graph.onta.sh/entities/Mentor/m1>" in sel
         assert "FILTER EXISTS" not in sel
 
         final = await store.get(job.id)
@@ -2146,8 +2146,8 @@ def test_executor_no_scope_runs_whole_type():
     """No scope/entity_uris → the SELECT has no subset constraint (unchanged)."""
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Mentor/m1", "label": "Ada", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Mentor/m2", "label": "Grace", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m1", "label": "Ada", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Mentor/m2", "label": "Grace", "vals": ""},
         ]
         neptune, captured = _capturing_neptune(rows)
         store = InMemoryJobStore()
@@ -2201,8 +2201,8 @@ def test_count_entities_honors_scope_and_entity_uris():
         assert "COUNT(DISTINCT ?e)" in captured["q"]
         assert "SELECT DISTINCT ?e WHERE {" in captured["q"]
         assert (
-            "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-            "<https://cograph.tech/onto/haslevel>) ?sv ." in captured["q"]
+            "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+            "<https://graph.onta.sh/onto/haslevel>) ?sv ." in captured["q"]
         )
         assert "FILTER(?p IN (" not in captured["q"]
         assert "?e ?p ?sv" not in captured["q"]
@@ -2214,7 +2214,7 @@ def test_count_entities_honors_scope_and_entity_uris():
         await executor.count_entities(
             "test-tenant", "kg", "Mentor",
             scope=EnrichScope(predicate="haslevel", value="Manager"),
-            entity_uris=["https://cograph.tech/entities/Mentor/m1"],
+            entity_uris=["https://graph.onta.sh/entities/Mentor/m1"],
         )
         assert "VALUES ?e {" in captured["q"]
         assert "FILTER EXISTS" not in captured["q"]
@@ -2226,7 +2226,7 @@ def test_count_entities_honors_scope_and_entity_uris():
         assert "FILTER EXISTS" not in captured["q"]
         assert "VALUES ?e" not in captured["q"]
         assert _MENTOR_TYPED in captured["q"]
-        assert "?e a <https://cograph.tech/types/Mentor> ." not in captured["q"]
+        assert "?e a <https://graph.onta.sh/types/Mentor> ." not in captured["q"]
 
     asyncio.run(run())
 
@@ -2247,15 +2247,15 @@ def test_count_entities_relationship_not_in_ontology_attrs_still_counts():
                 # (the relationship) is absent, like the live adp-mentors data.
                 return _ontology_predicates_response(
                     [
-                        {"attr": "https://cograph.tech/types/Mentor/attrs/title", "label": "title"},
+                        {"attr": "https://graph.onta.sh/types/Mentor/attrs/title", "label": "title"},
                     ]
                 )
             count_calls["n"] += 1
             # The COUNT must run over the bound-predicate property path that now
             # includes …/onto/haslevel.
             assert (
-                "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-                "<https://cograph.tech/onto/haslevel>) ?sv ." in sparql
+                "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+                "<https://graph.onta.sh/onto/haslevel>) ?sv ." in sparql
             )
             assert "FILTER(false)" not in sparql
             return _count_response(7)
@@ -2290,8 +2290,8 @@ def test_count_entities_scope_resolve_error_falls_back_to_direct_build():
                 raise RuntimeError("neptune timeout")
             # The COUNT still runs over the direct-build bound-predicate path.
             assert (
-                "?e (<https://cograph.tech/types/Mentor/attrs/haslevel>|"
-                "<https://cograph.tech/onto/haslevel>) ?sv ." in sparql
+                "?e (<https://graph.onta.sh/types/Mentor/attrs/haslevel>|"
+                "<https://graph.onta.sh/onto/haslevel>) ?sv ." in sparql
             )
             assert "FILTER(false)" not in sparql
             return _count_response(5)
@@ -2331,14 +2331,14 @@ def test_apply_decisions_writes_accepted_only(monkeypatch):
 
         decisions = [
             ConflictReview(
-                entity_uri="https://cograph.tech/entities/Product/p1",
+                entity_uri="https://graph.onta.sh/entities/Product/p1",
                 attribute="manufacturer",
                 existing_value="Acme",
                 proposed=Verdict(value="Bosch", confidence=0.95, source="wikidata"),
                 decision="accept",
             ),
             ConflictReview(
-                entity_uri="https://cograph.tech/entities/Product/p2",
+                entity_uri="https://graph.onta.sh/entities/Product/p2",
                 attribute="manufacturer",
                 existing_value="X",
                 proposed=Verdict(value="Y", confidence=0.95, source="wikidata"),
@@ -2370,7 +2370,7 @@ def test_executor_apply_schedules_stats_recompute(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -2413,9 +2413,9 @@ def test_executor_no_apply_does_not_recompute(monkeypatch):
     )
 
     async def run():
-        mfr_pred = "https://cograph.tech/types/Product/attrs/manufacturer"
+        mfr_pred = "https://graph.onta.sh/types/Product/attrs/manufacturer"
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch",
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch",
              "vals": f"{mfr_pred}::Acme Tools"},  # existing value → verdict will conflict
         ]
         neptune = AsyncMock()
@@ -2469,7 +2469,7 @@ def test_apply_decisions_schedules_stats_recompute(monkeypatch):
 
         decisions = [
             ConflictReview(
-                entity_uri="https://cograph.tech/entities/Product/p1",
+                entity_uri="https://graph.onta.sh/entities/Product/p1",
                 attribute="manufacturer",
                 existing_value="Acme",
                 proposed=Verdict(value="Bosch", confidence=0.95, source="wikidata"),
@@ -2506,7 +2506,7 @@ def test_apply_decisions_no_accept_does_not_recompute(monkeypatch):
 
         decisions = [
             ConflictReview(
-                entity_uri="https://cograph.tech/entities/Product/p2",
+                entity_uri="https://graph.onta.sh/entities/Product/p2",
                 attribute="manufacturer",
                 existing_value="X",
                 proposed=Verdict(value="Y", confidence=0.95, source="wikidata"),
@@ -2550,7 +2550,7 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -2582,9 +2582,9 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
         decls = _declaration_updates(neptune)
         assert decls, "expected at least one ontology declaration update"
 
-        tenant_graph = "https://cograph.tech/graphs/test-tenant"
-        company_attr = "https://cograph.tech/types/Product/attrs/company"
-        type_uri = "https://cograph.tech/types/Product"
+        tenant_graph = "https://graph.onta.sh/graphs/test-tenant"
+        company_attr = "https://graph.onta.sh/types/Product/attrs/company"
+        type_uri = "https://graph.onta.sh/types/Product"
         xsd_string = "http://www.w3.org/2001/XMLSchema#string"
 
         # The primary 'company' attribute is declared into the TENANT graph as an
@@ -2600,8 +2600,8 @@ def test_executor_apply_declares_attribute_in_ontology(monkeypatch):
         # live on the attr_meta namespace as instance metadata, and declaring
         # them is what rendered `<attr>_source_url` / `<attr>_provenance` as
         # sibling columns on every schema surface.
-        src_attr = "https://cograph.tech/types/Product/attrs/company_source_url"
-        prov_attr = "https://cograph.tech/types/Product/attrs/company_provenance"
+        src_attr = "https://graph.onta.sh/types/Product/attrs/company_source_url"
+        prov_attr = "https://graph.onta.sh/types/Product/attrs/company_provenance"
         assert not any(src_attr in d for d in decls), "companion must not be declared"
         assert not any(prov_attr in d for d in decls), "companion must not be declared"
         assert not any("attr_meta" in d for d in decls), "companion must not be declared"
@@ -2620,9 +2620,9 @@ def test_executor_stage_mode_does_not_declare(monkeypatch):
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        company_pred = "https://cograph.tech/types/Product/attrs/company"
+        company_pred = "https://graph.onta.sh/types/Product/attrs/company"
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch",
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch",
              "vals": f"{company_pred}::Old Holdings"},  # existing → verdict conflicts
         ]
         neptune = AsyncMock()
@@ -2662,7 +2662,7 @@ def test_executor_no_match_does_not_declare(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Unknown", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Unknown", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)
@@ -2703,7 +2703,7 @@ def test_apply_decisions_declares_accepted_attribute(monkeypatch):
 
         decisions = [
             ConflictReview(
-                entity_uri="https://cograph.tech/entities/Product/p1",
+                entity_uri="https://graph.onta.sh/entities/Product/p1",
                 attribute="company",
                 existing_value="Acme",
                 proposed=Verdict(
@@ -2719,8 +2719,8 @@ def test_apply_decisions_declares_accepted_attribute(monkeypatch):
         assert applied == 1
 
         decls = _declaration_updates(neptune)
-        company_attr = "https://cograph.tech/types/Product/attrs/company"
-        tenant_graph = "https://cograph.tech/graphs/test-tenant"
+        company_attr = "https://graph.onta.sh/types/Product/attrs/company"
+        tenant_graph = "https://graph.onta.sh/graphs/test-tenant"
         assert any(company_attr in d for d in decls)
         assert all(tenant_graph in d for d in decls)
 
@@ -2751,8 +2751,8 @@ def test_executor_apply_infers_integer_range_for_numeric_values(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Makita", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
         neptune = AsyncMock()
         # No existing range for 'humanness_score' → inference decides the range.
@@ -2779,7 +2779,7 @@ def test_executor_apply_infers_integer_range_for_numeric_values(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        score_attr = "https://cograph.tech/types/Product/attrs/humanness_score"
+        score_attr = "https://graph.onta.sh/types/Product/attrs/humanness_score"
         xsd_integer = "http://www.w3.org/2001/XMLSchema#integer"
         xsd_string = "http://www.w3.org/2001/XMLSchema#string"
         primary = [d for d in _declaration_updates(neptune) if score_attr in d]
@@ -2802,7 +2802,7 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
 
     async def _assert_preserves(existing_range: str, value: str):
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -2821,7 +2821,7 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        rating_attr = "https://cograph.tech/types/Product/attrs/rating"
+        rating_attr = "https://graph.onta.sh/types/Product/attrs/rating"
         xsd_string = "http://www.w3.org/2001/XMLSchema#string"
         primary = [d for d in _declaration_updates(neptune) if rating_attr in d]
         assert primary, "rating attribute not declared"
@@ -2837,7 +2837,7 @@ def test_executor_apply_does_not_downgrade_existing_richer_range(monkeypatch):
         )
         # (b) a relationship range (types/<Target>) survives too — the edge stays.
         await _assert_preserves(
-            "https://cograph.tech/types/Manufacturer", value="Robert Bosch GmbH"
+            "https://graph.onta.sh/types/Manufacturer", value="Robert Bosch GmbH"
         )
 
     asyncio.run(run())
@@ -2870,8 +2870,8 @@ def test_infer_datatype_entity_iris_same_type_is_relationship():
     """All values are entity IRIs sharing one ``<TypeName>`` → that bare type name
     (which maps to a ``types/<TypeName>`` relationship range)."""
     vals = [
-        "https://cograph.tech/entities/Manufacturer/bosch",
-        "https://cograph.tech/entities/Manufacturer/makita",
+        "https://graph.onta.sh/entities/Manufacturer/bosch",
+        "https://graph.onta.sh/entities/Manufacturer/makita",
     ]
     assert _infer_datatype_from_values(vals) == "Manufacturer"
 
@@ -2880,8 +2880,8 @@ def test_infer_datatype_mixed_iri_types_falls_back_to_string():
     """Entity IRIs of DIFFERENT types have no single relationship range → string
     (don't guess)."""
     vals = [
-        "https://cograph.tech/entities/Manufacturer/bosch",
-        "https://cograph.tech/entities/Country/germany",
+        "https://graph.onta.sh/entities/Manufacturer/bosch",
+        "https://graph.onta.sh/entities/Country/germany",
     ]
     assert _infer_datatype_from_values(vals) == "string"
 
@@ -2890,14 +2890,14 @@ def test_entity_iri_type_parses_and_rejects():
     """``_entity_iri_type`` extracts the type from a canonical entity IRI and
     returns None for non-matching values (literal, foreign URI, missing id)."""
     assert (
-        _entity_iri_type("https://cograph.tech/entities/Manufacturer/bosch")
+        _entity_iri_type("https://graph.onta.sh/entities/Manufacturer/bosch")
         == "Manufacturer"
     )
     assert _entity_iri_type("Robert Bosch GmbH") is None
-    assert _entity_iri_type("https://cograph.tech/types/Manufacturer") is None
+    assert _entity_iri_type("https://graph.onta.sh/types/Manufacturer") is None
     # Missing <id> segment is not a complete entity IRI.
-    assert _entity_iri_type("https://cograph.tech/entities/Manufacturer") is None
-    assert _entity_iri_type("https://cograph.tech/entities/Manufacturer/") is None
+    assert _entity_iri_type("https://graph.onta.sh/entities/Manufacturer") is None
+    assert _entity_iri_type("https://graph.onta.sh/entities/Manufacturer/") is None
 
 
 def _instance_inserts(neptune) -> list[str]:
@@ -2910,7 +2910,7 @@ def _instance_inserts(neptune) -> list[str]:
     for call in neptune.update.await_args_list:
         sparql = call.args[0] if call.args else call.kwargs.get("sparql", "")
         is_decl = rdf_property in sparql and rdfs_domain in sparql
-        if "https://cograph.tech/entities/" in sparql and not is_decl:
+        if "https://graph.onta.sh/entities/" in sparql and not is_decl:
             out.append(sparql)
     return out
 
@@ -2924,8 +2924,8 @@ def test_executor_apply_infers_datetime_range_for_date_values(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Makita", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -2953,7 +2953,7 @@ def test_executor_apply_infers_datetime_range_for_date_values(monkeypatch):
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        founded_attr = "https://cograph.tech/types/Product/attrs/founded"
+        founded_attr = "https://graph.onta.sh/types/Product/attrs/founded"
         xsd_datetime = "http://www.w3.org/2001/XMLSchema#dateTime"
         xsd_string = "http://www.w3.org/2001/XMLSchema#string"
         primary = [d for d in _declaration_updates(neptune) if founded_attr in d]
@@ -2976,8 +2976,8 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Drill", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Saw", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Drill", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Saw", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -2991,14 +2991,14 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
             {
                 ("Drill", "manufacturer"): [
                     Verdict(
-                        value="https://cograph.tech/entities/Manufacturer/bosch",
+                        value="https://graph.onta.sh/entities/Manufacturer/bosch",
                         confidence=0.95,
                         source="wikidata",
                     )
                 ],
                 ("Saw", "manufacturer"): [
                     Verdict(
-                        value="https://cograph.tech/entities/Manufacturer/makita",
+                        value="https://graph.onta.sh/entities/Manufacturer/makita",
                         confidence=0.95,
                         source="wikidata",
                     )
@@ -3011,8 +3011,8 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        mfr_attr = "https://cograph.tech/types/Product/attrs/manufacturer"
-        types_mfr = "https://cograph.tech/types/Manufacturer"
+        mfr_attr = "https://graph.onta.sh/types/Product/attrs/manufacturer"
+        types_mfr = "https://graph.onta.sh/types/Manufacturer"
         # (a) declared as a relationship range types/Manufacturer, not xsd:string.
         primary = [d for d in _declaration_updates(neptune) if mfr_attr in d]
         assert primary, "manufacturer attribute not declared"
@@ -3023,8 +3023,8 @@ def test_executor_apply_entity_iri_values_declare_relationship_and_write_iri(mon
         # (b) the instance object is written as an IRI, not a quoted literal.
         inserts = _instance_inserts(neptune)
         joined = "\n".join(inserts)
-        assert "<https://cograph.tech/entities/Manufacturer/bosch>" in joined
-        assert '"https://cograph.tech/entities/Manufacturer/bosch"' not in joined
+        assert "<https://graph.onta.sh/entities/Manufacturer/bosch>" in joined
+        assert '"https://graph.onta.sh/entities/Manufacturer/bosch"' not in joined
 
     asyncio.run(run())
 
@@ -3039,7 +3039,7 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
 
     async def _assert_preserves(existing_range: str, value: str):
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -3058,7 +3058,7 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
         await store.create(job)
         await executor.run(job, "test-tenant")
 
-        founded_attr = "https://cograph.tech/types/Product/attrs/founded"
+        founded_attr = "https://graph.onta.sh/types/Product/attrs/founded"
         xsd_string = "http://www.w3.org/2001/XMLSchema#string"
         primary = [d for d in _declaration_updates(neptune) if founded_attr in d]
         assert primary, "founded attribute not declared"
@@ -3073,7 +3073,7 @@ def test_executor_apply_does_not_downgrade_datetime_or_relationship_range(monkey
         )
         # An existing relationship range survives a string-valued enrichment.
         await _assert_preserves(
-            "https://cograph.tech/types/Manufacturer", value="Robert Bosch GmbH"
+            "https://graph.onta.sh/types/Manufacturer", value="Robert Bosch GmbH"
         )
 
     asyncio.run(run())
@@ -3245,7 +3245,7 @@ def test_post_jobs_with_entity_uris_subset(client, auth_headers, mock_neptune):
     non-blocking so it does not count the subset up front (matched_entities is
     resolved later by the executor)."""
     mock_neptune.query.return_value = _count_response(1)
-    uris = ["https://cograph.tech/entities/Mentor/m1"]
+    uris = ["https://graph.onta.sh/entities/Mentor/m1"]
     response = client.post(
         "/graphs/test-tenant/enrich/jobs",
         headers=auth_headers,
@@ -3306,7 +3306,7 @@ def test_conflicts_and_apply_flow(client, auth_headers, mock_neptune):
     verdict = Verdict(value="Bosch", confidence=0.95, source="wikidata")
     job.results = [
         RowResult(
-            entity_uri="https://cograph.tech/entities/Product/p1",
+            entity_uri="https://graph.onta.sh/entities/Product/p1",
             attribute="manufacturer",
             existing_value="Acme",
             verdict=verdict,
@@ -3334,7 +3334,7 @@ def test_conflicts_and_apply_flow(client, auth_headers, mock_neptune):
         json={
             "decisions": [
                 {
-                    "entity_uri": "https://cograph.tech/entities/Product/p1",
+                    "entity_uri": "https://graph.onta.sh/entities/Product/p1",
                     "attribute": "manufacturer",
                     "existing_value": "Acme",
                     "proposed": verdict.model_dump(),
@@ -3521,7 +3521,7 @@ def test_executor_skips_unregistered_adapter(caplog):
     async def run():
         rows = [
             {
-                "uri": "https://cograph.tech/entities/Product/p1",
+                "uri": "https://graph.onta.sh/entities/Product/p1",
                 "label": "Bosch",
                 "vals": "",
             },
@@ -3609,10 +3609,10 @@ def test_load_strategy_returns_empty_when_no_triples():
 def test_load_strategy_parses_attribute_triples():
     from cograph_client.enrichment.strategy import load_strategy
 
-    type_uri = "https://cograph.tech/types/LineItem"
-    mpn_uri = "https://cograph.tech/types/LineItem/attrs/mpn"
-    brand_uri = "https://cograph.tech/types/LineItem/attrs/brand"
-    onto = "https://cograph.tech/onto"
+    type_uri = "https://graph.onta.sh/types/LineItem"
+    mpn_uri = "https://graph.onta.sh/types/LineItem/attrs/mpn"
+    brand_uri = "https://graph.onta.sh/types/LineItem/attrs/brand"
+    onto = "https://graph.onta.sh/onto"
 
     async def run():
         neptune = AsyncMock()
@@ -3652,15 +3652,15 @@ def test_aliases_resolve_conflicts_to_verified():
     """Existing brand=KN, alias KN->K&N, verdict K&N -> verified, not conflict."""
     from cograph_client.enrichment.tiers import reset_tiers
 
-    type_uri = "https://cograph.tech/types/Product"
-    brand_uri = "https://cograph.tech/types/Product/attrs/brand"
-    onto = "https://cograph.tech/onto"
+    type_uri = "https://graph.onta.sh/types/Product"
+    brand_uri = "https://graph.onta.sh/types/Product/attrs/brand"
+    onto = "https://graph.onta.sh/onto"
     brand_pred = brand_uri  # the predicate stored on the entity row
 
     async def run():
         rows = [
             {
-                "uri": "https://cograph.tech/entities/Product/p1",
+                "uri": "https://graph.onta.sh/entities/Product/p1",
                 "label": "Filter",
                 "vals": f"{brand_pred}::KN",
             },
@@ -3670,7 +3670,7 @@ def test_aliases_resolve_conflicts_to_verified():
         async def query(sparql, *args, **kwargs):
             # First call inside run() is the strategy load (tenant graph URI),
             # subsequent calls are the entity SELECT.
-            if "FROM <https://cograph.tech/graphs/test-tenant>" in sparql and "alias" in sparql:
+            if "FROM <https://graph.onta.sh/graphs/test-tenant>" in sparql and "alias" in sparql:
                 return _strategy_query_response(
                     [
                         {"subj": brand_uri, "p": f"{onto}/alias", "o": "KN→K&N"},
@@ -4070,8 +4070,8 @@ def test_executor_apply_writes_typed_integer_literal(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Makita", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -4119,8 +4119,8 @@ def test_executor_apply_writes_comma_number_as_string_not_dropped(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Makita", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Makita", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -4166,7 +4166,7 @@ def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -4201,7 +4201,7 @@ def test_executor_apply_writes_typed_datetime_literal(monkeypatch):
 
 def test_executor_apply_writes_entity_iri_object(monkeypatch):
     """An entity-IRI enriched value is written as an IRI object
-    ``<https://cograph.tech/entities/…>`` (a relationship edge), never a quoted
+    ``<https://graph.onta.sh/entities/…>`` (a relationship edge), never a quoted
     literal, and is declared with a relationship (types/<Target>) range."""
     import cograph_client.api.routes.explore as explore_mod
 
@@ -4209,7 +4209,7 @@ def test_executor_apply_writes_entity_iri_object(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Drill", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Drill", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -4223,7 +4223,7 @@ def test_executor_apply_writes_entity_iri_object(monkeypatch):
             {
                 ("Drill", "manufacturer"): [
                     Verdict(
-                        value="https://cograph.tech/entities/Manufacturer/bosch",
+                        value="https://graph.onta.sh/entities/Manufacturer/bosch",
                         confidence=0.95,
                         source="wikidata",
                     )
@@ -4238,12 +4238,12 @@ def test_executor_apply_writes_entity_iri_object(monkeypatch):
 
         joined = "\n".join(_instance_inserts(neptune))
         # Object written as an IRI, not a quoted literal.
-        assert "<https://cograph.tech/entities/Manufacturer/bosch>" in joined
-        assert '"https://cograph.tech/entities/Manufacturer/bosch"' not in joined
+        assert "<https://graph.onta.sh/entities/Manufacturer/bosch>" in joined
+        assert '"https://graph.onta.sh/entities/Manufacturer/bosch"' not in joined
 
         # Declared as a relationship range, not xsd:string.
-        mfr_attr = "https://cograph.tech/types/Product/attrs/manufacturer"
-        types_mfr = "https://cograph.tech/types/Manufacturer"
+        mfr_attr = "https://graph.onta.sh/types/Product/attrs/manufacturer"
+        types_mfr = "https://graph.onta.sh/types/Manufacturer"
         primary = [d for d in _declaration_updates(neptune) if mfr_attr in d]
         assert primary, "manufacturer attribute not declared"
         assert f"#range> <{types_mfr}>" in primary[0]
@@ -4262,8 +4262,8 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bad", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Good", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bad", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Good", "vals": ""},
         ]
         neptune = AsyncMock()
         # Existing range is xsd:integer for the 'rating' attribute.
@@ -4295,7 +4295,7 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
 
         inserts = _instance_inserts(neptune)
         joined = "\n".join(inserts)
-        rating_attr = "https://cograph.tech/types/Product/attrs/rating"
+        rating_attr = "https://graph.onta.sh/types/Product/attrs/rating"
         # The conforming value IS written, typed as integer.
         assert '"5"^^<http://www.w3.org/2001/XMLSchema#integer>' in joined
         # The non-conforming value is NOT written under the rating predicate, in
@@ -4310,7 +4310,7 @@ def test_executor_apply_skips_value_not_conforming_to_existing_range(monkeypatch
         rating_writes = [s for s in inserts if f"<{rating_attr}>" in s]
         assert rating_writes, "the conforming value must be written under rating"
         assert all(
-            "https://cograph.tech/entities/Product/p1" not in s for s in rating_writes
+            "https://graph.onta.sh/entities/Product/p1" not in s for s in rating_writes
         ), "the rejected value's entity must produce no rating write"
 
     asyncio.run(run())
@@ -4326,7 +4326,7 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
 
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.side_effect = _query_router(
@@ -4356,14 +4356,14 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
 
         joined = "\n".join(_instance_inserts(neptune))
         src_pred = (
-            "https://cograph.tech/attr_meta/Product/humanness_score/source_url"
+            "https://graph.onta.sh/attr_meta/Product/humanness_score/source_url"
         )
         # The source_url object is a PLAIN quoted string literal (no ^^ type),
         # written as an http(s) value → _escape_value wraps it as an <IRI>… but the
         # provenance source_url IS a URL, so it lands as an IRI object, not a typed
         # literal. The provenance text companion, however, is a plain string.
         prov_pred = (
-            "https://cograph.tech/attr_meta/Product/humanness_score/provenance"
+            "https://graph.onta.sh/attr_meta/Product/humanness_score/provenance"
         )
         # The provenance free-text companion is a plain string literal, no ^^ type.
         assert f"<{prov_pred}>" in joined
@@ -4379,7 +4379,7 @@ def test_executor_apply_provenance_stays_plain_string(monkeypatch):
         # namespace (metadata, not an attribute — ONTA-262), written as a TYPED
         # xsd:dateTime literal (so typed NL date FILTERs match it).
         verified_pred = (
-            "https://cograph.tech/attr_meta/Product/humanness_score/verified_at"
+            "https://graph.onta.sh/attr_meta/Product/humanness_score/verified_at"
         )
         assert verified_pred in joined
         verified_lines = [ln for ln in joined.splitlines() if verified_pred in ln]
@@ -4415,7 +4415,7 @@ def test_provenance_triples_stamps_per_fact_verified_at():
         source_url="https://www.wikidata.org/wiki/Q234021",
     )
     triples = EnrichmentExecutor._provenance_triples(
-        "https://cograph.tech/entities/Product/p1", "Product", "humanness_score", verdict
+        "https://graph.onta.sh/entities/Product/p1", "Product", "humanness_score", verdict
     )
     verified = [
         (s, p, o) for (s, p, o) in triples if p.endswith("/verified_at")
@@ -4425,7 +4425,7 @@ def test_provenance_triples_stamps_per_fact_verified_at():
     _s, pred, val = verified[0]
     # Queryable literal on the attr_meta metadata namespace — never the hidden
     # onto/ marker namespace, never the attrs/ attribute namespace (ONTA-262).
-    assert pred == "https://cograph.tech/attr_meta/Product/humanness_score/verified_at"
+    assert pred == "https://graph.onta.sh/attr_meta/Product/humanness_score/verified_at"
     assert "/onto/" not in pred and "/attrs/" not in pred
     # The STORED object carries the xsd:dateTime type annotation (the `^^`
     # convention), so Neptune compares it as a dateTime — not an untyped string.
@@ -4444,7 +4444,7 @@ def test_provenance_triples_stamps_per_fact_verified_at():
     # and still typed.
     bare = Verdict(value="7", confidence=0.9, source="wikidata")
     bare_triples = EnrichmentExecutor._provenance_triples(
-        "https://cograph.tech/entities/Product/p2", "Product", "rating", bare
+        "https://graph.onta.sh/entities/Product/p2", "Product", "rating", bare
     )
     bare_verified = [o for (_s, p, o) in bare_triples if p.endswith("/rating/verified_at")]
     assert bare_verified and bare_verified[0].endswith(f"^^{XSD_DT}")
@@ -4472,7 +4472,7 @@ def test_apply_decisions_writes_typed_integer_literal(monkeypatch):
 
         decisions = [
             ConflictReview(
-                entity_uri="https://cograph.tech/entities/Product/p1",
+                entity_uri="https://graph.onta.sh/entities/Product/p1",
                 attribute="humanness_score",
                 existing_value="",
                 proposed=Verdict(value="92", confidence=0.95, source="wikidata"),
@@ -4581,8 +4581,8 @@ def test_executor_records_provider_logs_end_to_end():
     used, how many lookups matched vs found nothing — surfaced in run detail."""
     async def run():
         rows = [
-            {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
-            {"uri": "https://cograph.tech/entities/Product/p2", "label": "Unknown Co", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+            {"uri": "https://graph.onta.sh/entities/Product/p2", "label": "Unknown Co", "vals": ""},
         ]
         neptune = AsyncMock()
         neptune.query.return_value = _entities_query_response(rows)

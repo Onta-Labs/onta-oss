@@ -15,8 +15,10 @@ Schema graphs only — not instance data — so this module is outside
 ``kg_writer`` (justified on the write-path allowlist).
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ENHANCED_GRAPH_URI, IRI_BASE, PUBLIC_GRAPH_URI
 import json
 import re
 from dataclasses import dataclass, field
@@ -135,9 +137,9 @@ class RestorePlan:
 def layer_for_graph(graph_uri: str) -> LayerName:
     """Map a live ontology graph URI to its layer name."""
     g = graph_uri.rstrip("/")
-    if g.endswith("/global/public") or g == "https://cograph.tech/graphs/global/public":
+    if g.endswith("/global/public") or g == PUBLIC_GRAPH_URI:
         return "public"
-    if g.endswith("/global/enhanced") or g == "https://cograph.tech/graphs/global/enhanced":
+    if g.endswith("/global/enhanced") or g == ENHANCED_GRAPH_URI:
         return "enhanced"
     return "tenant"
 
@@ -146,13 +148,13 @@ def live_graph_from_snapshot(snapshot_graph_uri: str) -> str | None:
     """Inverse of release/revision URI minting; None if not a snapshot URI."""
     g = snapshot_graph_uri.rstrip("/")
     m = re.match(
-        r"^(https://cograph\.tech/graphs/(?:global/(?:public|enhanced)|[^/]+))/v(\d+)$",
+        rf"^({re.escape(IRI_BASE)}/graphs/(?:global/(?:public|enhanced)|[^/]+))/v(\d+)$",
         g,
     )
     if m:
         return m.group(1)
     m = re.match(
-        r"^(https://cograph\.tech/graphs/[^/]+)/revisions/r(\d+)$",
+        rf"^({re.escape(IRI_BASE)}/graphs/[^/]+)/revisions/r(\d+)$",
         g,
     )
     if m:

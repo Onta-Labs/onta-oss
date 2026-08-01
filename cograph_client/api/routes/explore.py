@@ -11,6 +11,7 @@ for a type (e.g. a KG ingested before this existed), the endpoint falls back
 to a live scan so it always returns correct data.
 """
 
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, IRI_BASE, ONTO_PRED_PREFIX, TYPE_URI_PREFIX
 import asyncio
 import hashlib
 import time
@@ -60,7 +61,7 @@ router = APIRouter(prefix="/graphs/{tenant}/explore")
 # ontology_queries.mark_core_slot as `<attr_uri> <onto/coreSlot> "true"`. A core
 # slot is EXEMPT from the ADR 0004 drift floor (always declared), so the edge
 # filter must know whether the upgraded predicate carries this marker.
-_CORE_SLOT_PRED = "https://cograph.tech/onto/coreSlot"
+_CORE_SLOT_PRED = f"{IRI_BASE}/onto/coreSlot"
 
 
 def _from_graphs(graph_uris: list[str]) -> str:
@@ -112,7 +113,6 @@ RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
 RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDFS_NS = "http://www.w3.org/2000/01/rdf-schema#"
-ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 # Predicate-hygiene: the ONE definition of "is this an internal/housekeeping
 # predicate?" lives in cograph_client.graph.predicates and is shared with the NL
 # `ask` render path (ER-internals-leak fix) so both surfaces apply the SAME rule.
@@ -133,7 +133,7 @@ from cograph_client.graph.predicates import (  # noqa: E402
 # warmed on first read, busted whenever the underlying counts change.
 #
 # The TTL is a staleness *backstop*, NOT the invalidation mechanism: every
-# in-process mutation that changes a type's summary — ingest, ER rebuild, AND
+# in-process mutation that changes a typef's summary — ingest, ER rebuild, AND
 # enrichment/dedupe apply — routes through `recompute_kg_stats` (via
 # `schedule_recompute`), which explicitly evicts this cache for the affected KG
 # (see below). So a short TTL bought nothing but extra Neptune round trips —
@@ -148,7 +148,7 @@ _summary_cache: dict[tuple[str, str, str], tuple[float, dict]] = {}
 # --- Precomputed stats graph --------------------------------------------------
 # Per (type, predicate): coverage count + entity-valued-object total, plus a
 # per-type entity count. All integer literals → no string escaping needed.
-_STATS_NS = "https://cograph.tech/stats/"
+_STATS_NS = f"{IRI_BASE}/stats/"
 _STAT_FOR_TYPE = _STATS_NS + "forType"
 _STAT_FOR_PRED = _STATS_NS + "forPred"
 _STAT_CNT = _STATS_NS + "cnt"
@@ -176,11 +176,11 @@ _XSD_DATETIME_URI = "http://www.w3.org/2001/XMLSchema#dateTime"
 #
 # The graph is APPEND-only (one snapshot per recompute), never DROP+rewritten
 # like the stats graph — the whole value is the distribution accumulating over
-# time. Each snapshot node carries the run's effective floors + kept/quarantined
+# time. Each snapshot node carries the runf's effective floors + kept/quarantined
 # totals; each relationship in the distribution is a point node linked back to
 # its snapshot. Integers/decimals/booleans are typed literals so a downstream
 # query can aggregate them numerically without parsing.
-_DRIFT_NS = "https://cograph.tech/drift/"
+_DRIFT_NS = f"{IRI_BASE}/drift/"
 _DRIFT_RECORDED_AT = _DRIFT_NS + "recordedAt"      # xsd:dateTime
 _DRIFT_KG = _DRIFT_NS + "kg"                        # kg name (provenance)
 _DRIFT_FLOOR_COV = _DRIFT_NS + "floorCov"          # xsd:decimal

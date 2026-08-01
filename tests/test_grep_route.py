@@ -38,11 +38,11 @@ from cograph_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "movies"
-GRAPH = f"https://cograph.tech/graphs/{TENANT}/kg/{KG}"
+GRAPH = f"https://graph.onta.sh/graphs/{TENANT}/kg/{KG}"
 
-ENTITIES = "https://cograph.tech/entities/"
-ONTO = "https://cograph.tech/onto/"
-TYPES = "https://cograph.tech/types/"
+ENTITIES = "https://graph.onta.sh/entities/"
+ONTO = "https://graph.onta.sh/onto/"
+TYPES = "https://graph.onta.sh/types/"
 LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -242,7 +242,7 @@ def test_control_chars_in_needle_do_not_break_the_literal(
 def test_needle_cannot_inject_a_second_graph(store, make_client, auth_headers):
     """A quote-and-brace payload stays INSIDE the literal, no new GRAPH block."""
     client = make_client(store)
-    payload = '") } GRAPH <https://cograph.tech/graphs/victim> { ?s ?p ?o FILTER("'
+    payload = '") } GRAPH <https://graph.onta.sh/graphs/victim> { ?s ?p ?o FILTER("'
     res = _post(client, {"q": payload, "kg_name": KG}, auth_headers)
     assert res.status_code == 200
     q = store.scan_query
@@ -367,10 +367,10 @@ def test_internal_predicates_are_filtered_but_label_is_kept(make_client, auth_he
             {"s": E1, "p": ONTO + "batch_id", "o": "matrix-batch"},
             {
                 "s": E1,
-                "p": "https://cograph.tech/attr_meta/Movie/title/source_url",
+                "p": "https://graph.onta.sh/attr_meta/Movie/title/source_url",
                 "o": "https://example.test/matrix",
             },
-            {"s": E1, "p": "https://cograph.tech/er/blockKey", "o": "matrix"},
+            {"s": E1, "p": "https://graph.onta.sh/er/blockKey", "o": "matrix"},
             {"s": E1, "p": TITLE, "o": "The Matrix"},
         ),
         decorate_rows=_empty(),
@@ -394,9 +394,9 @@ def test_internal_namespaces_are_also_excluded_in_the_scan_query(
     _post(client, {"q": "matrix", "kg_name": KG}, auth_headers)
     q = store.scan_query
     for ns in (
-        "https://cograph.tech/er/",
-        "https://cograph.tech/attr_meta/",
-        "https://cograph.tech/onto/norm/",
+        "https://graph.onta.sh/er/",
+        "https://graph.onta.sh/attr_meta/",
+        "https://graph.onta.sh/onto/norm/",
     ):
         assert f'!STRSTARTS(STR(?p), "{ns}")' in q
 
@@ -454,7 +454,7 @@ def test_type_filter_enumerates_every_layer_namespace(store, make_client, auth_h
     q = store.scan_query
     assert f"<{RDF_TYPE}> ?t" in q
     for ns in ("types/Movie", "types/x/Movie", "types/public/Movie"):
-        assert f"https://cograph.tech/{ns}>" in q
+        assert f"https://graph.onta.sh/{ns}>" in q
     # The rdf:type join can bind ?t twice for a cross-layer-typed entity, which
     # would emit the same triple twice and burn the caller's limit.
     assert q.startswith("SELECT DISTINCT ?s ?p ?o")

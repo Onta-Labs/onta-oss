@@ -35,24 +35,26 @@ built for.
 
 Pure string/regex analysis, no I/O; the caller has already fetched both inputs.
 """
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import re
 
 NO_INSTANCES_MARK = "[no instances]"
 
 # Type URIs a query can reference, in either the bare-type or attribute form:
-#   <https://cograph.tech/types/Sprocket>
-#   <https://cograph.tech/types/Sprocket/attrs/name>
-#   <https://cograph.tech/types/public/Person>   (layered — ONTA-397)
-_TYPE_URI_RE = re.compile(r"<(https://cograph\.tech/types/[^>\s]+)>")
+#   <https://graph.onta.sh/types/Sprocket>
+#   <https://graph.onta.sh/types/Sprocket/attrs/name>
+#   <https://graph.onta.sh/types/public/Person>   (layered — ONTA-397)
+_TYPE_URI_RE = re.compile(rf"<({re.escape(IRI_BASE)}/types/[^>\s]+)>")
 
 
 def _type_headers(ontology: str):
     """Yield ``(type_name, trailing_text)`` for each ``Type:`` header line.
 
     Header shape (``_fetch_ontology`` / the semantic retriever's chunk text):
-    ``Type: Sprocket — URI: <https://cograph.tech/types/Sprocket> [no instances]``.
+    ``Type: Sprocket — URI: <https://graph.onta.sh/types/Sprocket> [no instances]``.
     Splitting on the em dash mirrors the existing ``types_in_summary`` parsing in
     ``pipeline.py`` and tolerates a type name containing spaces. A header with no
     URI part still parses.

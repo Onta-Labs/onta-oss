@@ -50,6 +50,7 @@ from typing import Optional
 import structlog
 
 from cograph_client.api_registry.spec import AUTHORITY_CONFIDENCE, AuthorityLevel
+from cograph_client.graph.iri import IRI_BASE
 from cograph_client.graph.ontology_queries import attr_uri, entity_uri
 from cograph_client.pipeline.conflict import (
     DEFAULT_CONFLICT_POLICY,
@@ -85,7 +86,7 @@ _DEFAULT_VERIFIER_SOURCE = MACHINE_REVERIFICATION_AUTHORITY.value
 # Parse the leaf ``<Type>`` out of a canonical entity IRI
 # (``…/entities/<Type>/<slug>``) — mirrors ``pipeline/corrections.py`` so a
 # re-verify can derive the entity's type from its subject URI when not named.
-_ENTITY_URI_RE = re.compile(r"^https://cograph\.tech/entities/([^/]+)/.+$")
+_ENTITY_URI_RE = re.compile(rf"^{re.escape(IRI_BASE)}/entities/([^/]+)/.+$")
 
 
 def _type_from_entity_uri(subject: str) -> str:

@@ -284,7 +284,7 @@ async def test_store_save_is_idempotent_no_stale_fields():
 
     await store.save(TENANT, replace(policy, mode=MODE_OFF))
 
-    graph = neptune.quads["https://cograph.tech/graphs/t1"]
+    graph = neptune.quads["https://graph.onta.sh/graphs/t1"]
     mode_triples = [t for t in graph if t[0] == policy.uri and t[1].endswith("/mode")]
     assert len(mode_triples) == 1 and mode_triples[0][2] == MODE_OFF
 
@@ -297,9 +297,9 @@ async def test_store_lists_only_verify_policy_typed_subjects():
     """The list query is typed on <VerifyPolicy>, so neither an unrelated subject nor
     a CleanPolicy sharing the ontology graph is ever mistaken for a VerifyPolicy."""
     neptune = _FakeNeptune()
-    g = neptune.quads.setdefault("https://cograph.tech/graphs/t1", set())
+    g = neptune.quads.setdefault("https://graph.onta.sh/graphs/t1", set())
     g.add(
-        ("https://cograph.tech/entities/Person/1", RDF_TYPE, "https://cograph.tech/types/Person")
+        ("https://graph.onta.sh/entities/Person/1", RDF_TYPE, "https://graph.onta.sh/types/Person")
     )
     # A CleanPolicy in the same graph must NOT be listed as a VerifyPolicy.
     await CleanPolicyStore(neptune).save(TENANT, CleanPolicy(kg_name=KG, type_name="Person"))

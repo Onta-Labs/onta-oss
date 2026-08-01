@@ -1,20 +1,32 @@
+from cograph_client.graph.iri import IRI_BASE, LEGACY_IRI_BASES, ONTO_BASE, known_rewrite_hosts
 import re
+from urllib.parse import urlparse
 
 MUTATION_KEYWORDS = {"INSERT", "DELETE", "DROP", "CREATE", "CLEAR", "LOAD", "COPY", "MOVE", "ADD"}
 
-# The live URI namespace. `omnix.dev` is the retired one (renamed 2026-04-27;
-# deployed graph stores were migrated by a one-shot script) — it no longer
-# resolves to anything in any graph, so any occurrence is normalized away.
-ONTO_BASE = "https://cograph.tech"
-LEGACY_ONTO_HOSTS = ("omnix.dev",)
-
-_BARE_URI_RE = re.compile(
-    r"<https://(?:"
-    + "|".join(re.escape(h) for h in (ONTO_BASE.removeprefix("https://"), *LEGACY_ONTO_HOSTS))
-    + r")/([\w/.\-]+)>"  # hyphens matter: tenants and _safe_id entity ids carry them
+# Live URI namespace for this process. Historical hosts (omnix.dev, cograph.tech,
+# and any other brand base that is not the configured live base) are rewritten
+# onto IRI_BASE so few-shot banks and LLM echoes stay coherent.
+ONTO_BASE = IRI_BASE
+# Public alias kept for tests/docs that assert the retired-host set. Hosts only
+# (no scheme); always includes every historical brand host, even when the live
+# base happens to be one of them (rewrite is a no-op for the live host).
+LEGACY_ONTO_HOSTS = tuple(
+    sorted({urlparse(b).netloc for b in LEGACY_IRI_BASES})
+)
+_LEGACY_HOSTS = tuple(
+    sorted(
+        set(LEGACY_ONTO_HOSTS)
+        | set(known_rewrite_hosts())
+        - {urlparse(IRI_BASE).netloc}
+    )
 )
 
-
+_BARE_URI_RE = re.compile(
+    r"<https?://(?:"
+    + "|".join(re.escape(h) for h in sorted({urlparse(IRI_BASE).netloc, *_LEGACY_HOSTS}))
+    + r")/([\w/.\-]+)>"  # hyphens matter: tenants and _safe_id entity ids carry them
+)
 def normalize_sparql(sparql: str) -> str:
     """Fix common SPARQL syntax issues from LLM generation.
 
@@ -44,8 +56,8 @@ def normalize_sparql(sparql: str) -> str:
         result = re.sub(pattern, lambda m: f"<{uri}{m.group(1)}>", result)
 
     # Fix common URI mistakes from LLMs that use wrong prefix expansion:
-    # <https://cograph.tech/Property> → <https://cograph.tech/types/Property>
-    # <https://cograph.tech/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
+    # <https://graph.onta.sh/Property> → <https://graph.onta.sh/types/Property>
+    # <https://graph.onta.sh/bedrooms> → <https://graph.onta.sh/types/Property/attrs/bedrooms>
     # Also rewrite the retired omnix.dev namespace (renamed 2026-04-27) onto the
     # live one — the LLM can still echo it back from a stale prompt or example.
     # Correct path shapes (/types/, /onto/, /entities/, /graphs/, …) keep their

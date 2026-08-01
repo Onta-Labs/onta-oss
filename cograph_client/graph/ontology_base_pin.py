@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from cograph_client.graph.iri import IRI_BASE
 """Workspace base-layer version pin + upgrade / rollback (ONTA-405).
 
 Once Global-Public / Global-Enhanced are versioned (ONTA-406), each workspace
@@ -8,13 +11,13 @@ Storage (RDF only — no Postgres)
 --------------------------------
 Companion named graph per tenant::
 
-    https://cograph.tech/graphs/{tenant}/base-pin
+    https://graph.onta.sh/graphs/{tenant}/base-pin
 
 Single subject::
 
-    https://cograph.tech/meta/WorkspaceBasePin
+    https://graph.onta.sh/meta/WorkspaceBasePin
 
-Predicates (under ``https://cograph.tech/onto/``)::
+Predicates (under ``https://graph.onta.sh/onto/``)::
 
     baseLayer        "public" | "enhanced"   (from entitlement, not user-chosen)
     baseVersion      xsd:integer             (omitted when None = live)
@@ -41,7 +44,6 @@ shadows base on name collision) must use that stack. Operator global browsers
 keep using live graphs (no pin).
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -76,7 +78,7 @@ logger = structlog.stdlib.get_logger("cograph.graph.ontology_base_pin")
 # Vocabulary
 # ---------------------------------------------------------------------------
 
-PIN_SUBJECT = "https://cograph.tech/meta/WorkspaceBasePin"
+PIN_SUBJECT = f"{IRI_BASE}/meta/WorkspaceBasePin"
 
 _PIN_BASE_LAYER = f"{OMNIX_ONTO}/baseLayer"
 _PIN_BASE_VERSION = f"{OMNIX_ONTO}/baseVersion"

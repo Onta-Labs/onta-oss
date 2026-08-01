@@ -209,7 +209,7 @@ with every `FROM` / `FROM NAMED` naming a graph inside the calling workspace:
 
 ```sparql
 SELECT ?s ?p ?o
-FROM <https://cograph.tech/graphs/{tenant}/kg/{kg_name}>
+FROM <https://graph.onta.sh/graphs/{tenant}/kg/{kg_name}>
 WHERE { ?s ?p ?o }
 ```
 

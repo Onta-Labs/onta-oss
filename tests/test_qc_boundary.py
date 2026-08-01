@@ -198,20 +198,20 @@ def test_a5_places_literals_and_edges_on_the_right_predicates():
 
     literal = next(d for d in a5["attribute_declarations"] if d["name"] == "rating")
     assert literal["kind"] == "literal"
-    assert literal["uri"] == "https://cograph.tech/types/CoffeeShop/attrs/rating"
+    assert literal["uri"] == "https://graph.onta.sh/types/CoffeeShop/attrs/rating"
 
     rel_decl = next(d for d in a5["attribute_declarations"] if d["name"] == "located_in")
     assert rel_decl["kind"] == "relationship"
-    assert rel_decl["range"] == "https://cograph.tech/types/City"
+    assert rel_decl["range"] == "https://graph.onta.sh/types/City"
 
     edge = a5["relationship_edges"][0]
-    assert edge["predicate"] == "https://cograph.tech/onto/located_in"
-    assert edge["subject"] == "https://cograph.tech/entities/CoffeeShop/Fernwood"
-    assert edge["object"] == "https://cograph.tech/entities/City/Portland"
+    assert edge["predicate"] == "https://graph.onta.sh/onto/located_in"
+    assert edge["subject"] == "https://graph.onta.sh/entities/CoffeeShop/Fernwood"
+    assert edge["object"] == "https://graph.onta.sh/entities/City/Portland"
 
     # the target City is materialized as a first-class node (rdf:type + label).
     node = next(m for m in a5["node_materializations"] if m["uri"].endswith("/City/Portland"))
-    assert node["rdf_type"] == "https://cograph.tech/types/City" and node["label"] == "Portland"
+    assert node["rdf_type"] == "https://graph.onta.sh/types/City" and node["label"] == "Portland"
 
 
 def test_a5_captures_subtype_lineage():
@@ -227,8 +227,8 @@ def test_a5_captures_subtype_lineage():
         ]
     )
     types = {t["name"]: t for t in b.capture_boundary(ext, "unit").a5["types"]}
-    assert types["NursePractitioner"]["subclass_of"] == ["https://cograph.tech/types/HealthcareProvider"]
-    assert types["HealthcareProvider"]["subclass_of"] == ["https://cograph.tech/types/Person"]
+    assert types["NursePractitioner"]["subclass_of"] == ["https://graph.onta.sh/types/HealthcareProvider"]
+    assert types["HealthcareProvider"]["subclass_of"] == ["https://graph.onta.sh/types/Person"]
     assert types["Person"]["subclass_of"] == []
 
 

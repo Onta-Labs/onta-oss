@@ -16,7 +16,7 @@ from cograph_client.nlp.ontology_embeddings import (
     _types_named_in_question,
 )
 
-GRAPH = "https://cograph.tech/graphs/inv-tenant"
+GRAPH = "https://graph.onta.sh/graphs/inv-tenant"
 
 
 def test_singularize_regular_plurals():
@@ -46,7 +46,7 @@ def test_types_named_in_question_no_false_positive():
 def _chunk(name: str, vec: list[float]) -> TypeChunk:
     return TypeChunk(
         type_name=name,
-        chunk_text=f"Type: {name} — URI: <https://cograph.tech/types/{name}>",
+        chunk_text=f"Type: {name} — URI: <https://graph.onta.sh/types/{name}>",
         embedding=np.array(vec, dtype=np.float32),
         attributes=[],
         relationship_targets=[],

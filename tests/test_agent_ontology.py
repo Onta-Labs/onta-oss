@@ -291,7 +291,7 @@ async def test_execute_declare_attribute_calls_ontology_engine(monkeypatch):
     # At least one update targets the TENANT ontology graph for Mentor.website.
     schema_updates = [
         u for u in neptune.updates
-        if "https://cograph.tech/graphs/t1>" in u or "https://cograph.tech/graphs/t1/" in u
+        if "https://graph.onta.sh/graphs/t1>" in u or "https://graph.onta.sh/graphs/t1/" in u
     ]
     assert schema_updates, neptune.updates
     joined = " ".join(schema_updates)

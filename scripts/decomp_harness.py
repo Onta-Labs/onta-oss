@@ -49,7 +49,7 @@ from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 FIXTURES = _OSS_ROOT / "tests" / "fixtures" / "decomp"
 
-TYPES_NS = "https://cograph.tech/types/"
+TYPES_NS = "https://graph.onta.sh/types/"
 ENTITIES_NS = "/entities/"
 
 # Upper-ontology parents the extractor synthesizes to close a subclass chain

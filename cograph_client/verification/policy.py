@@ -41,8 +41,10 @@ predicate URIs and the SAME ``make_policy_id`` / ``tenant_graph_uri`` convention
 Boundary: OSS. Imports only stdlib / ``cograph_client.*``. No ``from cograph.*``.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import json
 from dataclasses import dataclass
 from typing import Optional
@@ -67,7 +69,7 @@ from cograph_client.normalization.policy import (
 )
 
 # --------------------------------------------------------------------------- #
-# Namespaces — mirror CleanPolicyStore's exact shape, but a DISTINCT rdf:type +
+# Namespaces — mirror CleanPolicyStoref's exact shape, but a DISTINCT rdf:type +
 # entity prefix so a VerifyPolicy resource is `…/entities/VerifyPolicy/<id>` and
 # never collides with a CleanPolicy resource in the same tenant ontology graph.
 # The shared base fields reuse the SAME `…/onto/policy/<field>` predicate
@@ -77,8 +79,8 @@ from cograph_client.normalization.policy import (
 XSD_INTEGER = "http://www.w3.org/2001/XMLSchema#integer"
 XSD_DECIMAL = "http://www.w3.org/2001/XMLSchema#decimal"
 
-VERIFY_POLICY_TYPE_URI = "https://cograph.tech/types/VerifyPolicy"
-VERIFY_POLICY_ENTITY_PREFIX = "https://cograph.tech/entities/VerifyPolicy/"
+VERIFY_POLICY_TYPE_URI = f"{IRI_BASE}/types/VerifyPolicy"
+VERIFY_POLICY_ENTITY_PREFIX = f"{IRI_BASE}/entities/VerifyPolicy/"
 
 # Shared base-field predicates (reused verbatim from the CleanPolicy shape).
 P_KG = POLICY_NS + "kgName"

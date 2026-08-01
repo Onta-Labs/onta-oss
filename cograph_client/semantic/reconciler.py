@@ -120,8 +120,10 @@ hostnames; the only configuration is the generic DSN already carried by the
 scheduling store and the OpenRouter key already carried by ``settings``.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import asyncio
 import os
 import random
@@ -165,16 +167,16 @@ EMBED_FILL_SCHEDULE_ID = "semantic-embed-fill"
 
 #: Sentinel tenant for the global sweep row. Never a real tenant (real tenant
 #: slugs are user-facing); the tenant-scoped schedule CRUD routes can't list or
-#: touch it, and the sweep itself spans tenants via ``fetch_pending``'s
+#: touch it, and the sweep itself spans tenants via ``fetch_pending``f's
 #: maintenance-only ``tenant_id=None`` exception.
 _SYSTEM_TENANT = "_system"
 _GLOBAL_KG = "*"
 
-#: ``https://cograph.tech/types/{Type}/attrs/{name}`` — the only predicate
+#: ``https://graph.onta.sh/types/{Type}/attrs/{name}`` — the only predicate
 #: shape the candidacy heuristic may classify (system predicates like
 #: ``rdfs:label`` / ``onto/ingested_at`` never carry a textKind verdict).
 _ATTR_URI_RE = re.compile(
-    r"^https://cograph\.tech/types/(?P<type>[^/]+)/attrs/(?P<attr>[^/]+)$"
+    rf"^{re.escape(IRI_BASE)}/types/(?P<type>[^/]+)/attrs/(?P<attr>[^/]+)$"
 )
 
 #: Durable decided-no verdict written by the default heuristic. Anything other

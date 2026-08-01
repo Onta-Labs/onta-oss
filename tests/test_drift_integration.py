@@ -32,8 +32,8 @@ from cograph_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"
-TYPES = "https://cograph.tech/types/"
-ENTITIES = "https://cograph.tech/entities/"
+TYPES = "https://graph.onta.sh/types/"
+ENTITIES = "https://graph.onta.sh/entities/"
 RDF_TYPE = explore.RDF_TYPE
 CORE_SLOT = explore._CORE_SLOT_PRED
 
@@ -196,7 +196,7 @@ def test_flag_on_without_core_marker_excludes_zero_support(client, mock_neptune,
 # back to the live instance scan, which must apply the SAME floor when the flag
 # is ON. Instance predicates are minted as `…/onto/<predName>`; the matching
 # core-slot marker lives at `…/types/<srcLeaf>/attrs/<predName>`.
-ONTO = "https://cograph.tech/onto/"
+ONTO = "https://graph.onta.sh/onto/"
 MPN_ISSUEDBY_ONTO = ONTO + "issuedby"          # MPN instances: 41/685 -> 6%
 RSKU_ISSUEDBY_ONTO = ONTO + "issuedby"          # RetailerSKU: 600/600 -> 100%
 SKU_ISSUED_BY_ONTO = ONTO + "issued_by"         # SKU core slot, 0/604 -> exempt
@@ -564,8 +564,8 @@ async def test_recompute_persists_drift_history_when_flag_on(mock_neptune, monke
     body = inserts[0]
     assert body.startswith("INSERT DATA")          # APPEND, never DROP+rewrite
     assert "DROP" not in body
-    assert "https://cograph.tech/drift/recordedAt" in body   # snapshot node
-    assert "https://cograph.tech/drift/pointOf" in body      # at least one point
+    assert "https://graph.onta.sh/drift/recordedAt" in body   # snapshot node
+    assert "https://graph.onta.sh/drift/pointOf" in body      # at least one point
     # Both relationships from the distribution are persisted (kept + quarantined).
     assert "MPN.issuedby" in body
     assert "RetailerSKU.issuedby" in body
@@ -635,7 +635,7 @@ async def test_drop_kg_stats_drops_drift_history_graph(mock_neptune):
 
 def test_get_drift_history_reassembles_snapshots(client, mock_neptune, auth_headers):
     """The read endpoint groups flat (snapshot × point) rows back into nested snapshots."""
-    snap = "https://cograph.tech/drift/snap/abc"
+    snap = "https://graph.onta.sh/drift/snap/abc"
 
     def route(sparql, *a, **k):
         if HIST_GRAPH in sparql:

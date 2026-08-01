@@ -32,9 +32,9 @@ from cograph_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"
-TYPES = "https://cograph.tech/types/"
-ENTITIES = "https://cograph.tech/entities/"
-ONTO = "https://cograph.tech/onto/"
+TYPES = "https://graph.onta.sh/types/"
+ENTITIES = "https://graph.onta.sh/entities/"
+ONTO = "https://graph.onta.sh/onto/"
 SCHEMA_URL = f"/graphs/{TENANT}/explore/kgs/{KG}/schema"
 
 
@@ -254,7 +254,7 @@ def test_internal_predicates_and_legacy_companions_are_hidden(
              "cnt": "10", "rel": "0", "target": ""},
             {"type": TYPES + "Drug", "pred": ONTO + "batch_id",
              "cnt": "10", "rel": "0", "target": ""},
-            {"type": TYPES + "Drug", "pred": "https://cograph.tech/er/erSignal_name",
+            {"type": TYPES + "Drug", "pred": "https://graph.onta.sh/er/erSignal_name",
              "cnt": "10", "rel": "0", "target": ""},
         ),
     }
@@ -433,7 +433,7 @@ def test_layered_declaration_collapses_onto_tenant_namespace_instances(
     # under the historical TENANT namespace must resolve to ONE entry, not a
     # populated orphan plus a phantom empty type. The tenant namespace is a
     # PREFIX of the public one, so the URI parse has to be longest-first.
-    public = "https://cograph.tech/types/public/"
+    public = "https://graph.onta.sh/types/public/"
     stats = {
         "entity_count": _rows({"type": TYPES + "Drug", "ec": "8", "sp": "", "tp": ""}),
         "preds": _rows(

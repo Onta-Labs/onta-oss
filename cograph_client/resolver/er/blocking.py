@@ -14,11 +14,12 @@ This denormalization costs ~5 triples per ER-enabled entity. The payoff is
 one SPARQL query per ingest row instead of N.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ER_NS
 from cograph_client.resolver.er.types import BlockKey, NormalizedSignals
 
-ER_NS = "https://cograph.tech/er/"
 BLOCK_KEY_PRED = f"<{ER_NS}blockKey>"
 SIGNAL_PRED_PREFIX = f"<{ER_NS}erSignal_"
 
@@ -172,7 +173,7 @@ class SparqlBlocker:
             return {}
 
         key_values = ",".join(_quote_literal(f"{k.kind}:{k.value}") for k in keys)
-        sparql = f"""
+        sparql = """
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 SELECT DISTINCT ?entity ?p ?o
 FROM <{instance_graph}>

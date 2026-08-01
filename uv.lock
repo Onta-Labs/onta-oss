@@ -649,6 +649,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "rapidfuzz" },
+    { name = "rdflib" },
     { name = "slowapi" },
     { name = "structlog" },
     { name = "uvicorn", extra = ["standard"] },
@@ -679,6 +680,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "rapidfuzz", specifier = ">=3.10.0" },
+    { name = "rdflib", specifier = ">=7.0.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "structlog", specifier = ">=24.4.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
@@ -832,6 +834,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz", hash = "sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f", size = 4955991, upload-time = "2026-03-29T13:29:33.898Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl", hash = "sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176", size = 1231151, upload-time = "2026-03-29T13:29:30.038Z" },
+]
+
+[[package]]
+name = "pyparsing"
+version = "3.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
 ]
 
 [[package]]
@@ -1005,6 +1016,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bb/ce/ff942d19fce5385054650bb71a58495ddda299d94661ccc4e6e7fa44868b/rapidfuzz-3.14.5-cp314-cp314t-win32.whl", hash = "sha256:0f23e37019ec07712d58976b1ab2b889f8649a7f7c2f626a2f34ea9139e79279", size = 1803950, upload-time = "2026-04-07T11:16:10.873Z" },
     { url = "https://files.pythonhosted.org/packages/5c/0f/9aafc63f9661222b819b391c187eed29fc90ad5935f9690e5ecc2d2047a4/rapidfuzz-3.14.5-cp314-cp314t-win_amd64.whl", hash = "sha256:7d5ca9c7832e6879a707296d1463685f7c243a27846227044504741640caec66", size = 1632357, upload-time = "2026-04-07T11:16:13.1Z" },
     { url = "https://files.pythonhosted.org/packages/70/a6/51fc1b0e61e3326e1c68a61cfd0c6b3c34c843681c4b1eefbf0596f59162/rapidfuzz-3.14.5-cp314-cp314t-win_arm64.whl", hash = "sha256:3e91dcd2549b8f8d843f98ba03a17e01f3d8b72ce942adbbb6761bc58ffce813", size = 855409, upload-time = "2026-04-07T11:16:15.787Z" },
+]
+
+[[package]]
+name = "rdflib"
+version = "7.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyparsing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/f5/18bb77b7af9526add0c727a3b2048959847dc5fb030913e2918bf384fec3/rdflib-7.6.0.tar.gz", hash = "sha256:6c831288d5e4a5a7ece85d0ccde9877d512a3d0f02d7c06455d00d6d0ea379df", size = 4943826, upload-time = "2026-02-13T07:15:55.938Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/c2/6604a71269e0c1bd75656d5a001432d16f2cc5b8c057140ec797155c295e/rdflib-7.6.0-py3-none-any.whl", hash = "sha256:30c0a3ebf4c0e09215f066be7246794b6492e054e782d7ac2a34c9f70a15e0dd", size = 615416, upload-time = "2026-02-13T07:15:46.487Z" },
 ]
 
 [[package]]

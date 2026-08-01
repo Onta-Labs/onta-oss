@@ -30,12 +30,12 @@ TENANT = "test-tenant"
 KG = "movies"
 TYPE = "Movie"
 
-ENTITIES = "https://cograph.tech/entities/"
-TYPES = "https://cograph.tech/types/"
-ONTO = "https://cograph.tech/onto/"
+ENTITIES = "https://graph.onta.sh/entities/"
+TYPES = "https://graph.onta.sh/types/"
+ONTO = "https://graph.onta.sh/onto/"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-STATS_ENTITY_COUNT = "https://cograph.tech/stats/entityCount"
+STATS_ENTITY_COUNT = "https://graph.onta.sh/stats/entityCount"
 
 E1 = ENTITIES + "Movie/m1"
 E2 = ENTITIES + "Movie/m2"
@@ -43,8 +43,8 @@ E3 = ENTITIES + "Movie/m3"
 
 TITLE_PRED = ONTO + "title"
 YEAR_PRED = ONTO + "year"
-INGESTED_AT_PRED = "https://cograph.tech/onto/ingested_at"
-SOURCE_PRED = "https://cograph.tech/onto/source"
+INGESTED_AT_PRED = "https://graph.onta.sh/onto/ingested_at"
+SOURCE_PRED = "https://graph.onta.sh/onto/source"
 LABEL_PRED = RDFS + "#label"
 TYPE_URI = TYPES + TYPE
 

@@ -56,7 +56,7 @@ from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
 from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
-TYPES = "https://cograph.tech/types/"
+TYPES = "https://graph.onta.sh/types/"
 
 # Two distinct workspaces (distinct tenants → distinct base graphs), each with its
 # own provenance source and its own KG target — the "two-workspace" contract the

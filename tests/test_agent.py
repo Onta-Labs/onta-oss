@@ -2010,7 +2010,7 @@ async def test_dedup_routes_to_plan_with_er_types(monkeypatch):
     real ER-enabled types. 'Person' resolves to an ERConfig (kept); 'Skill' does
     not (filtered out)."""
     _stub_classifier(monkeypatch, "dedup")
-    prefix = "https://cograph.tech/types/"
+    prefix = "https://graph.onta.sh/types/"
     neptune = _TypedNeptune([f"{prefix}Person", f"{prefix}Skill"])
 
     out = await asyncio.wait_for(
@@ -2097,7 +2097,7 @@ async def test_dedup_execute_drives_rebuild_engine(monkeypatch):
     # The engine ran against the KG's instance graph (the same primitive the
     # er-rebuild route uses), the job landed in 'applied' with the merge volume
     # recorded, and a type-stats recompute was scheduled.
-    assert captured["instance_graph"] == "https://cograph.tech/graphs/t1/kg/kg1"
+    assert captured["instance_graph"] == "https://graph.onta.sh/graphs/t1/kg/kg1"
     assert job.status == JobStatus.applied
     assert job.progress.processed == 7
     assert "merged 7 duplicate fragment" in (job.error or "")

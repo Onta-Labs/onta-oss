@@ -40,14 +40,14 @@ from cograph_client.resolver.functions import (
     store_derived_update,
 )
 
-GRAPH = "https://cograph.tech/graphs/test-tenant/kg/test"
-ENTITY = "https://cograph.tech/entities/Guest/g1"
+GRAPH = "https://graph.onta.sh/graphs/test-tenant/kg/test"
+ENTITY = "https://graph.onta.sh/entities/Guest/g1"
 T0 = datetime(2026, 6, 9, 12, 0, 0, tzinfo=timezone.utc)
 
 AGE_FN = {
     "name": "age",
     "kind": "sparql",
-    "query": "SELECT ?age WHERE { $entity <https://cograph.tech/attrs/Guest/age> ?age }",
+    "query": "SELECT ?age WHERE { $entity <https://graph.onta.sh/attrs/Guest/age> ?age }",
 }
 
 

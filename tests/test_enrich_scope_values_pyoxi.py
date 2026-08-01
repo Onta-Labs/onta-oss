@@ -45,8 +45,8 @@ RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
 RDFS_DOMAIN = "http://www.w3.org/2000/01/rdf-schema#domain"
-ONTO = "https://cograph.tech/onto/"
-ENT = "https://cograph.tech/entities/"
+ONTO = "https://graph.onta.sh/onto/"
+ENT = "https://graph.onta.sh/entities/"
 TENANT, KG, TYPE = "scope-vals-pyoxi", "k1", "Widget"
 
 

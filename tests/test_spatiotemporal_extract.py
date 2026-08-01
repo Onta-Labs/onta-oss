@@ -35,7 +35,7 @@ def _dt(y: int, m: int = 1, d: int = 1) -> datetime:
 
 
 def _geom(uri: str, lon: float, lat: float) -> tuple:
-    return (uri, f"https://cograph.tech/types/T/loc", f"POINT({lon} {lat})^^{GEO}")
+    return (uri, f"https://graph.onta.sh/types/T/loc", f"POINT({lon} {lat})^^{GEO}")
 
 
 @pytest.fixture(autouse=True)
@@ -63,8 +63,8 @@ def test_extracts_point_from_wkt_literal():
 
 def test_entity_without_geometry_is_skipped():
     triples = [
-        ("e:person", RDF_TYPE, "https://cograph.tech/types/Person"),
-        ("e:person", "https://cograph.tech/types/Person/birth_date", f"1970-01-01T00:00:00^^{DT}"),
+        ("e:person", RDF_TYPE, "https://graph.onta.sh/types/Person"),
+        ("e:person", "https://graph.onta.sh/types/Person/birth_date", f"1970-01-01T00:00:00^^{DT}"),
     ]
     assert extract_spatiotemporal_facts(triples, tenant_id=TENANT, kg_name=KG) == []
 
@@ -73,7 +73,7 @@ def test_lone_date_is_not_validity():
     """A single non-validity date must NOT become valid_time (we don't guess)."""
     triples = [
         _geom("e:place", 2.29, 48.85),
-        ("e:place", "https://cograph.tech/types/Place/founded", f"1889-03-31T00:00:00^^{DT}"),
+        ("e:place", "https://graph.onta.sh/types/Place/founded", f"1889-03-31T00:00:00^^{DT}"),
     ]
     f = extract_spatiotemporal_facts(triples, tenant_id=TENANT, kg_name=KG)[0]
     assert f.valid_from is None and f.valid_to is None
@@ -82,8 +82,8 @@ def test_lone_date_is_not_validity():
 def test_start_end_pair_becomes_validity():
     triples = [
         _geom("e:expo", 2.30, 48.86),
-        ("e:expo", "https://cograph.tech/types/Event/start_date", f"2024-06-01T00:00:00^^{DT}"),
-        ("e:expo", "https://cograph.tech/types/Event/end_date", f"2024-06-10T00:00:00^^{DT}"),
+        ("e:expo", "https://graph.onta.sh/types/Event/start_date", f"2024-06-01T00:00:00^^{DT}"),
+        ("e:expo", "https://graph.onta.sh/types/Event/end_date", f"2024-06-10T00:00:00^^{DT}"),
     ]
     f = extract_spatiotemporal_facts(triples, tenant_id=TENANT, kg_name=KG)[0]
     assert f.valid_from == _dt(2024, 6, 1) and f.valid_to == _dt(2024, 6, 10)
@@ -95,8 +95,8 @@ def test_inverted_start_end_pair_opens_validity():
     indexed by its geometry)."""
     triples = [
         _geom("e:bad", 2.30, 48.86),
-        ("e:bad", "https://cograph.tech/types/Event/start_date", f"2024-06-10T00:00:00^^{DT}"),
-        ("e:bad", "https://cograph.tech/types/Event/end_date", f"2024-06-01T00:00:00^^{DT}"),
+        ("e:bad", "https://graph.onta.sh/types/Event/start_date", f"2024-06-10T00:00:00^^{DT}"),
+        ("e:bad", "https://graph.onta.sh/types/Event/end_date", f"2024-06-01T00:00:00^^{DT}"),
     ]
     facts = extract_spatiotemporal_facts(triples, tenant_id=TENANT, kg_name=KG)
     assert len(facts) == 1  # still indexed
@@ -108,13 +108,13 @@ def test_parse_kg_graph_uri_rejects_companion_graph():
     kg_name='<kg>/provenance' — it returns None so only true per-KG graphs route."""
     assert parse_kg_graph_uri(kg_graph_uri(TENANT, KG)) == (TENANT, KG)
     assert parse_kg_graph_uri(kg_graph_uri(TENANT, KG) + "/provenance") is None
-    assert parse_kg_graph_uri("https://cograph.tech/graphs/demo-tenant") is None
+    assert parse_kg_graph_uri("https://graph.onta.sh/graphs/demo-tenant") is None
 
 
 def test_explicit_valid_from_only_open_ended():
     triples = [
         _geom("e:site", 2.29, 48.85),
-        ("e:site", "https://cograph.tech/types/Site/valid_from", f"2020-01-01T00:00:00^^{DT}"),
+        ("e:site", "https://graph.onta.sh/types/Site/valid_from", f"2020-01-01T00:00:00^^{DT}"),
     ]
     f = extract_spatiotemporal_facts(triples, tenant_id=TENANT, kg_name=KG)[0]
     assert f.valid_from == _dt(2020) and f.valid_to is None
@@ -122,7 +122,7 @@ def test_explicit_valid_from_only_open_ended():
 
 def test_denormalizes_label_and_type():
     triples = [
-        ("e:1", RDF_TYPE, "https://cograph.tech/types/Venue"),
+        ("e:1", RDF_TYPE, "https://graph.onta.sh/types/Venue"),
         ("e:1", RDFS_LABEL, "Ferry Building"),
         _geom("e:1", -122.39, 37.79),
     ]
@@ -131,7 +131,7 @@ def test_denormalizes_label_and_type():
 
 
 def test_out_of_range_point_ignored():
-    bad = ("e:bad", "https://cograph.tech/types/T/loc", f"POINT(999 999)^^{GEO}")
+    bad = ("e:bad", "https://graph.onta.sh/types/T/loc", f"POINT(999 999)^^{GEO}")
     assert extract_spatiotemporal_facts([bad], tenant_id=TENANT, kg_name=KG) == []
 
 
@@ -145,7 +145,7 @@ def test_plain_string_with_caret_not_mistyped():
     """A plain string literal containing '^^' (no http tail) is not a typed value."""
     triples = [
         _geom("e:1", 2.29, 48.85),
-        ("e:1", "https://cograph.tech/types/T/note", "a^^b weird value"),
+        ("e:1", "https://graph.onta.sh/types/T/note", "a^^b weird value"),
     ]
     facts = extract_spatiotemporal_facts(triples, tenant_id=TENANT, kg_name=KG)
     assert len(facts) == 1  # the note neither breaks parsing nor adds a fact
@@ -168,9 +168,9 @@ async def test_insert_facts_populates_index_scoped_to_kg():
     neptune = _FakeNeptune()
     graph = kg_graph_uri(TENANT, KG)
     triples = [
-        ("e:venue", RDF_TYPE, "https://cograph.tech/types/Venue"),
+        ("e:venue", RDF_TYPE, "https://graph.onta.sh/types/Venue"),
         _geom("e:venue", -122.4194, 37.7749),
-        ("e:noband", "https://cograph.tech/types/Band/name", "no geo here"),
+        ("e:noband", "https://graph.onta.sh/types/Band/name", "no geo here"),
     ]
     await insert_facts(neptune, graph, triples)
     assert neptune.updates  # the primary write still happened
@@ -185,7 +185,7 @@ async def test_insert_facts_populates_index_scoped_to_kg():
 async def test_insert_facts_skips_non_kg_graph():
     """Writing to the tenant ontology graph (not a per-KG graph) indexes nothing."""
     neptune = _FakeNeptune()
-    onto_graph = "https://cograph.tech/graphs/demo-tenant"  # no /kg/ segment
+    onto_graph = "https://graph.onta.sh/graphs/demo-tenant"  # no /kg/ segment
     await insert_facts(neptune, onto_graph, [_geom("e:x", 1.0, 1.0)])
     idx = get_spatiotemporal_index()
     assert await idx.query_radius(TENANT, 1.0, 1.0, 1_000) == []

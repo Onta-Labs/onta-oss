@@ -174,8 +174,10 @@ To change the judge model:
   Set OMNIX_EVAL_MODEL env var (default: uses the same provider as query generation)
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import json
 import os
 import re
@@ -531,7 +533,7 @@ Evaluate the answer and respond with valid JSON:
 }}
 
 Failure categories:
-- "bad_predicate_uri": SPARQL uses wrong predicate URIs (e.g., <price> instead of <https://cograph.tech/types/Property/attrs/price>)
+- "bad_predicate_uri": SPARQL uses wrong predicate URIs (e.g., <price> instead of <https://graph.onta.sh/types/Property/attrs/price>)
 - "missing_join": Query doesn't traverse a relationship that's needed
 - "wrong_filter": Filter condition is malformed or uses wrong comparison
 - "wrong_aggregation": COUNT/AVG/SUM is wrong or applied to wrong variable
@@ -1287,7 +1289,7 @@ class QueryEvaluator:
                 failure_cat = "empty_result"
             elif answer.startswith("Could not answer") or answer.startswith("ERROR"):
                 failure_cat = "error"
-            elif "http" in ans_lower and "cograph.tech" in ans_lower:
+            elif "http" in ans_lower and (IRI_BASE.split("://",1)[-1] in ans_lower or "cograph.tech" in ans_lower or "graph.onta.sh" in ans_lower):
                 failure_cat = "uri_instead_of_value"
             else:
                 failure_cat = "wrong_answer"

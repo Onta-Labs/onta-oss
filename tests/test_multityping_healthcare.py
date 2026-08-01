@@ -160,7 +160,7 @@ async def test_er_patient_merges_via_ancestor_config() -> None:
     # Mock Neptune: candidates_with_signals returns entity1's signals as existing
     mock_neptune = AsyncMock()
     # SparqlBlocker.candidates_with_signals is called inside find_match
-    canonical_uri_1 = "https://cograph.tech/entities/Patient/alice-nguyen-hospitalhospitalorg"
+    canonical_uri_1 = "https://graph.onta.sh/entities/Patient/alice-nguyen-hospitalhospitalorg"
 
     pipeline = ERPipeline(mock_neptune)
     # Patch the blocker directly so we control what "already exists" in the store
@@ -168,8 +168,8 @@ async def test_er_patient_merges_via_ancestor_config() -> None:
         return_value={canonical_uri_1: sig1}
     )
 
-    type_uri = "https://cograph.tech/types/Patient"
-    instance_graph = "https://cograph.tech/graphs/test-tenant"
+    type_uri = "https://graph.onta.sh/types/Patient"
+    instance_graph = "https://graph.onta.sh/graphs/test-tenant"
 
     # Use config_for_with_hierarchy so the leaf inherits from Person
     config = config_for_with_hierarchy("Patient", PATIENT_PARENT_OF)
@@ -224,7 +224,7 @@ async def test_er_novel_patient_subtype_merges_via_chain() -> None:
 
     normalizer = DefaultNormalizer()
     sig1 = normalizer.normalize(extract_signals(entity1))
-    canonical_uri_1 = "https://cograph.tech/entities/HospitalPatient/bob-chen"
+    canonical_uri_1 = "https://graph.onta.sh/entities/HospitalPatient/bob-chen"
 
     mock_neptune = AsyncMock()
     pipeline = ERPipeline(mock_neptune)
@@ -244,8 +244,8 @@ async def test_er_novel_patient_subtype_merges_via_chain() -> None:
     decision = await pipeline.find_match(
         entity2,
         "HospitalPatient",
-        "https://cograph.tech/types/HospitalPatient",
-        "https://cograph.tech/graphs/test-tenant",
+        "https://graph.onta.sh/types/HospitalPatient",
+        "https://graph.onta.sh/graphs/test-tenant",
         config=config,
         parent_of=novel_parent_of,
     )
@@ -284,8 +284,8 @@ async def test_er_skips_without_hierarchy() -> None:
     decision = await pipeline.find_match(
         entity,
         "HospitalPatient",
-        "https://cograph.tech/types/HospitalPatient",
-        "https://cograph.tech/graphs/test-tenant",
+        "https://graph.onta.sh/types/HospitalPatient",
+        "https://graph.onta.sh/graphs/test-tenant",
         config=None,
         parent_of={},
     )
@@ -303,7 +303,7 @@ async def test_er_skips_without_hierarchy() -> None:
 
 def test_rewrite_type_predicate_to_closure_patient() -> None:
     """A query for Person type gets rewritten to use subclass-closure path."""
-    sparql = "SELECT ?x WHERE { ?x a <https://cograph.tech/types/Person> . }"
+    sparql = "SELECT ?x WHERE { ?x a <https://graph.onta.sh/types/Person> . }"
     rewritten = rewrite_type_predicate_to_closure(sparql)
 
     assert "subClassOf>*" in rewritten, (
@@ -311,13 +311,13 @@ def test_rewrite_type_predicate_to_closure_patient() -> None:
         "so Patient instances are returned when querying for Person."
     )
     # The object URI (Person) must be preserved
-    assert "<https://cograph.tech/types/Person>" in rewritten
+    assert "<https://graph.onta.sh/types/Person>" in rewritten
 
 
 def test_rewrite_type_predicate_to_closure_full_rdf_type_form() -> None:
     """Form B (full rdf:type IRI) is also rewritten."""
     rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-    sparql = f"SELECT ?x WHERE {{ ?x <{rdf_type}> <https://cograph.tech/types/Person> . }}"
+    sparql = f"SELECT ?x WHERE {{ ?x <{rdf_type}> <https://graph.onta.sh/types/Person> . }}"
     rewritten = rewrite_type_predicate_to_closure(sparql)
 
     assert "subClassOf>*" in rewritten
@@ -325,7 +325,7 @@ def test_rewrite_type_predicate_to_closure_full_rdf_type_form() -> None:
 
 def test_rewrite_type_predicate_to_closure_is_idempotent() -> None:
     """Applying closure rewrite twice is the same as applying it once."""
-    sparql = "SELECT ?x WHERE { ?x a <https://cograph.tech/types/Patient> . }"
+    sparql = "SELECT ?x WHERE { ?x a <https://graph.onta.sh/types/Patient> . }"
     once = rewrite_type_predicate_to_closure(sparql)
     twice = rewrite_type_predicate_to_closure(once)
     assert once == twice, "rewrite_type_predicate_to_closure must be idempotent"
@@ -348,8 +348,8 @@ def test_closure_covers_patient_under_person_query() -> None:
          covers Patient.
     """
     # Simulated asserted type triple for a Patient instance
-    patient_uri = "https://cograph.tech/entities/Patient/alice-nguyen"
-    patient_type = "https://cograph.tech/types/Patient"
+    patient_uri = "https://graph.onta.sh/entities/Patient/alice-nguyen"
+    patient_type = "https://graph.onta.sh/types/Patient"
     rdf_type_pred = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
     # Step 1: The instance is stamped with Patient (not Person)
@@ -359,39 +359,39 @@ def test_closure_covers_patient_under_person_query() -> None:
     assert "Person" not in asserted_type_triple_object
 
     # Step 2: A query for Person gets the closure rewrite
-    person_query = f"SELECT ?x WHERE {{ ?x a <https://cograph.tech/types/Person> . }}"
+    person_query = f"SELECT ?x WHERE {{ ?x a <https://graph.onta.sh/types/Person> . }}"
     rewritten = rewrite_type_predicate_to_closure(person_query)
 
     # The closure path replaces the bare `a`
     assert "subClassOf>*" in rewritten
-    assert "<https://cograph.tech/types/Person>" in rewritten
+    assert "<https://graph.onta.sh/types/Person>" in rewritten
     # The bare `a` predicate in predicate position is gone
-    assert " a <https://cograph.tech/types/Person>" not in rewritten
+    assert " a <https://graph.onta.sh/types/Person>" not in rewritten
 
 
 def test_insert_type_creates_patient_and_person() -> None:
     """insert_type generates correct SPARQL for both Person and Patient types."""
-    graph = "https://cograph.tech/graphs/test-tenant"
+    graph = "https://graph.onta.sh/graphs/test-tenant"
 
     person_sparql = insert_type(graph, "Person")
-    assert "cograph.tech/types/Person" in person_sparql
+    assert "graph.onta.sh/types/Person" in person_sparql
     assert "Class" in person_sparql
 
     # Patient with parent_type=Person creates subClassOf triple
     patient_sparql = insert_type(graph, "Patient", parent_type="Person")
-    assert "cograph.tech/types/Patient" in patient_sparql
+    assert "graph.onta.sh/types/Patient" in patient_sparql
     assert "subClassOf" in patient_sparql
-    assert "cograph.tech/types/Person" in patient_sparql
+    assert "graph.onta.sh/types/Person" in patient_sparql
 
 
 def test_insert_subtype_creates_patient_subclassof_person() -> None:
     """insert_subtype generates correct SPARQL to link Patient to Person."""
-    graph = "https://cograph.tech/graphs/test-tenant"
+    graph = "https://graph.onta.sh/graphs/test-tenant"
     sparql = insert_subtype(graph, "Person", "Patient")
 
     assert "subClassOf" in sparql
-    assert "cograph.tech/types/Patient" in sparql
-    assert "cograph.tech/types/Person" in sparql
+    assert "graph.onta.sh/types/Patient" in sparql
+    assert "graph.onta.sh/types/Person" in sparql
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +426,7 @@ async def test_synthesize_ancestors_creates_person_when_patient_ingested() -> No
                 verdict_cache=verdict_cache,
             )
 
-    graph_uri = "https://cograph.tech/graphs/test-tenant"
+    graph_uri = "https://graph.onta.sh/graphs/test-tenant"
     existing_types: dict[str, str] = {}      # empty ontology
     existing_attrs: dict = {}
     result = IngestResult(entities_extracted=1)

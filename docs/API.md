@@ -217,7 +217,7 @@ Execute Query
 
 The query must declare the graphs it reads. Every `FROM` / `FROM NAMED` clause
 has to name a full IRI inside the calling workspace, for example
-`FROM <https://cograph.tech/graphs/{tenant}/kg/{kg_name}>`. The store defines its
+`FROM <https://graph.onta.sh/graphs/{tenant}/kg/{kg_name}>`. The store defines its
 default graph as the union of every named graph, so a query with no dataset
 clause would read every workspace.
 

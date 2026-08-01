@@ -47,8 +47,8 @@ from cograph_client.graph.ontology_queries import (
 )
 from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
 
-GRAPH_URI = "https://cograph.tech/graphs/test-tenant"
-TYPES_URI = "https://cograph.tech/types/"
+GRAPH_URI = "https://graph.onta.sh/graphs/test-tenant"
+TYPES_URI = "https://graph.onta.sh/types/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_SUB = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
@@ -128,10 +128,10 @@ class TestSubclassClosure:
         assert "rdf-syntax-ns#type" in path or "#type" in path
 
     def test_rewrite_form_a_bare_a(self):
-        sparql = "SELECT ?x WHERE { ?x a <https://cograph.tech/types/Property> . }"
+        sparql = "SELECT ?x WHERE { ?x a <https://graph.onta.sh/types/Property> . }"
         rewritten = rewrite_type_predicate_to_closure(sparql)
         assert "subClassOf>*" in rewritten
-        assert "<https://cograph.tech/types/Property>" in rewritten
+        assert "<https://graph.onta.sh/types/Property>" in rewritten
         # The bare `a` predicate should be gone (replaced by closure path).
         # Check closure path appears exactly once.
         assert rewritten.count("subClassOf>*") == 1
@@ -139,25 +139,25 @@ class TestSubclassClosure:
     def test_rewrite_form_b_full_rdf_type(self):
         sparql = (
             "SELECT ?x WHERE { "
-            f"?x <{RDF_TYPE}> <https://cograph.tech/types/Property> . "
+            f"?x <{RDF_TYPE}> <https://graph.onta.sh/types/Property> . "
             "}"
         )
         rewritten = rewrite_type_predicate_to_closure(sparql)
         assert "subClassOf>*" in rewritten
-        assert "<https://cograph.tech/types/Property>" in rewritten
+        assert "<https://graph.onta.sh/types/Property>" in rewritten
 
     def test_rewrite_covers_condo_query_for_property_ancestor(self):
         """A query for Property type must become a closure path so Condo instances
         (which are asserted as Condo, not Property) are returned by Neptune."""
-        sparql = "SELECT ?unit WHERE { ?unit a <https://cograph.tech/types/Property> . }"
+        sparql = "SELECT ?unit WHERE { ?unit a <https://graph.onta.sh/types/Property> . }"
         rewritten = rewrite_type_predicate_to_closure(sparql)
         # The object URI is preserved verbatim.
-        assert "<https://cograph.tech/types/Property>" in rewritten
+        assert "<https://graph.onta.sh/types/Property>" in rewritten
         # The predicate becomes the closure path.
         assert "subClassOf>*" in rewritten
 
     def test_rewrite_idempotent(self):
-        sparql = "SELECT ?x WHERE { ?x a <https://cograph.tech/types/Property> . }"
+        sparql = "SELECT ?x WHERE { ?x a <https://graph.onta.sh/types/Property> . }"
         once = rewrite_type_predicate_to_closure(sparql)
         twice = rewrite_type_predicate_to_closure(once)
         assert once == twice
@@ -170,7 +170,7 @@ class TestSubclassClosure:
         assert "?parent" in q
 
     def test_rewrite_does_not_touch_non_cograph_type_triples(self):
-        """Triples whose object is NOT under cograph.tech/types/ must be left alone."""
+        """Triples whose object is NOT under graph.onta.sh/types/ must be left alone."""
         sparql = "SELECT ?x WHERE { ?x a <https://schema.org/Person> . }"
         rewritten = rewrite_type_predicate_to_closure(sparql)
         assert rewritten == sparql  # unchanged
@@ -360,7 +360,7 @@ async def test_er_pipeline_merges_duplicate_condos(mock_neptune):
     entity1 = _condo_entity("123 Main St San Francisco CA 94105", unit="1A")
     entity2 = _condo_entity("123 Main St San Francisco CA 94105", unit="1A")
 
-    canonical_uri = f"https://cograph.tech/entities/Condo/123_Main_St"
+    canonical_uri = f"https://graph.onta.sh/entities/Condo/123_Main_St"
 
     # Normalize the address the same way the normalizer would so signals match.
     normalizer = DefaultNormalizer()
@@ -434,8 +434,8 @@ class TestQueryClosureForRealEstate:
         instances (typed as Condo, not Property) are also returned by Neptune."""
         raw_sparql = (
             "SELECT ?unit ?price WHERE {\n"
-            "  ?unit a <https://cograph.tech/types/Property> .\n"
-            "  ?unit <https://cograph.tech/types/Property/attrs/price> ?price .\n"
+            "  ?unit a <https://graph.onta.sh/types/Property> .\n"
+            "  ?unit <https://graph.onta.sh/types/Property/attrs/price> ?price .\n"
             "}"
         )
         rewritten = rewrite_type_predicate_to_closure(raw_sparql)
@@ -446,13 +446,13 @@ class TestQueryClosureForRealEstate:
             "a plain rdf:type predicate would miss Condo instances."
         )
         # The object (Property URI) must be preserved.
-        assert "<https://cograph.tech/types/Property>" in rewritten
+        assert "<https://graph.onta.sh/types/Property>" in rewritten
 
         # The bare `a` predicate should not remain as-is in predicate position
-        # next to a cograph.tech/types/ object (it was replaced).
+        # next to a graph.onta.sh/types/ object (it was replaced).
         import re
         bare_a = re.search(
-            r'\?\w+\s+a\s+<https://cograph\.tech/types/Property>',
+            r'\?\w+\s+a\s+<https://graph\.onta\.sh/types/Property>',
             rewritten
         )
         assert bare_a is None, "Bare `a` predicate should have been rewritten to closure path."
@@ -469,8 +469,8 @@ class TestQueryClosureForRealEstate:
         """If a query has two type assertions they both get rewritten."""
         sparql = (
             "SELECT ?x ?y WHERE {\n"
-            "  ?x a <https://cograph.tech/types/Property> .\n"
-            "  ?y a <https://cograph.tech/types/Property> .\n"
+            "  ?x a <https://graph.onta.sh/types/Property> .\n"
+            "  ?y a <https://graph.onta.sh/types/Property> .\n"
             "}"
         )
         rewritten = rewrite_type_predicate_to_closure(sparql)
