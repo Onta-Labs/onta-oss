@@ -227,14 +227,14 @@ def _cluster_has_identity(prefix: str, attrs: list[ExtractedAttribute]) -> bool:
 # attribute when the proposed name shares a family and exactly one family
 # member is already on the type (unambiguous).
 _ATTR_SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
-    frozenset({"name", "title", "label", "heading"}),
+    # Tight free-text prose family (dogfood S1). Deliberately exclude title/name
+    # and decision/outcome — those are often distinct slots.
     frozenset({
         "description", "summary", "statement", "rationale", "reason",
         "text", "body", "content", "notes", "note", "details", "detail",
-        "decision", "outcome",
     }),
-    frozenset({"area", "domain", "category", "topic", "region", "scope"}),
-    frozenset({"date", "dated", "when", "timestamp", "time", "day"}),
+    frozenset({"area", "domain", "category", "topic", "scope"}),
+    frozenset({"date", "dated", "timestamp", "day"}),
     frozenset({"email", "e_mail", "mail"}),
     frozenset({"phone", "telephone", "mobile", "tel"}),
 )

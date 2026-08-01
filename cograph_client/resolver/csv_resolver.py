@@ -2337,7 +2337,8 @@ def _is_opaque_identifier(value: str) -> bool:
     if not v or len(v) > 64:
         return True  # empty / pathological → do not mint a name
     # Digits almost always mean a code (C1001, O9001, ERP-1, SKU42).
-    if any(ch.isdigit() for ch in v):
+    # Exception: spaced display labels with digits ("Room 101", "Windows 11").
+    if any(ch.isdigit() for ch in v) and " " not in v:
         return True
     # Dashed/underscored uppercase codes without spaces: R-WEST, S-ACME.
     if ("-" in v or "_" in v) and " " not in v:
