@@ -29,7 +29,7 @@ from cograph_client.graph.ontology_queries import type_uri
 # Stack construction + visibility
 # ---------------------------------------------------------------------------
 
-TENANT_GRAPH = "https://cograph.tech/graphs/acme"
+TENANT_GRAPH = "https://graph.onta.sh/graphs/acme"
 
 
 def test_entitled_stack_layers_in_precedence_order():
@@ -49,8 +49,8 @@ def test_non_entitled_stack_excludes_enhanced():
 
 def test_tenant_graph_uri_is_whatever_caller_passes():
     # The tenant layer has no fixed graph — callers keep passing their own.
-    stack = LayerStack("https://cograph.tech/graphs/other-tenant")
-    assert stack.graph_uri_for(Layer.TENANT) == "https://cograph.tech/graphs/other-tenant"
+    stack = LayerStack("https://graph.onta.sh/graphs/other-tenant")
+    assert stack.graph_uri_for(Layer.TENANT) == "https://graph.onta.sh/graphs/other-tenant"
 
 
 # ---------------------------------------------------------------------------
@@ -113,16 +113,16 @@ def test_layer_namespaces_are_distinct():
 
 
 def test_enhanced_and_public_namespaces():
-    assert layer_type_uri(Layer.PUBLIC, "Hotel") == "https://cograph.tech/types/public/Hotel"
-    assert layer_type_uri(Layer.ENHANCED, "Hotel") == "https://cograph.tech/types/x/Hotel"
+    assert layer_type_uri(Layer.PUBLIC, "Hotel") == "https://graph.onta.sh/types/public/Hotel"
+    assert layer_type_uri(Layer.ENHANCED, "Hotel") == "https://graph.onta.sh/types/x/Hotel"
 
 
 def test_tenant_type_uri_unchanged_regression():
     """Backward-compat: the existing namespace stays the tenant namespace and
     type_uri() output is byte-for-byte what it was before layers existed."""
-    assert type_uri("Place") == "https://cograph.tech/types/Place"
+    assert type_uri("Place") == "https://graph.onta.sh/types/Place"
     assert layer_type_uri(Layer.TENANT, "Place") == type_uri("Place")
-    assert type_namespace(Layer.TENANT) == "https://cograph.tech/types/"
+    assert type_namespace(Layer.TENANT) == "https://graph.onta.sh/types/"
 
 
 # ---------------------------------------------------------------------------

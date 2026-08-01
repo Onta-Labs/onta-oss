@@ -3,6 +3,12 @@
 All KGs share the tenant's ontology but have separate instance data.
 """
 
+from cograph_client.graph.iri import (
+    ENTITY_URI_PREFIX,
+    IRI_BASE,
+    ONTO_BASE,
+    TYPE_URI_PREFIX,
+)
 import asyncio
 from typing import Optional
 
@@ -34,8 +40,7 @@ from cograph_client.graph.queries import (
 
 router = APIRouter(prefix="/graphs/{tenant}/kgs")
 
-OMNIX_ONTO = "https://cograph.tech/onto"
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
+OMNIX_ONTO = ONTO_BASE
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 NAME_ATTRS = ("name", "title", "label", "headline")
 
@@ -195,8 +200,8 @@ async def invalidate_triple_count(
 # ?include_system=true. Sourced from schema_resolver.py.
 SYSTEM_PREDICATES: frozenset[str] = frozenset({
     "http://www.w3.org/2000/01/rdf-schema#label",
-    "https://cograph.tech/onto/ingested_at",
-    "https://cograph.tech/onto/source",
+    f"{IRI_BASE}/onto/ingested_at",
+    f"{IRI_BASE}/onto/source",
 })
 
 
@@ -892,7 +897,7 @@ async def get_type_usage(
         # Classify: object pointing into the entities/types namespace OR
         # ontology-declared range that's another type → relationship.
         is_rel = (
-            sample.startswith("https://cograph.tech/entities/")
+            sample.startswith(ENTITY_URI_PREFIX)
             or sample.startswith(TYPE_URI_PREFIX)
             or rng.startswith(TYPE_URI_PREFIX)
         )
@@ -900,11 +905,11 @@ async def get_type_usage(
             target: str | None = None
             if rng.startswith(TYPE_URI_PREFIX):
                 target = rng[len(TYPE_URI_PREFIX):]
-            elif sample.startswith("https://cograph.tech/entities/"):
+            elif sample.startswith(ENTITY_URI_PREFIX):
                 # Entity URIs are .../entities/{TypeName}/{slug}; pull the
                 # type out so the CLI can render "industries → Industry"
-                # even when the ontology hasn't declared a typed range.
-                tail = sample[len("https://cograph.tech/entities/"):]
+                # even when the ontology hasnf't declared a typed range.
+                tail = sample[len(f"{IRI_BASE}/entities/"):]
                 head = tail.split("/", 1)[0]
                 if head:
                     target = head

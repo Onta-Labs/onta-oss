@@ -35,8 +35,10 @@ ingest-then-immediately-ask) is the exact flow the agent and MCP exercise
 constantly, and a cached negative would break it.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import asyncio
 import time
 
@@ -59,10 +61,10 @@ KG_EMPTY = "empty"
 KG_MISSING = "missing"
 
 _RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-# Every instance's rdf:type object lives under this prefix (tenant, public and
+# Every instancef's rdf:type object lives under this prefix (tenant, public and
 # enhanced type URIs alike). Ontology CLASS declarations do not (their object is
 # rdfs:Class), which is exactly the discrimination _base_has_instances_query needs.
-_TYPES_PREFIX = "https://cograph.tech/types/"
+_TYPES_PREFIX = f"{IRI_BASE}/types/"
 
 # {(tenant_id, kg_name): checked_at}. Positive verdicts only (see module docstring).
 _kg_ok_cache: dict[tuple[str, str], float] = {}
@@ -153,7 +155,7 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     the base graph is also the ONTOLOGY graph and always holds at least the KG's
     own registration triple, so a bare pattern would be true for every
     registered KG and this feature would never fire. It looks for INSTANCE data
-    specifically, a subject typed with a ``cograph.tech/types/`` class. Ontology
+    specifically, a subject typed with a ``graph.onta.sh/types/`` class. Ontology
     class declarations are ``<types/X> rdf:type <rdfs#Class>`` (object outside
     that namespace), so they do not count, while instances
     (``<entities/X/id> rdf:type <types/X>``) do. This is the same notion of

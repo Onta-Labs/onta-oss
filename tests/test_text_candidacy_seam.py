@@ -42,7 +42,7 @@ from cograph_client.resolver.schema_resolver import (
     SchemaResolver,
 )
 
-GRAPH = "https://cograph.tech/graphs/test-tenant"
+GRAPH = "https://graph.onta.sh/graphs/test-tenant"
 TENANT = "test-tenant"
 
 

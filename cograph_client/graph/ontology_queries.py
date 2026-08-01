@@ -1,5 +1,11 @@
 """SPARQL query builders for ontology management."""
 
+from cograph_client.graph.iri import (
+    ENTITY_URI_PREFIX,
+    IRI_BASE,
+    ONTO_BASE,
+    TYPE_URI_PREFIX,
+)
 import hashlib
 import re
 
@@ -8,7 +14,7 @@ from cograph_client.graph.queries import (
     sparql_string_literal,
 )
 
-OMNIX_ONTO = "https://cograph.tech/onto"
+OMNIX_ONTO = ONTO_BASE
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 XSD = "http://www.w3.org/2001/XMLSchema"
@@ -25,7 +31,6 @@ GEOSPARQL = "http://www.opengis.net/ont/geosparql"
 # accepted a name it should reject. ``layers._TYPE_NAMESPACES[Layer.TENANT]`` and
 # ``explore.TYPE_URI_PREFIX`` are the same string by definition; both now alias
 # this one.
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
 
 
 def type_uri(type_name: str) -> str:
@@ -86,10 +91,10 @@ def _safe_id(raw_id: str) -> str:
 
 def entity_uri(type_name: str, raw_id: str) -> str:
     """Canonical instance-node IRI for ``raw_id`` of ``type_name``:
-    ``https://cograph.tech/entities/<type_name>/<_safe_id(raw_id)>``. The single
+    ``https://graph.onta.sh/entities/<type_name>/<_safe_id(raw_id)>``. The single
     source of truth every write rail mints entity nodes through — keep it byte-for-
     byte stable, since the slug is the node's identity (changing it orphans data)."""
-    return f"https://cograph.tech/entities/{type_name}/{_safe_id(raw_id)}"
+    return f"{IRI_BASE}/entities/{type_name}/{_safe_id(raw_id)}"
 
 
 def ontology_version(
@@ -739,7 +744,7 @@ def with_subclass_closure(type_name: str) -> str:
 
 # Property path that turns a type-assertion predicate into its subclass closure.
 _CLOSURE_PATH = f"<{RDF}#type>/<{RDFS}#subClassOf>*"
-_TYPES_URI = "https://cograph.tech/types/"
+_TYPES_URI = TYPE_URI_PREFIX
 
 
 def rewrite_type_predicate_to_closure(sparql: str) -> str:
@@ -751,7 +756,7 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
 
     Deterministic and regex-based — no ontology lookup, no Neptune, no LLM:
       - Only matches type-assertion predicate position whose OBJECT is a
-        `https://cograph.tech/types/...` URI (the only place rewriting is valid).
+        `https://graph.onta.sh/types/...` URI (the only place rewriting is valid).
       - Closure over a leaf type is set-equal to the leaf itself, so the rewrite
         is safe to apply unconditionally.
       - Idempotent: a triple already using the closure path (`.../subClassOf>*`)
@@ -775,7 +780,7 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
 
     Deterministic and regex-based — no ontology lookup, no Neptune, no LLM:
       - Only matches type-assertion predicate position whose OBJECT is a
-        `https://cograph.tech/types/...` URI (the only place rewriting is valid).
+        `https://graph.onta.sh/types/...` URI (the only place rewriting is valid).
       - Closure over a leaf type is set-equal to the leaf itself, so the rewrite
         is safe to apply unconditionally.
       - Idempotent: a triple already using the closure path (`.../subClassOf>*`)
@@ -798,14 +803,14 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
     rdf_type_full = f"<{RDF}#type>"
     types_obj = re.escape(_TYPES_URI)
 
-    # Form A: `?var a <https://cograph.tech/types/X>`
+    # Form A: `?var a <https://graph.onta.sh/types/X>`
     sparql = re.sub(
         rf'(\?\w+)\s+a\s+(<{types_obj}\w+>)',
         rf'\1 {_CLOSURE_PATH} \2',
         sparql,
     )
 
-    # Form B: `?var <http://...#type> <https://cograph.tech/types/X>`
+    # Form B: `?var <http://...#type> <https://graph.onta.sh/types/X>`
     # The negative-lookahead on the predicate guards idempotence: skip when the
     # predicate is already the closure path (which itself contains <...#type>).
     sparql = re.sub(
@@ -814,7 +819,7 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
         sparql,
     )
 
-    # Form C: prefixed `?var rdf:type <https://cograph.tech/types/X>`. Common
+    # Form C: prefixed `?var rdf:type <https://graph.onta.sh/types/X>`. Common
     # when the model declares `PREFIX rdf:`. Negative-lookahead on `/` keeps it
     # idempotent against an already-rewritten `rdf:type/rdfs:subClassOf*`.
     sparql = re.sub(
@@ -834,7 +839,7 @@ def _rewrite_indirect_type_constraints(sparql: str) -> str:
 
     Handles COG-34 forms D/E/F (VALUES, FILTER `=`, FILTER `IN`). For each
     candidate variable `?t` we (1) confirm it is the bare object of an rdf:type
-    triple, (2) confirm it is constrained to at least one `https://cograph.tech/
+    triple, (2) confirm it is constrained to at least one `https://graph.onta.sh/
     types/...` URI via VALUES or FILTER, then (3) upgrade ONLY that triple's
     rdf:type predicate to the closure path. The object variable is untouched, so
     the existing VALUES/FILTER constraint keeps pinning it to the named type(s)
@@ -926,7 +931,7 @@ SAME_AS = f"{OMNIX_ONTO}/sameAs"
 # Instance-node IRIs are the ONLY URIs a sameAs alias applies to (types/attr/onto
 # URIs are schema, never re-keyed by a merge). The rewrite is scoped narrowly to
 # these so it can never touch a type-closure or attribute reference.
-_ENTITIES_URI = "https://cograph.tech/entities/"
+_ENTITIES_URI = ENTITY_URI_PREFIX
 
 # Bidirectional sameAs walk: from EITHER alias reach the canonical (and back), so a
 # query pinning a merged-away IRI resolves the canonical's facts and vice-versa.
@@ -973,7 +978,7 @@ def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
     """Expand a concrete ``…/entities/<Type>/<id>`` reference to a sameAs walk so a
     MERGED entity (ONTA-274) resolves under EITHER alias.
 
-    A merge re-keys all of the merged node's triples onto the canonical
+    A merge re-keys all of the merged nodef's triples onto the canonical
     (``kg_writer.rewrite_subject``) and records ``(canonical, <onto/sameAs>, merged)``.
     Facts therefore live on the canonical URI; a query that PINS the merged-away
     IRI directly (e.g. a later re-mint of ``entity_uri(Type, raw_id)`` produces the
@@ -991,7 +996,7 @@ def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
     query is always semantics-preserving.
 
     Scoped and idempotent by construction:
-      - Only ``https://cograph.tech/entities/…`` IRIs are touched — a ``types/`` /
+      - Only ``https://graph.onta.sh/entities/…`` IRIs are touched — a ``types/`` /
         ``attrs/`` / ``onto/`` URI (schema, never sameAs-aliased) is left verbatim,
         so this never disturbs the subclass-closure or attribute rewrites.
       - SUBJECT/OBJECT position is classified by the following token: an entity IRI

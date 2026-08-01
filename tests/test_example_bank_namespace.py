@@ -1,13 +1,13 @@
 """Drift guard: the committed example bank must reference the LIVE URI namespace.
 
 The bug this prevents: the URI namespace was renamed ``omnix.dev`` →
-``cograph.tech`` on 2026-04-27 (b7069f0; the deployed graph store was migrated
+``graph.onta.sh`` on 2026-04-27 (b7069f0; the deployed graph store was migrated
 by a one-shot script in the proprietary parent repo), but the example bank was
 never migrated with it. The bank is injected verbatim into every ``/ask``
 few-shot prompt (``nlp/example_bank.py::format_examples_for_prompt``), so every
 NL→SPARQL generation was being primed with worked examples whose predicates
 resolve to nothing in any graph — while the SYSTEM prompt already taught
-``cograph.tech``, making each prompt self-contradictory.
+``graph.onta.sh``, making each prompt self-contradictory.
 
 This file is the bank an OSS checkout or standalone install serves; the hosted
 image ships the parent repo's own copy, guarded separately there. Both drifted.
@@ -38,11 +38,11 @@ from cograph_client.nlp.validator import LEGACY_ONTO_HOSTS, ONTO_BASE, normalize
 # produce. A bank URI outside this set means either a new shape landed without
 # updating this guard, or the bank picked up a malformed URI.
 LIVE_PREFIXES = (
-    "graphs/",      # https://cograph.tech/graphs/<tenant>[/kg/<kg>]
-    "types/",       # https://cograph.tech/types/<Type>[/attrs/<attr>]
-    "onto/",        # https://cograph.tech/onto/<leaf>  (relationship instance edge)
-    "entities/",    # https://cograph.tech/entities/<Type>/<id>
-    "attr_meta/",   # https://cograph.tech/attr_meta/<Type>/<attr>/<suffix>
+    "graphs/",      # https://graph.onta.sh/graphs/<tenant>[/kg/<kg>]
+    "types/",       # https://graph.onta.sh/types/<Type>[/attrs/<attr>]
+    "onto/",        # https://graph.onta.sh/onto/<leaf>  (relationship instance edge)
+    "entities/",    # https://graph.onta.sh/entities/<Type>/<id>
+    "attr_meta/",   # https://graph.onta.sh/attr_meta/<Type>/<attr>/<suffix>
     "functions/",
     "kgs/",
 )

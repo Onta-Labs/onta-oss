@@ -29,8 +29,10 @@ and they fold each merge through the shared `kg_writer.rewrite_subject` primitiv
 (ADR 0007) so a merged-away URI never lingers in a derived secondary index.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import TYPE_URI_PREFIX
 import structlog
 
 from cograph_client.graph.kg_writer import refresh_after_write, rewrite_subject
@@ -46,7 +48,6 @@ from cograph_client.resolver.er.types import (
 
 logger = structlog.stdlib.get_logger("cograph.resolver.er.rebuild")
 
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
 
 
 # ---------------------------------------------------------------------------

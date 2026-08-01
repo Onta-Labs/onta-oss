@@ -50,8 +50,10 @@ and the ONTA-199 decomp fixtures as the canonical corpus.
   # check the working tree against the frozen fixtures (exit 1 on drift)
   python -m cograph_client.qc.boundary --check
 """
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ONTO_PRED_PREFIX
 import argparse
 import json
 import sys
@@ -83,7 +85,7 @@ from cograph_client.resolver.validator import validate_triple
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-ONTO_PREFIX = "https://cograph.tech/onto/"
+ONTO_PREFIX = ONTO_PRED_PREFIX
 
 # Artifact tiers, named for the stage-contract slots they characterize. A3 (the
 # explicit Clean stage, ONTA-344) sits between A2 (candidate facts) and A4 (verified

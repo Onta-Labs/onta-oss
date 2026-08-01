@@ -13,8 +13,15 @@ deny-by-default drift guard (``tests/test_ontology_commit_convergence.py``)
 fails CI if a production module reintroduces a raw builder write.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import (
+    GOV_NS,
+    GRAPH_URI_PREFIX,
+    IRI_BASE,
+    TYPE_URI_PREFIX,
+)
 import asyncio
 import hashlib
 import re
@@ -80,19 +87,19 @@ _REV_GRAPH_SUFFIX = "/versions"
 # revision snapshot graphs (`…/revisions/r{N}`) are immutable. commit_ontology
 # refuses them so a publish cannot be silently rewritten (ONTA-406).
 _PUBLISHED_VERSION_GRAPH_RE = re.compile(
-    r"^https://cograph\.tech/graphs/"
+    rf"^{re.escape(IRI_BASE)}/graphs/"
     r"(?:global/(?:public|enhanced)|[^/]+)"
     r"/v\d+$"
 )
 _REVISION_SNAPSHOT_GRAPH_RE = re.compile(
-    r"^https://cograph\.tech/graphs/[^/]+/revisions/r\d+$"
+    rf"^{re.escape(IRI_BASE)}/graphs/[^/]+/revisions/r\d+$"
 )
 
 # Changelog vocabulary — same GOV_* shape as resolver/governance.py so one
 # reader can eventually cover both Global governance and workspace commits.
 # Imported lazily / duplicated as constants to avoid a circular import through
 # the governance module (which imports ontology_queries).
-_GOV_NS = "https://cograph.tech/gov/"
+_GOV_NS = GOV_NS
 _GOV_ACTION = f"{_GOV_NS}action"
 _GOV_SUBJECT = f"{_GOV_NS}subject"
 _GOV_TIMESTAMP = f"{_GOV_NS}timestamp"
@@ -181,7 +188,7 @@ def is_immutable_version_graph(graph_uri: str) -> bool:
 def release_graph_uri(live_graph_uri: str, version: int) -> str:
     """Published release snapshot graph for layer A or B: ``{live}/v{N}``.
 
-    Example: ``https://cograph.tech/graphs/global/public/v3``.
+    Example: ``https://graph.onta.sh/graphs/global/public/v3``.
     """
     if version < 1:
         raise ValueError(f"release version must be >= 1, got {version}")
@@ -203,7 +210,7 @@ def changelog_graph_uri_for(graph_uri: str) -> str:
     """Append-only changelog companion for a workspace (or global) ontology graph.
 
     Global governance still writes to the fixed
-    ``https://cograph.tech/graphs/global/changelog`` via
+    ``https://graph.onta.sh/graphs/global/changelog`` via
     :func:`cograph_client.resolver.governance.changelog_graph_uri`; workspace
     commits use a per-graph companion so tenant isolation is by named graph.
     """
@@ -462,7 +469,7 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
             kind = row.get("kind") or ""
             if not a_uri or not kind:
                 continue
-            # attr URI: https://cograph.tech/types/<Type>/attrs/<leaf>
+            # attr URI: https://graph.onta.sh/types/<Type>/attrs/<leaf>
             parts = a_uri.split("/types/", 1)
             if len(parts) != 2 or "/attrs/" not in parts[1]:
                 continue
@@ -547,7 +554,7 @@ async def fingerprint_ontology(neptune, graph_uri: str) -> str:
 def _range_to_datatype(range_str: str) -> str:
     if not range_str:
         return "string"
-    type_uri_prefix = "https://cograph.tech/types/"
+    type_uri_prefix = TYPE_URI_PREFIX
     if range_str.startswith(type_uri_prefix):
         return range_str[len(type_uri_prefix):].rsplit("/", 1)[-1]
     if "#" in range_str:
@@ -1154,7 +1161,7 @@ async def _emit_changelog(
     entry = f"{_GOV_NS}log/{uuid4()}"
     # Tenant id is the first path segment of graphs/{tenant}[…].
     tenant_id = ""
-    prefix = "https://cograph.tech/graphs/"
+    prefix = GRAPH_URI_PREFIX
     if graph_uri.startswith(prefix):
         rest = graph_uri[len(prefix):]
         tenant_id = rest.split("/", 1)[0]

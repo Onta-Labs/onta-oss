@@ -204,7 +204,7 @@ def test_raw_triples_admin_api_scopes_to_tenant_graph_only():
     assert "enhanced_graph_uri" not in src
     assert "global/enhanced" not in src
     # And the helper itself only ever mints the tenant namespace.
-    assert tenant_graph_uri("acme") == "https://cograph.tech/graphs/acme"
+    assert tenant_graph_uri("acme") == "https://graph.onta.sh/graphs/acme"
     assert "enhanced" not in tenant_graph_uri("acme")
 
 

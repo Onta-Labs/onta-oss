@@ -644,7 +644,7 @@ describe("new typed parsed variants of the missing methods", () => {
           entity_uri: "e:m1",
           label: "The Matrix",
           type: "Movie",
-          predicate: "https://cograph.tech/onto/title",
+          predicate: "https://graph.onta.sh/onto/title",
           attr: "title",
           value: "The Matrix",
           snippet: "The Matrix",

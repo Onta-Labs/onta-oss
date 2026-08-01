@@ -1350,7 +1350,7 @@ program
         const filters = opts.includeOntology
           ? ""
           : `FILTER(CONTAINS(STR(?s), '/entities/') || CONTAINS(STR(?s), '/onto/') || CONTAINS(STR(?s), '/kgs/'))`;
-        const query = `SELECT ?s ?p ?o FROM <https://cograph.tech/graphs/${tenant}> WHERE { ?s ?p ?o . ${filters} } LIMIT 1000`;
+        const query = `SELECT ?s ?p ?o FROM <${process.env.ONTA_IRI_BASE || process.env.COGRAPH_IRI_BASE || "https://graph.onta.sh"}/graphs/${tenant}> WHERE { ?s ?p ?o . ${filters} } LIMIT 1000`;
 
         process.stdout.write("Clearing...\n");
         let deleted = 0;

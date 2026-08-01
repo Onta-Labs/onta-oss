@@ -174,8 +174,8 @@ def test_base_pin_graph_uri_tenant_scoped():
 
     a = base_pin_graph_uri("acme")
     b = base_pin_graph_uri("other")
-    assert a == "https://cograph.tech/graphs/acme/base-pin"
-    assert b == "https://cograph.tech/graphs/other/base-pin"
+    assert a == "https://graph.onta.sh/graphs/acme/base-pin"
+    assert b == "https://graph.onta.sh/graphs/other/base-pin"
     assert a != b
 
 
@@ -214,7 +214,7 @@ def test_history_grouped_collapses_burst(client, auth_headers, mock_neptune):
     t0 = datetime(2026, 7, 28, 12, 0, 0, tzinfo=timezone.utc)
     entries = [
         ChangelogEntry(
-            entry_uri=f"https://cograph.tech/gov/log/{i}",
+            entry_uri=f"https://graph.onta.sh/gov/log/{i}",
             action="commit_ontology",
             subject=tenant_graph_uri("test-tenant"),
             timestamp=(t0 - timedelta(seconds=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -251,7 +251,7 @@ def test_history_grouped_collapses_burst(client, auth_headers, mock_neptune):
 def test_history_flat_when_grouped_false(client, auth_headers, mock_neptune):
     entries = [
         ChangelogEntry(
-            entry_uri="https://cograph.tech/gov/log/1",
+            entry_uri="https://graph.onta.sh/gov/log/1",
             action="commit_ontology",
             subject=tenant_graph_uri("test-tenant"),
             timestamp="2026-07-28T12:00:00Z",
@@ -383,7 +383,7 @@ def test_diff_rejects_other_tenant_uri(client, auth_headers, mock_neptune):
         resp = client.get(
             "/graphs/test-tenant/ontology/diff",
             params={
-                "from": "https://cograph.tech/graphs/VICTIM",
+                "from": "https://graph.onta.sh/graphs/VICTIM",
                 "to": "current",
             },
             headers=auth_headers,

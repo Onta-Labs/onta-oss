@@ -49,9 +49,9 @@ RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 TENANT = "t1"
 KG = "kg1"
 GRAPH = kg_graph_uri(TENANT, KG)
-DESC_PRED = "https://cograph.tech/types/Doc/attrs/description"
-SUMMARY_PRED = "https://cograph.tech/types/Doc/attrs/summary"
-ENTITY = "https://cograph.tech/entities/Doc/e1"
+DESC_PRED = "https://graph.onta.sh/types/Doc/attrs/description"
+SUMMARY_PRED = "https://graph.onta.sh/types/Doc/attrs/summary"
+ENTITY = "https://graph.onta.sh/entities/Doc/e1"
 PROSE = (
     "The committee heard extensive testimony about the proposed changes to the "
     "watershed management plan and debated the funding formula for well over "
@@ -283,7 +283,7 @@ def test_hook_unmarked_write_does_zero_entity_fetches(monkeypatch):
     _enable(monkeypatch)
     index = InMemorySemanticIndex()
     register_semantic_index(index)
-    sku_pred = "https://cograph.tech/types/Doc/attrs/sku"
+    sku_pred = "https://graph.onta.sh/types/Doc/attrs/sku"
     neptune = _FakeNeptune({DESC_PRED: "free_text"})  # description IS marked
 
     async def run():
@@ -445,8 +445,8 @@ def test_hook_entity_cap_bounds_the_fetch_and_logs(monkeypatch):
     index = InMemorySemanticIndex()
     register_semantic_index(index)
     neptune = _FakeNeptune({DESC_PRED: "free_text"})
-    e_a = "https://cograph.tech/entities/Doc/a"
-    e_b = "https://cograph.tech/entities/Doc/b"
+    e_a = "https://graph.onta.sh/entities/Doc/a"
+    e_b = "https://graph.onta.sh/entities/Doc/b"
 
     async def run():
         with structlog.testing.capture_logs() as logs:
@@ -569,7 +569,7 @@ def test_hook_empty_doc_deletes_that_attrs_rows(monkeypatch):
 def test_hook_empty_doc_delete_is_attr_scoped(monkeypatch):
     """Emptying one marked attr must not touch the entity's OTHER marked docs."""
     _enable(monkeypatch)
-    notes_pred = "https://cograph.tech/types/Doc/attrs/notes"
+    notes_pred = "https://graph.onta.sh/types/Doc/attrs/notes"
     index = InMemorySemanticIndex()
     register_semantic_index(index)
     neptune = _FakeNeptune({DESC_PRED: "free_text", notes_pred: "free_text"})

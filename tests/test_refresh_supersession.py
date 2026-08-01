@@ -52,11 +52,11 @@ from tests._enrichment_prov_helpers import FakeWikidata
 TENANT, KG = "onta279", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
 TYPE = "Company"
-ACME = "https://cograph.tech/entities/Company/acme"
+ACME = "https://graph.onta.sh/entities/Company/acme"
 LABEL = "Acme"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-COMPANY_TYPE = "https://cograph.tech/types/Company"
+COMPANY_TYPE = "https://graph.onta.sh/types/Company"
 
 PHONE = attr_uri(TYPE, "phone")
 HQ = attr_uri(TYPE, "hq")

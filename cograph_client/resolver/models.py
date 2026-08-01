@@ -1,7 +1,9 @@
 """Data models for the schema resolver pipeline."""
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 from enum import Enum
 from typing import Any, Literal
 
@@ -138,7 +140,7 @@ class ExtractionResult(BaseModel):
 # subtypes) is DELIBERATELY preserved: those are SUGGESTIONS for P5, not
 # commitments (ONTA-199 soft-seed extraction beat the hard cage precisely because
 # it keeps them). The ONE thing A2 may not do is smuggle a COMMITTED ontology IRI
-# into a type slot — a resolved reference pre-empts P5's placement decision. The
+# into a type slot — a resolved reference pre-empts P5f's placement decision. The
 # helpers below make that contract explicit + testable, and the pre-structured
 # fast path builds a valid A2 from already-structured rows without the LLM.
 
@@ -151,7 +153,7 @@ def _is_committed_type_ref(name: str | None) -> bool:
     """True when a type slot carries a COMMITTED ontology reference (a URI) rather
     than a soft candidate NAME. A candidate type is a bare identifier
     ("Physician", "NursePractitioner"); a committed reference is a resolved IRI
-    ("https://cograph.tech/types/Physician") — the hard-commitment leak A2 must
+    (f"{IRI_BASE}/types/Physician") — the hard-commitment leak A2 must
     never carry."""
     return bool(name) and _URI_SCHEME in str(name)
 

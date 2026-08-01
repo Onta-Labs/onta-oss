@@ -47,8 +47,10 @@ best-effort — embedding/stats failures are logged, never raised — matching t
 non-blocking behavior the ingest routes already had.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import asyncio
 import hashlib
 import json
@@ -259,13 +261,13 @@ async def ensure_kg_registered(neptune, tenant_id: str, kg_name: str) -> None:
 # what lets a byte-identical Graph Delta prove an upstream replay reproduced the
 # graph (the P6 determinism the ticket requires). The instance-graph values are
 # additionally made replay-stable at the source (batch_id derived from run_id,
-# ingested_at sourced from the run's observed_at), so the store write itself is
+# ingested_at sourced from the runf's observed_at), so the store write itself is
 # idempotent — the exclusion here is belt-and-suspenders + a clean fact-level
 # delta.
 DELTA_NONCE_PREDICATES = frozenset(
     {
-        "https://cograph.tech/onto/ingested_at",
-        "https://cograph.tech/onto/batch_id",  # == graph.queries.BATCH_PREDICATE
+        f"{IRI_BASE}/onto/ingested_at",
+        f"{IRI_BASE}/onto/batch_id",  # == graph.queries.BATCH_PREDICATE
     }
 )
 

@@ -43,7 +43,7 @@ MARKED = {"description", "notes", "bio"}
 
 
 def _desc(uri: str, text: str, attr: str = "description") -> tuple:
-    return (uri, f"https://cograph.tech/types/Event/{attr}", text)
+    return (uri, f"https://graph.onta.sh/types/Event/{attr}", text)
 
 
 def _extract(triples, marked=MARKED):
@@ -133,7 +133,7 @@ def test_content_hash_is_sha256_of_canonical_doc():
 def test_extracts_marked_predicate_into_keyed_chunk():
     chunks = _extract(
         [
-            ("e:1", RDF_TYPE, "https://cograph.tech/types/Event"),
+            ("e:1", RDF_TYPE, "https://graph.onta.sh/types/Event"),
             ("e:1", RDFS_LABEL, "Solar Expo"),
             _desc("e:1", "An expo about solar panels."),
         ]
@@ -156,15 +156,15 @@ def test_extracts_marked_predicate_into_keyed_chunk():
 def test_unmarked_predicates_are_ignored():
     chunks = _extract(
         [
-            ("e:1", "https://cograph.tech/types/Event/sku", "ABC-123"),
-            ("e:1", "https://cograph.tech/types/Event/venue_name", "Moscone"),
+            ("e:1", "https://graph.onta.sh/types/Event/sku", "ABC-123"),
+            ("e:1", "https://graph.onta.sh/types/Event/venue_name", "Moscone"),
         ]
     )
     assert chunks == []
 
 
 def test_marker_matches_full_uri_and_local_name():
-    pred = "https://cograph.tech/types/Event/description"
+    pred = "https://graph.onta.sh/types/Event/description"
     by_uri = _extract([("e:1", pred, "Some text.")], marked={pred})
     by_local = _extract([("e:1", pred, "Some text.")], marked={"description"})
     by_local_cased = _extract([("e:1", pred, "Some text.")], marked={"Description"})
@@ -178,8 +178,8 @@ def test_uri_objects_are_never_indexed():
     target URI as text (mirrors _escape_value's URI-vs-literal decision)."""
     chunks = _extract(
         [
-            ("e:1", "https://cograph.tech/types/Event/description", "https://cograph.tech/entities/e2"),
-            ("e:1", "https://cograph.tech/types/Event/description", "<https://cograph.tech/entities/e3>"),
+            ("e:1", "https://graph.onta.sh/types/Event/description", "https://graph.onta.sh/entities/e2"),
+            ("e:1", "https://graph.onta.sh/types/Event/description", "<https://graph.onta.sh/entities/e3>"),
         ]
     )
     assert chunks == []
@@ -319,9 +319,9 @@ def test_named_entity_with_no_marked_attribute_still_gets_a_chunk():
     """
     chunks = _extract(
         [
-            ("e:1", RDF_TYPE, "https://cograph.tech/types/Company"),
+            ("e:1", RDF_TYPE, "https://graph.onta.sh/types/Company"),
             ("e:1", RDFS_LABEL, "Acme Corporation"),
-            ("e:1", "https://cograph.tech/types/Company/attrs/sku", "AC-1"),
+            ("e:1", "https://graph.onta.sh/types/Company/attrs/sku", "AC-1"),
         ]
     )
     assert len(chunks) == 1
@@ -341,9 +341,9 @@ def test_identity_doc_collects_every_name_predicate():
     chunks = _extract(
         [
             ("e:1", RDFS_LABEL, "Acme Corp"),
-            ("e:1", "https://cograph.tech/types/Company/attrs/name", "Acme Corporation"),
-            ("e:1", "https://cograph.tech/types/Company/attrs/title", "ACME"),
-            ("e:1", "https://cograph.tech/types/Company/attrs/title", "  Acme Corp  "),
+            ("e:1", "https://graph.onta.sh/types/Company/attrs/name", "Acme Corporation"),
+            ("e:1", "https://graph.onta.sh/types/Company/attrs/title", "ACME"),
+            ("e:1", "https://graph.onta.sh/types/Company/attrs/title", "  Acme Corp  "),
         ]
     )
     (ident,) = _identity(chunks)
@@ -362,7 +362,7 @@ def test_identity_mirroring_a_marked_doc_is_deduped_and_the_marked_doc_wins():
     embedded and would silently drop out of the vector leg.
     """
     chunks = _extract(
-        [("e:1", "https://cograph.tech/types/Doc/title", "Solar Expo")],
+        [("e:1", "https://graph.onta.sh/types/Doc/title", "Solar Expo")],
         marked={"title"},
     )
     assert [c.attr for c in chunks] == ["title"]
@@ -373,13 +373,13 @@ def test_identity_ignores_uri_and_typed_label_values():
     predicate is a date/number — neither is a name."""
     chunks = _extract(
         [
-            ("e:1", RDFS_LABEL, "https://cograph.tech/entities/Doc/e2"),
+            ("e:1", RDFS_LABEL, "https://graph.onta.sh/entities/Doc/e2"),
             (
                 "e:1",
-                "https://cograph.tech/types/Doc/attrs/name",
+                "https://graph.onta.sh/types/Doc/attrs/name",
                 f"2024-01-01^^{XSD_DATE}",
             ),
-            ("e:1", "https://cograph.tech/types/Doc/attrs/title", "   "),
+            ("e:1", "https://graph.onta.sh/types/Doc/attrs/title", "   "),
         ]
     )
     assert chunks == []
@@ -403,7 +403,7 @@ def test_identity_doc_has_its_own_cap_so_exempt_never_means_unbounded():
     identity rows — truncated and LOGGED, never silent."""
     names = [f"Acme Corporation subsidiary number {i}" for i in range(20_000)]
     triples = [
-        ("e:1", "https://cograph.tech/types/Company/attrs/name", n) for n in names
+        ("e:1", "https://graph.onta.sh/types/Company/attrs/name", n) for n in names
     ]
     with structlog.testing.capture_logs() as logs:
         chunks = _extract(triples)
@@ -432,10 +432,10 @@ def test_identity_predicate_and_value_helpers_mirror_the_extractor():
     disagreed with the extractor the hook would delete the docs it just
     wrote."""
     assert is_identity_predicate(RDFS_LABEL)
-    assert is_identity_predicate("https://cograph.tech/types/Doc/attrs/Name")
-    assert not is_identity_predicate("https://cograph.tech/types/Doc/attrs/venue_name")
+    assert is_identity_predicate("https://graph.onta.sh/types/Doc/attrs/Name")
+    assert not is_identity_predicate("https://graph.onta.sh/types/Doc/attrs/venue_name")
     assert is_identity_value("Acme Corporation")
-    assert not is_identity_value("https://cograph.tech/entities/Doc/e2")
+    assert not is_identity_value("https://graph.onta.sh/entities/Doc/e2")
     assert not is_identity_value(f"2024-01-01^^{XSD_DATE}")
     assert not is_identity_value("   ")
 
@@ -443,10 +443,10 @@ def test_identity_predicate_and_value_helpers_mirror_the_extractor():
 def test_label_from_name_local_and_first_type_wins():
     chunks = _extract(
         [
-            ("e:1", "https://cograph.tech/types/Person/name", "Ada Lovelace"),
-            ("e:1", RDF_TYPE, "https://cograph.tech/types/Person"),
-            ("e:1", RDF_TYPE, "https://cograph.tech/types/Author"),
-            ("e:1", "https://cograph.tech/types/Person/bio", "Wrote the first program."),
+            ("e:1", "https://graph.onta.sh/types/Person/name", "Ada Lovelace"),
+            ("e:1", RDF_TYPE, "https://graph.onta.sh/types/Person"),
+            ("e:1", RDF_TYPE, "https://graph.onta.sh/types/Author"),
+            ("e:1", "https://graph.onta.sh/types/Person/bio", "Wrote the first program."),
         ]
     )
     assert chunks[0].attrs == {"label": "Ada Lovelace", "type": "Person"}
@@ -456,7 +456,7 @@ def test_marked_label_predicate_contributes_text_and_display():
     """A predicate can be BOTH the display label and a marked text attr
     (e.g. `title` on an Article) — it must serve both roles."""
     chunks = _extract(
-        [("e:1", "https://cograph.tech/types/Article/title", "A Grand Title")],
+        [("e:1", "https://graph.onta.sh/types/Article/title", "A Grand Title")],
         marked={"title"},
     )
     assert len(chunks) == 1
@@ -486,7 +486,7 @@ def test_marker_map_keys_work_as_marker_set():
 
 def test_extract_is_deterministic():
     triples = [
-        ("e:1", RDF_TYPE, "https://cograph.tech/types/Event"),
+        ("e:1", RDF_TYPE, "https://graph.onta.sh/types/Event"),
         _desc("e:1", "beta"),
         _desc("e:1", "alpha"),
         _desc("e:2", "other"),

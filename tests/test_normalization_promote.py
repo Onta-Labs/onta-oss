@@ -45,8 +45,8 @@ from tests.test_normalization import (  # reuse the harness
 )
 
 RDFS_RANGE = "http://www.w3.org/2000/01/rdf-schema#range"
-KG_GRAPH = "https://cograph.tech/graphs/t1/kg/june-16"
-ONTO_GRAPH = "https://cograph.tech/graphs/t1"
+KG_GRAPH = "https://graph.onta.sh/graphs/t1/kg/june-16"
+ONTO_GRAPH = "https://graph.onta.sh/graphs/t1"
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +220,7 @@ async def test_promote_value_keyed_categorical_shares_nodes():
 
     # edges rewired to the shared nodes on the onto/<leaf> RELATIONSHIP predicate
     # (the form the NL planner queries for a type-ranged attribute).
-    onto = "https://cograph.tech/onto/specialty"
+    onto = "https://graph.onta.sh/onto/specialty"
     assert (ENTITY + "Doctor/d1", onto, cardio) in quads
     assert (ENTITY + "Doctor/d2", onto, cardio) in quads
     assert (ENTITY + "Doctor/d3", onto, onco) in quads
@@ -266,7 +266,7 @@ async def test_promote_owner_keyed_measurement_distinct_and_lossless():
     assert (n1, RDFS_LABEL, "4.6") in quads
 
     # edges rewired on onto/<leaf>; literals cleared from attrs/<leaf>.
-    onto = "https://cograph.tech/onto/rating"
+    onto = "https://graph.onta.sh/onto/rating"
     assert (ENTITY + "CoffeeShop/shop-1", onto, n1) in quads
     assert (ENTITY + "CoffeeShop/shop-2", onto, n2) in quads
     assert (ENTITY + "CoffeeShop/shop-1", attr, "4.6") not in quads
@@ -333,7 +333,7 @@ async def test_promote_value_keyed_split_multivalue():
     # the single "A, B" literal split into TWO value-keyed nodes + two edges.
     assert (cardio, RDF_TYPE, TYPES + "Specialty") in quads
     assert (onco, RDF_TYPE, TYPES + "Specialty") in quads
-    onto = "https://cograph.tech/onto/specialty"
+    onto = "https://graph.onta.sh/onto/specialty"
     assert (e, onto, cardio) in quads
     assert (e, onto, onco) in quads
     # packed literal gone from attrs/<leaf>.
@@ -382,7 +382,7 @@ async def test_list_explode_attribute_target_entity_promotes():
     onco = ENTITY + "Specialty/Oncology"
     assert (cardio, RDF_TYPE, TYPES + "Specialty") in quads
     assert (onco, RDF_TYPE, TYPES + "Specialty") in quads
-    onto = "https://cograph.tech/onto/specialty"
+    onto = "https://graph.onta.sh/onto/specialty"
     assert (e, onto, cardio) in quads
     assert (e, onto, onco) in quads
     assert (e, attr, "Cardiology; Oncology") not in quads

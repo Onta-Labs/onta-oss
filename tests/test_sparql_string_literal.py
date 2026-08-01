@@ -78,5 +78,5 @@ def test_explore_keyset_cursor_escaping_is_unchanged_for_ordinary_uris():
     contain none of the newly-escaped characters, so their emitted form is
     byte-identical to the pre-fix behavior.
     """
-    cursor = "https://cograph.tech/entities/Movie/m_1-2"
+    cursor = "https://graph.onta.sh/entities/Movie/m_1-2"
     assert explore_route._esc(cursor) == cursor

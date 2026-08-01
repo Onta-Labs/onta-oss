@@ -24,7 +24,7 @@ Keying:
 
 For a fact (s, p, o) asserted by ``source`` the provenance graph holds::
 
-    <https://cograph.tech/prov/stmt/{sha1(s|p|o|source)}>
+    <https://graph.onta.sh/prov/stmt/{sha1(s|p|o|source)}>
         prov:subject    <s> ;
         prov:predicate  <p> ;
         prov:object     o ;                       # literal or URI, as written
@@ -41,6 +41,9 @@ an additional literal — last-write-wins policies resolve over max).
 
 from __future__ import annotations
 
+from cograph_client.graph.iri import ATTR_META_NS, IRI_BASE, PROV_NS, TYPE_URI_PREFIX
+
+
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -54,7 +57,6 @@ from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.predicates import ATTR_META_NS, ATTR_META_SUFFIXES  # noqa: F401
 from cograph_client.graph.queries import _escape_value
 
-PROV_NS = "https://cograph.tech/prov/"
 
 # --- Per-attribute DISPLAY provenance companions (ADR 0009 / ONTA-245) ---------
 #
@@ -93,7 +95,7 @@ PROV_NS = "https://cograph.tech/prov/"
 # stamp reuses the module ``_XSD`` datetime type, so the SAME literal shape is
 # produced whichever rail writes it (cross-rail symmetry).
 
-_TYPES_PREFIX = "https://cograph.tech/types/"
+_TYPES_PREFIX = TYPE_URI_PREFIX
 PROV_SUBJECT = f"{PROV_NS}subject"
 PROV_PREDICATE = f"{PROV_NS}predicate"
 PROV_OBJECT = f"{PROV_NS}object"

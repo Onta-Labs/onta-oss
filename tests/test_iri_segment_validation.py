@@ -2,7 +2,7 @@
 
 ONTA-425 (``type_name``) and ONTA-422 (``tenant``) are the two remaining halves
 of the defect ONTA-414 fixed for ``kg_name``: a name interpolated straight into
-``<https://cograph.tech/…>`` inside generated SPARQL, with no check that it can
+``<https://graph.onta.sh/…>`` inside generated SPARQL, with no check that it can
 legally sit there. A ``>`` closes the IRI and everything after it is parsed as
 SPARQL — on a read path that is a cross-graph read or a 500, and on a write path
 it lands in ``client.update``, where ``;`` starts a second operation and
@@ -51,7 +51,7 @@ from cograph_client.graph.queries import (
 
 TENANT = "test-tenant"
 KG = "movies"
-VICTIM = "https://cograph.tech/graphs/victim"
+VICTIM = "https://graph.onta.sh/graphs/victim"
 
 # Payloads that break OUT of `<…>`. Each is a real escape, not a mutation of one:
 # the first appends a second dataset clause naming another workspace's graph, the
@@ -149,9 +149,9 @@ def test_layer_type_uri_refuses_in_every_layer(layer, payload):
 @pytest.mark.parametrize("name", REAL_NAMES)
 def test_real_names_still_mint_their_uri(name):
     assert is_valid_type_name(name) is True
-    assert type_uri(name) == f"https://cograph.tech/types/{name}"
+    assert type_uri(name) == f"https://graph.onta.sh/types/{name}"
     assert attr_uri("Address", name) == (
-        f"https://cograph.tech/types/Address/attrs/{name}"
+        f"https://graph.onta.sh/types/Address/attrs/{name}"
     )
     for layer in Layer:
         assert layer_type_uri(layer, name).endswith(name)
@@ -169,7 +169,7 @@ def test_the_write_path_builder_refuses_rather_than_emitting_the_injection():
         insert_type(tenant_graph_uri(TENANT), payload)
     # And the pre-fix behaviour is genuinely dangerous, not merely malformed:
     # spelled out so the test states what it is preventing.
-    assert "DROP ALL" in f"https://cograph.tech/types/{payload}"
+    assert "DROP ALL" in f"https://graph.onta.sh/types/{payload}"
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +357,7 @@ def test_search_skips_one_corrupt_stored_name_instead_of_failing_the_listing(
             "head": {"vars": ["type", "label"]},
             "results": {
                 "bindings": [
-                    {"type": {"value": f"https://cograph.tech/types/{n}"},
+                    {"type": {"value": f"https://graph.onta.sh/types/{n}"},
                      "label": {"value": n}}
                     for n in names
                 ]
@@ -400,7 +400,7 @@ def test_search_skips_one_corrupt_stored_name_instead_of_failing_the_listing(
 # ---------------------------------------------------------------------------
 
 CORRUPT_LABEL = "Movie> <injected"
-TYPES_NS = "https://cograph.tech/types/"
+TYPES_NS = "https://graph.onta.sh/types/"
 XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
 
@@ -495,7 +495,7 @@ def test_the_core_slot_membership_test_answers_false_rather_than_raising():
     """
     from cograph_client.api.routes.explore import _is_core_slot
 
-    core = {"https://cograph.tech/types/Movie/attrs/title"}
+    core = {"https://graph.onta.sh/types/Movie/attrs/title"}
     assert _is_core_slot("Movie", "title", core) is True
     assert _is_core_slot("", "title", core) is False
     assert _is_core_slot("Movie", "", core) is False

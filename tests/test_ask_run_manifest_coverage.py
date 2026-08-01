@@ -59,7 +59,7 @@ async def _ask(pipeline, run_manifest=None):
     ):
         return await pipeline.ask(
             "What places exist?",
-            "https://cograph.tech/graphs/t1",
+            "https://graph.onta.sh/graphs/t1",
             run_manifest=run_manifest,
         )
 

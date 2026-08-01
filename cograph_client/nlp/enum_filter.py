@@ -14,16 +14,18 @@ mismatch so ``ask()`` can regenerate with targeted feedback instead of answering
 High-cardinality attributes annotated ``[N unique values]`` are intentionally
 not treated as closed enums and never trigger recovery.
 """
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import re
 from typing import NamedTuple
 
 # Ontology line fragment, e.g.:
-#   setting (string) — URI: <https://cograph.tech/types/Indication/attrs/setting>
+#   setting (string) — URI: <https://graph.onta.sh/types/Indication/attrs/setting>
 #     [values: "adjuvant", "metastatic", ...]
 _ENUM_ATTR_RE = re.compile(
-    r"URI:\s*<(https://cograph\.tech/types/[^>\s]+/attrs/[^>\s]+)>\s*"
+    rf"URI:\s*<({re.escape(IRI_BASE)}/types/[^>\s]+/attrs/[^>\s]+)>\s*"
     r"\[values:\s*([^\]]+)\]",
     re.IGNORECASE,
 )
@@ -41,7 +43,7 @@ _CONTAINS_FILTER_RE = re.compile(
 
 # ?s <attr_uri> ?o  — object var holds the attribute value being filtered
 _ATTR_BIND_RE = re.compile(
-    r"\?(\w+)\s+<(https://cograph\.tech/types/[^>\s]+/attrs/[^>\s]+)>\s+\?(\w+)",
+    rf"\?(\w+)\s+<({re.escape(IRI_BASE)}/types/[^>\s]+/attrs/[^>\s]+)>\s+\?(\w+)",
 )
 
 

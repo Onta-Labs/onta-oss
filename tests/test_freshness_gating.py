@@ -47,7 +47,7 @@ def test_verified_at_is_typed_datetime_literal(type_name, attr, label, value, sr
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        rows = [{"uri": f"https://cograph.tech/entities/{type_name}/e1", "label": label, "vals": ""}]
+        rows = [{"uri": f"https://graph.onta.sh/entities/{type_name}/e1", "label": label, "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -80,7 +80,7 @@ def test_recency_filter_selects_and_excludes_by_window():
     from cograph_client.nlp.pipeline import _neptune_safe_duration
 
     store = Store()
-    graph = "https://cograph.tech/graphs/test-tenant/kg/kg"
+    graph = "https://graph.onta.sh/graphs/test-tenant/kg/kg"
     vpred = attr_provenance_companion_uri("Widget", "sku", "verified_at")
     now = datetime.now(timezone.utc)
     fresh = (now - timedelta(days=3)).isoformat()

@@ -65,7 +65,7 @@ def test_valid_soft_a2_passes_and_keeps_lineage():
 def test_committed_uri_in_any_type_slot_is_flagged():
     """A resolved ontology IRI in ANY type slot is a HARD commitment that
     pre-empts P5 — the one thing 'zero ontology commitment' forbids."""
-    base = "https://cograph.tech/types/Physician"
+    base = "https://graph.onta.sh/types/Physician"
     for kwargs in (
         {"type_name": base},
         {"type_name": "Physician", "same_as": base},
@@ -121,7 +121,7 @@ def test_require_evidence_satisfied_by_entity_or_attribute_span():
 # --------------------------------------------------------------------------- #
 def test_assert_soft_a2_raises_on_leak():
     bad = ExtractionResult(
-        entities=[ExtractedEntity(type_name="https://cograph.tech/types/X", id="x1")]
+        entities=[ExtractedEntity(type_name="https://graph.onta.sh/types/X", id="x1")]
     )
     with pytest.raises(SoftContractViolation):
         assert_soft_a2(bad)

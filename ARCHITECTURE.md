@@ -187,12 +187,12 @@ containment. City is NOT a subtype of State.
 
 | Thing | Pattern | Example |
 |-------|---------|---------|
-| Type | `https://cograph.tech/types/{TypeName}` | `https://cograph.tech/types/ClinicalTrial` |
-| Attribute | `https://cograph.tech/types/{TypeName}/attrs/{attr}` | `https://cograph.tech/types/Event/attrs/name` |
-| Relationship | `https://cograph.tech/onto/{predicate}` | `https://cograph.tech/onto/city` |
-| Entity | `https://cograph.tech/entities/{TypeName}/{safe_id}` | `https://cograph.tech/entities/City/Austin` |
-| Tenant graph | `https://cograph.tech/graphs/{tenant_id}` | `https://cograph.tech/graphs/demo-tenant` |
-| KG graph | `https://cograph.tech/graphs/{tenant_id}/kg/{kg}` | `https://cograph.tech/graphs/demo-tenant/kg/zillow-austin` |
+| Type | `https://graph.onta.sh/types/{TypeName}` | `https://graph.onta.sh/types/ClinicalTrial` |
+| Attribute | `https://graph.onta.sh/types/{TypeName}/attrs/{attr}` | `https://graph.onta.sh/types/Event/attrs/name` |
+| Relationship | `https://graph.onta.sh/onto/{predicate}` | `https://graph.onta.sh/onto/city` |
+| Entity | `https://graph.onta.sh/entities/{TypeName}/{safe_id}` | `https://graph.onta.sh/entities/City/Austin` |
+| Tenant graph | `https://graph.onta.sh/graphs/{tenant_id}` | `https://graph.onta.sh/graphs/demo-tenant` |
+| KG graph | `https://graph.onta.sh/graphs/{tenant_id}/kg/{kg}` | `https://graph.onta.sh/graphs/demo-tenant/kg/zillow-austin` |
 
 ### Named Graph Structure
 
@@ -234,7 +234,7 @@ per-writer choice.
 
 Discovery (`resolver/schema_resolver.py`), enrichment (`enrichment/executor.py`), and
 `promote_to_node` (`normalization/execute.py`) all mint entity URIs with the
-IDENTICAL scheme: `https://cograph.tech/entities/{TypeName}/{_safe_id(value)}`
+IDENTICAL scheme: `https://graph.onta.sh/entities/{TypeName}/{_safe_id(value)}`
 (`_safe_id`: non-`[A-Za-z0-9_-]` characters → `_`, truncated to 200 chars). A value
 from any of the three rails resolves to the SAME shared node — enrichment filling a
 `city` attribute with `"Austin"` links to the exact `entities/City/Austin` node
@@ -515,7 +515,7 @@ A stale-namespace bank does now heal itself on the next eval of the affected KG
 bank carrying benchmark rows heals on the next eval of
 any KG — `load()` filters them and the rebuild saves the filtered result even
 when it accepted no new pairs. Neither was true when the `omnix.dev` →
-`cograph.tech` rename (2026-04-27) left both banks priming every `/ask` prompt
+`graph.onta.sh` rename (2026-04-27) left both banks priming every `/ask` prompt
 with predicates that resolve to nothing, while the *system* prompt already
 taught the new namespace, so each prompt contradicted itself. Still guarded by
 `tests/test_example_bank_namespace.py` (OSS bank) and the parent repo's
@@ -576,7 +576,7 @@ predicate URIs.
 
 **What does NOT transfer:** Answer values, entity names, specific predicate URIs.
 The LLM must still read the current ontology to generate correct URIs. A Coffee
-example's `<https://cograph.tech/types/CoffeeLot/attrs/altitude>` is useless for
+example's `<https://graph.onta.sh/types/CoffeeLot/attrs/altitude>` is useless for
 IMDB queries. Only the SPARQL structure carries over.
 
 **Why this works:** A human developer does the same thing. You look at a working

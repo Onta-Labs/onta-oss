@@ -25,15 +25,17 @@ or a one-off backfill audit. See docs/specs/continuous_kg_qc_eval_spec.md §4a +
 Follow-ups (later slices of ONTA-208): SHACL per-type cardinality/datatype shapes
 (pySHACL); metamorphic checks (order/paraphrase/superset/batch invariance) via Hypothesis.
 """
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, ONTO_PRED_PREFIX, TYPE_URI_PREFIX
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 # --- URI scheme (mirrors graph/ontology_queries) --------------------------------
-ENTITY_PREFIX = "https://cograph.tech/entities/"
-ONTO_PREFIX = "https://cograph.tech/onto/"
-TYPES_PREFIX = "https://cograph.tech/types/"
+ENTITY_PREFIX = ENTITY_URI_PREFIX
+ONTO_PREFIX = ONTO_PRED_PREFIX
+TYPES_PREFIX = TYPE_URI_PREFIX
 ATTRS_INFIX = "/attrs/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"

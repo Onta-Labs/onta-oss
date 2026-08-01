@@ -22,8 +22,8 @@ from cograph_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"
-TYPES = "https://cograph.tech/types/"
-ENTITIES = "https://cograph.tech/entities/"
+TYPES = "https://graph.onta.sh/types/"
+ENTITIES = "https://graph.onta.sh/entities/"
 
 
 @pytest.fixture

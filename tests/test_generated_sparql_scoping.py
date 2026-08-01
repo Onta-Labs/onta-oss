@@ -35,11 +35,11 @@ from cograph_client.graph.sparql_scope import (
 )
 
 TENANT = "test-tenant"
-OWN_GRAPH = f"https://cograph.tech/graphs/{TENANT}"
+OWN_GRAPH = f"https://graph.onta.sh/graphs/{TENANT}"
 DATA_GRAPH = f"{OWN_GRAPH}/kg/imdb"
-VICTIM_GRAPH = "https://cograph.tech/graphs/victim-tenant"
-PUBLIC_LAYER = "https://cograph.tech/graphs/global/public"
-ENHANCED_LAYER = "https://cograph.tech/graphs/global/enhanced"
+VICTIM_GRAPH = "https://graph.onta.sh/graphs/victim-tenant"
+PUBLIC_LAYER = "https://graph.onta.sh/graphs/global/public"
+ENHANCED_LAYER = "https://graph.onta.sh/graphs/global/enhanced"
 
 
 def _confine(sparql: str, **kw) -> str:
@@ -80,7 +80,7 @@ def test_generated_query_with_no_dataset_clause_is_repaired_not_run_bare():
 def test_repair_is_verified_by_the_parser_not_by_string_insertion():
     """A repair that lands anywhere ungrammatical must be refused, not shipped."""
     out = _confine(
-        'SELECT ?n WHERE { ?s <https://cograph.tech/types/Film/attrs/name> ?n . '
+        'SELECT ?n WHERE { ?s <https://graph.onta.sh/types/Film/attrs/name> ?n . '
         'FILTER(CONTAINS(LCASE(?n), "where the wild things are")) }'
     )
     assert _dataset_of(out) == [DATA_GRAPH]
@@ -224,11 +224,11 @@ def test_bypass_three_prefixed_name_dataset_clause_is_refused_not_dropped():
     ``parseQuery`` leaves a PrefixedName dataset clause UNEXPANDED, so the filter
     dropped it and reported the query as scoped to its owned clause alone while
     the store read both. ``PN_LOCAL_ESC`` lets the prefix be split anywhere, so
-    the literal text ``https://cograph.tech/graphs/`` never appears and the
+    the literal text ``https://graph.onta.sh/graphs/`` never appears and the
     raw-text rule is blind too. The extractor must be TOTAL: refuse, never drop.
     """
     query = (
-        "PREFIX g: <https://cograph.tech/gr> "
+        "PREFIX g: <https://graph.onta.sh/gr> "
         f"SELECT * FROM <{DATA_GRAPH}> FROM g:aphs\\/victim-tenant "
         "WHERE { ?s ?p ?o }"
     )
@@ -321,9 +321,9 @@ def test_an_allowlist_cannot_smuggle_in_another_workspace():
 def test_global_layer_recognition_refuses_escapes():
     assert is_global_layer_graph(PUBLIC_LAYER)
     assert is_global_layer_graph(f"{PUBLIC_LAYER}/v3")
-    assert not is_global_layer_graph("https://cograph.tech/graphs/global/")
-    assert not is_global_layer_graph("https://cograph.tech/graphs/global/../victim")
-    assert not is_global_layer_graph("https://cograph.tech/graphs/global/%2e%2e/x")
+    assert not is_global_layer_graph("https://graph.onta.sh/graphs/global/")
+    assert not is_global_layer_graph("https://graph.onta.sh/graphs/global/../victim")
+    assert not is_global_layer_graph("https://graph.onta.sh/graphs/global/%2e%2e/x")
     assert not is_global_layer_graph(VICTIM_GRAPH)
 
 
@@ -341,7 +341,7 @@ def test_tenant_is_derived_from_the_route_resolved_data_graph():
     assert tenant_of_graph("http://example.org/graph") is None
     # Anything tenant_owns_graph would refuse to round-trip names no workspace.
     assert tenant_of_graph(f"{OWN_GRAPH}/../victim-tenant") is None
-    assert tenant_of_graph("https://cograph.tech/graphs/") is None
+    assert tenant_of_graph("https://graph.onta.sh/graphs/") is None
 
 
 def test_confinement_still_applies_when_no_tenant_can_be_derived():
@@ -765,7 +765,7 @@ async def test_label_resolution_is_scoped_to_the_requests_own_graph():
     neptune.query = AsyncMock(side_effect=query)
     p = NLQueryPipeline(neptune, "invented-anthropic-key")
 
-    bindings = [{"x": "https://cograph.tech/entities/Film/some_film"}]
+    bindings = [{"x": "https://graph.onta.sh/entities/Film/some_film"}]
     await p._resolve_uri_labels(bindings, DATA_GRAPH)
 
     assert seen, "the label lookup never ran"
@@ -777,7 +777,7 @@ async def test_label_resolution_is_scoped_to_the_requests_own_graph():
 #: that it parses cleanly: a test asserting "some bad string is rejected" would
 #: pass against a payload that never worked.
 SERVICE_INJECTION_VALUE = (
-    "https://cograph.tech/entities/Film/x> } "
+    "https://graph.onta.sh/entities/Film/x> } "
     "SERVICE <http://attacker.example/sparql> "
     "{ ?uri <http://www.w3.org/2000/01/rdf-schema#label> ?label } }#"
 )
@@ -848,13 +848,13 @@ async def test_label_lookup_cannot_be_injected_by_a_literal_in_the_graph():
 def test_interpolatable_iri_uses_the_grammar_not_a_payload_blocklist():
     from cograph_client.nlp.pipeline import _is_interpolatable_iri
 
-    assert _is_interpolatable_iri("https://cograph.tech/entities/Film/x")
+    assert _is_interpolatable_iri("https://graph.onta.sh/entities/Film/x")
     assert not _is_interpolatable_iri("")
     # Every codepoint SPARQL's IRIREF production excludes, one at a time.
     for bad in '<>"{}|^`\\':
-        assert not _is_interpolatable_iri(f"https://cograph.tech/entities/a{bad}b"), bad
+        assert not _is_interpolatable_iri(f"https://graph.onta.sh/entities/a{bad}b"), bad
     for bad in (" ", "\t", "\n", "\r", "\x00", "\x1f"):
-        assert not _is_interpolatable_iri(f"https://cograph.tech/entities/a{bad}b")
+        assert not _is_interpolatable_iri(f"https://graph.onta.sh/entities/a{bad}b")
 
 
 @pytest.mark.asyncio
