@@ -272,16 +272,33 @@ class SemanticIndex(Protocol):
         query_embedding: Optional[Sequence[float]] = None,
         kg_name: Optional[str] = None,
         type_filter: Optional[str] = None,
+        entity_uris: Optional[Sequence[str]] = None,
         top_k: int = 10,
     ) -> SemanticSearchResult:
         """Hybrid lexical + vector search, grouped by entity.
 
         Candidates are pre-filtered by ``tenant_id`` (mandatory), ``kg_name``
-        (``None`` = all KGs in the tenant) and ``type_filter`` (matched against
+        (``None`` = all KGs in the tenant), ``type_filter`` (matched against
         the denormalized ``attrs["type"]`` — ONTA-176 filters ``attrs->>'type'``
-        the same way). Lexical and vector rankings are fused RRF-style (the
-        pgvector backend: two top-50 CTEs, k=60, one SQL round-trip), chunks are
-        grouped into entities, and the ``top_k`` best entities come back.
+        the same way), and optional ``entity_uris`` — all **inside** each ranking
+        leg before its LIMIT (same as type/kg: filtering after LIMIT would
+        silently shrink recall). Filters combine with AND.
+
+        ``entity_uris`` is a strict allowlist of entity URIs that may
+        participate in FTS + vector legs:
+
+        * ``None`` / omit → no URI filter (current unrestricted behavior);
+        * non-empty sequence → only those URIs can rank (duplicates and blank
+          strings should be ignored by callers/backends);
+        * empty sequence ``[]`` → **zero hits** (strict empty allowlist), never
+          an error — structured pre-filter produced no candidates.
+
+        Callers that first resolve a structured set (SPARQL / own logic) pass
+        the resulting URIs here so hybrid ranking only considers that set.
+
+        Lexical and vector rankings are fused RRF-style (the pgvector backend:
+        two top-50 CTEs, k=60, one SQL round-trip), chunks are grouped into
+        entities, and the ``top_k`` best entities come back.
 
         ``query_embedding=None`` → **lexical-only** and
         ``SemanticSearchResult.degraded`` is ``True`` (never silent). Callers

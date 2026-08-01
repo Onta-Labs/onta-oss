@@ -59,8 +59,10 @@ Hybrid query (ONE SQL round-trip)
 * **ANN leg**: top-50 by cosine distance ``embedding <=> $query_vec``, only
   over rows with a filled embedding **whose ``embed_model`` equals the current
   model** (vectors from an older model are not comparable to the query vector);
-* both legs are pre-filtered by ``tenant_id`` (mandatory), ``kg_name`` and the
-  optional ``type_filter`` (``attrs->>'type'``) **inside the leg**, before the
+* both legs are pre-filtered by ``tenant_id`` (mandatory), ``kg_name``, the
+  optional ``type_filter`` (``attrs->>'type'``), and the optional
+  ``entity_uris`` allowlist (``entity_uri = ANY($4::text[])``; ``NULL`` =
+  no URI filter, empty array = zero hits) **inside the leg**, before the
   LIMIT — filtering after the LIMIT would silently shrink recall;
 * fusion is RRF with ``k=60``: chunks are grouped by PK summing
   ``1/(60+rank)`` across legs, then grouped into entities (an entity scores as
@@ -621,27 +623,33 @@ class PostgresSemanticIndex:
     @staticmethod
     def _leg_filter_sql() -> str:
         """The shared pre-filter both legs apply INSIDE the leg (before its
-        LIMIT): tenant (mandatory), optional kg, optional denormalized type."""
+        LIMIT): tenant (mandatory), optional kg, optional denormalized type,
+        optional entity_uri allowlist. Param slots:
+
+        $1 tenant_id · $2 kg_name · $3 type_filter · $4 entity_uris (text[])
+        """
         return (
             "tenant_id = $1\n"
             "          AND ($2::text IS NULL OR kg_name = $2::text)\n"
-            "          AND ($3::text IS NULL OR attrs->>'type' = $3::text)"
+            "          AND ($3::text IS NULL OR attrs->>'type' = $3::text)\n"
+            "          AND ($4::text[] IS NULL OR entity_uri = ANY($4::text[]))"
         )
 
     def _fts_cte(self) -> str:
         # websearch_to_tsquery: never raises on arbitrary user text and maps
         # double quotes to phrase queries (the 'simple' config keeps phrase
         # tokens literal). Rank ties break on the PK for determinism.
+        # Param slots after the shared leg filter: $5 ts_config, $6 query_text.
         return f"""
         fts AS (
             SELECT {_CHUNK_COLS},
                    row_number() OVER (
-                       ORDER BY ts_rank_cd(tsv, websearch_to_tsquery($4::text::regconfig, $5)) DESC,
+                       ORDER BY ts_rank_cd(tsv, websearch_to_tsquery($5::text::regconfig, $6)) DESC,
                                 {_PK_COLS}
                    ) AS rank
             FROM {self._TABLE}
             WHERE {self._leg_filter_sql()}
-              AND tsv @@ websearch_to_tsquery($4::text::regconfig, $5)
+              AND tsv @@ websearch_to_tsquery($5::text::regconfig, $6)
             ORDER BY rank
             LIMIT {_CANDIDATES_PER_LEG}
         )"""
@@ -655,10 +663,11 @@ class PostgresSemanticIndex:
 
     def _ann_cte(self, *, exact: bool) -> str:
         pool_cte = ""
+        # Param slots after leg filter + FTS: $7 embed_model, $8 query vector.
         filters = (
             f"WHERE {self._leg_filter_sql()}\n"
             "              AND embedding IS NOT NULL\n"
-            "              AND embed_model = $6"
+            "              AND embed_model = $7"
         )
         if exact:
             # MATERIALIZED = optimization fence: the distance sort below can
@@ -679,9 +688,9 @@ class PostgresSemanticIndex:
                    row_number() OVER (ORDER BY dist, {_PK_COLS}) AS rank
             FROM (
                 SELECT {_CHUNK_COLS},
-                       embedding <=> $7::text::vector AS dist
+                       embedding <=> $8::text::vector AS dist
                 FROM {self._ann_leg_source(exact)}
-    {inner_filters}            ORDER BY embedding <=> $7::text::vector
+    {inner_filters}            ORDER BY embedding <=> $8::text::vector
                 LIMIT {_CANDIDATES_PER_LEG}
             ) ann_leg
         )"""
@@ -719,21 +728,29 @@ class PostgresSemanticIndex:
         LIMIT ${top_k_param}"""
 
     def _hybrid_sql(self, *, exact: bool) -> str:
-        """The single-round-trip hybrid statement: FTS CTE + ANN CTE + fusion."""
+        """The single-round-trip hybrid statement: FTS CTE + ANN CTE + fusion.
+
+        Bind order: $1 tenant · $2 kg · $3 type · $4 entity_uris · $5 ts_config
+        · $6 query_text · $7 embed_model · $8 query_vec · $9 top_k.
+        """
         return (
             "WITH"
             + self._fts_cte()
             + ","
             + self._ann_cte(exact=exact)
             + ","
-            + self._fusion_tail(legs=2, top_k_param=8)
+            + self._fusion_tail(legs=2, top_k_param=9)
         )
 
     def _lexical_sql(self) -> str:
         """Degraded mode: FTS leg only (still grouped + RRF-scored so scores
-        stay comparable in shape)."""
+        stay comparable in shape).
+
+        Bind order: $1 tenant · $2 kg · $3 type · $4 entity_uris · $5 ts_config
+        · $6 query_text · $7 top_k.
+        """
         return "WITH" + self._fts_cte() + "," + self._fusion_tail(
-            legs=1, top_k_param=6
+            legs=1, top_k_param=7
         )
 
     _GATE_SQL_TEMPLATE = """
@@ -742,11 +759,36 @@ class PostgresSemanticIndex:
             WHERE tenant_id = $1
               AND ($2::text IS NULL OR kg_name = $2::text)
               AND ($3::text IS NULL OR attrs->>'type' = $3::text)
+              AND ($4::text[] IS NULL OR entity_uri = ANY($4::text[]))
               AND embedding IS NOT NULL
-              AND embed_model = $4
-            LIMIT $5
+              AND embed_model = $5
+            LIMIT $6
         ) gate
     """
+
+    @staticmethod
+    def _bind_entity_uris(
+        entity_uris: Optional[Sequence[str]],
+    ) -> Optional[list[str]]:
+        """Normalize the entity_uris bind for SQL.
+
+        ``None`` → NULL (no URI filter). A list → cleaned unique URIs; empty
+        after clean stays ``[]`` so ``entity_uri = ANY('{}')`` yields zero rows
+        (strict empty allowlist).
+        """
+        if entity_uris is None:
+            return None
+        seen: set[str] = set()
+        out: list[str] = []
+        for u in entity_uris:
+            if not u:
+                continue
+            s = str(u).strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            out.append(s)
+        return out
 
     async def search(
         self,
@@ -756,10 +798,12 @@ class PostgresSemanticIndex:
         query_embedding: Optional[Sequence[float]] = None,
         kg_name: Optional[str] = None,
         type_filter: Optional[str] = None,
+        entity_uris: Optional[Sequence[str]] = None,
         top_k: int = 10,
     ) -> SemanticSearchResult:
         pool = await self._ensure_pool()
         top_k = max(int(top_k), 0)
+        uri_param = self._bind_entity_uris(entity_uris)
 
         degraded = query_embedding is None
         qvec: Optional[str] = None
@@ -780,6 +824,12 @@ class PostgresSemanticIndex:
         if top_k == 0:
             return SemanticSearchResult(hits=[], degraded=degraded)
 
+        # Strict empty allowlist: no candidates can rank. Short-circuit so we
+        # don't pay a round-trip for a known-empty result.
+        if uri_param is not None and len(uri_param) == 0:
+            self._last_search_mode = "lexical_only" if degraded else "ann_exact"
+            return SemanticSearchResult(hits=[], degraded=degraded)
+
         async with pool.acquire() as conn:
             if degraded:
                 mode = "lexical_only"
@@ -788,6 +838,7 @@ class PostgresSemanticIndex:
                     tenant_id,
                     kg_name,
                     type_filter,
+                    uri_param,
                     self._ts_config,
                     query_text,
                     top_k,
@@ -801,6 +852,7 @@ class PostgresSemanticIndex:
                     tenant_id,
                     kg_name,
                     type_filter,
+                    uri_param,
                     self._embed_model,
                     self._exact_scan_threshold + 1,
                 )
@@ -808,6 +860,7 @@ class PostgresSemanticIndex:
                     tenant_id,
                     kg_name,
                     type_filter,
+                    uri_param,
                     self._ts_config,
                     query_text,
                     self._embed_model,
@@ -853,6 +906,7 @@ class PostgresSemanticIndex:
             tenant_id=tenant_id,
             kg_name=kg_name,
             type_filter=type_filter,
+            entity_uris_count=None if uri_param is None else len(uri_param),
             degraded=degraded,
             hits=len(rows),
         )
