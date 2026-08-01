@@ -7,9 +7,14 @@ everything. So fetching is a LADDER of :class:`PageFetcher`\\ s ordered by
 ``tier`` (0 = cheapest). The harness tries the cheapest rung first and escalates
 only when the result looks incomplete.
 
-OSS ships exactly one rung: :class:`StaticHttpFetcher` (tier 0) — a plain
-``httpx`` GET with a stdlib HTML→text reduction, no paid vendor, byte-capped and
-SSRF-guarded (via :mod:`cograph_client.retrieval.safety`). Premium rungs (a
+OSS ships exactly one rung and REGISTERS NONE of them. :class:`StaticHttpFetcher`
+(tier 0) is a plain ``httpx`` GET with a stdlib HTML→text reduction, no paid
+vendor, byte-capped and SSRF-guarded (via :mod:`cograph_client.retrieval.safety`),
+but ONTA-293 took open-web retrieval out of OSS product scope, so a default boot
+leaves the ladder empty and :func:`default_ladder` returns ``[]``. A deployment
+that does fetch the open web opts in by calling :func:`register_default_fetchers`
+itself, and MUST do so: registering only a paid rung leaves the ladder paid-only
+and bills a paid fetch for every page. Premium rungs (a
 Browserbase/Firecrawl JS-render fetcher at a higher tier, a structured-API
 fetcher) register through :func:`register_page_fetcher` and are dormant without
 their keys — the same plugin pattern as the enrichment adapters. Cost is read

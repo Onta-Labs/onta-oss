@@ -705,7 +705,11 @@ export class Client {
       const ext = extname(pathOrText).toLowerCase();
       if (ext === ".pdf") {
         throw new OntaError(
-          "PDF ingest not yet supported in the Node CLI; use the Python CLI or POST raw bytes to the API.",
+          // Do NOT point at another surface: neither the Python CLI nor the raw
+          // API accepts a PDF either. There is no PDF ingest path anywhere in
+          // the product, so say so rather than sending the user hunting.
+          "PDF ingest is not supported. Extract the text or tables first (CSV is " +
+            "the deterministic, best-supported path), then ingest that.",
         );
       }
       content = readFileSync(pathOrText, "utf-8");
