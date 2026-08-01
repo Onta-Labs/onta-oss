@@ -151,10 +151,16 @@ class WebResearchCapability:
         # branch a plain OSS deployment takes.
         has_fetcher = bool(get_page_fetchers())
 
-        # Availability: research needs a fetcher AND something to point it at —
-        # a discovery provider for open-web search, or explicit URLs. Absent either,
+        # Availability: research needs a fetcher AND something to point it at, either
+        # a discovery provider for open-web search or explicit URLs. Absent either,
         # degrade to a plain answer (the same no-op pattern web-ingest uses).
-        if not has_fetcher or (provider is None and not urls):
+        #
+        # The two causes get DIFFERENT messages on purpose. Collapsing them told a
+        # deployment that HAS a fetcher but no query provider (FIRECRAWL_API_KEY set
+        # but no OpenRouter/Parallel key) "I don't retrieve pages from the web",
+        # which is false there: handing it a URL would have worked. That message
+        # sends the user away instead of telling them the one thing that helps.
+        if not has_fetcher:
             return [
                 _answer_step(
                     "I don't retrieve pages from the web in this deployment. If your "
@@ -162,6 +168,15 @@ class WebResearchCapability:
                     "hand me the content (or a CSV) and I'll structure it into your "
                     "graph. An admin can also register a page fetcher or a "
                     "web-discovery provider to enable open-web retrieval here."
+                )
+            ]
+        if provider is None and not urls:
+            return [
+                _answer_step(
+                    "Open-web search isn't configured here, but I can read pages you "
+                    "point me at. Share one or more URLs and I'll read and structure "
+                    "them, or an admin can configure a web-discovery provider (e.g. "
+                    "Exa or Perplexity) for open-web search."
                 )
             ]
 

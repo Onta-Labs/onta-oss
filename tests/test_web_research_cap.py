@@ -89,6 +89,23 @@ async def test_plan_degrades_when_nothing_to_read():
     assert "don't retrieve pages from the web" in payload["answer"]
 
 
+async def test_fetcher_without_provider_offers_urls_rather_than_claiming_no_web():
+    """The two unavailable causes must not share a message.
+
+    A deployment WITH a fetcher but no query provider (e.g. FIRECRAWL_API_KEY set
+    but no OpenRouter/Parallel key) can still read a URL you hand it. Telling that
+    user "I don't retrieve pages from the web" is false and sends them away
+    instead of telling them the one thing that would work.
+    """
+    register_page_fetcher(_FakeFetcher())  # fetcher present, no web source
+    cap = WebResearchCapability()
+    steps = await cap.plan(_ctx(), "research the S&P 500 and give me a CSV")
+    assert steps[0].action == "answer"
+    answer = steps[0].params["answer_payload"]["answer"]
+    assert "Share one or more URLs" in answer
+    assert "don't retrieve pages from the web" not in answer
+
+
 async def test_plan_degrades_with_urls_when_no_fetcher_registered():
     """OSS scope guard (ONTA-293): supplying URLs is NOT enough on its own.
 
