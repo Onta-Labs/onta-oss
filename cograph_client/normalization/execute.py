@@ -658,7 +658,7 @@ async def _sweep_orphan_composites(
 
 
 def _target_type_from_type_uri(t_uri: str) -> str | None:
-    """``https://graph.onta.sh/types/<TargetType>`` → ``<TargetType>``."""
+    """``…/types/<TargetType>`` → ``<TargetType>``."""
     prefix = TYPE_URI_PREFIX
     if not t_uri.startswith(prefix):
         return None

@@ -10,7 +10,7 @@ schema-on-write validation, and Option D coexistence for structure promotion.
 
 from __future__ import annotations
 
-from cograph_client.graph.iri import IRI_BASE
+from cograph_client.graph.iri import IRI_BASE, TYPE_URI_PREFIX
 import asyncio
 import json
 import re
@@ -3690,7 +3690,7 @@ class SchemaResolver:
                 attrs[type_label] = {}
             if row.get("attrLabel"):
                 range_str = row.get("range", "")
-                type_uri_prefix = "https://graph.onta.sh/types/"
+                type_uri_prefix = TYPE_URI_PREFIX
                 if range_str.startswith(type_uri_prefix):
                     # Range is a reference to another ontology type
                     datatype = range_str[len(type_uri_prefix):]
@@ -4561,7 +4561,7 @@ class SchemaResolver:
                     p_uri = f"{_entity_uri(ptype, entity.id)}-{ptype.lower()}"
                     promoted_entities[ptype] = p_uri
                     triples_to_insert.append((p_uri, rdf_type, type_uri(ptype)))
-                    rel_pred = f"https://graph.onta.sh/onto/has_{ptype.lower()}"
+                    rel_pred = f"{IRI_BASE}/onto/has_{ptype.lower()}"
                     triples_to_insert.append((entity_uri, rel_pred, p_uri))
                     # Post-write housekeeping must re-embed / re-stat the promoted
                     # node's TYPE too (Part 3), not just the subject type — else a
@@ -4747,7 +4747,7 @@ class SchemaResolver:
                 # NOT the instance edge. Matches enrichment
                 # (executor._instance_triples_for_value) and the sibling has_<ptype>
                 # promotion edge above — both on onto/<leaf>.
-                onto_pred = f"https://graph.onta.sh/onto/{resolved.name}"
+                onto_pred = f"{IRI_BASE}/onto/{resolved.name}"
                 triples_to_insert.append((entity_uri, onto_pred, target_uri))
                 attr_facts.append((entity_uri, onto_pred, target_uri))
                 # Materialize the target as a FIRST-CLASS node: emit its rdf:type +
@@ -4858,9 +4858,9 @@ class SchemaResolver:
         # identical stamp (idempotent) instead of a fresh wall-clock nonce;
         # legacy/CSV callers pass None → wall-clock now, unchanged.
         now = (observed_at or datetime.now(timezone.utc)).isoformat()
-        triples_to_insert.append((entity_uri, "https://graph.onta.sh/onto/ingested_at", now))
+        triples_to_insert.append((entity_uri, f"{IRI_BASE}/onto/ingested_at", now))
         if source:
-            triples_to_insert.append((entity_uri, "https://graph.onta.sh/onto/source", source))
+            triples_to_insert.append((entity_uri, f"{IRI_BASE}/onto/source", source))
         if batch_id:
             triples_to_insert.append((entity_uri, BATCH_PREDICATE, batch_id))
 

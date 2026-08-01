@@ -525,7 +525,7 @@ def _format_output_text(type_name: str, attributes: list[str], relationship_targ
 
 
 def _extract_tenant_id(graph_uri: str) -> str:
-    """Extract tenant ID from graph URI like https://graph.onta.sh/graphs/{tenant_id}."""
+    """Extract tenant ID from a graph URI like ``…/graphs/{tenant_id}``."""
     # Handle both base and KG-specific URIs
     parts = graph_uri.rstrip("/").split("/")
     # https://graph.onta.sh/graphs/{tenant_id} → tenant_id is at index 4

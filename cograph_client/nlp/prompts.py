@@ -1,5 +1,6 @@
 from cograph_client.graph.iri import IRI_BASE
-SPARQL_GENERATION_SYSTEM = """You are a SPARQL query generator for a knowledge graph platform.
+
+_SPARQL_GENERATION_SYSTEM_TMPL = """You are a SPARQL query generator for a knowledge graph platform.
 Given a natural language question, an ontology schema, and similar working examples,
 generate a SPARQL SELECT query.
 
@@ -124,6 +125,12 @@ Respond with JSON:
   "explanation": "brief explanation of what the query does",
   "functions_needed": ["list of function names if computation is needed, empty otherwise"]
 }"""
+
+# Bind the live IRI base into the prompt (host only; path shapes stay fixed).
+SPARQL_GENERATION_SYSTEM = _SPARQL_GENERATION_SYSTEM_TMPL.replace(
+    "https://graph.onta.sh", IRI_BASE
+)
+
 
 
 def build_generation_prompt(
