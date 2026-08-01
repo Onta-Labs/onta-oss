@@ -54,6 +54,7 @@ export type {
   NormalizationRule,
   // ONTA-178 — canonical semantic instance search
   SemanticSearchHit,
+  SemanticSearchOptions,
   SemanticSearchResponse,
   // ONTA-416 — index-free literal grep over one KG
   GrepMatch,
