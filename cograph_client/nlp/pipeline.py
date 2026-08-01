@@ -1523,6 +1523,8 @@ class NLQueryPipeline:
             return json.loads(text)
 
     async def _structured_via_anthropic(self, system: str, user: str, schema: dict) -> dict:
+        from cograph_client.offline import assert_online_host
+        assert_online_host("api.anthropic.com", purpose="Anthropic structured LLM call")
         message = await self.anthropic.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=512,
@@ -2890,6 +2892,8 @@ class NLQueryPipeline:
 
     async def _generate_via_anthropic(self, prompt: str) -> dict:
         """Fallback: generate SPARQL via Anthropic API."""
+        from cograph_client.offline import assert_online_host
+        assert_online_host("api.anthropic.com", purpose="Anthropic SPARQL generation")
         message = await self.anthropic.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,

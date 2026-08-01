@@ -3229,6 +3229,8 @@ class SchemaResolver:
                 prompt_tokens = usage.get("prompt_tokens")
                 completion_tokens = usage.get("completion_tokens")
         else:
+            from cograph_client.offline import assert_online_host
+            assert_online_host("api.anthropic.com", purpose="Anthropic extract")
             msg = await self._anthropic.messages.create(
                 model=self.INFER_MODEL,
                 max_tokens=completion_budget,
@@ -4986,6 +4988,8 @@ class SchemaResolver:
                     timeout=60,
                 )
             else:
+                from cograph_client.offline import assert_online_host
+                assert_online_host("api.anthropic.com", purpose="Anthropic text candidacy")
                 msg = await self._anthropic.messages.create(
                     model=self.INFER_MODEL,
                     max_tokens=2048,
