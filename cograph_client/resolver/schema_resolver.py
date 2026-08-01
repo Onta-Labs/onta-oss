@@ -214,7 +214,9 @@ type you are minting — leave it null otherwise.
 Respond with valid JSON only. No markdown."""
 
 EXTRACTION_USER_TEMPLATE = """\
-Existing ontology types:
+Existing ontology (prefer these type names and EXACT attribute names when the \
+content is about the same concepts — do NOT invent synonyms like summary for \
+description, or reason for rationale, when those attributes already exist):
 {existing_types}
 
 Extract entities, attributes, and relationships from this content:
@@ -1903,7 +1905,8 @@ class SchemaResolver:
                 rows_dropped += dropped
             else:
                 extraction = await self._extract(
-                    content, content_type, existing_types, **_extract_c,
+                    content, content_type, existing_types,
+                    existing_attrs=existing_attrs, **_extract_c,
                 )
         elif is_json:
             # Multiple JSON chunks: first-batch CALIBRATION (ONTA-197 item 2) +
@@ -1931,7 +1934,8 @@ class SchemaResolver:
             results = await self._extract_chunks_concurrently(
                 [
                     lambda c=chunk: self._extract(
-                        c, content_type, existing_types, **_extract_c,
+                        c, content_type, existing_types,
+                        existing_attrs=existing_attrs, **_extract_c,
                     )
                     for chunk in chunks
                 ]
@@ -3134,6 +3138,7 @@ class SchemaResolver:
         content_type: str,
         existing_types: dict[str, str] | None = None,
         constraint: ExtractionConstraint | None = None,
+        existing_attrs: dict[str, dict] | None = None,
     ) -> ExtractionResult:
         """Extract entities and relationships from raw content.
 
@@ -3143,9 +3148,21 @@ class SchemaResolver:
         path). An active constraint appends a type/attribute restriction to both
         prompts and drops any off-type entities / unrequested attributes the
         model still emits (the web-discovery path).
+
+        ``existing_attrs`` (optional, dogfood S1): when provided, the prompt
+        lists each type's known attributes so free-text follow-ups reuse
+        ``description`` instead of inventing ``summary``.
         """
         if existing_types:
-            types_str = "\n".join(f"- {name}" for name in existing_types)
+            lines: list[str] = []
+            for name in existing_types:
+                attrs = (existing_attrs or {}).get(name) or {}
+                if attrs:
+                    attr_names = ", ".join(sorted(attrs.keys())[:24])
+                    lines.append(f"- {name} (use attrs: {attr_names})")
+                else:
+                    lines.append(f"- {name}")
+            types_str = "\n".join(lines)
         else:
             types_str = "(none — this is a fresh ontology)"
 
