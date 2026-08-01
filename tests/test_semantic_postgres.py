@@ -471,16 +471,18 @@ async def test_search_degraded_lexical_only(pg):
     assert "websearch_to_tsquery" in sql
     assert "<=>" not in sql
     assert not any("count(*)" in s for (op, s, *_r) in recorder if op == "fetchval" and "extversion" not in s)
-    # Leg pre-filters: tenant mandatory, kg/type optional, inside the leg.
+    # Leg pre-filters: tenant mandatory, kg/type/entity_uris optional, inside the leg.
     assert "tenant_id = $1" in sql
     assert "($2::text IS NULL OR kg_name = $2::text)" in sql
     assert "($3::text IS NULL OR attrs->>'type' = $3::text)" in sql
+    assert "($4::text[] IS NULL OR entity_uri = ANY($4::text[]))" in sql
     # RRF + grouping shape.
     assert "1.0 / (60 + rank)" in sql
     assert "LIMIT 50" in sql
     assert "DISTINCT ON (entity_uri)" in sql
     args = _fetch_args(recorder)
-    assert args == (TENANT, None, None, "simple", "solar panels", 10)
+    # $1 tenant · $2 kg · $3 type · $4 entity_uris · $5 ts_config · $6 query · $7 top_k
+    assert args == (TENANT, None, None, None, "simple", "solar panels", 10)
 
 
 async def test_search_small_set_uses_exact_mode(pg):
@@ -492,15 +494,18 @@ async def test_search_small_set_uses_exact_mode(pg):
     sql = _fetch_sql(recorder)
     # Exact by construction: the filtered pool is a MATERIALIZED fence.
     assert "ann_pool AS MATERIALIZED" in sql
-    assert "embedding <=> $7::text::vector" in sql
+    assert "embedding <=> $8::text::vector" in sql
     assert "embedding IS NOT NULL" in sql
-    assert "embed_model = $6" in sql
+    assert "embed_model = $7" in sql
     assert "UNION ALL" in sql
     # No planner SETs needed in exact mode.
     assert not any("SET LOCAL hnsw.ef_search" in s for s in _sqls(recorder, "execute"))
     args = _fetch_args(recorder)
+    # $1 tenant · $2 kg · $3 type · $4 entity_uris · $5 ts_config · $6 query
+    # · $7 embed_model · $8 qvec · $9 top_k
     assert args == (
         TENANT,
+        None,
         None,
         None,
         "simple",
@@ -519,7 +524,7 @@ async def test_search_large_set_hnsw_default_below_08(pg):
     assert store._last_search_mode == "hnsw_default"
     sql = _fetch_sql(recorder)
     assert "MATERIALIZED" not in sql
-    assert "embedding <=> $7::text::vector" in sql
+    assert "embedding <=> $8::text::vector" in sql
     sets = [s for s in _sqls(recorder, "execute") if "SET LOCAL" in s]
     # ef_search raised above the 50-row leg budget; NO iterative_scan SET in
     # the query path on a 0.6 pool (only the one-time probe attempts it).
@@ -552,11 +557,36 @@ async def test_search_gate_is_bounded_and_prefiltered(pg):
         if op == "fetchval" and "count(*)" in s
     )
     sql, args = gate
-    assert "LIMIT $5" in sql
+    assert "LIMIT $6" in sql
     assert "embedding IS NOT NULL" in sql
-    assert "embed_model = $4" in sql
-    # threshold 100 → probe bounded at 101 rows.
-    assert args == (TENANT, KG, "Event", FAKE_MODEL, 101)
+    assert "embed_model = $5" in sql
+    assert "($4::text[] IS NULL OR entity_uri = ANY($4::text[]))" in sql
+    # threshold 100 → probe bounded at 101 rows. entity_uris unbound → None.
+    assert args == (TENANT, KG, "Event", None, FAKE_MODEL, 101)
+
+
+async def test_search_entity_uris_bound_into_leg_filter(pg):
+    """entity_uris is bound as $4 (text[]) into the shared leg filter + gate,
+    and an empty allowlist short-circuits without a fetch."""
+    store, recorder, conn, _pool = pg
+    conn.gate_count = 2
+    allow = ["https://cograph.tech/entities/Report/a", "e:wind"]
+    await store.search(
+        TENANT,
+        "solar",
+        query_embedding=[1, 0, 0, 0],
+        entity_uris=allow,
+    )
+    sql = _fetch_sql(recorder)
+    assert "entity_uri = ANY($4::text[])" in sql
+    args = _fetch_args(recorder)
+    assert args[3] == allow
+
+    # Empty allowlist → zero hits, no fetch (strict empty set).
+    recorder.clear()
+    res = await store.search(TENANT, "solar", entity_uris=[])
+    assert res.hits == []
+    assert not any(op == "fetch" for (op, *_r) in recorder)
 
 
 async def test_search_dim_mismatch_degrades_lexical(pg):

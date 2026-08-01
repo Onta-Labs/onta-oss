@@ -62,6 +62,20 @@ Documented semantics (each is tested in ``tests/test_search_route.py``):
   value until the hourly ONTA-181 reconciler re-upserts the doc. Accepted cost
   of zero-join hits; documented here so clients don't treat the filter as
   transactionally consistent with Neptune.
+* **``entity_uris`` allowlist (structured pre-filter):** callers that first
+  resolve a candidate set via SPARQL / own logic can pass those entity URIs so
+  hybrid ranking only considers that set. Filters apply **inside** FTS + vector
+  legs before LIMIT (AND with ``kg_name`` / ``type``), not as a post-hoc top_k
+  shrink. Semantics:
+
+  * omit / ``null`` → no URI filter (unrestricted);
+  * non-empty list → only those URIs may rank (blanks dropped, duplicates
+    deduped server-side);
+  * empty list ``[]`` → **zero hits, 200** (strict empty allowlist — not a
+    400: the structured pre-filter produced no candidates);
+  * more than ``ENTITY_URIS_MAX`` (=500) unique URIs after clean → **400**
+    with a clear message (refuse oversized allowlists rather than silently
+    clamp, so callers notice they need to narrow upstream).
 """
 
 from __future__ import annotations
@@ -86,6 +100,11 @@ router = APIRouter(prefix="/graphs/{tenant}")
 #: would silently under-fill, so the cap is honest as well as protective.
 TOP_K_MAX = 50
 TOP_K_DEFAULT = 10
+
+#: Hard ceiling for ``entity_uris`` unique entries after blank-strip + dedupe.
+#: Structured pre-filters that need more should narrow upstream (SPARQL LIMIT
+#: / paging); refusing with 400 is observable, silent clamp is not.
+ENTITY_URIS_MAX = 500
 
 
 class SearchRequest(BaseModel):
@@ -113,6 +132,16 @@ class SearchRequest(BaseModel):
             "this value (e.g. 'Speech'). NOTE: the type is denormalized onto "
             "chunks at write time and repaired hourly by the reconciler, so a "
             "recent type change may match stale values (ONTA-178 docs)."
+        ),
+    )
+    entity_uris: Optional[list[str]] = Field(
+        None,
+        description=(
+            "Strict allowlist of entity URIs that may participate in ranking. "
+            "Omit/null = no URI filter; empty list = zero hits (200); "
+            f"more than {ENTITY_URIS_MAX} unique URIs after blank-strip + "
+            "dedupe = 400. Combined with kg_name/type via AND; applied inside "
+            "ranking legs before LIMIT."
         ),
     )
     top_k: int = Field(
@@ -208,6 +237,43 @@ async def semantic_search(
 
     top_k = max(1, min(body.top_k, TOP_K_MAX))
 
+    # entity_uris: None = no filter; list = strict allowlist (empty → zero hits).
+    # Strip blanks + dedupe (order-preserving); refuse oversized lists with 400
+    # rather than silent clamp so callers see they need to narrow upstream.
+    entity_uris: Optional[list[str]]
+    if body.entity_uris is None:
+        entity_uris = None
+    else:
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for u in body.entity_uris:
+            if not u:
+                continue
+            s = u.strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            cleaned.append(s)
+        if len(cleaned) > ENTITY_URIS_MAX:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"entity_uris exceeds max of {ENTITY_URIS_MAX} unique URIs "
+                    f"(got {len(cleaned)} after blank-strip + dedupe)"
+                ),
+            )
+        entity_uris = cleaned
+
+    # Empty allowlist is a guaranteed empty result — skip embed + index work.
+    if entity_uris is not None and len(entity_uris) == 0:
+        return SearchResponse(
+            hits=[],
+            count=0,
+            # Lexical would also be empty; flag degraded=False (honest zero set).
+            degraded=False,
+            top_k=top_k,
+        )
+
     # Only embed the query when the semantic leg is actually maintained. With
     # the gate off, force ``None`` so the backend runs lexical-only (and
     # reports ``degraded=True``) instead of scoring against a stale/empty
@@ -225,6 +291,7 @@ async def semantic_search(
         # KG literally named "".
         kg_name=body.kg_name or None,
         type_filter=body.type or None,
+        entity_uris=entity_uris,
         top_k=top_k,
     )
     return SearchResponse(

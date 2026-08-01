@@ -40,6 +40,7 @@ describe("search tool — degraded honesty", () => {
     expect(search).toHaveBeenCalledWith("privacy", {
       kg: undefined,
       type: undefined,
+      entityUris: undefined,
       topK: undefined,
     });
   });
@@ -84,16 +85,34 @@ describe("search tool — degraded honesty", () => {
 });
 
 describe("search tool — SDK forwarding", () => {
-  it("forwards query, kg, type and top_k", async () => {
+  it("forwards query, kg, type, entity_uris and top_k", async () => {
     const { client, search } = stubClient(response());
     await searchHandler(
-      { query: "foo", kg_name: "kg1", type: "Person", top_k: 3 },
+      {
+        query: "foo",
+        kg_name: "kg1",
+        type: "Person",
+        entity_uris: ["e:a", "e:b"],
+        top_k: 3,
+      },
       () => client,
     );
     expect(search).toHaveBeenCalledWith("foo", {
       kg: "kg1",
       type: "Person",
+      entityUris: ["e:a", "e:b"],
       topK: 3,
+    });
+  });
+
+  it("forwards empty entity_uris as [] (strict empty allowlist)", async () => {
+    const { client, search } = stubClient(response());
+    await searchHandler({ query: "foo", entity_uris: [] }, () => client);
+    expect(search).toHaveBeenCalledWith("foo", {
+      kg: undefined,
+      type: undefined,
+      entityUris: [],
+      topK: undefined,
     });
   });
 });
