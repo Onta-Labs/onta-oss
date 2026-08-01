@@ -322,6 +322,93 @@ async def test_type_filter_matches_denormalized_type(idx):
     assert _uris(res) == {"e:ev"}
 
 
+async def test_entity_uris_allowlist_restricts_candidates(idx):
+    """entity_uris is a pre-filter on ranking legs: only allowlisted entities
+    can appear, even when others would score higher on the unrestricted query.
+    Uses several URIs so the assertion is not a single-fixture coincidence."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:alpha", "coastal reef restoration project notes"),
+            _chunk("e:beta", "coastal reef restoration project notes"),
+            _chunk("e:gamma", "coastal reef restoration project notes"),
+            _chunk("e:delta", "unrelated quantum optics abstract"),
+        ]
+    )
+    # Unrestricted: the three matching coastal docs all rank.
+    unrestricted = _uris(await idx.search(TENANT, "coastal reef restoration"))
+    assert unrestricted == {"e:alpha", "e:beta", "e:gamma"}
+
+    # Subset allowlist: only the named URIs may rank, even though e:gamma
+    # would otherwise match the same query text.
+    subset = _uris(
+        await idx.search(
+            TENANT,
+            "coastal reef restoration",
+            entity_uris=["e:alpha", "e:gamma", "e:delta"],
+        )
+    )
+    assert subset == {"e:alpha", "e:gamma"}
+    assert "e:beta" not in subset
+
+    # Blanks + dupes are ignored; allowlist still applies.
+    cleaned = _uris(
+        await idx.search(
+            TENANT,
+            "coastal reef restoration",
+            entity_uris=["", "  ", "e:beta", "e:beta", "e:beta"],
+        )
+    )
+    assert cleaned == {"e:beta"}
+
+
+async def test_entity_uris_empty_list_returns_zero_hits(idx):
+    """Strict empty allowlist: [] → zero hits (not 'no filter')."""
+    await idx.upsert_chunks(
+        [
+            _chunk("e:one", "watershed management testimony"),
+            _chunk("e:two", "watershed management testimony"),
+        ]
+    )
+    res = await idx.search(TENANT, "watershed management", entity_uris=[])
+    assert res.hits == []
+    # Blanks-only list cleans to empty → same strict-empty semantics.
+    res2 = await idx.search(
+        TENANT, "watershed management", entity_uris=["", "  \t"]
+    )
+    assert res2.hits == []
+
+
+async def test_entity_uris_and_type_filter_combine(idx):
+    """entity_uris AND type_filter both apply (intersection)."""
+    await idx.upsert_chunks(
+        [
+            _chunk(
+                "e:ev1",
+                "annual gathering of coastal planners",
+                attrs={"type": "Event"},
+            ),
+            _chunk(
+                "e:ev2",
+                "annual gathering of coastal planners",
+                attrs={"type": "Event"},
+            ),
+            _chunk(
+                "e:org1",
+                "annual gathering of coastal planners",
+                attrs={"type": "Organization"},
+            ),
+        ]
+    )
+    res = await idx.search(
+        TENANT,
+        "annual gathering coastal",
+        type_filter="Event",
+        entity_uris=["e:ev2", "e:org1"],
+    )
+    # org1 is allowlisted but fails type; ev1 matches type but is not allowlisted.
+    assert _uris(res) == {"e:ev2"}
+
+
 async def test_delete_entity_and_attr_scoping(idx):
     await idx.upsert_chunks(
         [

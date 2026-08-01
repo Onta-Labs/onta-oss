@@ -189,14 +189,22 @@ export async function searchHandler(
     query,
     kg_name,
     type,
+    entity_uris,
     top_k,
-  }: { query: string; kg_name?: string; type?: string; top_k?: number },
+  }: {
+    query: string;
+    kg_name?: string;
+    type?: string;
+    entity_uris?: string[];
+    top_k?: number;
+  },
   makeClient: () => Client = client,
 ) {
   try {
     const res = await makeClient().search(query, {
       kg: kg_name,
       type,
+      entityUris: entity_uris,
       topK: top_k,
     });
     // Honesty first: when the index is off / embedding unavailable the route
@@ -245,7 +253,9 @@ server.registerTool(
       "citation. Use it for \"which entity is called X\" and \"which entities " +
       "mention/discuss X\"; use `ask` for aggregate or structured questions, " +
       "and `grep` when you need a literal SUBSTRING match or when search " +
-      "reports reduced recall (keyword-only / index off) and returns nothing.",
+      "reports reduced recall (keyword-only / index off) and returns nothing. " +
+      "For filter-then-semantic, run a structured filter first and pass the " +
+      "resulting entity URIs via `entity_uris` so ranking only considers that set.",
     inputSchema: {
       query: z.string().describe("Free-text search query (topic, phrase, or quote)."),
       kg_name: z
@@ -259,6 +269,15 @@ server.registerTool(
         .string()
         .optional()
         .describe('Optional entity type filter (e.g. "Speech").'),
+      entity_uris: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Optional entity-URI allowlist (filter-then-semantic): pass URIs " +
+            "from a structured filter / SPARQL so hybrid ranking only " +
+            "considers that set. Omit = unrestricted; [] = zero hits; " +
+            "server blanks-strip + dedupes and 400s above 500 unique URIs.",
+        ),
       top_k: z
         .number()
         .int()

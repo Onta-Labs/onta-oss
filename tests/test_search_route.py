@@ -291,6 +291,160 @@ def test_search_type_filter(client, auth_headers):
     assert uris == {"e:wind"}
 
 
+# --- entity_uris allowlist --------------------------------------------------------
+
+
+def test_search_entity_uris_subset_only_those_rank(client, auth_headers):
+    """Structured pre-filter: only allowlisted URIs can appear in hits, even
+    when others would rank higher unrestricted. Multi-entity corpus so the
+    assertion is not a single-fixture coincidence."""
+    _seed(
+        _chunk(
+            "e:reef-a",
+            "coastal reef restoration funding notes",
+            attrs={"label": "Reef A", "type": "Report"},
+        ),
+        _chunk(
+            "e:reef-b",
+            "coastal reef restoration funding notes",
+            attrs={"label": "Reef B", "type": "Report"},
+        ),
+        _chunk(
+            "e:reef-c",
+            "coastal reef restoration funding notes",
+            attrs={"label": "Reef C", "type": "Article"},
+        ),
+        _chunk(
+            "e:optics",
+            "unrelated quantum optics abstract",
+            attrs={"label": "Optics", "type": "Article"},
+        ),
+    )
+    # Unrestricted: all three reef docs match the query.
+    unrestricted = _search(
+        client, {"query": "coastal reef restoration"}, headers=auth_headers
+    )
+    assert unrestricted.status_code == 200
+    assert {h["entity_uri"] for h in unrestricted.json()["hits"]} == {
+        "e:reef-a",
+        "e:reef-b",
+        "e:reef-c",
+    }
+
+    # Subset allowlist drops e:reef-b even though it matches the text.
+    resp = _search(
+        client,
+        {
+            "query": "coastal reef restoration",
+            "entity_uris": ["e:reef-a", "e:reef-c", "e:optics"],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    uris = {h["entity_uri"] for h in body["hits"]}
+    assert uris == {"e:reef-a", "e:reef-c"}
+    assert "e:reef-b" not in uris
+
+
+def test_search_entity_uris_empty_list_is_empty_200(client, auth_headers):
+    """Strict empty allowlist: [] → zero hits, 200 (not 400)."""
+    _seed(*_corpus())
+    resp = _search(
+        client,
+        {"query": "solar panel subsidies", "entity_uris": []},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["hits"] == []
+    assert body["count"] == 0
+
+
+def test_search_entity_uris_blanks_and_dupes_normalized(client, auth_headers):
+    """Blank strings dropped, duplicates collapsed; remaining allowlist applies."""
+    _seed(*_corpus())
+    resp = _search(
+        client,
+        {
+            "query": "solar wind",
+            "entity_uris": ["", "  ", "e:wind", "e:wind", "e:wind"],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert {h["entity_uri"] for h in resp.json()["hits"]} == {"e:wind"}
+
+
+def test_search_entity_uris_combined_with_type(client, auth_headers):
+    """entity_uris AND type filter combine (intersection)."""
+    _seed(
+        _chunk(
+            "e:ev1",
+            "annual coastal gathering notes",
+            attrs={"label": "Ev1", "type": "Event"},
+        ),
+        _chunk(
+            "e:ev2",
+            "annual coastal gathering notes",
+            attrs={"label": "Ev2", "type": "Event"},
+        ),
+        _chunk(
+            "e:org1",
+            "annual coastal gathering notes",
+            attrs={"label": "Org1", "type": "Organization"},
+        ),
+    )
+    resp = _search(
+        client,
+        {
+            "query": "annual coastal gathering",
+            "type": "Event",
+            "entity_uris": ["e:ev2", "e:org1"],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    # org1 allowlisted but wrong type; ev1 right type but not allowlisted.
+    assert {h["entity_uri"] for h in resp.json()["hits"]} == {"e:ev2"}
+
+
+def test_search_entity_uris_over_cap_is_400(client, auth_headers):
+    """More than ENTITY_URIS_MAX unique URIs → 400 with a clear message."""
+    from cograph_client.api.routes.search import ENTITY_URIS_MAX
+
+    _seed(*_corpus())
+    too_many = [f"e:entity-{i}" for i in range(ENTITY_URIS_MAX + 1)]
+    resp = _search(
+        client,
+        {"query": "solar", "entity_uris": too_many},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "entity_uris" in detail
+    assert str(ENTITY_URIS_MAX) in detail
+
+
+def test_search_entity_uris_passed_to_index(client, auth_headers):
+    """Route hands the cleaned allowlist through to the backend search call."""
+    index = _RecordingIndex()
+    register_semantic_index(index)
+    asyncio.run(index.upsert_chunks(_corpus()))
+
+    resp = _search(
+        client,
+        {
+            "query": "solar",
+            "entity_uris": ["e:solar", "", "e:solar", "  e:wind  "],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert len(index.search_calls) == 1
+    assert index.search_calls[0]["entity_uris"] == ["e:solar", "e:wind"]
+
+
 # --- degraded shape ---------------------------------------------------------------
 
 

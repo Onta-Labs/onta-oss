@@ -253,6 +253,7 @@ class InMemorySemanticIndex:
         tenant_id: str,
         kg_name: Optional[str],
         type_filter: Optional[str],
+        entity_uris: Optional[set[str]] = None,
     ) -> list[SemanticChunk]:
         return [
             c
@@ -260,6 +261,9 @@ class InMemorySemanticIndex:
             if c.tenant_id == tenant_id  # tenant isolation: never cross tenants
             and (kg_name is None or c.kg_name == kg_name)
             and (type_filter is None or c.attrs.get("type") == type_filter)
+            # entity_uris is a strict allowlist when provided (including empty
+            # set → no candidates). Applied before leg LIMIT, same as type/kg.
+            and (entity_uris is None or c.entity_uri in entity_uris)
         ]
 
     async def search(
@@ -270,10 +274,23 @@ class InMemorySemanticIndex:
         query_embedding: Optional[Sequence[float]] = None,
         kg_name: Optional[str] = None,
         type_filter: Optional[str] = None,
+        entity_uris: Optional[Sequence[str]] = None,
         top_k: int = 10,
     ) -> SemanticSearchResult:
+        # Normalize allowlist once: strip blanks, dedupe. None = no URI filter;
+        # empty after clean = strict empty allowlist (zero hits).
+        uri_allow: Optional[set[str]] = None
+        if entity_uris is not None:
+            uri_allow = {u.strip() for u in entity_uris if u and u.strip()}
+            if not uri_allow:
+                return SemanticSearchResult(
+                    hits=[], degraded=query_embedding is None
+                )
+
         async with self._lock:
-            candidates = self._candidates(tenant_id, kg_name, type_filter)
+            candidates = self._candidates(
+                tenant_id, kg_name, type_filter, uri_allow
+            )
 
             # Leg 1 — lexical (always available; a just-written chunk with a
             # NULL embedding is findable here immediately, mirroring the
