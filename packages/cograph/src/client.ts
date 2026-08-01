@@ -1343,14 +1343,24 @@ export class Client {
    * Both legs read the derived chunk index, so `search` cannot see a value that
    * has not been indexed yet — use {@link Client.grep} for an index-free literal
    * scan of a single KG when you need "is this exact string in my graph?".
+   *
+   * `entityUris` is a structured pre-filter (filter-then-semantic): pass entity
+   * URIs from SPARQL / your own logic so hybrid ranking only considers that
+   * set. Omit/`undefined` = no URI filter; `[]` = zero hits (strict empty
+   * allowlist); server blanks-strip + dedupes and 400s above 500 unique URIs.
+   * Combined with `kg` / `type` via AND, applied inside ranking legs before
+   * LIMIT (not a post-hoc top_k shrink).
    */
   async search(
     query: string,
-    opts: { kg?: string; type?: string; topK?: number } = {},
+    opts: SemanticSearchOptions = {},
   ): Promise<SemanticSearchResponse> {
     const body: Record<string, unknown> = { query };
     if (opts.kg) body.kg_name = opts.kg;
     if (opts.type) body.type = opts.type;
+    // != null so [] is forwarded (empty allowlist → zero hits), while omit
+    // leaves the field off the body (unrestricted).
+    if (opts.entityUris != null) body.entity_uris = opts.entityUris;
     if (opts.topK != null) body.top_k = opts.topK;
     return this.request<SemanticSearchResponse>(
       "POST",
@@ -2179,6 +2189,22 @@ export interface SemanticSearchHit {
   snippet: string;
   attr: string;
   score: number;
+}
+
+/** Options for {@link Client.search} (`POST /graphs/{tenant}/search`). */
+export interface SemanticSearchOptions {
+  /** Restrict to one knowledge graph (`kg_name` in the body). */
+  kg?: string;
+  /** Restrict to one entity type (AND with other filters). */
+  type?: string;
+  /**
+   * Strict entity-URI allowlist (`entity_uris` in the body) — structured
+   * pre-filter before hybrid ranking. Omit = unrestricted; `[]` = zero hits;
+   * server blanks-strip + dedupes and 400s above 500 unique URIs.
+   */
+  entityUris?: string[];
+  /** Max entities to return (server clamps to 1..50; default 10). */
+  topK?: number;
 }
 
 /** The `/search` response envelope. `degraded: true` means the query ran

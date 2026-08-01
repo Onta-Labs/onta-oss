@@ -561,8 +561,8 @@ describe("new typed parsed variants of the missing methods", () => {
 
   it("search (typed, ONTA-178) maps opts to the canonical body and parses the envelope", async () => {
     // Locks the SDK↔route field mapping the MCP tool depends on:
-    // kg → kg_name, type → type, topK → top_k, and the response envelope
-    // (hits/count/degraded/top_k) passed through unreshaped.
+    // kg → kg_name, type → type, entityUris → entity_uris, topK → top_k, and
+    // the response envelope (hits/count/degraded/top_k) passed through unreshaped.
     const envelope = {
       hits: [
         {
@@ -586,6 +586,7 @@ describe("new typed parsed variants of the missing methods", () => {
     const got = await makeClient().search("solar subsidies", {
       kg: "parliament",
       type: "Speech",
+      entityUris: ["e:solar", "e:wind"],
       topK: 5,
     });
     expect(got).toEqual(envelope);
@@ -595,6 +596,7 @@ describe("new typed parsed variants of the missing methods", () => {
       query: "solar subsidies",
       kg_name: "parliament",
       type: "Speech",
+      entity_uris: ["e:solar", "e:wind"],
       top_k: 5,
     });
   });
@@ -608,6 +610,21 @@ describe("new typed parsed variants of the missing methods", () => {
     );
     await makeClient().search("anything");
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ query: "anything" });
+  });
+
+  it("search (typed) forwards empty entityUris as entity_uris:[] (strict allowlist)", async () => {
+    // [] is not "omit" — it is a strict empty allowlist that yields zero hits.
+    const { calls } = installFetch(
+      new Response(JSON.stringify({ hits: [], count: 0, degraded: false, top_k: 10 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await makeClient().search("anything", { entityUris: [] });
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+      query: "anything",
+      entity_uris: [],
+    });
   });
 
   it("search (typed) surfaces the disabled-deployment 503 as OntaError", async () => {
