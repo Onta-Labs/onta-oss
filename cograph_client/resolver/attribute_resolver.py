@@ -222,11 +222,37 @@ def _cluster_has_identity(prefix: str, attrs: list[ExtractedAttribute]) -> bool:
     return False
 
 
+# Free-text synonym families (dogfood S1): successive free-text ingests invent
+# statement / summary / description for the same slot. Prefer the EXISTING
+# attribute when the proposed name shares a family and exactly one family
+# member is already on the type (unambiguous).
+_ATTR_SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
+    # Tight free-text prose family (dogfood S1). Deliberately exclude title/name
+    # and decision/outcome — those are often distinct slots.
+    frozenset({
+        "description", "summary", "statement", "rationale", "reason",
+        "text", "body", "content", "notes", "note", "details", "detail",
+    }),
+    frozenset({"area", "domain", "category", "topic", "scope"}),
+    frozenset({"date", "dated", "timestamp", "day"}),
+    frozenset({"email", "e_mail", "mail"}),
+    frozenset({"phone", "telephone", "mobile", "tel"}),
+)
+
+
+def _synonym_group(name: str) -> frozenset[str] | None:
+    n = _normalize_attr_name(name)
+    for g in _ATTR_SYNONYM_GROUPS:
+        if n in g:
+            return g
+    return None
+
+
 def _find_existing_attr(
     attr_name: str,
     existing_attrs: dict[str, AttributeSchema],
 ) -> AttributeSchema | None:
-    """Find an existing attribute by normalized name, with fuzzy fallback."""
+    """Find an existing attribute by normalized name, synonym, or fuzzy fallback."""
     normalized = _normalize_attr_name(attr_name)
 
     # 1. Exact normalized match
@@ -237,7 +263,24 @@ def _find_existing_attr(
     if not existing_attrs:
         return None
 
-    # 2. Fuzzy match with prefix stripping
+    # 2. Synonym family — only when exactly one existing attr is in the family
+    # (avoids collapsing distinct slots like "summary" + "rationale" both present).
+    group = _synonym_group(normalized)
+    if group is not None:
+        hits = [
+            schema
+            for name, schema in existing_attrs.items()
+            if _normalize_attr_name(name) in group
+        ]
+        if len(hits) == 1:
+            logger.info(
+                "attr_synonym_match",
+                proposed=attr_name,
+                matched=hits[0].name,
+            )
+            return hits[0]
+
+    # 3. Fuzzy match with prefix stripping
     stripped = _strip_attr_prefixes(normalized)
     best_match: AttributeSchema | None = None
     best_ratio = 0.0

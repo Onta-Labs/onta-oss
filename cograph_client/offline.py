@@ -21,8 +21,10 @@ Typical private-deploy pattern::
     OMNIX_EMBED_BASE_URL=http://127.0.0.1:11434/v1
 
 Wired at the main outbound entrypoints (LLM router, embed client, Wikidata
-adapter, page-fetch ladder, query-pipeline LLM posts). Local graph backends
-(Fuseki / Neptune on loopback) stay reachable under the default allowlist.
+adapter, page-fetch ladder, query-pipeline LLM posts, Anthropic SDK
+``messages.create`` call sites in extract / CSV schema / ontology resolve).
+Local graph backends (Fuseki / Neptune on loopback) stay reachable under the
+default allowlist.
 """
 
 from __future__ import annotations
