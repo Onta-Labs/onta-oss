@@ -28,12 +28,12 @@ from cograph_client.graph.aliases import (
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.nlp.pipeline import NLQueryPipeline
 
-ONTO_GRAPH = "https://cograph.tech/graphs/t-alias"
-DATA_GRAPH = "https://cograph.tech/graphs/t-alias/kg/main"
+ONTO_GRAPH = "https://graph.onta.sh/graphs/t-alias"
+DATA_GRAPH = "https://graph.onta.sh/graphs/t-alias/kg/main"
 
-PHONE_NUM = "https://cograph.tech/types/Guest/attrs/phone_num"
-PHONE = "https://cograph.tech/types/Guest/attrs/phone"
-CONTACT = "https://cograph.tech/types/Person/attrs/contact_phone"
+PHONE_NUM = "https://graph.onta.sh/types/Guest/attrs/phone_num"
+PHONE = "https://graph.onta.sh/types/Guest/attrs/phone"
+CONTACT = "https://graph.onta.sh/types/Person/attrs/contact_phone"
 
 
 @pytest.fixture

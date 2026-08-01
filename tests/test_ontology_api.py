@@ -51,7 +51,7 @@ def test_list_types(client, auth_headers, mock_neptune):
         "results": {
             "bindings": [
                 _detail_row(
-                    type="https://cograph.tech/types/Place",
+                    type="https://graph.onta.sh/types/Place",
                     typeLabel="Place",
                     typeComment="A location",
                 ),
@@ -80,19 +80,19 @@ def test_get_type_detail(client, auth_headers, mock_neptune):
         "results": {
             "bindings": [
                 _detail_row(
-                    type="https://cograph.tech/types/Place",
+                    type="https://graph.onta.sh/types/Place",
                     typeLabel="Place",
                     typeComment="A location",
-                    attr="https://cograph.tech/types/Place/attrs/name",
+                    attr="https://graph.onta.sh/types/Place/attrs/name",
                     attrLabel="name",
                     range="http://www.w3.org/2001/XMLSchema#string",
                     funcName="calculate_distance",
                 ),
                 # Park subClassOf Place → subtypes of Place includes Park
                 _detail_row(
-                    type="https://cograph.tech/types/Park",
+                    type="https://graph.onta.sh/types/Park",
                     typeLabel="Park",
-                    parent="https://cograph.tech/types/Place",
+                    parent="https://graph.onta.sh/types/Place",
                 ),
             ]
         },
@@ -138,9 +138,9 @@ def test_get_full_schema(client, auth_headers, mock_neptune):
         "head": {"vars": ["type", "typeLabel", "attr", "attrLabel", "range", "funcName"]},
         "results": {"bindings": [
             _detail_row(
-                type="https://cograph.tech/types/Place",
+                type="https://graph.onta.sh/types/Place",
                 typeLabel="Place",
-                attr="https://cograph.tech/types/Place/attrs/name",
+                attr="https://graph.onta.sh/types/Place/attrs/name",
                 attrLabel="name",
                 range="http://www.w3.org/2001/XMLSchema#string",
                 funcName="calculate_distance",
@@ -316,10 +316,10 @@ def test_type_counts_multiple_types_sorted(client, auth_headers, mock_neptune):
     # that nested URIs (e.g. /types/X/attrs/y) get filtered out of the list.
     mock_neptune.query.return_value = _results(
         ["type", "cnt"],
-        _binding(type="https://cograph.tech/types/Mentor", cnt="988"),
-        _binding(type="https://cograph.tech/types/Skill", cnt="412"),
-        _binding(type="https://cograph.tech/types/Mentor/attrs/name", cnt="988"),
-        _binding(type="https://cograph.tech/types/Industry", cnt="38"),
+        _binding(type="https://graph.onta.sh/types/Mentor", cnt="988"),
+        _binding(type="https://graph.onta.sh/types/Skill", cnt="412"),
+        _binding(type="https://graph.onta.sh/types/Mentor/attrs/name", cnt="988"),
+        _binding(type="https://graph.onta.sh/types/Industry", cnt="38"),
     )
     response = client.get(
         "/graphs/test-tenant/kgs/mentors/type-counts",
@@ -346,10 +346,10 @@ def test_type_usage_unknown_type_returns_404(client, auth_headers, mock_neptune)
 
 
 def test_type_usage_combines_ontology_and_kg_counts(client, auth_headers, mock_neptune):
-    name_attr = "https://cograph.tech/types/Mentor/attrs/name"
-    level_attr = "https://cograph.tech/types/Mentor/attrs/level"
-    industry_attr = "https://cograph.tech/types/Mentor/attrs/industry"
-    industry_target = "https://cograph.tech/types/Industry"
+    name_attr = "https://graph.onta.sh/types/Mentor/attrs/name"
+    level_attr = "https://graph.onta.sh/types/Mentor/attrs/level"
+    industry_attr = "https://graph.onta.sh/types/Mentor/attrs/industry"
+    industry_target = "https://graph.onta.sh/types/Industry"
 
     mock_neptune.query.side_effect = [
         # 1) Ontology definition
@@ -396,7 +396,7 @@ def test_type_usage_combines_ontology_and_kg_counts(client, auth_headers, mock_n
                 "cnt": {"type": "literal", "value": "740"},
                 "sample": {
                     "type": "uri",
-                    "value": "https://cograph.tech/entities/Industry/Tech",
+                    "value": "https://graph.onta.sh/entities/Industry/Tech",
                 },
             },
         ),
@@ -404,7 +404,7 @@ def test_type_usage_combines_ontology_and_kg_counts(client, auth_headers, mock_n
         _results(
             ["e", "name", "title", "label", "headline"],
             {
-                "e": {"type": "uri", "value": "https://cograph.tech/entities/Mentor/karthikeyan"},
+                "e": {"type": "uri", "value": "https://graph.onta.sh/entities/Mentor/karthikeyan"},
                 "name": {"type": "literal", "value": "Karthikeyan Rajasekaran"},
                 "title": {"type": "literal", "value": "Principal Software Engineer"},
             },
@@ -436,10 +436,10 @@ def test_type_usage_hides_system_predicates_by_default(client, auth_headers, moc
     100% on every entity and crowd out the columns the user actually cares
     about. /type usage filters them out by default; ?include_system=true
     opts back in."""
-    name_attr = "https://cograph.tech/types/Mentor/attrs/name"
+    name_attr = "https://graph.onta.sh/types/Mentor/attrs/name"
     sys_label = "http://www.w3.org/2000/01/rdf-schema#label"
-    sys_ingested = "https://cograph.tech/onto/ingested_at"
-    sys_source = "https://cograph.tech/onto/source"
+    sys_ingested = "https://graph.onta.sh/onto/ingested_at"
+    sys_source = "https://graph.onta.sh/onto/source"
 
     def _build_responses():
         return [

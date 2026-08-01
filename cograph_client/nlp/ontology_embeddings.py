@@ -5,6 +5,7 @@ At query time, retrieves the top-K most relevant types via cosine similarity
 and expands 1 hop on the ontology graph for relationship neighbors.
 """
 
+from cograph_client.graph.iri import IRI_BASE, TYPE_URI_PREFIX
 import asyncio
 import io
 import json
@@ -449,7 +450,7 @@ def _parse_ontology_bindings(bindings: list[dict]) -> dict[str, dict]:
             continue
         # Fail SOFT (ONTA-425): these labels are stored literals, and
         # `_format_chunk_text` / `attr_uri` mint IRIs from them. Raising on one
-        # corrupt row would lose EVERY type's embedding chunk, which is the
+        # corrupt row would lose EVERY typef's embedding chunk, which is the
         # semantic-retrieval half of the same all-or-nothing failure the NL
         # ontology summary avoids.
         if skip_invalid_type_name(tl, "ontology_embeddings"):
@@ -468,7 +469,7 @@ def _parse_ontology_bindings(bindings: list[dict]) -> dict[str, dict]:
             range_str = row.get("range", "")
             if range_str.startswith(TYPE_URI_PREFIX):
                 target_type = range_str[len(TYPE_URI_PREFIX):]
-                onto_uri = f"https://cograph.tech/onto/{attr_name}"
+                onto_uri = f"{IRI_BASE}/onto/{attr_name}"
                 entry = f"{attr_name} \u2192 {target_type} \u2014 predicate URI: <{onto_uri}>"
                 if entry not in types[tl]["relationships"]:
                     types[tl]["relationships"].append(entry)
@@ -524,11 +525,11 @@ def _format_output_text(type_name: str, attributes: list[str], relationship_targ
 
 
 def _extract_tenant_id(graph_uri: str) -> str:
-    """Extract tenant ID from graph URI like https://cograph.tech/graphs/{tenant_id}."""
+    """Extract tenant ID from graph URI like https://graph.onta.sh/graphs/{tenant_id}."""
     # Handle both base and KG-specific URIs
     parts = graph_uri.rstrip("/").split("/")
-    # https://cograph.tech/graphs/{tenant_id} → tenant_id is at index 4
-    # https://cograph.tech/graphs/{tenant_id}/kg/{kg_name} → still index 4
+    # https://graph.onta.sh/graphs/{tenant_id} → tenant_id is at index 4
+    # https://graph.onta.sh/graphs/{tenant_id}/kg/{kg_name} → still index 4
     if len(parts) >= 5:
         return parts[4]
     return "unknown"

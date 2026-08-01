@@ -1,10 +1,13 @@
+from __future__ import annotations
+
+from cograph_client.graph.iri import IRI_BASE
 """Attribute alias mechanism — alias-first amendments, lazy backfill (ADR 0002 §7).
 
 Renaming an attribute or moving it up the hierarchy (``phone_num → phone``)
 touches instance data. Instead of an eager rewrite, the ontology records an
 alias triple::
 
-    <old-attr-IRI> <https://cograph.tech/onto/aliasOf> <new-attr-IRI>
+    <old-attr-IRI> <https://graph.onta.sh/onto/aliasOf> <new-attr-IRI>
 
 and the query path resolves through aliases immediately — nothing breaks on
 day one. Old instance triples are rewritten lazily (backfill_aliases), after
@@ -52,7 +55,6 @@ alias. Do not conflate ``aliasOf`` (tenant attribute rename vehicle) with
 ``alignedTo`` (global shape promotion audit).
 """
 
-from __future__ import annotations
 
 import math
 

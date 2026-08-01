@@ -22,48 +22,48 @@ from cograph_client.nlp.pipeline import NLQueryPipeline
 
 
 ONTOLOGY = """\
-Type: Indication — URI: <https://cograph.tech/types/Indication>
-  Attributes: setting (string) — URI: <https://cograph.tech/types/Indication/attrs/setting> [values: "adjuvant", "metastatic", "maintenance"], disease (string) — URI: <https://cograph.tech/types/Indication/attrs/disease> [27 unique values], indication_summary (string) — URI: <https://cograph.tech/types/Indication/attrs/indication_summary> [104 unique values], label_status (string) — URI: <https://cograph.tech/types/Indication/attrs/label_status> [values: "on-label", "withdrawn"]
-  Relationships: requires_diagnostic → CompanionDiagnostic — predicate URI: <https://cograph.tech/onto/requires_diagnostic>
-Type: Drug — URI: <https://cograph.tech/types/Drug>
-  Attributes: brand_name (string) — URI: <https://cograph.tech/types/Drug/attrs/brand_name> [100 unique values]
-  Relationships: has_indication → Indication — predicate URI: <https://cograph.tech/onto/has_indication>
+Type: Indication — URI: <https://graph.onta.sh/types/Indication>
+  Attributes: setting (string) — URI: <https://graph.onta.sh/types/Indication/attrs/setting> [values: "adjuvant", "metastatic", "maintenance"], disease (string) — URI: <https://graph.onta.sh/types/Indication/attrs/disease> [27 unique values], indication_summary (string) — URI: <https://graph.onta.sh/types/Indication/attrs/indication_summary> [104 unique values], label_status (string) — URI: <https://graph.onta.sh/types/Indication/attrs/label_status> [values: "on-label", "withdrawn"]
+  Relationships: requires_diagnostic → CompanionDiagnostic — predicate URI: <https://graph.onta.sh/onto/requires_diagnostic>
+Type: Drug — URI: <https://graph.onta.sh/types/Drug>
+  Attributes: brand_name (string) — URI: <https://graph.onta.sh/types/Drug/attrs/brand_name> [100 unique values]
+  Relationships: has_indication → Indication — predicate URI: <https://graph.onta.sh/onto/has_indication>
 """
 
 BAD_SPARQL = """\
 SELECT DISTINCT ?requiredTest ?supportingStudy
-FROM <https://cograph.tech/graphs/t/kg/k>
+FROM <https://graph.onta.sh/graphs/t/kg/k>
 WHERE {
-  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/Drug> .
-  ?drug <https://cograph.tech/types/Drug/attrs/brand_name> ?brand .
+  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.onta.sh/types/Drug> .
+  ?drug <https://graph.onta.sh/types/Drug/attrs/brand_name> ?brand .
   FILTER(CONTAINS(LCASE(?brand), "tecentriq"))
-  ?drug <https://cograph.tech/onto/has_indication> ?ind .
-  ?ind <https://cograph.tech/types/Indication/attrs/setting> ?setting .
+  ?drug <https://graph.onta.sh/onto/has_indication> ?ind .
+  ?ind <https://graph.onta.sh/types/Indication/attrs/setting> ?setting .
   FILTER(CONTAINS(LCASE(?setting), "bladder"))
   OPTIONAL {
-    ?ind <https://cograph.tech/onto/requires_diagnostic> ?diag .
-    ?diag <https://cograph.tech/types/CompanionDiagnostic/attrs/name> ?requiredTest .
+    ?ind <https://graph.onta.sh/onto/requires_diagnostic> ?diag .
+    ?diag <https://graph.onta.sh/types/CompanionDiagnostic/attrs/name> ?requiredTest .
   }
 }
 """
 
 GOOD_SPARQL = """\
 SELECT DISTINCT ?requiredTest
-FROM <https://cograph.tech/graphs/t/kg/k>
+FROM <https://graph.onta.sh/graphs/t/kg/k>
 WHERE {
-  ?drug <https://cograph.tech/types/Drug/attrs/brand_name> ?brand .
+  ?drug <https://graph.onta.sh/types/Drug/attrs/brand_name> ?brand .
   FILTER(CONTAINS(LCASE(?brand), "tecentriq"))
-  ?drug <https://cograph.tech/onto/has_indication> ?ind .
-  ?ind <https://cograph.tech/types/Indication/attrs/disease> ?disease .
+  ?drug <https://graph.onta.sh/onto/has_indication> ?ind .
+  ?ind <https://graph.onta.sh/types/Indication/attrs/disease> ?disease .
   FILTER(CONTAINS(LCASE(?disease), "bladder"))
-  ?ind <https://cograph.tech/onto/requires_diagnostic> ?diag .
-  ?diag <https://cograph.tech/types/CompanionDiagnostic/attrs/name> ?requiredTest .
+  ?ind <https://graph.onta.sh/onto/requires_diagnostic> ?diag .
+  ?diag <https://graph.onta.sh/types/CompanionDiagnostic/attrs/name> ?requiredTest .
 }
 """
 
 OK_ENUM_SPARQL = """\
 SELECT ?s WHERE {
-  ?ind <https://cograph.tech/types/Indication/attrs/setting> ?setting .
+  ?ind <https://graph.onta.sh/types/Indication/attrs/setting> ?setting .
   FILTER(CONTAINS(LCASE(?setting), "adjuvant"))
 }
 """
@@ -71,9 +71,9 @@ SELECT ?s WHERE {
 
 def test_parse_enum_attr_values_closed_list_only():
     enums = parse_enum_attr_values(ONTOLOGY)
-    setting = "https://cograph.tech/types/Indication/attrs/setting"
-    status = "https://cograph.tech/types/Indication/attrs/label_status"
-    disease = "https://cograph.tech/types/Indication/attrs/disease"
+    setting = "https://graph.onta.sh/types/Indication/attrs/setting"
+    status = "https://graph.onta.sh/types/Indication/attrs/label_status"
+    disease = "https://graph.onta.sh/types/Indication/attrs/disease"
     assert setting in enums
     assert "adjuvant" in enums[setting]
     assert status in enums
@@ -84,7 +84,7 @@ def test_parse_enum_attr_values_closed_list_only():
 def test_parse_enum_attr_values_skips_truncated_sample():
     """vals[:10] + '… (25 total)' is not exhaustive — do not treat as closed enum."""
     onto = (
-        'setting (string) — URI: <https://cograph.tech/types/Indication/attrs/setting> '
+        'setting (string) — URI: <https://graph.onta.sh/types/Indication/attrs/setting> '
         '[values: "adjuvant", "metastatic", "maintenance", "neoadjuvant", '
         '"first-line", "second-line", "consolidation", "perioperative", '
         '"unresectable", "locally advanced", … (25 total)]'
@@ -92,7 +92,7 @@ def test_parse_enum_attr_values_skips_truncated_sample():
     assert parse_enum_attr_values(onto) == {}
     # needle that only fails the visible subset must NOT flag when truncated
     sparql = (
-        '?i <https://cograph.tech/types/Indication/attrs/setting> ?setting .\n'
+        '?i <https://graph.onta.sh/types/Indication/attrs/setting> ?setting .\n'
         'FILTER(CONTAINS(LCASE(?setting), "hidden-value-11"))'
     )
     assert impossible_enum_contains(sparql, onto) == []
@@ -186,8 +186,8 @@ async def test_ask_retries_on_enum_filter_zero_rows():
     ):
         result = await p.ask(
             "A customer asked about Tecentriq after bladder surgery — is there a required test?",
-            graph_uri="https://cograph.tech/graphs/t",
-            instance_graph="https://cograph.tech/graphs/t/kg/k",
+            graph_uri="https://graph.onta.sh/graphs/t",
+            instance_graph="https://graph.onta.sh/graphs/t/kg/k",
         )
 
     assert len(gen_calls) == 2

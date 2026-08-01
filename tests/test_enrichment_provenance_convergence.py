@@ -55,7 +55,7 @@ def test_enrichment_writes_per_attribute_source_url(type_name, attr, label, valu
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        rows = [{"uri": f"https://cograph.tech/entities/{type_name}/e1", "label": label, "vals": ""}]
+        rows = [{"uri": f"https://graph.onta.sh/entities/{type_name}/e1", "label": label, "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -86,7 +86,7 @@ def test_two_attributes_carry_independent_sources(monkeypatch):
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 
     async def run():
-        rows = [{"uri": "https://cograph.tech/entities/Widget/e1", "label": "Alpha Widget", "vals": ""}]
+        rows = [{"uri": "https://graph.onta.sh/entities/Widget/e1", "label": "Alpha Widget", "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -127,7 +127,7 @@ def test_companions_dated_from_verdict_not_write_time(monkeypatch):
     published = datetime(2021, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
     async def run():
-        rows = [{"uri": "https://cograph.tech/entities/Gadget/e1", "label": "Beta Gadget", "vals": ""}]
+        rows = [{"uri": "https://graph.onta.sh/entities/Gadget/e1", "label": "Beta Gadget", "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -160,9 +160,9 @@ def test_canonical_provenance_graph_gets_confidence_and_source_date(monkeypatch)
     published = datetime(2020, 3, 3, tzinfo=timezone.utc)
 
     async def run():
-        graph = "https://cograph.tech/graphs/test-tenant/kg/kg"
+        graph = "https://graph.onta.sh/graphs/test-tenant/kg/kg"
         prov_graph = provenance_graph_uri(graph)
-        rows = [{"uri": "https://cograph.tech/entities/Widget/e1", "label": "Alpha Widget", "vals": ""}]
+        rows = [{"uri": "https://graph.onta.sh/entities/Widget/e1", "label": "Alpha Widget", "vals": ""}]
         neptune = AsyncMock()
         neptune.query.side_effect = query_router(entities_query_response(rows))
         neptune.update.return_value = None
@@ -201,7 +201,7 @@ def test_verified_row_advances_freshness_without_rewriting_value(policy, monkeyp
     async def run():
         sku_pred = _attr_uri("Widget", "sku")
         rows = [{
-            "uri": "https://cograph.tech/entities/Widget/e1",
+            "uri": "https://graph.onta.sh/entities/Widget/e1",
             "label": "Alpha Widget",
             "vals": f"{sku_pred}::WX-1000",  # already has this value
         }]
@@ -355,7 +355,7 @@ def test_scoped_refresh_processes_subset_without_discovery(monkeypatch):
     async def run():
         wk_pred = _attr_uri("Gadget", "weight_kg")
         rows = [{
-            "uri": "https://cograph.tech/entities/Gadget/g1",
+            "uri": "https://graph.onta.sh/entities/Gadget/g1",
             "label": "Beta Gadget",
             "vals": f"{wk_pred}::3.2",
         }]
@@ -372,7 +372,7 @@ def test_scoped_refresh_processes_subset_without_discovery(monkeypatch):
             id="job-refresh", tenant_id="test-tenant", kg_name="kg", type_name="Gadget",
             attributes=["weight_kg"], tier=EnrichmentTier.lite, status=JobStatus.queued,
             created_at=datetime.now(timezone.utc), conflict_policy=ConflictPolicy.verify,
-            entity_uris=["https://cograph.tech/entities/Gadget/g1"],
+            entity_uris=["https://graph.onta.sh/entities/Gadget/g1"],
         )
         await executor._jobs.create(job)
         await executor.run(job, "test-tenant")
@@ -404,7 +404,7 @@ async def test_discovery_writes_companions_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("COGRAPH_DISCOVERY_ATTR_PROVENANCE", "1")
     resolver = SchemaResolver(AsyncMock(), "fake-key", JsonVerdictCache(tmp_path / "c.json"))
     collected: list[tuple[str, str, str]] = []
-    sprocket_uri = "https://cograph.tech/entities/Sprocket/s1"
+    sprocket_uri = "https://graph.onta.sh/entities/Sprocket/s1"
     await resolver._resolve_and_insert_entity(
         entity=ExtractedEntity(
             type_name="Sprocket", id="s1",
@@ -416,7 +416,7 @@ async def test_discovery_writes_companions_end_to_end(tmp_path, monkeypatch):
         resolved_type="Sprocket",
         entity_uri=sprocket_uri,
         is_duplicate=False,
-        graph_uri="https://cograph.tech/graphs/test-tenant/kg/kg",
+        graph_uri="https://graph.onta.sh/graphs/test-tenant/kg/kg",
         existing_types={"Sprocket": ""},
         existing_attrs={
             "Sprocket": {
@@ -463,9 +463,9 @@ async def test_discovery_companions_off_by_default(tmp_path, monkeypatch):
             attributes=[ExtractedAttribute(name="finish", value="anodized", datatype="string")],
         ),
         resolved_type="Sprocket",
-        entity_uri="https://cograph.tech/entities/Sprocket/s1",
+        entity_uri="https://graph.onta.sh/entities/Sprocket/s1",
         is_duplicate=False,
-        graph_uri="https://cograph.tech/graphs/test-tenant/kg/kg",
+        graph_uri="https://graph.onta.sh/graphs/test-tenant/kg/kg",
         existing_types={"Sprocket": ""},
         existing_attrs={"Sprocket": {"finish": AttributeSchema("finish", "string")}},
         source="https://catalog.example/sprocket/s1",

@@ -21,8 +21,10 @@ This is the OSS seam only — the production judge service is premium and
 plugs in through the JudgePanel protocol.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import GOV_NS, IRI_BASE
 import asyncio
 import hashlib
 import json
@@ -45,10 +47,10 @@ from cograph_client.resolver.promotion_consent import require_promotion_consent
 
 logger = structlog.stdlib.get_logger("cograph.resolver.governance")
 
-# Governance vocabulary — record nodes live in the Public graph's companion
+# Governance vocabulary — record nodes live in the Public graphf's companion
 # provenance graph (same encoding pattern as COG-38 statement metadata);
 # changelog entries live in their own append-only named graph.
-GOV_NS = "https://cograph.tech/gov/"
+GOV_NS = f"{IRI_BASE}/gov/"
 GOV_SUBJECT = f"{GOV_NS}subject"
 GOV_PROPOSER_MODEL = f"{GOV_NS}proposer_model"
 GOV_REASONING = f"{GOV_NS}reasoning"
@@ -65,7 +67,7 @@ GOV_CONFIDENCE = f"{GOV_NS}confidence"
 GOV_DATASET_HINT = f"{GOV_NS}dataset_hint"
 GOV_ALIGNED_TO = f"{GOV_NS}aligned_to"
 
-_CHANGELOG_GRAPH_URI = "https://cograph.tech/graphs/global/changelog"
+_CHANGELOG_GRAPH_URI = f"{IRI_BASE}/graphs/global/changelog"
 
 
 def changelog_graph_uri() -> str:

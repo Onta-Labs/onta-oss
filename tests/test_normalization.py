@@ -28,9 +28,9 @@ from cograph_client.normalization.rules import (
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-ENTITY = "https://cograph.tech/entities/"
-TYPES = "https://cograph.tech/types/"
-ONTO = "https://cograph.tech/onto/"
+ENTITY = "https://graph.onta.sh/entities/"
+TYPES = "https://graph.onta.sh/types/"
+ONTO = "https://graph.onta.sh/onto/"
 
 TENANT = "t1"
 KG = "june-16"
@@ -263,7 +263,7 @@ class FakeNeptune:
 
         # Store.list: SELECT ?s ?p ?o ... ?s rdf:type <RULE_TYPE> [filters] ?s ?p ?o
         if "SELECT ?s ?p ?o" in sparql and "NormalizationRule" in sparql:
-            rule_type_uri = "https://cograph.tech/types/NormalizationRule"
+            rule_type_uri = "https://graph.onta.sh/types/NormalizationRule"
             subjects = {s for (s, p, o) in quads if p == RDF_TYPE and o == rule_type_uri}
             # Apply literal-equality filters: ?s <P> "v" .
             for fp, fv in re.findall(r'\?s <([^>]+)> "([^"]*)" \.', sparql):
@@ -513,7 +513,7 @@ async def test_rule_store_roundtrip():
     again = await store.get(TENANT, rule.id)
     assert again.status == "confirmed"
     # exactly one status triple after the flip (no stale "suggested" left behind)
-    graph = neptune.graphs["https://cograph.tech/graphs/t1"]
+    graph = neptune.graphs["https://graph.onta.sh/graphs/t1"]
     status_triples = [t for t in graph if t[0] == rule.uri and t[1].endswith("/status")]
     assert len(status_triples) == 1 and status_triples[0][2] == "confirmed"
 
@@ -525,7 +525,7 @@ async def test_rule_store_roundtrip():
 # 2. Inference
 # --------------------------------------------------------------------------- #
 def _seed_mentor_ontology(neptune: FakeNeptune, *, rng: str):
-    onto = "https://cograph.tech/graphs/t1"
+    onto = "https://graph.onta.sh/graphs/t1"
     prop = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
     dom = "http://www.w3.org/2000/01/rdf-schema#domain"
     rngp = "http://www.w3.org/2000/01/rdf-schema#range"
@@ -540,7 +540,7 @@ def _seed_mentor_ontology(neptune: FakeNeptune, *, rng: str):
 
 
 def _seed_mentor_instances(neptune: FakeNeptune, objects: list[str], *, pred: str):
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     for i, obj in enumerate(objects):
         e = ENTITY + f"Mentor/m{i}"
         neptune._g(kg).add((e, RDF_TYPE, TYPES + "Mentor"))
@@ -553,7 +553,7 @@ async def test_inference_suggests_for_delimited(monkeypatch):
     _seed_mentor_ontology(neptune, rng=TYPES + "Language")  # relationship
     # composite Language entities (the speaks case)
     for name in ["English__Russian", "English__Persian", "English__Ukrainian"]:
-        kg = "https://cograph.tech/graphs/t1/kg/june-16"
+        kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
         neptune._g(kg).add((ENTITY + f"Language/{name}", RDFS_LABEL, name.replace("__", ", ")))
     _seed_mentor_instances(
         neptune,
@@ -610,14 +610,14 @@ async def test_inference_no_rule_for_atomic(monkeypatch):
 async def test_inference_ranks_by_confidence(monkeypatch):
     """Two predicates with different confidence come back highest-first."""
     neptune = FakeNeptune()
-    onto = "https://cograph.tech/graphs/t1"
+    onto = "https://graph.onta.sh/graphs/t1"
     prop = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
     dom = "http://www.w3.org/2000/01/rdf-schema#domain"
     rngp = "http://www.w3.org/2000/01/rdf-schema#range"
     for leaf, rng in [("speaks", TYPES + "Language"), ("skills", "http://www.w3.org/2001/XMLSchema#string")]:
         a = TYPES + f"Mentor/attrs/{leaf}"
         neptune._g(onto).update({(a, RDF_TYPE, prop), (a, dom, TYPES + "Mentor"), (a, rngp, rng)})
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     neptune._g(kg).add((ENTITY + "Mentor/m0", RDF_TYPE, TYPES + "Mentor"))
     neptune._g(kg).add((ENTITY + "Mentor/m0", ONTO + "speaks", ENTITY + "Language/English__Russian"))
     neptune._g(kg).add((ENTITY + "Language/English__Russian", RDFS_LABEL, "English, Russian"))
@@ -644,7 +644,7 @@ async def test_inference_ranks_by_confidence(monkeypatch):
 # 3. Execution — the important one.
 # --------------------------------------------------------------------------- #
 def _seed_speaks_composites(neptune: FakeNeptune):
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     speaks = ONTO + "speaks"
     # mentorA speaks English__Russian ; mentorB speaks English__Persian
     comp_ar = ENTITY + "Language/English__Russian"
@@ -731,7 +731,7 @@ async def test_orphan_sweep_is_complete_keeps_referenced_and_atomic():
     including one that a naive per-edge drop would miss — while keeping atomic
     nodes and a composite still referenced by another subject."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     speaks = ONTO + "speaks"
 
     comp_er = ENTITY + "Language/English__Russian"   # shared by A and B
@@ -810,7 +810,7 @@ async def test_orphan_sweep_rerunnable_clears_leftover_orphan():
     edges_rewritten == 0 still cleans up what a buggy first run left behind,
     independent of any full-graph scan (COG-118)."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     speaks = ONTO + "speaks"
 
     # Ontology declares speaks -> Language so the sweep can resolve the target
@@ -887,7 +887,7 @@ async def test_single_value_leading_delimiter_is_repointed_and_swept():
     re-pointed to the clean `…/Industry/Agriculture`, the `__Agriculture` edge is
     removed, and `__Agriculture` (now with no inbound worksin edge) is swept."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     worksin = ONTO + "worksin"
 
     junk = ENTITY + "Industry/__Agriculture"   # leading delimiter
@@ -926,7 +926,7 @@ async def test_single_value_trailing_delimiter_is_repointed_and_swept():
     to the clean `…/Industry/Automotive` and the junk node is swept. Uses the
     LOCAL-NAME fallback (no rdfs:label) for the split source."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     worksin = ONTO + "worksin"
 
     junk = ENTITY + "Industry/Automotive__"     # trailing delimiter, NO label
@@ -960,7 +960,7 @@ async def test_doubled_delimiter_single_node_splits_into_two_atoms():
     atoms A and B, re-points the subject at both clean nodes, and sweeps the
     malformed source node."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     worksin = ONTO + "worksin"
 
     junk = ENTITY + "Industry/A____B"
@@ -996,7 +996,7 @@ async def test_clean_atomic_target_is_not_repointed_idempotent():
     atom's canonical IRI == its own IRI) is NOT re-pointed and is left intact —
     the skip-condition's idempotency guarantee. Re-running is a pure no-op."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     worksin = ONTO + "worksin"
 
     clean = ENTITY + "Industry/Agriculture"
@@ -1029,7 +1029,7 @@ async def test_single_value_junk_repoint_is_idempotent_on_rerun():
     no-op: the clean `Agriculture` node's atom IRI == its own IRI, so it is
     skipped and nothing changes."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     worksin = ONTO + "worksin"
 
     junk = ENTITY + "Industry/__Agriculture"
@@ -1058,7 +1058,7 @@ async def test_rerun_sweep_resolves_target_type_from_ontology_range():
     old unbounded full-graph `SELECT DISTINCT ?t` scan, and WITHOUT silently
     skipping the sweep."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     speaks = ONTO + "speaks"
 
     # Spy on every query so we can prove the expensive full-graph type scan is
@@ -1202,7 +1202,7 @@ async def test_apply_triggers_stats_recompute_on_mutation(monkeypatch):
 @pytest.mark.asyncio
 async def test_execute_explode_literal():
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     skills = ONTO + "skills"
     neptune._g(kg).update(
         {
@@ -1256,7 +1256,7 @@ def _strip_emoji_rule() -> NormalizationRule:
 @pytest.mark.asyncio
 async def test_execute_strip_emoji_cleans_and_drops_pure_emoji():
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     skills = ONTO + "skills"
     neptune._g(kg).update(
         {
@@ -1299,7 +1299,7 @@ async def test_execute_strip_emoji_preserves_real_skill_names():
     """Accented letters, digits, and punctuation that belong to real skills
     (c++, C#, Node.js, R&D, café) must survive untouched."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     skills = ONTO + "skills"
     keepers = ["c++", "C#", "Node.js", "R&D", "café", "machine-learning", "A/B testing"]
     neptune._g(kg).add((ENTITY + "Mentor/A", RDF_TYPE, TYPES + "Mentor"))
@@ -1318,7 +1318,7 @@ async def test_execute_strip_emoji_works_on_exploded_atomic_literals():
     """strip_emoji is per-literal, so it cleans atomic literals the same way it
     would clean a still-packed one (works whether or not list_explode ran)."""
     neptune = FakeNeptune()
-    kg = "https://cograph.tech/graphs/t1/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/t1/kg/june-16"
     skills = ONTO + "skills"
     # already exploded into atomic literals, but each still carries emoji
     neptune._g(kg).update(
@@ -1438,13 +1438,13 @@ def route_client(monkeypatch):
 def test_route_suggest_persists_and_lists(route_client, monkeypatch):
     client, neptune = route_client
     # Seed ontology + a composite instance for the fake under the test-tenant.
-    onto = "https://cograph.tech/graphs/test-tenant"
+    onto = "https://graph.onta.sh/graphs/test-tenant"
     prop = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
     dom = "http://www.w3.org/2000/01/rdf-schema#domain"
     rngp = "http://www.w3.org/2000/01/rdf-schema#range"
     a = TYPES + "Mentor/attrs/speaks"
     neptune._g(onto).update({(a, RDF_TYPE, prop), (a, dom, TYPES + "Mentor"), (a, rngp, TYPES + "Language")})
-    kg = "https://cograph.tech/graphs/test-tenant/kg/june-16"
+    kg = "https://graph.onta.sh/graphs/test-tenant/kg/june-16"
     neptune._g(kg).add((ENTITY + "Mentor/A", RDF_TYPE, TYPES + "Mentor"))
     neptune._g(kg).add((ENTITY + "Mentor/A", ONTO + "speaks", ENTITY + "Language/English__Russian"))
     neptune._g(kg).add((ENTITY + "Language/English__Russian", RDFS_LABEL, "English, Russian"))
@@ -1705,7 +1705,7 @@ def test_route_create_is_upsert_no_duplicate(route_client):
     assert matching[0]["confidence"] == pytest.approx(0.5)  # latest write wins
 
     # And no stale rdf:type triple duplication in the underlying store.
-    graph = neptune.graphs["https://cograph.tech/graphs/test-tenant"]
-    uri = "https://cograph.tech/entities/NormalizationRule/" + rule_id
+    graph = neptune.graphs["https://graph.onta.sh/graphs/test-tenant"]
+    uri = "https://graph.onta.sh/entities/NormalizationRule/" + rule_id
     type_triples = [t for t in graph if t[0] == uri and t[1] == RDF_TYPE]
     assert len(type_triples) == 1

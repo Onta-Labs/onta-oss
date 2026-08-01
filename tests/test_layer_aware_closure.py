@@ -40,7 +40,7 @@ from cograph_client.graph.ontology_queries import (
 )
 from cograph_client.resolver.schema_resolver import SchemaResolver
 
-TENANT_GRAPH = "https://cograph.tech/graphs/closure-test-tenant"
+TENANT_GRAPH = "https://graph.onta.sh/graphs/closure-test-tenant"
 RDFS_SUBCLASS = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
 
@@ -125,11 +125,11 @@ def test_union_parent_map_query_non_entitled_omits_enhanced():
 
 
 def test_type_name_from_uri_all_namespaces():
-    assert type_name_from_uri("https://cograph.tech/types/Hotel") == "Hotel"
-    assert type_name_from_uri("https://cograph.tech/types/public/Person") == "Person"
-    assert type_name_from_uri("https://cograph.tech/types/x/Guest") == "Guest"
+    assert type_name_from_uri("https://graph.onta.sh/types/Hotel") == "Hotel"
+    assert type_name_from_uri("https://graph.onta.sh/types/public/Person") == "Person"
+    assert type_name_from_uri("https://graph.onta.sh/types/x/Guest") == "Guest"
     # Attribute URIs reduce to their type name (matches old parent-map parsing).
-    assert type_name_from_uri("https://cograph.tech/types/Hotel/attrs/city") == "Hotel"
+    assert type_name_from_uri("https://graph.onta.sh/types/Hotel/attrs/city") == "Hotel"
     # Outside every layer namespace -> None (callers skip the edge).
     assert type_name_from_uri("http://www.w3.org/2000/01/rdf-schema#Resource") is None
     assert type_name_from_uri("") is None
@@ -144,10 +144,10 @@ def test_type_name_from_uri_all_namespaces():
 async def test_fetch_parent_map_single_graph_unchanged(resolver, mock_neptune):
     """REGRESSION: no layer_stack -> exact old query string, exact old result."""
     mock_neptune.query.return_value = _bindings([
-        {"child": "https://cograph.tech/types/HotelGuest",
-         "parent": "https://cograph.tech/types/Guest"},
-        {"child": "https://cograph.tech/types/Guest",
-         "parent": "https://cograph.tech/types/Person"},
+        {"child": "https://graph.onta.sh/types/HotelGuest",
+         "parent": "https://graph.onta.sh/types/Guest"},
+        {"child": "https://graph.onta.sh/types/Guest",
+         "parent": "https://graph.onta.sh/types/Person"},
     ])
     parent_of = await resolver._fetch_parent_map(TENANT_GRAPH)
     assert parent_of == {"HotelGuest": "Guest", "Guest": "Person"}
@@ -175,16 +175,16 @@ async def test_fetch_parent_map_merges_edges_across_layers(resolver, mock_neptun
     stack = LayerStack(TENANT_GRAPH, entitled=True)
     mock_neptune.query.return_value = _bindings([
         # Tenant graph: tenant leaf under a PUBLIC-layer parent (cross-layer edge).
-        {"child": "https://cograph.tech/types/HotelGuest",
-         "parent": "https://cograph.tech/types/public/Guest",
+        {"child": "https://graph.onta.sh/types/HotelGuest",
+         "parent": "https://graph.onta.sh/types/public/Guest",
          "graph": TENANT_GRAPH},
         # Enhanced graph: premium delta edge.
-        {"child": "https://cograph.tech/types/x/VipGuest",
-         "parent": "https://cograph.tech/types/public/Guest",
+        {"child": "https://graph.onta.sh/types/x/VipGuest",
+         "parent": "https://graph.onta.sh/types/public/Guest",
          "graph": enhanced_graph_uri()},
         # Public graph: universal edge.
-        {"child": "https://cograph.tech/types/public/Guest",
-         "parent": "https://cograph.tech/types/public/Person",
+        {"child": "https://graph.onta.sh/types/public/Guest",
+         "parent": "https://graph.onta.sh/types/public/Person",
          "graph": public_graph_uri()},
     ])
     parent_of = await resolver._fetch_parent_map(TENANT_GRAPH, layer_stack=stack)
@@ -204,15 +204,15 @@ async def test_fetch_parent_map_tenant_edge_shadows_lower_layers(resolver, mock_
     """Duplicate child keys: Tenant > Enhanced > Public wins (shadowing)."""
     stack = LayerStack(TENANT_GRAPH, entitled=True)
     mock_neptune.query.return_value = _bindings([
-        {"child": "https://cograph.tech/types/public/Guest",
-         "parent": "https://cograph.tech/types/public/Person",
+        {"child": "https://graph.onta.sh/types/public/Guest",
+         "parent": "https://graph.onta.sh/types/public/Person",
          "graph": public_graph_uri()},
-        {"child": "https://cograph.tech/types/x/Guest",
-         "parent": "https://cograph.tech/types/x/Contact",
+        {"child": "https://graph.onta.sh/types/x/Guest",
+         "parent": "https://graph.onta.sh/types/x/Contact",
          "graph": enhanced_graph_uri()},
         # Tenant redefines Guest's parent — must win regardless of row order.
-        {"child": "https://cograph.tech/types/Guest",
-         "parent": "https://cograph.tech/types/Customer",
+        {"child": "https://graph.onta.sh/types/Guest",
+         "parent": "https://graph.onta.sh/types/Customer",
          "graph": TENANT_GRAPH},
     ])
     parent_of = await resolver._fetch_parent_map(TENANT_GRAPH, layer_stack=stack)
@@ -223,11 +223,11 @@ async def test_fetch_parent_map_tenant_edge_shadows_lower_layers(resolver, mock_
 async def test_fetch_parent_map_enhanced_shadows_public(resolver, mock_neptune):
     stack = LayerStack(TENANT_GRAPH, entitled=True)
     mock_neptune.query.return_value = _bindings([
-        {"child": "https://cograph.tech/types/x/Guest",
-         "parent": "https://cograph.tech/types/x/Contact",
+        {"child": "https://graph.onta.sh/types/x/Guest",
+         "parent": "https://graph.onta.sh/types/x/Contact",
          "graph": enhanced_graph_uri()},
-        {"child": "https://cograph.tech/types/public/Guest",
-         "parent": "https://cograph.tech/types/public/Person",
+        {"child": "https://graph.onta.sh/types/public/Guest",
+         "parent": "https://graph.onta.sh/types/public/Person",
          "graph": public_graph_uri()},
     ])
     parent_of = await resolver._fetch_parent_map(TENANT_GRAPH, layer_stack=stack)
@@ -255,7 +255,7 @@ async def test_fetch_parent_map_layer_aware_error_degrades(resolver, mock_neptun
 def test_rewriter_leaves_graph_scoping_untouched():
     q = (
         f"SELECT ?h FROM <{TENANT_GRAPH}>\n"
-        "WHERE { ?h a <https://cograph.tech/types/Hotel> . }"
+        "WHERE { ?h a <https://graph.onta.sh/types/Hotel> . }"
     )
     out = rewrite_type_predicate_to_closure(q)
     # Predicate upgraded...
@@ -270,7 +270,7 @@ def test_rewriter_composes_with_layer_from_clauses():
     stack = LayerStack(TENANT_GRAPH, entitled=True)
     q = (
         f"SELECT ?h FROM <{TENANT_GRAPH}>\n"
-        "WHERE { ?h a <https://cograph.tech/types/Hotel> . }"
+        "WHERE { ?h a <https://graph.onta.sh/types/Hotel> . }"
     )
     out = add_layer_from_clauses(rewrite_type_predicate_to_closure(q), stack.visible_graph_uris())
     assert "subClassOf>*" in out
@@ -333,8 +333,8 @@ async def test_ask_with_layer_graph_uris_widens_generated_query(mock_neptune):
     stack = LayerStack(TENANT_GRAPH, entitled=False)
     generated = (
         f"SELECT ?name FROM <{TENANT_GRAPH}> WHERE {{ "
-        f"?h a <https://cograph.tech/types/Hotel> . "
-        f"?h <https://cograph.tech/types/Hotel/attrs/name> ?name }}"
+        f"?h a <https://graph.onta.sh/types/Hotel> . "
+        f"?h <https://graph.onta.sh/types/Hotel/attrs/name> ?name }}"
     )
     with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = _mock_llm_message(generated)

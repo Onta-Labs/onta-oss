@@ -579,7 +579,7 @@ async def test_enrichment_executor_persists_live_stage_trace():
                 {
                     "e": {
                         "type": "uri",
-                        "value": "https://cograph.tech/entities/Product/p1",
+                        "value": "https://graph.onta.sh/entities/Product/p1",
                     },
                     "label": {"type": "literal", "value": "Widget"},
                     "vals": {"type": "literal", "value": ""},

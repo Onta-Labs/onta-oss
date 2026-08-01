@@ -71,8 +71,10 @@ filter returns nothing) and is a no-op. ``list_explode`` returns
 ``{nodes_created, edges_added, literals_promoted}``.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, ONTO_PRED_PREFIX
 import re
 
 import structlog
@@ -101,9 +103,7 @@ logger = structlog.stdlib.get_logger("cograph.normalization.execute")
 RDF_TYPE = f"{RDF}#type"
 RDFS_LABEL = f"{RDFS}#label"
 RDFS_RANGE = f"{RDFS}#range"
-ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 ATTRS_INFIX = "/attrs/"
-ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
 NAME_ATTR_SUFFIX = "/attrs/name"
 
 # Slug-aware delimiters: the slug "__" is the de-slugified form of a source-list
@@ -658,7 +658,7 @@ async def _sweep_orphan_composites(
 
 
 def _target_type_from_type_uri(t_uri: str) -> str | None:
-    """``https://cograph.tech/types/<TargetType>`` → ``<TargetType>``."""
+    """``https://graph.onta.sh/types/<TargetType>`` → ``<TargetType>``."""
     prefix = TYPE_URI_PREFIX
     if not t_uri.startswith(prefix):
         return None

@@ -1,3 +1,4 @@
+from cograph_client.graph.iri import GRAPH_URI_PREFIX, IRI_BASE
 import re
 
 # Characters that CANNOT appear in a well-formed absolute IRI reference and would
@@ -75,7 +76,7 @@ def is_valid_tenant_id(tenant_id: object) -> bool:
     So the rule is exactly "cannot break out of, or repoint, the IRI":
 
     * no IRIREF-illegal character (see :func:`is_iri_safe_segment`) — a ``>``
-      closes ``<https://cograph.tech/graphs/{tenant}>`` early and the remainder
+      closes ``<https://graph.onta.sh/graphs/{tenant}>`` early and the remainder
       becomes SPARQL. On the ontology/ingest WRITE paths that remainder lands in
       a ``client.update``, where ``;`` starts a second operation: ``DROP ALL``
       needs no IRI of its own and destroys every graph in the store;
@@ -113,7 +114,6 @@ def require_valid_tenant_id(tenant_id: object) -> str:
 # not a URI, and used to spell it ``tenant_graph_uri("")`` — an idiom that
 # silently depends on the builder accepting a name it should reject. Asking for
 # the prefix directly is both honest and unbreakable by validation.
-GRAPH_URI_PREFIX = "https://cograph.tech/graphs/"
 
 
 def tenant_graph_uri(tenant_id: str) -> str:
@@ -261,7 +261,7 @@ def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
     ONTA-422: the ``tenant_id`` half is validated for the same reason. It was
     the unchecked half of this two-line f-string — a caller-supplied tenant in
     open-access mode breaks out of the IRI exactly as a ``kg_name`` did.
-    """
+    f"""
     tenant_id = require_valid_tenant_id(tenant_id)
     if not is_valid_kg_name(kg_name):
         raise InvalidKGName(
@@ -276,11 +276,11 @@ def kg_graph_uri(tenant_id: str, kg_name: str) -> str:
 # (``kg_writer.ensure_kg_registered``, which covers CLI / MCP / agent writers);
 # read by ``list_kgs`` and by the ONTA-413 existence probe. Canonical here so the
 # three producers/consumers cannot drift on the URI or predicate shape.
-KG_NAME_PRED = "https://cograph.tech/onto/kg_name"
+KG_NAME_PRED = f"{IRI_BASE}/onto/kg_name"
 
 
 def kg_meta_uri(tenant_id: str, kg_name: str) -> str:
-    """Subject URI of a KG's registration record in the tenant base graph.
+    """Subject URI of a KGf's registration record in the tenant base graph.
 
     The ``kg_name`` half stays deliberately UNVALIDATED (see the note in
     ``api/routes/knowledge_graphs.py``: callers branch on ``is_valid_kg_name``
@@ -290,7 +290,7 @@ def kg_meta_uri(tenant_id: str, kg_name: str) -> str:
     ``TenantContext``, so there is no listing to fail soft for and nothing to
     gain from emitting an IRI that cannot parse.
     """
-    return f"https://cograph.tech/kgs/{require_valid_tenant_id(tenant_id)}/{kg_name}"
+    return f"{IRI_BASE}/kgs/{require_valid_tenant_id(tenant_id)}/{kg_name}"
 
 
 # The kg segment is anchored to a single path component ([^/]+, no slashes) so a
@@ -299,7 +299,7 @@ def kg_meta_uri(tenant_id: str, kg_name: str) -> str:
 # the docstring contract). KG names can't contain "/" (KGCreate enforces
 # ^[a-zA-Z0-9_-]+$), so this never rejects a real KG.
 _KG_GRAPH_RE = re.compile(
-    r"^https://cograph\.tech/graphs/(?P<tenant>[^/]+)/kg/(?P<kg>[^/]+)$"
+    rf"^{re.escape(IRI_BASE)}/graphs/(?P<tenant>[^/]+)/kg/(?P<kg>[^/]+)$"
 )
 
 
@@ -650,7 +650,7 @@ def resolve_function_attachment(
         return detected, raw
 
     # Path-shaped (contains '/') or bare name. Mint under types/ and classify.
-    candidate = f"https://cograph.tech/types/{raw}"
+    candidate = f"{IRI_BASE}/types/{raw}"
     detected = layer_from_uri(candidate)
     if detected is Layer.PUBLIC or detected is Layer.ENHANCED:
         if layer is not None and layer is not detected:
@@ -716,18 +716,18 @@ def register_function_triple(
     if resolved_layer is Layer.ENHANCED:
         graph_uri = enhanced_graph_uri()
 
-    func_uri = f"https://cograph.tech/functions/{function_name}"
+    func_uri = f"{IRI_BASE}/functions/{function_name}"
     triples = [
-        (func_uri, "https://cograph.tech/onto/attachedTo", type_uri_val),
-        (func_uri, "https://cograph.tech/onto/endpointUrl", endpoint_url),
-        (func_uri, "https://cograph.tech/onto/name", function_name),
+        (func_uri, f"{IRI_BASE}/onto/attachedTo", type_uri_val),
+        (func_uri, f"{IRI_BASE}/onto/endpointUrl", endpoint_url),
+        (func_uri, f"{IRI_BASE}/onto/name", function_name),
     ]
     if description:
-        triples.append((func_uri, "https://cograph.tech/onto/description", description))
+        triples.append((func_uri, f"{IRI_BASE}/onto/description", description))
     return insert_triples(graph_uri, triples)
 
 
-BATCH_PREDICATE = "https://cograph.tech/onto/batch_id"
+BATCH_PREDICATE = f"{IRI_BASE}/onto/batch_id"
 
 
 def delete_batch_query(graph_uri: str, batch_id: str) -> str:
@@ -768,9 +768,9 @@ def list_functions_query(
     return (
         f"SELECT ?name ?type ?endpoint ?desc FROM <{graph_uri}>\n"
         f"WHERE {{\n"
-        f"  ?func <https://cograph.tech/onto/name> ?name .\n"
-        f"  ?func <https://cograph.tech/onto/attachedTo> ?type .\n"
-        f"  ?func <https://cograph.tech/onto/endpointUrl> ?endpoint .\n"
-        f"  OPTIONAL {{ ?func <https://cograph.tech/onto/description> ?desc }}\n"
+        f"  ?func <{IRI_BASE}/onto/name> ?name .\n"
+        f"  ?func <{IRI_BASE}/onto/attachedTo> ?type .\n"
+        f"  ?func <{IRI_BASE}/onto/endpointUrl> ?endpoint .\n"
+        f"  OPTIONAL {{ ?func <{IRI_BASE}/onto/description> ?desc }}\n"
         f"{type_filter}}}"
     )

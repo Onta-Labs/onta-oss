@@ -37,7 +37,7 @@ validity node carrying a ``valid_to``.
 
 For a fact ``(s, p, o)`` the validity graph holds, when it is closed::
 
-    <https://cograph.tech/validity/int/{sha1(s|p|o)}>
+    <https://graph.onta.sh/validity/int/{sha1(s|p|o)}>
         val:subject      <s> ;
         val:predicate    <p> ;
         val:object       o ;                       # literal or URI, as written
@@ -64,6 +64,9 @@ concern the same way those do.
 
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE, VALIDITY_NS
+
+
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
@@ -76,7 +79,6 @@ from cograph_client.graph.queries import _escape_value, delete_node_predicates_q
 # predicates live in a separate companion graph and never appear on the instance
 # graph, but classifying the namespace internal makes it structurally impossible
 # for a validity predicate to be surfaced as a domain attribute if one ever did).
-VALIDITY_NS = "https://cograph.tech/validity/"
 
 VAL_SUBJECT = f"{VALIDITY_NS}subject"
 VAL_PREDICATE = f"{VALIDITY_NS}predicate"

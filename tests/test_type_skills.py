@@ -63,7 +63,7 @@ def _skill(slug="notes", type_name="Person", layer=Layer.TENANT, **kw):
 def _stack(entitled=False):
     from cograph_client.graph.layers import LayerStack
 
-    return LayerStack(tenant_graph_uri="https://cograph.tech/graphs/t1", entitled=entitled)
+    return LayerStack(tenant_graph_uri="https://graph.onta.sh/graphs/t1", entitled=entitled)
 
 
 # --------------------------------------------------------------------------- #

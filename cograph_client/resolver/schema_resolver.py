@@ -7,8 +7,10 @@ The resolver enforces ontology consistency: type matching, attribute resolution,
 schema-on-write validation, and Option D coexistence for structure promotion.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import asyncio
 import json
 import re
@@ -2261,7 +2263,7 @@ class SchemaResolver:
                         # ER fires on the subtype.
                         er_config = config_for_with_hierarchy(resolved_type, parent_of)
                         er_applies = er_config is not None
-                        type_uri = f"https://cograph.tech/types/{resolved_type}"
+                        type_uri = f"{IRI_BASE}/types/{resolved_type}"
                         decision = await self._er.find_match(
                             entity, resolved_type, type_uri, instance_graph,
                             config=er_config, parent_of=parent_of,
@@ -2332,7 +2334,7 @@ class SchemaResolver:
             logger.info("er_merged_entities", count=er_merged_count, total=len(extraction.entities))
 
         # ONTA-250 join-by-exact-key: rebind each row-entity whose key value
-        # matches an EXISTING entity onto that node's URI, so the existence check
+        # matches an EXISTING entity onto that nodef's URI, so the existence check
         # below sees a duplicate (Pass 2 merges attributes, skips a second
         # rdf:type/label) instead of minting a parallel node. Runs AFTER ER so a
         # caller-declared exact key wins over signal-based minting. Returns the ids
@@ -2477,7 +2479,7 @@ class SchemaResolver:
                             existing_preds.add(attr_name)
                 canonical_pred = normalize_predicate(rel.predicate, existing_preds)
 
-                predicate = f"https://cograph.tech/onto/{canonical_pred}"
+                predicate = f"{IRI_BASE}/onto/{canonical_pred}"
                 rel_triples.append((source_uri, predicate, target_uri))
 
                 # Register relationship as object property in ontology
@@ -3025,7 +3027,7 @@ class SchemaResolver:
             # time by the REASON pass + name-blind auto tier) as textKind
             # ontology markers on the resolved attribute URIs. No re-decision
             # here — a legacy/hand-written mapping without text_kind writes no
-            # markers (candidacy undecided; ONTA-181's reconciler-side
+            # markers (candidacy undecided; ONTA-181f's reconciler-side
             # heuristic covers those attributes later).
             await self._apply_mapping_text_markers(
                 mapping, resolved_by_decl_type, graph_uri, result,
@@ -3050,7 +3052,7 @@ class SchemaResolver:
                                 existing_preds.add(attr_name)
                     canonical_pred = normalize_predicate(rel.predicate, existing_preds)
 
-                    predicate = f"https://cograph.tech/onto/{canonical_pred}"
+                    predicate = f"{IRI_BASE}/onto/{canonical_pred}"
                     rel_triples.append((source_uri, predicate, target_uri))
 
                     # Register relationship as object property in ontology
@@ -3688,7 +3690,7 @@ class SchemaResolver:
                 attrs[type_label] = {}
             if row.get("attrLabel"):
                 range_str = row.get("range", "")
-                type_uri_prefix = "https://cograph.tech/types/"
+                type_uri_prefix = "https://graph.onta.sh/types/"
                 if range_str.startswith(type_uri_prefix):
                     # Range is a reference to another ontology type
                     datatype = range_str[len(type_uri_prefix):]
@@ -4343,7 +4345,7 @@ class SchemaResolver:
         the shared Global-Public layer and, on majority judge approval, write
         a governed copy there with provenance + changelog.
 
-        The tenant-layer write has ALREADY happened (today's behavior — the
+        The tenant-layer write has ALREADY happened (todayf's behavior — the
         tenant uses the type immediately whatever the verdict); approval only
         ADDS a Public-layer copy.
 
@@ -4360,7 +4362,7 @@ class SchemaResolver:
             return
         from cograph_client.resolver.governance import TypeProposal
         try:
-            graphs_prefix = "https://cograph.tech/graphs/"
+            graphs_prefix = f"{IRI_BASE}/graphs/"
             tenant_id = (
                 graph_uri[len(graphs_prefix):] if graph_uri.startswith(graphs_prefix) else graph_uri
             )
@@ -4559,7 +4561,7 @@ class SchemaResolver:
                     p_uri = f"{_entity_uri(ptype, entity.id)}-{ptype.lower()}"
                     promoted_entities[ptype] = p_uri
                     triples_to_insert.append((p_uri, rdf_type, type_uri(ptype)))
-                    rel_pred = f"https://cograph.tech/onto/has_{ptype.lower()}"
+                    rel_pred = f"https://graph.onta.sh/onto/has_{ptype.lower()}"
                     triples_to_insert.append((entity_uri, rel_pred, p_uri))
                     # Post-write housekeeping must re-embed / re-stat the promoted
                     # node's TYPE too (Part 3), not just the subject type — else a
@@ -4745,7 +4747,7 @@ class SchemaResolver:
                 # NOT the instance edge. Matches enrichment
                 # (executor._instance_triples_for_value) and the sibling has_<ptype>
                 # promotion edge above — both on onto/<leaf>.
-                onto_pred = f"https://cograph.tech/onto/{resolved.name}"
+                onto_pred = f"https://graph.onta.sh/onto/{resolved.name}"
                 triples_to_insert.append((entity_uri, onto_pred, target_uri))
                 attr_facts.append((entity_uri, onto_pred, target_uri))
                 # Materialize the target as a FIRST-CLASS node: emit its rdf:type +
@@ -4856,9 +4858,9 @@ class SchemaResolver:
         # identical stamp (idempotent) instead of a fresh wall-clock nonce;
         # legacy/CSV callers pass None → wall-clock now, unchanged.
         now = (observed_at or datetime.now(timezone.utc)).isoformat()
-        triples_to_insert.append((entity_uri, "https://cograph.tech/onto/ingested_at", now))
+        triples_to_insert.append((entity_uri, "https://graph.onta.sh/onto/ingested_at", now))
         if source:
-            triples_to_insert.append((entity_uri, "https://cograph.tech/onto/source", source))
+            triples_to_insert.append((entity_uri, "https://graph.onta.sh/onto/source", source))
         if batch_id:
             triples_to_insert.append((entity_uri, BATCH_PREDICATE, batch_id))
 

@@ -260,7 +260,7 @@ async def test_non_kg_graph_falls_through():
     # The tenant ontology graph is not a per-KG instance graph → no routing.
     res = await _run(pipe, "venues within 1km of here",
                      _intent_json(anchor_lon=1, anchor_lat=2, radius_m=1000),
-                     data_graph="https://cograph.tech/graphs/demo-tenant")
+                     data_graph="https://graph.onta.sh/graphs/demo-tenant")
     assert res is None
 
 

@@ -30,8 +30,10 @@ Boundary: OSS. Imports only stdlib + ``cograph_client.*`` — never ``from cogra
 No network anywhere in this module.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 from dataclasses import dataclass, field, replace
 from typing import Iterable, Mapping, Optional, Sequence
 
@@ -61,12 +63,12 @@ _CONDITIONAL_REASON = (
     "Delta reveals the identity decision)"
 )
 
-# `owl:sameAs` and this repo's instance-edge equivalent (pipeline/mutations.SAME_AS
-# == "https://cograph.tech/onto/sameAs"). A merge writes `(canonical, sameAs, merged)`
+# `owl:sameAs` and this repof's instance-edge equivalent (pipeline/mutations.SAME_AS
+# == f"https://graph.onta.sh/onto/sameAs"). A merge writes `(canonical, sameAs, merged)`
 # on the instance graph, so its object resolves to its subject. Detected by value here
 # (not imported from pipeline/mutations) to keep this module's import graph minimal and
 # free of the write layer it must never touch.
-_ONTO_SAME_AS = "https://cograph.tech/onto/sameAs"
+_ONTO_SAME_AS = f"{IRI_BASE}/onto/sameAs"
 _OWL_SAME_AS = "http://www.w3.org/2002/07/owl#sameAs"
 
 

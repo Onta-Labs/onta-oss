@@ -182,7 +182,7 @@ async def test_persist_verdict_companion_on_internal_predicate_via_shared_minter
     assert len(result.verified_facts) == 3
 
     triples = await _instance_triples(neptune)
-    entity_uri = "https://cograph.tech/entities/Physician/dr-alice"
+    entity_uri = "https://graph.onta.sh/entities/Physician/dr-alice"
 
     # (i) The verdict companion for each WRITTEN fact (PASSED + TRANSFORMED) is
     #     present with the SUPPORTED verdict, keyed by (subject, Type, attribute).
@@ -271,7 +271,7 @@ from cograph_client.graph.validity import (  # noqa: E402
     build_open_interval_triples,
 )
 
-ACME = "https://cograph.tech/entities/Company/acme"
+ACME = "https://graph.onta.sh/entities/Company/acme"
 HQ_PRED = attr_uri("Company", "headquarters")  # types/Company/attrs/headquarters
 FOUNDED_PRED = attr_uri("Company", "founded")
 
@@ -367,5 +367,5 @@ def test_companion_predicate_for_reverses_only_literal_attr_predicates():
     assert companion_predicate_for(HQ_PRED, TRUTH_VERDICT_SUFFIX) == attr_provenance_companion_uri(
         "Company", "headquarters", TRUTH_VERDICT_SUFFIX
     )
-    assert companion_predicate_for("https://cograph.tech/onto/hasCEO", TRUTH_VERDICT_SUFFIX) is None
-    assert companion_predicate_for("https://cograph.tech/onto/ingested_at", TRUTH_VERDICT_SUFFIX) is None
+    assert companion_predicate_for("https://graph.onta.sh/onto/hasCEO", TRUTH_VERDICT_SUFFIX) is None
+    assert companion_predicate_for("https://graph.onta.sh/onto/ingested_at", TRUTH_VERDICT_SUFFIX) is None

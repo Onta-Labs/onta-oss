@@ -1095,7 +1095,7 @@ async def test_run_logs_resolved_write_target(monkeypatch):
         await cap.execute(_ctx_with_store(store), step)
         await spawned["task"]
 
-    want_graph = "https://cograph.tech/graphs/demo-tenant/kg/models"
+    want_graph = "https://graph.onta.sh/graphs/demo-tenant/kg/models"
     start = [e for e in logs if e.get("event") == "web_ingest_run_start"]
     assert start, "run must log its write target up front"
     assert start[0]["kg_name"] == "models"

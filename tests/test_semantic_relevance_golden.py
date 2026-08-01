@@ -94,7 +94,7 @@ def _vec(topics: dict[str, float]) -> list[float]:
 def _doc_triples(doc: dict) -> list[tuple[str, str, str]]:
     """The triples ingestion would write for one speech entity — typed, with a
     name for the denormalized label and the marked ``transcript`` text."""
-    type_uri = f"https://cograph.tech/types/{doc['type']}"
+    type_uri = f"https://graph.onta.sh/types/{doc['type']}"
     attr_base = f"{type_uri}/attrs"
     return [
         (doc["entity_uri"], RDF_TYPE, type_uri),

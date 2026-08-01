@@ -46,16 +46,16 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 
-ORGANIZATION = "https://cograph.tech/types/Organization"
-CLINIC = "https://cograph.tech/types/Clinic"
+ORGANIZATION = "https://graph.onta.sh/types/Organization"
+CLINIC = "https://graph.onta.sh/types/Clinic"
 CLINIC1 = entity_uri("Clinic", "sunrise")
 
-COMPANY = "https://cograph.tech/types/Company"
-HAS_CEO = "https://cograph.tech/onto/hasCEO"
-LEGAL_NAME = "https://cograph.tech/onto/legalName"
-HAS_PRODUCT = "https://cograph.tech/onto/hasProduct"
-OWNER = "https://cograph.tech/onto/owner"
-EMPLOYEE_COUNT = "https://cograph.tech/onto/employeeCount"
+COMPANY = "https://graph.onta.sh/types/Company"
+HAS_CEO = "https://graph.onta.sh/onto/hasCEO"
+LEGAL_NAME = "https://graph.onta.sh/onto/legalName"
+HAS_PRODUCT = "https://graph.onta.sh/onto/hasProduct"
+OWNER = "https://graph.onta.sh/onto/owner"
+EMPLOYEE_COUNT = "https://graph.onta.sh/onto/employeeCount"
 XSD_INT = "http://www.w3.org/2001/XMLSchema#integer"
 
 # The exact bidirectional walk the rewriter injects (full-URI form of the ticket's
@@ -120,7 +120,7 @@ def test_non_entity_uris_are_left_untouched():
         f"SELECT ?x WHERE {{ GRAPH <{INSTANCE_GRAPH}> {{ "
         f"?x <{RDF_TYPE}>/<{RDFS_SUBCLASSOF}>* <{ORGANIZATION}> . "
         f"?x <{OWNER}> ?o . "
-        f"?x <https://cograph.tech/types/Clinic/attrs/name> ?n "
+        f"?x <https://graph.onta.sh/types/Clinic/attrs/name> ?n "
         f"}} }}"
     )
     assert rewrite_entity_ref_to_sameas_closure(q) == q

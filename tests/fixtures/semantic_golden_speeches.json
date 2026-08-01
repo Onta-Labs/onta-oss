@@ -27,7 +27,7 @@
   "docs": [
     {
       "id": "solar",
-      "entity_uri": "https://cograph.tech/entities/Speech/solar-subsidies-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/solar-subsidies-2025",
       "kg": "parliament-2025",
       "type": "Speech",
       "label": "Margaret Okafor on rooftop solar subsidies",
@@ -36,7 +36,7 @@
     },
     {
       "id": "wind",
-      "entity_uri": "https://cograph.tech/entities/Speech/offshore-wind-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/offshore-wind-2025",
       "kg": "parliament-2025",
       "type": "Speech",
       "label": "Tomas Brandt on offshore wind manufacturing",
@@ -45,7 +45,7 @@
     },
     {
       "id": "hospital",
-      "entity_uri": "https://cograph.tech/entities/Debate/ae-waiting-times-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Debate/ae-waiting-times-2025",
       "kg": "parliament-2025",
       "type": "Debate",
       "label": "Debate on accident and emergency waiting times",
@@ -54,7 +54,7 @@
     },
     {
       "id": "clinics",
-      "entity_uri": "https://cograph.tech/entities/Speech/rural-clinics-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/rural-clinics-2025",
       "kg": "parliament-2025",
       "type": "Speech",
       "label": "Eleri Vaughan on rural clinic closures",
@@ -63,7 +63,7 @@
     },
     {
       "id": "rail",
-      "entity_uri": "https://cograph.tech/entities/Speech/pennine-electrification-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/pennine-electrification-2025",
       "kg": "parliament-2025",
       "type": "Speech",
       "label": "Ade Fashola on Pennine line electrification",
@@ -72,7 +72,7 @@
     },
     {
       "id": "school",
-      "entity_uri": "https://cograph.tech/entities/Debate/school-funding-formula-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Debate/school-funding-formula-2025",
       "kg": "parliament-2025",
       "type": "Debate",
       "label": "Debate on the national school funding formula",
@@ -81,7 +81,7 @@
     },
     {
       "id": "defense",
-      "entity_uri": "https://cograph.tech/entities/Speech/frigate-procurement-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/frigate-procurement-2025",
       "kg": "parliament-2025",
       "type": "Speech",
       "label": "Iain Craddock on frigate procurement",
@@ -90,7 +90,7 @@
     },
     {
       "id": "grain",
-      "entity_uri": "https://cograph.tech/entities/Debate/grain-tariffs-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Debate/grain-tariffs-2025",
       "kg": "parliament-2025",
       "type": "Debate",
       "label": "Debate on grain tariffs and the eastern growers",
@@ -99,7 +99,7 @@
     },
     {
       "id": "housing",
-      "entity_uri": "https://cograph.tech/entities/Speech/social-housing-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/social-housing-2025",
       "kg": "parliament-2025",
       "type": "Speech",
       "label": "Priya Shankar on the housing waiting list",
@@ -108,7 +108,7 @@
     },
     {
       "id": "bus",
-      "entity_uri": "https://cograph.tech/entities/Debate/rural-bus-network-2025",
+      "entity_uri": "https://graph.onta.sh/entities/Debate/rural-bus-network-2025",
       "kg": "parliament-2025",
       "type": "Debate",
       "label": "Debate on the rural bus network",
@@ -117,7 +117,7 @@
     },
     {
       "id": "solar24",
-      "entity_uri": "https://cograph.tech/entities/Speech/solar-planning-2024",
+      "entity_uri": "https://graph.onta.sh/entities/Speech/solar-planning-2024",
       "kg": "parliament-2024",
       "type": "Speech",
       "label": "Margaret Okafor on solar planning reform (2024)",
@@ -126,7 +126,7 @@
     },
     {
       "id": "health24",
-      "entity_uri": "https://cograph.tech/entities/Debate/winter-pressures-2024",
+      "entity_uri": "https://graph.onta.sh/entities/Debate/winter-pressures-2024",
       "kg": "parliament-2024",
       "type": "Debate",
       "label": "Debate on winter pressures in the health service (2024)",
@@ -139,21 +139,21 @@
       "id": "exact-solar-tariff-lottery",
       "class": "exact",
       "query": "the feed-in tariff has become a lottery of postcodes",
-      "expect": "https://cograph.tech/entities/Speech/solar-subsidies-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/solar-subsidies-2025",
       "topics": {"offtopic": 1.0}
     },
     {
       "id": "exact-hospital-trolley",
       "class": "exact",
       "query": "twelve hours on a trolley in a corridor is not care",
-      "expect": "https://cograph.tech/entities/Debate/ae-waiting-times-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/ae-waiting-times-2025",
       "topics": {"offtopic": 1.0}
     },
     {
       "id": "exact-housing-mould-second-chunk",
       "class": "exact",
       "query": "black mould creeping across the ceilings of homes that we ourselves own",
-      "expect": "https://cograph.tech/entities/Speech/social-housing-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/social-housing-2025",
       "topics": {"offtopic": 1.0},
       "from_second_chunk": true
     },
@@ -161,21 +161,21 @@
       "id": "exact-defense-over-budget",
       "class": "exact",
       "query": "seven years late and a billion pounds over budget",
-      "expect": "https://cograph.tech/entities/Speech/frigate-procurement-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/frigate-procurement-2025",
       "topics": {"offtopic": 1.0}
     },
     {
       "id": "exact-school-formula",
       "class": "exact",
       "query": "the funding formula punishes exactly the schools it was designed to protect",
-      "expect": "https://cograph.tech/entities/Debate/school-funding-formula-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/school-funding-formula-2025",
       "topics": {"offtopic": 1.0}
     },
     {
       "id": "exact-solar-substation-second-chunk",
       "class": "exact",
       "query": "shared batteries in every substation in Grellford",
-      "expect": "https://cograph.tech/entities/Speech/solar-subsidies-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/solar-subsidies-2025",
       "topics": {"offtopic": 1.0},
       "from_second_chunk": true
     },
@@ -183,28 +183,28 @@
       "id": "para-solar-sunlight",
       "class": "paraphrase",
       "query": "harnessing sunlight on household rooftops to cut electricity bills",
-      "expect": "https://cograph.tech/entities/Speech/solar-subsidies-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/solar-subsidies-2025",
       "topics": {"energy": 1.0, "housing": 0.3}
     },
     {
       "id": "para-hospital-backlog",
       "class": "paraphrase",
       "query": "patients deteriorating while they queue for operations",
-      "expect": "https://cograph.tech/entities/Debate/ae-waiting-times-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/ae-waiting-times-2025",
       "topics": {"health": 1.0}
     },
     {
       "id": "para-rail-wiring",
       "class": "paraphrase",
       "query": "modernising railway lines with overhead electric wiring",
-      "expect": "https://cograph.tech/entities/Speech/pennine-electrification-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/pennine-electrification-2025",
       "topics": {"transport": 1.0, "energy": 0.3}
     },
     {
       "id": "para-grain-levies",
       "class": "paraphrase",
       "query": "cereal levies",
-      "expect": "https://cograph.tech/entities/Debate/grain-tariffs-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/grain-tariffs-2025",
       "topics": {"agriculture": 1.0},
       "dense_only": true
     },
@@ -212,14 +212,14 @@
       "id": "para-housing-affordable",
       "class": "paraphrase",
       "query": "families priced out of affordable homes",
-      "expect": "https://cograph.tech/entities/Speech/social-housing-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/social-housing-2025",
       "topics": {"housing": 1.0, "health": 0.25}
     },
     {
       "id": "para-clinics-physicians",
       "class": "paraphrase",
       "query": "countryside physicians shutting practices",
-      "expect": "https://cograph.tech/entities/Speech/rural-clinics-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/rural-clinics-2025",
       "topics": {"health": 0.85, "agriculture": 0.35},
       "dense_only": true
     },
@@ -227,7 +227,7 @@
       "id": "para-defense-overspend",
       "class": "paraphrase",
       "query": "warship purchasing overspend",
-      "expect": "https://cograph.tech/entities/Speech/frigate-procurement-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/frigate-procurement-2025",
       "topics": {"defense": 1.0},
       "dense_only": true
     },
@@ -235,14 +235,14 @@
       "id": "para-school-overcrowding",
       "class": "paraphrase",
       "query": "overcrowded classrooms and stretched teacher budgets",
-      "expect": "https://cograph.tech/entities/Debate/school-funding-formula-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/school-funding-formula-2025",
       "topics": {"education": 1.0}
     },
     {
       "id": "filter-type-hospital-debate",
       "class": "filtered",
       "query": "accident and emergency waiting times",
-      "expect": "https://cograph.tech/entities/Debate/ae-waiting-times-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/ae-waiting-times-2025",
       "topics": {"health": 1.0},
       "type": "Debate"
     },
@@ -250,7 +250,7 @@
       "id": "filter-type-clinics-speech",
       "class": "filtered",
       "query": "rural village surgery closures",
-      "expect": "https://cograph.tech/entities/Speech/rural-clinics-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/rural-clinics-2025",
       "topics": {"health": 0.85, "agriculture": 0.35},
       "type": "Speech"
     },
@@ -258,7 +258,7 @@
       "id": "filter-kg-solar-2025",
       "class": "filtered",
       "query": "rooftop solar subsidy scheme",
-      "expect": "https://cograph.tech/entities/Speech/solar-subsidies-2025",
+      "expect": "https://graph.onta.sh/entities/Speech/solar-subsidies-2025",
       "topics": {"energy": 1.0, "housing": 0.3},
       "kg": "parliament-2025"
     },
@@ -266,7 +266,7 @@
       "id": "filter-kg-solar-2024",
       "class": "filtered",
       "query": "rooftop solar planning rules",
-      "expect": "https://cograph.tech/entities/Speech/solar-planning-2024",
+      "expect": "https://graph.onta.sh/entities/Speech/solar-planning-2024",
       "topics": {"energy": 0.9, "housing": 0.2},
       "kg": "parliament-2024"
     },
@@ -274,7 +274,7 @@
       "id": "filter-type-bus-debate",
       "class": "filtered",
       "query": "rural bus routes for schoolchildren",
-      "expect": "https://cograph.tech/entities/Debate/rural-bus-network-2025",
+      "expect": "https://graph.onta.sh/entities/Debate/rural-bus-network-2025",
       "topics": {"transport": 0.85, "education": 0.25},
       "type": "Debate"
     },
@@ -282,7 +282,7 @@
       "id": "filter-kg-ambulances-2024",
       "class": "filtered",
       "query": "ambulances queuing outside hospitals",
-      "expect": "https://cograph.tech/entities/Debate/winter-pressures-2024",
+      "expect": "https://graph.onta.sh/entities/Debate/winter-pressures-2024",
       "topics": {"health": 0.9, "transport": 0.15},
       "kg": "parliament-2024"
     }

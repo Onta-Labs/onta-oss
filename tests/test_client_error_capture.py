@@ -161,7 +161,7 @@ async def test_neptune_diagnostic_reaches_retry_feedback():
     with patch.object(pipeline_mod, "get_embedding_service", return_value=None), \
          patch.object(p, "_fetch_ontology", new=AsyncMock(return_value="ONT")), \
          patch.object(p, "_generate_sparql", new=gen):
-        result = await p.ask("list the widgets", "https://cograph.tech/graphs/t1")
+        result = await p.ask("list the widgets", "https://graph.onta.sh/graphs/t1")
 
     assert result.timing.get("attempts") == 2
     feedback = gen.call_args_list[1].kwargs.get("error_feedback", "")

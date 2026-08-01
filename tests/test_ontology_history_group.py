@@ -27,9 +27,9 @@ def _entry(
         for k in (kinds or [ChangeKind.ADD_TYPE])
     ]
     return ChangelogEntry(
-        entry_uri=f"https://cograph.tech/gov/log/{n:04d}",
+        entry_uri=f"https://graph.onta.sh/gov/log/{n:04d}",
         action=action,
-        subject="https://cograph.tech/graphs/acme",
+        subject="https://graph.onta.sh/graphs/acme",
         timestamp=ts,
         tenant_id="acme",
         actor=actor,

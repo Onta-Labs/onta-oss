@@ -50,7 +50,7 @@ from cograph_client.normalization.clean import (
 from cograph_client.resolver.models import RejectedValue, ValidatedTriple
 from cograph_client.resolver.validator import validate_triple
 
-SUBJ = "https://cograph.tech/entities/Event/e1"
+SUBJ = "https://graph.onta.sh/entities/Event/e1"
 
 
 # --------------------------------------------------------------------------- #

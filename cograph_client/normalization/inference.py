@@ -21,8 +21,10 @@ Nothing is persisted here — the route persists the returned ``suggested`` rule
 so a human can confirm them. Rules come back ranked by confidence (desc).
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, ONTO_PRED_PREFIX, TYPE_URI_PREFIX
 import json
 import os
 
@@ -37,9 +39,7 @@ from cograph_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
 logger = structlog.stdlib.get_logger("cograph.normalization.inference")
 
-ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 ATTRS_INFIX = "/attrs/"
-ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
 
 # How many independent draws to pool, and how many distinct values per draw.
 _NUM_SAMPLES = 3
@@ -254,7 +254,7 @@ async def sample_predicate_values(
     return [], "attribute"
 
 
-_TYPE_URI_PREFIX = "https://cograph.tech/types/"
+_TYPE_URI_PREFIX = TYPE_URI_PREFIX
 
 
 async def list_type_schema(
@@ -406,7 +406,7 @@ async def _list_predicates(
             continue
         seen.add(attr)
         rng = r.get("range", "")
-        kind = "relationship" if rng.startswith("https://cograph.tech/types/") else "attribute"
+        kind = "relationship" if rng.startswith(TYPE_URI_PREFIX) else "attribute"
         out.append((attr, kind))
     return out
 

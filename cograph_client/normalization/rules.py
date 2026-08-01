@@ -21,8 +21,10 @@ without any store change. All writes go through the shared escaping helpers, so
 the store is SPARQL-injection-safe like the rest of the codebase.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import json
 from datetime import datetime, timezone
 from typing import Literal, Optional
@@ -42,9 +44,9 @@ from cograph_client.graph.queries import (
 # a dedicated `…/onto/norm/<field>` predicate namespace so they never collide
 # with real ontology predicates.
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-RULE_TYPE_URI = "https://cograph.tech/types/NormalizationRule"
-RULE_ENTITY_PREFIX = "https://cograph.tech/entities/NormalizationRule/"
-NORM_NS = "https://cograph.tech/onto/norm/"
+RULE_TYPE_URI = f"{IRI_BASE}/types/NormalizationRule"
+RULE_ENTITY_PREFIX = f"{IRI_BASE}/entities/NormalizationRule/"
+NORM_NS = f"{IRI_BASE}/onto/norm/"
 
 # One predicate per scalar field. params / sample_values are JSON blobs.
 P_KG = NORM_NS + "kgName"

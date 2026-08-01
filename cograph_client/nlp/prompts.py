@@ -1,3 +1,4 @@
+from cograph_client.graph.iri import IRI_BASE
 SPARQL_GENERATION_SYSTEM = """You are a SPARQL query generator for a knowledge graph platform.
 Given a natural language question, an ontology schema, and similar working examples,
 generate a SPARQL SELECT query.
@@ -10,9 +11,9 @@ has its exact URI listed after "URI:" or "predicate URI:". Copy-paste these exac
 the question cannot be answered.
 
 URI patterns (for reference only — always use the exact URI from the schema):
-- Entity types: <https://cograph.tech/types/{TypeName}>
-- Attributes: <https://cograph.tech/types/{TypeName}/attrs/{attr_name}>
-- Relationships: <https://cograph.tech/onto/{predicate_name}>
+- Entity types: <https://graph.onta.sh/types/{TypeName}>
+- Attributes: <https://graph.onta.sh/types/{TypeName}/attrs/{attr_name}>
+- Relationships: <https://graph.onta.sh/onto/{predicate_name}>
 - rdf:type: <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>
 
 Key rules:
@@ -53,8 +54,8 @@ arithmetic, so that form silently drops every row or 400s; xsd:duration works). 
 `FILTER(?ts >= (NOW() - "P7D"^^<http://www.w3.org/2001/XMLSchema#duration>))` \
 for "last 7 days" (use "P14D" for 14 days, "PT48H" for 48 hours, etc.). Per-fact freshness stamps \
 (enrichment/discovery/lambda) live on the attr_meta METADATA namespace, deliberately NOT listed in the \
-schema: for the attribute <https://cograph.tech/types/T/attrs/a> the stamp predicate is \
-<https://cograph.tech/attr_meta/T/a/verified_at> (typed xsd:dateTime) — construct that URI from the type \
+schema: for the attribute <https://graph.onta.sh/types/T/attrs/a> the stamp predicate is \
+<https://graph.onta.sh/attr_meta/T/a/verified_at> (typed xsd:dateTime) — construct that URI from the type \
 and attribute names, bind it to ?ts (usually inside OPTIONAL is wrong here — the freshness constraint \
 means the stamp must EXIST, so use a plain triple pattern), and apply the NOW()-relative FILTER. Older \
 graphs instead DECLARE a dateTime attribute whose name ends in `_verified_at`; when the schema lists one, \
@@ -94,7 +95,7 @@ integers, "8.5"^^<http://www.w3.org/2001/XMLSchema#float> for floats. Or cast wi
 - NEVER use the `a` shorthand for rdf:type. Always write the full URI: \
 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>.
 - To select instances of a type, assert the type as a DIRECT triple: \
-`?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/TypeName>`. \
+`?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.onta.sh/types/TypeName>`. \
 Do NOT select the type via FILTER(?t = <...type...>), FILTER(?t IN (...)), or a VALUES block \
 on the type — the direct triple form returns subtype instances too.
 - LOOKUP BY NAME across a type HIERARCHY: when the question looks up an entity by \
@@ -111,7 +112,7 @@ attribute can carry the value being searched.
 The rdfs:label is set on every entity during ingestion. Do NOT use attributes from the WRONG type \
 (e.g., do not use Person/attrs/name to get a Movie name). Each type's attributes are ONLY for that type.
 - NEVER use an attribute URI from a different entity type. Movie attributes start with \
-<https://cograph.tech/types/Movie/attrs/...>, Person attributes with <https://cograph.tech/types/Person/attrs/...>. \
+<https://graph.onta.sh/types/Movie/attrs/...>, Person attributes with <https://graph.onta.sh/types/Person/attrs/...>. \
 Do not mix them.
 
 If similar working examples are provided below, follow their SPARQL patterns closely. \

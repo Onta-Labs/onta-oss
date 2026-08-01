@@ -22,8 +22,10 @@ Runtime helpers here (``assert_permits``, ``LayerContentError``,
 second hand-rolled check cannot disagree with the matrix.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 from enum import Enum
 from typing import Final, Literal, Mapping
 
@@ -115,7 +117,7 @@ def assert_permits(layer: Layer, kind: ContentKind, *, what: str = "") -> None:
 def is_public_type_uri(uri_or_name: str) -> bool:
     """True iff ``uri_or_name`` is (or would resolve to) a Public-namespace type.
 
-    Accepts a full type URI (``https://cograph.tech/types/public/Person``), a
+    Accepts a full type URI (``https://graph.onta.sh/types/public/Person``), a
     path-shaped entity_type (``public/Person`` → minted under the tenant
     namespace prefix as ``types/public/Person``), or a bare name (``Person`` →
     tenant namespace — not public). Used by function writers so a smuggled
@@ -128,7 +130,7 @@ def is_public_type_uri(uri_or_name: str) -> bool:
         return layer_from_uri(raw) is Layer.PUBLIC
     # Path-shaped: register_function_triple mints types/{entity_type}, so
     # entity_type="public/Person" becomes types/public/Person (PUBLIC).
-    candidate = f"https://cograph.tech/types/{raw}"
+    candidate = f"{IRI_BASE}/types/{raw}"
     if layer_from_uri(candidate) is Layer.PUBLIC:
         return True
     # Defensive: also match the namespace prefix as a substring so a future

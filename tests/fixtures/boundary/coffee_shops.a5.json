@@ -5,56 +5,56 @@
       "name": "address",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/address"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/address"
     },
     {
       "kind": "relationship",
       "name": "has_category",
-      "range": "https://cograph.tech/types/Category",
+      "range": "https://graph.onta.sh/types/Category",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/has_category"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/has_category"
     },
     {
       "kind": "relationship",
       "name": "in_state",
-      "range": "https://cograph.tech/types/State",
+      "range": "https://graph.onta.sh/types/State",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/in_state"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/in_state"
     },
     {
       "kind": "relationship",
       "name": "located_in",
-      "range": "https://cograph.tech/types/City",
+      "range": "https://graph.onta.sh/types/City",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/located_in"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/located_in"
     },
     {
       "kind": "literal",
       "name": "outdoor_seating",
       "range": "http://www.w3.org/2001/XMLSchema#boolean",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/outdoor_seating"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/outdoor_seating"
     },
     {
       "kind": "literal",
       "name": "price_level",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/price_level"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/price_level"
     },
     {
       "kind": "literal",
       "name": "rating",
       "range": "http://www.w3.org/2001/XMLSchema#float",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/rating"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/rating"
     },
     {
       "kind": "literal",
       "name": "shop_id",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/types/CoffeeShop/attrs/shop_id"
+      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/shop_id"
     }
   ],
   "entities": [
@@ -62,705 +62,705 @@
       "also_types": [],
       "id": "Bakery",
       "label": "Bakery",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Bakery"
+      "uri": "https://graph.onta.sh/entities/Category/Bakery"
     },
     {
       "also_types": [],
       "id": "Breakfast",
       "label": "Breakfast",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Breakfast"
+      "uri": "https://graph.onta.sh/entities/Category/Breakfast"
     },
     {
       "also_types": [],
       "id": "Brunch",
       "label": "Brunch",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Brunch"
+      "uri": "https://graph.onta.sh/entities/Category/Brunch"
     },
     {
       "also_types": [],
       "id": "Cafe",
       "label": "Cafe",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Cafe"
+      "uri": "https://graph.onta.sh/entities/Category/Cafe"
     },
     {
       "also_types": [],
       "id": "Coffee",
       "label": "Coffee",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Coffee"
+      "uri": "https://graph.onta.sh/entities/Category/Coffee"
     },
     {
       "also_types": [],
       "id": "Dessert",
       "label": "Dessert",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Dessert"
+      "uri": "https://graph.onta.sh/entities/Category/Dessert"
     },
     {
       "also_types": [],
       "id": "Espresso Bar",
       "label": "Espresso Bar",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Espresso_Bar"
+      "uri": "https://graph.onta.sh/entities/Category/Espresso_Bar"
     },
     {
       "also_types": [],
       "id": "Lunch",
       "label": "Lunch",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Lunch"
+      "uri": "https://graph.onta.sh/entities/Category/Lunch"
     },
     {
       "also_types": [],
       "id": "Tea",
       "label": "Tea",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Tea"
+      "uri": "https://graph.onta.sh/entities/Category/Tea"
     },
     {
       "also_types": [],
       "id": "Vegan",
       "label": "Vegan",
-      "rdf_type": "https://cograph.tech/types/Category",
+      "rdf_type": "https://graph.onta.sh/types/Category",
       "type": "Category",
-      "uri": "https://cograph.tech/entities/Category/Vegan"
+      "uri": "https://graph.onta.sh/entities/Category/Vegan"
     },
     {
       "also_types": [],
       "id": "Austin",
       "label": "Austin",
-      "rdf_type": "https://cograph.tech/types/City",
+      "rdf_type": "https://graph.onta.sh/types/City",
       "type": "City",
-      "uri": "https://cograph.tech/entities/City/Austin"
+      "uri": "https://graph.onta.sh/entities/City/Austin"
     },
     {
       "also_types": [],
       "id": "Chicago",
       "label": "Chicago",
-      "rdf_type": "https://cograph.tech/types/City",
+      "rdf_type": "https://graph.onta.sh/types/City",
       "type": "City",
-      "uri": "https://cograph.tech/entities/City/Chicago"
+      "uri": "https://graph.onta.sh/entities/City/Chicago"
     },
     {
       "also_types": [],
       "id": "Denver",
       "label": "Denver",
-      "rdf_type": "https://cograph.tech/types/City",
+      "rdf_type": "https://graph.onta.sh/types/City",
       "type": "City",
-      "uri": "https://cograph.tech/entities/City/Denver"
+      "uri": "https://graph.onta.sh/entities/City/Denver"
     },
     {
       "also_types": [],
       "id": "Portland",
       "label": "Portland",
-      "rdf_type": "https://cograph.tech/types/City",
+      "rdf_type": "https://graph.onta.sh/types/City",
       "type": "City",
-      "uri": "https://cograph.tech/entities/City/Portland"
+      "uri": "https://graph.onta.sh/entities/City/Portland"
     },
     {
       "also_types": [],
       "id": "Santa Cruz",
       "label": "Santa Cruz",
-      "rdf_type": "https://cograph.tech/types/City",
+      "rdf_type": "https://graph.onta.sh/types/City",
       "type": "City",
-      "uri": "https://cograph.tech/entities/City/Santa_Cruz"
+      "uri": "https://graph.onta.sh/entities/City/Santa_Cruz"
     },
     {
       "also_types": [],
       "id": "Seattle",
       "label": "Seattle",
-      "rdf_type": "https://cograph.tech/types/City",
+      "rdf_type": "https://graph.onta.sh/types/City",
       "type": "City",
-      "uri": "https://cograph.tech/entities/City/Seattle"
+      "uri": "https://graph.onta.sh/entities/City/Seattle"
     },
     {
       "also_types": [],
       "id": "Ashen Mug Coffeehouse",
       "label": "Ashen Mug Coffeehouse",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
       "also_types": [],
       "id": "Driftwood Coffee Co",
       "label": "Driftwood Coffee Co",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
       "also_types": [],
       "id": "Emberlight Cafe",
       "label": "Emberlight Cafe",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
       "also_types": [],
       "id": "Fernwood Roasters",
       "label": "Fernwood Roasters",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
       "also_types": [],
       "id": "Gilded Portafilter",
       "label": "Gilded Portafilter",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
       "also_types": [],
       "id": "Hollow Reed Cafe",
       "label": "Hollow Reed Cafe",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
       "also_types": [],
       "id": "Marlowe & Bean",
       "label": "Marlowe & Bean",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
       "also_types": [],
       "id": "Quillfeather Roastery",
       "label": "Quillfeather Roastery",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
       "also_types": [],
       "id": "The Copper Kettle",
       "label": "The Copper Kettle",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
       "also_types": [],
       "id": "The Wandering Bean",
       "label": "The Wandering Bean",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
       "also_types": [],
       "id": "Thimbleweed Espresso",
       "label": "Thimbleweed Espresso",
-      "rdf_type": "https://cograph.tech/types/CoffeeShop",
+      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+      "uri": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
       "also_types": [],
       "id": "CA",
       "label": "CA",
-      "rdf_type": "https://cograph.tech/types/State",
+      "rdf_type": "https://graph.onta.sh/types/State",
       "type": "State",
-      "uri": "https://cograph.tech/entities/State/CA"
+      "uri": "https://graph.onta.sh/entities/State/CA"
     },
     {
       "also_types": [],
       "id": "CO",
       "label": "CO",
-      "rdf_type": "https://cograph.tech/types/State",
+      "rdf_type": "https://graph.onta.sh/types/State",
       "type": "State",
-      "uri": "https://cograph.tech/entities/State/CO"
+      "uri": "https://graph.onta.sh/entities/State/CO"
     },
     {
       "also_types": [],
       "id": "IL",
       "label": "IL",
-      "rdf_type": "https://cograph.tech/types/State",
+      "rdf_type": "https://graph.onta.sh/types/State",
       "type": "State",
-      "uri": "https://cograph.tech/entities/State/IL"
+      "uri": "https://graph.onta.sh/entities/State/IL"
     },
     {
       "also_types": [],
       "id": "OR",
       "label": "OR",
-      "rdf_type": "https://cograph.tech/types/State",
+      "rdf_type": "https://graph.onta.sh/types/State",
       "type": "State",
-      "uri": "https://cograph.tech/entities/State/OR"
+      "uri": "https://graph.onta.sh/entities/State/OR"
     },
     {
       "also_types": [],
       "id": "TX",
       "label": "TX",
-      "rdf_type": "https://cograph.tech/types/State",
+      "rdf_type": "https://graph.onta.sh/types/State",
       "type": "State",
-      "uri": "https://cograph.tech/entities/State/TX"
+      "uri": "https://graph.onta.sh/entities/State/TX"
     },
     {
       "also_types": [],
       "id": "WA",
       "label": "WA",
-      "rdf_type": "https://cograph.tech/types/State",
+      "rdf_type": "https://graph.onta.sh/types/State",
       "type": "State",
-      "uri": "https://cograph.tech/entities/State/WA"
+      "uri": "https://graph.onta.sh/entities/State/WA"
     }
   ],
   "node_materializations": [
     {
       "label": "Bakery",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Bakery"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Bakery"
     },
     {
       "label": "Breakfast",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Breakfast"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Breakfast"
     },
     {
       "label": "Brunch",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Brunch"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Brunch"
     },
     {
       "label": "Cafe",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Cafe"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Cafe"
     },
     {
       "label": "Coffee",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Coffee"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Coffee"
     },
     {
       "label": "Dessert",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Dessert"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Dessert"
     },
     {
       "label": "Espresso Bar",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Espresso_Bar"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Espresso_Bar"
     },
     {
       "label": "Lunch",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Lunch"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Lunch"
     },
     {
       "label": "Tea",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Tea"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Tea"
     },
     {
       "label": "Vegan",
-      "rdf_type": "https://cograph.tech/types/Category",
-      "uri": "https://cograph.tech/entities/Category/Vegan"
+      "rdf_type": "https://graph.onta.sh/types/Category",
+      "uri": "https://graph.onta.sh/entities/Category/Vegan"
     },
     {
       "label": "Austin",
-      "rdf_type": "https://cograph.tech/types/City",
-      "uri": "https://cograph.tech/entities/City/Austin"
+      "rdf_type": "https://graph.onta.sh/types/City",
+      "uri": "https://graph.onta.sh/entities/City/Austin"
     },
     {
       "label": "Chicago",
-      "rdf_type": "https://cograph.tech/types/City",
-      "uri": "https://cograph.tech/entities/City/Chicago"
+      "rdf_type": "https://graph.onta.sh/types/City",
+      "uri": "https://graph.onta.sh/entities/City/Chicago"
     },
     {
       "label": "Denver",
-      "rdf_type": "https://cograph.tech/types/City",
-      "uri": "https://cograph.tech/entities/City/Denver"
+      "rdf_type": "https://graph.onta.sh/types/City",
+      "uri": "https://graph.onta.sh/entities/City/Denver"
     },
     {
       "label": "Portland",
-      "rdf_type": "https://cograph.tech/types/City",
-      "uri": "https://cograph.tech/entities/City/Portland"
+      "rdf_type": "https://graph.onta.sh/types/City",
+      "uri": "https://graph.onta.sh/entities/City/Portland"
     },
     {
       "label": "Santa Cruz",
-      "rdf_type": "https://cograph.tech/types/City",
-      "uri": "https://cograph.tech/entities/City/Santa_Cruz"
+      "rdf_type": "https://graph.onta.sh/types/City",
+      "uri": "https://graph.onta.sh/entities/City/Santa_Cruz"
     },
     {
       "label": "Seattle",
-      "rdf_type": "https://cograph.tech/types/City",
-      "uri": "https://cograph.tech/entities/City/Seattle"
+      "rdf_type": "https://graph.onta.sh/types/City",
+      "uri": "https://graph.onta.sh/entities/City/Seattle"
     },
     {
       "label": "CA",
-      "rdf_type": "https://cograph.tech/types/State",
-      "uri": "https://cograph.tech/entities/State/CA"
+      "rdf_type": "https://graph.onta.sh/types/State",
+      "uri": "https://graph.onta.sh/entities/State/CA"
     },
     {
       "label": "CO",
-      "rdf_type": "https://cograph.tech/types/State",
-      "uri": "https://cograph.tech/entities/State/CO"
+      "rdf_type": "https://graph.onta.sh/types/State",
+      "uri": "https://graph.onta.sh/entities/State/CO"
     },
     {
       "label": "IL",
-      "rdf_type": "https://cograph.tech/types/State",
-      "uri": "https://cograph.tech/entities/State/IL"
+      "rdf_type": "https://graph.onta.sh/types/State",
+      "uri": "https://graph.onta.sh/entities/State/IL"
     },
     {
       "label": "OR",
-      "rdf_type": "https://cograph.tech/types/State",
-      "uri": "https://cograph.tech/entities/State/OR"
+      "rdf_type": "https://graph.onta.sh/types/State",
+      "uri": "https://graph.onta.sh/entities/State/OR"
     },
     {
       "label": "TX",
-      "rdf_type": "https://cograph.tech/types/State",
-      "uri": "https://cograph.tech/entities/State/TX"
+      "rdf_type": "https://graph.onta.sh/types/State",
+      "uri": "https://graph.onta.sh/entities/State/TX"
     },
     {
       "label": "WA",
-      "rdf_type": "https://cograph.tech/types/State",
-      "uri": "https://cograph.tech/entities/State/WA"
+      "rdf_type": "https://graph.onta.sh/types/State",
+      "uri": "https://graph.onta.sh/entities/State/WA"
     }
   ],
   "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
-      "object": "https://cograph.tech/entities/Category/Breakfast",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.onta.sh/entities/Category/Breakfast",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://cograph.tech/entities/State/IL",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.onta.sh/entities/State/IL",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://cograph.tech/entities/City/Chicago",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.onta.sh/entities/City/Chicago",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Bakery",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/Category/Bakery",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Breakfast",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/Category/Breakfast",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Brunch",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/Category/Brunch",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Vegan",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/Category/Vegan",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/State/CA",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/State/CA",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/State/TX",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/State/TX",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/City/Austin",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/City/Austin",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/City/Santa_Cruz",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.onta.sh/entities/City/Santa_Cruz",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Cafe",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.onta.sh/entities/Category/Cafe",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Lunch",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.onta.sh/entities/Category/Lunch",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/State/CO",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.onta.sh/entities/State/CO",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/City/Denver",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.onta.sh/entities/City/Denver",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Bakery",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/Category/Bakery",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Breakfast",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/Category/Breakfast",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/State/OR",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/State/OR",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/State/WA",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/State/WA",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/City/Portland",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/City/Portland",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/City/Seattle",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.onta.sh/entities/City/Seattle",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Dessert",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.onta.sh/entities/Category/Dessert",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://cograph.tech/entities/State/CO",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.onta.sh/entities/State/CO",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://cograph.tech/entities/City/Denver",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.onta.sh/entities/City/Denver",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Breakfast",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.onta.sh/entities/Category/Breakfast",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Cafe",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.onta.sh/entities/Category/Cafe",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Lunch",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.onta.sh/entities/Category/Lunch",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/State/TX",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.onta.sh/entities/State/TX",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/City/Austin",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.onta.sh/entities/City/Austin",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Bakery",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/Category/Bakery",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Tea",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/Category/Tea",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/State/IL",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/State/IL",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/State/WA",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/State/WA",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/City/Chicago",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/City/Chicago",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/City/Seattle",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.onta.sh/entities/City/Seattle",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Bakery",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.onta.sh/entities/Category/Bakery",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Dessert",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.onta.sh/entities/Category/Dessert",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://cograph.tech/entities/State/WA",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.onta.sh/entities/State/WA",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://cograph.tech/entities/City/Seattle",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.onta.sh/entities/City/Seattle",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Cafe",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/Category/Cafe",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Tea",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/Category/Tea",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/State/CO",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/State/CO",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/State/OR",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/State/OR",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/City/Denver",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/City/Denver",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/City/Portland",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.onta.sh/entities/City/Portland",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Brunch",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.onta.sh/entities/Category/Brunch",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Cafe",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.onta.sh/entities/Category/Cafe",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://cograph.tech/entities/State/CA",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.onta.sh/entities/State/CA",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://cograph.tech/entities/City/Santa_Cruz",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.onta.sh/entities/City/Santa_Cruz",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Coffee",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.onta.sh/entities/Category/Coffee",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
-      "object": "https://cograph.tech/entities/Category/Espresso_Bar",
-      "predicate": "https://cograph.tech/onto/has_category",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.onta.sh/onto/has_category",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
-      "object": "https://cograph.tech/entities/State/OR",
-      "predicate": "https://cograph.tech/onto/in_state",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.onta.sh/entities/State/OR",
+      "predicate": "https://graph.onta.sh/onto/in_state",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
-      "object": "https://cograph.tech/entities/City/Portland",
-      "predicate": "https://cograph.tech/onto/located_in",
-      "subject": "https://cograph.tech/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.onta.sh/entities/City/Portland",
+      "predicate": "https://graph.onta.sh/onto/located_in",
+      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
     }
   ],
   "types": [
@@ -768,25 +768,25 @@
       "kind": "primary",
       "name": "Category",
       "subclass_of": [],
-      "uri": "https://cograph.tech/types/Category"
+      "uri": "https://graph.onta.sh/types/Category"
     },
     {
       "kind": "primary",
       "name": "City",
       "subclass_of": [],
-      "uri": "https://cograph.tech/types/City"
+      "uri": "https://graph.onta.sh/types/City"
     },
     {
       "kind": "primary",
       "name": "CoffeeShop",
       "subclass_of": [],
-      "uri": "https://cograph.tech/types/CoffeeShop"
+      "uri": "https://graph.onta.sh/types/CoffeeShop"
     },
     {
       "kind": "primary",
       "name": "State",
       "subclass_of": [],
-      "uri": "https://cograph.tech/types/State"
+      "uri": "https://graph.onta.sh/types/State"
     }
   ]
 }

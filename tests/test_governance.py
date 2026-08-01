@@ -479,7 +479,7 @@ def _new_entity() -> ExtractedEntity:
     return ExtractedEntity(type_name="LoyaltyTier", id="gold")
 
 
-TENANT_GRAPH = "https://cograph.tech/graphs/acme"
+TENANT_GRAPH = "https://graph.onta.sh/graphs/acme"
 
 
 @pytest.mark.asyncio

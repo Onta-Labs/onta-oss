@@ -26,11 +26,11 @@ from cograph_client.nlp.pipeline import (
     _drop_internal_predicate_rows,
 )
 
-ER = "https://cograph.tech/er/"
-ONTO = "https://cograph.tech/onto/"
+ER = "https://graph.onta.sh/er/"
+ONTO = "https://graph.onta.sh/onto/"
 ONTO_NORM = ONTO + "norm/"
-ATTRS = "https://cograph.tech/types/{t}/attrs/{a}"
-ENTITIES = "https://cograph.tech/entities/"
+ATTRS = "https://graph.onta.sh/types/{t}/attrs/{a}"
+ENTITIES = "https://graph.onta.sh/entities/"
 
 
 def _empty_neptune():

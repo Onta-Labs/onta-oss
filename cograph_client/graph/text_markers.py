@@ -32,8 +32,10 @@ every consumer — the SchemaResolver seam, the CSV REASON conversion, the
    the name-blind auto tier from overruling an LLM's explicit NO.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import GRAPH_URI_PREFIX, IRI_BASE
 import os
 import time
 from collections import Counter
@@ -171,12 +173,12 @@ def invalidate_for_graph(graph_uri: str) -> None:
 
     Convenience for marker write sites that hold a graph URI rather than a
     bare tenant id (the SchemaResolver seams receive the tenant ONTOLOGY graph
-    ``https://cograph.tech/graphs/{tenant}``). Deriving the tenant here keeps
+    ``https://graph.onta.sh/graphs/{tenant}``). Deriving the tenant here keeps
     the URI-shape knowledge next to the cache instead of in every caller. An
     unrecognized shape over-invalidates (drops everything) — safe, since the
     only cost is one refetch per tenant on the next read.
     """
-    prefix = GRAPH_URI_PREFIX  # "https://cograph.tech/graphs/"
+    prefix = GRAPH_URI_PREFIX  # GRAPH_URI_PREFIX
     if isinstance(graph_uri, str) and graph_uri.startswith(prefix):
         tenant_id = graph_uri[len(prefix):].split("/", 1)[0]
         if tenant_id:
