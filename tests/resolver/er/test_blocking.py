@@ -104,3 +104,29 @@ def test_person_email_phone_blocking_still_works():
     # Org-friendly keys are additive, not exclusive
     assert "name_core" in kinds
     assert "soundex_core" in kinds
+
+
+def test_northern_lights_org_variants_share_block_key():
+    """Anti-overfit: org ER must work beyond Acme Corp fixtures."""
+    variants = [
+        "Northern Lights Logistics",
+        "Northern Lights Logistics Inc",
+        "NORTHERN LIGHTS LOGISTICS",
+    ]
+    cores = []
+    for name in variants:
+        norm = N.normalize(EntitySignals(name=name))
+        keys = {(k.kind, k.value) for k in generate_block_keys(norm)}
+        cores.append(keys)
+    shared = cores[0]
+    for c in cores[1:]:
+        shared &= c
+    assert shared, f"no shared block keys across variants: {cores}"
+
+
+def test_polar_freight_llc_variants_score_for_org_merge():
+    """Anti-overfit: LLC / L.L.C. collapse under DEFAULT_ORG_CONFIG."""
+    a = N.normalize(EntitySignals(name="Polar Freight LLC"))
+    b = N.normalize(EntitySignals(name="Polar Freight L.L.C."))
+    score = DefaultScorer().score(a, b, DEFAULT_ORG_CONFIG)
+    assert score.score >= DEFAULT_ORG_CONFIG.auto_merge_threshold
