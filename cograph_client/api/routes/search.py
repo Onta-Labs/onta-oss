@@ -264,6 +264,16 @@ async def semantic_search(
             )
         entity_uris = cleaned
 
+    # Empty allowlist is a guaranteed empty result — skip embed + index work.
+    if entity_uris is not None and len(entity_uris) == 0:
+        return SearchResponse(
+            hits=[],
+            count=0,
+            # Lexical would also be empty; flag degraded=False (honest zero set).
+            degraded=False,
+            top_k=top_k,
+        )
+
     # Only embed the query when the semantic leg is actually maintained. With
     # the gate off, force ``None`` so the backend runs lexical-only (and
     # reports ``degraded=True``) instead of scoring against a stale/empty
