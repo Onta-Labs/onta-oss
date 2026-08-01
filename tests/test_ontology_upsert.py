@@ -14,7 +14,7 @@ from cograph_client.graph.ontology_queries import (
     XSD,
 )
 
-GRAPH = "https://cograph.tech/graphs/test"
+GRAPH = "https://graph.onta.sh/graphs/test"
 
 
 def test_upsert_type_description_replaces_not_appends():

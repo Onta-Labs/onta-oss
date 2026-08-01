@@ -35,17 +35,19 @@ confirmed plan produces ARE covered here.
 
 OSS: stdlib + ``cograph_client.*`` only. No endpoint baked in.
 """
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, IRI_BASE, ONTO_PRED_PREFIX
 from dataclasses import dataclass, field
 from typing import Optional
 
 from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
 
 # URI scheme (mirrors qc.invariants).
-ENTITY_PREFIX = "https://cograph.tech/entities/"
-ONTO_PREFIX = "https://cograph.tech/onto/"
-ONTO_SOURCE = "https://cograph.tech/onto/source"
+ENTITY_PREFIX = ENTITY_URI_PREFIX
+ONTO_PREFIX = ONTO_PRED_PREFIX
+ONTO_SOURCE = f"{IRI_BASE}/onto/source"
 
 
 @dataclass(frozen=True)

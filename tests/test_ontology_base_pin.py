@@ -137,8 +137,8 @@ class MemNeptune:
 
         # Base pin: SELECT ?p ?o for a fixed subject
         if "?p" in sparql and "?o" in sparql and "WorkspaceBasePin" in sparql:
-            subj_m = re.search(r"<(https://cograph\.tech/meta/WorkspaceBasePin)>\s+\?p\s+\?o", sparql)
-            subj = subj_m.group(1) if subj_m else "https://cograph.tech/meta/WorkspaceBasePin"
+            subj_m = re.search(r"<(https://graph\.onta\.sh/meta/WorkspaceBasePin)>\s+\?p\s+\?o", sparql)
+            subj = subj_m.group(1) if subj_m else "https://graph.onta.sh/meta/WorkspaceBasePin"
             for gg, s, p, o in self.triples:
                 if gg == g and s == subj:
                     val = o
@@ -384,10 +384,10 @@ class MemNeptune:
         return out
 
 
-PUBLIC = "https://cograph.tech/graphs/global/public"
-ENHANCED = "https://cograph.tech/graphs/global/enhanced"
+PUBLIC = "https://graph.onta.sh/graphs/global/public"
+ENHANCED = "https://graph.onta.sh/graphs/global/enhanced"
 TENANT_ID = "acme"
-TENANT = f"https://cograph.tech/graphs/{TENANT_ID}"
+TENANT = f"https://graph.onta.sh/graphs/{TENANT_ID}"
 
 
 async def _seed_public_v1(n: MemNeptune) -> str:
@@ -796,7 +796,7 @@ async def test_preview_deprecation_used_on_tenant_shape():
 
 
 def test_base_pin_graph_uri():
-    assert base_pin_graph_uri("acme") == "https://cograph.tech/graphs/acme/base-pin"
+    assert base_pin_graph_uri("acme") == "https://graph.onta.sh/graphs/acme/base-pin"
     with pytest.raises(ValueError):
         base_pin_graph_uri("")
 

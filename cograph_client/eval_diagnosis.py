@@ -14,6 +14,8 @@ Three-stage pipeline per question:
 import json
 import os
 import re
+
+from cograph_client.graph.iri import IRI_BASE
 from dataclasses import dataclass, field
 
 import httpx
@@ -194,7 +196,7 @@ async def _stage_a_graph_probe(
 
         # Probe 2: If SPARQL has a specific predicate, check it exists in ontology
         if sparql:
-            predicate_uris = re.findall(r"<(https://cograph\.tech/(?:onto|types)/[^>]+)>", sparql)
+            predicate_uris = re.findall(rf"<({re.escape(IRI_BASE)}/(?:onto|types)/[^>]+)>", sparql)
             ontology_graph = tenant_graph_uri(tenant)
             for pred_uri in predicate_uris:
                 if "/onto/" in pred_uri or "/attrs/" in pred_uri:

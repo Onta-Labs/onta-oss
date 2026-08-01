@@ -29,9 +29,9 @@ from cograph_client.graph.history import (
 )
 from cograph_client.graph.kg_writer import delete_facts
 
-GRAPH = "https://cograph.tech/graphs/t/kg/widgets"
-SUBJ = "https://cograph.tech/entities/Widget/w1"
-PRED = "https://cograph.tech/types/Widget/attrs/weight_kg"
+GRAPH = "https://graph.onta.sh/graphs/t/kg/widgets"
+SUBJ = "https://graph.onta.sh/entities/Widget/w1"
+PRED = "https://graph.onta.sh/types/Widget/attrs/weight_kg"
 
 
 def _objects_response(objects: list[tuple[str, str, str]]) -> dict:
@@ -56,8 +56,8 @@ def _count_response(n: int) -> dict:
 
 def test_lexical_value_strips_typed_and_uri_wrappers():
     assert lexical_value('92^^http://www.w3.org/2001/XMLSchema#integer') == "92"
-    assert lexical_value("<https://cograph.tech/entities/City/SF>") == (
-        "https://cograph.tech/entities/City/SF"
+    assert lexical_value("<https://graph.onta.sh/entities/City/SF>") == (
+        "https://graph.onta.sh/entities/City/SF"
     )
     assert lexical_value("plain string") == "plain string"
 
@@ -69,12 +69,12 @@ def test_build_value_change_triples_records_dated_transition():
     ts = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
     triples = build_value_change_triples(SUBJ, PRED, "10.0", "12.5", changed_at=ts)
     by_pred = {p: o for _s, p, o in triples}
-    assert by_pred["https://cograph.tech/history/oldValue"] == "10.0"
-    assert by_pred["https://cograph.tech/history/newValue"] == "12.5"
-    assert by_pred["https://cograph.tech/history/subject"] == SUBJ
-    assert by_pred["https://cograph.tech/history/predicate"] == PRED
+    assert by_pred["https://graph.onta.sh/history/oldValue"] == "10.0"
+    assert by_pred["https://graph.onta.sh/history/newValue"] == "12.5"
+    assert by_pred["https://graph.onta.sh/history/subject"] == SUBJ
+    assert by_pred["https://graph.onta.sh/history/predicate"] == PRED
     # changed_at is a TYPED xsd:dateTime so a "since" FILTER matches it.
-    assert by_pred["https://cograph.tech/history/changedAt"] == (
+    assert by_pred["https://graph.onta.sh/history/changedAt"] == (
         "2026-07-08T12:00:00+00:00^^http://www.w3.org/2001/XMLSchema#dateTime"
     )
 
@@ -197,7 +197,7 @@ def test_delete_facts_history_only_for_pairs_with_new_value(monkeypatch):
 
     async def run():
         monkeypatch.setenv("COGRAPH_VALUE_HISTORY_ENABLED", "1")
-        other = "https://cograph.tech/types/Widget/attrs/color"
+        other = "https://graph.onta.sh/types/Widget/attrs/color"
         neptune = AsyncMock()
         # Only the tracked pair (SUBJ, PRED) is read for its current value.
         neptune.query.side_effect = [
@@ -398,10 +398,10 @@ def test_value_history_query_rejects_iri_breakout_subject():
     builder raises instead of emitting cross-tenant SPARQL (tenant isolation)."""
     import pytest
 
-    victim = "https://cograph.tech/graphs/VICTIM/kg/secret/history"
+    victim = "https://graph.onta.sh/graphs/VICTIM/kg/secret/history"
     payload = (
         f"http://x> }} UNION {{ GRAPH <{victim}> {{ ?node "
-        f"<https://cograph.tech/history/subject> ?s "
+        f"<https://graph.onta.sh/history/subject> ?s "
     )
     with pytest.raises(ValueError):
         value_history_query(GRAPH, subject=payload)

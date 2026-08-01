@@ -366,7 +366,7 @@ def test_fingerprint_timestamp_independent():
 @pytest.mark.asyncio
 async def test_empty_commit_returns_current_version_no_writes():
     n = MemNeptune()
-    r = await commit_ontology(n, "https://cograph.tech/graphs/t", [])
+    r = await commit_ontology(n, "https://graph.onta.sh/graphs/t", [])
     assert r.version_before == r.version_after == "e3b0c44298fc1c14"
     assert r.applied == []
     assert n.updates == []
@@ -375,7 +375,7 @@ async def test_empty_commit_returns_current_version_no_writes():
 @pytest.mark.asyncio
 async def test_commit_upsert_type_applies_and_bumps_version():
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t"
+    g = "https://graph.onta.sh/graphs/t"
     r = await commit_ontology(
         n,
         g,
@@ -398,7 +398,7 @@ async def test_commit_upsert_type_applies_and_bumps_version():
 async def test_commit_batch_multi_type_single_changelog():
     """A multi-type ingest-style batch is ONE commit (one changelog entry)."""
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t"
+    g = "https://graph.onta.sh/graphs/t"
     muts = [
         OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Person"),
         OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="Company"),
@@ -432,7 +432,7 @@ async def test_commit_batch_multi_type_single_changelog():
 @pytest.mark.asyncio
 async def test_optimistic_concurrency_rejects_stale_expected_version():
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t"
+    g = "https://graph.onta.sh/graphs/t"
     await commit_ontology(
         n, g, [OntologyMutation(op=OntologyOpKind.UPSERT_TYPE, type_name="A")]
     )
@@ -451,7 +451,7 @@ async def test_optimistic_concurrency_rejects_stale_expected_version():
 async def test_concurrent_commits_ordered_no_lost_update():
     """Two concurrent commits serialize on the shared lock; both land."""
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/conc"
+    g = "https://graph.onta.sh/graphs/conc"
     # Ensure both see the same lock.
     assert ontology_write_lock() is ontology_write_lock()
 
@@ -481,7 +481,7 @@ async def test_concurrent_commits_ordered_no_lost_update():
 @pytest.mark.asyncio
 async def test_set_text_kind_and_core_slot_ops():
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t"
+    g = "https://graph.onta.sh/graphs/t"
     r = await commit_ontology(
         n,
         g,
@@ -520,7 +520,7 @@ async def test_register_alias_via_commit_writes_and_fingerprints():
     from cograph_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-alias"
+    g = "https://graph.onta.sh/graphs/t-alias"
     # Seed type+attr so fingerprint has a base shape (alias still works without it).
     await commit_ontology(
         n,
@@ -585,7 +585,7 @@ async def test_register_alias_via_commit_writes_and_fingerprints():
 @pytest.mark.asyncio
 async def test_register_alias_rejects_self_and_missing_fields():
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-alias"
+    g = "https://graph.onta.sh/graphs/t-alias"
     with pytest.raises(ValueError, match="alias_from and alias_to"):
         await commit_ontology(
             n,
@@ -615,7 +615,7 @@ async def test_register_alias_full_iri_and_hierarchy_move():
     from cograph_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-alias"
+    g = "https://graph.onta.sh/graphs/t-alias"
     old_uri = attr_uri("Guest", "phone_num")
     new_uri = attr_uri("Person", "phone")
     result = await commit_ontology(
@@ -664,8 +664,8 @@ async def test_rename_attribute_always_creates_alias():
     from cograph_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-rename"
-    data_g = "https://cograph.tech/graphs/t-rename/kg/main"
+    g = "https://graph.onta.sh/graphs/t-rename"
+    data_g = "https://graph.onta.sh/graphs/t-rename/kg/main"
     await commit_ontology(
         n,
         g,
@@ -682,7 +682,7 @@ async def test_rename_attribute_always_creates_alias():
     old_uri = attr_uri("Guest", "phone_num")
     new_uri = attr_uri("Guest", "phone")
     # Seed instance data under the OLD predicate (pre-backfill state).
-    n.triples.add((data_g, "https://cograph.tech/entities/Guest/g1", old_uri, '"555-0100"'))
+    n.triples.add((data_g, "https://graph.onta.sh/entities/Guest/g1", old_uri, '"555-0100"'))
 
     result = await commit_ontology(
         n,
@@ -744,8 +744,8 @@ async def test_rename_lifecycle_backfill_and_retire():
     from cograph_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-life"
-    data_g = "https://cograph.tech/graphs/t-life/kg/main"
+    g = "https://graph.onta.sh/graphs/t-life"
+    data_g = "https://graph.onta.sh/graphs/t-life/kg/main"
     await commit_ontology(
         n,
         g,
@@ -762,8 +762,8 @@ async def test_rename_lifecycle_backfill_and_retire():
     old_uri = attr_uri("Guest", "phone_num")
     new_uri = attr_uri("Guest", "phone")
     # Two instance triples under old predicate.
-    n.triples.add((data_g, "https://cograph.tech/entities/Guest/g1", old_uri, '"555-0100"'))
-    n.triples.add((data_g, "https://cograph.tech/entities/Guest/g2", old_uri, '"555-0200"'))
+    n.triples.add((data_g, "https://graph.onta.sh/entities/Guest/g1", old_uri, '"555-0100"'))
+    n.triples.add((data_g, "https://graph.onta.sh/entities/Guest/g2", old_uri, '"555-0200"'))
 
     await commit_ontology(
         n,
@@ -842,7 +842,7 @@ async def test_alias_chains_flatten_and_cycles_dropped():
     from cograph_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-chain"
+    g = "https://graph.onta.sh/graphs/t-chain"
     a = attr_uri("Guest", "phone_num")
     b = attr_uri("Guest", "phone")
     c = attr_uri("Person", "contact")
@@ -880,7 +880,7 @@ async def test_alias_chains_flatten_and_cycles_dropped():
 @pytest.mark.asyncio
 async def test_retire_alias_requires_data_graph():
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-retire"
+    g = "https://graph.onta.sh/graphs/t-retire"
     with pytest.raises(ValueError, match="data_graph_uri"):
         await commit_ontology(
             n,
@@ -899,7 +899,7 @@ async def test_retire_alias_requires_data_graph():
 async def test_rename_rejects_type_level_iri():
     """Type renames are a documented gap — only attribute aliases are supported."""
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-typerename"
+    g = "https://graph.onta.sh/graphs/t-typerename"
     with pytest.raises(ValueError, match="type renames are not supported"):
         await commit_ontology(
             n,
@@ -908,8 +908,8 @@ async def test_rename_rejects_type_level_iri():
                 OntologyMutation(
                     op=OntologyOpKind.RENAME_ATTRIBUTE,
                     type_name="Guest",
-                    alias_from="https://cograph.tech/types/Guest",
-                    alias_to="https://cograph.tech/types/Person",
+                    alias_from="https://graph.onta.sh/types/Guest",
+                    alias_to="https://graph.onta.sh/types/Person",
                 )
             ],
         )
@@ -926,7 +926,7 @@ async def test_nl_ask_rewrites_after_rename(monkeypatch):
     from cograph_client.nlp.pipeline import NLQueryPipeline
 
     n = MemNeptune()
-    g = "https://cograph.tech/graphs/t-nl"
+    g = "https://graph.onta.sh/graphs/t-nl"
     old_uri = attr_uri("Guest", "phone_num")
     new_uri = attr_uri("Guest", "phone")
     await commit_ontology(

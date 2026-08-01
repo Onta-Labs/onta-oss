@@ -26,7 +26,7 @@ A. The query MUST carry at least one dataset clause, and every graph named by a
    by a dataset we validated.
 
 B. Independently of A, no IRI anywhere in the RAW query text may sit under
-   ``https://cograph.tech/graphs/`` unless it belongs to the calling tenant.
+   ``https://graph.onta.sh/graphs/`` unless it belongs to the calling tenant.
    This is the belt for A's suspenders. It CATCHES the plainly-spelled inline
    ``GRAPH <victim>``, but do not lean on it there: it is a raw-text scan, so a
    ``\\u``-escaped namespace or an IRI whose match its terminator class truncates
@@ -115,6 +115,9 @@ can never smuggle in another workspace's data graph.
 
 from __future__ import annotations
 
+from cograph_client.graph.iri import GRAPH_URI_PREFIX, IRI_BASE
+
+
 import re
 from collections.abc import Iterable, Sequence
 
@@ -122,7 +125,7 @@ import structlog
 
 logger = structlog.stdlib.get_logger("cograph.graph.sparql_scope")
 
-GRAPH_NAMESPACE = "https://cograph.tech/graphs/"
+GRAPH_NAMESPACE = GRAPH_URI_PREFIX
 
 #: Shared, read-only Global ontology layers (ADR 0002 section 1). Not owned by
 #: any tenant, and the only graphs outside a tenant's own namespace that a
@@ -232,7 +235,7 @@ def _parse(sparql: str):
     try:
         return parseQuery(sparql)
     except Exception as exc:
-        # Includes pyparsing's ParseException and any recursion error on a
+        # Includes pyparsingf's ParseException and any recursion error on a
         # pathological input. Unparseable means unverifiable, which means no.
         raise TenantScopeError("Query could not be parsed as SPARQL 1.1.", 400) from exc
 
@@ -260,12 +263,12 @@ def dataset_graphs(query_part) -> list[str]:
     the ``URIRef`` values would report this query as scoped to its first clause
     while the store reads the second:
 
-        PREFIX g: <https://cograph.tech/gr>
+        PREFIX g: <https://graph.onta.sh/gr>
         SELECT * FROM <...own graph...> FROM g:aphs\\/victim WHERE { ?s ?p ?o }
 
     ``PN_LOCAL_ESC`` allows a backslash-escaped ``/`` inside a local name, so the
     prefix can be split anywhere and the literal text
-    ``https://cograph.tech/graphs/`` never appears, which keeps rule B blind too.
+    ``https://graph.onta.sh/graphs/`` never appears, which keeps rule B blind too.
     Rejecting prefixed names outright is the honest fix: resolving one means
     trusting a PREFIX declaration to expand exactly the way the store will, and
     the escape rules are precisely where that assumption breaks.

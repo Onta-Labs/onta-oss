@@ -175,7 +175,7 @@ def _make_enrich_executor():
     # One entity, five attributes → five (entity, attribute) items in one worker
     # (single entity ⇒ fully sequential ⇒ deterministic ceiling trip point).
     rows = [
-        {"uri": "https://cograph.tech/entities/Product/p1", "label": "Bosch", "vals": ""},
+        {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
     ]
     neptune.query.return_value = _entities_query_response(rows)
     neptune.update.return_value = None

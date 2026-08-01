@@ -28,14 +28,14 @@ from cograph_client.nlp.pipeline import (
 )
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-TYPES = "https://cograph.tech/types/"
-ONTO = "https://cograph.tech/onto/"
+TYPES = "https://graph.onta.sh/types/"
+ONTO = "https://graph.onta.sh/onto/"
 STR = "http://www.w3.org/2001/XMLSchema#string"
 INT = "http://www.w3.org/2001/XMLSchema#integer"
 FLOAT = "http://www.w3.org/2001/XMLSchema#float"
 
-GRAPH = "https://cograph.tech/graphs/inv-tenant"
-KG = "https://cograph.tech/graphs/inv-tenant/kg/InventedKG"
+GRAPH = "https://graph.onta.sh/graphs/inv-tenant"
+KG = "https://graph.onta.sh/graphs/inv-tenant/kg/InventedKG"
 
 
 def _row(**cells):

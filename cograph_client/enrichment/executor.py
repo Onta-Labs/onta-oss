@@ -5,8 +5,10 @@ Reads entities from Neptune, runs them through the source funnel
 review or applies them directly based on conflict_policy.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import ENTITY_URI_PREFIX, IRI_BASE, ONTO_PRED_PREFIX, TYPE_URI_PREFIX
 import asyncio
 import hashlib
 import os
@@ -101,7 +103,6 @@ from cograph_client.resolver.validator import _to_wkt_point, validate_triple
 logger = structlog.stdlib.get_logger("cograph.enrichment")
 
 
-TYPE_URI_PREFIX = "https://cograph.tech/types/"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
@@ -111,10 +112,10 @@ RDFS_DOMAIN = "http://www.w3.org/2000/01/rdf-schema#domain"
 # triples use the `…/types/<Type>/attrs/<name>` (attr_uri) namespace. A scope
 # predicate's ontology declaration doesn't tell us which the data uses, so a
 # resolved local-name maps to BOTH candidate instance IRIs. NOTE: the name the
-# Explorer DISPLAYS comes from the entity's `rdfs:label` (set at ingest), which
+# Explorer DISPLAYS comes from the entityf's `rdfs:label` (set at ingest), which
 # may differ from — or exist WITHOUT — an `…/attrs/name` literal, so a scope on a
 # name/title VALUE must also match `rdfs:label` (see `_scope_block`).
-ONTO_PRED_PREFIX = "https://cograph.tech/onto/"
+ONTO_PRED_PREFIX = f"{IRI_BASE}/onto/"
 NAME_FALLBACK_ATTRS = ["name", "title", "headline"]
 WORKER_POOL_SIZE = 8
 PROGRESS_FLUSH_EVERY = 10
@@ -389,7 +390,6 @@ def _is_float(v: str) -> bool:
     return math.isfinite(f)
 
 
-ENTITY_URI_PREFIX = "https://cograph.tech/entities/"
 
 
 def _is_iso_datetime(v: str) -> bool:
@@ -417,7 +417,7 @@ def _is_iso_datetime(v: str) -> bool:
 
 def _entity_iri_type(value: str) -> str | None:
     """Parse the ``<TypeName>`` out of a canonical entity IRI of the form
-    ``https://cograph.tech/entities/<TypeName>/<id>``, else None.
+    ``https://graph.onta.sh/entities/<TypeName>/<id>``, else None.
 
     Returns the bare type name (e.g. ``Manufacturer``) so the caller can decide
     whether a column of entity IRIs is a relationship to a single target type.
@@ -2650,7 +2650,7 @@ class EnrichmentExecutor:
             # The ontology DECLARATION stays the attrs/<leaf> property with a
             # types/<T> range (the established dual convention: attrs declares,
             # onto carries the instance); only the instance edge is onto/<leaf>.
-            onto_pred = f"https://cograph.tech/onto/{attribute}"
+            onto_pred = f"{IRI_BASE}/onto/{attribute}"
             # Already an entity IRI (e.g. a premium adapter that resolved it) → the
             # edge is ready as-is.
             if value.startswith("http://") or value.startswith("https://"):

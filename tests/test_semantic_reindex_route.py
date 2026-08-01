@@ -46,7 +46,7 @@ def _chunk(kg_name: str, n: int) -> SemanticChunk:
     return SemanticChunk(
         tenant_id=TENANT,
         kg_name=kg_name,
-        entity_uri=f"https://cograph.tech/entities/Doc/{kg_name}-{n}",
+        entity_uri=f"https://graph.onta.sh/entities/Doc/{kg_name}-{n}",
         attr="description",
         chunk_ix=0,
         chunk_text=text,

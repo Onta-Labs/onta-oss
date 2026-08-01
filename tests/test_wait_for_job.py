@@ -344,8 +344,8 @@ def test_partial_graph_is_queryable_mid_job(
         json={
             "query": (
                 "SELECT (COUNT(?e) AS ?cnt) "
-                "FROM <https://cograph.tech/graphs/test-tenant/kg/widgets> "
-                "WHERE { ?e a <https://cograph.tech/types/Widget> }"
+                "FROM <https://graph.onta.sh/graphs/test-tenant/kg/widgets> "
+                "WHERE { ?e a <https://graph.onta.sh/types/Widget> }"
             )
         },
     )

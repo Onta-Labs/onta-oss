@@ -9,7 +9,7 @@ a reader can describe the change **without consulting the live ontology
 graph**.
 
 Global governance still writes the thinner action/subject/timestamp/tenant
-shape into ``https://cograph.tech/graphs/global/changelog`` (ADR 0002 §8).
+shape into ``https://graph.onta.sh/graphs/global/changelog`` (ADR 0002 §8).
 This reader is workspace-scoped by default (tenant isolation by named graph);
 optional fields (delta, actor, versions, …) are OPTIONAL so governance-shaped
 entries remain readable if pointed at that graph.
@@ -19,6 +19,9 @@ and the route surface of ``GET /graphs/{tenant}/history``.
 """
 
 from __future__ import annotations
+
+from cograph_client.graph.iri import GOV_NS, IRI_BASE
+
 
 import json
 from dataclasses import dataclass, field
@@ -32,7 +35,6 @@ from cograph_client.models.ontology import ChangeRecord
 # GOV_* vocabulary — shared with ontology_commit / governance writers
 # ---------------------------------------------------------------------------
 
-GOV_NS = "https://cograph.tech/gov/"
 GOV_ACTION = f"{GOV_NS}action"
 GOV_SUBJECT = f"{GOV_NS}subject"
 GOV_TIMESTAMP = f"{GOV_NS}timestamp"

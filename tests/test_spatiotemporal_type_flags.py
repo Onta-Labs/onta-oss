@@ -39,8 +39,8 @@ from cograph_client.spatiotemporal.extract import GEO_WKT
 TENANT = "test-tenant"
 KG = "web"
 
-TYPES = "https://cograph.tech/types/"
-ONTO = "https://cograph.tech/onto/"
+TYPES = "https://graph.onta.sh/types/"
+ONTO = "https://graph.onta.sh/onto/"
 XSD_DATE = "http://www.w3.org/2001/XMLSchema#date"
 
 

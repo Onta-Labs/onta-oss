@@ -73,13 +73,13 @@ _M_SKILL_PUBLIC = re.compile(
 #     (``types/public/<T>`` near "attachedTo" in narrative) and ontology
 #     schema writers that only mint types/public/<T> for attrs/rels do NOT trip.
 _M_FUNC_PUBLIC_ATTACH = re.compile(
-    r"""["']https://cograph\.tech/onto/attachedTo["']"""
+    r"""["']https://graph\.onta\.sh/onto/attachedTo["']"""
     r""".{0,160}?"""
-    r"""["']https://cograph\.tech/types/public/"""
+    r"""["']https://graph\.onta\.sh/types/public/"""
     r"|"
-    r"""["']https://cograph\.tech/types/public/"""
+    r"""["']https://graph\.onta\.sh/types/public/"""
     r""".{0,160}?"""
-    r"""["']https://cograph\.tech/onto/attachedTo["']""",
+    r"""["']https://graph\.onta\.sh/onto/attachedTo["']""",
     re.DOTALL,
 )
 
@@ -189,7 +189,7 @@ def test_assert_permits_raises_layer_content_error_for_public_skills():
 def test_is_public_type_uri_recognises_namespace_shapes():
     assert is_public_type_uri(layer_type_uri(Layer.PUBLIC, "Person")) is True
     assert is_public_type_uri("public/Person") is True
-    assert is_public_type_uri("https://cograph.tech/types/public/Org") is True
+    assert is_public_type_uri("https://graph.onta.sh/types/public/Org") is True
     # Bare tenant name / enhanced / empty — not Public.
     assert is_public_type_uri("Person") is False
     assert is_public_type_uri("x/Person") is False
@@ -358,7 +358,7 @@ def test_register_function_triple_refuses_public_type_uri():
     public_uri = layer_type_uri(Layer.PUBLIC, "Place")
     with pytest.raises(LayerContentError, match="may not carry functions"):
         register_function_triple(
-            "https://cograph.tech/graphs/global/public",
+            "https://graph.onta.sh/graphs/global/public",
             entity_type=public_uri,
             function_name="f",
             endpoint_url="https://fn/a",
@@ -369,7 +369,7 @@ def test_register_function_triple_refuses_path_shaped_public_entity_type():
     """entity_type='public/Place' mints types/public/Place — must refuse."""
     with pytest.raises(LayerContentError, match="may not carry functions"):
         register_function_triple(
-            "https://cograph.tech/graphs/t1",
+            "https://graph.onta.sh/graphs/t1",
             entity_type="public/Place",
             function_name="f",
             endpoint_url="https://fn/a",
@@ -379,15 +379,15 @@ def test_register_function_triple_refuses_path_shaped_public_entity_type():
 def test_register_function_triple_still_accepts_tenant_type():
     """Bare entity_type mints the tenant namespace — permitted (functions on C)."""
     sparql = register_function_triple(
-        "https://cograph.tech/graphs/t1",
+        "https://graph.onta.sh/graphs/t1",
         entity_type="Place",
         function_name="calculate_distance",
         endpoint_url="https://api.example.com/distance",
         description="Calculate distance between places",
     )
     assert "INSERT DATA" in sparql
-    assert "cograph.tech/functions/calculate_distance" in sparql
-    assert "cograph.tech/types/Place" in sparql
+    assert "graph.onta.sh/functions/calculate_distance" in sparql
+    assert "graph.onta.sh/types/Place" in sparql
     # Must NOT have written a Public type URI.
     assert type_namespace(Layer.PUBLIC) not in sparql
 
@@ -397,7 +397,7 @@ def test_register_function_triple_accepts_enhanced_layer():
     from cograph_client.graph.layers import enhanced_graph_uri, layer_type_uri
 
     sparql = register_function_triple(
-        "https://cograph.tech/graphs/t1",  # overridden for Enhanced
+        "https://graph.onta.sh/graphs/t1",  # overridden for Enhanced
         entity_type="Place",
         function_name="premium_distance",
         endpoint_url="https://api.example.com/distance",
@@ -405,7 +405,7 @@ def test_register_function_triple_accepts_enhanced_layer():
     )
     assert layer_type_uri(Layer.ENHANCED, "Place") in sparql
     assert enhanced_graph_uri() in sparql
-    assert "cograph.tech/types/Place>" not in sparql  # bare tenant subject absent
+    assert "graph.onta.sh/types/Place>" not in sparql  # bare tenant subject absent
     assert type_namespace(Layer.PUBLIC) not in sparql
 
 
@@ -433,8 +433,8 @@ def test_guard_flags_planted_public_skill_registration():
 
 def test_guard_flags_planted_function_attach_to_public():
     planted = (
-        'triples = [(func, "https://cograph.tech/onto/attachedTo", '
-        '"https://cograph.tech/types/public/Person")]\n'
+        'triples = [(func, "https://graph.onta.sh/onto/attachedTo", '
+        '"https://graph.onta.sh/types/public/Person")]\n'
     )
     assert "function attachedTo types/public/…" in _func_public_markers(
         _strip_comments(planted)
@@ -479,8 +479,8 @@ def test_guard_ignores_public_type_uri_for_allowed_schema():
     """
     planted = (
         'uri = layer_type_uri(Layer.PUBLIC, "Person")\n'
-        'attr = "https://cograph.tech/types/public/Person/attrs/email"\n'
-        'pub_ns = "https://cograph.tech/types/public/"\n'
+        'attr = "https://graph.onta.sh/types/public/Person/attrs/email"\n'
+        'pub_ns = "https://graph.onta.sh/types/public/"\n'
     )
     assert _func_public_markers(_strip_comments(planted)) == []
 
@@ -500,8 +500,8 @@ def test_guard_would_fail_for_a_new_unconverged_writer():
     """
     fake_rel = "resolver/some_new_public_fn_writer.py"
     fake_src = (
-        't = "https://cograph.tech/types/public/Place"\n'
-        'triples = [(f, "https://cograph.tech/onto/attachedTo", t)]\n'
+        't = "https://graph.onta.sh/types/public/Place"\n'
+        'triples = [(f, "https://graph.onta.sh/onto/attachedTo", t)]\n'
     )
     marks = _public_content_markers(_strip_comments(fake_src))
     assert marks, "planted function-on-public must be detected"

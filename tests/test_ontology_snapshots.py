@@ -424,9 +424,9 @@ class MemNeptune:
         return out
 
 
-PUBLIC = "https://cograph.tech/graphs/global/public"
-ENHANCED = "https://cograph.tech/graphs/global/enhanced"
-TENANT = "https://cograph.tech/graphs/acme"
+PUBLIC = "https://graph.onta.sh/graphs/global/public"
+ENHANCED = "https://graph.onta.sh/graphs/global/enhanced"
+TENANT = "https://graph.onta.sh/graphs/acme"
 
 
 async def _seed_basic(n: MemNeptune, graph: str) -> None:
@@ -579,8 +579,8 @@ def test_diff_symmetry():
         core_slots=[("Person", "name")],
         text_kinds={("Person", "bio"): "free_text"},
         alias_map={
-            "https://cograph.tech/types/Person/attrs/phone_num":
-            "https://cograph.tech/types/Person/attrs/phone",
+            "https://graph.onta.sh/types/Person/attrs/phone_num":
+            "https://graph.onta.sh/types/Person/attrs/phone",
         },
     )
     b = _shape(

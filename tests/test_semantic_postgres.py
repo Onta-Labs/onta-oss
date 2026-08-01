@@ -570,7 +570,7 @@ async def test_search_entity_uris_bound_into_leg_filter(pg):
     and an empty allowlist short-circuits without a fetch."""
     store, recorder, conn, _pool = pg
     conn.gate_count = 2
-    allow = ["https://cograph.tech/entities/Report/a", "e:wind"]
+    allow = ["https://graph.onta.sh/entities/Report/a", "e:wind"]
     await store.search(
         TENANT,
         "solar",

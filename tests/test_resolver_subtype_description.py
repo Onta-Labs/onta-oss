@@ -72,7 +72,7 @@ def _update_strings(mock_neptune) -> list[str]:
 def _comment_writes_for(mock_neptune, type_name: str, description: str) -> list[str]:
     """Every update string that writes ``description`` as the rdfs:comment of
     ``types/<type_name>``."""
-    needle_type = f"https://cograph.tech/types/{type_name}>"
+    needle_type = f"https://graph.onta.sh/types/{type_name}>"
     out = []
     for s in _update_strings(mock_neptune):
         if RDFS_COMMENT in s and description in s and needle_type in s:

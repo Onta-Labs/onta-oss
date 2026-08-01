@@ -16,7 +16,7 @@ import pytest
 
 from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
-TYPES = "https://cograph.tech/types/"
+TYPES = "https://graph.onta.sh/types/"
 
 
 def _uri_row(**cells):
@@ -93,12 +93,12 @@ class TestOntologyEmptyTypeVisibility:
         _ontology_cache.clear()
         pipe = NLQueryPipeline(_ActiveTypeNeptune(), anthropic_key="dummy")
         summary = await pipe._fetch_ontology(
-            "https://cograph.tech/graphs/t",
-            "https://cograph.tech/graphs/t/kg/Sports",
+            "https://graph.onta.sh/graphs/t",
+            "https://graph.onta.sh/graphs/t/kg/Sports",
         )
         # Movie has no instances but is STILL visible, annotated (reverses old behavior).
         assert "Type: Movie" in summary
-        assert "Type: Movie — URI: <https://cograph.tech/types/Movie> [no instances]" in summary
+        assert "Type: Movie — URI: <https://graph.onta.sh/types/Movie> [no instances]" in summary
         # Populated types are present and NOT annotated.
         assert "Type: Singer" in summary and "Singer> [no instances]" not in summary
         assert "Type: Stadium" in summary and "Stadium> [no instances]" not in summary
@@ -133,9 +133,9 @@ class TestCardinalityFiltering:
         made the schema non-deterministic (ONTA-248)."""
         enum_counts = {"Singer": {"name": 6, "bio": 0, "age": 6}}
         attributes = [
-            "name (string) — URI: <https://cograph.tech/types/Singer/attrs/name>",
-            "bio (string) — URI: <https://cograph.tech/types/Singer/attrs/bio>",
-            "age (integer) — URI: <https://cograph.tech/types/Singer/attrs/age>",
+            "name (string) — URI: <https://graph.onta.sh/types/Singer/attrs/name>",
+            "bio (string) — URI: <https://graph.onta.sh/types/Singer/attrs/bio>",
+            "age (integer) — URI: <https://graph.onta.sh/types/Singer/attrs/age>",
         ]
         annotated = self._render_attrs(enum_counts, attributes)
         assert len(annotated) == 3  # nothing dropped
@@ -199,8 +199,8 @@ class TestRelationshipFiltering:
         the schema across identical calls under a transient throttle."""
         empty_rels = {("Singer", "country")}
         relationships = [
-            "country → Country — predicate URI: <https://cograph.tech/onto/country>",
-            "genre → Genre — predicate URI: <https://cograph.tech/onto/genre>",
+            "country → Country — predicate URI: <https://graph.onta.sh/onto/country>",
+            "genre → Genre — predicate URI: <https://graph.onta.sh/onto/genre>",
         ]
         rendered = self._render_rels(empty_rels, relationships)
         assert len(rendered) == 2  # nothing dropped
@@ -209,13 +209,13 @@ class TestRelationshipFiltering:
         assert "[no instances]" in country
         assert "[no instances]" not in genre
         # The relationship predicate URI is preserved on onto/<leaf>.
-        assert "https://cograph.tech/onto/country" in country
+        assert "https://graph.onta.sh/onto/country" in country
 
     def test_non_empty_relationship_kept(self):
         """Relationships with data survive without annotation."""
         empty_rels = set()  # Nothing is empty
         relationships = [
-            "country → Country — predicate URI: <https://cograph.tech/onto/country>",
+            "country → Country — predicate URI: <https://graph.onta.sh/onto/country>",
         ]
         rendered = self._render_rels(empty_rels, relationships)
         assert len(rendered) == 1
@@ -234,7 +234,7 @@ class TestExceptionHandling:
 
         # Simulate: type has relationships but no attributes
         all_attrs = []  # No attributes
-        rel_uris = [("Singer", "country", "https://cograph.tech/onto/country")]
+        rel_uris = [("Singer", "country", "https://graph.onta.sh/onto/country")]
 
         # _count_predicate should be defined regardless of all_attrs
         # (it's now defined before the if block)

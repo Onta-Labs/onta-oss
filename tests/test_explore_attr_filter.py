@@ -42,10 +42,10 @@ TENANT = "test-tenant"
 KG = "web"
 TYPE = "TTSModel"
 
-TYPES = "https://cograph.tech/types/"
-ENTITIES = "https://cograph.tech/entities/"
-ONTO = "https://cograph.tech/onto/"
-ER = "https://cograph.tech/er/"
+TYPES = "https://graph.onta.sh/types/"
+ENTITIES = "https://graph.onta.sh/entities/"
+ONTO = "https://graph.onta.sh/onto/"
+ER = "https://graph.onta.sh/er/"
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 
 # Real domain attribute: instance predicate …/onto/score ← attrs/score

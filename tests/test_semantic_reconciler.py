@@ -48,7 +48,7 @@ from cograph_client.semantic.registry import reset_semantic_index
 TENANT = "t1"
 KG = "kg1"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-DOC_TYPE = "https://cograph.tech/types/Doc"
+DOC_TYPE = "https://graph.onta.sh/types/Doc"
 DESC_PRED = attr_uri("Doc", "description")
 SUMMARY_PRED = attr_uri("Doc", "summary")
 SKU_PRED = attr_uri("Doc", "sku")
@@ -62,7 +62,7 @@ PROSE = (
 
 
 def _entity(n: int) -> str:
-    return f"https://cograph.tech/entities/Doc/e{n}"
+    return f"https://graph.onta.sh/entities/Doc/e{n}"
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +157,8 @@ class FakeNeptune:
     async def update(self, sparql: str) -> None:
         self.updates.append(sparql)
         m = re.search(
-            r"<https://cograph\.tech/types/([^/]+)/attrs/([^>]+)> "
-            r"<https://cograph\.tech/onto/textKind> \"([^\"]+)\"",
+            r"<https://graph\.onta\.sh/types/([^/]+)/attrs/([^>]+)> "
+            r"<https://graph\.onta\.sh/onto/textKind> \"([^\"]+)\"",
             sparql,
         )
         if m:

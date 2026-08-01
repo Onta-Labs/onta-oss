@@ -26,9 +26,9 @@ from cograph_client.qc.invariants import (
     _val,
 )
 
-ENT = "https://cograph.tech/entities/"
-ONTO = "https://cograph.tech/onto/"
-TYPES = "https://cograph.tech/types/"
+ENT = "https://graph.onta.sh/entities/"
+ONTO = "https://graph.onta.sh/onto/"
+TYPES = "https://graph.onta.sh/types/"
 G = "https://omnix.dev/graphs/qc-test"        # instance graph
 ONTO_G = "https://omnix.dev/graphs/qc-onto"   # ontology (declaration) graph
 

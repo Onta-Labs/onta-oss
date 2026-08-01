@@ -30,7 +30,7 @@ Merge needs three things to hold, and each has a test below:
    ``finetune_pairs.jsonl`` is append-only and re-offers every past pair.
 3. Within one batch, LAST wins. ``finetune_pairs.jsonl`` is keyed on
    ``(question, graph_uri)``, so a namespace rename (``omnix.dev`` ->
-   ``cograph.tech``, 2026-04-27) appends a SECOND pair for the same question
+   ``graph.onta.sh``, 2026-04-27) appends a SECOND pair for the same question
    instead of replacing the first. First-wins kept the stale one. That was the
    first of the three reasons ``ARCHITECTURE.md`` gave for why this loop could
    not heal a stale entry; the other two (the rebuild cannot reach the shipped
@@ -47,7 +47,7 @@ from cograph_client.eval import rebuild_example_bank
 from cograph_client.nlp import example_bank as bank_mod
 from cograph_client.nlp.example_bank import ExampleBank
 
-GRAPH = "https://cograph.tech/graphs/demo-tenant/kg/{kg}"
+GRAPH = "https://graph.onta.sh/graphs/demo-tenant/kg/{kg}"
 LEGACY_GRAPH = "https://omnix.dev/graphs/demo-tenant/kg/{kg}"
 
 
@@ -239,7 +239,7 @@ async def test_rebuild_prefers_the_later_pair_when_the_graph_iri_changed(tmp_pat
         ft,
         [
             _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://omnix.dev/onto/a> ?y }", graph=LEGACY_GRAPH),
-            _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://cograph.tech/onto/a> ?y }"),
+            _pair("imdb-movies", "how many films", sparql="SELECT ?x WHERE { ?x <https://graph.onta.sh/onto/a> ?y }"),
         ],
     )
 
@@ -247,7 +247,7 @@ async def test_rebuild_prefers_the_later_pair_when_the_graph_iri_changed(tmp_pat
 
     saved = _read_bank(bank._bank_path)
     assert len(saved) == 1
-    assert "cograph.tech" in saved[0]["sparql"]
+    assert "graph.onta.sh" in saved[0]["sparql"]
     assert "omnix.dev" not in saved[0]["sparql"]
     # One embedding call: the pair was collapsed before embedding, not after.
     assert bank.embedded == ["how many films"]

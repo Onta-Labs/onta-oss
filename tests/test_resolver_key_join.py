@@ -290,7 +290,7 @@ async def test_key_join_strict_preserves_relationship_targets():
     # The relationship edge lands (union across graphs — _ingest_mapped writes
     # rel triples to the base graph, an existing quirk unrelated to key-join).
     edges = await _bindings(
-        n, 'SELECT ?w ?m WHERE { ?w <https://cograph.tech/onto/maker> ?m }'
+        n, 'SELECT ?w ?m WHERE { ?w <https://graph.onta.sh/onto/maker> ?m }'
     )
     assert len(edges) == 1  # relationship edge landed, keyed off the MERGED Widget
 

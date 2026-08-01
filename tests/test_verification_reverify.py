@@ -55,7 +55,7 @@ from cograph_client.verification.types import TruthVerdict, VerifierResult
 
 TENANT, KG = "onta363", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
-ACME = "https://cograph.tech/entities/Company/acme"
+ACME = "https://graph.onta.sh/entities/Company/acme"
 PHONE = literal_attribute_predicate("Company", "phone")
 
 SCRAPED_PHONE = "+1-555-0001"      # the stale scraped value
@@ -161,7 +161,7 @@ async def _seed_scraped(
         n,
         INSTANCE_GRAPH,
         [(ACME, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "https://cograph.tech/types/Company")],
+          "https://graph.onta.sh/types/Company")],
     )
     await write_with_conflict_resolution(
         n, INSTANCE_GRAPH,

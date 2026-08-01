@@ -45,6 +45,7 @@ from typing import Optional
 import structlog
 
 from cograph_client.api_registry.spec import AUTHORITY_CONFIDENCE, AuthorityLevel
+from cograph_client.graph.iri import IRI_BASE
 from cograph_client.graph.ontology_queries import attr_uri, entity_uri
 from cograph_client.graph.provenance import build_provenance_triples
 from cograph_client.pipeline.envelope import ArtifactEnvelope
@@ -70,7 +71,7 @@ _USER_ASSERTION_CONFIDENCE = AUTHORITY_CONFIDENCE[AuthorityLevel.user_assertion]
 # type segment. Used to derive the entity's type from a correction's subject URI
 # when the caller doesn't name it, so the recency policy + post-write refresh key
 # on the right type.
-_ENTITY_URI_RE = re.compile(r"^https://cograph\.tech/entities/([^/]+)/.+$")
+_ENTITY_URI_RE = re.compile(rf"^{re.escape(IRI_BASE)}/entities/([^/]+)/.+$")
 
 
 def _type_from_entity_uri(subject: str) -> str:

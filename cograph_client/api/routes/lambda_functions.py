@@ -6,6 +6,7 @@ Delivers two capabilities:
    and materializes the output as triples on that entity in the KG.
 """
 
+from cograph_client.graph.iri import IRI_BASE
 import datetime
 import time
 
@@ -268,9 +269,9 @@ async def invoke_function(
     if func_ref is None:
         raise HTTPException(status_code=404, detail=f"Function '{function_name}' not registered")
 
-    # --- Step 2: Resolve the entity's filing_cik from the KG ---
+    # --- Step 2: Resolve the entityf's filing_cik from the KG ---
     entity_type = func_ref.entity_type  # e.g. "Company"
-    cik_attr_uri = f"https://cograph.tech/types/{entity_type}/attrs/filing_cik"
+    cik_attr_uri = f"{IRI_BASE}/types/{entity_type}/attrs/filing_cik"
 
     # Try direct attribute on the entity
     cik_query = (
@@ -292,7 +293,7 @@ async def invoke_function(
             f"SELECT ?cik FROM <{instance_graph}>\n"
             f"WHERE {{\n"
             f"  ?round ?rel <{body.entity_uri}> .\n"
-            f"  ?round <https://cograph.tech/types/FundingRound/attrs/filing_cik> ?cik .\n"
+            f"  ?round <{IRI_BASE}/types/FundingRound/attrs/filing_cik> ?cik .\n"
             f"}}"
         )
         raw_fallback = await client.query(fallback_query)
@@ -305,8 +306,8 @@ async def invoke_function(
         label_query = (
             f"SELECT ?label FROM <{instance_graph}>\n"
             f"WHERE {{\n"
-            f"  ?round <https://cograph.tech/onto/company_name> <{body.entity_uri}> .\n"
-            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/FundingRound> .\n"
+            f"  ?round <{IRI_BASE}/onto/company_name> <{body.entity_uri}> .\n"
+            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <{IRI_BASE}/types/FundingRound> .\n"
             f"  ?round <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n"
             f"}}\n"
             f"LIMIT 1"
@@ -347,13 +348,13 @@ async def invoke_function(
     for key, value in output.items():
         if value is None:
             continue
-        attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
+        attr_pred = f"{IRI_BASE}/types/{entity_type}/attrs/{key}"
         new_triples.append((body.entity_uri, attr_pred, str(value)))
         replaced_preds.append(attr_pred)
         new_value_by_pred[(body.entity_uri, attr_pred)] = str(value)
 
         # Per-fact freshness stamp: a QUERYABLE `verified_at` companion on the
-        # attr_meta metadata namespace, mirroring enrichment's _provenance_triples
+        # attr_meta metadata namespace, mirroring enrichmentf's _provenance_triples
         # (shared shape via attr_provenance_companion_uri — ONTA-262: companions
         # are metadata OF the attribute, never ontology-declared attributes). This
         # is per-FACT (each lambda-computed attribute gets its own stamp), unlike
@@ -402,7 +403,7 @@ async def invoke_function(
             pass  # attribute may already exist
 
     # Add provenance triple
-    lambda_ts_pred = "https://cograph.tech/onto/lambda_refreshed_at"
+    lambda_ts_pred = f"{IRI_BASE}/onto/lambda_refreshed_at"
     new_triples.append((body.entity_uri, lambda_ts_pred, now_iso))
     replaced_preds.append(lambda_ts_pred)
 
@@ -436,9 +437,9 @@ async def invoke_function(
         discover_query = (
             f"SELECT DISTINCT ?investor ?investorName FROM <{instance_graph}>\n"
             f"WHERE {{\n"
-            f"  ?round <https://cograph.tech/onto/company_name> <{body.entity_uri}> .\n"
-            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/FundingRound> .\n"
-            f"  ?round <https://cograph.tech/onto/lead_investor> ?investor .\n"
+            f"  ?round <{IRI_BASE}/onto/company_name> <{body.entity_uri}> .\n"
+            f"  ?round <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <{IRI_BASE}/types/FundingRound> .\n"
+            f"  ?round <{IRI_BASE}/onto/lead_investor> ?investor .\n"
             f"  ?investor <http://www.w3.org/2000/01/rdf-schema#label> ?investorName .\n"
             f"}}"
         )
@@ -507,7 +508,7 @@ async def investor_portfolio(
 
     Looks up FundingRound entities where lead_investor matches this investor,
     then follows company_name relationships to get Company names and sums amounts.
-    """
+    f"""
     tenant_id = _tenant.tenant_id
 
     # Search across all KGs in the tenant for this investor's portfolio
@@ -524,12 +525,12 @@ async def investor_portfolio(
         portfolio_query = (
             f"SELECT ?companyName ?amount FROM <{ig}>\n"
             f"WHERE {{\n"
-            f"  ?investor <https://cograph.tech/types/Investor/attrs/name> \"{body.investor_name}\" .\n"
-            f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/Investor> .\n"
-            f"  ?round <https://cograph.tech/onto/lead_investor> ?investor .\n"
-            f"  ?round <https://cograph.tech/onto/company_name> ?company .\n"
-            f"  ?company <https://cograph.tech/types/Company/attrs/name> ?companyName .\n"
-            f"  OPTIONAL {{ ?round <https://cograph.tech/types/FundingRound/attrs/amount_usd> ?amount }}\n"
+            f"  ?investor <{IRI_BASE}/types/Investor/attrs/name> \"{body.investor_name}\" .\n"
+            f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <{IRI_BASE}/types/Investor> .\n"
+            f"  ?round <{IRI_BASE}/onto/lead_investor> ?investor .\n"
+            f"  ?round <{IRI_BASE}/onto/company_name> ?company .\n"
+            f"  ?company <{IRI_BASE}/types/Company/attrs/name> ?companyName .\n"
+            f"  OPTIONAL {{ ?round <{IRI_BASE}/types/FundingRound/attrs/amount_usd> ?amount }}\n"
             f"}}"
         )
         try:
@@ -582,7 +583,7 @@ async def invoke_investor_portfolio(
     name_query = (
         f"SELECT ?name FROM <{instance_graph}>\n"
         f"WHERE {{\n"
-        f"  {{ <{body.entity_uri}> <https://cograph.tech/types/Investor/attrs/name> ?name }}\n"
+        f"  {{ <{body.entity_uri}> <{IRI_BASE}/types/Investor/attrs/name> ?name }}\n"
         f"  UNION\n"
         f"  {{ <{body.entity_uri}> <http://www.w3.org/2000/01/rdf-schema#label> ?name }}\n"
         f"}}"
@@ -608,12 +609,12 @@ async def invoke_investor_portfolio(
     portfolio_query = (
         f"SELECT ?companyName ?amount FROM <{ig}>\n"
         f"WHERE {{\n"
-        f"  ?investor <https://cograph.tech/types/Investor/attrs/name> \"{investor_name}\" .\n"
-        f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://cograph.tech/types/Investor> .\n"
-        f"  ?round <https://cograph.tech/onto/lead_investor> ?investor .\n"
-        f"  ?round <https://cograph.tech/onto/company_name> ?company .\n"
-        f"  ?company <https://cograph.tech/types/Company/attrs/name> ?companyName .\n"
-        f"  OPTIONAL {{ ?round <https://cograph.tech/types/FundingRound/attrs/amount_usd> ?amount }}\n"
+        f"  ?investor <{IRI_BASE}/types/Investor/attrs/name> \"{investor_name}\" .\n"
+        f"  ?investor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <{IRI_BASE}/types/Investor> .\n"
+        f"  ?round <{IRI_BASE}/onto/lead_investor> ?investor .\n"
+        f"  ?round <{IRI_BASE}/onto/company_name> ?company .\n"
+        f"  ?company <{IRI_BASE}/types/Company/attrs/name> ?companyName .\n"
+        f"  OPTIONAL {{ ?round <{IRI_BASE}/types/FundingRound/attrs/amount_usd> ?amount }}\n"
         f"}}"
     )
     raw_portfolio = await client.query(portfolio_query)
@@ -643,7 +644,7 @@ async def invoke_investor_portfolio(
     for key, value in output.items():
         if value is None:
             continue
-        attr_pred = f"https://cograph.tech/types/{entity_type}/attrs/{key}"
+        attr_pred = f"{IRI_BASE}/types/{entity_type}/attrs/{key}"
         new_triples.append((body.entity_uri, attr_pred, str(value)))
         replaced_preds.append(attr_pred)
 
@@ -667,7 +668,7 @@ async def invoke_investor_portfolio(
 
     # Provenance timestamp
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    lambda_ts_pred = "https://cograph.tech/onto/lambda_refreshed_at"
+    lambda_ts_pred = f"{IRI_BASE}/onto/lambda_refreshed_at"
     new_triples.append((body.entity_uri, lambda_ts_pred, now_iso))
     replaced_preds.append(lambda_ts_pred)
 

@@ -23,7 +23,7 @@ declared exception):
   expensive, or metered).
 
 Cached outputs are DERIVED data per ADR 0001 rule 6: stored under a distinct
-predicate namespace (``https://cograph.tech/derived/<name>``) with a
+predicate namespace (``https://graph.onta.sh/derived/<name>``) with a
 per-function computed-at timestamp triple, so they are regenerable, trivially
 identifiable, and never confused with asserted facts.
 
@@ -34,6 +34,9 @@ raise NotImplementedError — the premium tree supplies the runner.
 
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
+
+
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from string import Template
@@ -41,7 +44,7 @@ from string import Template
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.queries import insert_triples
 
-DERIVED_NS = "https://cograph.tech/derived/"
+DERIVED_NS = f"{IRI_BASE}/derived/"
 
 _XSD = "http://www.w3.org/2001/XMLSchema"
 

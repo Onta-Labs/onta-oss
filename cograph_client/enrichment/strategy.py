@@ -5,8 +5,10 @@ in the issue for the predicate set. The executor reads these and merges
 with the EnrichRequest defaults at job start. Request values override
 ontology values; ontology values override hardcoded defaults.
 """
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE, ONTO_BASE
 import structlog
 from pydantic import BaseModel, Field
 
@@ -18,8 +20,8 @@ from cograph_client.graph.queries import tenant_graph_uri
 logger = structlog.stdlib.get_logger("cograph.enrichment.strategy")
 
 
-ONTO = "https://cograph.tech/onto"
-TYPES_PREFIX = "https://cograph.tech/types"
+ONTO = ONTO_BASE
+TYPES_PREFIX = f"{IRI_BASE}/types"
 
 
 class AttributeStrategy(BaseModel):

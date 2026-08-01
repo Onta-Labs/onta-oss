@@ -37,8 +37,10 @@ CLI (mirrors ``python -m cograph_client.qc``)::
     ... --dry-run
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import TYPE_URI_PREFIX
 import structlog
 
 from cograph_client.graph.kg_writer import refresh_after_write, rewrite_predicates
@@ -55,7 +57,7 @@ from cograph_client.models.ontology import OntologyMutation, OntologyOpKind
 
 logger = structlog.get_logger(__name__)
 
-_TYPES_PREFIX = "https://cograph.tech/types/"
+_TYPES_PREFIX = TYPE_URI_PREFIX
 
 
 def _split_legacy_attr_pred(p_uri: str) -> tuple[str, str] | None:

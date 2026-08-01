@@ -78,8 +78,10 @@ silently shrink a page. ``rdfs:label`` is the one deliberate exemption: finding
 an entity by its displayed name is the single most common reason to grep.
 """
 
+
 from __future__ import annotations
 
+from cograph_client.graph.iri import IRI_BASE
 import os
 import re
 from typing import Optional
@@ -290,7 +292,7 @@ def _predicate_clause(predicate: str) -> str:
     A full URI binds ``?p`` EXACTLY (a ``VALUES`` clause, so the store can use it
     to drive the scan); a bare leaf name degrades to a ``STRENDS`` filter on
     ``"/<leaf>"``, which is the form a user actually types ("title", not the full
-    ``https://cograph.tech/onto/title``).
+    ``https://graph.onta.sh/onto/title``).
     """
     p = predicate.strip()
     if p.startswith("http://") or p.startswith("https://"):

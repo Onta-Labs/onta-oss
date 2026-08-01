@@ -38,12 +38,12 @@ def test_insert_facts_batches_and_routes_provenance():
 
     async def run():
         neptune = AsyncMock()
-        instance_graph = "https://cograph.tech/graphs/t/kg/k"
+        instance_graph = "https://graph.onta.sh/graphs/t/kg/k"
         instance_triples = [
-            (f"https://cograph.tech/entities/E/{i}", "https://cograph.tech/onto/p", f"v{i}")
+            (f"https://graph.onta.sh/entities/E/{i}", "https://graph.onta.sh/onto/p", f"v{i}")
             for i in range(1200)
         ]
-        prov_triples = [("https://cograph.tech/prov/stmt/abc", "https://cograph.tech/prov/source", "csv")]
+        prov_triples = [("https://graph.onta.sh/prov/stmt/abc", "https://graph.onta.sh/prov/source", "csv")]
 
         await insert_facts(
             neptune, instance_graph, instance_triples, provenance_triples=prov_triples,
@@ -114,7 +114,7 @@ def test_refresh_after_write_runs_all_three(monkeypatch):
             neptune, tenant_id="t", kg_name="k", affected_types={"Company"},
         )
 
-        onto = "https://cograph.tech/graphs/t"
+        onto = "https://graph.onta.sh/graphs/t"
         assert calls["invalidate"] == [onto]
         assert calls["embed"] == [(onto, ["Company"])]
         assert calls["recompute"] == [("t", "k")]
@@ -275,9 +275,9 @@ def test_delete_facts_batches_concrete_triples_and_counts_exactly():
 
     async def run():
         neptune = AsyncMock()
-        g = "https://cograph.tech/graphs/t/kg/k"
+        g = "https://graph.onta.sh/graphs/t/kg/k"
         triples = [
-            (f"https://cograph.tech/entities/E/{i}", "https://cograph.tech/onto/p", f"v{i}")
+            (f"https://graph.onta.sh/entities/E/{i}", "https://graph.onta.sh/onto/p", f"v{i}")
             for i in range(1200)
         ]
         removed = await delete_facts(neptune, g, triples=triples)
@@ -297,7 +297,7 @@ def test_delete_facts_predicate_scoped_uses_wildcard_and_counts():
     async def run():
         neptune = AsyncMock()
         neptune.query.return_value = _count_response(2)
-        g = "https://cograph.tech/graphs/t/kg/k"
+        g = "https://graph.onta.sh/graphs/t/kg/k"
         removed = await delete_facts(
             neptune, g, triples=[("e1", "p1", None), ("e1", "p2", None)]
         )
@@ -316,7 +316,7 @@ def test_delete_facts_whole_subject_uses_values_and_counts():
     async def run():
         neptune = AsyncMock()
         neptune.query.return_value = _count_response(5)
-        g = "https://cograph.tech/graphs/t/kg/k"
+        g = "https://graph.onta.sh/graphs/t/kg/k"
         removed = await delete_facts(neptune, g, subjects=["e1", "e2"])
         assert removed == 5
         assert neptune.update.await_count == 1
@@ -344,8 +344,8 @@ def test_delete_facts_writes_tombstone_when_provenance_enabled(monkeypatch):
         monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
         neptune = AsyncMock()
         neptune.query.return_value = _count_response(1)
-        g = "https://cograph.tech/graphs/t/kg/k"
-        subj = "https://cograph.tech/entities/E/1"
+        g = "https://graph.onta.sh/graphs/t/kg/k"
+        subj = "https://graph.onta.sh/entities/E/1"
         await delete_facts(neptune, g, subjects=[subj], reason="unit-delete")
         stmts = [c.args[0] for c in neptune.update.await_args_list]
         prov_graph = provenance_graph_uri(g)
@@ -362,7 +362,7 @@ def test_delete_facts_no_tombstone_when_provenance_disabled(monkeypatch):
         monkeypatch.delenv("COGRAPH_PROVENANCE_ENABLED", raising=False)
         neptune = AsyncMock()
         neptune.query.return_value = _count_response(1)
-        g = "https://cograph.tech/graphs/t/kg/k"
+        g = "https://graph.onta.sh/graphs/t/kg/k"
         await delete_facts(neptune, g, subjects=["e1"], reason="x")
         prov_graph = provenance_graph_uri(g)
         assert not any(prov_graph in c.args[0] for c in neptune.update.await_args_list)
@@ -377,7 +377,7 @@ def test_rewrite_subject_moves_both_directions_and_records_event(monkeypatch):
     async def run():
         monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
         neptune = AsyncMock()
-        g = "https://cograph.tech/graphs/t/kg/k"
+        g = "https://graph.onta.sh/graphs/t/kg/k"
         await rewrite_subject(neptune, g, "urn:old", "urn:new", reason="er-merge")
         stmts = [c.args[0] for c in neptune.update.await_args_list]
         # The merge SPARQL moves outgoing + incoming references.

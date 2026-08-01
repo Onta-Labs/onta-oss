@@ -48,7 +48,7 @@ from cograph_client.resolver.verdict_cache import JsonVerdictCache
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 PHYS_URI = entity_uri("Physician", "p1")
-LOCATED_IN = "https://cograph.tech/onto/located_in"
+LOCATED_IN = "https://graph.onta.sh/onto/located_in"
 
 # Plan attrs from the dogfood: {name, city, website, address}.
 _PLAN = {"Institution": ["name", "city", "website", "address"]}

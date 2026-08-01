@@ -249,7 +249,7 @@ async def test_entity_mark_and_fact_mark_are_independent():
     and distinct mark nodes, so neither shadows the other."""
     neptune = PyoxiNeptune()
     subject = SUPPRESSED_SUBJECT
-    predicate = "https://cograph.tech/onto/context_length"
+    predicate = "https://graph.onta.sh/onto/context_length"
     obj = "200000"
 
     # Suppress a FACT (s, p, o). It must NOT register as an ENTITY suppression.
@@ -282,7 +282,7 @@ async def test_entity_mark_and_fact_mark_are_independent():
     # Kind-faithful: the entity mark did not mint a fact suppression for some (p, o).
     assert (
         await is_suppressed(
-            neptune, INSTANCE_GRAPH, subject, "https://cograph.tech/onto/other", "x"
+            neptune, INSTANCE_GRAPH, subject, "https://graph.onta.sh/onto/other", "x"
         )
         is False
     )

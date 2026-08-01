@@ -60,13 +60,13 @@ XCORP = entity_uri("Company", "x_corp")
 INVESTOR = entity_uri("Investor", "vanguard")
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-COMPANY = "https://cograph.tech/types/Company"
-HAS_CEO = "https://cograph.tech/onto/hasCEO"
-LEGAL_NAME = "https://cograph.tech/onto/legalName"
-HAS_PRODUCT = "https://cograph.tech/onto/hasProduct"
-OWNER = "https://cograph.tech/onto/owner"
-EMPLOYEE_COUNT = "https://cograph.tech/onto/employeeCount"
-INVESTED_IN = "https://cograph.tech/onto/invested_in"
+COMPANY = "https://graph.onta.sh/types/Company"
+HAS_CEO = "https://graph.onta.sh/onto/hasCEO"
+LEGAL_NAME = "https://graph.onta.sh/onto/legalName"
+HAS_PRODUCT = "https://graph.onta.sh/onto/hasProduct"
+OWNER = "https://graph.onta.sh/onto/owner"
+EMPLOYEE_COUNT = "https://graph.onta.sh/onto/employeeCount"
+INVESTED_IN = "https://graph.onta.sh/onto/invested_in"
 XSD_INT = "http://www.w3.org/2001/XMLSchema#integer"
 
 # Disjoint fact sets — this is the whole point (half the facts on each node).

@@ -60,11 +60,11 @@ def test_entity_uri_and_safe_id_live_in_ontology_queries():
 def test_entity_uri_is_prefix_plus_safe_id():
     """The canonical shape: ``…/entities/<Type>/<_safe_id(id)>`` — kept byte-for-byte
     stable so a pure-mechanical convergence orphans zero data."""
-    assert entity_uri("City", "San Francisco") == "https://cograph.tech/entities/City/San_Francisco"
-    assert entity_uri("Physician", "p1") == "https://cograph.tech/entities/Physician/p1"
+    assert entity_uri("City", "San Francisco") == "https://graph.onta.sh/entities/City/San_Francisco"
+    assert entity_uri("Physician", "p1") == "https://graph.onta.sh/entities/Physician/p1"
     # Composed exactly as prefix + slug, for any (type, id).
     for t, i in [("City", "San Francisco"), ("Model", "eleven v3"), ("X", "")]:
-        assert entity_uri(t, i) == f"https://cograph.tech/entities/{t}/{_safe_id(i)}"
+        assert entity_uri(t, i) == f"https://graph.onta.sh/entities/{t}/{_safe_id(i)}"
 
 
 def test_safe_id_slug_rules():
@@ -213,7 +213,7 @@ def test_normalization_atom_uri_uses_shared_entity_uri():
 
 
 def test_guard_flags_planted_inline_mint():
-    planted = 'uri = f"https://cograph.tech/entities/{t}/{_safe_id(raw)}"\n'
+    planted = 'uri = f"https://graph.onta.sh/entities/{t}/{_safe_id(raw)}"\n'
     assert "inline entities/<Type>/<id> mint" in _mint_markers(_strip_comments(planted))
 
 
@@ -251,8 +251,8 @@ def test_guard_ignores_entity_uri_prefix_parse_and_startswith():
     """Reading/parsing entity URIs (the ENTITY_URI_PREFIX constant, a startswith
     check, a REPLACE regex) is not minting and must not trip the scan."""
     for planted in (
-        'ENTITY_URI_PREFIX = "https://cograph.tech/entities/"\n',
-        'if uri.startswith("https://cograph.tech/entities/"):\n    pass\n',
+        'ENTITY_URI_PREFIX = "https://graph.onta.sh/entities/"\n',
+        'if uri.startswith("https://graph.onta.sh/entities/"):\n    pass\n',
         'q = \'BIND(REPLACE(STR(?o), "^.*/entities/([^/]+)/.*$", "$1") AS ?t)\'\n',
     ):
         assert _mint_markers(_strip_comments(planted)) == [], planted
@@ -262,6 +262,6 @@ def test_guard_would_fail_for_a_new_unconverged_rail():
     """Simulate deny-by-default: a NEW module (not the home) that hand-builds the
     IRI inline is a violation."""
     fake_rel = "resolver/some_new_rail.py"
-    fake_src = 'target = f"https://cograph.tech/entities/{typ}/{_safe_id(v)}"\n'
+    fake_src = 'target = f"https://graph.onta.sh/entities/{typ}/{_safe_id(v)}"\n'
     marks = _mint_markers(_strip_comments(fake_src))
     assert bool(marks) and fake_rel != _HOME

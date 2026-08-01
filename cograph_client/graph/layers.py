@@ -1,3 +1,4 @@
+from cograph_client.graph.iri import ENHANCED_GRAPH_URI, IRI_BASE, PUBLIC_GRAPH_URI, TYPE_URI_PREFIX
 """Ontology layers + precedence resolver (ADR 0002 §1).
 
 Three layers, each a named graph with its own type-URI namespace:
@@ -11,10 +12,10 @@ degrades gracefully to ``Tenant > Public``, never errors.
 
 Namespaces (one per layer, so shadowing is explicit and collisions impossible):
 
-  Tenant   — https://cograph.tech/types/          (the EXISTING namespace,
+  Tenant   — https://graph.onta.sh/types/          (the EXISTING namespace,
              unchanged — existing data keeps resolving via type_uri())
-  Enhanced — https://cograph.tech/types/x/
-  Public   — https://cograph.tech/types/public/
+  Enhanced — https://graph.onta.sh/types/x/
+  Public   — https://graph.onta.sh/types/public/
 
 **Reads are layered; writes are not (ONTA-397).** A workspace *read* sees the
 merged stack via :class:`LayerStack` / :func:`~cograph_client.graph.global_ontology.fetch_ontology`.
@@ -52,10 +53,10 @@ class Layer(str, Enum):
     PUBLIC = "public"
 
 
-# Shared named graphs for the two Global layers. The tenant layer's graph URI
+# Shared named graphs for the two Global layers. The tenant layerf's graph URI
 # stays whatever callers pass today (per-tenant, e.g. tenant_graph_uri()).
-_PUBLIC_GRAPH_URI = "https://cograph.tech/graphs/global/public"
-_ENHANCED_GRAPH_URI = "https://cograph.tech/graphs/global/enhanced"
+_PUBLIC_GRAPH_URI = PUBLIC_GRAPH_URI
+_ENHANCED_GRAPH_URI = ENHANCED_GRAPH_URI
 
 # Per-layer type-URI namespaces. TENANT is the existing namespace — do not
 # change it, or every URI already written to Neptune stops resolving.

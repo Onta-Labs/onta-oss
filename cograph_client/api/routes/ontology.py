@@ -14,6 +14,7 @@ layer graph. Isolation is by named graph: two tenants' type URIs may collide
 byte-for-byte; they must never share a graph in a union.
 """
 
+from cograph_client.graph.iri import IRI_BASE
 import re
 from pathlib import Path
 
@@ -742,7 +743,7 @@ def _resolve_ontology_ref(
     * ``release:N`` / ``vN`` — base-layer release snapshot for the pin's layer
     * absolute ``https://…`` graph URI — must stay under this tenant's graphs/
       or a global public/enhanced release path
-    """
+    f"""
     raw = (ref or "").strip()
     if not raw:
         raise ValueError("version ref must be non-empty")
@@ -756,10 +757,10 @@ def _resolve_ontology_ref(
     # Absolute graph URI — tenant isolation + allowed global release graphs.
     if _ABS_IRI_RE.match(raw):
         g = raw.rstrip("/")
-        tenant_prefix = f"https://cograph.tech/graphs/{tenant_id}"
+        tenant_prefix = f"{IRI_BASE}/graphs/{tenant_id}"
         global_ok = (
-            g.startswith("https://cograph.tech/graphs/global/public")
-            or g.startswith("https://cograph.tech/graphs/global/enhanced")
+            g.startswith(f"{IRI_BASE}/graphs/global/public")
+            or g.startswith(f"{IRI_BASE}/graphs/global/enhanced")
         )
         if not (g == live or g.startswith(tenant_prefix + "/") or global_ok):
             raise ValueError(

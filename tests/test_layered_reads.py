@@ -57,7 +57,7 @@ RDFS = "http://www.w3.org/2000/01/rdf-schema"
 XSD = "http://www.w3.org/2001/XMLSchema"
 TENANT_A = "acme"
 TENANT_B = "globex"
-TENANT_NS = "https://cograph.tech/types"
+TENANT_NS = "https://graph.onta.sh/types"
 GRAPH_A = tenant_graph_uri(TENANT_A)
 GRAPH_B = tenant_graph_uri(TENANT_B)
 
@@ -534,7 +534,7 @@ async def test_ask_binds_public_type_in_generated_sparql():
     generated = (
         f"SELECT ?name FROM <{GRAPH_A}> WHERE {{ "
         f"?h a <{hotel_uri}> . "
-        f"?h <https://cograph.tech/types/public/Hotel/attrs/name> ?name }}"
+        f"?h <https://graph.onta.sh/types/public/Hotel/attrs/name> ?name }}"
     )
 
     # FakeNeptune only knows full_ontology_detail_query shapes via FROM match;
