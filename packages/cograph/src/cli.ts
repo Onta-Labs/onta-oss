@@ -768,7 +768,9 @@ onto
   .option("--grouped", "Group mid-ingest commit bursts", true)
   .action(async (opts: { grouped?: boolean }) => {
     await withErrors(async () => {
-      const q = opts.grouped === false ? "" : "?grouped=true";
+      // Always send the flag: empty query falls back to server default
+      // grouped=true, so --no-grouped would be a silent no-op otherwise.
+      const q = `?grouped=${opts.grouped === false ? "false" : "true"}`;
       // Raw pass-through — same canonical route as Explorer/MCP.
       const res = await client().raw.ontologyHistory(q);
       if (!res.ok) {
@@ -956,16 +958,21 @@ program
             "Applied to the graph (value + provenance triples).\n",
           );
         } else if (job.status === "review") {
+          // Review walkthrough is shell-only (`/enrich review`); there is no
+          // non-interactive `onta enrich review` subcommand.
           process.stdout.write(
-            `Needs review (${p.conflicts} conflict${p.conflicts === 1 ? "" : "s"}) — run: onta enrich review ${jobId.slice(0, 8)}\n`,
+            `Needs review (${p.conflicts} conflict${p.conflicts === 1 ? "" : "s"}) — open the shell and run: /enrich review ${jobId.slice(0, 8)}\n`,
           );
-        } else if (opts.apply) {
+        } else if (
+          job.status === "failed" ||
+          job.status === "cancelled"
+        ) {
           process.stdout.write(
             `Job ended as ${job.status}${job.error ? ": " + job.error : ""}.\n`,
           );
         } else {
           process.stdout.write(
-            "Staged for review — re-run with --apply to write remaining accepted values.\n",
+            `Job status: ${job.status} (still running or unknown — check: onta jobs ${jobId.slice(0, 8)}).\n`,
           );
         }
       });
