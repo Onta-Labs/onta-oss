@@ -293,6 +293,8 @@ class OntologyResolver:
             return json.loads(_strip_code_fences(text))
         if self._anthropic is None:
             raise RuntimeError("no LLM provider configured")
+        from cograph_client.offline import assert_online_host
+        assert_online_host("api.anthropic.com", purpose="Anthropic ontology resolve")
         msg = await self._anthropic.messages.create(
             model=self.INFER_MODEL,
             max_tokens=1024,

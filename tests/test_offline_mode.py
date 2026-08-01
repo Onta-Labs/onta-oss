@@ -255,3 +255,10 @@ class TestEntrypointWiring:
         page = await StaticHttpFetcher().fetch("https://example.com/page")
         assert page.ok is False
         assert "Offline mode" in (page.error or "")
+
+
+def test_offline_blocks_anthropic_host(monkeypatch):
+    monkeypatch.setenv("OMNIX_OFFLINE", "1")
+    from cograph_client.offline import OfflineModeError, assert_online_host
+    with pytest.raises(OfflineModeError):
+        assert_online_host("api.anthropic.com", purpose="Anthropic extract")

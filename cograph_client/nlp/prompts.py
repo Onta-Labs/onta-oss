@@ -35,6 +35,11 @@ in STR() to coerce to plain string: FILTER(STRSTARTS(LCASE(STR(?name)), LCASE("u
 Neptune is strict about type mismatches between xsd:string and language-tagged strings; \
 STR() guarantees a plain string.
 - COUNT(DISTINCT ?entityVar) not COUNT(DISTINCT ?nameVar) for unique entity counts.
+- When computing SUM/AVG over facts joined through a related entity that is \
+filtered with FILTER(CONTAINS(...)) on a multi-valued name attribute, wrap the \
+join in a sub-select that binds DISTINCT fact entities (and the numeric value) \
+BEFORE aggregating. Multi-valued names must never multiply rows into the sum \
+(e.g. a Region with both "West" and an id-like name would otherwise double revenue).
 - To get a human-readable name for an entity: first check if the type has a "name" \
 attribute in the ontology. If not, use <http://www.w3.org/2000/01/rdf-schema#label> \
 for the entity's label. NEVER use an attribute URI from a different type.

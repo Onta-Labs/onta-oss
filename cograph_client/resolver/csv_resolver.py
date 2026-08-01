@@ -1244,6 +1244,8 @@ class CSVResolver:
     ) -> dict:
         """Anthropic fallback for the v2 passes: free-form JSON (the pass
         output shapes differ, so no fixed output_config schema here)."""
+        from cograph_client.offline import assert_online_host
+        assert_online_host("api.anthropic.com", purpose="Anthropic CSV schema chat")
         msg = await self._client.messages.create(
             model=self.INFER_MODEL,
             max_tokens=max_tokens,
@@ -1254,6 +1256,8 @@ class CSVResolver:
         return json.loads(_strip_code_fences(msg.content[0].text))
 
     async def _infer_via_anthropic(self, user_content: str, temperature: float = 0.0) -> dict:
+        from cograph_client.offline import assert_online_host
+        assert_online_host("api.anthropic.com", purpose="Anthropic CSV schema infer")
         msg = await self._client.messages.create(
             model=self.INFER_MODEL,
             max_tokens=2048,
@@ -1483,12 +1487,25 @@ class CSVResolver:
                 # The single main entity is the only owner handle (None).
                 applier.process_row(row, {None: safe_id})
 
-        # Create stub entities for relationship targets (so they exist in the graph)
+        # Create stub entities for relationship targets (so they exist in the graph).
+        # Opaque machine ids (C1001, R-WEST, P77) must NOT be written as attrs/name:
+        # the full dimension-table row later adds the human name (Alice, West), and
+        # multi-valued name then makes FILTER(CONTAINS(...)) fan-out SUM/AVG
+        # rows (dogfood S5: West revenue 2×). Stubs still get rdfs:label=id at
+        # write time in schema_resolver. Human-readable relationship cells
+        # (Austin, Acme Corp) keep a name attr so NL can filter them before a
+        # dim table arrives.
         for target_id, target_type in seen_rel_entities.items():
+            raw_name = rel_entity_names.get(target_id, target_id.replace("_", " "))
+            stub_attrs: list[ExtractedAttribute] = []
+            if not _is_opaque_identifier(raw_name):
+                stub_attrs.append(
+                    ExtractedAttribute(name="name", value=raw_name, datatype="string")
+                )
             entities.append(ExtractedEntity(
                 type_name=target_type,
                 id=target_id,
-                attributes=[ExtractedAttribute(name="name", value=rel_entity_names.get(target_id, target_id.replace("_", " ")), datatype="string")],
+                attributes=stub_attrs,
             ))
 
         # ADR 0003 Pass D: merge materialized extension instances + edges.
@@ -1650,14 +1667,18 @@ class CSVResolver:
                     attr_name = col.attribute_name or _snake_case(col.column_name)
                     if col.role == ColumnRole.RELATIONSHIP and col.target_type:
                         # Out-of-row reference (e.g. country) → stub target + edge.
+                        # Same opaque-id rule as single-entity stubs (dogfood S5).
                         for value in _rel_values(raw):
                             tid = _safe_id(value)
                             relationships.append(ExtractedRelationship(
                                 source_id=key, predicate=attr_name, target_id=tid,
                             ))
-                            add_entity(col.target_type, tid, [ExtractedAttribute(
-                                name="name", value=value, datatype="string",
-                            )])
+                            stub_attrs: list[ExtractedAttribute] = []
+                            if not _is_opaque_identifier(value):
+                                stub_attrs.append(ExtractedAttribute(
+                                    name="name", value=value, datatype="string",
+                                ))
+                            add_entity(col.target_type, tid, stub_attrs)
                     elif col.role == ColumnRole.ATTRIBUTE:
                         value = str(raw)
                         if "|" in value and col.datatype == "string":
@@ -2301,6 +2322,31 @@ def _pascal_case(name: str) -> str:
     """Mechanical PascalCase of a snake_case handle (fallback target type for
     a relationship column whose target_type the model omitted)."""
     return "".join(p.capitalize() for p in _snake_case(name).split("_")) or "Entity"
+
+
+def _is_opaque_identifier(value: str) -> bool:
+    """True for machine-ish codes that must not pollute ``attrs/name``.
+
+    Display names (``West``, ``Alice Chen``, ``Acme Corp``) return False so
+    stubs stay NL-filterable when no dimension table ever arrives. Codes with
+    digits or CODE-style dashed tokens (``R-WEST``, ``S-ACME``) return True so
+    later dimension-table display names are the sole ``attrs/name`` value
+    (dogfood S5 dual-name SUM inflation).
+    """
+    v = (value or "").strip()
+    if not v or len(v) > 64:
+        return True  # empty / pathological → do not mint a name
+    # Digits almost always mean a code (C1001, O9001, ERP-1, SKU42).
+    # Exception: spaced display labels with digits ("Room 101", "Windows 11").
+    if any(ch.isdigit() for ch in v) and " " not in v:
+        return True
+    # Dashed/underscored uppercase codes without spaces: R-WEST, S-ACME.
+    if ("-" in v or "_" in v) and " " not in v:
+        parts = [p for p in re.split(r"[-_]", v) if p]
+        if len(parts) >= 2 and all(p.isalnum() for p in parts):
+            if all(p.isupper() for p in parts if p.isalpha()):
+                return True
+    return False
 
 
 def _rel_values(raw_value) -> list[str]:
