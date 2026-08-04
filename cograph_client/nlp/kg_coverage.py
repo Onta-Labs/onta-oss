@@ -13,7 +13,7 @@ Per SPARQL 1.1 the default graph is the union of all three, so a question asked
 "about maral" is answered from whichever of them happens to hold matching data.
 Reproduced on production: ``kg_name="maral"`` (registered, 96 triples, 8 subjects,
 all of ONE type) asked "how many product recalls are there?" and answered
-**4229** — every row of it from the tenant base graph, none from ``maral``. The
+**4229**, every row of it from the tenant base graph, none from ``maral``. The
 number is confidently wrong and nothing in the response says so.
 
 Why the existing guards do not cover it
@@ -41,7 +41,7 @@ A per-query **coverage caveat**. The answer is still returned; a sentence beside
 it says how the named graph relates to the number, so the reader is never left to
 assume the graph they picked is what answered.
 
-Two signals, because two different query shapes produce the same hidden failure:
+Three signals, because three different situations produce the same hidden failure:
 
 **A. The type-ANCHORED query.** It constrains ``rdf:type`` to types the named
 graph holds none of, so the rows came from elsewhere in the union. This is the
@@ -53,10 +53,20 @@ Measured on production the same day: "how many rows of data are there in total?"
 against the same 8-subject ``maral`` generated
 ``SELECT (COUNT(DISTINCT ?s)) ... WHERE { ?s rdf:type ?type }`` and answered
 **19582**. Signal A is structurally blind to this: there is no type to compare.
-The two say deliberately different things — A is about PROVENANCE ("not an answer
-about this graph"), B is about SCOPE ("this counts the workspace, not just your
-graph") — because for shape B the named graph usually did contribute, just
-negligibly, and claiming otherwise would be the same defect one level up.
+**C. The signal that could not be READ.** Semantic retrieval marks
+``[no instances]`` only when ONTA-411's active-type probe succeeded; when that
+probe fails it passes ``active_types=None``, ``ontology_embeddings`` marks
+nothing, and signal A would read "no marks" as "everything is covered". That is
+the worst possible moment for silence, because the same failure ALSO un-scopes
+retrieval, so the subset handed to the planner may be a SIBLING KG's schema.
+Absence of marks there means "not measured", not "all covered".
+
+The three say deliberately different things. A is about PROVENANCE ("not an
+answer about this graph"), B is about SCOPE ("this counts the workspace, not just
+your graph"), C is about UNCERTAINTY ("this could not be checked"). For shape B
+the named graph usually did contribute, just negligibly, and for shape C nothing
+was measured at all; claiming "your graph holds none of this" in either case
+would be the same defect one level up.
 
 **Known remaining shape, NOT covered here, and why (ONTA-455).** A query anchored
 on a type that BOTH the named graph AND the base graph hold returns a count
@@ -70,7 +80,7 @@ query IS anchored. Live and measured read-only on demo-tenant 2026-08-03:
   graph, so this is common, not exotic.
 
 The mechanism that would close it is a small extension of
-:func:`kg_subtype_presence_query` — add ``FROM NAMED <base graph>`` and one block
+:func:`kg_subtype_presence_query`: add ``FROM NAMED <base graph>`` and one block
 per (type, graph) pair, and a type present in BOTH earns a "this count spans the
 two" caveat. It is correct (verified against production: the probe reports
 ``Organization`` in both graphs and ``ProductRecall`` in the base graph only).
@@ -102,7 +112,7 @@ queries walk ``rdf:type/rdfs:subClassOf*``. On demo-tenant ``Facility`` and
 ``University`` are subclasses of ``Organization``, so a KG holding only
 ``Facility`` rows would be marked "no ``Organization`` instances" while the
 closure query legitimately answers from that very KG. Emitting the caveat there
-would be a confidently wrong caveat on a correct answer — the same defect class,
+would be a confidently wrong caveat on a correct answer, the same defect class
 pointed the other way. :func:`kg_subtype_presence_query` settles it with ONE
 LIMIT-1-per-type probe, and it runs ONLY when a caveat is otherwise about to be
 emitted (rare: the semantic subset is already scoped to active types, so the
@@ -198,17 +208,17 @@ def empty_types_for_kg(
     Two sources, unioned, because the two ontology paths surface the same fact
     differently and neither alone is complete:
 
-    * ``ontology`` — the summary the planner actually saw. On the FULL path every
+    * ``ontology``, the summary the planner actually saw. On the FULL path every
       declared type appears, so its ``[no instances]`` marks are exhaustive. On
       the SEMANTIC path only the retrieved top-K chunks appear, so the marks
       cover the subset.
-    * ``declared_names`` minus ``active_types`` — the semantic path's own
+    * ``declared_names`` minus ``active_types``, the semantic path's own
       per-KG probe (ONTA-411), which covers every declared type including the
       ones retrieval left out of the subset.
 
     ``active_types is None`` means "nothing to scope by" (no KG graph, or the
     probe failed) and contributes nothing, so this degrades to the marks alone
-    and, when there are none, to an empty set — i.e. to silence, never to a
+    and, when there are none, to an empty set, i.e. to silence, never to a
     guess.
     """
     empty = empty_declared_types(ontology)
@@ -254,14 +264,14 @@ def kg_subtype_presence_query(
 
     * ``FROM`` the ontology graphs and ``FROM NAMED`` the KG graph. The subclass
       edges live in the tenant base / Global layers while the INSTANCES must come
-      from the KG alone, and a plain union dataset could not tell the two apart —
+      from the KG alone, and a plain union dataset could not tell the two apart:
       it would find the base graph's own instances and suppress every caveat,
       which is the bug this module exists to report.
     * The closure factor is written FIRST, with the searched type BOUND, so the
       engine enumerates the (tiny, 28-edge on demo-tenant) subclass set and then
       does a bound ``rdf:type`` seek per candidate, instead of scanning the KG's
       whole type index with ``?sub`` unbound.
-    * One ``LIMIT 1`` subselect per type, UNIONed — the same first-match-seek
+    * One ``LIMIT 1`` subselect per type, UNIONed, the same first-match-seek
       shape ``_active_type_probe_query`` uses, so cost is O(types asked about),
       not O(entities).
     """
@@ -291,8 +301,8 @@ def _name_list(names: Sequence[str]) -> str:
 def coverage_caveat(kg_name: str, uncovered: Sequence[str], *, all_types: bool) -> str:
     """The one sentence. Empty string when there is nothing to say.
 
-    States only what was measured — "this graph holds no instances of these types"
-    — and where the rows therefore came from. It does not claim the answer is
+    States only what was measured ("this graph holds no instances of these
+    types") and where the rows therefore came from. It does not claim the answer is
     wrong (it may be exactly what the user wanted from the workspace as a whole),
     and it does not withhold it.
     """
@@ -334,8 +344,8 @@ def unscoped_caveat(kg_name: str) -> str:
     restricted to anything the named graph holds.
 
     This says exactly that, and no more. It does NOT claim the named graph
-    contributed nothing — for this shape it usually contributed a little, 8 rows
-    of 19582 in the measured case — so the honest statement is about SCOPE, not
+    contributed nothing (for this shape it usually contributed a little, 8 rows
+    of 19582 in the measured case), so the honest statement is about SCOPE, not
     provenance: the number is a workspace-wide number, not a per-graph one.
     """
     if not kg_name:

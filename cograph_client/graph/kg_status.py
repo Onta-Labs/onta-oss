@@ -83,7 +83,7 @@ def invalidate_kg_status(tenant_id: str, kg_name: str | None = None) -> None:
     The instance-data cache is cleared for the whole tenant on EITHER form. It is
     keyed on graph sets rather than on a KG name, so there is nothing per-KG to
     drop, and the only production caller (``api/routes/knowledge_graphs.py``)
-    always passes a ``kg_name`` — leaving it under the tenant-wide branch alone
+    always passes a ``kg_name``. Leaving it under the tenant-wide branch alone
     would have meant a workspace that deleted its instance data kept asserting
     "there is other data here" for the rest of the TTL.
     """

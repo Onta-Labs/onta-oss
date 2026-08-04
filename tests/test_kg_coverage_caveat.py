@@ -16,8 +16,16 @@ being a cure worse than the disease:
 2. It stays SILENT on every shape where the union is the honest answer: a
    ``kg_name``-less workspace whose data legitimately IS the base graph, a type
    that does have instances here, a supertype whose SUBTYPES have instances here,
-   and a zero-row result (which belongs to ONTA-450/258 and must not be
+   a workspace where nothing outside the named graph holds instances, and a
+   zero-row result (which belongs to ONTA-450/258 and must not be
    double-annotated).
+
+A third property, added after review found each of these live: the caveat must
+never be WRONG about which graph answered. A caveat that overclaims is the same
+defect one level up, so the strong "not an answer about this graph" wording is
+demoted the moment the subclass probe disagrees with the marks, and an
+unmeasurable coverage signal produces "could not be checked" rather than either
+silence or a claim.
 """
 
 from __future__ import annotations
@@ -53,7 +61,7 @@ PUBLIC_LAYER = f"{BASE}/graphs/global/public"
 # The production ontology-summary header separator. Spelled as an escape so the
 # fixture byte-matches `_fetch_ontology`'s own f-string without the character
 # appearing literally in this file.
-EM = "—"
+EM = "\u2014"
 
 ONTOLOGY = "\n".join(
     [
