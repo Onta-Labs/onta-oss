@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.api.rate_limit import limiter
+from cograph_client.auth.access import require_tenant_write
 from cograph_client.auth.api_keys import TenantContext, auth_is_configured, get_tenant
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.parser import parse_sparql_results
@@ -37,7 +38,7 @@ from cograph_client.models.query import SPARQLQuery, SPARQLResult, SPARQLUpdate
 
 
 def require_raw_update_access(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(require_tenant_write),
 ) -> TenantContext:
     """Fail closed unless the caller is an operator (or auth is off entirely).
 
@@ -46,6 +47,11 @@ def require_raw_update_access(
     grants an anonymous caller any tenant in the URL and there is consequently
     no boundary this route could cross. In any deployment that HAS auth,
     including static API keys, this is a plain operator gate.
+
+    Layered ON TOP of the workspace write capability (ONTA-452) rather than
+    beside it: operator-ness is a platform role, so without this a staff account
+    holding a READ-ONLY membership would still have had raw Update. Both checks
+    must pass, and the write check runs first.
     """
     if tenant.is_operator or not auth_is_configured():
         return tenant
