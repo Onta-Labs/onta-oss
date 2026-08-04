@@ -74,13 +74,20 @@ def normalize_predicate(raw: str, existing_predicates: set[str]) -> str:
     if not existing_predicates:
         return normalized
 
-    # Fuzzy match with affix stripping
+    # Fuzzy match with affix stripping. Same-core + both-sides-lost-affix
+    # is rejected (created_by ↛ created_at) — mirrors attribute_resolver.
     stripped = _strip_affixes(normalized)
     best_match: str | None = None
     best_ratio = 0.0
 
     for existing in existing_predicates:
-        existing_stripped = _strip_affixes(existing)
+        existing_norm = _normalize_name(existing)
+        existing_stripped = _strip_affixes(existing_norm)
+        if stripped == existing_stripped and normalized != existing_norm:
+            proposed_lost = normalized != stripped
+            existing_lost = existing_norm != existing_stripped
+            if proposed_lost and existing_lost:
+                continue
         ratio = SequenceMatcher(None, stripped, existing_stripped).ratio()
         if ratio > best_ratio:
             best_ratio = ratio

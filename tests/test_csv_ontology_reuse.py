@@ -193,6 +193,10 @@ class TestPredicateNormalizeCamel:
         existing = {"manufacturer", "has_indication"}
         assert normalize_predicate("manufactured_by", existing) == "manufacturer"
 
+    def test_created_by_does_not_collapse_to_created_at(self):
+        existing = {"created_at", "has_indication"}
+        assert normalize_predicate("created_by", existing) == "created_by"
+
 
 # ---------------------------------------------------------------------------
 # Prompt formatting includes existing properties
