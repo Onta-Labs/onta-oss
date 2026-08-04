@@ -598,11 +598,16 @@ class CSVResolver:
                 mapping = await self._infer_schema_v2(
                     headers, sample_rows, existing_types, total_rows, existing_attrs,
                 )
-            except (ValidationError, KeyError, ValueError) as e:
-                # Observed: one-row / wide multi-hop CSVs (e.g. Opdualag live
-                # demo) where REASON returns columns without a non-empty
-                # entities[] twice → KeyError("entities") → hard 422. Legacy
-                # is a different prompt contract and often still succeeds.
+            except KeyError as e:
+                # Only the REASON/REFUTE shape failure KeyError("entities") (or
+                # "columns") falls back. Complete-pass ValidationError /
+                # other KeyErrors still propagate so their retry contracts
+                # stay testable and strict.
+                # Observed live: dense one-row multi-hop CSVs (Opdualag demo)
+                # where REASON omits a non-empty entities[] twice → 422.
+                key = e.args[0] if e.args else None
+                if key not in ("entities", "columns"):
+                    raise
                 logger.warning(
                     "csv_schema_v2_failed_fallback_legacy",
                     error=str(e),
