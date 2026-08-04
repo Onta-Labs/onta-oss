@@ -345,8 +345,11 @@ async def _kg_stats_for(
     never fails the KG listing.
 
     ``persist=False`` (a read-only caller, ONTA-452) returns the SAME numbers
-    but materializes nothing: no store row is written, no whole-KG recompute is
-    scheduled, and no billed summary backfill is kicked off.
+    but skips the caller-visible materialization: no store row is written and
+    no billed summary backfill is kicked off. The background recompute on a
+    stats MISS is the one deliberate exception and still fires for readers.
+    See the comment on that branch below for why gating it would leave a reader
+    permanently staring at ``entity_count: 0``.
     """
     from cograph_client.api.routes.explore import (
         backfill_kg_summary,

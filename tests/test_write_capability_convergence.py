@@ -695,7 +695,11 @@ def test_reader_stats_miss_still_schedules_the_recompute(reader_client, mock_nep
 
 
 def test_schedule_recompute_collapses_repeats_for_one_kg():
-    """The de-dup that makes the reader-reachable recompute non-spammable."""
+    """The coalescing that makes the reader-reachable recompute non-spammable.
+
+    Requests that pile up on ONE in-flight scan collapse to a single follow-up
+    scan, not N stacked whole-KG scans.
+    """
     import asyncio as _asyncio
 
     from cograph_client.api.routes import explore as explore_mod
@@ -712,16 +716,77 @@ def test_schedule_recompute_collapses_repeats_for_one_kg():
 
         with patch.object(explore_mod, "_safe_recompute", slow):
             explore_mod.schedule_recompute(None, "t", "kg")
-            explore_mod.schedule_recompute(None, "t", "kg")  # collapsed
+            explore_mod.schedule_recompute(None, "t", "kg")  # coalesced
             explore_mod.schedule_recompute(None, "t", "other")  # different KG
             await started.wait()
-            await _asyncio.sleep(0.1)
+            await _asyncio.sleep(0.3)
         return calls
 
     calls = _run(_drive())
-    assert sorted(calls) == ["kg", "other"]
-    # The in-flight marker is released once the scan finishes.
+    # Three requests, three scans would be the un-coalesced behaviour; two
+    # "kg" requests arriving together produce the initial scan plus ONE
+    # follow-up, and never more however many pile on.
+    assert sorted(calls) == ["kg", "kg", "other"]
+    # The in-flight marker is released once the scan finishes, and nothing is
+    # left queued.
     assert not explore_mod._recompute_inflight
+    assert not explore_mod._recompute_pending
+
+
+def test_schedule_recompute_reruns_a_request_that_arrived_mid_scan():
+    """A recompute requested DURING a scan must be deferred, never dropped.
+
+    This is the ONTA-452 blocker: the whole-KG scan takes ~15s, and both the
+    concurrent CSV batch path and the ``POST /recompute-stats`` the CLI fires
+    right after the last batch land inside that window. A scan that started
+    BEFORE a write reads pre-write state, so if the post-write request is
+    discarded the stale numbers are persisted to the durable ``kg_stats_store``
+    and nothing ever re-triggers (``_kg_stats_for`` only schedules on a store
+    MISS, and a partial row is not a miss). The wrong ``entity_count`` then
+    sits on the dashboard indefinitely.
+
+    Modelled the way the reviewer reproduced it: the fake scan READS the
+    mutable state, sleeps, then PERSISTS what it read. The write lands during
+    the first scan, so only a genuine re-run persists the post-write value.
+    """
+    import asyncio as _asyncio
+
+    from cograph_client.api.routes import explore as explore_mod
+
+    state = {"actual": 1, "persisted": None}
+    scans = []
+    first_started = _asyncio.Event()
+
+    async def _drive():
+        async def read_sleep_persist(client, tenant_id, kg_name):
+            scans.append(kg_name)
+            seen = state["actual"]  # read BEFORE the write lands
+            first_started.set()
+            await _asyncio.sleep(0.05)
+            state["persisted"] = seen
+
+        with patch.object(explore_mod, "_safe_recompute", read_sleep_persist):
+            explore_mod.schedule_recompute(None, "t", "kg")
+            await first_started.wait()
+            # A write lands mid-scan, then asks for a recompute. The running
+            # scan already read the OLD value, so this request is the only
+            # thing that can make the persisted number right.
+            state["actual"] = 42
+            explore_mod.schedule_recompute(None, "t", "kg")
+            await _asyncio.sleep(0.3)
+
+    _run(_drive())
+
+    assert len(scans) == 2, (
+        "the mid-scan request must produce EXACTLY one follow-up scan "
+        f"(got {len(scans)}); dropping it persists pre-write numbers forever"
+    )
+    assert state["persisted"] == 42, (
+        "stats persisted the pre-write value: the post-write recompute was "
+        "dropped instead of deferred"
+    )
+    assert not explore_mod._recompute_inflight
+    assert not explore_mod._recompute_pending
 
 
 def test_reader_ontology_read_does_not_pin_the_workspace(reader_client):
