@@ -35,6 +35,13 @@ _STRIP_ATTR_PREFIXES = (
     "listing_", "property_", "total_", "current_", "primary_",
     "default_", "original_", "actual_", "base_",
 )
+# Relationship/role affixes that do not change the underlying property concept
+# (manufacturer ≈ manufactured_by; source ≈ sourced_from). Shared spirit with
+# predicate_normalizer — used so CSV expansion cannot invent a parallel
+# relationship for a fact that already exists as a literal attribute (or vice
+# versa).
+_STRIP_ROLE_PREFIXES = ("is_", "has_", "was_", "does_", "can_", "get_")
+_STRIP_ROLE_SUFFIXES = ("_of", "_by", "_for", "_to", "_from", "_in", "_at")
 
 # Minimum attributes sharing a prefix to pass the cluster test.
 _PROMOTION_CLUSTER_MIN = 3
@@ -120,8 +127,21 @@ class AttributeSchema:
 
 
 def _normalize_attr_name(name: str) -> str:
-    """Normalize attribute names for comparison."""
-    return name.lower().strip().replace(" ", "_").replace("-", "_")
+    """Normalize attribute names for comparison.
+
+    Handles spaces/hyphens, camelCase boundaries (``manufacturedBy`` →
+    ``manufactured_by``, ``drugClass`` → ``drug_class``), and collapses
+    repeated underscores. Underscore-free equality is handled separately in
+    :func:`_find_existing_attr` via compact form.
+    """
+    s = (name or "").strip()
+    # camelCase / PascalCase → snake_case before lowercasing, otherwise
+    # ``ManufacturedBy`` collapses to the opaque ``manufacturedby``.
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", s)
+    s = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", s)
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_").lower()
+    return s
 
 
 def _strip_attr_prefixes(name: str) -> str:
@@ -130,6 +150,30 @@ def _strip_attr_prefixes(name: str) -> str:
         if name.startswith(prefix) and len(name) > len(prefix):
             return name[len(prefix):]
     return name
+
+
+def _strip_role_affixes(name: str) -> str:
+    """Strip relationship-style role affixes for synonym matching.
+
+    ``manufactured_by`` → ``manufactured``, ``has_companion_diagnostic`` →
+    ``companion_diagnostic``. One prefix and one suffix at most (same contract
+    as :mod:`predicate_normalizer`).
+    """
+    stripped = name
+    for prefix in _STRIP_ROLE_PREFIXES:
+        if stripped.startswith(prefix) and len(stripped) > len(prefix):
+            stripped = stripped[len(prefix):]
+            break
+    for suffix in _STRIP_ROLE_SUFFIXES:
+        if stripped.endswith(suffix) and len(stripped) > len(suffix):
+            stripped = stripped[: -len(suffix)]
+            break
+    return stripped
+
+
+def _compact_attr_name(name: str) -> str:
+    """Underscore-free form so ``drug_class`` equals ``drugclass``."""
+    return name.replace("_", "")
 
 
 def _split_type_tokens(name: str) -> set[str]:
@@ -252,8 +296,18 @@ def _find_existing_attr(
     attr_name: str,
     existing_attrs: dict[str, AttributeSchema],
 ) -> AttributeSchema | None:
-    """Find an existing attribute by normalized name, synonym, or fuzzy fallback."""
+    """Find an existing attribute by normalized name, synonym, or fuzzy fallback.
+
+    Match ladder (first hit wins for exact/compact/synonym; fuzzy takes best ≥ threshold):
+      1. Exact snake_case equality (``manufacturer`` ↔ ``manufacturer``)
+      2. Compact equality (``drug_class`` ↔ ``drugclass``)
+      3. Synonym family — only when exactly one existing attr is in the family
+      4. Fuzzy over domain-prefix + role-affix stripped forms
+         (``manufactured_by`` ↔ ``manufacturer`` at ≥ 0.85)
+    """
     normalized = _normalize_attr_name(attr_name)
+    if not normalized:
+        return None
 
     # 1. Exact normalized match
     for name, schema in existing_attrs.items():
@@ -263,7 +317,18 @@ def _find_existing_attr(
     if not existing_attrs:
         return None
 
-    # 2. Synonym family — only when exactly one existing attr is in the family
+    # 2. Compact (underscore-insensitive) exact match
+    compact = _compact_attr_name(normalized)
+    for name, schema in existing_attrs.items():
+        if _compact_attr_name(_normalize_attr_name(name)) == compact:
+            logger.info(
+                "attr_compact_match",
+                proposed=attr_name,
+                matched=schema.name,
+            )
+            return schema
+
+    # 3. Synonym family — only when exactly one existing attr is in the family
     # (avoids collapsing distinct slots like "summary" + "rationale" both present).
     group = _synonym_group(normalized)
     if group is not None:
@@ -280,12 +345,21 @@ def _find_existing_attr(
             )
             return hits[0]
 
-    # 3. Fuzzy match with prefix stripping
-    stripped = _strip_attr_prefixes(normalized)
+    # 4. Fuzzy match with domain-prefix + role-affix stripping.
+    # Guard: never collapse two names that only differ by *different* role
+    # suffixes (created_by ↔ created_at both strip to "created" at ratio 1.0).
+    # manufacturer ↔ manufactured_by still matches: cores differ after strip
+    # (manufacturer vs manufactured) at ≥ 0.85.
+    stripped = _strip_role_affixes(_strip_attr_prefixes(normalized))
     best_match: AttributeSchema | None = None
     best_ratio = 0.0
     for name, schema in existing_attrs.items():
-        existing_stripped = _strip_attr_prefixes(_normalize_attr_name(name))
+        existing_norm = _normalize_attr_name(name)
+        existing_stripped = _strip_role_affixes(
+            _strip_attr_prefixes(existing_norm)
+        )
+        if not _affix_fuzzy_pair_allowed(normalized, stripped, existing_norm, existing_stripped):
+            continue
         ratio = SequenceMatcher(None, stripped, existing_stripped).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
@@ -301,6 +375,49 @@ def _find_existing_attr(
         return best_match
 
     return None
+
+
+def _affix_fuzzy_pair_allowed(
+    proposed: str,
+    proposed_stripped: str,
+    existing: str,
+    existing_stripped: str,
+) -> bool:
+    """Reject role-affix collisions that would equate distinct slots.
+
+    ``created_by`` and ``created_at`` both strip to ``created`` — that is a
+    different *role*, not a synonym. Allow when cores differ after strip
+    (``manufactured`` vs ``manufacturer``) or only one side lost an affix
+    (``has_manufacturer`` → ``manufacturer``).
+    """
+    if proposed_stripped != existing_stripped:
+        return True
+    # Same core after strip. Identical originals already handled by exact match.
+    if proposed == existing:
+        return True
+    proposed_lost_affix = proposed != proposed_stripped
+    existing_lost_affix = existing != existing_stripped
+    # Both sides lost an affix to land on the same core → different roles.
+    if proposed_lost_affix and existing_lost_affix:
+        return False
+    # One side is bare core, the other is core+affix (has_X / X_by vs X).
+    return True
+
+
+def is_primitive_datatype(datatype: str | None) -> bool:
+    """True when ``datatype`` is a literal range, not a type-ranged relationship.
+
+    ``_fetch_ontology`` stores type-ranged attributes with ``datatype`` equal to
+    the target type name (e.g. ``Indication``); primitives keep the usual
+    ``string`` / ``integer`` / … labels. Used by CSV mapping reconcile to decide
+    whether an existing property should force ATTRIBUTE vs RELATIONSHIP.
+    """
+    if not datatype:
+        return True
+    return datatype.lower() in {
+        "string", "integer", "float", "boolean", "datetime", "uri", "geo", "date",
+        "number", "int", "double", "long", "text",
+    }
 
 
 def resolve_attribute(
