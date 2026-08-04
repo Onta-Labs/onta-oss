@@ -588,11 +588,35 @@ class CSVResolver:
         Each LLM call keeps the existing retry contract: one retry at
         temperature 0.3 when the response fails validation, then propagate
         (the /ingest/csv/schema route converts that into its 422 guidance).
+
+        If the v2 pipeline still fails after its internal retry (common on
+        dense one-row demos where the model omits ``entities``), fall back to
+        the legacy single-call path rather than 422 — then reconcile.
         """
         if _v2_enabled():
-            mapping = await self._infer_schema_v2(
-                headers, sample_rows, existing_types, total_rows, existing_attrs,
-            )
+            try:
+                mapping = await self._infer_schema_v2(
+                    headers, sample_rows, existing_types, total_rows, existing_attrs,
+                )
+            except KeyError as e:
+                # Only the REASON/REFUTE shape failure KeyError("entities") (or
+                # "columns") falls back. Complete-pass ValidationError /
+                # other KeyErrors still propagate so their retry contracts
+                # stay testable and strict.
+                # Observed live: dense one-row multi-hop CSVs (Opdualag demo)
+                # where REASON omits a non-empty entities[] twice → 422.
+                key = e.args[0] if e.args else None
+                if key not in ("entities", "columns"):
+                    raise
+                logger.warning(
+                    "csv_schema_v2_failed_fallback_legacy",
+                    error=str(e),
+                    columns=len(headers),
+                    rows=total_rows or len(sample_rows),
+                )
+                mapping = await self._infer_schema_legacy(
+                    headers, sample_rows, existing_types, total_rows, existing_attrs,
+                )
         else:
             mapping = await self._infer_schema_legacy(
                 headers, sample_rows, existing_types, total_rows, existing_attrs,
