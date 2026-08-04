@@ -345,14 +345,21 @@ def _find_existing_attr(
             )
             return hits[0]
 
-    # 4. Fuzzy match with domain-prefix + role-affix stripping
+    # 4. Fuzzy match with domain-prefix + role-affix stripping.
+    # Guard: never collapse two names that only differ by *different* role
+    # suffixes (created_by ↔ created_at both strip to "created" at ratio 1.0).
+    # manufacturer ↔ manufactured_by still matches: cores differ after strip
+    # (manufacturer vs manufactured) at ≥ 0.85.
     stripped = _strip_role_affixes(_strip_attr_prefixes(normalized))
     best_match: AttributeSchema | None = None
     best_ratio = 0.0
     for name, schema in existing_attrs.items():
+        existing_norm = _normalize_attr_name(name)
         existing_stripped = _strip_role_affixes(
-            _strip_attr_prefixes(_normalize_attr_name(name))
+            _strip_attr_prefixes(existing_norm)
         )
+        if not _affix_fuzzy_pair_allowed(normalized, stripped, existing_norm, existing_stripped):
+            continue
         ratio = SequenceMatcher(None, stripped, existing_stripped).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
@@ -368,6 +375,33 @@ def _find_existing_attr(
         return best_match
 
     return None
+
+
+def _affix_fuzzy_pair_allowed(
+    proposed: str,
+    proposed_stripped: str,
+    existing: str,
+    existing_stripped: str,
+) -> bool:
+    """Reject role-affix collisions that would equate distinct slots.
+
+    ``created_by`` and ``created_at`` both strip to ``created`` — that is a
+    different *role*, not a synonym. Allow when cores differ after strip
+    (``manufactured`` vs ``manufacturer``) or only one side lost an affix
+    (``has_manufacturer`` → ``manufacturer``).
+    """
+    if proposed_stripped != existing_stripped:
+        return True
+    # Same core after strip. Identical originals already handled by exact match.
+    if proposed == existing:
+        return True
+    proposed_lost_affix = proposed != proposed_stripped
+    existing_lost_affix = existing != existing_stripped
+    # Both sides lost an affix to land on the same core → different roles.
+    if proposed_lost_affix and existing_lost_affix:
+        return False
+    # One side is bare core, the other is core+affix (has_X / X_by vs X).
+    return True
 
 
 def is_primitive_datatype(datatype: str | None) -> bool:

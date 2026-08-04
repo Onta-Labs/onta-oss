@@ -2561,7 +2561,19 @@ def reconcile_mapping_to_existing(
             continue
 
         updates: dict = {"attribute_name": matched.name}
-        if is_primitive_datatype(matched.datatype):
+        # Never rewrite TYPE_ID role — the key column stays the key even if
+        # its name fuzzy-matches a type-ranged property.
+        if col.role == ColumnRole.TYPE_ID:
+            if snaked and snaked != col.attribute_name and matched.name == snaked:
+                updates = {"attribute_name": matched.name}
+            elif col.attribute_name != matched.name:
+                # Prefer the existing property's canonical name for the key attr
+                # emission, but keep role=TYPE_ID.
+                updates = {"attribute_name": matched.name}
+            else:
+                new_columns.append(col)
+                continue
+        elif is_primitive_datatype(matched.datatype):
             # Existing literal wins over an invented relationship.
             if col.role == ColumnRole.RELATIONSHIP:
                 updates["role"] = ColumnRole.ATTRIBUTE
@@ -2586,22 +2598,24 @@ def reconcile_mapping_to_existing(
                     )
         else:
             # Existing type-ranged property wins over an invented literal.
-            updates["role"] = ColumnRole.RELATIONSHIP
-            updates["target_type"] = matched.datatype
-            updates["datatype"] = "string"
-            if (
-                col.role != ColumnRole.RELATIONSHIP
-                or col.attribute_name != matched.name
-                or col.target_type != matched.datatype
-            ):
-                logger.info(
-                    "csv_reconcile_attr_to_rel",
-                    column=col.column_name,
-                    type=type_name,
-                    proposed=proposed,
-                    reused=matched.name,
-                    target=matched.datatype,
-                )
+            # Only flip ATTRIBUTE ↔ RELATIONSHIP (not TYPE_ID — handled above).
+            if col.role in (ColumnRole.ATTRIBUTE, ColumnRole.RELATIONSHIP):
+                updates["role"] = ColumnRole.RELATIONSHIP
+                updates["target_type"] = matched.datatype
+                updates["datatype"] = "string"
+                if (
+                    col.role != ColumnRole.RELATIONSHIP
+                    or col.attribute_name != matched.name
+                    or col.target_type != matched.datatype
+                ):
+                    logger.info(
+                        "csv_reconcile_attr_to_rel",
+                        column=col.column_name,
+                        type=type_name,
+                        proposed=proposed,
+                        reused=matched.name,
+                        target=matched.datatype,
+                    )
 
         if any(getattr(col, k, None) != v for k, v in updates.items()):
             new_columns.append(col.model_copy(update=updates))
@@ -2651,20 +2665,31 @@ def _drop_redundant_promotions(
     extensions: OntologyExtensions,
     existing_attrs: dict[str, dict[str, AttributeSchema]],
 ) -> OntologyExtensions:
-    """Remove type promotions whose source attr already exists on a known type."""
+    """Remove type promotions whose source attr already exists on a known type.
+
+    Exact/compact match only (no fuzzy) so a Pass D promotion of
+    ``created_by`` is not dropped just because ``created_at`` exists
+    elsewhere. A hit on *any* type blocks the promotion (Oliver case:
+    Drug.manufacturer blocks promoting manufacturer → Manufacturer).
+    """
     if not extensions.types:
         return extensions
-    # Flatten every known property name for a quick membership test.
-    known: dict[str, AttributeSchema] = {}
-    for props in existing_attrs.values():
-        for name, schema in props.items():
-            known.setdefault(_normalize_attr_name(name), schema)
+
+    def _exact_or_compact_hit(src: str) -> bool:
+        want = _normalize_attr_name(src)
+        want_c = want.replace("_", "")
+        for props in existing_attrs.values():
+            for name in props:
+                n = _normalize_attr_name(name)
+                if n == want or n.replace("_", "") == want_c:
+                    return True
+        return False
 
     kept: list[TypeExtension] = []
     dropped = 0
     for t in extensions.types:
         src = t.promoted_from_attribute
-        if src and _find_existing_attr(src, known) is not None:
+        if src and _exact_or_compact_hit(src):
             logger.info(
                 "csv_reconcile_drop_promotion",
                 type=t.type_name,

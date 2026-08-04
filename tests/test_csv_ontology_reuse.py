@@ -152,6 +152,36 @@ class TestAttrSynonymMatch:
         assert _find_existing_attr("indication_summary", existing) is None
         assert _find_existing_attr("brand_name", existing) is None
 
+    @pytest.mark.parametrize(
+        "proposed,existing_name",
+        [
+            ("created_by", "created_at"),
+            ("created_at", "created_by"),
+            ("updated_by", "updated_at"),
+            ("published_by", "published_at"),
+            ("located_in", "located_at"),
+            ("owned_by", "owned_at"),
+        ],
+    )
+    def test_different_role_suffixes_do_not_collapse(self, proposed, existing_name):
+        """Affix strip must NOT equate created_by ↔ created_at (review gate)."""
+        existing = {existing_name: AttributeSchema(existing_name, "string")}
+        assert _find_existing_attr(proposed, existing) is None
+
+    def test_exact_wins_when_both_role_suffixes_present(self):
+        existing = {
+            "created_by": AttributeSchema("created_by", "string"),
+            "created_at": AttributeSchema("created_at", "datetime"),
+        }
+        assert _find_existing_attr("created_by", existing).name == "created_by"
+        assert _find_existing_attr("created_at", existing).name == "created_at"
+
+    def test_has_prefix_still_reuses_bare_core(self):
+        existing = {"manufacturer": AttributeSchema("manufacturer", "string")}
+        hit = _find_existing_attr("has_manufacturer", existing)
+        assert hit is not None
+        assert hit.name == "manufacturer"
+
 
 class TestPredicateNormalizeCamel:
     def test_camel_case_normalizes_before_match(self):
@@ -360,6 +390,51 @@ class TestReconcileMappingToExisting:
         col = out.columns[0]
         assert col.role == ColumnRole.ATTRIBUTE
         assert col.attribute_name == "manufacturer"
+
+    def test_type_id_role_not_flipped_to_relationship(self):
+        """A key column that shares a name with a type-ranged property stays TYPE_ID."""
+        mapping = CSVSchemaMapping(
+            entity_type="Drug",
+            columns=[
+                ColumnMapping(
+                    column_name="has_indication",
+                    role=ColumnRole.TYPE_ID,
+                    datatype="string",
+                    attribute_name="has_indication",
+                ),
+            ],
+        )
+        out = reconcile_mapping_to_existing(
+            mapping, _drug_existing_types(), _drug_existing_attrs(),
+        )
+        assert out.columns[0].role == ColumnRole.TYPE_ID
+        assert out.columns[0].attribute_name == "has_indication"
+
+    def test_unknown_owner_does_not_false_reuse(self):
+        from cograph_client.resolver.models import EntitySpec
+
+        mapping = CSVSchemaMapping(
+            entity_type="Drug",
+            entities=[
+                EntitySpec(name="drug", type_name="Drug", id_column="brand_name"),
+            ],
+            columns=[
+                ColumnMapping(
+                    column_name="manufacturer",
+                    role=ColumnRole.RELATIONSHIP,
+                    datatype="string",
+                    attribute_name="manufactured_by",
+                    target_type="Organization",
+                    entity="ghost",  # not a declared entity handle
+                ),
+            ],
+        )
+        out = reconcile_mapping_to_existing(
+            mapping, _drug_existing_types(), _drug_existing_attrs(),
+        )
+        # Unknown owner → no type props → only resnake, keep relationship.
+        assert out.columns[0].role == ColumnRole.RELATIONSHIP
+        assert out.columns[0].attribute_name == "manufactured_by"
 
 
 class TestPrimitiveDatatypeHelper:
