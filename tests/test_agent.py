@@ -2622,7 +2622,8 @@ def test_validate_enrich_exact_lead_sponsor_auto_accepts():
 
 def test_validate_enrich_weak_sponsor_needs_approval_not_silent_map():
     """Bare 'sponsor' is only a weak match for lead_sponsor — do NOT silent-map;
-    surface attr_approvals so plan() can clarify / agent-approve."""
+    surface attr_approvals so plan() can clarify / agent-approve. Pending names
+    must NOT stay in attributes (fail-closed if short-circuit is skipped)."""
     from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
@@ -2631,7 +2632,7 @@ def test_validate_enrich_weak_sponsor_needs_approval_not_silent_map():
         rel_names=[],
         type_name="ClinicalTrial",
     )
-    assert out["attributes"] == ["sponsor"]  # not silently rewritten
+    assert out["attributes"] == []  # pending excluded from write-path attrs
     assert len(out["attr_approvals"]) == 1
     assert out["attr_approvals"][0]["from"] == "sponsor"
     assert out["attr_approvals"][0]["to"] == "lead_sponsor"
@@ -2672,12 +2673,27 @@ def test_attr_match_clarify_step_offers_schema_leaf():
 
     step = _attr_match_clarify_step(
         "ClinicalTrial",
-        [{"from": "sponsor", "to": "lead_sponsor", "score": 0.58, "reason": "weak"}],
+        [{"from": "sponsor", "to": "lead_sponsor", "score": 0.55, "reason": "suffix"}],
     )
     assert step.action == "clarify"
     opts = step.params.get("options") or []
-    assert any("lead_sponsor" in o for o in opts)
-    assert any("sponsor" in o for o in opts)
+    # Attr-first chip so deterministic extract + exact match work next turn.
+    assert "Enrich lead_sponsor on ClinicalTrial" in opts
+    assert not any("new attribute" in o for o in opts)
+
+
+def test_website_does_not_weak_map_to_title():
+    """Noise pairs (website↔title ~0.5) must not trigger attr_approvals."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["company", "website"], "tier": "core"},
+        attr_names=["title", "skills"],
+        rel_names=[],
+        type_name="Mentor",
+    )
+    assert out["attributes"] == ["company", "website"]
+    assert out.get("attr_approvals") == []
 
 
 def test_source_clause_names_clinicaltrials_gov():

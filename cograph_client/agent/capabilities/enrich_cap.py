@@ -1023,11 +1023,10 @@ def _attr_match_clarify_step(
 ) -> PlanStep:
     """Ask the user/agent to approve a weak schema attr mapping before enriching.
 
-    Clicked options are sent verbatim as the next turn, so each option is a
-    full re-issuable enrich instruction with the *resolved* schema leaf (exact
-    match next turn — no soft-map needed).
+    Clicked options are sent verbatim as the next turn. Prefer
+    ``Enrich <attr> on <Type>`` so the deterministic attr extractor sees the
+    leaf first (exact match next turn — no soft-map / re-clarify loop).
     """
-    # One primary mapping in the question; options cover every pending pair.
     first = pending[0]
     asked = str(first.get("from") or "")
     suggested = str(first.get("to") or "")
@@ -1041,7 +1040,7 @@ def _attr_match_clarify_step(
         question = (
             f"You asked to enrich “{asked}” on {type_name}, but that isn’t an "
             f"exact schema field. Closest match is **{suggested}**{score_note}. "
-            "Which should I use?"
+            "Confirm the schema field to enrich?"
         )
     else:
         pairs = ", ".join(
@@ -1049,19 +1048,15 @@ def _attr_match_clarify_step(
         )
         question = (
             f"Some attributes you named aren’t exact schema fields on "
-            f"{type_name} ({pairs}). Pick the mapping to use, or keep the "
-            "name you typed as a new attribute."
+            f"{type_name} ({pairs}). Confirm which schema field(s) to enrich."
         )
     options: list[str] = []
     for p in pending:
-        src = str(p.get("from") or "").strip()
         dst = str(p.get("to") or "").strip()
         if not dst:
             continue
-        # Self-contained next-turn instruction → exact schema match on re-plan.
-        options.append(f"Enrich {type_name} with {dst}")
-        if src and src.lower() != dst.lower():
-            options.append(f"Enrich {type_name} with new attribute {src}")
+        # Attr-first phrasing: deterministic _ATTR_TRIGGER captures the leaf.
+        options.append(f"Enrich {dst} on {type_name}")
     # De-dupe, cap (clarify UI shows 2–4 chips).
     seen: set[str] = set()
     clean: list[str] = []
@@ -1655,12 +1650,13 @@ def _validate_enrich_request(
     matched: list[str] = []
     seen_matched: set[str] = set()
     attr_approvals: list[dict] = []
+    pending_from: set[str] = set()
+    unmatched: list[str] = []
     for c in candidates:
         decision = _resolve_schema_attr(c, attr_lookup)
         if decision is None:
             if not _is_type_name(c, type_name):
-                # New-attr candidate — kept only when NOTHING auto-matched.
-                pass
+                unmatched.append(c)
             continue
         if decision.needs_approval:
             attr_approvals.append(
@@ -1671,16 +1667,20 @@ def _validate_enrich_request(
                     "reason": decision.reason,
                 }
             )
+            pending_from.add(c.lower())
             continue
         if decision.canonical.lower() not in seen_matched:
             seen_matched.add(decision.canonical.lower())
             matched.append(decision.canonical)
-    if matched:
-        # Strict intersection path: only auto-accepted schema members. Pending
-        # approvals still short-circuit plan() to a clarify before any write.
+    if attr_approvals:
+        # Fail-closed: pending weak maps must NOT appear in attributes (a
+        # missed plan short-circuit would otherwise enrich a bogus new leaf
+        # or bill paid web). Only auto-accepted schema members remain.
+        attributes = matched
+    elif matched:
         attributes = matched
     else:
-        attributes = [c for c in candidates if not _is_type_name(c, type_name)]
+        attributes = unmatched
 
     scope = parsed.get("scope")
     if isinstance(scope, dict) and scope.get("predicate") and scope.get("value"):
@@ -1808,10 +1808,14 @@ def _normalize_attr(value) -> str:
 # "name" would otherwise ambiguously map onto many attributes.
 _SOFT_ATTR_MIN_LEN = 4
 # Auto-accept without a clarify only at/above this SequenceMatcher ratio
-# against the full schema leaf (or a near-identical last token).
+# against the full schema leaf (typos like lead_sponsr → lead_sponsor).
 _ATTR_AUTO_SIMILARITY = 0.85
-# Below this, do not even surface a candidate for approval.
-_ATTR_MIN_SIMILARITY = 0.45
+# Weak (needs-approval) full-string floor — below this, ignore unless a
+# structural suffix signal fires (last-token of a longer leaf).
+_ATTR_WEAK_FULL_SIMILARITY = 0.70
+# Score assigned to "candidate == last token of a longer leaf" (sponsor of
+# lead_sponsor). Must stay BELOW auto so plan() asks before enriching.
+_ATTR_SUFFIX_SCORE = 0.55
 
 
 @dataclass(frozen=True)
@@ -1841,12 +1845,12 @@ def _resolve_schema_attr(
     """Map an extracted attribute token onto a declared schema name.
 
     * **Exact** (case-insensitive) → auto-accept.
-    * **High similarity** (≥ ``_ATTR_AUTO_SIMILARITY``) to exactly one leaf →
-      auto-accept (typos / near-spellings, e.g. ``lead_sponsr`` → ``lead_sponsor``).
-    * **Weaker unique candidate** (unique suffix or best ratio in
-      [``_ATTR_MIN_SIMILARITY``, auto threshold)) → ``needs_approval=True`` so
-      plan() asks before enriching (e.g. ``sponsor`` → ``lead_sponsor``).
-    * Ambiguous / no plausible hit → ``None`` (caller may keep as a new attr).
+    * **High full-string similarity** (≥ ``_ATTR_AUTO_SIMILARITY``) to exactly
+      one leaf → auto-accept (typos).
+    * **Weak but intentional** → ``needs_approval=True`` (agent/user clarify):
+        - unique structural suffix (``sponsor`` of ``lead_sponsor``), or
+        - unique full-string ratio in [``_ATTR_WEAK_FULL_SIMILARITY``, auto).
+    * Ambiguous / noise (e.g. ``website``↔``title`` at ~0.5) → ``None``.
     """
     if not candidate:
         return None
@@ -1861,41 +1865,38 @@ def _resolve_schema_attr(
     if len(key) < _SOFT_ATTR_MIN_LEN or not attr_lookup:
         return None
 
-    # Score every schema leaf; keep the unique best above the floor.
-    scored: list[tuple[float, str, str]] = []
+    # (score, canonical, low, kind) kind ∈ {"full", "suffix"}
+    scored: list[tuple[float, str, str, str]] = []
     for low, canonical in attr_lookup.items():
         full = _similarity(key, low)
         last = low.split("_")[-1] if "_" in low else low
-        # Candidate equals the LAST token of a *longer* leaf ("sponsor" vs
-        # "lead_sponsor") is a WEAK signal only — SequenceMatcher would give
-        # last-token ratio 1.0 and wrongly auto-accept. Cap that case.
-        if last == key and low != key:
-            last_score = 0.55
-        else:
-            last_score = _similarity(key, last)
-        score = max(full, last_score)
-        if score >= _ATTR_MIN_SIMILARITY:
-            scored.append((score, canonical, low))
+        # Candidate is only the trailing role token of a longer leaf
+        # (sponsor ⊂ lead_sponsor) — treat as structural suffix, never as a
+        # "full" near-match, even if SequenceMatcher is coincidentally high.
+        is_suffix = (last == key or low.endswith("_" + key)) and low != key
+        if is_suffix:
+            scored.append((_ATTR_SUFFIX_SCORE, canonical, low, "suffix"))
+        elif full >= _ATTR_WEAK_FULL_SIMILARITY:
+            scored.append((full, canonical, low, "full"))
 
     if not scored:
         return None
     scored.sort(key=lambda t: (-t[0], t[1]))
-    best_score, best_canonical, best_low = scored[0]
-    # Ambiguous if a second leaf is within 0.05 of the best.
+    best_score, best_canonical, _best_low, best_kind = scored[0]
+    # Near-tie on score → refuse to pick.
     if len(scored) > 1 and (best_score - scored[1][0]) < 0.05:
         return None
-    # Shared last-token family (lead_sponsor + collaborator_sponsor for
-    # "sponsor"): never pick a winner — even if full-string ratios differ.
-    suffix_peers = [
-        s
-        for s in scored
-        if s[2].endswith("_" + key) or s[2].split("_")[-1] == key
-    ]
-    if len(suffix_peers) > 1:
+    # Shared last-token family (lead_sponsor + collaborator_sponsor): no winner.
+    suffix_peers = [s for s in scored if s[3] == "suffix"]
+    if best_kind == "suffix" and len(suffix_peers) > 1:
         return None
 
     needs_approval = best_score < _ATTR_AUTO_SIMILARITY
-    reason = "high_similarity" if not needs_approval else "weak_similarity"
+    reason = (
+        "high_similarity"
+        if not needs_approval
+        else ("suffix" if best_kind == "suffix" else "weak_similarity")
+    )
     return _AttrMatch(
         canonical=best_canonical,
         score=best_score,
