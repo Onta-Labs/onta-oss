@@ -169,11 +169,68 @@ server.registerTool(
   async ({ question, kg_name }) => {
     try {
       const data = await client().ask(question, { kg: kg_name });
-      const answer = data.answer ?? "No answer";
-      const explanation = data.explanation;
-      let out = `Answer: ${answer}`;
-      if (explanation) out += `\nExplanation: ${explanation}`;
-      return textResult(out);
+      // Prefer the human narrative when present; keep the raw binding dump as
+      // Answer so agents can still quote the precise value.
+      const narrative =
+        (typeof data.narrative_answer === "string" && data.narrative_answer) ||
+        (typeof data.narrative === "string" && data.narrative) ||
+        "";
+      const answer =
+        (typeof data.answer === "string" && data.answer) ||
+        (data.answer != null ? String(data.answer) : "No answer");
+      const explanation =
+        typeof data.explanation === "string" ? data.explanation : "";
+      const sparql = typeof data.sparql === "string" ? data.sparql : "";
+      const runId =
+        (typeof data.run_id === "string" && data.run_id) ||
+        (typeof data.job_id === "string" && data.job_id) ||
+        "";
+      const citations = Array.isArray(data.citations) ? data.citations : [];
+
+      // Surface provenance fields the UI (and the model) need for expandable
+      // citations / SPARQL / query id. Previously only answer+explanation were
+      // returned, so agents silently dropped SPARQL and run_id.
+      const lines: string[] = [];
+      if (narrative) lines.push(narrative.trim());
+      lines.push(`Answer: ${answer}`);
+      if (explanation) lines.push(`Explanation: ${explanation}`);
+      if (runId) lines.push(`run_id: ${runId}`);
+      if (sparql) lines.push(`\nSPARQL:\n${sparql}`);
+      if (citations.length) {
+        lines.push("\nCitations:");
+        for (const c of citations) {
+          if (typeof c === "string") {
+            lines.push(`  - ${c}`);
+          } else if (c && typeof c === "object") {
+            const o = c as Record<string, unknown>;
+            const url = o.url ?? o.source_url ?? o.href;
+            const title = o.title ?? o.label ?? o.source;
+            const bit = [title, url].filter(Boolean).join(" — ");
+            lines.push(`  - ${bit || JSON.stringify(c)}`);
+          } else {
+            lines.push(`  - ${String(c)}`);
+          }
+        }
+      }
+      // Machine-readable block for clients that parse structured fields.
+      lines.push(
+        "",
+        "Raw result:",
+        JSON.stringify(
+          {
+            answer: data.answer,
+            narrative_answer: data.narrative_answer ?? data.narrative,
+            sparql: data.sparql,
+            run_id: runId || undefined,
+            citations: data.citations,
+            explanation: data.explanation,
+            timing: data.timing,
+          },
+          null,
+          2,
+        ),
+      );
+      return textResult(lines.join("\n"));
     } catch (err) {
       return errorResult(err);
     }
@@ -1075,9 +1132,28 @@ function describeAgentResult(r: AgentResult): string {
   switch (r.kind) {
     case "answer": {
       const answer = (r.answer as string | undefined) ?? "(no answer)";
+      if (r.narrative) lines.push(String(r.narrative));
       lines.push(`Answer: ${answer}`);
-      if (r.narrative) lines.push(`\n${String(r.narrative)}`);
+      const runId =
+        (typeof r.run_id === "string" && r.run_id) ||
+        (typeof r.job_id === "string" && r.job_id) ||
+        "";
+      if (runId) lines.push(`run_id: ${runId}`);
       if (r.sparql) lines.push(`\nSPARQL:\n${String(r.sparql)}`);
+      const citations = Array.isArray(r.citations) ? r.citations : [];
+      if (citations.length) {
+        lines.push("\nCitations:");
+        for (const c of citations) {
+          if (typeof c === "string") lines.push(`  - ${c}`);
+          else if (c && typeof c === "object") {
+            const o = c as Record<string, unknown>;
+            const bit = [o.title ?? o.label ?? o.source, o.url ?? o.source_url]
+              .filter(Boolean)
+              .join(" — ");
+            lines.push(`  - ${bit || JSON.stringify(c)}`);
+          } else lines.push(`  - ${String(c)}`);
+        }
+      }
       break;
     }
     case "clarify":
