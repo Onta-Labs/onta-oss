@@ -1384,7 +1384,7 @@ _recompute_inflight: set[tuple[str, str]] = set()
 #: KGs whose recompute was requested WHILE one was already in flight. Deferred,
 #: never dropped: the in-flight scan may have read the KG before the newer
 #: write landed, so discarding the request would persist pre-write numbers
-#: permanently (nothing re-triggers — ``recompute_kg_stats`` upserts a durable
+#: permanently (nothing re-triggers: ``recompute_kg_stats`` upserts a durable
 #: store row and ``_kg_stats_for`` only schedules on a store MISS). A set, so at
 #: most ONE follow-up is queued per KG however many requests pile up: the
 #: reader-reachable path stays bounded at one in-flight plus one queued scan.
@@ -1430,7 +1430,7 @@ def schedule_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> N
             _recompute_pending.discard(key)
             try:
                 schedule_recompute(client, tenant_id, kg_name)
-            except Exception:  # noqa: BLE001 — best-effort; never raise into the loop
+            except Exception:  # noqa: BLE001, best-effort; never raise into the loop
                 logger.warning(
                     "recompute_rerun_schedule_failed", kg=kg_name, exc_info=True
                 )

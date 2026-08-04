@@ -96,7 +96,13 @@ _ALLOWLIST: dict[str, str] = {
         "every registered capability, deny-by-default."
     ),
     # --- Read-only POSTs (POST because the body is a payload, not a mutation) --
-    "ask.py::ask_question": "read-only: NL question -> SPARQL SELECT, answers only.",
+    "ask.py::ask_question": (
+        "read-only AGAINST THE KG: NL question -> SPARQL SELECT, never an "
+        "UPDATE. It does mint an observability job row (record_answer_run, so "
+        "operators can open the Job Trace), which is a platform-side audit "
+        "record, not tenant instance data, and a reader is entitled to it "
+        "precisely because they are entitled to the answer."
+    ),
     "query.py::execute_query": "read-only: SPARQL SELECT/ASK passthrough; the UPDATE twin is a separate route.",
     "grep.py::grep_graph": "read-only: literal substring scan over one KG's triples, returns matches.",
     "search.py::semantic_search": "read-only: hybrid semantic search over the tenant's index, returns matches.",

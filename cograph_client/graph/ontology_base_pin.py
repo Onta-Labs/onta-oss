@@ -382,6 +382,15 @@ async def ensure_workspace_base_pin(
       write capability here: a read-only member must not silently backfill or
       auto-upgrade the workspace pin just by opening the ontology view, and
       they see exactly what a writer's request would have produced.
+
+      Known consequence, accepted: a workspace ONLY readers ever open never
+      persists a base pin at all, so it keeps tracking the latest global
+      release instead of being frozen at one, which is the pin's whole point.
+      Low risk in practice, since with no stored pin a reader and a writer
+      compute the SAME value at any given instant, and the first writer request
+      freezes it. But a workspace can drift across a base release while
+      appearing pinned, so do not read a reader-only workspace's returned
+      ``base_version`` as a durable pin.
     """
     # Read errors propagate (BasePinReadError) — do not catch and backfill.
     existing = await get_base_pin(neptune, tenant_id)

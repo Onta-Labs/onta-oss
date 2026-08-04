@@ -108,6 +108,17 @@ def layer_stack_for(tenant: TenantContext):
     )
 
 
+#: What ``TenantContext.role`` looks like when the route did NOT resolve a
+#: membership (a plain ``get_tenant`` read, or a static / subject-less key).
+#: Named rather than inlined as ``""`` because ``can_write("")`` normalizes to
+#: the WRITE capability, i.e. an unresolved role fails OPEN and keeps the
+#: pre-ONTA-452 persisting behavior. That is intended (the callers that matter
+#: for ONTA-452 all sit on ``get_tenant_with_capability``, which always
+#: resolves a role), but it is the kind of intent that should be stated rather
+#: than left resting on ``normalize_role``'s default.
+_UNRESOLVED_ROLE = ""
+
+
 async def layer_stack_for_tenant(
     neptune,
     tenant: TenantContext,
@@ -130,8 +141,8 @@ async def layer_stack_for_tenant(
     ontology READ by a read-only member returns the pin it would have ensured
     without backfilling or auto-upgrading it. Pass it explicitly to override.
     The role is only populated when the route resolved it
-    (``get_tenant_with_capability``); an unresolved context keeps prior
-    behavior.
+    (``get_tenant_with_capability``); an UNRESOLVED context deliberately keeps
+    prior (persisting) behavior, see ``_UNRESOLVED_ROLE``.
     """
     from cograph_client.auth.capabilities import can_write
     from cograph_client.graph.ontology_base_pin import layer_stack_for_workspace
@@ -141,5 +152,9 @@ async def layer_stack_for_tenant(
         tenant.tenant_id,
         entitled=is_entitled(tenant),
         auto_ensure=auto_ensure,
-        persist=can_write(getattr(tenant, "role", "")) if persist is None else persist,
+        persist=(
+            can_write(getattr(tenant, "role", _UNRESOLVED_ROLE))
+            if persist is None
+            else persist
+        ),
     )
