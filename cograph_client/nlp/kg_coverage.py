@@ -161,8 +161,17 @@ def referenced_types(sparql: str) -> dict[str, list[str]]:
 
     Distinct from :func:`~cograph_client.nlp.empty_type_guard.types_referenced`,
     which returns names only. The URIs are kept because the confirmation probe
-    must seek on exactly what the query named — re-minting a URI from the name
+    must seek on exactly what the query named: re-minting a URI from the name
     would guess a layer namespace the query may not have used.
+
+    Keyed by bare NAME, deliberately and with a known limit. ``type_name_from_uri``
+    collapses ``types/X``, ``types/public/X`` and ``types/x/X`` to one name, and
+    the ONTA-427 active-type probe reduces what it finds the same way, so both
+    sides of the comparison are layer-blind and agree with each other. The cost is
+    that a query anchored on ``types/public/Person`` reads as covered by a KG that
+    holds only tenant-namespace ``Person``. That matches how ONTA-258's own
+    ``[no instances]`` marks behave, so this does not introduce a new
+    inconsistency, but it is an assumption and not a proof.
     """
     from cograph_client.graph.layers import type_name_from_uri
 
@@ -339,6 +348,30 @@ def unscoped_caveat(kg_name: str) -> str:
     )
 
 
+def undetermined_caveat(kg_name: str) -> str:
+    """The caveat for when the per-KG coverage signal could not be read at all.
+
+    The semantic retrieval path marks its chunks ``[no instances]`` only when the
+    ONTA-411 active-type probe succeeded; when that probe fails it passes
+    ``active_types=None``, ``ontology_embeddings`` marks NOTHING, and both signals
+    above go quiet. That is the worst possible moment for silence: the same
+    failure ALSO un-scopes semantic retrieval, so the subset handed to the
+    planner may be a SIBLING KG's schema, and the query built from it answers out
+    of the base graph. The pipeline already logs that degradation at WARNING;
+    this is the user-visible half.
+
+    Says only that coverage is unknown. It does not claim the named graph
+    contributed nothing, because nothing was measured.
+    """
+    if not kg_name:
+        return ""
+    return (
+        f"Coverage against knowledge graph '{kg_name}' could not be checked for "
+        "this answer, so the result may include data from the workspace base "
+        f"graph and any shared layers rather than only from '{kg_name}'."
+    )
+
+
 __all__ = [
     "MAX_NAMED_IN_CAVEAT",
     "MAX_UNCOVERED_TYPES",
@@ -347,5 +380,6 @@ __all__ = [
     "kg_subtype_presence_query",
     "referenced_types",
     "uncovered_types",
+    "undetermined_caveat",
     "unscoped_caveat",
 ]

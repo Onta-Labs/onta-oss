@@ -127,8 +127,33 @@ def _neptune(*, answer_rows: list[str], subtypes_present: list[str] | None = Non
     return client
 
 
-async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY):
+async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY,
+               semantic_probe_failed: bool = False):
     pipeline = NLQueryPipeline(client, "fake-key")
+    if semantic_probe_failed:
+        # Reproduce the ONTA-411 degradation: the embedding service is present,
+        # its active-type probe raises, so `retrieve` is called with
+        # active_types=None and marks NOTHING, and the semantic subset is served
+        # unscoped. Patched at the seam rather than faked, so this test breaks if
+        # the real degradation path changes shape.
+        svc = AsyncMock()
+        svc.type_names.side_effect = RuntimeError("probe down")
+        svc.retrieve.return_value = ontology
+        with patch(
+            "cograph_client.nlp.pipeline.get_embedding_service", return_value=svc
+        ), patch.object(
+            pipeline, "_generate_sparql", new_callable=AsyncMock,
+            return_value={"sparql": sparql, "explanation": "", "functions_needed": []},
+        ), patch.object(
+            pipeline, "_rephrase_via_openrouter", new_callable=AsyncMock,
+            return_value="",
+        ):
+            return await pipeline.ask(
+                "how many product recalls are there?",
+                TENANT_GRAPH,
+                KG_GRAPH if kg else None,
+                layer_graph_uris=[TENANT_GRAPH, PUBLIC_LAYER],
+            )
     canned = {"sparql": sparql, "explanation": "", "functions_needed": []}
     with patch.object(
         pipeline, "_generate_sparql", new_callable=AsyncMock, return_value=canned
@@ -247,6 +272,35 @@ async def test_supertype_whose_subtype_lives_here_is_not_caveated():
 
 
 @pytest.mark.asyncio
+async def test_a_cleared_type_demotes_the_strong_all_types_wording():
+    """Review finding 1. `all_types` was computed from the MARKS, before the
+    probe had a chance to disagree with them.
+
+    The query joins two marked-empty types; the probe proves one of them IS here
+    (via a subclass). Emitting "which is the only type this query reads ...
+    therefore not an answer about 'maral'" would then be two false claims about a
+    graph the probe just showed holds one of the query's types.
+    """
+    joined = (
+        f"SELECT ?x FROM <{KG_GRAPH}> FROM <{TENANT_GRAPH}> WHERE {{ "
+        f"?o a <{BASE}/types/Organization> ; <{BASE}/onto/recall> ?r . "
+        f"?r a <{BASE}/types/ProductRecall> }}"
+    )
+    client = _neptune(
+        answer_rows=["7"], subtypes_present=[f"{BASE}/types/Organization"]
+    )
+    result = await _ask(client, joined)
+    caveat = result.coverage_caveat
+    assert "ProductRecall" in caveat
+    # The type the probe cleared must not be named as absent...
+    assert "Organization" not in caveat
+    # ...and the strong claim must be demoted, because it is now false.
+    assert "not an answer about" not in caveat
+    assert "the only type this query reads" not in caveat
+    assert "any part of this result that depends on it" in caveat
+
+
+@pytest.mark.asyncio
 async def test_probe_confirming_absence_still_yields_the_caveat():
     org_sparql = RECALL_SPARQL.replace("ProductRecall", "Organization")
     result = await _ask(_neptune(answer_rows=["12"], subtypes_present=[]), org_sparql)
@@ -312,12 +366,29 @@ async def test_type_unanchored_query_is_caveated_as_workspace_wide():
 
 
 @pytest.mark.asyncio
-async def test_unanchored_query_is_silent_when_the_base_graph_holds_nothing():
-    """A workspace whose data lives entirely in one KG: the union IS that KG."""
-    result = await _ask(
-        _neptune(answer_rows=["8"], base_has_instances=False), UNSCOPED_SPARQL
-    )
+async def test_unanchored_query_is_silent_when_nothing_else_holds_instances():
+    """A workspace whose data lives entirely in one KG: the union IS that KG.
+
+    Review finding 2: the ASK must cover EVERY non-KG graph in the dataset, not
+    just the tenant base graph. Measured on production, the base graph holds
+    18,515 typed subjects, `kg/maral` holds 8, and the unscoped union answers
+    19,582, so roughly a thousand typed subjects live in the shared Global
+    layers. Gating on the base graph alone would leave a workspace with an empty
+    base graph silently uncaveated.
+    """
+    client = _neptune(answer_rows=["8"], base_has_instances=False)
+    result = await _ask(client, UNSCOPED_SPARQL)
     assert result.coverage_caveat == ""
+    asked = client.ask.await_args_list[0].args[0]
+    assert f"FROM <{TENANT_GRAPH}>" in asked
+    assert f"FROM <{PUBLIC_LAYER}>" in asked, (
+        "the Global layers are in the answer query's union and demonstrably hold "
+        "instance data, so the gate must ask about them too"
+    )
+    assert f"FROM <{KG_GRAPH}>" not in asked, (
+        "the named KG must be EXCLUDED, or its own data would answer 'yes, "
+        "something else holds instances' and the gate would never close"
+    )
 
 
 @pytest.mark.asyncio
@@ -363,6 +434,46 @@ async def test_anchored_signal_pays_for_no_base_graph_ask():
 def test_unscoped_caveat_needs_a_kg_name():
     assert unscoped_caveat("") == ""
     assert "maral" in unscoped_caveat("maral")
+
+
+# --------------------------------------------------------------------------- #
+# 4b. The signal is UNAVAILABLE, which is not the same as "all covered".
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_failed_semantic_probe_says_coverage_is_unknown():
+    """Review finding 3. The worst possible moment for silence.
+
+    When the ONTA-411 active-type probe fails, `ontology_embeddings` marks
+    NOTHING, so signal A sees no marks (and would read that as "everything is
+    covered") while signal B is inapplicable because the query IS type-anchored.
+    That same failure also un-scopes semantic retrieval, so the subset handed to
+    the planner may be a SIBLING KG's schema and the query built from it answers
+    out of the base graph. An unmarked ontology means "not measured" here, not
+    "all covered".
+    """
+    unmarked = f"Type: ProductRecall {EM} URI: <{BASE}/types/ProductRecall>"
+    result = await _ask(
+        _neptune(answer_rows=["4229"]),
+        RECALL_SPARQL,
+        ontology=unmarked,
+        semantic_probe_failed=True,
+    )
+    assert "could not be checked" in result.coverage_caveat
+    assert "maral" in result.coverage_caveat
+    # It must not claim the graph holds nothing; nothing was measured.
+    assert "contains no instances" not in result.coverage_caveat
+
+
+@pytest.mark.asyncio
+async def test_unmarked_full_ontology_stays_silent():
+    """The FULL path always resolves active_types, so no marks really does mean
+    every declared type is populated here. Silence is correct; the
+    finding-3 branch must not fire on this path and turn it into noise."""
+    unmarked = f"Type: ProductRecall {EM} URI: <{BASE}/types/ProductRecall>"
+    result = await _ask(_neptune(answer_rows=["4229"]), RECALL_SPARQL, ontology=unmarked)
+    assert result.coverage_caveat == ""
 
 
 # --------------------------------------------------------------------------- #

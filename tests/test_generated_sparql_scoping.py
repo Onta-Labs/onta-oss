@@ -570,8 +570,14 @@ BUILT_HERE_QUERY_BUILDERS = {
     "get_full_ontology_query": "graph/ontology_queries: emits FROM <graph_uri>",
     "_active_type_probe_query": "pipeline-local: emits FROM <instance_graph>",
     # ONTA-454's subclass-closure confirmation probe. Emits
-    # `FROM <ontology graphs> FROM NAMED <kg_graph>`, all of them resolved by the
-    # ROUTE for this request; no caller-supplied IRI reaches it.
+    # `FROM <ontology graphs> FROM NAMED <kg_graph>`; every GRAPH IRI in it is
+    # resolved by the ROUTE for this request, so no caller-supplied graph reaches
+    # the dataset clause. Its TYPE IRIs do come from LLM-generated SPARQL, via
+    # `referenced_types`, but only in expression/object position and never in a
+    # dataset clause: the extracting regex is anchored on the `IRI_BASE/types/`
+    # prefix and stops at whitespace or `>`, and a malformed match fails
+    # `parseQuery` rather than injecting (the probe then raises and the caller
+    # degrades to emitting its caveat, which is the safe direction).
     "kg_subtype_presence_query": "nlp/kg_coverage: emits FROM + FROM NAMED",
 }
 

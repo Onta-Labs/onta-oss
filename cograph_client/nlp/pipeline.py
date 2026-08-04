@@ -1058,6 +1058,7 @@ class NLQueryPipeline:
                         layer_graph_uris,
                         kg_declared_names,
                         kg_active_types,
+                        ontology_source,
                         timing,
                     )
                 answer = await self._format_answer(
@@ -1199,6 +1200,7 @@ class NLQueryPipeline:
         layer_graph_uris: list[str] | None,
         declared_names: list[str] | None,
         active_types: set[str] | None,
+        ontology_source: str,
         timing: dict,
     ) -> str:
         """One sentence when the NAMED KG holds none of the types the query read.
@@ -1234,12 +1236,14 @@ class NLQueryPipeline:
         try:
             if not data_graph or data_graph == ontology_graph:
                 return ""
+            from cograph_client.graph.kg_status import other_graphs_hold_instances
             from cograph_client.graph.queries import parse_kg_graph_uri
             from cograph_client.nlp.kg_coverage import (
                 MAX_UNCOVERED_TYPES,
                 coverage_caveat,
                 empty_types_for_kg,
                 referenced_types,
+                undetermined_caveat,
                 unscoped_caveat,
                 uncovered_types,
             )
@@ -1248,6 +1252,16 @@ class NLQueryPipeline:
             if not scope:
                 return ""
             tenant_id, kg_name = scope
+            # EVERY non-KG graph the answer query read, which is precisely the set
+            # of extra FROM clauses `add_layer_from_clauses` spliced in. Asking
+            # only about the tenant base graph would miss the shared Global
+            # layers, which demonstrably hold instance data (see
+            # `other_graphs_hold_instances`).
+            other_graphs = [
+                g
+                for g in (list(layer_graph_uris) if layer_graph_uris else [ontology_graph])
+                if g and g != data_graph
+            ]
 
             # SIGNAL B, the type-UNANCHORED query. `?s rdf:type ?type` with an
             # unbound type constrains nothing, so it reads the whole union and no
@@ -1258,9 +1272,9 @@ class NLQueryPipeline:
             # positive-cached O(1) ASK (and which fails toward silence).
             referenced = referenced_types(sparql)
             if not referenced:
-                from cograph_client.graph.kg_status import base_graph_has_instances
-
-                if not await base_graph_has_instances(self.neptune, tenant_id):
+                if not await other_graphs_hold_instances(
+                    self.neptune, tenant_id, other_graphs
+                ):
                     return ""
                 timing["kg_coverage_unscoped_query"] = 1.0
                 logger.info("kg_coverage_unscoped_query", kg_name=kg_name)
@@ -1271,6 +1285,21 @@ class NLQueryPipeline:
                 ontology, declared_names=declared_names, active_types=active_types
             )
             if not empty_in_kg:
+                # No marks. Usually that means every declared type IS populated
+                # here, which is the honest silent case. But on the SEMANTIC path
+                # `ontology_embeddings` marks nothing at all when the ONTA-411
+                # active-type probe failed, and that same failure un-scopes
+                # retrieval, so the subset may be a SIBLING KG's schema. Absence of
+                # marks then means "not measured", not "all covered", and silence
+                # would hide exactly the leak the WARNING log already reports.
+                if ontology_source == "semantic" and active_types is None:
+                    if not await other_graphs_hold_instances(
+                        self.neptune, tenant_id, other_graphs
+                    ):
+                        return ""
+                    timing["kg_coverage_undetermined"] = 1.0
+                    logger.info("kg_coverage_undetermined", kg_name=kg_name)
+                    return undetermined_caveat(kg_name)
                 return ""
             flagged, all_types = uncovered_types(referenced, empty_in_kg)
             if not flagged:
@@ -1279,6 +1308,7 @@ class NLQueryPipeline:
             # confirmation probe actually cleared. Sorted so the choice is
             # deterministic rather than regex-match order.
             flagged = dict(sorted(flagged.items())[:MAX_UNCOVERED_TYPES])
+            probed = set(flagged)
 
             present = await self._types_present_in_kg(
                 data_graph, ontology_graph, layer_graph_uris, flagged
@@ -1286,6 +1316,16 @@ class NLQueryPipeline:
             flagged = {n: u for n, u in flagged.items() if n not in present}
             if not flagged:
                 return ""
+            # `all_types` was computed from the "[no instances]" MARKS, before the
+            # probe had a chance to disagree with them. If the probe CLEARED any
+            # type, the marks were wrong about at least one, and the strong
+            # sentence ("the only type this query reads ... not an answer about
+            # this graph") becomes a false claim about a graph the probe just
+            # proved does hold one of the query's types. Demote to the partial
+            # wording. Truncation by the cap alone is NOT a demotion: those types
+            # are still uncovered, they are merely not all listed.
+            if probed - set(flagged):
+                all_types = False
 
             timing["kg_coverage_uncovered_types"] = ", ".join(sorted(flagged))
             logger.info(

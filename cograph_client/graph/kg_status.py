@@ -70,34 +70,48 @@ _TYPES_PREFIX = f"{IRI_BASE}/types/"
 _kg_ok_cache: dict[tuple[str, str], float] = {}
 KG_STATUS_CACHE_TTL = 60  # seconds, mirrors nlp.pipeline's _ontology_cache
 
-# {tenant_id: checked_at} for "the tenant BASE graph holds instance data".
-# Positive only, for the same reason as `_kg_ok_cache`: a base graph that holds
+# {(tenant_id, graph tuple): checked_at} for "these graphs hold instance data".
+# Positive only, for the same reason as `_kg_ok_cache`: a graph that holds
 # instances cannot stop holding them without a delete, while a NEGATIVE verdict
 # would survive the first ingest into a brand-new workspace.
-_base_instances_cache: dict[str, float] = {}
+_base_instances_cache: dict[tuple[str, tuple[str, ...]], float] = {}
 
 
 def invalidate_kg_status(tenant_id: str, kg_name: str | None = None) -> None:
-    """Drop cached positive verdicts for a tenant (or one KG). Test/admin hook."""
+    """Drop cached positive verdicts for a tenant (or one KG). Test/admin hook.
+
+    The instance-data cache is cleared for the whole tenant on EITHER form. It is
+    keyed on graph sets rather than on a KG name, so there is nothing per-KG to
+    drop, and the only production caller (``api/routes/knowledge_graphs.py``)
+    always passes a ``kg_name`` — leaving it under the tenant-wide branch alone
+    would have meant a workspace that deleted its instance data kept asserting
+    "there is other data here" for the rest of the TTL.
+    """
+    for key in [k for k in _base_instances_cache if k[0] == tenant_id]:
+        _base_instances_cache.pop(key, None)
     if kg_name is not None:
         _kg_ok_cache.pop((tenant_id, kg_name), None)
         return
-    _base_instances_cache.pop(tenant_id, None)
     for key in [k for k in _kg_ok_cache if k[0] == tenant_id]:
         _kg_ok_cache.pop(key, None)
 
 
-def _base_has_instances_query(base_graph: str) -> str:
-    """ASK whether the tenant BASE graph holds INSTANCE data (not just schema).
+def _base_has_instances_query(*graphs: str) -> str:
+    """ASK whether the given graph(s) hold INSTANCE data (not just schema).
 
     See :func:`kg_data_status` for why a bare ``?s ?p ?o`` would be wrong here.
     ``rdf:type`` is the scan-bounding predicate, and the object-namespace FILTER
     is what separates instances from the ontology's own class declarations. The
     prefix covers layered type URIs (``types/public/X``, ``types/enhanced/X``)
     too, since those are still instances when they appear as an object.
+
+    Several graphs union into one default graph, which is exactly the question
+    :func:`other_graphs_hold_instances` needs to ask: "does ANYTHING outside the
+    named KG hold instance data?" is one ASK, not one per graph.
     """
+    froms = " ".join(f"FROM <{g}>" for g in graphs)
     return (
-        f"ASK FROM <{base_graph}> WHERE {{ "
+        f"ASK {froms} WHERE {{ "
         f"?s <{_RDF_TYPE}> ?t . "
         f'FILTER(STRSTARTS(STR(?t), "{_TYPES_PREFIX}")) '
         f"}}"
@@ -222,22 +236,29 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
     return KG_EMPTY
 
 
-async def base_graph_has_instances(neptune, tenant_id: str) -> bool:
-    """Does the tenant BASE graph hold INSTANCE data of its own? (ONTA-454)
+async def other_graphs_hold_instances(neptune, tenant_id: str, graphs) -> bool:
+    """Does anything OUTSIDE the named KG hold instance data? (ONTA-454)
 
     The same ``ASK`` :func:`kg_data_status` already runs on its rare
-    registered-but-empty path, hoisted so the coverage caveat can reuse it rather
-    than growing a second way to ask the same question.
+    registered-but-empty path, generalised to a graph LIST so the coverage caveat
+    can reuse it rather than growing a second way to ask the same question.
 
     Why the caveat needs it: a generated query that constrains no type at all
     (``?s rdf:type ?type``, the shape "how many rows of data are there in total?"
     produces) reads the WHOLE union, so a count answers for the workspace and not
     for the KG the caller named. That is only worth saying when the union
-    actually contains something other than the named graph, which on this
-    platform is overwhelmingly the base graph: it IS the instance graph for every
-    ``kg_name``-less ingest (18,515 typed instance subjects on demo-tenant,
-    measured read-only 2026-08-03). In a workspace whose data lives entirely in
-    one per-KG graph the union IS that graph, and the caveat would be noise.
+    actually contains something other than the named graph. In a workspace whose
+    data lives entirely in one per-KG graph the union IS that graph, and the
+    caveat would be noise.
+
+    ``graphs`` must be EVERY non-KG graph in the query's dataset, not just the
+    tenant base graph. An earlier revision asked only the base graph and was
+    wrong by measurement: on demo-tenant the base graph holds 18,515 typed
+    instance subjects, ``kg/maral`` holds 8, and the unscoped union answers
+    19,582, so roughly a thousand typed subjects live in the shared Global layers
+    and a workspace with an empty base graph would have been silently uncaveated.
+    Callers pass the visible layer stack, which is exactly the set of extra
+    ``FROM`` clauses the answer query itself carried.
 
     Fails toward SILENCE, which is the OPPOSITE of :func:`kg_data_status`'s
     fail-open rule, and deliberately so. The two functions gate different claims.
@@ -247,24 +268,26 @@ async def base_graph_has_instances(neptune, tenant_id: str) -> bool:
     the "a caveat that is wrong about which graph answered" failure the caveat
     exists to prevent. Unproven means unsaid.
 
-    Cached POSITIVE-only, so a real workspace pays for this once per TTL and the
+    Cached POSITIVE-only and keyed on the graph SET (entitlement changes the
+    visible layers), so a real workspace pays for this once per TTL and the
     steady-state cost is zero.
     """
-    if not tenant_id:
+    targets = tuple(sorted({g for g in (graphs or ()) if g}))
+    if not tenant_id or not targets:
         return False
-    cached = _base_instances_cache.get(tenant_id)
+    key = (tenant_id, targets)
+    cached = _base_instances_cache.get(key)
     if cached is not None and (time.time() - cached) < KG_STATUS_CACHE_TTL:
         return True
-    base = tenant_graph_uri(tenant_id)
     try:
-        found = await neptune.ask(_base_has_instances_query(base))
+        found = await neptune.ask(_base_has_instances_query(*targets))
     except Exception:  # noqa: BLE001 - an unverified claim is not made at all
         logger.warning(
-            "base_graph_instance_probe_failed", tenant=tenant_id, exc_info=True
+            "other_graph_instance_probe_failed", tenant=tenant_id, exc_info=True
         )
         return False
     if found:
-        _base_instances_cache[tenant_id] = time.time()
+        _base_instances_cache[key] = time.time()
     return bool(found)
 
 
