@@ -194,6 +194,15 @@ class EnrichCapability:
         req = parsed or await _extract_enrich_request(
             ctx, instruction, type_name, schema
         )
+        # Always re-ground against the live schema — even when the planner (or a
+        # test) supplies ``parsed``. Soft-match (sponsor → lead_sponsor) and
+        # hallucination drops only live here; skipping them lets a pre-parsed
+        # "sponsor" + tier=core plan miss ClinicalTrials.gov and bill Exa.
+        attr_names = [a for a in schema.get("attributes", []) if a]
+        rel_names = [
+            r.get("name") for r in schema.get("relationships", []) if r.get("name")
+        ]
+        req = _validate_enrich_request(req, attr_names, rel_names, type_name)
         attributes: list[str] = req.get("attributes") or []
         if not attributes:
             return []
@@ -226,6 +235,42 @@ class EnrichCapability:
         overwrite = _looks_like_overwrite(instruction)
         refresh = refresh or overwrite
         tier = _coerce_tier(req.get("tier"))
+        # Registry-first routing (parity with POST /enrich auto-tier): when every
+        # requested attribute is covered by a free registered API (e.g.
+        # ClinicalTrial.lead_sponsor → clinicaltrials_gov), force the free ``base``
+        # tier. The agent extract prompt historically pushed "core" (paid web) for
+        # open-web-ish nouns like "sponsor", so Ask Onta would plan Exa + a dollar
+        # cost for facts the NIH registry answers for free. HTTP ``/enrich?tier=auto``
+        # already does this via resolve_auto_tier; the agent path must too.
+        registry_routing_note = ""
+        covered_by = _registry_covers_safe(attributes, type_name)
+        if covered_by:
+            tier = EnrichmentTier.base
+            by_source: dict[str, list[str]] = {}
+            for attr in attributes:
+                by_source.setdefault(covered_by[attr], []).append(attr)
+            detail = "; ".join(
+                f"{slug} covers {', '.join(a_list)}"
+                for slug, a_list in by_source.items()
+            )
+            registry_routing_note = (
+                f"Prefer free registered API ({detail}) over paid web search."
+            )
+        elif str(req.get("tier") or "").lower() in ("", "auto"):
+            # Only resolve lite/core when the caller left tier unspecified/auto;
+            # never override an explicit user-or-LLM core/pro pick for uncovered
+            # attributes.
+            try:
+                from cograph_client.enrichment.tier_router import resolve_auto_tier
+
+                decision = await resolve_auto_tier(
+                    attributes, type_name, ctx.openrouter_key
+                )
+                if decision.resolved_tier and not decision.needs_clarification:
+                    tier = _coerce_tier(decision.resolved_tier)
+                    registry_routing_note = decision.routing_note or ""
+            except Exception:  # noqa: BLE001 — routing must never break planning
+                logger.warning("agent_enrich_auto_tier_failed", exc_info=True)
         requested_confidence = float(
             req.get("confidence_min", _DEFAULT_CONFIDENCE_MIN)
             or _DEFAULT_CONFIDENCE_MIN
@@ -406,6 +451,21 @@ class EnrichCapability:
             if urls
             else ""
         )
+        source_clause = _source_clause(tier, covered_by, has_paid)
+        verb = (
+            "Refresh (replace)"
+            if overwrite
+            else ("Refresh (re-verify)" if refresh else "Enrich")
+        )
+        scope_clause = (
+            f" for {subset_desc}"
+            if subset_desc
+            else (
+                f" scoped to {scope['predicate']}={scope['value']}"
+                if scope
+                else ""
+            )
+        )
         enrich_step = PlanStep(
             capability=self.name,
             action="run_enrichment",
@@ -432,17 +492,10 @@ class EnrichCapability:
                 **({"overwrite": True} if overwrite else {}),
             },
             rationale=(
-                f"{('Refresh (replace)' if overwrite else 'Refresh (re-verify)') if refresh else 'Enrich'} "
-                f"{', '.join(attributes)} on {type_name}"
-                + (
-                    f" for {subset_desc}" if subset_desc
-                    else (
-                        f" scoped to {scope['predicate']}={scope['value']}"
-                        if scope else ""
-                    )
-                )
+                f"{verb} {', '.join(attributes)} on {type_name}"
+                + scope_clause
                 + url_clause
-                + f" via the {tier.value} tier."
+                + source_clause
             ),
             confidence=0.8,
             preview={
@@ -454,16 +507,17 @@ class EnrichCapability:
                         if urls
                         else ""
                     )
+                    + source_clause.rstrip(".")
                     + (
                         (
-                            " and REPLACE the existing values with the latest "
+                            ", and REPLACE the existing values with the latest "
                             "(stamping each with its source and verified date)."
                             if overwrite
-                            else " and re-verify the existing values (advancing "
+                            else ", and re-verify the existing values (advancing "
                             "their freshness stamp)."
                         )
                         if refresh
-                        else " and stage the results for review."
+                        else ", then write the results into the graph."
                     )
                 ),
                 "refresh": refresh,
@@ -481,6 +535,8 @@ class EnrichCapability:
                     confidence_min, confidence_lowered
                 ),
                 "cost_estimate": cost.get("note", ""),
+                "routing_note": registry_routing_note,
+                "registry_sources": sorted(set(covered_by.values())) if covered_by else [],
                 # Surface the supplied pages so the confirm UI can show them.
                 "source_urls": urls,
             },
@@ -1181,6 +1237,66 @@ def _coerce_tier(tier) -> EnrichmentTier:
         return EnrichmentTier.lite
 
 
+def _registry_covers_safe(
+    attributes: list[str], type_name: str
+) -> dict[str, str] | None:
+    """``{attr: catalog_slug}`` when every attribute is covered, else None.
+
+    Thin non-raising wrapper around the tier-router probe so a catalog glitch
+    never breaks plan(). Kept local so enrich_cap doesn't hard-import the
+    heavy catalog path at module load.
+    """
+    try:
+        from cograph_client.enrichment.tier_router import _registry_covers
+
+        return _registry_covers(attributes, type_name)
+    except Exception:  # noqa: BLE001 — coverage probe must never break planning
+        logger.debug("agent_enrich_registry_probe_failed", exc_info=True)
+        return None
+
+
+# Human titles for well-known free registry slugs in plan copy. Unknown slugs
+# fall back to a lightly cleaned slug so we never invent a brand name.
+_REGISTRY_SOURCE_LABELS = {
+    "clinicaltrials_gov": "ClinicalTrials.gov",
+    "fred": "FRED",
+    "fred_series_search": "FRED",
+    "nppes": "NPPES",
+    "geonames_search": "GeoNames",
+    "open_food_facts_search": "Open Food Facts",
+}
+
+
+def _source_clause(
+    tier: EnrichmentTier,
+    covered_by: dict[str, str] | None,
+    has_paid: bool,
+) -> str:
+    """Human-readable 'via …' clause for plan rationale/preview.
+
+    Prefer naming the free registered API (ClinicalTrials.gov, NPPES, …) when
+    the job was registry-routed. Fall back to plain language for free vs paid
+    web tiers — never the jargon 'via the core tier' that the confirm UI used
+    to echo verbatim.
+    """
+    if covered_by:
+        labels: list[str] = []
+        seen: set[str] = set()
+        for slug in covered_by.values():
+            label = _REGISTRY_SOURCE_LABELS.get(slug) or slug.replace("_", " ")
+            if label not in seen:
+                seen.add(label)
+                labels.append(label)
+        if labels:
+            joined = ", ".join(labels)
+            return f" via {joined} (free API)."
+    if not has_paid:
+        if tier == EnrichmentTier.lite:
+            return " via free Wikidata."
+        return " via free registered sources."
+    return " via paid web search."
+
+
 # ``_resolve_chain_cost`` is imported from ``cograph_client.enrichment.tier_router``
 # (single source of truth — see the imports at the top of this module). It derives
 # the per-entity paid cost / has_paid for a tier GENERICALLY from adapter-declared
@@ -1346,13 +1462,17 @@ listings"), and "limit" = the count if the user gave one (else null). Use \
 "subset" ONLY for ranked/specific sets; for "all <type>" or a plain field=value \
 filter leave it null. "scope" and "subset" are mutually exclusive — prefer \
 "subset" when the request is ranked or refers to specific earlier entities.
-- "tier" selects the data source. Choose "core" (paid web search: \
-Parallel/Exa) for OPEN-WEB facts about people or companies — employer, company, \
-website, description, bio, reviews, founder, headquarters, email, role, title, \
-industry, etc. Wikidata (the free "lite" tier) does NOT have these. Use "lite" \
-ONLY for structured, catalogued identifiers Wikidata reliably holds (e.g. a \
-country's ISO code, a film's release year, a well-known org's founding date). \
-When unsure for a web-lookup attribute, default to "core".
+- "tier" selects the data source. Prefer "base" when a free AUTHORITATIVE \
+registry API covers the type + attribute (e.g. ClinicalTrial lead_sponsor / \
+status / phase → ClinicalTrials.gov; healthcare NPI fields → NPPES). Use "core" \
+(paid web search: Parallel/Exa) for OPEN-WEB facts about people or companies — \
+employer, company, website, description, bio, reviews, founder, headquarters, \
+email, role, title, industry, etc. Wikidata (the free "lite" tier) does NOT have \
+those. Use "lite" ONLY for structured, catalogued identifiers Wikidata reliably \
+holds (e.g. a country's ISO code, a film's release year, a well-known org's \
+founding date). When unsure for a web-lookup attribute with NO registry match, \
+default to "core". Prefer the schema's full attribute name (lead_sponsor, not \
+sponsor) when the user names a role-qualified field.
 - "confidence_min" defaults to 0.85 unless the user asks for stricter/looser."""
 
 _EXTRACT_USER_TEMPLATE = """\
@@ -1453,10 +1573,19 @@ def _validate_enrich_request(
                 candidates.append(norm)
     # Strict schema intersection when the type HAS declared attributes and at
     # least one candidate matches one: keep only the declared (canonical) members
-    # — this drops hallucinated attrs mixed in with real ones. Otherwise (no
-    # match, or an empty/uningested schema) keep the clean new nouns as proposed
-    # attributes, never the type name itself.
-    matched = [attr_lookup[c.lower()] for c in candidates if c.lower() in attr_lookup]
+    # — this drops hallucinated attrs mixed in with real ones. Soft-match a
+    # shorter user phrase onto a unique schema suffix ("sponsor" → "lead_sponsor"
+    # when that is the only *sponsor attribute) so registry coverage and
+    # ClinicalTrials.gov binding still fire. Otherwise (no match, or an
+    # empty/uningested schema) keep the clean new nouns as proposed attributes,
+    # never the type name itself.
+    matched: list[str] = []
+    seen_matched: set[str] = set()
+    for c in candidates:
+        resolved = _resolve_schema_attr(c, attr_lookup)
+        if resolved and resolved.lower() not in seen_matched:
+            seen_matched.add(resolved.lower())
+            matched.append(resolved)
     if matched:
         attributes = matched
     else:
@@ -1579,6 +1708,43 @@ def _normalize_attr(value) -> str:
         return ""
     cleaned = "_".join(kept).strip("_-")
     return cleaned if cleaned and cleaned.lower() not in _STOPWORDS else ""
+
+
+# Minimum length for a soft (suffix) schema match. Short tokens like "id" or
+# "name" would otherwise ambiguously map onto many attributes.
+_SOFT_ATTR_MIN_LEN = 4
+
+
+def _resolve_schema_attr(candidate: str, attr_lookup: dict[str, str]) -> str | None:
+    """Map an extracted attribute token onto a declared schema name.
+
+    1. Exact case-insensitive match → canonical schema name.
+    2. Unique suffix match: ``sponsor`` → ``lead_sponsor`` when that is the
+       only schema attr whose last ``_``-token is ``sponsor`` (or that ends
+       with ``_sponsor``). Ambiguous suffixes return None so we do not guess.
+    """
+    if not candidate:
+        return None
+    key = candidate.lower()
+    if key in attr_lookup:
+        return attr_lookup[key]
+    if len(key) < _SOFT_ATTR_MIN_LEN or not attr_lookup:
+        return None
+    suffix_hits = [
+        canonical
+        for low, canonical in attr_lookup.items()
+        if low == key
+        or low.endswith("_" + key)
+        or low.split("_")[-1] == key
+    ]
+    # De-dupe while preserving order (same canonical can match multiple ways).
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for h in suffix_hits:
+        if h.lower() not in seen:
+            seen.add(h.lower())
+            uniq.append(h)
+    return uniq[0] if len(uniq) == 1 else None
 
 
 def _tier_for_attributes(attributes: list[str]) -> str:

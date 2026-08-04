@@ -2606,6 +2606,60 @@ def test_validate_enrich_empty_schema_keeps_named_attrs():
     assert out["attributes"] == ["foo", "bar"]
 
 
+def test_validate_enrich_soft_maps_sponsor_to_lead_sponsor():
+    """User/LLM 'sponsor' must land on schema lead_sponsor (unique suffix) so the
+    ClinicalTrials.gov registry entry covers the plan instead of inventing a new
+    'sponsor' attribute and falling through to paid web search."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["sponsor"], "tier": "core"},
+        attr_names=["nct_id", "lead_sponsor", "status", "phase"],
+        rel_names=[],
+        type_name="ClinicalTrial",
+    )
+    assert out["attributes"] == ["lead_sponsor"]
+
+
+def test_validate_enrich_soft_match_ambiguous_suffix_keeps_new_attr():
+    """When two schema attrs share the same trailing token, do NOT guess."""
+    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+
+    out = _validate_enrich_request(
+        {"attributes": ["sponsor"]},
+        attr_names=["lead_sponsor", "collaborator_sponsor"],
+        rel_names=[],
+        type_name="ClinicalTrial",
+    )
+    # No unique soft match → treat as a proposed new attribute name.
+    assert out["attributes"] == ["sponsor"]
+
+
+def test_source_clause_names_clinicaltrials_gov():
+    from cograph_client.agent.capabilities.enrich_cap import _source_clause
+    from cograph_client.enrichment.models import EnrichmentTier
+
+    clause = _source_clause(
+        EnrichmentTier.base,
+        {"lead_sponsor": "clinicaltrials_gov"},
+        has_paid=False,
+    )
+    assert "ClinicalTrials.gov" in clause
+    assert "free API" in clause
+    assert "tier" not in clause
+
+
+def test_registry_covers_clinical_trial_lead_sponsor():
+    """Seed catalog: ClinicalTrial.lead_sponsor is covered by free CT.gov."""
+    from cograph_client.enrichment.tier_router import _registry_covers
+
+    assert _registry_covers(["lead_sponsor"], "ClinicalTrial") == {
+        "lead_sponsor": "clinicaltrials_gov"
+    }
+    # Bare 'sponsor' is NOT a fillable column — soft-match must happen first.
+    assert _registry_covers(["sponsor"], "ClinicalTrial") is None
+
+
 # --------------------------------------------------------------------------- #
 # KG-aware conversation history (ONTA-419)
 # --------------------------------------------------------------------------- #
