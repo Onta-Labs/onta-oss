@@ -113,21 +113,9 @@ _ALLOWLIST: dict[str, str] = {
 }
 
 
-def _dep_names(fn: ast.AST) -> set[str]:
-    """Names passed to ``Depends(...)`` anywhere in a function signature.
-
-    Covers both spellings so a route cannot look unguarded merely because it
-    used the newer one: a default (``t: T = Depends(dep)``) and an annotation
-    (``t: Annotated[T, Depends(dep)]``).
-    """
+def _depends_targets(*nodes: ast.AST) -> set[str]:
+    """Names passed to ``Depends(...)`` / ``Security(...)`` anywhere under ``nodes``."""
     names: set[str] = set()
-    args = getattr(fn, "args", None)
-    if args is None:
-        return names
-    nodes: list[ast.AST] = list(args.defaults) + [d for d in args.kw_defaults if d]
-    for arg in list(args.args) + list(args.kwonlyargs) + list(args.posonlyargs):
-        if arg.annotation is not None:
-            nodes.append(arg.annotation)
     for node in nodes:
         for call in [node, *ast.walk(node)]:
             if not (
@@ -145,6 +133,68 @@ def _dep_names(fn: ast.AST) -> set[str]:
     return names
 
 
+def _dep_names(fn: ast.AST) -> set[str]:
+    """Names passed to ``Depends(...)`` anywhere in a function signature.
+
+    Covers both spellings so a route cannot look unguarded merely because it
+    used the newer one: a default (``t: T = Depends(dep)``) and an annotation
+    (``t: Annotated[T, Depends(dep)]``).
+    """
+    args = getattr(fn, "args", None)
+    if args is None:
+        return set()
+    nodes: list[ast.AST] = list(args.defaults) + [d for d in args.kw_defaults if d]
+    for arg in list(args.args) + list(args.kwonlyargs) + list(args.posonlyargs):
+        if arg.annotation is not None:
+            nodes.append(arg.annotation)
+    return _depends_targets(*nodes)
+
+
+def _decorator_dep_names(dec: ast.AST) -> set[str]:
+    """Deps declared on the ROUTE decorator itself.
+
+    ``@router.post("/x", dependencies=[Depends(require_tenant_write)])`` is a
+    standard FastAPI spelling for a guard whose return value the handler does
+    not need. Missing it would be a false POSITIVE, and the natural response to
+    one of those is an allowlist entry that permanently exempts a route which
+    was in fact guarded (and keeps it exempt if the guard is later removed).
+    """
+    if not isinstance(dec, ast.Call):
+        return set()
+    return _depends_targets(
+        *(kw.value for kw in dec.keywords if kw.arg == "dependencies")
+    )
+
+
+def _router_dep_names(tree: ast.AST) -> dict[str, set[str]]:
+    """Deps declared ROUTER-WIDE, keyed by the router variable's name.
+
+    ``router = APIRouter(dependencies=[Depends(...)])`` applies the gate to
+    every route on that router, which is the STRONGER idiom (opt-out rather
+    than opt-in) and already in use in ``operator.py``. Treating it as
+    unguarded would push a genuinely-guarded router onto the allowlist.
+    """
+    out: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        if not isinstance(value, ast.Call):
+            continue
+        func = value.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+        if name != "APIRouter":
+            continue
+        deps = _depends_targets(
+            *(kw.value for kw in value.keywords if kw.arg == "dependencies")
+        )
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name):
+                out[target.id] = out.get(target.id, set()) | deps
+    return out
+
+
 def _module_functions(tree: ast.AST) -> dict[str, ast.AST]:
     return {
         n.name: n
@@ -153,11 +203,20 @@ def _module_functions(tree: ast.AST) -> dict[str, ast.AST]:
     }
 
 
-def _enforces_write(fn: ast.AST, functions: dict[str, ast.AST]) -> bool:
+def _enforces_write(
+    fn: ast.AST,
+    functions: dict[str, ast.AST],
+    extra_deps: set[str] | None = None,
+) -> bool:
     """True if ``fn`` depends on ``require_tenant_write`` directly OR through a
-    same-module wrapper dependency (e.g. ``require_raw_update_access``)."""
+    same-module wrapper dependency (e.g. ``require_raw_update_access``).
+
+    ``extra_deps`` carries the deps that reach the handler without appearing in
+    its signature: the route decorator's own ``dependencies=[...]`` and the
+    router-wide ``APIRouter(dependencies=[...])``.
+    """
     seen: set[str] = set()
-    frontier = list(_dep_names(fn))
+    frontier = list(_dep_names(fn) | (extra_deps or set()))
     while frontier:
         dep = frontier.pop()
         if dep == _WRITE_DEP:
@@ -189,26 +248,51 @@ def _declares_mutating_method(dec: ast.AST) -> bool:
     return False
 
 
-def _mutating_handlers(tree: ast.AST) -> list[ast.AST]:
-    """Handlers decorated with a mutating HTTP method."""
-    out = []
+def _mutating_handlers(tree: ast.AST) -> list[tuple[ast.AST, set[str]]]:
+    """Handlers decorated with a mutating HTTP method.
+
+    Returns ``(handler, deps)`` where ``deps`` are the dependency names that
+    reach the handler from OUTSIDE its signature: the mutating decorator's own
+    ``dependencies=[...]`` plus the router-wide ones on the ``APIRouter`` the
+    decorator hangs off.
+    """
+    router_deps = _router_dep_names(tree)
+    out: list[tuple[ast.AST, set[str]]] = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if any(_declares_mutating_method(d) for d in node.decorator_list):
-            out.append(node)
+        extra: set[str] = set()
+        mutating = False
+        for dec in node.decorator_list:
+            if not _declares_mutating_method(dec):
+                continue
+            mutating = True
+            extra |= _decorator_dep_names(dec)
+            f = dec.func if isinstance(dec, ast.Call) else dec
+            owner = getattr(f, "value", None)
+            if isinstance(owner, ast.Name):
+                extra |= router_deps.get(owner.id, set())
+        if mutating:
+            out.append((node, extra))
     return out
 
 
 def _scan_routes(root: pathlib.Path) -> list[str]:
-    """Every mutating handler that does NOT enforce the write capability."""
+    """Every mutating handler that does NOT enforce the write capability.
+
+    ``rglob``, not ``glob``: ``routes/`` has no subpackages today, but a future
+    one would otherwise be invisible to this guard, which is precisely the
+    "somebody has to remember" failure mode it exists to remove. Keys stay
+    module-relative (``explore.py::handler``) so top-level entries are unchanged
+    and a subpackage disambiguates as ``sub/mod.py::handler``.
+    """
     unguarded: list[str] = []
-    for path in sorted(root.glob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text())
         functions = _module_functions(tree)
-        for fn in _mutating_handlers(tree):
-            if not _enforces_write(fn, functions):
-                unguarded.append(f"{path.name}::{fn.name}")
+        for fn, extra in _mutating_handlers(tree):
+            if not _enforces_write(fn, functions, extra):
+                unguarded.append(f"{path.relative_to(root).as_posix()}::{fn.name}")
     return unguarded
 
 
@@ -294,12 +378,82 @@ def test_route_scanner_accepts_direct_and_wrapped_write_deps(tmp_path):
     assert _scan_routes(tmp_path) == []
 
 
+def test_route_scanner_accepts_decorator_and_router_level_deps(tmp_path):
+    """The two standard guard spellings that put the dep OUTSIDE the signature.
+
+    ``dependencies=[Depends(...)]`` on the decorator, and the router-wide
+    ``APIRouter(dependencies=[...])``. Both are real FastAPI idioms and the
+    router-wide one is the STRONGER of the two (opt-out, not opt-in);
+    ``cograph_client/api/routes/operator.py`` already uses it, so the first
+    mutating operator route would have tripped the guard. Flagging either is a
+    false POSITIVE, and the natural fix for one of those is an allowlist entry
+    that would exempt the route forever, including after its guard was removed.
+    """
+    (tmp_path / "on_decorator.py").write_text(
+        "from fastapi import APIRouter, Depends\n"
+        "from cograph_client.auth.access import require_tenant_write\n"
+        "router = APIRouter()\n"
+        "@router.post('/x', dependencies=[Depends(require_tenant_write)])\n"
+        "async def x():\n"
+        "    return {}\n"
+    )
+    (tmp_path / "on_router.py").write_text(
+        "from fastapi import APIRouter, Depends\n"
+        "from cograph_client.auth.access import require_tenant_write\n"
+        "router = APIRouter(\n"
+        "    prefix='/w', dependencies=[Depends(require_tenant_write)]\n"
+        ")\n"
+        "@router.delete('/y')\n"
+        "async def y():\n"
+        "    return {}\n"
+        "@router.api_route('/z', methods=['PATCH'])\n"
+        "async def z():\n"
+        "    return {}\n"
+    )
+    assert _scan_routes(tmp_path) == []
+
+
+def test_router_level_deps_do_not_leak_to_an_unguarded_router(tmp_path):
+    """Router-wide deps are keyed by router VARIABLE, so a second, unguarded
+    router in the same module is still caught. Otherwise the previous test's
+    fix would itself become a blanket exemption."""
+    (tmp_path / "two_routers.py").write_text(
+        "from fastapi import APIRouter, Depends\n"
+        "from cograph_client.auth.access import require_tenant_write\n"
+        "guarded = APIRouter(dependencies=[Depends(require_tenant_write)])\n"
+        "public = APIRouter()\n"
+        "@guarded.post('/ok')\n"
+        "async def ok():\n"
+        "    return {}\n"
+        "@public.post('/danger')\n"
+        "async def danger():\n"
+        "    return {}\n"
+    )
+    assert _scan_routes(tmp_path) == ["two_routers.py::danger"]
+
+
+def test_route_scanner_descends_into_route_subpackages(tmp_path):
+    """``rglob``, not ``glob``: a mutating route in a future ``routes/`` subpackage
+    must not be invisible to a deny-by-default guard."""
+    sub = tmp_path / "admin"
+    sub.mkdir()
+    (sub / "nested.py").write_text(
+        "from fastapi import APIRouter, Depends\n"
+        "from cograph_client.auth.api_keys import TenantContext, get_tenant\n"
+        "router = APIRouter()\n"
+        "@router.post('/danger')\n"
+        "async def danger(t: TenantContext = Depends(get_tenant)):\n"
+        "    return {}\n"
+    )
+    assert _scan_routes(tmp_path) == ["admin/nested.py::danger"]
+
+
 def test_no_route_module_registers_routes_imperatively():
     """``add_api_route`` would register a mutating route the AST scan cannot
     classify, so the scan-friendly decorator form is the only sanctioned one."""
     offenders = [
-        p.name
-        for p in sorted(_ROUTES_DIR.glob("*.py"))
+        p.relative_to(_ROUTES_DIR).as_posix()
+        for p in sorted(_ROUTES_DIR.rglob("*.py"))
         if "add_api_route" in p.read_text()
     ]
     assert not offenders, (
@@ -307,6 +461,75 @@ def test_no_route_module_registers_routes_imperatively():
         "to the write-capability scan. Use @router.<method>(...) instead: "
         f"{offenders}"
     )
+
+
+def _nonliteral_method_decls(root: pathlib.Path) -> list[str]:
+    """``api_route(methods=<not a literal list of strings>)`` occurrences.
+
+    ``_declares_mutating_method`` can only read the verbs when they are written
+    out as constants. A computed ``methods=`` (a module-level ``VERBS`` list, a
+    splat, an f-string) is SILENTLY skipped, so a mutating route spelled that
+    way would never be classified as mutating and would never be asked for a
+    write guard. Banning the spelling outright is the same move as the
+    ``add_api_route`` check above, and it is preferable to guessing: assuming
+    such a route mutates would false-positive on a GET-only one, and the
+    natural response to a false positive is an allowlist entry.
+    """
+    offenders: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            if node.func.attr != "api_route":
+                continue
+            for kw in node.keywords:
+                if kw.arg != "methods":
+                    continue
+                literal = isinstance(kw.value, (ast.List, ast.Tuple)) and all(
+                    isinstance(el, ast.Constant) for el in kw.value.elts
+                )
+                if not literal:
+                    offenders.append(
+                        f"{path.relative_to(root).as_posix()}:{node.lineno}"
+                    )
+    return offenders
+
+
+def test_no_route_module_computes_its_http_methods():
+    """A computed ``methods=`` is invisible to the mutating-route classifier."""
+    offenders = _nonliteral_method_decls(_ROUTES_DIR)
+    assert not offenders, (
+        "These api_route(...) calls compute their `methods=` instead of "
+        "spelling the verbs out, so the write-capability scan cannot tell "
+        "whether they mutate and silently skips them. Write the verbs as "
+        f"string literals: {offenders}"
+    )
+
+
+def test_nonliteral_methods_check_catches_a_planted_violation(tmp_path):
+    """Self-test: the two literal forms pass, computed ones are caught."""
+    (tmp_path / "planted.py").write_text(
+        "from fastapi import APIRouter\n"
+        "router = APIRouter()\n"
+        "VERBS = ['POST']\n"
+        "@router.api_route('/a', methods=VERBS)\n"
+        "async def a():\n"
+        "    return {}\n"
+        "@router.api_route('/b', methods=[*VERBS])\n"
+        "async def b():\n"
+        "    return {}\n"
+        "@router.api_route('/ok', methods=['GET'])\n"
+        "async def ok():\n"
+        "    return {}\n"
+        "@router.api_route('/ok2', methods=('POST',))\n"
+        "async def ok2():\n"
+        "    return {}\n"
+    )
+    found = _nonliteral_method_decls(tmp_path)
+    assert len(found) == 2, found
+    # ...and the literal spellings the scanner CAN read are not flagged.
+    assert all(f.startswith("planted.py:") for f in found)
 
 
 # --------------------------------------------------------------------------
@@ -453,6 +676,46 @@ def _save_plan(plan_id: str, capability: str, action: str = "run") -> None:
                 steps=[PlanStep(capability=capability, action=action)],
             )
         )
+    )
+
+
+def test_operator_with_a_reader_membership_is_denied_raw_update(app, mock_neptune):
+    """``require_raw_update_access`` layers the operator gate ON TOP of the
+    workspace write capability, it does not sit beside it.
+
+    Before ONTA-452 this dependency hung off plain ``get_tenant``, so operator-
+    ness alone opened raw SPARQL Update: a staff account holding a READ-ONLY
+    membership in a workspace could rewrite that workspace's graph, which is
+    exactly the escalation the tenant-scoped write routes refuse. Operator-ness
+    is a PLATFORM role and says nothing about this workspace's membership, so
+    both checks must pass. Structurally the scanner sees the wrapper resolve to
+    ``require_tenant_write``; this pins the actual 403.
+    """
+    from fastapi.testclient import TestClient
+
+    store = make_workspace_store()
+    _run(store.claim_workspace("op-ws", "user_owner", "Operator escalation"))
+    _run(store.add_member("op-ws", "user_staff", "reader"))
+    # Operator, but only a READER of this workspace.
+    app.dependency_overrides[api_keys.get_tenant] = lambda: TenantContext(
+        tenant_id="op-ws", api_key="k", subject="user_staff", is_operator=True
+    )
+    try:
+        client = TestClient(app)
+        # auth_is_configured() must be True, or the open-access carve-out (a
+        # self-hosted install with no auth) legitimately lets this through and
+        # the test would pass for the wrong reason.
+        with patch.object(api_keys, "auth_is_configured", lambda: True):
+            resp = client.post(
+                "/graphs/op-ws/update",
+                json={"update": "DELETE WHERE { ?s ?p ?o }"},
+            )
+    finally:
+        app.dependency_overrides.pop(api_keys.get_tenant, None)
+
+    assert resp.status_code == 403, resp.text
+    assert mock_neptune.update.await_count == 0, (
+        "a read-only member ran a raw SPARQL Update because they were an operator"
     )
 
 
