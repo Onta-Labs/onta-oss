@@ -58,14 +58,30 @@ about this graph"), B is about SCOPE ("this counts the workspace, not just your
 graph") — because for shape B the named graph usually did contribute, just
 negligibly, and claiming otherwise would be the same defect one level up.
 
-**Known remaining shape, NOT covered here.** A query anchored on a type that
-BOTH the named graph and the base graph hold returns a count summed across them,
-and neither signal fires: the type is present here, and the query is anchored.
-Distinguishing that needs per-graph row provenance, i.e. a second scoped
-execution or a per-type two-graph presence probe on EVERY typed question. That
-is a real cost on the hot path (ONTA-427 was an entire PR about removing one
-such per-ask probe), so it is called out rather than smuggled in. See the PR
-body.
+**Known remaining shape, NOT covered here, and why (ONTA-455).** A query anchored
+on a type that BOTH the named graph AND the base graph hold returns a count
+summed across them, and neither signal fires: the type IS present here, and the
+query IS anchored. Live and measured read-only on demo-tenant 2026-08-03:
+
+* "how many organizations are there?" with ``kg_name="clinical-trials"`` answers
+  **6854**, while the KG's own graph holds 1,839 ``Organization`` subjects and
+  the base graph holds 3,184 (closure).
+* 4 of the 11 registered KGs share at least one POPULATED type with the base
+  graph, so this is common, not exotic.
+
+The mechanism that would close it is a small extension of
+:func:`kg_subtype_presence_query` — add ``FROM NAMED <base graph>`` and one block
+per (type, graph) pair, and a type present in BOTH earns a "this count spans the
+two" caveat. It is correct (verified against production: the probe reports
+``Organization`` in both graphs and ``ProductRecall`` in the base graph only).
+What stops it landing here is COST, measured rather than assumed: that probe must
+run on EVERY typed question, not just the rare caveat candidate, and end-to-end
+from outside the VPC it took 895 ms for one type and 1623 ms for six against a
+345 to 506 ms round-trip floor. Roughly half a second added to every typed /ask
+is a hot-path regression on the exact path ONTA-427 was an entire PR about making
+cheaper, so it is a deliberate decision to take, not one to smuggle into this
+change. The same measurement is why the signal-A probe below stays on the rare
+candidate path.
 
 The signal is ALREADY ON THE HOT PATH and costs nothing extra
 --------------------------------------------------------------
