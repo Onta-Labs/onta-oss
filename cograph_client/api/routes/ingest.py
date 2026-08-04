@@ -181,14 +181,24 @@ async def infer_csv_schema(
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     cache = _get_verdict_cache()
     resolver = SchemaResolver(neptune=client, anthropic_key=settings.anthropic_api_key, verdict_cache=cache)
-    existing_types, _ = await resolver._fetch_ontology(graph_uri)
+    # Pass BOTH types and per-type attributes/relationships into inference.
+    # Dropping attrs (the prior `existing_types, _ = …` pattern) made the LLM
+    # invent parallel properties — e.g. Drug already had string `manufacturer`
+    # but a one-row CSV still minted relationship `manufactured_by` (Oliver DP).
+    existing_types, existing_attrs = await resolver._fetch_ontology(graph_uri)
 
     csv_resolver = CSVResolver(
         anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key),
         settings.openrouter_api_key,
     )
     try:
-        return await csv_resolver.infer_schema(body.headers, body.sample_rows, existing_types, body.total_rows)
+        return await csv_resolver.infer_schema(
+            body.headers,
+            body.sample_rows,
+            existing_types,
+            body.total_rows,
+            existing_attrs=existing_attrs,
+        )
     # ValueError (widened from json.JSONDecodeError, a ValueError subclass) also
     # catches the empty-LLM-response ValueError that openrouter_chat now raises
     # when the extraction model omits/blanks `content` (llm_router hardening) —

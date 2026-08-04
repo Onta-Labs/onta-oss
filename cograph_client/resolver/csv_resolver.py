@@ -22,6 +22,12 @@ import httpx
 import structlog
 from pydantic import ValidationError
 
+from cograph_client.resolver.attribute_resolver import (
+    AttributeSchema,
+    _find_existing_attr,
+    _normalize_attr_name,
+    is_primitive_datatype,
+)
 from cograph_client.resolver.models import (
     ColumnMapping,
     ColumnProfile,
@@ -148,7 +154,7 @@ Column names: {columns}
 Sample rows (first {n} of {total}):
 {sample_rows}
 
-Existing ontology types:
+Existing ontology (types with attributes and relationships — REUSE matching properties):
 {existing_types}
 
 Follow these two worked examples (different domains — generalize the pattern,
@@ -243,9 +249,23 @@ FREE-TEXT ADJUDICATION (semantic-index candidacy)
   only proposes candidates, and the pipeline discards text_kind on any non-text-shaped column.
 
 TYPE REUSE
-- The user message lists the tenant's EXISTING ontology types. Reuse one ONLY when your entity is genuinely
-  the SAME real-world concept. If none genuinely matches, propose a NEW accurate PascalCase type name —
-  NEVER force-fit a different concept onto an available type just because it exists.
+- The user message lists the tenant's EXISTING ontology types WITH their attributes and
+  relationships. Reuse a type ONLY when your entity is genuinely the SAME real-world concept.
+  If none genuinely matches, propose a NEW accurate PascalCase type name — NEVER force-fit a
+  different concept onto an available type just because it exists.
+
+SCHEMA REUSE (when you reuse an existing type)
+- When a CSV column matches or is a clear synonym of an EXISTING attribute or relationship
+  already declared on that type, REUSE that exact property name and kind. Do NOT invent a
+  parallel name (e.g. if Drug already has literal attribute "manufacturer", map the
+  manufacturer column to attribute "manufacturer" — never mint a "manufactured_by"
+  relationship alongside it).
+- Prefer the existing modeling choice: if the type already stores a concept as a literal
+  attribute, keep it a literal attribute; if it already stores it as a type-ranged
+  relationship, keep it a relationship with that predicate and target. Only introduce a
+  NEW property when no existing property on the chosen type covers the column.
+- predicate_or_attr must be snake_case (underscored): "manufactured_by", never camelCase
+  "manufacturedBy" or compacted "manufacturedby".
 
 Output strict JSON: {"entities":[{"name","type_name","key_strategy":"column|composite|synthetic","key_columns":[...],
 "why","confidence"}], "columns":[{"column","role":"attribute|relationship|key","entity","predicate_or_attr","why","confidence",
@@ -253,7 +273,8 @@ Output strict JSON: {"entities":[{"name","type_name","key_strategy":"column|comp
 "relationships":[{"subject","predicate","object","why"}]}.
 A column with role "relationship" references a shared out-of-row entity that is NOT one of your in-row
 entities: its "entity" is the in-row source, "predicate_or_attr" is the edge predicate, and it must also
-carry "target_type" (PascalCase type the values name). Prefer promoting dimensions to in-row entities.
+carry "target_type" (PascalCase type the values name). Prefer promoting dimensions to in-row entities
+ONLY when the chosen type does not already model that column as a literal.
 Where evidence is ambiguous, lower confidence and state what is unresolved instead of guessing. JSON only."""
 
 REASON_USER = """\
@@ -263,7 +284,7 @@ COLUMN PROFILE (computed over {rows_profiled} of {total_rows} rows):
 SAMPLE ROWS ({n} highest-density rows — value context only; trust the profile for statistics):
 {sample_rows}
 
-EXISTING ONTOLOGY TYPES:
+EXISTING ONTOLOGY (types with attributes and relationships — REUSE these properties when they match):
 {existing_types}
 
 Return the schema JSON now."""
@@ -439,9 +460,10 @@ KEYS (row conservation is mandatory)
   NEVER key on an incomplete column: it silently drops every row missing it.
 
 TYPE REUSE
-- The user message lists the tenant's EXISTING ontology types. Reuse one ONLY
-  when your entity is genuinely the SAME real-world concept. Otherwise propose a
-  NEW accurate PascalCase type name — never force-fit a different concept.
+- The user message lists the tenant's EXISTING ontology (types with attributes
+  and relationships). Reuse a type ONLY when your entity is genuinely the SAME
+  real-world concept. Otherwise propose a NEW accurate PascalCase type name —
+  never force-fit a different concept.
 
 Output strict JSON ONLY (no columns array):
 {"entities":[{"name","type_name","key_strategy":"column|composite|synthetic",
@@ -457,7 +479,7 @@ COLUMN PROFILE (computed over {rows_profiled} of {total_rows} rows):
 SAMPLE ROWS ({n} highest-density rows — value context only; trust the profile for statistics):
 {sample_rows}
 
-EXISTING ONTOLOGY TYPES:
+EXISTING ONTOLOGY (types with attributes and relationships):
 {existing_types}
 
 This table has {n_columns} columns — return ONLY the entity decomposition
@@ -540,6 +562,7 @@ class CSVResolver:
         sample_rows: list[dict[str, str]],
         existing_types: dict[str, str],
         total_rows: int = 0,
+        existing_attrs: dict[str, dict[str, AttributeSchema]] | None = None,
     ) -> CSVSchemaMapping:
         """Infer column-to-ontology mapping from sample rows.
 
@@ -555,13 +578,26 @@ class CSVResolver:
         verbatim — including its NAME_HINTS / FORCE_RELATIONSHIP post-hoc
         patches, which the v2 pipeline deliberately retires (ADR 0003 §4).
 
+        ``existing_attrs`` (per-type property snapshot from
+        :meth:`SchemaResolver._fetch_ontology`) is fed into the LLM prompts
+        AND a deterministic post-reconcile so CSV expansion reuses existing
+        properties (e.g. Drug.manufacturer) instead of minting parallel
+        names (manufactured_by). Callers that omit it keep greenfield
+        behavior.
+
         Each LLM call keeps the existing retry contract: one retry at
         temperature 0.3 when the response fails validation, then propagate
         (the /ingest/csv/schema route converts that into its 422 guidance).
         """
         if _v2_enabled():
-            return await self._infer_schema_v2(headers, sample_rows, existing_types, total_rows)
-        return await self._infer_schema_legacy(headers, sample_rows, existing_types, total_rows)
+            mapping = await self._infer_schema_v2(
+                headers, sample_rows, existing_types, total_rows, existing_attrs,
+            )
+        else:
+            mapping = await self._infer_schema_legacy(
+                headers, sample_rows, existing_types, total_rows, existing_attrs,
+            )
+        return reconcile_mapping_to_existing(mapping, existing_types, existing_attrs)
 
     async def _infer_schema_legacy(
         self,
@@ -569,11 +605,12 @@ class CSVResolver:
         sample_rows: list[dict[str, str]],
         existing_types: dict[str, str],
         total_rows: int = 0,
+        existing_attrs: dict[str, dict[str, AttributeSchema]] | None = None,
     ) -> CSVSchemaMapping:
         """Legacy single-call inference (pre-ADR 0003), kept verbatim behind
         ``OMNIX_CSV_INFERENCE_V2=0``: one LLM call with one retry at higher
         temperature if the response fails validation."""
-        types_str = "\n".join(f"- {name}" for name in existing_types) if existing_types else "(none)"
+        types_str = format_existing_ontology_for_prompt(existing_types, existing_attrs)
 
         # Prefer rows with the most non-empty fields. CSVs whose leading rows
         # are mostly-empty (e.g. `status=deleted` records with only slug+url)
@@ -694,6 +731,7 @@ class CSVResolver:
         sample_rows: list[dict[str, str]],
         existing_types: dict[str, str],
         total_rows: int = 0,
+        existing_attrs: dict[str, dict[str, AttributeSchema]] | None = None,
     ) -> CSVSchemaMapping:
         """Evidence-grounded inference (ADR 0003 Passes A–D).
 
@@ -705,13 +743,15 @@ class CSVResolver:
         promotions plus constitutive core slots under the three hard tests,
         capped at 3 per type. The corrected schema is converted to the
         existing ``CSVSchemaMapping`` contract, with the completion output on
-        ``ontology_extensions``. No post-hoc keyword patches run on this path.
+        ``ontology_extensions``. No post-hoc keyword patches run on this path;
+        property-level reuse of an existing ontology is enforced afterwards by
+        :func:`reconcile_mapping_to_existing` (called from :meth:`infer_schema`).
         """
         profile = profile_table(headers, sample_rows, total_rows)
         # Scrub privileged examples (top-N values) before they enter any prompt.
         redact_privileged_profile_examples(profile)
         profile_json = json.dumps(profile.to_prompt_dict())
-        types_str = "\n".join(f"- {name}" for name in existing_types) if existing_types else "(none)"
+        types_str = format_existing_ontology_for_prompt(existing_types, existing_attrs)
 
         # Same density ranking as the legacy path: the sample exists for value
         # context only — statistics come from the profile. Redact privileged
@@ -2391,6 +2431,248 @@ def _synthetic_key(type_name: str, owned_values: dict[str, str]) -> str:
 
 
 def _snake_case(name: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9]", "_", name.strip())
+    """snake_case a property / column handle.
+
+    Splits camelCase / PascalCase before lowercasing so ``manufacturedBy``
+    becomes ``manufactured_by`` (not the underscore-less ``manufacturedby``
+    that landed on the Oliver label-compliance Drug type).
+    """
+    s = (name or "").strip()
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", s)
+    s = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", "_", s)
+    s = re.sub(r"[^a-zA-Z0-9]", "_", s)
     s = re.sub(r"_+", "_", s).strip("_").lower()
     return s or "unnamed"
+
+
+def format_existing_ontology_for_prompt(
+    existing_types: dict[str, str],
+    existing_attrs: dict[str, dict[str, AttributeSchema]] | None = None,
+    *,
+    max_props_per_type: int = 40,
+) -> str:
+    """Render types + their properties for CSV-inference LLM prompts.
+
+    Historically the prompt only listed type *names*, so the model could not
+    reuse ``Drug.manufacturer`` and invented ``manufactured_by`` instead.
+    Literals and type-ranged relationships are distinguished by range:
+    primitives as bare names, relationships as ``pred→Target``.
+    """
+    if not existing_types:
+        return "(none)"
+    existing_attrs = existing_attrs or {}
+    lines: list[str] = []
+    for type_name in existing_types:
+        props = existing_attrs.get(type_name) or {}
+        if not props:
+            lines.append(f"- {type_name}")
+            continue
+        literals: list[str] = []
+        relations: list[str] = []
+        for prop_name, schema in list(props.items())[:max_props_per_type]:
+            dt = schema.datatype or "string"
+            if is_primitive_datatype(dt):
+                literals.append(f"{prop_name}:{dt}")
+            else:
+                relations.append(f"{prop_name}→{dt}")
+        parts: list[str] = []
+        if literals:
+            parts.append("attrs[" + ", ".join(literals) + "]")
+        if relations:
+            parts.append("rels[" + ", ".join(relations) + "]")
+        extra = len(props) - max_props_per_type
+        suffix = f" (+{extra} more)" if extra > 0 else ""
+        lines.append(f"- {type_name}: " + "; ".join(parts) + suffix)
+    return "\n".join(lines) if lines else "(none)"
+
+
+def _owner_type_name(
+    mapping: CSVSchemaMapping,
+    col: ColumnMapping,
+) -> str | None:
+    """Resolve the ontology type a column is attached to.
+
+    Multi-entity mappings carry owner handles on ``col.entity`` that map to
+    ``EntitySpec.type_name``; single-entity mappings use ``mapping.entity_type``.
+    """
+    if mapping.entities:
+        owner = col.entity
+        if not owner:
+            return mapping.entity_type or None
+        for spec in mapping.entities:
+            if spec.name == owner:
+                return spec.type_name
+        # Owner handle may already be the type name.
+        for spec in mapping.entities:
+            if spec.type_name == owner:
+                return spec.type_name
+        return None
+    return mapping.entity_type or None
+
+
+def reconcile_mapping_to_existing(
+    mapping: CSVSchemaMapping,
+    existing_types: dict[str, str] | None,
+    existing_attrs: dict[str, dict[str, AttributeSchema]] | None,
+) -> CSVSchemaMapping:
+    """Deterministic post-pass: collapse invented property names onto existing schema.
+
+    LLM inference is free to propose entity-first promotions
+    (``manufacturer`` → relationship ``manufactured_by`` → Organization).
+    When the chosen type *already* declares a matching property, that modeling
+    choice wins — reuse the existing name and kind (literal vs relationship)
+    so a one-row CSV cannot fork the ontology (Oliver DP regression: Drug kept
+    string ``manufacturer`` on 21 products and added ``manufacturedby`` on the
+    22nd).
+
+    Pure / side-effect free: returns a new mapping when any column changes,
+    otherwise the input mapping object.
+    """
+    if not existing_attrs:
+        # Still re-snake attribute names so camelCase verbs from the LLM do
+        # not land as opaque compacted leaves even on a greenfield graph.
+        return _resnake_mapping_names(mapping)
+
+    changed = False
+    new_columns: list[ColumnMapping] = []
+    for col in mapping.columns:
+        type_name = _owner_type_name(mapping, col)
+        type_props = existing_attrs.get(type_name or "") if type_name else None
+        proposed = col.attribute_name or col.column_name
+        snaked = _snake_case(proposed) if proposed else proposed
+
+        matched = None
+        if type_props:
+            # Prefer the column's native name (often the original seed attr)
+            # then the LLM's predicate_or_attr.
+            for candidate in (col.column_name, proposed, snaked):
+                if not candidate:
+                    continue
+                matched = _find_existing_attr(candidate, type_props)
+                if matched is not None:
+                    break
+
+        if matched is None:
+            if snaked and snaked != col.attribute_name:
+                new_columns.append(col.model_copy(update={"attribute_name": snaked}))
+                changed = True
+            else:
+                new_columns.append(col)
+            continue
+
+        updates: dict = {"attribute_name": matched.name}
+        if is_primitive_datatype(matched.datatype):
+            # Existing literal wins over an invented relationship.
+            if col.role == ColumnRole.RELATIONSHIP:
+                updates["role"] = ColumnRole.ATTRIBUTE
+                updates["target_type"] = None
+                updates["datatype"] = matched.datatype or col.datatype or "string"
+                logger.info(
+                    "csv_reconcile_rel_to_attr",
+                    column=col.column_name,
+                    type=type_name,
+                    proposed=proposed,
+                    reused=matched.name,
+                )
+            else:
+                updates["datatype"] = matched.datatype or col.datatype or "string"
+                if col.attribute_name != matched.name:
+                    logger.info(
+                        "csv_reconcile_attr_name",
+                        column=col.column_name,
+                        type=type_name,
+                        proposed=proposed,
+                        reused=matched.name,
+                    )
+        else:
+            # Existing type-ranged property wins over an invented literal.
+            updates["role"] = ColumnRole.RELATIONSHIP
+            updates["target_type"] = matched.datatype
+            updates["datatype"] = "string"
+            if (
+                col.role != ColumnRole.RELATIONSHIP
+                or col.attribute_name != matched.name
+                or col.target_type != matched.datatype
+            ):
+                logger.info(
+                    "csv_reconcile_attr_to_rel",
+                    column=col.column_name,
+                    type=type_name,
+                    proposed=proposed,
+                    reused=matched.name,
+                    target=matched.datatype,
+                )
+
+        if any(getattr(col, k, None) != v for k, v in updates.items()):
+            new_columns.append(col.model_copy(update=updates))
+            changed = True
+        else:
+            new_columns.append(col)
+
+    new_mapping = mapping
+    if changed:
+        new_mapping = mapping.model_copy(update={"columns": new_columns})
+
+    # Drop Pass D promotions whose source attribute already exists as a
+    # property on some known type — promoting "manufacturer" to Manufacturer
+    # when Drug.manufacturer already is a literal forks the ontology the same
+    # way a parallel relationship does.
+    if new_mapping.ontology_extensions is not None:
+        cleaned = _drop_redundant_promotions(
+            new_mapping.ontology_extensions, existing_attrs,
+        )
+        if cleaned is not new_mapping.ontology_extensions:
+            new_mapping = new_mapping.model_copy(update={"ontology_extensions": cleaned})
+            changed = True
+
+    return new_mapping if changed else mapping
+
+
+def _resnake_mapping_names(mapping: CSVSchemaMapping) -> CSVSchemaMapping:
+    """Re-apply :func:`_snake_case` to every column's attribute_name (greenfield)."""
+    new_columns: list[ColumnMapping] = []
+    changed = False
+    for col in mapping.columns:
+        if not col.attribute_name:
+            new_columns.append(col)
+            continue
+        snaked = _snake_case(col.attribute_name)
+        if snaked != col.attribute_name:
+            new_columns.append(col.model_copy(update={"attribute_name": snaked}))
+            changed = True
+        else:
+            new_columns.append(col)
+    if not changed:
+        return mapping
+    return mapping.model_copy(update={"columns": new_columns})
+
+
+def _drop_redundant_promotions(
+    extensions: OntologyExtensions,
+    existing_attrs: dict[str, dict[str, AttributeSchema]],
+) -> OntologyExtensions:
+    """Remove type promotions whose source attr already exists on a known type."""
+    if not extensions.types:
+        return extensions
+    # Flatten every known property name for a quick membership test.
+    known: dict[str, AttributeSchema] = {}
+    for props in existing_attrs.values():
+        for name, schema in props.items():
+            known.setdefault(_normalize_attr_name(name), schema)
+
+    kept: list[TypeExtension] = []
+    dropped = 0
+    for t in extensions.types:
+        src = t.promoted_from_attribute
+        if src and _find_existing_attr(src, known) is not None:
+            logger.info(
+                "csv_reconcile_drop_promotion",
+                type=t.type_name,
+                promoted_from=src,
+            )
+            dropped += 1
+            continue
+        kept.append(t)
+    if dropped == 0:
+        return extensions
+    return extensions.model_copy(update={"types": kept})

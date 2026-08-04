@@ -2582,9 +2582,17 @@ class SchemaResolver:
         headers = list(rows[0].keys())
         logger.info("csv_ingest_start", rows=len(rows), columns=len(headers))
 
-        # Step 1: Infer schema from sample (1 LLM call)
+        # Step 1: Infer schema from sample (1 LLM call). Pass existing_attrs so
+        # inference reuses declared properties (Drug.manufacturer) instead of
+        # inventing parallel names (manufactured_by) — see reconcile_mapping_to_existing.
         csv_resolver = CSVResolver(self._anthropic, self._openrouter_key)
-        mapping = await csv_resolver.infer_schema(headers, rows[:10], existing_types, total_rows=len(rows))
+        mapping = await csv_resolver.infer_schema(
+            headers,
+            rows[:10],
+            existing_types,
+            total_rows=len(rows),
+            existing_attrs=existing_attrs,
+        )
 
         # Step 2+: apply the mapping and run the shared resolve→dedup→insert
         # tail (also reused by web-discovery ingest via ingest_mapped_records).

@@ -193,7 +193,10 @@ class TestSnakeCase:
         assert _snake_case("Hello World") == "hello_world"
 
     def test_camel(self):
-        assert _snake_case("listingPrice") == "listingprice"
+        # camelCase must split at the case boundary — collapsing to
+        # ``listingprice`` (the prior behavior) produced opaque predicate
+        # leaves like ``manufacturedby`` on live graphs.
+        assert _snake_case("listingPrice") == "listing_price"
 
     def test_special(self):
         assert _snake_case("Bed/Bath Count") == "bed_bath_count"
