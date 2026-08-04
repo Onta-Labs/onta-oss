@@ -1239,21 +1239,40 @@ class NLQueryPipeline:
                 MAX_UNCOVERED_TYPES,
                 coverage_caveat,
                 empty_types_for_kg,
-                kg_subtype_presence_query,
+                referenced_types,
+                unscoped_caveat,
                 uncovered_types,
             )
 
             scope = parse_kg_graph_uri(data_graph)
             if not scope:
                 return ""
-            kg_name = scope[1]
+            tenant_id, kg_name = scope
 
+            # SIGNAL B, the type-UNANCHORED query. `?s rdf:type ?type` with an
+            # unbound type constrains nothing, so it reads the whole union and no
+            # type-based signal can speak about it. Measured on production
+            # 2026-08-03: "how many rows of data are there in total?" against a
+            # KG of 8 subjects answered 19582. Only worth saying when the union
+            # really does hold data outside the named graph, which is one
+            # positive-cached O(1) ASK (and which fails toward silence).
+            referenced = referenced_types(sparql)
+            if not referenced:
+                from cograph_client.graph.kg_status import base_graph_has_instances
+
+                if not await base_graph_has_instances(self.neptune, tenant_id):
+                    return ""
+                timing["kg_coverage_unscoped_query"] = 1.0
+                logger.info("kg_coverage_unscoped_query", kg_name=kg_name)
+                return unscoped_caveat(kg_name)
+
+            # SIGNAL A, the type-anchored query.
             empty_in_kg = empty_types_for_kg(
                 ontology, declared_names=declared_names, active_types=active_types
             )
             if not empty_in_kg:
                 return ""
-            flagged, all_types = uncovered_types(sparql, empty_in_kg)
+            flagged, all_types = uncovered_types(referenced, empty_in_kg)
             if not flagged:
                 return ""
             # Cap BEFORE probing, so the sentence only ever names types the

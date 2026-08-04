@@ -38,8 +38,34 @@ answer cannot be a narrower dataset and must not be a refusal either.
 What this module does instead
 -----------------------------
 A per-query **coverage caveat**. The answer is still returned; a sentence beside
-it says which types the query targeted that the NAMED graph holds none of, so the
-reader knows the number did not come from the graph they picked.
+it says how the named graph relates to the number, so the reader is never left to
+assume the graph they picked is what answered.
+
+Two signals, because two different query shapes produce the same hidden failure:
+
+**A. The type-ANCHORED query.** It constrains ``rdf:type`` to types the named
+graph holds none of, so the rows came from elsewhere in the union. This is the
+reported bug. Free on the common path (see below).
+
+**B. The type-UNANCHORED query.** It constrains no type at all, so it reads the
+whole union and the number is a workspace number rather than a per-graph one.
+Measured on production the same day: "how many rows of data are there in total?"
+against the same 8-subject ``maral`` generated
+``SELECT (COUNT(DISTINCT ?s)) ... WHERE { ?s rdf:type ?type }`` and answered
+**19582**. Signal A is structurally blind to this: there is no type to compare.
+The two say deliberately different things — A is about PROVENANCE ("not an answer
+about this graph"), B is about SCOPE ("this counts the workspace, not just your
+graph") — because for shape B the named graph usually did contribute, just
+negligibly, and claiming otherwise would be the same defect one level up.
+
+**Known remaining shape, NOT covered here.** A query anchored on a type that
+BOTH the named graph and the base graph hold returns a count summed across them,
+and neither signal fires: the type is present here, and the query is anchored.
+Distinguishing that needs per-graph row provenance, i.e. a second scoped
+execution or a per-type two-graph presence probe on EVERY typed question. That
+is a real cost on the hot path (ONTA-427 was an entire PR about removing one
+such per-ask probe), so it is called out rather than smuggled in. See the PR
+body.
 
 The signal is ALREADY ON THE HOT PATH and costs nothing extra
 --------------------------------------------------------------
@@ -168,14 +194,22 @@ def empty_types_for_kg(
 
 
 def uncovered_types(
-    sparql: str, empty_in_kg: set[str]
+    sparql_or_referenced: str | dict[str, list[str]], empty_in_kg: set[str]
 ) -> tuple[dict[str, list[str]], bool]:
     """``({name: uris}, every_referenced_type_is_uncovered)``.
 
     The flag distinguishes "this answer has nothing to do with the named graph"
     from "one leg of this answer does not", which are different sentences.
+
+    Accepts either the raw query or an already-computed
+    :func:`referenced_types` map, so a caller that has to test "did this query
+    name any type at all?" first does not pay for a second scan.
     """
-    referenced = referenced_types(sparql)
+    referenced = (
+        sparql_or_referenced
+        if isinstance(sparql_or_referenced, dict)
+        else referenced_types(sparql_or_referenced)
+    )
     flagged = {
         name: uris for name, uris in referenced.items() if name in empty_in_kg
     }
@@ -243,16 +277,49 @@ def coverage_caveat(kg_name: str, uncovered: Sequence[str], *, all_types: bool) 
     subject = _name_list(names)
     plural = len(names) > 1
     if all_types:
+        # Phrased as "not an answer ABOUT this graph" rather than "no row came
+        # from it". The stronger claim would be a shade too strong: a pattern can
+        # carry an unconstrained leg (a bare `?o rdfs:label ?l` join) whose triple
+        # could still be resolved out of the named graph. What IS airtight, and
+        # what the reader actually needs, is that every type the query anchors on
+        # is absent here.
         return (
-            f"Knowledge graph '{kg_name}' contains no instances of {subject}, so "
-            f"this result did not come from '{kg_name}' — it was computed from "
-            "other data in this workspace (the workspace's base graph and any "
+            f"Knowledge graph '{kg_name}' contains no instances of {subject}, "
+            f"{'which are' if plural else 'which is'} the only "
+            f"{'types' if plural else 'type'} this query reads. This result is "
+            f"therefore not an answer about '{kg_name}'; it was computed from "
+            "other data in this workspace (the workspace base graph and any "
             "shared layers)."
         )
     return (
         f"Knowledge graph '{kg_name}' contains no instances of {subject}, so any "
         f"part of this result that depends on {'them' if plural else 'it'} came "
         f"from other data in this workspace, not from '{kg_name}'."
+    )
+
+
+def unscoped_caveat(kg_name: str) -> str:
+    """The caveat for a query that constrains NO type at all (ONTA-454 signal B).
+
+    Measured on production 2026-08-03: "how many rows of data are there in
+    total?" against ``kg_name="maral"`` (8 subjects) generated
+    ``SELECT (COUNT(DISTINCT ?s)) ... WHERE { ?s rdf:type ?type }`` over the
+    three-graph union and answered **19582**. The type-based signal above cannot
+    speak here, because there is no type to speak about; the query is simply not
+    restricted to anything the named graph holds.
+
+    This says exactly that, and no more. It does NOT claim the named graph
+    contributed nothing — for this shape it usually contributed a little, 8 rows
+    of 19582 in the measured case — so the honest statement is about SCOPE, not
+    provenance: the number is a workspace-wide number, not a per-graph one.
+    """
+    if not kg_name:
+        return ""
+    return (
+        "This query was not restricted to any type, so it read the whole "
+        f"workspace, not just knowledge graph '{kg_name}': the result counts "
+        f"data from '{kg_name}' together with the workspace base graph and any "
+        "shared layers. Ask about a specific type to scope it."
     )
 
 
@@ -264,4 +331,5 @@ __all__ = [
     "kg_subtype_presence_query",
     "referenced_types",
     "uncovered_types",
+    "unscoped_caveat",
 ]

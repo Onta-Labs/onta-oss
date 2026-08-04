@@ -26,14 +26,24 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from cograph_client.graph import kg_status
 from cograph_client.nlp.kg_coverage import (
     coverage_caveat,
     empty_types_for_kg,
     kg_subtype_presence_query,
     referenced_types,
     uncovered_types,
+    unscoped_caveat,
 )
 from cograph_client.nlp.pipeline import NLQueryPipeline
+
+
+@pytest.fixture(autouse=True)
+def _clear_kg_status_cache():
+    """Signal B's base-graph probe is positive-cached per tenant; isolate tests."""
+    kg_status.invalidate_kg_status("t1")
+    yield
+    kg_status.invalidate_kg_status("t1")
 
 BASE = "https://graph.onta.sh"
 TENANT_GRAPH = f"{BASE}/graphs/t1"
@@ -89,13 +99,14 @@ def _uri_rows(var: str, uris: list[str]) -> dict:
 
 
 def _neptune(*, answer_rows: list[str], subtypes_present: list[str] | None = None,
-             probe_raises: bool = False):
+             probe_raises: bool = False, base_has_instances: bool = True,
+             base_probe_raises: bool = False):
     """Store double that dispatches on the query SHAPE, not on call order.
 
     ``FROM NAMED`` identifies the ONTA-454 subclass-confirmation probe (nothing
     else in the ask path emits one), so the answer query and the probe can be
     answered differently without depending on how many other reads the pipeline
-    happens to make.
+    happens to make. ``ask`` is signal B's base-graph instance probe.
     """
     client = AsyncMock()
 
@@ -106,7 +117,13 @@ def _neptune(*, answer_rows: list[str], subtypes_present: list[str] | None = Non
             return _uri_rows("type", subtypes_present or [])
         return _rows("count", answer_rows)
 
+    async def _ask_probe(sparql, *args, **kwargs):
+        if base_probe_raises:
+            raise RuntimeError("neptune unavailable")
+        return base_has_instances
+
     client.query.side_effect = _query
+    client.ask.side_effect = _ask_probe
     return client
 
 
@@ -157,9 +174,11 @@ async def test_caveat_names_the_named_graph_as_the_one_that_lacks_the_data():
     result = await _ask(_neptune(answer_rows=["4229"]), RECALL_SPARQL)
     caveat = result.coverage_caveat
     assert caveat.startswith("Knowledge graph 'maral' contains no instances of")
-    # It must not assert the ANSWER is wrong — it may be exactly what the user
-    # wanted from the workspace as a whole. It states provenance, nothing more.
-    assert "did not come from 'maral'" in caveat
+    # It must not assert the ANSWER is wrong (it may be exactly what the user
+    # wanted from the workspace as a whole), and it must not overclaim that no
+    # row touched 'maral' either: an unconstrained join leg could still resolve
+    # there. The airtight claim is the one it makes.
+    assert "not an answer about 'maral'" in caveat
 
 
 # --------------------------------------------------------------------------- #
@@ -265,7 +284,89 @@ async def test_a_covered_query_pays_for_no_probe_at_all():
 
 
 # --------------------------------------------------------------------------- #
-# 4. The pure analysis layer.
+# 4. Signal B: the query that constrains no type at all.
+# --------------------------------------------------------------------------- #
+
+# Verbatim shape of what production generated for "how many rows of data are
+# there in total?" against `maral` on 2026-08-03, which answered 19582 against a
+# knowledge graph of 8 subjects.
+UNSCOPED_SPARQL = (
+    "SELECT (COUNT(DISTINCT ?s) AS ?count) "
+    f"FROM <{KG_GRAPH}> FROM <{TENANT_GRAPH}> FROM <{PUBLIC_LAYER}> "
+    f"WHERE {{ ?s <{RDF_TYPE}> ?type }}"
+)
+
+
+@pytest.mark.asyncio
+async def test_type_unanchored_query_is_caveated_as_workspace_wide():
+    """Signal A is structurally blind here: there is no type to compare."""
+    result = await _ask(_neptune(answer_rows=["19582"]), UNSCOPED_SPARQL)
+    assert "19582" in result.answer
+    assert "not restricted to any type" in result.coverage_caveat
+    assert "maral" in result.coverage_caveat
+    assert "Coverage note:" in result.answer
+    # It must NOT claim the named graph contributed nothing. For this shape it
+    # usually contributed a little (8 rows of 19582 in the measured case), and
+    # claiming otherwise would be the same defect one level up.
+    assert "no instances" not in result.coverage_caveat
+
+
+@pytest.mark.asyncio
+async def test_unanchored_query_is_silent_when_the_base_graph_holds_nothing():
+    """A workspace whose data lives entirely in one KG: the union IS that KG."""
+    result = await _ask(
+        _neptune(answer_rows=["8"], base_has_instances=False), UNSCOPED_SPARQL
+    )
+    assert result.coverage_caveat == ""
+
+
+@pytest.mark.asyncio
+async def test_unanchored_probe_failure_stays_silent_rather_than_guessing():
+    """Signal B asserts other data EXISTS. Unproven means unsaid.
+
+    Deliberately the opposite of `kg_data_status`'s fail-open rule: that one
+    fails open because its failure would invent "your graph does not exist";
+    this one gates a positive claim, and asserting it unverified would be a
+    caveat that is wrong about which graph answered.
+    """
+    result = await _ask(
+        _neptune(answer_rows=["19582"], base_probe_raises=True), UNSCOPED_SPARQL
+    )
+    assert result.coverage_caveat == ""
+
+
+@pytest.mark.asyncio
+async def test_unanchored_query_without_a_kg_name_is_silent():
+    result = await _ask(
+        _neptune(answer_rows=["19582"]),
+        UNSCOPED_SPARQL.replace(f"FROM <{KG_GRAPH}> ", ""),
+        kg=False,
+    )
+    assert result.coverage_caveat == ""
+
+
+@pytest.mark.asyncio
+async def test_unanchored_signal_costs_one_ask_and_no_subtype_probe():
+    client = _neptune(answer_rows=["19582"])
+    await _ask(client, UNSCOPED_SPARQL)
+    assert len(client.ask.await_args_list) == 1
+    assert not [c for c in client.query.await_args_list if "FROM NAMED" in c.args[0]]
+
+
+@pytest.mark.asyncio
+async def test_anchored_signal_pays_for_no_base_graph_ask():
+    client = _neptune(answer_rows=["4229"])
+    await _ask(client, RECALL_SPARQL)
+    assert client.ask.await_args_list == []
+
+
+def test_unscoped_caveat_needs_a_kg_name():
+    assert unscoped_caveat("") == ""
+    assert "maral" in unscoped_caveat("maral")
+
+
+# --------------------------------------------------------------------------- #
+# 5. The pure analysis layer.
 # --------------------------------------------------------------------------- #
 
 

@@ -70,12 +70,19 @@ _TYPES_PREFIX = f"{IRI_BASE}/types/"
 _kg_ok_cache: dict[tuple[str, str], float] = {}
 KG_STATUS_CACHE_TTL = 60  # seconds, mirrors nlp.pipeline's _ontology_cache
 
+# {tenant_id: checked_at} for "the tenant BASE graph holds instance data".
+# Positive only, for the same reason as `_kg_ok_cache`: a base graph that holds
+# instances cannot stop holding them without a delete, while a NEGATIVE verdict
+# would survive the first ingest into a brand-new workspace.
+_base_instances_cache: dict[str, float] = {}
+
 
 def invalidate_kg_status(tenant_id: str, kg_name: str | None = None) -> None:
     """Drop cached positive verdicts for a tenant (or one KG). Test/admin hook."""
     if kg_name is not None:
         _kg_ok_cache.pop((tenant_id, kg_name), None)
         return
+    _base_instances_cache.pop(tenant_id, None)
     for key in [k for k in _kg_ok_cache if k[0] == tenant_id]:
         _kg_ok_cache.pop(key, None)
 
@@ -213,6 +220,52 @@ async def kg_data_status(neptune, tenant_id: str, kg_name: str) -> str:
         return KG_OK
 
     return KG_EMPTY
+
+
+async def base_graph_has_instances(neptune, tenant_id: str) -> bool:
+    """Does the tenant BASE graph hold INSTANCE data of its own? (ONTA-454)
+
+    The same ``ASK`` :func:`kg_data_status` already runs on its rare
+    registered-but-empty path, hoisted so the coverage caveat can reuse it rather
+    than growing a second way to ask the same question.
+
+    Why the caveat needs it: a generated query that constrains no type at all
+    (``?s rdf:type ?type``, the shape "how many rows of data are there in total?"
+    produces) reads the WHOLE union, so a count answers for the workspace and not
+    for the KG the caller named. That is only worth saying when the union
+    actually contains something other than the named graph, which on this
+    platform is overwhelmingly the base graph: it IS the instance graph for every
+    ``kg_name``-less ingest (18,515 typed instance subjects on demo-tenant,
+    measured read-only 2026-08-03). In a workspace whose data lives entirely in
+    one per-KG graph the union IS that graph, and the caveat would be noise.
+
+    Fails toward SILENCE, which is the OPPOSITE of :func:`kg_data_status`'s
+    fail-open rule, and deliberately so. The two functions gate different claims.
+    ``kg_data_status`` fails open because its failure mode would be inventing
+    "your graph does not exist"; this one gates a POSITIVE assertion that other
+    data exists in the workspace, and asserting that unverified would be exactly
+    the "a caveat that is wrong about which graph answered" failure the caveat
+    exists to prevent. Unproven means unsaid.
+
+    Cached POSITIVE-only, so a real workspace pays for this once per TTL and the
+    steady-state cost is zero.
+    """
+    if not tenant_id:
+        return False
+    cached = _base_instances_cache.get(tenant_id)
+    if cached is not None and (time.time() - cached) < KG_STATUS_CACHE_TTL:
+        return True
+    base = tenant_graph_uri(tenant_id)
+    try:
+        found = await neptune.ask(_base_has_instances_query(base))
+    except Exception:  # noqa: BLE001 - an unverified claim is not made at all
+        logger.warning(
+            "base_graph_instance_probe_failed", tenant=tenant_id, exc_info=True
+        )
+        return False
+    if found:
+        _base_instances_cache[tenant_id] = time.time()
+    return bool(found)
 
 
 async def list_kg_names(neptune, tenant_id: str, limit: int = 25) -> list[str]:
