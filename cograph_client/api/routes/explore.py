@@ -1302,13 +1302,19 @@ async def read_kg_summary_from_stats(
     return entity_total, edge_total, breakdown
 
 
-async def backfill_kg_summary(client: NeptuneClient, tenant_id: str, kg_name: str):
+async def backfill_kg_summary(
+    client: NeptuneClient, tenant_id: str, kg_name: str, *, persist: bool = True
+):
     """Seed the durable dashboard-summary store for one KG from existing stats.
 
     Used to lazily fill rows for KGs that predate the store (the first time
     they're listed) without a fresh whole-KG scan. Returns the upserted
     :class:`KgStats`, or ``None`` if the KG's stats graph isn't materialized yet
     (the caller schedules a recompute, which will populate the store directly).
+
+    ``persist=False`` computes the SAME row and returns it WITHOUT storing it
+    (ONTA-452). A read-only member gets identical numbers on the listing while
+    the lazy materialization stays a write only writers perform.
     """
     agg = await read_kg_summary_from_stats(client, tenant_id, kg_name)
     if agg is None:
@@ -1323,6 +1329,8 @@ async def backfill_kg_summary(client: NeptuneClient, tenant_id: str, kg_name: st
         edge_count=edge_total,
         type_breakdown=breakdown,
     )
+    if not persist:
+        return row
     await get_kg_stats_store().upsert(row)
     return row
 
@@ -1366,11 +1374,68 @@ async def _safe_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -
         pass  # best-effort; reads fall back to a live scan until it succeeds
 
 
+#: KGs with a recompute already in flight. Repeated scheduling for the SAME KG
+#: COALESCES instead of stacking N whole-KG scans. Load-bearing since ONTA-452:
+#: a read-only member's ``GET /kgs`` may schedule a recompute on a stats miss
+#: (otherwise they would see a permanent, indistinguishable 0), so that path
+#: must not be spammable into repeated full scans.
+_recompute_inflight: set[tuple[str, str]] = set()
+
+#: KGs whose recompute was requested WHILE one was already in flight. Deferred,
+#: never dropped: the in-flight scan may have read the KG before the newer
+#: write landed, so discarding the request would persist pre-write numbers
+#: permanently (nothing re-triggers: ``recompute_kg_stats`` upserts a durable
+#: store row and ``_kg_stats_for`` only schedules on a store MISS). A set, so at
+#: most ONE follow-up is queued per KG however many requests pile up: the
+#: reader-reachable path stays bounded at one in-flight plus one queued scan.
+_recompute_pending: set[tuple[str, str]] = set()
+
+
 def schedule_recompute(client: NeptuneClient, tenant_id: str, kg_name: str) -> None:
-    """Fire-and-forget a stats recompute (used by the endpoint + ingest hook)."""
-    task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
+    """Fire-and-forget a stats recompute (used by the endpoint + ingest hook).
+
+    Coalesced per (tenant, KG): while a scan is in flight, further requests do
+    not stack up N whole-KG scans, but they are not dropped either. They mark
+    the KG pending, and exactly one follow-up scan runs when the current one
+    finishes. Dropping them would be a correctness bug, not just a lost
+    refresh: the concurrent-batch ingest path (``refresh_after_write`` per
+    ``POST /ingest/csv/rows``) and the ``POST /recompute-stats`` that the CLI
+    fires right after the last batch both land inside the ~15s scan, so the
+    last writer's numbers would never be persisted.
+    """
+    key = (tenant_id, kg_name)
+    if key in _recompute_inflight:
+        # Defer, don't discard: the running scan may predate this caller's write.
+        _recompute_pending.add(key)
+        return
+    _recompute_inflight.add(key)
+    try:
+        task = asyncio.create_task(_safe_recompute(client, tenant_id, kg_name))
+    except Exception:
+        # No running loop (a sync caller): never leave the key stuck marked
+        # in-flight, or this KG could never be recomputed again.
+        _recompute_inflight.discard(key)
+        raise
     _bg_tasks.add(task)
-    task.add_done_callback(_bg_tasks.discard)
+
+    def _done(t: asyncio.Task) -> None:
+        _bg_tasks.discard(t)
+        # Order matters: clear the in-flight marker BEFORE re-scheduling, or the
+        # re-schedule below would see itself as in-flight and fall into the
+        # pending branch, losing the deferred request for good. Done callbacks
+        # run on the event loop with no await points between these statements,
+        # so no request can slip in mid-sequence.
+        _recompute_inflight.discard(key)
+        if key in _recompute_pending:
+            _recompute_pending.discard(key)
+            try:
+                schedule_recompute(client, tenant_id, kg_name)
+            except Exception:  # noqa: BLE001, best-effort; never raise into the loop
+                logger.warning(
+                    "recompute_rerun_schedule_failed", kg=kg_name, exc_info=True
+                )
+
+    task.add_done_callback(_done)
 
 
 # Cap on concurrent summary-generation LLM calls in a single backfill sweep, so a

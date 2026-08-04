@@ -108,7 +108,24 @@ def layer_stack_for(tenant: TenantContext):
     )
 
 
-async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure: bool = True):
+#: What ``TenantContext.role`` looks like when the route did NOT resolve a
+#: membership (a plain ``get_tenant`` read, or a static / subject-less key).
+#: Named rather than inlined as ``""`` because ``can_write("")`` normalizes to
+#: the WRITE capability, i.e. an unresolved role fails OPEN and keeps the
+#: pre-ONTA-452 persisting behavior. That is intended (the callers that matter
+#: for ONTA-452 all sit on ``get_tenant_with_capability``, which always
+#: resolves a role), but it is the kind of intent that should be stated rather
+#: than left resting on ``normalize_role``'s default.
+_UNRESOLVED_ROLE = ""
+
+
+async def layer_stack_for_tenant(
+    neptune,
+    tenant: TenantContext,
+    *,
+    auto_ensure: bool = True,
+    persist: bool | None = None,
+):
     """Versioned :class:`~cograph_client.graph.layers.LayerStack` for ``tenant``.
 
     Loads (and optionally backfills) the workspace base pin so reads resolve
@@ -119,7 +136,15 @@ async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure:
     :func:`~cograph_client.graph.ontology_base_pin.layer_stack_for_workspace`:
     degrade to an ephemeral unversioned (live) stack **without writing**.
     A read failure is never treated as "missing pin" (no silent re-pin).
+
+    ``persist`` defaults to the caller's own WRITE capability (ONTA-452), so an
+    ontology READ by a read-only member returns the pin it would have ensured
+    without backfilling or auto-upgrading it. Pass it explicitly to override.
+    The role is only populated when the route resolved it
+    (``get_tenant_with_capability``); an UNRESOLVED context deliberately keeps
+    prior (persisting) behavior, see ``_UNRESOLVED_ROLE``.
     """
+    from cograph_client.auth.capabilities import can_write
     from cograph_client.graph.ontology_base_pin import layer_stack_for_workspace
 
     return await layer_stack_for_workspace(
@@ -127,4 +152,9 @@ async def layer_stack_for_tenant(neptune, tenant: TenantContext, *, auto_ensure:
         tenant.tenant_id,
         entitled=is_entitled(tenant),
         auto_ensure=auto_ensure,
+        persist=(
+            can_write(getattr(tenant, "role", _UNRESOLVED_ROLE))
+            if persist is None
+            else persist
+        ),
     )
