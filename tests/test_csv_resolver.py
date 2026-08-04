@@ -1050,8 +1050,37 @@ class TestInferSchemaV2Retry:
         resolver = CSVResolver(client=None, openrouter_key="")
         bad = {"entities": [], "columns": []}
         _mock_v2(monkeypatch, resolver, [bad, copy.deepcopy(bad)], [])
-        with pytest.raises(KeyError):
+        # v2 KeyError("entities") triggers legacy fallback; with no client the
+        # legacy path then fails. Either surface is a hard inference failure.
+        with pytest.raises((KeyError, AttributeError, ValueError)):
             await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+
+    @pytest.mark.asyncio
+    async def test_reason_entities_failure_falls_back_to_legacy(self, monkeypatch):
+        """Dense one-row demos: v2 omits entities → legacy path is used."""
+        resolver = CSVResolver(client=None, openrouter_key="")
+        bad = {"entities": [], "columns": [{"column": "a"}]}
+        _mock_v2(monkeypatch, resolver, [bad, copy.deepcopy(bad)], [])
+
+        async def fake_legacy(self, headers, sample_rows, existing_types, total_rows=0, existing_attrs=None):
+            from cograph_client.resolver.models import (
+                ColumnMapping, ColumnRole, CSVSchemaMapping, EntitySpec,
+            )
+            return CSVSchemaMapping(
+                entity_type="Record",
+                entities=[EntitySpec(name="rec", type_name="Record", id_column="id")],
+                columns=[
+                    ColumnMapping(
+                        column_name="id", role=ColumnRole.TYPE_ID, datatype="string",
+                        attribute_name="id", entity="rec",
+                    ),
+                ],
+            )
+
+        monkeypatch.setattr(CSVResolver, "_infer_schema_legacy", fake_legacy)
+        mapping = await resolver.infer_schema(_SIMPLE_HEADERS, _simple_rows(), {}, 10)
+        assert mapping.entity_type == "Record"
+        assert mapping.entities and mapping.entities[0].type_name == "Record"
 
     @pytest.mark.asyncio
     async def test_clean_refute_without_echo_keeps_proposed_schema(self, monkeypatch):
