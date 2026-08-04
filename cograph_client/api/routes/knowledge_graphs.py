@@ -22,7 +22,8 @@ from cograph_client.api.deps import (
     get_schedule_store,
 )
 from cograph_client.auth.api_keys import TenantContext, get_tenant
-from cograph_client.auth.access import require_tenant_write
+from cograph_client.auth.access import get_tenant_with_capability, require_tenant_write
+from cograph_client.auth.capabilities import can_write
 from cograph_client.enrichment.models import JobCategory, JobStatus
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.ontology_queries import (
@@ -232,7 +233,7 @@ class KGInfo(BaseModel):
 
 @router.get("", response_model=list[KGInfo])
 async def list_kgs(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
     job_store=Depends(get_enrichment_job_store),
 ):
@@ -250,7 +251,16 @@ async def list_kgs(
     precomputed stats graph the first time they're listed (the same lazy
     materialization pattern as triple counts). ``status`` is derived live from
     the tenant's in-flight enrichment jobs.
+
+    A GET that persists (ONTA-452): every lazy materialization on this path is a
+    WRITE, and the route stays open to readers because listing your graphs is a
+    read. So the persistence is gated on the caller's write capability instead
+    of the route: a read-only member gets the SAME numbers, computed live, and
+    writes back nothing. Without this the route was a bypass of the very
+    ``recompute-stats`` gate this ticket added, since it schedules the identical
+    recompute.
     """
+    persist = can_write(tenant.role)
     base = tenant_graph_uri(tenant.tenant_id)
 
     # One query: KG registrations + their stored triple counts.
@@ -286,15 +296,18 @@ async def list_kgs(
         )
         for e, c in zip(missing, counts):
             e["count"] = c
-        await asyncio.gather(
-            *(
-                _store_triple_count(client, tenant.tenant_id, e["name"], e["count"])
-                for e in missing
-            ),
-            return_exceptions=True,
-        )
+        if persist:
+            await asyncio.gather(
+                *(
+                    _store_triple_count(client, tenant.tenant_id, e["name"], e["count"])
+                    for e in missing
+                ),
+                return_exceptions=True,
+            )
 
-    stats_by_kg = await _kg_stats_for(client, tenant.tenant_id, [e["name"] for e in entries])
+    stats_by_kg = await _kg_stats_for(
+        client, tenant.tenant_id, [e["name"] for e in entries], persist=persist
+    )
     enriching = await _enriching_kgs(job_store, tenant.tenant_id)
 
     out: list[KGInfo] = []
@@ -315,7 +328,13 @@ async def list_kgs(
     return out
 
 
-async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[str]):
+async def _kg_stats_for(
+    client: "NeptuneClient",
+    tenant_id: str,
+    kg_names: list[str],
+    *,
+    persist: bool = True,
+):
     """Return {kg_name: KgStats} from the durable store, backfilling misses.
 
     Steady state: one relational read for the whole tenant (no Neptune). KGs
@@ -324,6 +343,13 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
     recompute scheduled (which populates the store) and is served as zeros for
     now. Best-effort throughout — a store/Neptune hiccup degrades to zeros, it
     never fails the KG listing.
+
+    ``persist=False`` (a read-only caller, ONTA-452) returns the SAME numbers
+    but skips the caller-visible materialization: no store row is written and
+    no billed summary backfill is kicked off. The background recompute on a
+    stats MISS is the one deliberate exception and still fires for readers.
+    See the comment on that branch below for why gating it would leave a reader
+    permanently staring at ``entity_count: 0``.
     """
     from cograph_client.api.routes.explore import (
         backfill_kg_summary,
@@ -342,7 +368,10 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
     missing = [n for n in kg_names if n not in by_kg]
     if missing:
         backfilled = await asyncio.gather(
-            *(backfill_kg_summary(client, tenant_id, n) for n in missing),
+            *(
+                backfill_kg_summary(client, tenant_id, n, persist=persist)
+                for n in missing
+            ),
             return_exceptions=True,
         )
         for name, res in zip(missing, backfilled):
@@ -351,6 +380,16 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
             elif not isinstance(res, Exception):
                 # res is None: stats graph not materialized yet → schedule a
                 # recompute so the store is populated for next time.
+                #
+                # Deliberately NOT gated on ``persist`` (ONTA-452 review): this
+                # is the only thing that can ever make the number right, and
+                # gating it would leave a reader in a workspace no writer has
+                # listed staring at entity_count=0 forever, indistinguishable
+                # from a genuinely empty KG. A confident wrong number with no
+                # signal is worse than the scan. It fires only on a MISS, is
+                # idempotent, and ``schedule_recompute`` collapses repeats for
+                # the same KG, so it is not spammable. The unbounded on-demand
+                # twin (POST /recompute-stats) stays write-gated.
                 try:
                     schedule_recompute(client, tenant_id, name)
                 except Exception:  # noqa: BLE001
@@ -361,10 +400,13 @@ async def _kg_stats_for(client: "NeptuneClient", tenant_id: str, kg_names: list[
     # count-backfilled above. Fire-and-forget so the summary never lands on this
     # (hot) list path: the background sweep persists them and they appear on the
     # next list; recompute writes them at write time going forward.
-    try:
-        schedule_summary_backfill(list(by_kg.values()))
-    except Exception:  # noqa: BLE001 — scheduling a warm-up must never fail listing
-        pass
+    # Writers only (ONTA-452): the sweep persists rows and spends on billed
+    # summary generation, so a read-only listing must not kick it off.
+    if persist:
+        try:
+            schedule_summary_backfill(list(by_kg.values()))
+        except Exception:  # noqa: BLE001 — scheduling a warm-up must never fail listing
+            pass
     return by_kg
 
 

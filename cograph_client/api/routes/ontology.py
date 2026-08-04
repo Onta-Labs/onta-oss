@@ -22,7 +22,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from cograph_client.api.deps import get_neptune_client
 from cograph_client.auth.api_keys import TenantContext, get_tenant
-from cograph_client.auth.access import require_tenant_write
+from cograph_client.auth.access import get_tenant_with_capability, require_tenant_write
+from cograph_client.auth.capabilities import can_write
 from cograph_client.config import settings
 from cograph_client.graph.client import NeptuneClient
 from cograph_client.graph.entitlement import is_entitled, layer_stack_for_tenant
@@ -178,7 +179,7 @@ def _type_response(t: WorkspaceOntologyType) -> TypeResponse:
 
 @router.get("", response_model=WorkspaceOntologyResponse)
 async def get_workspace_ontology(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Effective layered ontology for this workspace (ONTA-397).
@@ -270,7 +271,7 @@ async def create_type(
 
 @router.get("/types", response_model=list[TypeResponse])
 async def list_types(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """List effective types (tenant + visible global layers, shadowed)."""
@@ -281,7 +282,7 @@ async def list_types(
 @router.get("/types/{type_name}", response_model=TypeResponse)
 async def get_type(
     type_name: str,
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Type detail from the effective (shadowed) layered ontology."""
@@ -349,7 +350,7 @@ async def add_subtype(
 
 @router.get("/schema")
 async def get_full_schema(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Complete effective schema (layered + shadowed). Used by the NL pipeline."""
@@ -512,7 +513,7 @@ def _base_pin_response(
 
 @router.get("/base-pin", response_model=BasePinResponse)
 async def get_workspace_base_pin(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     """Current workspace base pin + revision + upgrade affordance (ONTA-410).
@@ -520,12 +521,19 @@ async def get_workspace_base_pin(
     Ensures a pin when missing (soft backfill to latest) so the version strip
     always has a defined state. Pin **read** infrastructure failures → 503
     (never silent re-pin to latest).
+
+    The backfill is a WRITE, so it is gated on the caller's write capability
+    (ONTA-452): a read-only member sees the same pin, computed ephemerally, and
+    opening the version strip no longer pins or auto-upgrades their workspace.
     """
     entitled = is_entitled(tenant)
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     try:
         pin = await ensure_workspace_base_pin(
-            client, tenant.tenant_id, entitled=entitled
+            client,
+            tenant.tenant_id,
+            entitled=entitled,
+            persist=can_write(tenant.role),
         )
     except BasePinReadError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -541,7 +549,7 @@ async def get_workspace_base_pin(
 
 @router.get("/base-pin/preview", response_model=UpgradePreviewResponse)
 async def preview_workspace_base_upgrade(
-    tenant: TenantContext = Depends(get_tenant),
+    tenant: TenantContext = Depends(get_tenant_with_capability),
     client: NeptuneClient = Depends(get_neptune_client),
     to_version: int | None = Query(
         None,
@@ -557,6 +565,9 @@ async def preview_workspace_base_upgrade(
             tenant.tenant_id,
             entitled=entitled,
             to_version=to_version,
+            # A preview is a read; its internal ensure must not write for a
+            # read-only member (ONTA-452).
+            persist=can_write(tenant.role),
         )
     except BasePinReadError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
