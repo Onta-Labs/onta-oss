@@ -600,6 +600,15 @@ class NLQueryPipeline:
         # ontology. On an empty/unparseable-SPARQL failure the retry escalates a
         # semantic subset up to the full ontology (see the retry loop below).
         ontology_source = "full"
+        # ONTA-454 coverage signal, hoisted out of the semantic block below so the
+        # post-execution check can read it. `kg_active_types` is the set of type
+        # names carrying instances in THIS KG's graph and `kg_declared_names` the
+        # tenant's declared names, so their difference is "declared here, absent
+        # from the graph the user named". Both stay None on the full-ontology path
+        # (where the summary's own "[no instances]" marks are exhaustive) and on
+        # any path with no KG to scope by.
+        kg_active_types: set[str] | None = None
+        kg_declared_names: list[str] | None = None
         embedding_svc = get_embedding_service()
         if embedding_svc:
             try:
@@ -627,6 +636,8 @@ class NLQueryPipeline:
                         if declared
                         else None
                     )
+                    kg_declared_names = list(declared) if declared else None
+                    kg_active_types = active_types
                 except Exception:
                     # WARNING, not debug: a failed probe silently reinstates the
                     # exact cross-KG leak this scoping exists to prevent, and the
@@ -639,6 +650,8 @@ class NLQueryPipeline:
                         exc_info=True,
                     )
                     active_types = None
+                    kg_active_types = None
+                    kg_declared_names = None
                 ontology = await embedding_svc.retrieve(
                     graph_uri,
                     question,
@@ -1028,6 +1041,25 @@ class NLQueryPipeline:
                 if missing_vars:
                     timing["unbound_projection_vars"] = ", ".join(missing_vars)
                     logger.info("unbound_projection_vars", vars=missing_vars, question=question)
+                # ONTA-454: the dataset is a UNION (the named KG + the tenant base
+                # graph + the Global layers), so a NON-EMPTY result set can consist
+                # entirely of rows from graphs OTHER than the one the caller named.
+                # Reported, never refused: a `kg_name`-less workspace reads the base
+                # graph legitimately, and this returns "" there by construction.
+                # Mutually exclusive with `honest_empty_note`, which only ever fires
+                # on ZERO rows (ONTA-450/258), so neither can dilute the other.
+                kg_coverage_note = ""
+                if bindings:
+                    kg_coverage_note = await self._kg_coverage_caveat(
+                        sparql,
+                        ontology,
+                        data_graph,
+                        graph_uri,
+                        layer_graph_uris,
+                        kg_declared_names,
+                        kg_active_types,
+                        timing,
+                    )
                 answer = await self._format_answer(
                     bindings, explanation, missing_vars=missing_vars,
                     data_graph=data_graph,
@@ -1035,10 +1067,20 @@ class NLQueryPipeline:
                 # ONTA-258/ONTA-450: "" unless the zero rows are explained by a
                 # declared-but-empty type the question named.
                 answer += honest_empty_note
+                # Appended to the ANSWER TEXT, not only to the `coverage_caveat`
+                # field. Every interface renders `answer` (the Explorer, the CLI,
+                # and both MCP tools, which print `Answer:` and nothing else), so
+                # the answer string is the ONE shared path that reaches the reader
+                # on every rail; the structured field below carries the same
+                # sentence for programmatic consumers.
+                if kg_coverage_note:
+                    answer += f"\n\nCoverage note: {kg_coverage_note}"
                 t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
                 if honest_empty_note and narrative_answer:
                     narrative_answer += honest_empty_note
+                if kg_coverage_note and narrative_answer:
+                    narrative_answer += f"\n\nCoverage note: {kg_coverage_note}"
                 timing["rephrase_ms"] = round((time.time() - t_reph) * 1000, 1)
                 # Honest-answer metadata (ONTA-280, P7): per-cited-fact
                 # verdict/confidence/recency + a coverage caveat. Read-only,
@@ -1082,6 +1124,16 @@ class NLQueryPipeline:
                     # "answered from N of M items" caveat (no per-fact validity read).
                     from cograph_client.nlp.answer_meta import build_coverage_caveat
                     coverage_caveat = build_coverage_caveat(run_coverage)
+                # ONTA-454 rides the SAME field rather than minting a second one:
+                # `coverage_caveat` already means "what is not fully true about the
+                # coverage of this answer", and every rail that reads it (the /ask
+                # body, QueryCapability's payload, `record_answer_run`'s P7 trace)
+                # gets the KG-coverage sentence with no new plumbing. Composed, not
+                # overwritten, so a threaded A9 manifest keeps its fragment.
+                if kg_coverage_note:
+                    coverage_caveat = "; ".join(
+                        p for p in (kg_coverage_note, coverage_caveat) if p
+                    )
                 timing["total_ms"] = round((time.time() - t0) * 1000, 1)
                 timing["attempts"] = attempt + 1
                 # Result-set size surfaced in the answer payload's metadata dict
@@ -1135,6 +1187,140 @@ class NLQueryPipeline:
             ontology=ontology,
             timing=timing,
         )
+
+    # ------------------------------------------------------- KG coverage caveat
+
+    async def _kg_coverage_caveat(
+        self,
+        sparql: str,
+        ontology: str,
+        data_graph: str,
+        ontology_graph: str,
+        layer_graph_uris: list[str] | None,
+        declared_names: list[str] | None,
+        active_types: set[str] | None,
+        timing: dict,
+    ) -> str:
+        """One sentence when the NAMED KG holds none of the types the query read.
+
+        ONTA-454. The generated dataset is a union of the KG graph, the tenant
+        base graph and the Global layers, so a question asked about ONE knowledge
+        graph can be answered entirely out of the others and read as though it
+        came from the named one. See ``nlp/kg_coverage.py`` for why a narrower
+        dataset is not available as a fix and why a refusal would be wrong.
+
+        Returns ``""`` — silently, on every degenerate input — when:
+
+        * no KG was named (``data_graph`` is the tenant graph itself, the
+          ``kg_name``-less workspace whose data legitimately IS the base graph);
+        * nothing is marked ``[no instances]`` for this KG, so there is no signal;
+        * the executed query names no type URI, so there is nothing to check; or
+        * every type it named does have instances here.
+
+        COST. The common path adds ZERO round-trips: it compares two values the
+        caller already holds (the ontology summary the planner saw, whose
+        ``[no instances]`` marks are already resolved per-KG, and the query that
+        ran). ONE bounded probe fires only when a caveat is otherwise about to be
+        emitted, to settle subclass closure — ``[no instances]`` is a DIRECT
+        ``rdf:type`` fact while the query walks ``rdf:type/rdfs:subClassOf*``, so
+        without it a KG holding only ``Facility`` rows would be wrongly told it
+        has no ``Organization`` data. That probe can only SUPPRESS a caveat, so a
+        failure degrades to the direct-type verdict the planner was already shown,
+        never to a fabricated one.
+
+        Best-effort throughout: any unexpected failure returns ``""`` rather than
+        breaking an answer that is otherwise ready to return.
+        """
+        try:
+            if not data_graph or data_graph == ontology_graph:
+                return ""
+            from cograph_client.graph.queries import parse_kg_graph_uri
+            from cograph_client.nlp.kg_coverage import (
+                MAX_UNCOVERED_TYPES,
+                coverage_caveat,
+                empty_types_for_kg,
+                kg_subtype_presence_query,
+                uncovered_types,
+            )
+
+            scope = parse_kg_graph_uri(data_graph)
+            if not scope:
+                return ""
+            kg_name = scope[1]
+
+            empty_in_kg = empty_types_for_kg(
+                ontology, declared_names=declared_names, active_types=active_types
+            )
+            if not empty_in_kg:
+                return ""
+            flagged, all_types = uncovered_types(sparql, empty_in_kg)
+            if not flagged:
+                return ""
+            # Cap BEFORE probing, so the sentence only ever names types the
+            # confirmation probe actually cleared. Sorted so the choice is
+            # deterministic rather than regex-match order.
+            flagged = dict(sorted(flagged.items())[:MAX_UNCOVERED_TYPES])
+
+            present = await self._types_present_in_kg(
+                data_graph, ontology_graph, layer_graph_uris, flagged
+            )
+            flagged = {n: u for n, u in flagged.items() if n not in present}
+            if not flagged:
+                return ""
+
+            timing["kg_coverage_uncovered_types"] = ", ".join(sorted(flagged))
+            logger.info(
+                "kg_coverage_caveat",
+                kg_name=kg_name,
+                uncovered=sorted(flagged),
+                all_referenced_types=all_types,
+            )
+            return coverage_caveat(kg_name, list(flagged), all_types=all_types)
+        except Exception:  # noqa: BLE001 - an advisory note must never fail an answer
+            logger.warning("kg_coverage_caveat_failed", exc_info=True)
+            return ""
+
+    async def _types_present_in_kg(
+        self,
+        data_graph: str,
+        ontology_graph: str,
+        layer_graph_uris: list[str] | None,
+        flagged: dict[str, list[str]],
+    ) -> set[str]:
+        """Names among ``flagged`` that DO have an instance in ``data_graph``.
+
+        Subclass-aware, which is the whole reason it exists (see
+        :meth:`_kg_coverage_caveat`). Returns an empty set on any failure, i.e.
+        suppresses nothing, leaving the direct-``rdf:type`` verdict the ontology
+        summary already carried. The failure is logged at WARNING because the
+        cost of silence here is a caveat that could be wrong, and its only other
+        trace would be a `timing` key in a response body.
+        """
+        from cograph_client.graph.layers import type_name_from_uri
+        from cograph_client.nlp.kg_coverage import kg_subtype_presence_query
+
+        probe_uris = [uri for uris in flagged.values() for uri in uris]
+        if not probe_uris:
+            return set()
+        ontology_graphs = list(layer_graph_uris) if layer_graph_uris else [ontology_graph]
+        present: set[str] = set()
+        try:
+            raw = await self.neptune.query(
+                kg_subtype_presence_query(data_graph, ontology_graphs, probe_uris)
+            )
+            _, rows = parse_sparql_results(raw)
+        except Exception:
+            logger.warning(
+                "kg_coverage_subtype_probe_failed",
+                instance_graph=data_graph,
+                exc_info=True,
+            )
+            return set()
+        for row in rows:
+            name = type_name_from_uri(row.get("type", ""))
+            if name:
+                present.add(name)
+        return present
 
     # ------------------------------------------------ generated-query confinement
 

@@ -569,6 +569,10 @@ BUILT_HERE_QUERY_BUILDERS = {
     "parent_map_query": "graph/ontology_queries: emits FROM <graph_uri>",
     "get_full_ontology_query": "graph/ontology_queries: emits FROM <graph_uri>",
     "_active_type_probe_query": "pipeline-local: emits FROM <instance_graph>",
+    # ONTA-454's subclass-closure confirmation probe. Emits
+    # `FROM <ontology graphs> FROM NAMED <kg_graph>`, all of them resolved by the
+    # ROUTE for this request; no caller-supplied IRI reaches it.
+    "kg_subtype_presence_query": "nlp/kg_coverage: emits FROM + FROM NAMED",
 }
 
 
