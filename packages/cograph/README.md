@@ -1,6 +1,6 @@
 # @infona-ai/cli
 
-Node.js SDK and CLI for [Onta](https://getonta.com) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
+Node.js SDK and CLI for [Infona](https://infona.ai) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
 ## Quickstart
 
@@ -25,7 +25,7 @@ That's it. The first run opens your browser to sign in, saves a key to `~/.onta/
   /quit
 ```
 
-Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [getonta.com/docs/quickstart](https://getonta.com/docs/quickstart).
+Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [infona.ai/docs/quickstart](https://infona.ai/docs/quickstart).
 
 ## Self-hosted mode
 
