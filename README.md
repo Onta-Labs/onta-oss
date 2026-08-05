@@ -112,8 +112,8 @@ The CLI runs against a self-hosted backend without a hosted-version account — 
 
 ```bash
 onta --local                                   # defaults to http://localhost:8000
-onta --no-login                                # uses ONTA_API_URL env var
-ONTA_API_URL=http://my-host:8000 onta
+onta --no-login                                # uses INFONA_API_URL env var
+INFONA_API_URL=http://my-host:8000 onta
 ```
 
 When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `OMNIX_API_KEYS` — empty means no auth, `tenant=default`.
@@ -168,9 +168,13 @@ Connect Infona to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 ```json
 {
   "mcpServers": {
-    "onta": {
+    "infona": {
       "command": "npx",
-      "args": ["-y", "-p", "@infona-ai/mcp", "onta-mcp"]
+      "args": ["-y", "-p", "@infona-ai/mcp", "onta-mcp"],
+      "env": {
+        "INFONA_API_KEY": "your-key",
+        "INFONA_TENANT": "your-workspace-id"
+      }
     }
   }
 }
