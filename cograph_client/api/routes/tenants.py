@@ -205,15 +205,26 @@ async def _claim_minted_id(api_key: str, label: str) -> str:
     the caller's identity profile would list a tenant whose registry owner is
     someone else, granting them read/write on that KG. So: claim first, and if
     this call did not win the claim, throw the id away and draw another.
+
+    One deliberate divergence from that sibling: this path is NOT self-healing.
+    ``_claim_or_check_ownership`` can promise "a same-caller retry heals it"
+    because the id is stable, so a retry re-finds its own row. A minted id is
+    random, so if the provider write fails after we won the claim, the retry
+    draws a DIFFERENT id and the first row is never reclaimed. That orphan is
+    inert — nothing enumerates registry workspaces, and authorization reads the
+    provider list rather than the registry — so it grants nothing and is
+    invisible; it is just a row, accruing at the rate of identity-provider write
+    failures.
     """
     subject = resolve_subject(api_key)
+    # No subject (static/anonymous key) → no registry participation at all, same
+    # as _claim_or_check_ownership. Nothing to collide with, so nothing to draw
+    # twice for.
+    if subject is None:
+        return mint_untitled_tenant_id()
     store = make_workspace_store()
     for _ in range(_MINT_ATTEMPTS):
         tenant_id = mint_untitled_tenant_id()
-        # No subject (static/anonymous key) → no registry participation at all,
-        # same as _claim_or_check_ownership. Nothing to collide with.
-        if subject is None:
-            return tenant_id
         try:
             claimed = await store.claim_workspace(tenant_id, subject, label)
         except HTTPException:

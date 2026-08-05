@@ -307,9 +307,7 @@ def test_minted_id_collision_is_re_minted_never_joined(client, monkeypatch):
     victim_id = "untitled-workspace-aaaaaa"
     import asyncio
 
-    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
-        store.claim_workspace(victim_id, "someone-else", "Their workspace")
-    )
+    asyncio.run(store.claim_workspace(victim_id, "someone-else", "Their workspace"))
 
     drawn = iter([victim_id, "untitled-workspace-bbbbbb"])
     monkeypatch.setattr(tenants_routes, "mint_untitled_tenant_id", lambda: next(drawn))
@@ -331,9 +329,7 @@ def test_minted_id_gives_up_rather_than_joining_a_stranger(client, monkeypatch):
     taken = "untitled-workspace-cccccc"
     import asyncio
 
-    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
-        store.claim_workspace(taken, "someone-else", "Theirs")
-    )
+    asyncio.run(store.claim_workspace(taken, "someone-else", "Theirs"))
     monkeypatch.setattr(tenants_routes, "mint_untitled_tenant_id", lambda: taken)
     monkeypatch.setattr(tenants_routes, "resolve_subject", lambda key: "me")
 
