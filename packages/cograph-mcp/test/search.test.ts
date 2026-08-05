@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { searchHandler } from "../src/index.js";
-import type { SemanticSearchResponse } from "@onta/cli";
+import type { SemanticSearchResponse } from "@infona-ai/cli";
 
 // ONTA-178 honesty: when the semantic index is off / embedding unavailable the
 // backend still answers 200 with degraded:true. An empty page under that mode
@@ -12,7 +12,7 @@ function stubClient(res: SemanticSearchResponse | (() => never)) {
     if (typeof res === "function") res();
     return res as SemanticSearchResponse;
   });
-  const client = { search } as unknown as import("@onta/cli").Client;
+  const client = { search } as unknown as import("@infona-ai/cli").Client;
   return { client, search };
 }
 

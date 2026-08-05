@@ -4,14 +4,14 @@ import { basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Client, OntaError, isTerminalJobStatus } from "@onta/cli";
+import { Client, OntaError, isTerminalJobStatus } from "@infona-ai/cli";
 import type {
   AgentResult,
   JobCategory,
   JobStatus,
   ResolvedChange,
   Schedule,
-} from "@onta/cli";
+} from "@infona-ai/cli";
 import { z } from "zod";
 import {
   ALLOWED_EXTENSIONS,
@@ -1594,7 +1594,7 @@ server.registerTool(
 // Exported so a caller can start the SAME server without re-implementing it
 // (e.g. a test that imports this package as a library): the `isEntrypoint` guard
 // below is (correctly) false there, so it calls main() explicitly. Direct
-// `npx -y @onta/mcp` still auto-starts via the guard.
+// `npx -y @infona-ai/mcp` still auto-starts via the guard.
 export async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -1604,9 +1604,9 @@ export async function main(): Promise<void> {
 // a test import the module (e.g. to unit-test `ingestCsvHandler`) without opening
 // a stdio transport / hanging the test process.
 //
-// The comparison MUST resolve symlinks on both sides. `npx -y @onta/mcp` and a
-// global `npm i -g @onta/mcp` install the package's `bin` as a SYMLINK (e.g.
-// /usr/local/bin/onta-mcp -> …/@onta/mcp/dist/index.js). When node runs the file
+// The comparison MUST resolve symlinks on both sides. `npx -y @infona-ai/mcp` and a
+// global `npm i -g @infona-ai/mcp` install the package's `bin` as a SYMLINK (e.g.
+// /usr/local/bin/onta-mcp -> …/@infona-ai/mcp/dist/index.js). When node runs the file
 // through that symlink, `process.argv[1]` is the symlink path while
 // `import.meta.url` is this module's realpath, so a raw href compare NEVER
 // matches — the guard stays false and the server silently never starts (spawns,

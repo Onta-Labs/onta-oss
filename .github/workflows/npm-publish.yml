@@ -24,6 +24,9 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+          # Scoped packages under the infona-ai org. NODE_AUTH_TOKEN (below)
+          # must be an automation token for a user with publish rights on that org.
+          scope: "@infona-ai"
 
       - name: Install dependencies
         run: npm ci
@@ -41,40 +44,40 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Publish @onta/cli (the SDK + CLI) first — @onta/mcp depends on it.
-      - name: Bump and publish @onta/cli
+      # Publish @infona-ai/cli (the SDK + CLI) first — @infona-ai/mcp depends on it.
+      - name: Bump and publish @infona-ai/cli
         working-directory: packages/cograph
         run: |
           # Skip if this commit was itself a version bump (avoids infinite loop)
-          if git log -1 --pretty=%s | grep -q "^chore(release): bump @onta/cli"; then
-            echo "Version bump commit detected — skipping @onta/cli publish."
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump @infona-ai/cli"; then
+            echo "Version bump commit detected — skipping @infona-ai/cli publish."
             exit 0
           fi
           npm version patch --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           cd ../..
           git add packages/cograph/package.json package-lock.json
-          git commit -m "chore(release): bump @onta/cli to v${NEW_VERSION} [skip ci]"
+          git commit -m "chore(release): bump @infona-ai/cli to v${NEW_VERSION} [skip ci]"
           git push
           cd packages/cograph
           npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Publish @onta/mcp second — it depends on @onta/cli via a `^0.1.0` range,
-      # so it picks up whatever @onta/cli version was just published above.
-      - name: Bump and publish @onta/mcp
+      # Publish @infona-ai/mcp second — it depends on @infona-ai/cli via a `^0.1.0` range,
+      # so it picks up whatever @infona-ai/cli version was just published above.
+      - name: Bump and publish @infona-ai/mcp
         working-directory: packages/cograph-mcp
         run: |
-          if git log -1 --pretty=%s | grep -q "^chore(release): bump @onta/mcp"; then
-            echo "Version bump commit detected — skipping @onta/mcp publish."
+          if git log -1 --pretty=%s | grep -q "^chore(release): bump @infona-ai/mcp"; then
+            echo "Version bump commit detected — skipping @infona-ai/mcp publish."
             exit 0
           fi
           npm version patch --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           cd ../..
           git add packages/cograph-mcp/package.json package-lock.json
-          git commit -m "chore(release): bump @onta/mcp to v${NEW_VERSION} [skip ci]"
+          git commit -m "chore(release): bump @infona-ai/mcp to v${NEW_VERSION} [skip ci]"
           git push
           cd packages/cograph-mcp
           npm publish --access public --provenance

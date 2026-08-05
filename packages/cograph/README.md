@@ -1,11 +1,11 @@
-# @onta/cli
+# @infona-ai/cli
 
 Node.js SDK and CLI for [Onta](https://getonta.com) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
 ## Quickstart
 
 ```bash
-npx @onta/cli
+npx @infona-ai/cli
 ```
 
 That's it. The first run opens your browser to sign in, saves a key to `~/.onta/config.json`, and drops you into the interactive shell:
@@ -56,7 +56,7 @@ Use `/enrich watch <job_id>` for live progress, `/enrich jobs` to list recent jo
 ## Install
 
 ```bash
-npm install @onta/cli        # or: npm install -g @onta/cli
+npm install @infona-ai/cli        # or: npm install -g @infona-ai/cli
 ```
 
 Requires Node 20+. The global install exposes the `onta` command.
@@ -91,7 +91,7 @@ onta (mentors) [37,715] ▸ /type Mentor
 ## SDK
 
 ```ts
-import { Client, OntaError } from "@onta/cli";
+import { Client, OntaError } from "@infona-ai/cli";
 
 const client = new Client({ apiKey: process.env.ONTA_API_KEY });
 
@@ -162,21 +162,21 @@ For scripts and CI — every command is a single HTTP round-trip:
 
 ```bash
 # List / create / delete context graphs
-npx @onta/cli kg list
-npx @onta/cli kg create my-data --description "demo"
-npx @onta/cli kg delete my-data
+npx @infona-ai/cli kg list
+npx @infona-ai/cli kg create my-data --description "demo"
+npx @infona-ai/cli kg delete my-data
 
 # Ingest data
-npx @onta/cli ingest data.csv --kg my-data
-npx @onta/cli ingest --text "Alice works at Acme" --kg my-data
+npx @infona-ai/cli ingest data.csv --kg my-data
+npx @infona-ai/cli ingest --text "Alice works at Acme" --kg my-data
 
 # Ask questions
-npx @onta/cli ask "How many companies?" --kg my-data
-npx @onta/cli ask "Top 5 deals" --kg my-data --debug
+npx @infona-ai/cli ask "How many companies?" --kg my-data
+npx @infona-ai/cli ask "Top 5 deals" --kg my-data --debug
 
 # Ontology + clear
-npx @onta/cli ontology types
-npx @onta/cli clear --kg my-data --yes
+npx @infona-ai/cli ontology types
+npx @infona-ai/cli clear --kg my-data --yes
 ```
 
 ### Environment

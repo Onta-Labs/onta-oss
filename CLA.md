@@ -4,8 +4,8 @@
 
 Thank you for your interest in contributing to the Onta project ("the
 Project") — this repository (https://github.com/Onta-Labs/onta-oss),
-including the `cograph_client` Python package and the `@onta/cli` and
-`@onta/mcp` npm packages.
+including the `cograph_client` Python package and the `@infona-ai/cli` and
+`@infona-ai/mcp` npm packages.
 
 This Contributor License Agreement ("Agreement") is between You and
 **Moeen Miri (GitHub: [@git-moeen](https://github.com/git-moeen))**, the
