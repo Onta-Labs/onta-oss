@@ -20,6 +20,13 @@ from cograph_client.graph.sparql_scope import (
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
+from cograph_client.nlp.token_usage import (
+    STAGE_REPHRASE,
+    TokenUsageLedger,
+    attach_usage,
+    pop_attached_usage,
+    stage_for_attempt,
+)
 from cograph_client.pipeline.manifest import RunCoverage, RunManifest
 from cograph_client.offline import assert_online_url
 from cograph_client.resolver.llm_router import model_chain
@@ -587,6 +594,9 @@ class NLQueryPipeline:
         """
         timing: dict[str, float] = {}
         timing["model"] = f"{self._query_provider}:{self._query_model}"
+        # Per-LLM-call token ledger for whitepaper v3 tokens-to-complete-task.
+        # Additive only — empty when providers omit usage (payload stays clean).
+        token_ledger = TokenUsageLedger()
         # Ontology is always fetched from the base tenant graph for embeddings;
         # when layer_graph_uris is set (production ask route, ONTA-397) the full
         # fetch also unions visible global layers with shadowing so Public types
@@ -844,6 +854,25 @@ class NLQueryPipeline:
                 last_was_length_truncated = False
                 last_was_enum_filter_mismatch = False
                 timing[f"sparql_gen_ms{f'_retry{attempt}' if attempt > 0 else ''}"] = round((time.time() - t1) * 1000, 1)
+
+                
+                # Token instrumentation (whitepaper v3): peel generator-attached
+                # usage off the payload so downstream never sees the private key.
+                usage_blob = pop_attached_usage(llm_response)
+                if usage_blob is not None:
+                    token_ledger.record(
+                        stage=stage_for_attempt(attempt),
+                        attempt=attempt,
+                        model=str(usage_blob.get("model") or self._query_model or ""),
+                        provider=str(
+                            usage_blob.get("provider")
+                            or self._query_provider
+                            or ""
+                        ),
+                        prompt_tokens=usage_blob.get("prompt_tokens"),
+                        completion_tokens=usage_blob.get("completion_tokens"),
+                        total_tokens=usage_blob.get("total_tokens"),
+                    )
 
                 sparql = normalize_sparql(llm_response.get("sparql", ""))
                 # Fix bare attribute URIs using ontology context
@@ -1152,6 +1181,7 @@ class NLQueryPipeline:
                     timing=timing,
                     citations=citations,
                     coverage_caveat=coverage_caveat,
+                    token_usage=token_ledger.to_list(),
                 )
             except CrossTenantQueryError:
                 # ONTA-424: a generated query that reached at another workspace is
@@ -1187,6 +1217,7 @@ class NLQueryPipeline:
             explanation=explanation,
             ontology=ontology,
             timing=timing,
+            token_usage=token_ledger.to_list(),
         )
 
     # ------------------------------------------------------- KG coverage caveat
@@ -3083,7 +3114,14 @@ class NLQueryPipeline:
             # an uncaught JSONDecodeError past the retry loop. Now a truncated-but-
             # usable query is salvaged, and an unrecoverable blob degrades to an
             # empty `sparql` that triggers the ask() escalation path.
-            return _parse_sparql_gen_json(_require_message_content(data, "cerebras"))
+            result = _parse_sparql_gen_json(_require_message_content(data, "cerebras"))
+            return attach_usage(
+                result,
+                usage=data.get("usage") if isinstance(data, dict) else None,
+                model=self._query_model,
+                provider="cerebras",
+                response_model=(data.get("model") if isinstance(data, dict) else None) or "",
+            )
 
     async def _generate_via_openrouter(self, prompt: str) -> dict:
         """Generate SPARQL via OpenRouter (OpenAI-compatible API)."""
@@ -3134,7 +3172,14 @@ class NLQueryPipeline:
             if stripped.startswith("```"):
                 lines = [l for l in stripped.split("\n") if not l.strip().startswith("```")]
                 stripped = "\n".join(lines)
-            return json.loads(stripped)
+            result = json.loads(stripped)
+            return attach_usage(
+                result,
+                usage=data.get("usage") if isinstance(data, dict) else None,
+                model=self._query_model,
+                provider="openrouter",
+                response_model=(data.get("model") if isinstance(data, dict) else None) or "",
+            )
 
     async def _generate_via_anthropic(self, prompt: str) -> dict:
         """Fallback: generate SPARQL via Anthropic API."""
@@ -3165,7 +3210,20 @@ class NLQueryPipeline:
                 },
             },
         )
-        return json.loads(message.content[0].text)
+        result = json.loads(message.content[0].text)
+        msg_usage = getattr(message, "usage", None)
+        usage_dict = None
+        if msg_usage is not None:
+            usage_dict = {
+                "input_tokens": getattr(msg_usage, "input_tokens", None),
+                "output_tokens": getattr(msg_usage, "output_tokens", None),
+            }
+        return attach_usage(
+            result,
+            usage=usage_dict,
+            model="claude-sonnet-4-6",
+            provider="anthropic",
+        )
 
     @staticmethod
     def _humanize_uri(uri: str) -> str:
