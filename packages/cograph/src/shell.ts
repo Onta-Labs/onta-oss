@@ -1156,9 +1156,10 @@ export async function runShell(opts: {
   noLogin?: boolean;
 }): Promise<void> {
   // These hosts all resolve to the SAME hosted backend (verified: identical
-  // openapi.json). api.onta.sh is canonical after the Cograph → Onta rename;
+  // openapi.json). api.infona.ai is canonical after the Infona rebrand;
   // the older hosts still work, so any of them counts as "cloud" (not self-hosted).
   const CLOUD_HOSTS = new Set([
+    "https://api.infona.ai",
     "https://api.onta.sh",
     "https://api.getonta.com",
     "https://api.cograph.cloud",

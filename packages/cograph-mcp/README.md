@@ -20,7 +20,7 @@ npx -y -p @infona-ai/mcp onta-mcp
       "args": ["-y", "-p", "@infona-ai/mcp", "onta-mcp"],
       "env": {
         "ONTA_API_KEY": "your-key",
-        "ONTA_API_URL": "https://api.onta.sh",
+        "ONTA_API_URL": "https://api.infona.ai",
         "ONTA_TENANT": "your-workspace-id"
       }
     }
@@ -60,7 +60,7 @@ The server registers **18** tools, plus **1 more** (`list_local_files`) when you
 ## Environment
 
 - `ONTA_API_KEY` — required
-- `ONTA_API_URL` — default `https://api.onta.sh`
+- `ONTA_API_URL` — default `https://api.infona.ai`
 - `ONTA_TENANT` — default `demo-tenant`
 - `ONTA_LOCAL_FILES_DIR`: **optional, unset by default.** An absolute path to one directory (or several, joined by your platform's path separator, max 4) that the agent may LIST. Setting it registers the `list_local_files` tool; leaving it unset means that tool does not exist.
 
