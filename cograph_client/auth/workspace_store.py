@@ -191,6 +191,14 @@ class WorkspaceStore(Protocol):
         projection — the single write path for ``role='owner'`` rows."""
         ...
 
+    async def set_workspace_label(self, tenant_id: str, label: str) -> bool:
+        """Update the registry's display label. Returns False if unregistered.
+
+        The label here is the one invite emails render; each user's own copy
+        lives on their identity profile. Only an owner rename updates this.
+        """
+        ...
+
     # -- members --
     async def get_member(
         self, tenant_id: str, subject: str
@@ -306,6 +314,14 @@ class InMemoryWorkspaceStore:
                 ),
             )
             return replace(ws)
+
+    async def set_workspace_label(self, tenant_id: str, label: str) -> bool:
+        with self._lock:
+            ws = self._workspaces.get(tenant_id)
+            if ws is None:
+                return False
+            ws.label = label
+            return True
 
     # -- members --
 
@@ -604,6 +620,17 @@ class PostgresWorkspaceStore:
                     owner_subject,
                 )
         return self._ws(row)
+
+    async def set_workspace_label(self, tenant_id: str, label: str) -> bool:
+        pool = await self._conn_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"UPDATE {self._WORKSPACES} SET label = $2 WHERE tenant_id = $1 "
+                "RETURNING tenant_id",
+                tenant_id,
+                label,
+            )
+        return row is not None
 
     # -- members --
 

@@ -110,6 +110,7 @@ _ALLOWLIST: dict[str, str] = {
     # --- Identity / membership admin: a DIFFERENT gate, not tenant write ------
     "tenants.py::add_tenant": "identity-scoped: creates a workspace on the CALLER's own profile; there is no membership on it to have write on yet.",
     "tenants.py::remove_tenant": "identity-scoped: removes a workspace from the CALLER's own profile; ownership-gated by the tenant provider.",
+    "tenants.py::rename_tenant": "identity-scoped: relabels a workspace on the CALLER's own profile (404 if it isn't theirs); writes no tenant data, and the shared registry label is updated only for an owner.",
     "workspace_invites.py::create_invite": "membership admin: owner-only via _require_owner (can_admin_members), strictly stronger than write.",
     "workspace_invites.py::revoke_invite": "membership admin: owner-only via _require_owner.",
     "workspace_invites.py::remove_member": "membership admin: owner-only via _require_owner.",

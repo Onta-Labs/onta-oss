@@ -2661,6 +2661,11 @@ export class RawApi {
     return this.client.requestRaw("POST", this.client.pTenants(), { body, ...init });
   }
 
+  /** `PATCH /v1/me/tenants/{id}` — rename a tenant (label only; id is fixed). */
+  renameTenant(tenantId: string, body: unknown, init?: RawInit): Promise<Response> {
+    return this.client.requestRaw("PATCH", this.client.pTenant(tenantId), { body, ...init });
+  }
+
   /** `DELETE /v1/me/tenants/{id}` — remove a tenant grant. */
   deleteTenant(tenantId: string, init?: RawInit): Promise<Response> {
     return this.client.requestRaw("DELETE", this.client.pTenant(tenantId), init);
