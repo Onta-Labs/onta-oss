@@ -33,8 +33,8 @@ Pointing the CLI at your own backend skips the browser sign-in:
 
 ```bash
 onta --local                          # defaults to http://localhost:8000
-onta --no-login                       # uses ONTA_API_URL env var
-ONTA_API_URL=http://my-host:8000 onta
+onta --no-login                       # uses INFONA_API_URL env var
+INFONA_API_URL=http://my-host:8000 onta
 ```
 
 When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. Bare `onta` still triggers the hosted-version login flow.
@@ -93,7 +93,7 @@ onta (mentors) [37,715] ▸ /type Mentor
 ```ts
 import { Client, OntaError } from "@infona-ai/cli";
 
-const client = new Client({ apiKey: process.env.ONTA_API_KEY });
+const client = new Client({ apiKey: process.env.INFONA_API_KEY });
 
 await client.ingest("sales.csv", { kg: "sales" });
 const result = await client.ask("What's the average deal size by region?", { kg: "sales" });
@@ -104,9 +104,9 @@ console.log(result.answer);
 
 ```ts
 new Client({
-  apiKey?: string,    // env: ONTA_API_KEY
-  baseUrl?: string,   // env: ONTA_API_URL (default: https://api.infona.ai)
-  tenant?: string,    // env: ONTA_TENANT (default: demo-tenant)
+  apiKey?: string,    // env: INFONA_API_KEY
+  baseUrl?: string,   // env: INFONA_API_URL (default: https://api.infona.ai)
+  tenant?: string,    // env: INFONA_TENANT (default: demo-tenant)
 })
 ```
 
@@ -181,9 +181,11 @@ npx @infona-ai/cli clear --kg my-data --yes
 
 ### Environment
 
-- `ONTA_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.onta/config.json` automatically.
-- `ONTA_API_URL` — default `https://api.infona.ai` (legacy hosts `api.onta.sh` / `api.getonta.com` still work).
-- `ONTA_TENANT` — default `demo-tenant`. The login flow sets this to your user ID.
+- `INFONA_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.onta/config.json` automatically.
+- `INFONA_API_URL` — default `https://api.infona.ai` (legacy hosts `api.onta.sh` / `api.getonta.com` still work).
+- `INFONA_TENANT` — default `demo-tenant`. The login flow sets this to your workspace id.
+
+  Older env-var prefixes (`ONTA_*`, `COGRAPH_*`, `OMNIX_*`) are still accepted for back-compat.
 
 > PDF ingestion is not yet supported in the Node CLI. Use the Python CLI or POST raw bytes to the API.
 

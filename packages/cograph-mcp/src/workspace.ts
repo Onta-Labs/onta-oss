@@ -24,11 +24,11 @@
 // NAMING
 // The module-internal vocabulary says "workspace" (the user's local working
 // directory), but the ENV VAR deliberately does not. "Workspace" is the
-// user-facing word for a TENANT in Onta's copy, so `ONTA_WORKSPACE_DIR` would
-// read as "the tenant's directory on disk", which is not what this is. The var
-// is `ONTA_LOCAL_FILES_DIR`: it names the tool it enables (`list_local_files`),
-// it says "local" (as opposed to anything server-side), and it cannot be
-// misread as a tenant.
+// user-facing word for a TENANT in Infona's copy, so `INFONA_WORKSPACE_DIR`
+// would read as "the tenant's directory on disk", which is not what this is.
+// The var is `INFONA_LOCAL_FILES_DIR`: it names the tool it enables
+// (`list_local_files`), it says "local" (as opposed to anything server-side),
+// and it cannot be misread as a tenant.
 
 import { lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import {
@@ -43,11 +43,13 @@ import {
 } from "node:path";
 
 // Env vars consulted for the root, in precedence order. This MIRRORS the SDK's
-// private `envVar()` helper (packages/cograph/src/client.ts): ONTA_ (current
-// brand) then COGRAPH_ then OMNIX_ (legacy). That helper is module-private and
-// is NOT exported from `@infona-ai/cli`, so it cannot literally be reused here; the
-// precedence is duplicated deliberately and must stay in lockstep with it.
+// private `envVar()` helper (packages/cograph/src/client.ts): INFONA_ (current
+// brand) then ONTA_ then COGRAPH_ then OMNIX_ (legacy). That helper is
+// module-private and is NOT exported from `@infona-ai/cli`, so it cannot
+// literally be reused here; the precedence is duplicated deliberately and
+// must stay in lockstep with it.
 export const LOCAL_FILES_ENV_VARS = [
+  "INFONA_LOCAL_FILES_DIR",
   "ONTA_LOCAL_FILES_DIR",
   "COGRAPH_LOCAL_FILES_DIR",
   "OMNIX_LOCAL_FILES_DIR",
