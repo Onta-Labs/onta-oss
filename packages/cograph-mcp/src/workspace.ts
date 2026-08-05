@@ -45,7 +45,7 @@ import {
 // Env vars consulted for the root, in precedence order. This MIRRORS the SDK's
 // private `envVar()` helper (packages/cograph/src/client.ts): ONTA_ (current
 // brand) then COGRAPH_ then OMNIX_ (legacy). That helper is module-private and
-// is NOT exported from `@onta/cli`, so it cannot literally be reused here; the
+// is NOT exported from `@infona-ai/cli`, so it cannot literally be reused here; the
 // precedence is duplicated deliberately and must stay in lockstep with it.
 export const LOCAL_FILES_ENV_VARS = [
   "ONTA_LOCAL_FILES_DIR",

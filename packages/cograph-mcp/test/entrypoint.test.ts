@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-// Regression for the entrypoint-detection bug: `npx -y @onta/mcp` and a global
-// `npm i -g @onta/mcp` invoke the package's `bin` through a SYMLINK. The old
+// Regression for the entrypoint-detection bug: `npx -y @infona-ai/mcp` and a global
+// `npm i -g @infona-ai/mcp` invoke the package's `bin` through a SYMLINK. The old
 // guard compared `import.meta.url` to `pathToFileURL(process.argv[1]).href`
 // WITHOUT resolving symlinks, so through the bin symlink the two never matched,
 // `main()` never ran, and the server silently exited 0 with no output — a
