@@ -1164,11 +1164,12 @@ export async function runShell(opts: {
     "https://api.getonta.com",
     "https://api.cograph.cloud",
   ]);
-  // Detection precedence: --local > --no-login > ONTA_API_URL → COGRAPH_API_URL →
-  // OMNIX_API_URL pointing anywhere besides a known cloud host. When self-hosted
-  // we never trigger login and tenant defaults to "default" (open-access backend
-  // behavior).
+  // Detection precedence: --local > --no-login > INFONA_API_URL → ONTA_API_URL →
+  // COGRAPH_API_URL → OMNIX_API_URL pointing anywhere besides a known cloud host.
+  // When self-hosted we never trigger login and tenant defaults to "default"
+  // (open-access backend behavior).
   const envUrl =
+    process.env.INFONA_API_URL ||
     process.env.ONTA_API_URL ||
     process.env.COGRAPH_API_URL ||
     process.env.OMNIX_API_URL;

@@ -5,12 +5,16 @@ import { spawn } from "node:child_process";
 import { stdout } from "node:process";
 import { writeConfig, configPathForDisplay, isClerkUserId } from "./config.js";
 
-// Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at infona.ai.
+// Precedence: INFONA_ → ONTA_ → COGRAPH_ (legacy) → the live app at infona.ai.
 const WEB_URL =
-  process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://infona.ai";
+  process.env.INFONA_WEB_URL ||
+  process.env.ONTA_WEB_URL ||
+  process.env.COGRAPH_WEB_URL ||
+  "https://infona.ai";
 
 // Same default as Client — used when resolving the first workspace after login.
 const DEFAULT_API_URL =
+  process.env.INFONA_API_URL ||
   process.env.ONTA_API_URL ||
   process.env.COGRAPH_API_URL ||
   process.env.OMNIX_API_URL ||
@@ -55,7 +59,7 @@ async function resolveWorkspaceId(apiKey: string): Promise<string | undefined> {
       if (id && !isClerkUserId(id)) return id;
     }
   } catch {
-    // Soft-fail: login still saves the key; user can set ONTA_TENANT later.
+    // Soft-fail: login still saves the key; user can set INFONA_TENANT later.
   }
   return undefined;
 }
@@ -129,12 +133,12 @@ export async function runLogin(): Promise<void> {
     stdout.write(
       `  ✓ Logged in${result.email ? ` as ${result.email}` : ""}. Key saved to ${configPathForDisplay()}\n` +
         `    Default workspace: ${workspaceId}\n` +
-        `    (override with ONTA_TENANT or \`onta use\`)\n\n`,
+        `    (override with INFONA_TENANT or \`onta use\`)\n\n`,
     );
   } else {
     stdout.write(
       `  ✓ Logged in${result.email ? ` as ${result.email}` : ""}. Key saved to ${configPathForDisplay()}\n` +
-        `    No workspace found yet — create one in the dashboard, then set ONTA_TENANT\n` +
+        `    No workspace found yet — create one in the dashboard, then set INFONA_TENANT\n` +
         `    to its id (not your user id).\n\n`,
     );
   }

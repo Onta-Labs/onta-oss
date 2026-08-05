@@ -57,7 +57,7 @@ describe("resolveRoots: dormant unless explicitly configured", () => {
     expect(res.roots).toEqual([]);
     expect(res.varName).toBeUndefined();
     // The stderr line must name the primary var so a typo is diagnosable.
-    expect(describeRootResolution(res)).toContain("ONTA_LOCAL_FILES_DIR");
+    expect(describeRootResolution(res)).toContain("INFONA_LOCAL_FILES_DIR");
     expect(describeRootResolution(res)).toContain("disabled");
   });
 
@@ -69,19 +69,30 @@ describe("resolveRoots: dormant unless explicitly configured", () => {
     expect(res.roots).not.toContain(process.cwd());
   });
 
-  it("honors the ONTA_ then COGRAPH_ then OMNIX_ precedence", () => {
+  it("honors the INFONA_ then ONTA_ then COGRAPH_ then OMNIX_ precedence", () => {
     expect(LOCAL_FILES_ENV_VARS).toEqual([
+      "INFONA_LOCAL_FILES_DIR",
       "ONTA_LOCAL_FILES_DIR",
       "COGRAPH_LOCAL_FILES_DIR",
       "OMNIX_LOCAL_FILES_DIR",
     ]);
     const both = resolveRoots({
-      ONTA_LOCAL_FILES_DIR: root,
+      INFONA_LOCAL_FILES_DIR: root,
+      ONTA_LOCAL_FILES_DIR: outside,
       COGRAPH_LOCAL_FILES_DIR: outside,
       OMNIX_LOCAL_FILES_DIR: outside,
     });
     expect(both.roots).toEqual([root]);
-    expect(both.varName).toBe("ONTA_LOCAL_FILES_DIR");
+    expect(both.varName).toBe("INFONA_LOCAL_FILES_DIR");
+
+    // ONTA_ still wins over COGRAPH_/OMNIX_ when INFONA_ is unset.
+    const onta = resolveRoots({
+      ONTA_LOCAL_FILES_DIR: root,
+      COGRAPH_LOCAL_FILES_DIR: outside,
+      OMNIX_LOCAL_FILES_DIR: outside,
+    });
+    expect(onta.roots).toEqual([root]);
+    expect(onta.varName).toBe("ONTA_LOCAL_FILES_DIR");
 
     const legacy = resolveRoots({ OMNIX_LOCAL_FILES_DIR: root });
     expect(legacy.roots).toEqual([root]);
@@ -89,7 +100,7 @@ describe("resolveRoots: dormant unless explicitly configured", () => {
   });
 
   it("rejects a relative path (it would resolve against the client-controlled cwd)", () => {
-    const res = resolveRoots({ ONTA_LOCAL_FILES_DIR: "./data" });
+    const res = resolveRoots({ INFONA_LOCAL_FILES_DIR: "./data" });
     expect(res.roots).toEqual([]);
     expect(res.rejected).toEqual(["./data"]);
   });
@@ -97,7 +108,7 @@ describe("resolveRoots: dormant unless explicitly configured", () => {
   it("rejects a nonexistent directory and a file, keeping the valid entries", () => {
     const file = touch(join(root, "a.csv"));
     const res = resolveRoots({
-      ONTA_LOCAL_FILES_DIR: [root, join(root, "nope"), file].join(delimiter),
+      INFONA_LOCAL_FILES_DIR: [root, join(root, "nope"), file].join(delimiter),
     });
     expect(res.roots).toEqual([root]);
     expect(res.rejected).toHaveLength(2);
@@ -110,7 +121,7 @@ describe("resolveRoots: dormant unless explicitly configured", () => {
       mkdirSync(d);
       dirs.push(d);
     }
-    const res = resolveRoots({ ONTA_LOCAL_FILES_DIR: dirs.join(delimiter) });
+    const res = resolveRoots({ INFONA_LOCAL_FILES_DIR: dirs.join(delimiter) });
     expect(res.roots).toHaveLength(MAX_ROOTS);
     expect(res.dropped).toBe(2);
   });
@@ -346,7 +357,7 @@ describe("listWorkspaceFiles: filesystem root is refused", () => {
     // "/" exists and is a directory, so it used to resolve as a valid root while
     // isContained("/", p) was always false ("/" + sep is "//"). The server
     // printed "enabled" and every listing came back empty, which reads as a bug.
-    const res = resolveRoots({ ONTA_LOCAL_FILES_DIR: "/" });
+    const res = resolveRoots({ INFONA_LOCAL_FILES_DIR: "/" });
     expect(res.roots).toEqual([]);
     expect(res.fsRoots).toEqual(["/"]);
     const msg = describeRootResolution(res);
@@ -360,7 +371,7 @@ describe("listWorkspaceFiles: filesystem root is refused", () => {
   });
 
   it("keeps the valid roots when one entry is the filesystem root", () => {
-    const res = resolveRoots({ ONTA_LOCAL_FILES_DIR: ["/", root].join(delimiter) });
+    const res = resolveRoots({ INFONA_LOCAL_FILES_DIR: ["/", root].join(delimiter) });
     expect(res.roots).toEqual([root]);
     expect(res.fsRoots).toEqual(["/"]);
   });
