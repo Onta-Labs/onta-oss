@@ -1107,6 +1107,18 @@ class NLQueryPipeline:
                     answer += f"\n\nCoverage note: {kg_coverage_note}"
                 t_reph = time.time()
                 narrative_answer = await self._rephrase_via_openrouter(question, bindings)
+                rephrase_usage = getattr(self, "_last_rephrase_usage", None)
+                self._last_rephrase_usage = None
+                if rephrase_usage:
+                    token_ledger.record(
+                        stage=STAGE_REPHRASE,
+                        attempt=attempt,
+                        model=str(rephrase_usage.get("model") or ""),
+                        provider=str(rephrase_usage.get("provider") or "openrouter"),
+                        prompt_tokens=rephrase_usage.get("prompt_tokens"),
+                        completion_tokens=rephrase_usage.get("completion_tokens"),
+                        total_tokens=rephrase_usage.get("total_tokens"),
+                    )
                 if honest_empty_note and narrative_answer:
                     narrative_answer += honest_empty_note
                 if kg_coverage_note and narrative_answer:
@@ -1171,6 +1183,7 @@ class NLQueryPipeline:
                 # /ask analytics event (ONTA-355) — can report result_count without
                 # re-executing or plumbing bindings through a new field.
                 timing["rows"] = len(bindings)
+                timing.update(token_ledger.totals_for_timing())
                 return NLResult(
                     answer=answer,
                     sparql=sparql,
@@ -1211,6 +1224,7 @@ class NLQueryPipeline:
 
         timing["total_ms"] = round((time.time() - t0) * 1000, 1)
         timing["attempts"] = max_attempts
+        timing.update(token_ledger.totals_for_timing())
         return NLResult(
             answer=f"Could not answer after {max_attempts} attempts. Last error: {last_error}",
             sparql=sparql,
@@ -2990,11 +3004,23 @@ class NLQueryPipeline:
                 res.raise_for_status()
                 data = res.json()
                 narrative = _require_message_content(data, "openrouter").strip()
+                # Stash usage for the enclosing ask() ledger (one pipeline per
+                # request; drained immediately after this call returns).
+                usage = data.get("usage") if isinstance(data, dict) else None
+                self._last_rephrase_usage = {
+                    "prompt_tokens": (usage or {}).get("prompt_tokens"),
+                    "completion_tokens": (usage or {}).get("completion_tokens"),
+                    "total_tokens": (usage or {}).get("total_tokens"),
+                    "model": (data.get("model") if isinstance(data, dict) else None)
+                    or "meta-llama/llama-3.1-8b-instruct",
+                    "provider": "openrouter",
+                }
             rephrase_ms = round((time.time() - t_rephrase) * 1000, 1)
             logger.info("narrative_rephrase_ok", rephrase_ms=rephrase_ms, rows=len(bindings))
             return narrative
         except Exception:
             logger.warning("narrative_rephrase_failed", exc_info=True)
+            self._last_rephrase_usage = None
             return ""
 
     async def _generate_sparql(
