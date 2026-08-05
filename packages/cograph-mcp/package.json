@@ -37,11 +37,11 @@
   "homepage": "https://getonta.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Onta-Labs/onta-oss.git",
+    "url": "git+https://github.com/infona-ai/infona-oss.git",
     "directory": "packages/cograph-mcp"
   },
   "bugs": {
-    "url": "https://github.com/Onta-Labs/onta-oss/issues"
+    "url": "https://github.com/infona-ai/infona-oss/issues"
   },
   "dependencies": {
     "@infona-ai/cli": "^0.1.0",
