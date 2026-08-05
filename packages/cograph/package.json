@@ -48,11 +48,11 @@
   "homepage": "https://getonta.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Onta-Labs/onta-oss.git",
+    "url": "git+https://github.com/infona-ai/onta-oss.git",
     "directory": "packages/cograph"
   },
   "bugs": {
-    "url": "https://github.com/Onta-Labs/onta-oss/issues"
+    "url": "https://github.com/infona-ai/onta-oss/issues"
   },
   "dependencies": {
     "commander": "^12.1.0"
