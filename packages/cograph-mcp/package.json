@@ -1,7 +1,7 @@
 {
-  "name": "@onta/mcp",
-  "version": "0.1.52",
-  "description": "Onta MCP server — expose context graph tools to AI agents",
+  "name": "@infona-ai/mcp",
+  "version": "0.1.0",
+  "description": "Infona MCP server — expose context graph tools to AI agents",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -25,14 +25,14 @@
   "keywords": [
     "knowledge-graph",
     "context-graph",
-    "onta",
+    "infona",
     "mcp",
     "model-context-protocol",
     "ai",
     "llm",
     "agent"
   ],
-  "author": "Onta",
+  "author": "Infona",
   "license": "Apache-2.0",
   "homepage": "https://getonta.com",
   "repository": {
@@ -44,7 +44,7 @@
     "url": "https://github.com/Onta-Labs/onta-oss/issues"
   },
   "dependencies": {
-    "@onta/cli": "^0.1.0",
+    "@infona-ai/cli": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "zod": "^3.23.8"
   },

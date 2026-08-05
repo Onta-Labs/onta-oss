@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { grepHandler } from "../src/index.js";
-import type { GrepResponse } from "@onta/cli";
+import type { GrepResponse } from "@infona-ai/cli";
 
 // ONTA-416: the `grep` MCP tool is a thin renderer over the canonical
 // `POST /graphs/{tenant}/grep` route. Two things must hold and are easy to
@@ -16,7 +16,7 @@ function stubClient(res: GrepResponse | (() => never)) {
     if (typeof res === "function") res();
     return res as GrepResponse;
   });
-  const client = { grep } as unknown as import("@onta/cli").Client;
+  const client = { grep } as unknown as import("@infona-ai/cli").Client;
   return { client, grep };
 }
 

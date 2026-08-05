@@ -47,7 +47,7 @@ source .env && uvicorn cograph_client.api.app:create_app --factory --port 8000
 
 ```bash
 # Install the CLI (Node 20+)
-npm install -g @onta/cli
+npm install -g @infona-ai/cli
 
 # Ingest the sample dataset (--local targets http://localhost:8000)
 onta --local ingest examples/bookstore.csv --kg bookstore
@@ -85,7 +85,7 @@ Natural Language Query -> SPARQL -> Answer
 
 ## CLI
 
-The Node CLI (`npm install -g @onta/cli`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `onta` to drop into the shell:
+The Node CLI (`npm install -g @infona-ai/cli`, requires Node 20+) covers both an interactive shell and one-shot subcommands. Run bare `onta` to drop into the shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -168,7 +168,7 @@ Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
   "mcpServers": {
     "onta": {
       "command": "npx",
-      "args": ["-y", "-p", "@onta/mcp", "onta-mcp"]
+      "args": ["-y", "-p", "@infona-ai/mcp", "onta-mcp"]
     }
   }
 }
@@ -178,7 +178,7 @@ Tools: `ask`, `search`, `agent`, `ingest_csv`, `list_knowledge_graphs`,
 `create_knowledge_graph`, `delete_knowledge_graph`, `view_ontology`,
 `inspect_graph_schema`, `evolve_ontology`, `apply_ontology_change(s)`,
 `schedule`, `list_jobs`, `get_job`, `wait_for_job`.
-See the [@onta/mcp README](packages/cograph-mcp/README.md) for configuration.
+See the [@infona-ai/mcp README](packages/cograph-mcp/README.md) for configuration.
 
 ## API
 

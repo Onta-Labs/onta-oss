@@ -1,7 +1,7 @@
 {
-  "name": "@onta/cli",
-  "version": "0.1.73",
-  "description": "Onta SDK and CLI — context graph platform for structured data",
+  "name": "@infona-ai/cli",
+  "version": "0.1.0",
+  "description": "Infona SDK and CLI — context graph platform for structured data",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -34,7 +34,7 @@
   "keywords": [
     "knowledge-graph",
     "context-graph",
-    "onta",
+    "infona",
     "sdk",
     "cli",
     "rdf",
@@ -43,7 +43,7 @@
     "ai",
     "llm"
   ],
-  "author": "Onta",
+  "author": "Infona",
   "license": "Apache-2.0",
   "homepage": "https://getonta.com",
   "repository": {

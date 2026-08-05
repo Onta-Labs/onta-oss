@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { inspectGraphSchemaHandler } from "../src/index.js";
-import type { KgSchema } from "@onta/cli";
+import type { KgSchema } from "@infona-ai/cli";
 
 // ONTA-418: the tool exists so an agent stops GUESSING attribute names
 // ("fda_indications" vs "indications"). Two properties are load-bearing:
@@ -10,7 +10,7 @@ import type { KgSchema } from "@onta/cli";
 
 function stubClient(schema: KgSchema) {
   const kgSchema = vi.fn(async () => schema);
-  const client = { kgSchema } as unknown as import("@onta/cli").Client;
+  const client = { kgSchema } as unknown as import("@infona-ai/cli").Client;
   return { client, kgSchema };
 }
 
@@ -208,7 +208,7 @@ describe("inspect_graph_schema handler", () => {
     const kgSchema = vi.fn(async () => {
       throw new Error("boom");
     });
-    const client = { kgSchema } as unknown as import("@onta/cli").Client;
+    const client = { kgSchema } as unknown as import("@infona-ai/cli").Client;
 
     const res = await inspectGraphSchemaHandler({ kg_name: "pharma" }, () => client);
 

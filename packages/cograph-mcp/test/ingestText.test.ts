@@ -9,7 +9,7 @@ import { ingestTextHandler } from "../src/index.js";
 
 function stubClient(ingestImpl: (...args: unknown[]) => unknown) {
   const ingest = vi.fn(ingestImpl);
-  const client = { ingest } as unknown as import("@onta/cli").Client;
+  const client = { ingest } as unknown as import("@infona-ai/cli").Client;
   return { client, ingest };
 }
 
