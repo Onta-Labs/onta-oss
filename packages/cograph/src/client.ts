@@ -100,10 +100,11 @@ export interface AskOptions {
 }
 
 function envVar(name: string, fallback?: string): string | undefined {
-  // Precedence: ONTA_ (current brand) → COGRAPH_ → OMNIX_ (legacy) so old
-  // configs keep working. The brand renamed Cograph → Onta; ONTA_* wins, but
-  // the older prefixes are still honored for back-compat.
+  // Precedence: INFONA_ (current brand) → ONTA_ → COGRAPH_ → OMNIX_ (legacy)
+  // so old configs keep working. Lineage: omnix → cograph → onta → infona.
+  // INFONA_* wins; older prefixes stay honored for back-compat.
   return (
+    process.env[`INFONA_${name}`] ||
     process.env[`ONTA_${name}`] ||
     process.env[`COGRAPH_${name}`] ||
     process.env[`OMNIX_${name}`] ||
@@ -233,7 +234,7 @@ export class Client {
     if (!this.apiKey) {
       throw new OntaError(
         `Configured tenant "${this.tenant}" looks like a Clerk user id, not a workspace. ` +
-          `Set ONTA_TENANT to a workspace id from the dashboard (or re-run \`onta login\`).`,
+          `Set INFONA_TENANT to a workspace id from the dashboard (or re-run \`onta login\`).`,
       );
     }
     if (!this.tenantHealPromise) {
@@ -249,7 +250,7 @@ export class Client {
         if (!res.ok) {
           throw new OntaError(
             `Configured tenant "${bogus}" is a user id, not a workspace, and ` +
-              `listing workspaces failed (HTTP ${res.status}). Set ONTA_TENANT ` +
+              `listing workspaces failed (HTTP ${res.status}). Set INFONA_TENANT ` +
               `to a real workspace id.`,
             { status: res.status },
           );
@@ -274,7 +275,7 @@ export class Client {
         if (!first) {
           throw new OntaError(
             `Configured tenant "${bogus}" is a user id, and this key has no workspaces. ` +
-              `Create a workspace in the dashboard, then set ONTA_TENANT.`,
+              `Create a workspace in the dashboard, then set INFONA_TENANT.`,
           );
         }
         this.tenant = first;
@@ -636,7 +637,7 @@ export class Client {
       ) {
         throw new OntaError(
           `HTTP 403: ${text}\n` +
-            `Hint: ONTA_TENANT / config tenant is set to a Clerk user id. ` +
+            `Hint: INFONA_TENANT / config tenant is set to a Clerk user id. ` +
             `Set it to a workspace id (dashboard → workspace switcher) or re-run \`onta login\`.`,
           { status: res.status, body: text },
         );

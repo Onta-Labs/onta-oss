@@ -28,7 +28,7 @@ import {
 const VERSION = "0.1.0";
 
 // ONTA-415: the local directory the user has explicitly granted this server, if
-// any. Resolved ONCE at startup from ONTA_LOCAL_FILES_DIR (see workspace.ts for
+// any. Resolved ONCE at startup from INFONA_LOCAL_FILES_DIR (see workspace.ts for
 // the precedence and for why there is no default root). Empty means the
 // capability stays DORMANT: `list_local_files` is never registered, so it does
 // not appear in tools/list and burns no context in a session that has no root.
