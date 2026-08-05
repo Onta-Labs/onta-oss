@@ -11,6 +11,7 @@ from cograph_client.api.app import create_app
 from cograph_client.auth.tenant_directory import (
     TENANT_ID_RE,
     Tenant,
+    TenantProvider,
     TenantProviderError,
     ensure_label_available,
     label_key,
@@ -59,9 +60,45 @@ class FakeProvider:
 
 
 class LegacyProvider(FakeProvider):
-    """A provider written before renaming existed — no ``rename_tenant``."""
+    """A provider written before renaming existed — no ``rename_tenant``.
+
+    The attribute is genuinely ABSENT here (see ``NullRenameProvider`` and
+    ``NominalProvider`` for the other two "doesn't implement it" shapes).
+    """
+
+    def __getattribute__(self, name):
+        if name == "rename_tenant":
+            raise AttributeError(name)
+        return object.__getattribute__(self, name)
+
+
+class NullRenameProvider(FakeProvider):
+    """Explicit opt-out sentinel."""
 
     rename_tenant = None
+
+
+class NominalProvider(TenantProvider):
+    """Subclasses the Protocol NOMINALLY and implements only the original three
+    methods, so ``rename_tenant`` resolves to the Protocol's ``...`` stub — which
+    is callable and returns None. Must be 501, not a 500 from ``_out(None)``.
+
+    (It delegates rather than inheriting FakeProvider, because inheriting one
+    that HAS rename_tenant would put the real method ahead of the stub in the
+    MRO and defeat the point of this fixture.)
+    """
+
+    def __init__(self):
+        self._inner = FakeProvider()
+
+    def list_tenants(self, api_key):
+        return self._inner.list_tenants(api_key)
+
+    def add_tenant(self, api_key, tenant_id, label):
+        return self._inner.add_tenant(api_key, tenant_id, label)
+
+    def remove_tenant(self, api_key, tenant_id):
+        return self._inner.remove_tenant(api_key, tenant_id)
 
 
 @pytest.fixture
@@ -163,7 +200,9 @@ def test_missing_key_is_401(client):
 def test_invalid_input_is_400_before_provider(client, tid, label):
     register_tenant_provider(FakeProvider())
     r = client.post(
-        "/v1/me/tenants", headers={"X-API-Key": "good-key"}, json={"id": tid, "label": label}
+        "/v1/me/tenants",
+        headers={"X-API-Key": "good-key"},
+        json={"id": tid, "label": label},
     )
     assert r.status_code == 400
 
@@ -172,7 +211,9 @@ def test_present_but_empty_id_is_still_400(client):
     """Omitting a field means "pick one for me"; sending "" is a caller bug."""
     register_tenant_provider(FakeProvider())
     r = client.post(
-        "/v1/me/tenants", headers={"X-API-Key": "good-key"}, json={"id": "", "label": "A"}
+        "/v1/me/tenants",
+        headers={"X-API-Key": "good-key"},
+        json={"id": "", "label": "A"},
     )
     assert r.status_code == 400
 
@@ -249,6 +290,76 @@ def test_explicit_id_without_label_gets_auto_label(client):
     }
 
 
+def test_minted_id_collision_is_re_minted_never_joined(client, monkeypatch):
+    """A minted id that is ALREADY REGISTERED can only be a collision, so it
+    must be thrown away and re-drawn.
+
+    The alternative — falling through to _claim_or_check_ownership, which
+    allow-and-logs a foreign id while ownership enforcement is off — would put
+    a STRANGER'S tenant into the caller's profile and grant them its KG.
+    """
+    from cograph_client.api.routes import tenants as tenants_routes
+    from cograph_client.auth.workspace_store import make_workspace_store
+
+    register_tenant_provider(FakeProvider())
+    store = make_workspace_store()
+    # Someone else already owns the first id we will draw.
+    victim_id = "untitled-workspace-aaaaaa"
+    import asyncio
+
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        store.claim_workspace(victim_id, "someone-else", "Their workspace")
+    )
+
+    drawn = iter([victim_id, "untitled-workspace-bbbbbb"])
+    monkeypatch.setattr(tenants_routes, "mint_untitled_tenant_id", lambda: next(drawn))
+    # A subject is required for the registry to engage at all.
+    monkeypatch.setattr(tenants_routes, "resolve_subject", lambda key: "me")
+
+    r = client.post("/v1/me/tenants", headers={"X-API-Key": "good-key"}, json={})
+    assert r.status_code == 201
+    assert r.json()["id"] == "untitled-workspace-bbbbbb"  # NOT the victim's
+
+
+def test_minted_id_gives_up_rather_than_joining_a_stranger(client, monkeypatch):
+    """If every draw collides, fail loudly — never fall back to joining one."""
+    from cograph_client.api.routes import tenants as tenants_routes
+    from cograph_client.auth.workspace_store import make_workspace_store
+
+    register_tenant_provider(FakeProvider())
+    store = make_workspace_store()
+    taken = "untitled-workspace-cccccc"
+    import asyncio
+
+    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+        store.claim_workspace(taken, "someone-else", "Theirs")
+    )
+    monkeypatch.setattr(tenants_routes, "mint_untitled_tenant_id", lambda: taken)
+    monkeypatch.setattr(tenants_routes, "resolve_subject", lambda key: "me")
+
+    r = client.post("/v1/me/tenants", headers={"X-API-Key": "good-key"}, json={})
+    assert r.status_code == 500
+    # And nothing was added to the caller's profile.
+    assert client.get("/v1/me/tenants", headers={"X-API-Key": "good-key"}).json() == []
+
+
+def test_auto_label_stays_within_max_len(client):
+    """A hand-typed 64-char "Untitled workspace <45 digits>" must not make the
+    one-click button 400 with an over-long successor."""
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    pathological = "Untitled workspace " + "9" * 45
+    assert len(pathological) == 64
+    client.post(
+        "/v1/me/tenants", headers=h, json={"id": "acme-co", "label": pathological}
+    )
+
+    r = client.post("/v1/me/tenants", headers=h, json={})
+    assert r.status_code == 201
+    assert len(r.json()["label"]) <= 64
+    assert r.json()["label"] == "Untitled workspace 1"
+
+
 # --- per-user name uniqueness ------------------------------------------------
 
 
@@ -257,7 +368,9 @@ def test_duplicate_label_on_create_is_409(client):
     h = {"X-API-Key": "good-key"}
     client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
     # Different id, same name — and the comparison ignores case + extra spaces.
-    r = client.post("/v1/me/tenants", headers=h, json={"id": "acme-two", "label": " acme "})
+    r = client.post(
+        "/v1/me/tenants", headers=h, json={"id": "acme-two", "label": " acme "}
+    )
     assert r.status_code == 409
     assert "already have a workspace named" in r.json()["detail"]
 
@@ -288,7 +401,9 @@ def test_rename_changes_label_only(client):
     h = {"X-API-Key": "good-key"}
     client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
 
-    r = client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "  Acme Inc  "})
+    r = client.patch(
+        "/v1/me/tenants/acme-co", headers=h, json={"label": "  Acme Inc  "}
+    )
     assert r.status_code == 200
     assert r.json()["id"] == "acme-co"
     assert r.json()["label"] == "Acme Inc"
@@ -303,7 +418,9 @@ def test_rename_to_a_name_i_already_use_is_409(client):
     r = client.patch("/v1/me/tenants/beta-co", headers=h, json={"label": "acme"})
     assert r.status_code == 409
     # Rejected write leaves the label untouched.
-    labels = {t["id"]: t["label"] for t in client.get("/v1/me/tenants", headers=h).json()}
+    labels = {
+        t["id"]: t["label"] for t in client.get("/v1/me/tenants", headers=h).json()
+    }
     assert labels["beta-co"] == "Beta"
 
 
@@ -329,15 +446,32 @@ def test_rename_empty_label_is_400(client):
     register_tenant_provider(FakeProvider())
     h = {"X-API-Key": "good-key"}
     client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
-    assert client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "   "}).status_code == 400
+    assert (
+        client.patch(
+            "/v1/me/tenants/acme-co", headers=h, json={"label": "   "}
+        ).status_code
+        == 400
+    )
 
 
-def test_rename_on_a_provider_without_it_is_501(client):
-    register_tenant_provider(LegacyProvider())
+@pytest.mark.parametrize("cls", [LegacyProvider, NullRenameProvider, NominalProvider])
+def test_rename_on_a_provider_without_it_is_501(client, cls):
+    """All three "doesn't implement rename" shapes report 501, never 500:
+    attribute absent, explicit None, and the inherited Protocol stub."""
+    register_tenant_provider(cls())
     h = {"X-API-Key": "good-key"}
     client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
     r = client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "X"})
     assert r.status_code == 501
+
+
+def test_rename_without_a_key_is_401_not_501(client):
+    """Auth comes first, so an unauthenticated caller can't probe whether this
+    deployment has a rename provider."""
+    register_tenant_provider(NullRenameProvider())
+    assert (
+        client.patch("/v1/me/tenants/acme-co", json={"label": "X"}).status_code == 401
+    )
 
 
 # --- no provider registered (OSS-only deployment) ----------------------------

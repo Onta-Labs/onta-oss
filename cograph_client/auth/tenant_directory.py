@@ -143,6 +143,13 @@ def ensure_label_available(
     so uniqueness is scoped to the caller's own list — two different users may
     each have a "Research" workspace. Pass ``exclude_id`` when renaming so a
     tenant doesn't collide with itself. Raises ``TenantProviderError(409)``.
+
+    This is read-then-write, so it is ADVISORY, not an invariant: two concurrent
+    creates from two tabs can both pass the check and both land. Closing that
+    would need a transactional store, and the identity profile (where labels
+    live) is not one. The rule exists to stop a user accidentally ending up with
+    two identically-named workspaces, which it does; it is not a constraint any
+    other code may assume holds.
     """
     key = label_key(label)
     for t in owned:
@@ -164,12 +171,24 @@ def next_untitled_label(owned: Iterable[Tenant]) -> str:
     has, and tracking retired numbers would mean persisting a counter for a name
     the user is expected to replace anyway.
     """
+    taken = {label_key(t.label) for t in owned}
     highest = 0
     for t in owned:
         m = _UNTITLED_LABEL_RE.match(" ".join(t.label.split()))
         if m:
             highest = max(highest, int(m.group(1)))
-    return f"{UNTITLED_LABEL_PREFIX} {highest + 1}"
+    candidate = f"{UNTITLED_LABEL_PREFIX} {highest + 1}"
+    if len(candidate) <= MAX_LABEL_LEN and label_key(candidate) not in taken:
+        return candidate
+    # Pathological input only: a hand-typed "Untitled workspace <45 digits>" is
+    # a legal 64-char label whose successor is 65. Never 400 the one-click
+    # button over it — fall back to the lowest free number instead.
+    n = 1
+    while True:
+        candidate = f"{UNTITLED_LABEL_PREFIX} {n}"
+        if label_key(candidate) not in taken:
+            return candidate
+        n += 1
 
 
 def mint_untitled_tenant_id() -> str:

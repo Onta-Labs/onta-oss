@@ -83,9 +83,17 @@ def _require_provider() -> TenantProvider:
 
 def _require_rename(provider: TenantProvider):
     """Renaming is optional on the provider protocol (added after the original
-    three methods), so a provider that predates it reports 501 instead of 500."""
+    three methods), so a provider that predates it reports 501 instead of 500.
+
+    Three shapes count as "doesn't have it": the attribute is absent (the
+    structural case), it is None (an explicit opt-out), or it is the Protocol's
+    own ``...`` stub inherited by a provider that subclasses ``TenantProvider``
+    nominally rather than structurally — that stub is callable and returns None,
+    which would otherwise surface as a 500 from ``_out(None)``.
+    """
     fn = getattr(provider, "rename_tenant", None)
-    if fn is None:
+    inherited_stub = getattr(fn, "__func__", fn) is TenantProvider.rename_tenant
+    if fn is None or not callable(fn) or inherited_stub:
         raise HTTPException(
             status_code=501,
             detail="Renaming a workspace is not supported by this deployment.",
@@ -180,6 +188,51 @@ async def _claim_or_check_ownership(api_key: str, tenant_id: str, label: str) ->
     )
 
 
+#: How many times to re-mint on a registry collision before giving up. Each
+#: attempt draws from a 36**6 keyspace, so needing a fourth is not a real event.
+_MINT_ATTEMPTS = 3
+
+
+async def _claim_minted_id(api_key: str, label: str) -> str:
+    """Mint a tenant id that WINS its registry claim, and return it.
+
+    A minted id must never go through ``_claim_or_check_ownership``. That
+    function is written for a USER-SUPPLIED id, where "already registered to
+    someone else" is ambiguous enough to be allow-and-logged while ownership
+    enforcement is still off (the ONTA-227 rollout posture). For a random id
+    there is no ambiguity: an existing row can only be a collision, and
+    allow-and-log would silently drop the caller into a STRANGER'S workspace —
+    the caller's identity profile would list a tenant whose registry owner is
+    someone else, granting them read/write on that KG. So: claim first, and if
+    this call did not win the claim, throw the id away and draw another.
+    """
+    subject = resolve_subject(api_key)
+    store = make_workspace_store()
+    for _ in range(_MINT_ATTEMPTS):
+        tenant_id = mint_untitled_tenant_id()
+        # No subject (static/anonymous key) → no registry participation at all,
+        # same as _claim_or_check_ownership. Nothing to collide with.
+        if subject is None:
+            return tenant_id
+        try:
+            claimed = await store.claim_workspace(tenant_id, subject, label)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 — registry outage
+            if ownership_enforced(store):
+                raise
+            logger.warning(
+                "workspace_registry_unavailable", tenant=tenant_id, error=str(exc)
+            )
+            return tenant_id
+        if claimed is not None:
+            return tenant_id
+        logger.warning("workspace_minted_id_collision", tenant=tenant_id)
+    raise HTTPException(
+        status_code=500, detail="Could not allocate a workspace id. Please try again."
+    )
+
+
 @router.post("", response_model=TenantOut, status_code=201)
 async def add_tenant(
     body: TenantCreate | None = None, api_key: str | None = Security(api_key_header)
@@ -191,28 +244,28 @@ async def add_tenant(
     key = _require_key(api_key)
     body = body or TenantCreate()
     try:
-        # The caller's current list serves two purposes: naming the auto-created
-        # workspace, and enforcing "no two of my workspaces share a name". One
-        # read covers both.
+        # Naming the auto-created workspace needs the caller's current list, and
+        # so does "no two of my workspaces share a name" — one read covers both.
+        # This means a malformed create now costs an identity-provider round
+        # trip before its 400, and surfaces a bad key as 401 rather than 400.
+        # Both are fine: the list IS an input to validation now.
         owned = await run_in_threadpool(provider.list_tenants, key)
-        # Validate before touching the provider so bad input is a clean 400 and
-        # the rules stay identical across clients (tenant_directory is the
-        # shared source of truth; it raises TenantProviderError).
-        # OMITTED (null) means "pick one for me"; PRESENT-but-empty is a caller
-        # mistake and stays a 400, as it always was.
-        label = (
-            next_untitled_label(owned)
-            if body.label is None
-            else validate_label(body.label)
-        )
-        tenant_id = (
-            mint_untitled_tenant_id()
-            if body.id is None
-            else validate_new_tenant(body.id, label)[0]
+        # The rules stay identical across clients — tenant_directory is the
+        # shared source of truth and raises TenantProviderError. An OMITTED
+        # field means "pick one for me"; a PRESENT-but-empty one is a caller
+        # mistake and stays a 400, as it always was. validate_label runs on both
+        # branches so MAX_LABEL_LEN holds however the name arose.
+        label = validate_label(
+            next_untitled_label(owned) if body.label is None else body.label
         )
         ensure_label_available(owned, label)
-        # Registry row first, provider second — see _claim_or_check_ownership.
-        await _claim_or_check_ownership(key, tenant_id, label)
+        if body.id is None:
+            # Minted ids claim their own registry row (and must win it).
+            tenant_id = await _claim_minted_id(key, label)
+        else:
+            tenant_id = validate_new_tenant(body.id, label)[0]
+            # Registry row first, provider second — see _claim_or_check_ownership.
+            await _claim_or_check_ownership(key, tenant_id, label)
         created = await run_in_threadpool(provider.add_tenant, key, tenant_id, label)
         return _out(created, role="owner")
     except TenantProviderError as exc:
@@ -226,8 +279,11 @@ async def rename_tenant(
     """Rename one of the caller's workspaces. The id is immutable — it keys the
     graph IRIs — so only the label changes."""
     provider = _require_provider()
-    rename = _require_rename(provider)
+    # Authenticate BEFORE probing what the deployment supports, so an
+    # unauthenticated caller can't use the 501-vs-401 difference to learn
+    # whether a rename provider is configured.
     key = _require_key(api_key)
+    rename = _require_rename(provider)
     try:
         label = validate_label(body.label)
         owned = await run_in_threadpool(provider.list_tenants, key)
@@ -237,6 +293,13 @@ async def rename_tenant(
         renamed = await run_in_threadpool(rename, key, tenant_id, label)
     except TenantProviderError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    if renamed is None:
+        # A provider that accepted the call but returned nothing isn't one that
+        # implements renaming; report that rather than 500 on the None below.
+        raise HTTPException(
+            status_code=501,
+            detail="Renaming a workspace is not supported by this deployment.",
+        )
     subject = resolve_subject(key)
     role = await resolve_member_role(tenant_id, subject)
     # Labels are per-user (each user's identity profile carries their own copy),
