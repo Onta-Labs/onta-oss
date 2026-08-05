@@ -86,3 +86,15 @@ class NLResult(BaseModel):
             "is unavailable."
         ),
     )
+    # Whitepaper v3 / tokens-to-complete-task: one entry per LLM call on the
+    # /ask path (sparql_gen, retry, rephrase, …). Default empty so every
+    # existing caller / test is back-compatible; populated only when the
+    # provider returned a usage object (or at least model/provider metadata).
+    token_usage: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Per-LLM-call token usage events for this /ask: "
+            "stage, attempt, model, prompt_tokens, completion_tokens, "
+            "total_tokens, provider. Empty when no LLM usage was recorded."
+        ),
+    )
