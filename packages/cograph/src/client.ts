@@ -216,7 +216,7 @@ export class Client {
     const cfg = readConfig();
     this.apiKey = opts.apiKey ?? envVar("API_KEY") ?? cfg.apiKey;
     const url =
-      opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.onta.sh";
+      opts.baseUrl ?? envVar("API_URL") ?? cfg.apiUrl ?? "https://api.infona.ai";
     this.baseUrl = url.replace(/\/+$/, "");
     // May still be a Clerk user id from a legacy login; healTenantIfNeeded()
     // rewrites it to a real workspace on the first graph request.
