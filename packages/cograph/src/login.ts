@@ -5,16 +5,16 @@ import { spawn } from "node:child_process";
 import { stdout } from "node:process";
 import { writeConfig, configPathForDisplay, isClerkUserId } from "./config.js";
 
-// Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at getonta.com.
+// Precedence: ONTA_WEB_URL → COGRAPH_WEB_URL (legacy) → the live app at infona.ai.
 const WEB_URL =
-  process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://getonta.com";
+  process.env.ONTA_WEB_URL || process.env.COGRAPH_WEB_URL || "https://infona.ai";
 
 // Same default as Client — used when resolving the first workspace after login.
 const DEFAULT_API_URL =
   process.env.ONTA_API_URL ||
   process.env.COGRAPH_API_URL ||
   process.env.OMNIX_API_URL ||
-  "https://api.onta.sh";
+  "https://api.infona.ai";
 
 interface CallbackPayload {
   state?: string;
@@ -146,7 +146,7 @@ function handleRequest(
   expectedState: string,
   resolve: (value: CallbackPayload | { error: string }) => void,
 ): void {
-  // CORS — the page is on the web app (getonta.com by default), posting to localhost.
+  // CORS — the page is on the web app (infona.ai by default), posting to localhost.
   res.setHeader("Access-Control-Allow-Origin", WEB_URL);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");

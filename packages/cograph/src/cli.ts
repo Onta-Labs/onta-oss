@@ -1292,7 +1292,7 @@ program
         }
       }
 
-      const explorerUrl = `https://getonta.com/dashboard/explore/${encodeURIComponent(typeName)}?kg=${encodeURIComponent(kg)}`;
+      const explorerUrl = `https://infona.ai/dashboard/explore/${encodeURIComponent(typeName)}?kg=${encodeURIComponent(kg)}`;
       process.stdout.write(`\n→ Open visually at ${explorerUrl}\n`);
       process.stdout.write("  (Sign in for interactive viz, search, and click-to-enrich.)\n\n");
     });

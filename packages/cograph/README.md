@@ -105,7 +105,7 @@ console.log(result.answer);
 ```ts
 new Client({
   apiKey?: string,    // env: ONTA_API_KEY
-  baseUrl?: string,   // env: ONTA_API_URL (default: https://api.onta.sh)
+  baseUrl?: string,   // env: ONTA_API_URL (default: https://api.infona.ai)
   tenant?: string,    // env: ONTA_TENANT (default: demo-tenant)
 })
 ```
@@ -182,7 +182,7 @@ npx @infona-ai/cli clear --kg my-data --yes
 ### Environment
 
 - `ONTA_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.onta/config.json` automatically.
-- `ONTA_API_URL` — default `https://api.onta.sh`.
+- `ONTA_API_URL` — default `https://api.infona.ai` (legacy hosts `api.onta.sh` / `api.getonta.com` still work).
 - `ONTA_TENANT` — default `demo-tenant`. The login flow sets this to your user ID.
 
 > PDF ingestion is not yet supported in the Node CLI. Use the Python CLI or POST raw bytes to the API.
