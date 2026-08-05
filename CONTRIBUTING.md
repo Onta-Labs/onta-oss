@@ -9,7 +9,7 @@ hours. Everything in this repo must be OSS-safe.
 **Ships here (OSS):**
 - `cograph_client/` — ingest, resolver, **core ER engine** (normalize, block,
   score, merge), REST API surface, embedding service
-- `packages/cograph` (TS SDK + CLI, published as `@onta/cli`) and `packages/cograph-mcp` (MCP server, published as `@onta/mcp`)
+- `packages/cograph` (TS SDK + CLI, published as `@infona-ai/cli`) and `packages/cograph-mcp` (MCP server, published as `@infona-ai/mcp`)
 - Plugin **protocols**: `register_external_verifier` (auth),
   `register_adapter` (enrichment)
 - Default OSS adapters: Wikidata enrichment, static-keys auth
@@ -111,8 +111,8 @@ cograph_client/
   eval.py       Eval framework
 
 packages/
-  cograph/      Node SDK + CLI (published as `@onta/cli`)
-  cograph-mcp/  MCP server for AI agents (published as `@onta/mcp`)
+  cograph/      Node SDK + CLI (published as `@infona-ai/cli`)
+  cograph-mcp/  MCP server for AI agents (published as `@infona-ai/mcp`)
 ```
 
 ## Code Style
