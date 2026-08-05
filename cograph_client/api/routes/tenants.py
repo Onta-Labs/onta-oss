@@ -23,7 +23,11 @@ from cograph_client.auth.tenant_directory import (
     Tenant,
     TenantProvider,
     TenantProviderError,
+    ensure_label_available,
     get_tenant_provider,
+    mint_untitled_tenant_id,
+    next_untitled_label,
+    validate_label,
     validate_new_tenant,
 )
 from cograph_client.auth.workspace_store import (
@@ -47,8 +51,24 @@ class TenantOut(BaseModel):
 
 
 class TenantCreate(BaseModel):
-    id: str = Field(..., description="Tenant slug (lowercase, 3–40 chars).")
-    label: str = Field(..., description="Human-readable label.")
+    """Both fields are optional: an empty body mints an auto-named workspace.
+
+    That is the one-click "Add workspace" path — the Explorer (and any other
+    client) POSTs nothing and gets back "Untitled workspace N" with a fresh
+    slug, then renames it via PATCH. Supplying both keeps the explicit
+    create-with-a-name flow the CLI uses.
+    """
+
+    id: str | None = Field(
+        None, description="Tenant slug (lowercase, 3–40 chars). Auto-minted if omitted."
+    )
+    label: str | None = Field(
+        None, description='Human-readable label. Defaults to "Untitled workspace N".'
+    )
+
+
+class TenantRename(BaseModel):
+    label: str = Field(..., description="New human-readable label.")
 
 
 def _require_provider() -> TenantProvider:
@@ -59,6 +79,18 @@ def _require_provider() -> TenantProvider:
             detail="Tenant management is not configured for this deployment.",
         )
     return provider
+
+
+def _require_rename(provider: TenantProvider):
+    """Renaming is optional on the provider protocol (added after the original
+    three methods), so a provider that predates it reports 501 instead of 500."""
+    fn = getattr(provider, "rename_tenant", None)
+    if fn is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Renaming a workspace is not supported by this deployment.",
+        )
+    return fn
 
 
 def _require_key(api_key: str | None) -> str:
@@ -149,23 +181,77 @@ async def _claim_or_check_ownership(api_key: str, tenant_id: str, label: str) ->
 
 
 @router.post("", response_model=TenantOut, status_code=201)
-async def add_tenant(body: TenantCreate, api_key: str | None = Security(api_key_header)):
+async def add_tenant(
+    body: TenantCreate | None = None, api_key: str | None = Security(api_key_header)
+):
     # async (unlike its sync siblings) because the workspace registry is
     # asyncpg-backed; the sync provider calls are bridged via run_in_threadpool
     # so they cannot block the event loop.
     provider = _require_provider()
     key = _require_key(api_key)
+    body = body or TenantCreate()
     try:
+        # The caller's current list serves two purposes: naming the auto-created
+        # workspace, and enforcing "no two of my workspaces share a name". One
+        # read covers both.
+        owned = await run_in_threadpool(provider.list_tenants, key)
         # Validate before touching the provider so bad input is a clean 400 and
-        # the rules stay identical to the Explorer's (validate_new_tenant is the
-        # shared source of truth; it raises TenantProviderError(400)).
-        tenant_id, label = validate_new_tenant(body.id, body.label)
+        # the rules stay identical across clients (tenant_directory is the
+        # shared source of truth; it raises TenantProviderError).
+        # OMITTED (null) means "pick one for me"; PRESENT-but-empty is a caller
+        # mistake and stays a 400, as it always was.
+        label = (
+            next_untitled_label(owned)
+            if body.label is None
+            else validate_label(body.label)
+        )
+        tenant_id = (
+            mint_untitled_tenant_id()
+            if body.id is None
+            else validate_new_tenant(body.id, label)[0]
+        )
+        ensure_label_available(owned, label)
         # Registry row first, provider second — see _claim_or_check_ownership.
         await _claim_or_check_ownership(key, tenant_id, label)
         created = await run_in_threadpool(provider.add_tenant, key, tenant_id, label)
         return _out(created, role="owner")
     except TenantProviderError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+
+@router.patch("/{tenant_id}", response_model=TenantOut)
+async def rename_tenant(
+    tenant_id: str, body: TenantRename, api_key: str | None = Security(api_key_header)
+):
+    """Rename one of the caller's workspaces. The id is immutable — it keys the
+    graph IRIs — so only the label changes."""
+    provider = _require_provider()
+    rename = _require_rename(provider)
+    key = _require_key(api_key)
+    try:
+        label = validate_label(body.label)
+        owned = await run_in_threadpool(provider.list_tenants, key)
+        if not any(t.id == tenant_id for t in owned):
+            raise TenantProviderError(404, f'Tenant "{tenant_id}" not found.')
+        ensure_label_available(owned, label, exclude_id=tenant_id)
+        renamed = await run_in_threadpool(rename, key, tenant_id, label)
+    except TenantProviderError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+    subject = resolve_subject(key)
+    role = await resolve_member_role(tenant_id, subject)
+    # Labels are per-user (each user's identity profile carries their own copy),
+    # but the workspace registry holds ONE label that invite emails render. Keep
+    # it in step when the OWNER renames — a member renaming their own view must
+    # not rewrite what everyone else sees. Best-effort: the rename itself already
+    # succeeded, and the registry is allowed to be unavailable elsewhere too.
+    if role == "owner" and subject:
+        try:
+            await make_workspace_store().set_workspace_label(tenant_id, label)
+        except Exception as exc:  # noqa: BLE001 — registry outage
+            logger.warning(
+                "workspace_registry_label_not_updated", tenant=tenant_id, error=str(exc)
+            )
+    return _out(renamed, role=role)
 
 
 @router.delete("/{tenant_id}")

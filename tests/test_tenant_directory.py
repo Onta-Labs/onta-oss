@@ -9,8 +9,13 @@ from fastapi.testclient import TestClient
 
 from cograph_client.api.app import create_app
 from cograph_client.auth.tenant_directory import (
+    TENANT_ID_RE,
     Tenant,
     TenantProviderError,
+    ensure_label_available,
+    label_key,
+    mint_untitled_tenant_id,
+    next_untitled_label,
     register_tenant_provider,
     validate_new_tenant,
 )
@@ -43,6 +48,20 @@ class FakeProvider:
         if not any(t.id == tenant_id for t in owned):
             raise TenantProviderError(404, f'Tenant "{tenant_id}" not found.')
         self.store[api_key] = [t for t in owned if t.id != tenant_id]
+
+    def rename_tenant(self, api_key, tenant_id, label):
+        owned = self._user(api_key)
+        if not any(t.id == tenant_id for t in owned):
+            raise TenantProviderError(404, f'Tenant "{tenant_id}" not found.')
+        renamed = Tenant(id=tenant_id, label=label)
+        self.store[api_key] = [renamed if t.id == tenant_id else t for t in owned]
+        return renamed
+
+
+class LegacyProvider(FakeProvider):
+    """A provider written before renaming existed — no ``rename_tenant``."""
+
+    rename_tenant = None
 
 
 @pytest.fixture
@@ -149,6 +168,178 @@ def test_invalid_input_is_400_before_provider(client, tid, label):
     assert r.status_code == 400
 
 
+def test_present_but_empty_id_is_still_400(client):
+    """Omitting a field means "pick one for me"; sending "" is a caller bug."""
+    register_tenant_provider(FakeProvider())
+    r = client.post(
+        "/v1/me/tenants", headers={"X-API-Key": "good-key"}, json={"id": "", "label": "A"}
+    )
+    assert r.status_code == 400
+
+
+# --- one-click create (auto-named) -------------------------------------------
+
+
+def test_empty_body_mints_untitled_workspace(client):
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+
+    first = client.post("/v1/me/tenants", headers=h, json={})
+    assert first.status_code == 201
+    assert first.json()["label"] == "Untitled workspace 1"
+
+    # Counts up over what the caller already has.
+    second = client.post("/v1/me/tenants", headers=h, json={})
+    assert second.json()["label"] == "Untitled workspace 2"
+
+    # Ids are minted, distinct, and NOT derived from the label — a derived
+    # "untitled-workspace-1" would be contended in the global registry.
+    ids = {first.json()["id"], second.json()["id"]}
+    assert len(ids) == 2
+    assert all(i.startswith("untitled-workspace-") for i in ids)
+
+
+def test_no_body_at_all_mints_untitled_workspace(client):
+    """The Explorer posts `{}`, but a bare POST must work the same way."""
+    register_tenant_provider(FakeProvider())
+    r = client.post("/v1/me/tenants", headers={"X-API-Key": "good-key"})
+    assert r.status_code == 201
+    assert r.json()["label"] == "Untitled workspace 1"
+
+
+def test_untitled_counter_skips_interior_gaps(client):
+    """N is highest-plus-one, so renaming one in the middle doesn't make the
+    next create land on a number the user just walked past."""
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={})
+    second = client.post("/v1/me/tenants", headers=h, json={})
+    client.post("/v1/me/tenants", headers=h, json={})  # → Untitled workspace 3
+    client.patch(
+        f"/v1/me/tenants/{second.json()['id']}", headers=h, json={"label": "Sales"}
+    )
+    assert client.post("/v1/me/tenants", headers=h, json={}).json()["label"] == (
+        "Untitled workspace 4"
+    )
+
+
+def test_untitled_counter_reuses_the_highest_after_a_delete(client):
+    """Deleting the last one frees its number — same as "New Folder" anywhere."""
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={})
+    second = client.post("/v1/me/tenants", headers=h, json={})
+    client.delete(f"/v1/me/tenants/{second.json()['id']}", headers=h)
+    assert client.post("/v1/me/tenants", headers=h, json={}).json()["label"] == (
+        "Untitled workspace 2"
+    )
+
+
+def test_explicit_id_without_label_gets_auto_label(client):
+    register_tenant_provider(FakeProvider())
+    r = client.post(
+        "/v1/me/tenants", headers={"X-API-Key": "good-key"}, json={"id": "acme-co"}
+    )
+    assert r.status_code == 201
+    assert r.json() == {
+        "id": "acme-co",
+        "label": "Untitled workspace 1",
+        "role": "owner",
+        "capability": "write",
+    }
+
+
+# --- per-user name uniqueness ------------------------------------------------
+
+
+def test_duplicate_label_on_create_is_409(client):
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
+    # Different id, same name — and the comparison ignores case + extra spaces.
+    r = client.post("/v1/me/tenants", headers=h, json={"id": "acme-two", "label": " acme "})
+    assert r.status_code == 409
+    assert "already have a workspace named" in r.json()["detail"]
+
+
+def test_same_label_for_a_different_user_is_fine(client):
+    """Uniqueness is per-user: labels live on each user's own profile."""
+    provider = FakeProvider()
+    provider.store["other-key"] = []
+    register_tenant_provider(provider)
+    client.post(
+        "/v1/me/tenants",
+        headers={"X-API-Key": "good-key"},
+        json={"id": "acme-co", "label": "Acme"},
+    )
+    r = client.post(
+        "/v1/me/tenants",
+        headers={"X-API-Key": "other-key"},
+        json={"id": "acme-two", "label": "Acme"},
+    )
+    assert r.status_code == 201
+
+
+# --- rename ------------------------------------------------------------------
+
+
+def test_rename_changes_label_only(client):
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
+
+    r = client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "  Acme Inc  "})
+    assert r.status_code == 200
+    assert r.json()["id"] == "acme-co"
+    assert r.json()["label"] == "Acme Inc"
+    assert client.get("/v1/me/tenants", headers=h).json()[0]["label"] == "Acme Inc"
+
+
+def test_rename_to_a_name_i_already_use_is_409(client):
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
+    client.post("/v1/me/tenants", headers=h, json={"id": "beta-co", "label": "Beta"})
+    r = client.patch("/v1/me/tenants/beta-co", headers=h, json={"label": "acme"})
+    assert r.status_code == 409
+    # Rejected write leaves the label untouched.
+    labels = {t["id"]: t["label"] for t in client.get("/v1/me/tenants", headers=h).json()}
+    assert labels["beta-co"] == "Beta"
+
+
+def test_rename_to_its_own_name_is_allowed(client):
+    """Re-submitting the same name (or just its casing) must not self-collide."""
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
+    r = client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "ACME"})
+    assert r.status_code == 200
+    assert r.json()["label"] == "ACME"
+
+
+def test_rename_unknown_tenant_is_404(client):
+    register_tenant_provider(FakeProvider())
+    r = client.patch(
+        "/v1/me/tenants/nope", headers={"X-API-Key": "good-key"}, json={"label": "X"}
+    )
+    assert r.status_code == 404
+
+
+def test_rename_empty_label_is_400(client):
+    register_tenant_provider(FakeProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
+    assert client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "   "}).status_code == 400
+
+
+def test_rename_on_a_provider_without_it_is_501(client):
+    register_tenant_provider(LegacyProvider())
+    h = {"X-API-Key": "good-key"}
+    client.post("/v1/me/tenants", headers=h, json={"id": "acme-co", "label": "Acme"})
+    r = client.patch("/v1/me/tenants/acme-co", headers=h, json={"label": "X"})
+    assert r.status_code == 501
+
+
 # --- no provider registered (OSS-only deployment) ----------------------------
 
 
@@ -168,3 +359,29 @@ def test_validate_new_tenant_rejects_reserved():
     with pytest.raises(TenantProviderError) as exc:
         validate_new_tenant("spider-bench", "x")
     assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [("Acme", "acme"), ("My  Space", "my space"), (" Acme ", "Acme")],
+)
+def test_label_key_collapses_case_and_whitespace(a, b):
+    assert label_key(a) == label_key(b)
+
+
+def test_ensure_label_available_ignores_the_excluded_tenant():
+    owned = [Tenant("a", "Acme"), Tenant("b", "Beta")]
+    ensure_label_available(owned, "Acme", exclude_id="a")  # renaming itself
+    with pytest.raises(TenantProviderError) as exc:
+        ensure_label_available(owned, "Acme", exclude_id="b")
+    assert exc.value.status_code == 409
+
+
+def test_next_untitled_label_ignores_unrelated_names():
+    owned = [Tenant("a", "Untitled workspace 7"), Tenant("b", "Workspace 99")]
+    assert next_untitled_label(owned) == "Untitled workspace 8"
+
+
+def test_minted_ids_satisfy_the_slug_rule():
+    for _ in range(50):
+        assert TENANT_ID_RE.match(mint_untitled_tenant_id())
