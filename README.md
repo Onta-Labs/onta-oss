@@ -1,6 +1,8 @@
-# Onta
+# Infona
 
 Turn any CSV into a context graph — a knowledge graph you can query in natural language.
+
+**Product:** [infona.ai](https://infona.ai) · **Company:** Onta Labs Inc.
 
 One LLM call infers the schema. All rows are mapped deterministically. Ask questions, get answers backed by SPARQL.
 
@@ -161,7 +163,7 @@ onta clear --kg my-dataset -y
 
 ## MCP Server (AI Agent Integration)
 
-Connect Onta to Claude, Cursor, Windsurf, or any MCP-compatible agent:
+Connect Infona to Claude, Cursor, Windsurf, or any MCP-compatible agent:
 
 ```json
 {
