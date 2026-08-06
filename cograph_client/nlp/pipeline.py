@@ -462,6 +462,89 @@ def _neptune_safe_duration(sparql: str) -> str:
     return _DURATION_DATATYPE_RE.sub(_sub, sparql)
 
 
+_RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label"
+
+
+def _prefer_attr_name_over_rdfs_label(sparql: str, ontology_summary: str = "") -> str:
+    """Rewrite ``rdfs:label`` → ``types/<T>/attrs/name`` only when clearly safe.
+
+    Gates (all required):
+    1. Query uses ``rdfs:label``.
+    2. Exactly one pure type IRI ``…/types/<T>`` (not multi-type joins).
+    3. Exactly one subject variable typed as that ``T``.
+    4. Ontology summary *exactly* declares ``types/<T>/attrs/name``
+       (``URI: <…/attrs/name>`` / ``<…/attrs/name>`` — not a ``name*`` prefix).
+    5. Query does not already use that ``attrs/name`` URI.
+    6. The ``rdfs:label`` triple being rewritten is on that same typed subject
+       (never on a related untyped var such as a venue reached via ``onto/``).
+
+    Fail-closed when ``ontology_summary`` is empty. Path-B/CSV KGs often put
+    human names on ``attrs/name`` and slugs on ``rdfs:label``; rank answers then
+    show ``name: 5``. Without the gates we would blank legitimate labels.
+    """
+    if _RDFS_LABEL_IRI not in sparql and "rdfs:label" not in sparql.lower():
+        return sparql
+    # Pure type IRIs only: <…/types/Person> — attrs paths end with /attrs/… so
+    # the trailing `>` after the leaf name does not match them.
+    leaves = list(
+        dict.fromkeys(
+            re.findall(
+                rf"<{re.escape(IRI_BASE)}/types/([A-Za-z][A-Za-z0-9_]*)>",
+                sparql,
+            )
+        )
+    )
+    if len(leaves) != 1:
+        return sparql
+    t = leaves[0]
+    name_uri = f"{IRI_BASE}/types/{t}/attrs/name"
+    if name_uri in sparql:
+        return sparql
+    # Fail-closed: no summary → no rewrite. Exact declaration only (trailing
+    # `>` so attrs/namespace / attrs/name_slug do not false-positive).
+    if not ontology_summary:
+        return sparql
+    if (
+        f"URI: <{name_uri}>" not in ontology_summary
+        and f"<{name_uri}>" not in ontology_summary
+    ):
+        return sparql
+
+    type_iri = f"{IRI_BASE}/types/{t}"
+    # Accept bare type predicates and the subclass-closure path Fix 4 injects
+    # (`<#type>/<#subClassOf>*`) so this rewrite still fires on the real /ask
+    # post-process chain (Fix 7 runs after Fix 4).
+    _rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    _rdfs_sc = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+    typed_subj = re.compile(
+        rf"\?([A-Za-z_][A-Za-z0-9_]*)\s+(?:"
+        rf"a|"
+        rf"rdf:type|"
+        rf"<{re.escape(_rdf_type)}>"
+        rf"(?:\s*/\s*<{re.escape(_rdfs_sc)}>\*)?"
+        rf")\s+<{re.escape(type_iri)}>",
+        re.I,
+    )
+    subjects = list(dict.fromkeys(m.group(1) for m in typed_subj.finditer(sparql)))
+    if len(subjects) != 1:
+        return sparql
+    subj = subjects[0]
+
+    # Subject-bound: only rewrite label on the typed variable, first match.
+    full_label = re.compile(
+        rf"(\?{re.escape(subj)}\s+)<{re.escape(_RDFS_LABEL_IRI)}>(\s+)"
+    )
+    if full_label.search(sparql):
+        return full_label.sub(rf"\1<{name_uri}>\2", sparql, count=1)
+    pref_label = re.compile(
+        rf"(\?{re.escape(subj)}\s+)rdfs:label(\s+)",
+        re.I,
+    )
+    if pref_label.search(sparql):
+        return pref_label.sub(rf"\1<{name_uri}>\2", sparql, count=1)
+    return sparql
+
+
 _ENTITY_URI_PREFIX = ENTITY_URI_PREFIX
 
 
@@ -2815,6 +2898,14 @@ class NLQueryPipeline:
         # datatype makes the recency filter work on the deployed backend while staying
         # correct on the spec engine. Idempotent; touches only the duration datatype IRI.
         sparql = _neptune_safe_duration(sparql)
+
+        # Fix 7: prefer types/<T>/attrs/name over rdfs:label for display names when
+        # the query already types the subject as <T>. Path-B / CSV-ingested KGs often
+        # mint rdfs:label as a slug or numeric id while attrs/name holds the human
+        # string — ranking queries then return "eventName: 5" with the right numeric
+        # extreme (Eval-MH freeze flaky projection fails). Only rewrites when
+        # attrs/name is not already used for that type in the query.
+        sparql = _prefer_attr_name_over_rdfs_label(sparql, ontology_summary)
 
         return sparql
 
