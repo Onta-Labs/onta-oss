@@ -178,7 +178,12 @@ HOLDOUT_V2_KGS: frozenset[str] = _load_holdout_v2_kgs()
 # Matched by KG-name prefix rather than an exact set so a NEW benchmark split
 # (``spider-tvshow``, ...) is excluded the day it is first evaluated, without
 # anyone remembering to extend a list.
-BENCHMARK_KG_PREFIXES: tuple[str, ...] = ("spider-",)
+BENCHMARK_KG_PREFIXES: tuple[str, ...] = (
+    "spider-",
+    # Eval-MH v3 never-tuned holdout (whitepaper). Path-B product eval KGs —
+    # must not few-shot leak into production /ask or other eval runs.
+    "eval-mh-",
+)
 
 
 def is_benchmark_kg(kg_name: str) -> bool:

@@ -59,7 +59,15 @@ def _write_bank(path, rows: list[dict]) -> None:
 
 @pytest.mark.parametrize(
     "kg_name",
-    ["spider-world-1", "spider-concert-singer", "SPIDER-CAR-1", "  spider-flight-2  "],
+    [
+        "spider-world-1",
+        "spider-concert-singer",
+        "SPIDER-CAR-1",
+        "  spider-flight-2  ",
+        "eval-mh-concert-singer-v3",
+        "EVAL-MH-pets-1-v3",
+        "  eval-mh-network-1-v3  ",
+    ],
 )
 def test_benchmark_kgs_are_recognized(kg_name):
     assert is_benchmark_kg(kg_name)
@@ -75,6 +83,9 @@ def test_benchmark_kgs_are_recognized(kg_name):
         # not be swept up. `spider-` includes the dash for this reason.
         "spiderman-box-office",
         "arachnid-spider-survey",
+        # eval-mh- is prefix with dash; bare "eval" must not match
+        "eval-production-kg",
+        "clinical-trials",
     ],
 )
 def test_real_kgs_are_not_mistaken_for_benchmarks(kg_name):
