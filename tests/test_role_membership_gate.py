@@ -58,11 +58,16 @@ def test_alnum_norm_collapses_case_and_punct():
 def test_is_catalog_path_structural():
     assert is_catalog_path("org/slug") is True
     assert is_catalog_path("scope/pkg/extra") is True
+    assert is_catalog_path("@scope/pkg") is True
     assert is_catalog_path("OpenAI") is False
     assert is_catalog_path("just-a-name") is False
     assert is_catalog_path("/leading") is False
     assert is_catalog_path("trailing/") is False
     assert is_catalog_path("") is False
+    # Shared with R1 discovery_quality.catalog_path_segments — not bare slashes.
+    assert is_catalog_path("https://host/a/b") is False
+    assert is_catalog_path("//cdn.example/x/y") is False
+    assert is_catalog_path("2024/2025 Budget") is False  # whitespace segment
 
 
 def test_identity_rank_catalog_beats_freetext():
@@ -78,6 +83,41 @@ def test_default_role_attributes_are_schema_slots_not_entities():
     assert "provider" in DEFAULT_ROLE_ATTRIBUTES
     assert "manufacturer" in DEFAULT_ROLE_ATTRIBUTES
     assert "organization" in DEFAULT_ROLE_ATTRIBUTES
+    # Hierarchical dual-use leaves are NOT defaults (false-drop review ONTA-465).
+    assert "parent" not in DEFAULT_ROLE_ATTRIBUTES
+    assert "source" not in DEFAULT_ROLE_ATTRIBUTES
+    assert "owner" not in DEFAULT_ROLE_ATTRIBUTES
+
+
+def test_url_key_is_not_catalog_rank_two():
+    """URL-shaped keys must not outrank free-text (aligned with R1)."""
+    assert identity_rank("https://docs.example.com/models/foo") == 1
+    assert identity_rank("acme/foo") == 2
+
+
+def test_parent_hierarchy_not_dropped_under_defaults():
+    """Same-type intermediate nodes listed as parent must keep under defaults."""
+    rows = [
+        {"name": "iPhone 15 Pro", "parent": "iPhone 15", "sku": "A1"},
+        {"name": "iPhone 15", "parent": "iPhone", "sku": "A0", "year": "2023"},
+    ]
+    v = screen_role_membership(rows, key_attr="name")
+    assert "iPhone 15" in _kept_names(v)
+    assert "iPhone 15 Pro" in _kept_names(v)
+    assert _dropped_names(v) == []
+
+
+def test_parent_still_droppable_when_caller_opts_in():
+    """Callers may still pass parent via role_attributes for domain-specific runs."""
+    rows = [
+        {"name": "Parent Org"},
+        {"name": "Child Org", "parent": "Parent Org", "city": "SF"},
+    ]
+    v = screen_role_membership(
+        rows, key_attr="name", role_attributes=frozenset({"parent"})
+    )
+    assert "Parent Org" in _dropped_names(v)
+    assert "Child Org" in _kept_names(v)
 
 
 # --------------------------------------------------------------------------- #

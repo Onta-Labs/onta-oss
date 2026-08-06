@@ -19,8 +19,8 @@ evidence only**:
 3. **Uncertain → keep** — no brand/voice/platform denylists; no focus_type name
    lists. Absence of batch evidence never drops a row.
 
-Pure OSS: stdlib only, no I/O, no ``from cograph.*``. Not wired into web_ingest
-here (WS6); call sites land separately.
+Pure OSS: stdlib only, no I/O, no ``from cograph.*``. Wired post-A1 via
+``web_ingest_cap.apply_post_a1_structural_gates`` (ONTA-465 / WS6).
 """
 
 from __future__ import annotations
@@ -41,15 +41,18 @@ __all__ = [
 # Schema-role vocabulary: attribute *names* that hold a role entity (provider,
 # manufacturer, …), never entity names / brand tokens. Matched case-insensitively
 # against the attribute leaf exactly (not substrings of provenance fields).
+#
+# High-precision slots only (ONTA-465 review). Hierarchical / dual-use leaves
+# like ``parent``, ``source``, ``owner`` are omitted from the default set —
+# free-text instances that also appear as intermediate hierarchy nodes would
+# otherwise false-drop under equal-rank Rule 1. Callers may still pass them via
+# ``role_attributes=``.
 DEFAULT_ROLE_ATTRIBUTES: frozenset[str] = frozenset({
     "provider",
     "organization",
     "manufacturer",
     "vendor",
     "publisher",
-    "source",
-    "parent",
-    "owner",
 })
 
 # Internal / provenance keys that never count as filled plan content when judging
@@ -82,16 +85,15 @@ def alnum_norm(value: object) -> str:
 
 
 def is_catalog_path(value: object) -> bool:
-    """True when the key looks like a multi-segment catalog id (``org/slug``, …).
+    """True when the key is a structural catalog id (``org/slug``, …).
 
-    Structural only: one or more ``/`` with non-empty segments on both sides.
-    Does not inspect domain or brand tokens.
+    Delegates to :func:`discovery_quality.catalog_path_segments` so R1 identity
+    and R2 role-rank share one definition: reject URLs, whitespace segments, and
+    single-segment paths. No brand/domain vocabulary.
     """
-    s = _norm_ws(value)
-    if "/" not in s:
-        return False
-    segs = [p for p in s.split("/") if p != ""]
-    return len(segs) >= 2
+    from cograph_client.pipeline.discovery_quality import catalog_path_segments
+
+    return catalog_path_segments(value) is not None
 
 
 def identity_rank(value: object) -> int:
