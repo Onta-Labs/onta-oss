@@ -109,8 +109,11 @@ person is a BreastOncologist) returns zero rows even though a supertype (Physici
 match. If the schema shows no single supertype covering the candidates, UNION the rdf:type \
 triple across the plausible subtypes instead. Prefer the most general type whose name/label \
 attribute can carry the value being searched.
-- To get an entity's display name, ALWAYS use <http://www.w3.org/2000/01/rdf-schema#label> first. \
-The rdfs:label is set on every entity during ingestion. Do NOT use attributes from the WRONG type \
+- To get an entity's display name: prefer the type's own name attribute when the ontology \
+declares one (e.g. <…/types/Person/attrs/name>, <…/types/Event/attrs/name>, \
+<…/types/Facility/attrs/name>). Fall back to <http://www.w3.org/2000/01/rdf-schema#label> \
+ONLY when no name attribute is listed for that type. Do NOT project entity IDs, numeric \
+slugs, or URI local-names as "names". Do NOT use attributes from the WRONG type \
 (e.g., do not use Person/attrs/name to get a Movie name). Each type's attributes are ONLY for that type.
 - NEVER use an attribute URI from a different entity type. Movie attributes start with \
 <https://graph.onta.sh/types/Movie/attrs/...>, Person attributes with <https://graph.onta.sh/types/Person/attrs/...>. \

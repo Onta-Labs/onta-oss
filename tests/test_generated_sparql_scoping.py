@@ -113,6 +113,28 @@ def test_a_query_scoped_to_another_kg_in_the_same_workspace_is_left_alone():
     assert _dataset_of(_confine(query)) == [other]
 
 
+def test_tenant_base_from_without_target_kg_is_repaired():
+    """Model wrote only the workspace base (+ optional global) — inject the kg.
+
+    Path-B / named-KG instance data lives under ``…/kg/<name>``. A generator that
+    omits that graph and keeps only ``…/graphs/<tenant>`` (plus global layers)
+    returns empty or wrong answers for kg-scoped /ask. Confinement must inject
+    the route's ``default_graphs`` (the target KG), not treat the base graph as
+    already sufficient data scope.
+    """
+    query = (
+        f"SELECT ?name ?age FROM <{OWN_GRAPH}> FROM <{PUBLIC_LAYER}> "
+        "WHERE { ?p a <https://graph.onta.sh/types/Person> . "
+        "?p <https://graph.onta.sh/types/Person/attrs/name> ?name . "
+        "?p <https://graph.onta.sh/types/Person/attrs/age> ?age }"
+    )
+    out = _confine(query, allowed_graphs=[PUBLIC_LAYER])
+    graphs = _dataset_of(out)
+    assert DATA_GRAPH in graphs, graphs
+    assert OWN_GRAPH in graphs
+    assert PUBLIC_LAYER in graphs
+
+
 # ---------------------------------------------------------------------------
 # Foreign graphs: hard-fail, never repaired
 # ---------------------------------------------------------------------------
@@ -167,8 +189,11 @@ def test_repair_can_never_widen_scope_beyond_the_requests_own_graphs():
         graphs = _dataset_of(out)
         assert graphs, f"accepted a query the parser reports as unscoped: {query}"
         assert set(graphs) <= in_scope, (query, graphs)
-        # And the request's own data graph is always reachable after repair.
-        assert DATA_GRAPH in graphs or set(graphs) <= in_scope - {PUBLIC_LAYER}
+        # Route target KG is always present unless the model named a different kg
+        # (that case is left alone — tested separately).
+        other_kg = f"{OWN_GRAPH}/kg/events"
+        if other_kg not in query:
+            assert DATA_GRAPH in graphs, (query, graphs)
 
     rejected = [
         f"SELECT ?s FROM <{VICTIM_GRAPH}> WHERE {{ ?s ?p ?o }}",
