@@ -520,6 +520,7 @@ def _try_import_role_gate() -> Optional[Any]:
 
 def _resolve_role_gate_fn(mod: Any) -> Optional[Callable[..., Any]]:
     for name in (
+        "screen_role_membership",  # WS2 shipped entrypoint (ONTA-460)
         "apply_role_membership_gate",
         "role_membership_gate",
         "gate_role_membership",
@@ -561,6 +562,12 @@ def _call_role_gate(
 ) -> list[dict]:
     """Call the gate with a few signature fallbacks."""
     attempts: list[dict[str, Any]] = [
+        {
+            "rows": rows,
+            "key_attr": key_attr,
+            "role_attributes": frozenset(role_attrs),
+            "focus_type": focus_type,
+        },
         {
             "rows": rows,
             "key_attr": key_attr,
