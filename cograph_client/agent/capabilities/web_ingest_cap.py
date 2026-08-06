@@ -98,7 +98,13 @@ from cograph_client.graph.suppression import fetch_suppressed_entities
 from cograph_client.normalization.inference import list_type_schema
 from cograph_client.config import settings
 from cograph_client.pipeline.a1_validators import screen_row
-from cograph_client.pipeline.discovery_quality import apply_discovery_quality_gate
+from cograph_client.pipeline.discovery_quality import (
+    alnum_identity,
+    apply_discovery_quality_gate,
+    catalog_identity_key,
+    catalog_path_segments,
+    catalog_surface_keys,
+)
 from cograph_client.pipeline.role_membership_gate import screen_role_membership
 from cograph_client.pipeline.source_scope import merge_provider_context
 from cograph_client.pipeline.manifest import (
@@ -448,12 +454,29 @@ class StructuralGateResult:
     reasons: list[str] = field(default_factory=list)
 
 
+def _structural_identity_keys(raw_key: object) -> set[str]:
+    """Catalog-path + surface identity keys for cross-batch dedupe."""
+    keys: set[str] = set()
+    segs = catalog_path_segments(raw_key)
+    if segs:
+        keys.add("cat:" + catalog_identity_key(segs))
+        for sk in catalog_surface_keys(segs):
+            if sk:
+                keys.add("surf:" + sk)
+    else:
+        a = alnum_identity(raw_key)
+        if a:
+            keys.add("surf:" + a)
+    return keys
+
+
 def apply_post_a1_structural_gates(
     rows: list,
     key_attr: str,
     attributes: list[str],
     *,
     focus_type: Optional[str] = None,
+    catalog_inventory: bool = False,
 ) -> StructuralGateResult:
     """Run role-membership then discovery-quality on a post-A1 batch.
 
@@ -462,6 +485,9 @@ def apply_post_a1_structural_gates(
     1. :func:`screen_role_membership` — drop role entities mistaken for instances
     2. :func:`apply_discovery_quality_gate` — website scrub + structural identity
        merge (catalog-path ↔ surface form, near-dups)
+
+    ``catalog_inventory`` is True when this job has already seen catalog-path
+    keys in an earlier batch (cross-batch brand drops for Vapi-only scrapes).
 
     Never raises; on internal failure returns the input rows with zero counters
     so the write path cannot sink on observability. Input rows are not mutated
@@ -480,6 +506,7 @@ def apply_post_a1_structural_gates(
             dict_rows,
             key_attr=key_attr,
             focus_type=focus_type,
+            catalog_inventory=catalog_inventory,
         )
         role_drops = len(rv.dropped)
         for r in rv.reasons:
@@ -1604,6 +1631,13 @@ class WebIngestCapability:
             # key would double-write. Specialized runs first, so its (more
             # structured) row wins; the general provider only contributes NEW keys.
             seen_keys: set[str] = set()
+            # Cross-batch structural identity (catalog-path + surface forms) so a
+            # later scrape display-name cannot re-mint a model already written
+            # from an authoritative catalog API earlier in the same job.
+            seen_identity_keys: set[str] = set()
+            # Once any batch has catalog-path rows, later brand-only batches still
+            # get sparse-self-role drops (live incident: Vapi scrape after OpenRouter).
+            job_catalog_inventory = False
             key_attr = (attributes[0] if attributes else "name") or "name"
             # ONTA-345: entity-level RE-ACQUISITION guard. Consult the STICKY
             # suppression / tombstone list ONCE per run (batched — one query, then
@@ -1868,13 +1902,47 @@ class WebIngestCapability:
                             # + structural identity merge including catalog-path ↔
                             # surface form). No brand/platform denylists. Helper
                             # never raises into the write path.
+                            # Mark inventory before gates so this batch's own
+                            # catalog paths count for sparse brand drops.
+                            for _br in batch:
+                                if isinstance(_br, dict) and catalog_path_segments(
+                                    _br.get(key_attr)
+                                ):
+                                    job_catalog_inventory = True
+                                    break
                             sg = apply_post_a1_structural_gates(
                                 batch,
                                 key_attr,
                                 list(attributes),
                                 focus_type=proposed_type,
+                                catalog_inventory=job_catalog_inventory,
                             )
                             batch = sg.rows
+                            # Drop cross-batch structural dups (display name of a
+                            # catalog id already written earlier in this job).
+                            if seen_identity_keys and batch:
+                                _kept_id: list = []
+                                _xdrop = 0
+                                for _br in batch:
+                                    if not isinstance(_br, dict):
+                                        _kept_id.append(_br)
+                                        continue
+                                    _iks = _structural_identity_keys(
+                                        _br.get(key_attr)
+                                    )
+                                    if _iks and _iks & seen_identity_keys:
+                                        _xdrop += 1
+                                        continue
+                                    _kept_id.append(_br)
+                                if _xdrop:
+                                    identity_merges += _xdrop
+                                    batch = _kept_id
+                            # Remember identity keys for later batches.
+                            for _br in batch:
+                                if isinstance(_br, dict):
+                                    seen_identity_keys |= _structural_identity_keys(
+                                        _br.get(key_attr)
+                                    )
                             if sg.role_drops:
                                 role_drops += int(sg.role_drops)
                             if sg.identity_merges:

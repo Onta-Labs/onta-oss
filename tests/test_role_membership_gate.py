@@ -146,6 +146,17 @@ def test_sparse_self_provider_kept_without_catalog_path_batch():
     assert set(_kept_names(v)) == {"Acme", "Contoso"}
     assert _dropped_names(v) == []
 
+
+def test_sparse_brand_drops_with_cross_batch_catalog_inventory_flag():
+    """Later brand-only batch still drops when job already saw catalog paths."""
+    rows = [
+        {"name": "ElevenLabs", "provider": "ElevenLabs"},
+        {"name": "Azure", "provider": "Azure"},
+    ]
+    v = screen_role_membership(
+        rows, key_attr="name", catalog_inventory=True
+    )
+    assert set(_dropped_names(v)) == {"ElevenLabs", "Azure"}
 # --------------------------------------------------------------------------- #
 # Domain 1 — Physicians: hospital name stamped as Physician
 # --------------------------------------------------------------------------- #

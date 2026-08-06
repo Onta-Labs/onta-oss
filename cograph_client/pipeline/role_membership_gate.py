@@ -188,6 +188,7 @@ def screen_role_membership(
     key_attr: str,
     role_attributes: Optional[frozenset[str]] = None,
     focus_type: Optional[str] = None,  # reserved; unused (no type-specific lists)
+    catalog_inventory: bool = False,
 ) -> RoleVerdict:
     """Drop rows that are role entities mistaken for instances in this batch.
 
@@ -203,6 +204,10 @@ def screen_role_membership(
     focus_type:
         Optional; currently unused. Reserved for future ontology-driven role
         attribute selection — must never carry brand/name denylists.
+    catalog_inventory:
+        When True (this batch or an earlier batch in the same job already had
+        catalog-path keys), enable sparse-self-role drops for bare brand rows
+        even if this batch has no ``org/slug`` keys (cross-batch inventory).
 
     Uncertain rows are kept. Pure function; stdlib only.
     """
@@ -230,7 +235,7 @@ def screen_role_membership(
     # role_value_norm → True if some catalog-path instance uses it as a role value
     role_value_on_catalog: set[str] = set()
     # Any catalog-path key in the batch (inventory with org/slug ids present).
-    batch_has_catalog_path = False
+    batch_has_catalog_path = bool(catalog_inventory)
 
     for i, row in indexed:
         key_raw = row.get(key_attr)
