@@ -1658,19 +1658,15 @@ class WebIngestCapability:
                     # state that made a single reused resolver non-reentrant; the
                     # shared lock keeps their ontology mutations serialized.
                     resolver = _build_resolver(ctx, ontology_lock=ontology_lock)
+                    # ONTA-459: once per sub-query (not per provider) — structural
+                    # source_constraint from ensemble providers' own metadata.
+                    sub_pctx = merge_provider_context(pctx, sub_query, ensemble)
                     for prov in ensemble:
                         remaining = cap - processed
                         if remaining <= 0:
                             break
                         plog = plogs[prov.name]
-                        # ONTA-461 / R3 + ONTA-459 source scope — derive
-                        # source_constraint from this sub-query + ensemble
-                        # providers' own metadata (no brand if-strings), then
-                        # provider_accepts. Missing accepts → True. False →
-                        # skip discover / provider_skip / no attempt bill.
-                        sub_pctx = merge_provider_context(
-                            pctx, sub_query, ensemble
-                        )
+                        # ONTA-461 / R3 — provider_accepts only; no brand ifs.
                         if not provider_accepts(prov, sub_query, sub_pctx):
                             _record_provider_skip(
                                 job, prov.name, sub_query, reason="out_of_scope"

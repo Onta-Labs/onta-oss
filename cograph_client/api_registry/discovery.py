@@ -202,6 +202,7 @@ class RegistryDiscoverySource:
         if target_ids:
             # Exclusive none: named source matched no registry catalog → all
             # catalog APIs skip (web/locate still run; they lack accepts).
+            # Keep string literal in sync with source_scope.REGISTRY_NONE.
             if "__none__" in target_ids:
                 return False
             if self.registry_slug not in target_ids:

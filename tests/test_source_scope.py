@@ -58,10 +58,12 @@ def _general_web():
 
 def test_has_named_source_signal_structural():
     assert has_named_source_signal("List of TTS models offered by Acme") is True
-    assert has_named_source_signal("models from Contoso catalog") is True
     assert has_named_source_signal("available on ExampleHost") is True
     assert has_named_source_signal("List of TTS models") is False
     assert has_named_source_signal("top packages by downloads") is False  # "by" alone
+    # Weak prepositions are NOT strong signals (no exclusive-none):
+    assert has_named_source_signal("models from 2024") is False
+    assert has_named_source_signal("physicians at Mayo Clinic") is False
 
 
 def test_provider_identity_tokens_from_self_metadata_only():
@@ -120,14 +122,51 @@ def test_signal_matches_via_host_label_only():
     assert "openrouter_models" in (sc.get("registry_ids") or [])
 
 
+def test_weak_preposition_unmatched_stays_unconstrained():
+    """F1: 'from 2024' / 'at Mayo' must NOT exclusive-none all catalogs."""
+    sc = derive_source_constraint(
+        "top LLM models from 2024",
+        [_openrouter(), _nppes()],
+    )
+    assert sc == {}
+    sc2 = derive_source_constraint(
+        "physicians at Mayo Clinic",
+        [_openrouter(), _nppes()],
+    )
+    assert sc2 == {}
+
+
+def test_weak_preposition_positive_match_still_binds():
+    """Weak 'from OpenRouter' can still positive-match via host/slug tokens."""
+    sc = derive_source_constraint(
+        "models from OpenRouter",
+        [_openrouter(), _nppes()],
+    )
+    assert sc.get("registry_ids") == ["openrouter_models"]
+
+
 def test_multi_catalog_match_when_both_mentioned():
     sc = derive_source_constraint(
-        "providers from OpenRouter and NPPES",
+        "providers offered by OpenRouter and NPPES",
         [_openrouter(), _nppes()],
     )
     ids = set(sc.get("registry_ids") or [])
     assert ids == {"openrouter_models", "nppes"}
 
+
+def test_short_slug_parts_do_not_false_bind():
+    """F2: open_food_facts-shaped slug must not bind on bare 'open'."""
+    food = _catalog_prov(
+        slug="open_food_facts_search",
+        hosts=frozenset({"world.openfoodfacts.org"}),
+        title="Open Food Facts Search",
+    )
+    sc = derive_source_constraint(
+        "models offered by SomeForeignPlatform with open weights",
+        [food, _openrouter()],
+    )
+    # Strong foreign source, no token match → exclusive none (not food catalog)
+    assert sc == {"registry_ids": [REGISTRY_NONE]}
 
 # --------------------------------------------------------------------------- #
 # accepts + merge

@@ -22,6 +22,7 @@ __all__ = [
     "derive_source_constraint",
     "provider_identity_tokens",
     "has_named_source_signal",
+    "has_weak_source_signal",
     "merge_provider_context",
 ]
 
@@ -29,23 +30,36 @@ __all__ = [
 # RegistryDiscoverySource.accepts treats this as out-of-scope for every catalog.
 REGISTRY_NONE = "__none__"
 
-# Structural phrasing that introduces a named source (not a product class).
-_SOURCE_SIGNAL = re.compile(
+# STRONG source phrasing: introduces a named platform/catalog. Unmatched strong
+# signals yield exclusive REGISTRY_NONE (foreign source → no catalog API).
+_STRONG_SOURCE_SIGNAL = re.compile(
     r"""
     \b(?:
         offered\s+by | provided\s+by | published\s+by | listed\s+(?:by|on) |
-        sold\s+by | hosted\s+(?:by|on) | available\s+(?:on|from|via|at) |
-        from | via | on | at
+        sold\s+by | hosted\s+(?:by|on) | available\s+(?:on|from|via|at)
     )\s+
     """,
     re.IGNORECASE | re.VERBOSE,
 )
 
-# Stopwords that must not become identity tokens even if they appear in slugs.
+# WEAK prepositions: may *positive*-match a live provider token, but never alone
+# force exclusive __none__ (avoids "models from 2024" / "doctors at Mayo" over-skip).
+_WEAK_SOURCE_SIGNAL = re.compile(
+    r"\b(?:from|via|on|at)\s+",
+    re.IGNORECASE,
+)
+
+# Stopwords / underspecified slug parts that must not become identity tokens.
 _TOKEN_STOP = frozenset({
     "api", "www", "com", "org", "net", "io", "ai", "gov", "models", "model",
     "search", "list", "data", "source", "registry", "the", "and", "for", "with",
+    # Underspecified multi-segment slug parts (open_food_facts → open/food/facts)
+    "open", "food", "facts", "series", "world", "secure", "public", "free",
+    "test", "demo", "prod", "dev", "v1", "v2", "http", "https",
 })
+
+# Minimum length for underscored slug *parts* (host labels may be 3+).
+_MIN_SLUG_PART_LEN = 5
 
 
 def _norm_ws(value: object) -> str:
@@ -53,27 +67,35 @@ def _norm_ws(value: object) -> str:
 
 
 def has_named_source_signal(sub_query: str) -> bool:
-    """True when the sub-query structurally names a source (offered by / from / …)."""
-    return bool(_SOURCE_SIGNAL.search(sub_query or ""))
+    """True when a STRONG source phrase is present (exclusive-none eligible)."""
+    return bool(_STRONG_SOURCE_SIGNAL.search(sub_query or ""))
+
+
+def has_weak_source_signal(sub_query: str) -> bool:
+    """True when a weak preposition is present (positive-match only)."""
+    return bool(_WEAK_SOURCE_SIGNAL.search(sub_query or ""))
 
 
 def provider_identity_tokens(provider: Any) -> frozenset[str]:
     """Tokens derived **only** from the provider's self-declared metadata.
 
-    Examples (illustrative shapes, not hardcodes):
-    * ``registry_slug=acme_catalog``, ``served_hosts={api.acme.example}``
-      → ``{acme, catalog, …}``
-    * ``registry_slug=nppes``, host with label ``npiregistry`` → those labels
+    Prefers host registrable labels and compact slugs; underspecified short
+    slug parts (``open``, ``series``, …) are dropped so they cannot bind the
+    wrong catalog.
     """
     tokens: set[str] = set()
+
+    def _add_part(part: str, *, min_len: int = _MIN_SLUG_PART_LEN) -> None:
+        p = (part or "").strip().lower()
+        if len(p) >= min_len and p not in _TOKEN_STOP:
+            tokens.add(p)
 
     slug = str(getattr(provider, "registry_slug", "") or "").strip().lower()
     if slug:
         for part in re.split(r"[_\-.]+", slug):
-            if len(part) >= 3 and part not in _TOKEN_STOP:
-                tokens.add(part)
+            _add_part(part)
         compact = re.sub(r"[^a-z0-9]+", "", slug)
-        if len(compact) >= 4:
+        if len(compact) >= 4 and compact not in _TOKEN_STOP:
             tokens.add(compact)
 
     hosts = getattr(provider, "served_hosts", None) or ()
@@ -81,24 +103,22 @@ def provider_identity_tokens(provider: Any) -> frozenset[str]:
         host = str(h or "").strip().lower().lstrip("www.")
         if not host:
             continue
-        # registrable label: openrouter.ai → openrouter; a.b.co.uk keep first label
+        # registrable label: openrouter.ai → openrouter (allow len>=3 for hosts)
         label = host.split(".")[0]
         if len(label) >= 3 and label not in _TOKEN_STOP:
             tokens.add(label)
 
     title = str(getattr(provider, "title", "") or "").strip().lower()
     if title:
-        # First significant word of the catalog title.
         for word in re.split(r"[^a-z0-9]+", title):
-            if len(word) >= 3 and word not in _TOKEN_STOP:
+            if len(word) >= 4 and word not in _TOKEN_STOP:
                 tokens.add(word)
                 break
 
     name = str(getattr(provider, "name", "") or "").strip().lower()
     if name.startswith("api:"):
         for part in re.split(r"[_\-.]+", name[4:]):
-            if len(part) >= 3 and part not in _TOKEN_STOP:
-                tokens.add(part)
+            _add_part(part)
 
     return frozenset(tokens)
 
@@ -135,21 +155,27 @@ def derive_source_constraint(
     """Build a ``source_constraint`` dict for one sub-query, or ``{}``.
 
     Rules:
-    1. No named-source signal in the sub-query → ``{}`` (unconstrained; all accept).
-    2. Signal present + ≥1 registry provider matches via its own tokens →
-       ``{registry_ids: [...], hosts: [...]}`` for those matches.
-    3. Signal present + zero registry matches →
-       ``{registry_ids: [REGISTRY_NONE]}`` so every catalog API skips
-       (foreign source → web/locate only).
+    1. ≥1 registry provider matches via its own tokens (strong *or* weak signal
+       not required for positive match when tokens appear) → bind those catalogs.
+    2. STRONG signal present + zero registry matches →
+       ``{registry_ids: [REGISTRY_NONE]}`` (foreign source → web/locate only).
+    3. WEAK-only signal + zero matches → ``{}`` (unconstrained; avoid over-skip).
+    4. No signal + no token match → ``{}``.
     """
     provs = list(providers or [])
-    if not has_named_source_signal(sub_query):
-        return {}
-
     matched = _matching_registry_providers(sub_query, provs)
-    if not matched:
+    if matched:
+        return _constraint_from_providers(matched)
+
+    if has_named_source_signal(sub_query):
+        # Strong "offered by X" etc. with no live catalog → exclusive none.
         return {"registry_ids": [REGISTRY_NONE]}
 
+    # Weak prepositions alone never force exclusive none.
+    return {}
+
+
+def _constraint_from_providers(matched: list[Any]) -> dict[str, Any]:
     registry_ids: list[str] = []
     hosts: list[str] = []
     for p in matched:
@@ -162,7 +188,6 @@ def derive_source_constraint(
                 hosts.append(hh)
     out: dict[str, Any] = {}
     if registry_ids:
-        # Dedupe preserving order
         seen: set[str] = set()
         uniq = []
         for r in registry_ids:
