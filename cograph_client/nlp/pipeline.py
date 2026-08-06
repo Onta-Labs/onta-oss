@@ -462,6 +462,54 @@ def _neptune_safe_duration(sparql: str) -> str:
     return _DURATION_DATATYPE_RE.sub(_sub, sparql)
 
 
+_RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label"
+
+
+def _prefer_attr_name_over_rdfs_label(sparql: str) -> str:
+    """Rewrite ``rdfs:label`` display bindings to ``types/<T>/attrs/name`` when safe.
+
+    When the query already constrains a subject to ``types/<T>`` and projects a
+    name via ``rdfs:label``, prefer the type's ``attrs/name`` attribute. CSV /
+    Path-B ingest often puts human-readable strings on ``attrs/name`` while
+    ``rdfs:label`` holds a slug or numeric id — so rank queries return
+    ``name: 5`` with the correct extreme value.
+
+    Conservative: only rewrites when ``attrs/name`` for that type is not already
+    used in the query (so intentional label-only queries stay put).
+    """
+    if _RDFS_LABEL_IRI not in sparql and "rdfs:label" not in sparql.lower():
+        return sparql
+    # Leaf type names from type IRIs (not .../types/T/attrs/...)
+    types = re.findall(
+        rf"{re.escape(IRI_BASE)}/types/([A-Za-z][A-Za-z0-9_]*)(?=/attrs|>)",
+        sparql,
+    )
+    # Prefer pure type IRIs (.../types/Person>) over attr paths for the rewrite target
+    type_leaves = []
+    for t in types:
+        type_leaves.append(t)
+    # de-dupe preserving order
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for t in type_leaves:
+        if t not in seen:
+            seen.add(t)
+            ordered.append(t)
+    for t in ordered:
+        name_uri = f"{IRI_BASE}/types/{t}/attrs/name"
+        if name_uri in sparql:
+            continue
+        if f"{IRI_BASE}/types/{t}" not in sparql:
+            continue
+        # Replace full IRI form first, then bare rdfs:label
+        if f"<{_RDFS_LABEL_IRI}>" in sparql:
+            return sparql.replace(f"<{_RDFS_LABEL_IRI}>", f"<{name_uri}>", 1)
+        new = re.sub(r"\brdfs:label\b", f"<{name_uri}>", sparql, count=1, flags=re.I)
+        if new != sparql:
+            return new
+    return sparql
+
+
 _ENTITY_URI_PREFIX = ENTITY_URI_PREFIX
 
 
@@ -2815,6 +2863,14 @@ class NLQueryPipeline:
         # datatype makes the recency filter work on the deployed backend while staying
         # correct on the spec engine. Idempotent; touches only the duration datatype IRI.
         sparql = _neptune_safe_duration(sparql)
+
+        # Fix 7: prefer types/<T>/attrs/name over rdfs:label for display names when
+        # the query already types the subject as <T>. Path-B / CSV-ingested KGs often
+        # mint rdfs:label as a slug or numeric id while attrs/name holds the human
+        # string — ranking queries then return "eventName: 5" with the right numeric
+        # extreme (Eval-MH freeze flaky projection fails). Only rewrites when
+        # attrs/name is not already used for that type in the query.
+        sparql = _prefer_attr_name_over_rdfs_label(sparql)
 
         return sparql
 
