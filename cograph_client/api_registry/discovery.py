@@ -24,12 +24,15 @@ brand if-strings. Recognized keys:
   registry slugs the sub-query targets
 * ``source_constraint`` — preferred nested shape
   ``{hosts: [...], registry_ids: [...]}`` (same semantics as the flat keys)
+* ``registry_ids`` containing ``__none__`` (from
+  :data:`cograph_client.pipeline.source_scope.REGISTRY_NONE`) — exclusive
+  "no catalog API": every registry provider returns ``False`` (sub-query named
+  a source that matched no live catalog entry).
 
 When those keys are absent/empty the provider accepts (don't over-skip).
-**Production ensemble skips only fire when plan-time populates one of these
-keys on the per-sub-query context** — today ``_provider_context`` does not; a
-follow-up can set them when the planner partitions by source without teaching
-the orchestrator platform names.
+Plan/execute populate constraints via
+:func:`cograph_client.pipeline.source_scope.merge_provider_context` from each
+provider's own metadata tokens — never orchestrator brand if-strings.
 """
 
 from __future__ import annotations
@@ -196,10 +199,16 @@ class RegistryDiscoverySource:
             return False
 
         target_ids = _constraint_registry_ids(ctx)
-        if target_ids and self.registry_slug not in target_ids:
-            # Also accept the api:{slug} form callers may stamp from provider.name.
-            if f"api:{self.registry_slug}" not in target_ids:
+        if target_ids:
+            # Exclusive none: named source matched no registry catalog → all
+            # catalog APIs skip (web/locate still run; they lack accepts).
+            # Keep string literal in sync with source_scope.REGISTRY_NONE.
+            if "__none__" in target_ids:
                 return False
+            if self.registry_slug not in target_ids:
+                # Also accept the api:{slug} form callers may stamp from provider.name.
+                if f"api:{self.registry_slug}" not in target_ids:
+                    return False
 
         return True
 
