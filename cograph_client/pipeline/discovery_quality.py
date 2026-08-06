@@ -7,9 +7,13 @@ cannot:
 1. **Website policy** — scrub a ``website`` (or alias) cell when it is clearly the
    list/directory page we scraped (``source_url``), a bare path fragment, or a
    wiki/listicle host that is almost never an entity homepage.
-2. **Near-duplicate merge** — collapse rows that share a normalized name *or* the
-   same registrable website host, keeping the row with more filled plan attrs
-   (authority-by-completeness; first-wins is replaced for near-dups only).
+2. **Near-duplicate merge** — collapse rows that share structural identity:
+   * identical ``normalize_entity_key(name)``
+   * identical distinctive registrable website host
+   * **catalog-path identity** (R1): a ``segment/segment…`` key clusters with a
+     free-text title whose alnum-normalized form equals the path's slug tail
+     (or the full path collapsed). Prefer the catalog-path surface as survivor;
+     never merge two distinct catalog paths.
 
 Pure OSS: stdlib only, no I/O, no ``from cograph.*``. Unit-testable in isolation.
 Called from ``web_ingest_cap`` AFTER A1 validators and BEFORE the SourceBundle so
@@ -21,6 +25,7 @@ Design notes (hyperresearch / crawl4ai learnings):
 * independence: one institution, one row (syndication of the same name on two
   pages should not mint two entities)
 * does NOT invent values — only scrub and merge
+* identity is structural — no brand/product/platform allowlists or denylists
 """
 
 from __future__ import annotations
@@ -36,6 +41,10 @@ __all__ = [
     "scrub_website_policy",
     "merge_near_duplicates",
     "normalize_entity_key",
+    "alnum_identity",
+    "catalog_path_segments",
+    "catalog_identity_key",
+    "catalog_surface_keys",
     "registrable_host",
     "page_yield_score",
     "page_looks_like_list",
@@ -112,6 +121,77 @@ def normalize_entity_key(value: object) -> str:
     )
     s = re.sub(r"[^a-z0-9]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
+
+
+def alnum_identity(value: object) -> str:
+    """Collapse to lowercase alphanumeric only (no spaces/punctuation).
+
+    Used as the surface form of a catalog slug tail or free-text title so
+    ``org/model-slug`` can cluster with display title ``Model Slug``.
+    """
+    return re.sub(r"[^a-z0-9]+", "", _norm_ws(value).casefold())
+
+
+def catalog_path_segments(value: object) -> Optional[tuple[str, ...]]:
+    """Parse a catalog-path identity key: ``segment/segment…`` (≥1 slash).
+
+    Returns non-empty path segments, or ``None`` when the value is free-text
+    (no slash), a URL, or otherwise not a structural catalog id.
+
+    Accepts optional leading ``@`` on a segment (package-scope form
+    ``@scope/pkg``). Structural only — no host/brand vocabulary.
+    """
+    raw = _norm_ws(value)
+    if not raw or "/" not in raw:
+        return None
+    if "://" in raw or raw.startswith("//"):
+        return None
+    # Drop accidental query/fragment if a path-shaped cell carried them.
+    raw = raw.split("?", 1)[0].split("#", 1)[0]
+    parts = [p for p in raw.split("/") if p]
+    if len(parts) < 2:
+        return None
+    # Free-text titles almost never embed ``/`` with whitespace segments.
+    if any((" " in p or "\t" in p) for p in parts):
+        return None
+    return tuple(parts)
+
+
+def catalog_identity_key(segments: tuple[str, ...]) -> str:
+    """Canonical full-path identity for catalog segments (alnum per segment).
+
+    ``@scope/pkg`` and ``scope/pkg`` share a key; ``a/b-hd`` ≠ ``a/b-turbo``.
+    """
+    return "/".join(alnum_identity(p.lstrip("@")) for p in segments)
+
+
+def catalog_surface_keys(segments: tuple[str, ...]) -> list[str]:
+    """Surface forms free-text may match: slug tail, then full path collapsed."""
+    keys: list[str] = []
+    tail = alnum_identity(segments[-1].lstrip("@"))
+    if tail:
+        keys.append(tail)
+    full = "".join(alnum_identity(p.lstrip("@")) for p in segments)
+    if full and full not in keys:
+        keys.append(full)
+    return keys
+
+
+def _identity_form_rank(row: dict, key_attr: str) -> int:
+    """Stronger identity form wins when merging near-dups.
+
+    Catalog-path keys outrank free-text titles (prefer ``org/slug`` over
+    ``Slug Title`` as the surviving name).
+    """
+    if catalog_path_segments(row.get(key_attr)):
+        return 2
+    if _norm_ws(row.get(key_attr)):
+        return 1
+    return 0
+
+
+def _row_has_catalog_identity(row: dict, key_attr: str) -> bool:
+    return catalog_path_segments(row.get(key_attr)) is not None
 
 
 def registrable_host(url_or_host: object) -> str:
@@ -275,18 +355,51 @@ def _is_distinctive_entity_host(host: str) -> bool:
     return True
 
 
+def _union_row_attrs(preferred: dict, other: dict) -> dict:
+    """Copy of ``preferred`` with empty cells filled from ``other``."""
+    out = dict(preferred)
+    for k, v in other.items():
+        if k not in out or not _norm_ws(out.get(k)):
+            if _norm_ws(v):
+                out[k] = v
+    return out
+
+
+def _pick_survivor(
+    existing: dict,
+    incoming: dict,
+    *,
+    key_attr: str,
+    plan_attrs: list[str],
+) -> dict:
+    """Prefer stronger identity form, then richer plan-attr fill; union attrs."""
+    r_in = _identity_form_rank(incoming, key_attr)
+    r_ex = _identity_form_rank(existing, key_attr)
+    if r_in > r_ex:
+        return _union_row_attrs(incoming, existing)
+    if r_in < r_ex:
+        return _union_row_attrs(existing, incoming)
+    if _filled_score(incoming, plan_attrs) > _filled_score(existing, plan_attrs):
+        return _union_row_attrs(incoming, existing)
+    return _union_row_attrs(existing, incoming)
+
+
 def merge_near_duplicates(
     rows: list[dict],
     key_attr: str,
     *,
     plan_attrs: Optional[list[str]] = None,
 ) -> tuple[list[dict], int, list[str]]:
-    """Collapse near-duplicate rows; keep the richest row per identity cluster.
+    """Collapse near-duplicate rows; keep the best row per identity cluster.
 
     Identity signals (any match → same cluster):
       * identical ``normalize_entity_key(name)`` when non-empty
       * identical ``registrable_host(website)`` ONLY when the host is a
         distinctive institutional domain (not wikipedia/medium/gov portals)
+      * **catalog-path structural identity**: full path key match, or free-text
+        surface (alnum-normalized title) equals another row's catalog slug-tail
+        / full-path collapsed form. Catalog-path form preferred as survivor.
+        Distinct catalog paths (``a/b-hd`` vs ``a/b-turbo``) never merge.
 
     Returns ``(kept, merged_away_count, reasons)``.
     """
@@ -295,67 +408,136 @@ def merge_near_duplicates(
     attrs = list(plan_attrs or [])
     # cluster id → best row
     clusters: dict[str, dict] = {}
-    # map distinctive host → cluster id for website-based linking
+    # secondary indexes → cluster id
+    name_to_cid: dict[str, str] = {}
     host_to_cid: dict[str, str] = {}
+    catalog_to_cid: dict[str, str] = {}
+    # surface (alnum slug-tail / free-text) → cid; ambiguous tails drop out
+    surface_to_cid: dict[str, str] = {}
+    surface_ambiguous: set[str] = set()
     reasons: list[str] = []
     merged = 0
 
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        name_key = normalize_entity_key(row.get(key_attr))
-        web_host = ""
+    def _register_surface(surf: str, cid: str) -> None:
+        if not surf or surf in surface_ambiguous:
+            return
+        prior = surface_to_cid.get(surf)
+        if prior is None:
+            surface_to_cid[surf] = cid
+        elif prior != cid:
+            # Two distinct clusters claim the same surface (e.g. same slug tail
+            # under different orgs). Free-text must not auto-join either.
+            del surface_to_cid[surf]
+            surface_ambiguous.add(surf)
+
+    def _distinctive_host(row: dict) -> str:
         for a, v in row.items():
             if _is_website_attr(str(a)):
                 candidate = registrable_host(v)
                 if candidate and _is_distinctive_entity_host(candidate):
-                    web_host = candidate
-                    break
+                    return candidate
+        return ""
 
-        cid: Optional[str] = None
-        if name_key and name_key in clusters:
-            cid = name_key
-        elif web_host and web_host in host_to_cid:
-            cid = host_to_cid[web_host]
-        elif name_key:
-            cid = name_key
-        elif web_host:
-            cid = f"host:{web_host}"
-        else:
-            # no identity — keep as unique singleton
-            cid = f"anon:{id(row)}"
+    def _resolve_cid(
+        row_obj: dict,
+        *,
+        segs: Optional[tuple[str, ...]],
+        name_key: str,
+        web_host: str,
+        free_surface: str,
+    ) -> str:
+        # 1) Exact catalog full-path (never merges distinct paths).
+        if segs is not None:
+            ck = catalog_identity_key(segs)
+            if ck and ck in catalog_to_cid:
+                return catalog_to_cid[ck]
+        # 2) Normalized full name.
+        if name_key and name_key in name_to_cid:
+            return name_to_cid[name_key]
+        # 3) Distinctive website host.
+        if web_host and web_host in host_to_cid:
+            return host_to_cid[web_host]
+        # 4) Structural surface: free-text ↔ catalog slug-tail / full path.
+        #    Catalog rows may only surface-join a free-text cluster (never
+        #    another catalog path via shared tail alone).
+        if segs is not None:
+            for sk in catalog_surface_keys(segs):
+                other = surface_to_cid.get(sk)
+                if not other or other not in clusters:
+                    continue
+                if not _row_has_catalog_identity(clusters[other], key_attr):
+                    return other
+        elif free_surface and free_surface in surface_to_cid:
+            return surface_to_cid[free_surface]
+        # New cluster identity.
+        if segs is not None:
+            ck = catalog_identity_key(segs)
+            if ck:
+                return f"cat:{ck}"
+        if name_key:
+            return name_key
+        if web_host:
+            return f"host:{web_host}"
+        return f"anon:{id(row_obj)}"
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        raw_name = row.get(key_attr)
+        segs = catalog_path_segments(raw_name)
+        name_key = normalize_entity_key(raw_name)
+        web_host = _distinctive_host(row)
+        free_surface = "" if segs is not None else alnum_identity(raw_name)
+
+        cid = _resolve_cid(
+            row,
+            segs=segs,
+            name_key=name_key,
+            web_host=web_host,
+            free_surface=free_surface,
+        )
 
         if cid in clusters:
-            existing = clusters[cid]
-            if _filled_score(row, attrs) > _filled_score(existing, attrs):
-                # Prefer new; union non-empty cells from existing into gaps
-                merged_row = dict(row)
-                for k, v in existing.items():
-                    if k not in merged_row or not _norm_ws(merged_row.get(k)):
-                        if _norm_ws(v):
-                            merged_row[k] = v
-                clusters[cid] = merged_row
-                reasons.append(
-                    f"near-dup merge kept richer row for {cid!r}"
-                )
-            else:
-                # Keep existing; fill gaps from new
-                for k, v in row.items():
-                    if k not in existing or not _norm_ws(existing.get(k)):
-                        if _norm_ws(v):
-                            existing[k] = v
-                reasons.append(
-                    f"near-dup merge dropped weaker row for {cid!r}"
-                )
+            clusters[cid] = _pick_survivor(
+                clusters[cid], row, key_attr=key_attr, plan_attrs=attrs
+            )
+            reasons.append(f"near-dup merge for {cid!r}")
             merged += 1
         else:
             clusters[cid] = dict(row)
 
-        if web_host:
-            host_to_cid[web_host] = cid
+        # Refresh indexes for the (possibly updated) cluster row.
+        survivor = clusters[cid]
+        s_segs = catalog_path_segments(survivor.get(key_attr))
+        s_name = normalize_entity_key(survivor.get(key_attr))
+        s_host = _distinctive_host(survivor) or web_host
+        if s_name:
+            name_to_cid[s_name] = cid
+        if name_key:
+            name_to_cid[name_key] = cid
+        if s_host:
+            host_to_cid[s_host] = cid
+        if s_segs is not None:
+            ck = catalog_identity_key(s_segs)
+            if ck:
+                catalog_to_cid[ck] = cid
+            for sk in catalog_surface_keys(s_segs):
+                _register_surface(sk, cid)
+        else:
+            surf = alnum_identity(survivor.get(key_attr))
+            if surf:
+                _register_surface(surf, cid)
+        # Also index the incoming row's catalog path even when survivor is free-text
+        # briefly (should not happen — catalog ranks higher) or vice versa.
+        if segs is not None:
+            ck = catalog_identity_key(segs)
+            if ck:
+                catalog_to_cid[ck] = cid
+            for sk in catalog_surface_keys(segs):
+                _register_surface(sk, cid)
+        elif free_surface:
+            _register_surface(free_surface, cid)
 
-    # Preserve first-seen order of cluster ids as rows arrived
-    # (dict preserves insertion order in Py3.7+)
     kept = list(clusters.values())
     return kept, merged, reasons[:20]
 

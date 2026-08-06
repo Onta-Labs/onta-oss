@@ -1,0 +1,308 @@
+{
+  "id": "identity_catalog_surface",
+  "ticket": "ONTA-462",
+  "workstream": "WS5",
+  "description": "Multi-domain synthetic pairs for structural catalog-path ↔ free-text surface identity merge (R1). Catalog paths use segment/segment form; surface forms are display transforms of the slug tail. Sibling catalog paths with different tails must NOT merge.",
+  "domains": [
+    {
+      "domain": "llm_models",
+      "key_attr": "name",
+      "plan_attrs": ["name", "provider", "context_length"],
+      "merge_pairs": [
+        {
+          "id": "models_catalog_vs_title",
+          "rows": [
+            {
+              "name": "acme/widget-pro",
+              "provider": "acme",
+              "context_length": "128000"
+            },
+            {
+              "name": "Widget Pro",
+              "provider": "acme"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "acme/widget-pro",
+          "surface_key": "Widget Pro"
+        },
+        {
+          "id": "models_catalog_vs_spaced_tail",
+          "rows": [
+            {
+              "name": "globex/alpha-7b",
+              "provider": "globex",
+              "context_length": "200000"
+            },
+            {
+              "name": "Alpha 7B",
+              "provider": "globex",
+              "context_length": "200000"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "globex/alpha-7b",
+          "surface_key": "Alpha 7B"
+        },
+        {
+          "id": "models_richer_catalog_survives",
+          "rows": [
+            {
+              "name": "initech/beta-2",
+              "provider": "initech"
+            },
+            {
+              "name": "Beta 2",
+              "provider": "initech",
+              "context_length": "32000"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "initech/beta-2",
+          "surface_key": "Beta 2",
+          "notes": "Catalog-path form preferred even when free-text row has more attrs; attrs may union."
+        }
+      ],
+      "non_merge_pairs": [
+        {
+          "id": "models_sibling_hd_vs_turbo",
+          "rows": [
+            {
+              "name": "acme/widget-hd",
+              "provider": "acme",
+              "context_length": "128000"
+            },
+            {
+              "name": "acme/widget-turbo",
+              "provider": "acme",
+              "context_length": "128000"
+            }
+          ],
+          "expect_merge": false,
+          "notes": "Different catalog paths — sibling suffixes must not collapse."
+        },
+        {
+          "id": "models_distinct_orgs_same_slug_tail",
+          "rows": [
+            {
+              "name": "acme/alpha-7",
+              "provider": "acme"
+            },
+            {
+              "name": "globex/alpha-7",
+              "provider": "globex"
+            }
+          ],
+          "expect_merge": false,
+          "notes": "Same slug tail under different catalog orgs — distinct identities."
+        },
+        {
+          "id": "models_unrelated_titles",
+          "rows": [
+            {
+              "name": "Widget Pro",
+              "provider": "acme"
+            },
+            {
+              "name": "Alpha 7B",
+              "provider": "globex"
+            }
+          ],
+          "expect_merge": false
+        }
+      ]
+    },
+    {
+      "domain": "packages",
+      "key_attr": "name",
+      "plan_attrs": ["name", "version", "license"],
+      "merge_pairs": [
+        {
+          "id": "packages_scope_vs_title",
+          "rows": [
+            {
+              "name": "@northwind/trail-kit",
+              "version": "2.1.0",
+              "license": "MIT"
+            },
+            {
+              "name": "Trail Kit",
+              "version": "2.1.0"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "@northwind/trail-kit",
+          "surface_key": "Trail Kit",
+          "notes": "npm-style scope/pkg is a catalog-path identity form."
+        },
+        {
+          "id": "packages_org_slash_pkg",
+          "rows": [
+            {
+              "name": "harbor/cli-tools",
+              "version": "1.0.0"
+            },
+            {
+              "name": "CLI Tools",
+              "license": "Apache-2.0"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "harbor/cli-tools",
+          "surface_key": "CLI Tools"
+        }
+      ],
+      "non_merge_pairs": [
+        {
+          "id": "packages_sibling_versions_as_slug",
+          "rows": [
+            {
+              "name": "harbor/cli-tools-v1",
+              "version": "1.0.0"
+            },
+            {
+              "name": "harbor/cli-tools-v2",
+              "version": "2.0.0"
+            }
+          ],
+          "expect_merge": false,
+          "notes": "Sibling catalog paths (different slug tails) must not merge."
+        },
+        {
+          "id": "packages_different_scopes",
+          "rows": [
+            {
+              "name": "@northwind/trail-kit"
+            },
+            {
+              "name": "@summit/trail-kit"
+            }
+          ],
+          "expect_merge": false
+        }
+      ]
+    },
+    {
+      "domain": "datasets",
+      "key_attr": "name",
+      "plan_attrs": ["name", "publisher", "rows"],
+      "merge_pairs": [
+        {
+          "id": "datasets_owner_name_vs_title",
+          "rows": [
+            {
+              "name": "noaa/storm-events",
+              "publisher": "NOAA",
+              "rows": "1000000"
+            },
+            {
+              "name": "Storm Events",
+              "publisher": "NOAA"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "noaa/storm-events",
+          "surface_key": "Storm Events"
+        },
+        {
+          "id": "datasets_hyphen_surface",
+          "rows": [
+            {
+              "name": "usgs/earthquake-catalog",
+              "publisher": "USGS",
+              "rows": "500000"
+            },
+            {
+              "name": "Earthquake Catalog",
+              "publisher": "USGS",
+              "rows": "500000"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "usgs/earthquake-catalog",
+          "surface_key": "Earthquake Catalog"
+        }
+      ],
+      "non_merge_pairs": [
+        {
+          "id": "datasets_sibling_suffixes",
+          "rows": [
+            {
+              "name": "noaa/storm-events-raw",
+              "publisher": "NOAA"
+            },
+            {
+              "name": "noaa/storm-events-clean",
+              "publisher": "NOAA"
+            }
+          ],
+          "expect_merge": false
+        },
+        {
+          "id": "datasets_different_owners",
+          "rows": [
+            {
+              "name": "noaa/precipitation"
+            },
+            {
+              "name": "nasa/precipitation"
+            }
+          ],
+          "expect_merge": false
+        }
+      ]
+    },
+    {
+      "domain": "tts_models_incident_optional",
+      "key_attr": "name",
+      "plan_attrs": ["name", "provider", "modality"],
+      "optional": true,
+      "merge_pairs": [
+        {
+          "id": "tts_catalog_vs_display",
+          "rows": [
+            {
+              "name": "elevenlabs/eleven-multilingual-v2",
+              "provider": "ElevenLabs",
+              "modality": "tts"
+            },
+            {
+              "name": "Eleven Multilingual v2",
+              "provider": "ElevenLabs",
+              "modality": "tts"
+            }
+          ],
+          "expect_merge": true,
+          "expect_survivor_form": "catalog_path",
+          "catalog_key": "elevenlabs/eleven-multilingual-v2",
+          "surface_key": "Eleven Multilingual v2",
+          "notes": "Incident-shaped pair among multi-domain fixtures; assert catalog↔surface structure, not brand-specific logic."
+        }
+      ],
+      "non_merge_pairs": [
+        {
+          "id": "tts_sibling_model_paths",
+          "rows": [
+            {
+              "name": "elevenlabs/eleven-multilingual-v2",
+              "provider": "ElevenLabs"
+            },
+            {
+              "name": "elevenlabs/eleven-turbo-v2",
+              "provider": "ElevenLabs"
+            }
+          ],
+          "expect_merge": false,
+          "notes": "Sibling catalog paths under same org must remain distinct."
+        }
+      ]
+    }
+  ]
+}
