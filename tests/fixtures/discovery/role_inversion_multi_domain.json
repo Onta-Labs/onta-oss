@@ -1,0 +1,303 @@
+{
+  "id": "role_inversion_multi_domain",
+  "ticket": "ONTA-462",
+  "workstream": "WS5",
+  "description": "Multi-domain synthetic batches for mechanism-level role-inversion / membership regression (R2). Assertions are structural: a row whose key equals another row's role-attribute value is a role entity mistaken for an instance — not brand denylists.",
+  "role_attr_vocabulary": [
+    "provider",
+    "organization",
+    "manufacturer",
+    "vendor",
+    "publisher",
+    "source",
+    "parent",
+    "hospital",
+    "employer"
+  ],
+  "batches": [
+    {
+      "id": "models_provider_inversion",
+      "domain": "llm_models",
+      "focus_type": "Model",
+      "key_attr": "name",
+      "role_attrs": ["provider", "organization"],
+      "plan_attrs": ["name", "provider", "context_length", "organization"],
+      "rows": [
+        {
+          "name": "acme/widget-pro",
+          "provider": "Acme Labs",
+          "context_length": "128000"
+        },
+        {
+          "name": "Acme Labs",
+          "provider": "Acme Labs"
+        },
+        {
+          "name": "otherco/model-x",
+          "provider": "Other Co",
+          "context_length": "64000",
+          "organization": "Other Co"
+        },
+        {
+          "name": "Other Co",
+          "organization": "Other Co"
+        },
+        {
+          "name": "standalone/solo",
+          "provider": "Solo Inc",
+          "context_length": "8192"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "key_equals_other_rows_role_value",
+        "must_drop_keys": ["Acme Labs", "Other Co"],
+        "must_keep_keys": [
+          "acme/widget-pro",
+          "otherco/model-x",
+          "standalone/solo"
+        ]
+      },
+      "notes": "Provider/org display names appear as fake Model rows; catalog-path instances keep."
+    },
+    {
+      "id": "physicians_hospital_inversion",
+      "domain": "healthcare",
+      "focus_type": "Physician",
+      "key_attr": "name",
+      "role_attrs": ["hospital", "organization", "employer"],
+      "plan_attrs": ["name", "hospital", "specialty", "organization", "employer"],
+      "rows": [
+        {
+          "name": "Dr. Alina Reyes",
+          "hospital": "Bayview Medical Center",
+          "specialty": "cardiology"
+        },
+        {
+          "name": "Bayview Medical Center",
+          "hospital": "Bayview Medical Center"
+        },
+        {
+          "name": "Dr. Kenji Okada",
+          "organization": "Harbor Clinic Group",
+          "specialty": "neurology"
+        },
+        {
+          "name": "Harbor Clinic Group",
+          "employer": "Harbor Clinic Group"
+        },
+        {
+          "name": "Dr. Priya Nair",
+          "hospital": "Riverside General",
+          "specialty": "pediatrics"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "key_equals_other_rows_role_value",
+        "must_drop_keys": ["Bayview Medical Center", "Harbor Clinic Group"],
+        "must_keep_keys": [
+          "Dr. Alina Reyes",
+          "Dr. Kenji Okada",
+          "Dr. Priya Nair"
+        ]
+      },
+      "notes": "Hospital/org names stamped as Physician rows via single focus_type — structural role evidence from batch."
+    },
+    {
+      "id": "products_manufacturer_inversion",
+      "domain": "products",
+      "focus_type": "Product",
+      "key_attr": "name",
+      "role_attrs": ["manufacturer", "vendor", "brand"],
+      "plan_attrs": ["name", "manufacturer", "sku", "vendor"],
+      "rows": [
+        {
+          "name": "Ultralight Trail Pack 40L",
+          "manufacturer": "Northwind Gear",
+          "sku": "NW-TP-40"
+        },
+        {
+          "name": "Northwind Gear",
+          "manufacturer": "Northwind Gear"
+        },
+        {
+          "name": "Coastal Shell Jacket",
+          "vendor": "Tide & Timber Co",
+          "sku": "TT-CSJ-M"
+        },
+        {
+          "name": "Tide & Timber Co",
+          "vendor": "Tide & Timber Co"
+        },
+        {
+          "name": "Echo Base Camp Stove",
+          "manufacturer": "SummitForge",
+          "sku": "SF-EBC-1"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "key_equals_other_rows_role_value",
+        "must_drop_keys": ["Northwind Gear", "Tide & Timber Co"],
+        "must_keep_keys": [
+          "Ultralight Trail Pack 40L",
+          "Coastal Shell Jacket",
+          "Echo Base Camp Stove"
+        ]
+      },
+      "notes": "Manufacturer/vendor strings must not mint Product instances when they only appear as role values."
+    },
+    {
+      "id": "datasets_publisher_inversion",
+      "domain": "datasets",
+      "focus_type": "Dataset",
+      "key_attr": "name",
+      "role_attrs": ["publisher", "source", "organization"],
+      "plan_attrs": ["name", "publisher", "source", "rows", "organization"],
+      "rows": [
+        {
+          "name": "noaa/storm-events",
+          "publisher": "NOAA NCEI",
+          "rows": "1000000"
+        },
+        {
+          "name": "NOAA NCEI",
+          "publisher": "NOAA NCEI"
+        },
+        {
+          "name": "usgs/earthquakes",
+          "source": "USGS Earthquake Hazards",
+          "rows": "500000"
+        },
+        {
+          "name": "USGS Earthquake Hazards",
+          "source": "USGS Earthquake Hazards"
+        },
+        {
+          "name": "cdc/fluview",
+          "publisher": "CDC",
+          "rows": "12000"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "key_equals_other_rows_role_value",
+        "must_drop_keys": ["NOAA NCEI", "USGS Earthquake Hazards"],
+        "must_keep_keys": [
+          "noaa/storm-events",
+          "usgs/earthquakes",
+          "cdc/fluview"
+        ]
+      },
+      "notes": "Publisher/source entities mistaken for Dataset instances."
+    },
+    {
+      "id": "attribute_only_role_rows",
+      "domain": "llm_models",
+      "focus_type": "Model",
+      "key_attr": "name",
+      "role_attrs": ["provider"],
+      "plan_attrs": ["name", "provider", "context_length"],
+      "rows": [
+        {
+          "name": "globex/alpha-7",
+          "provider": "Globex AI",
+          "context_length": "200000"
+        },
+        {
+          "name": "Globex AI",
+          "provider": "Globex AI"
+        },
+        {
+          "name": "initech/beta-2",
+          "provider": "Initech Research",
+          "context_length": "32000"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "attribute_only_role_or_key_equals_role_value",
+        "must_drop_keys": ["Globex AI"],
+        "must_keep_keys": ["globex/alpha-7", "initech/beta-2"]
+      },
+      "notes": "Row whose non-empty fields are only role metadata while batch has catalog-path instances → drop."
+    },
+    {
+      "id": "legitimate_single_token_instance",
+      "domain": "products",
+      "focus_type": "Product",
+      "key_attr": "name",
+      "role_attrs": ["manufacturer"],
+      "plan_attrs": ["name", "manufacturer", "sku"],
+      "rows": [
+        {
+          "name": "Echo",
+          "manufacturer": "SummitForge",
+          "sku": "SF-ECHO"
+        },
+        {
+          "name": "Ridge",
+          "manufacturer": "Northwind Gear",
+          "sku": "NW-RIDGE"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "key_equals_other_rows_role_value",
+        "must_drop_keys": [],
+        "must_keep_keys": ["Echo", "Ridge"]
+      },
+      "notes": "Pure single-token product names stay when they do NOT appear as role values on other rows."
+    },
+    {
+      "id": "incident_tts_structural",
+      "domain": "tts_models_incident_regression",
+      "focus_type": "Model",
+      "key_attr": "name",
+      "role_attrs": ["provider", "organization"],
+      "plan_attrs": ["name", "provider", "organization", "modality"],
+      "optional": true,
+      "rows": [
+        {
+          "name": "elevenlabs/eleven-multilingual-v2",
+          "provider": "ElevenLabs",
+          "modality": "tts"
+        },
+        {
+          "name": "ElevenLabs",
+          "provider": "ElevenLabs"
+        },
+        {
+          "name": "playht/PlayHT2.0",
+          "provider": "PlayHT",
+          "modality": "tts"
+        },
+        {
+          "name": "PlayHT",
+          "organization": "PlayHT"
+        },
+        {
+          "name": "cartesia/sonic-english",
+          "provider": "Cartesia",
+          "modality": "tts"
+        },
+        {
+          "name": "Cartesia",
+          "provider": "Cartesia"
+        },
+        {
+          "name": "openai/tts-1",
+          "provider": "OpenAI",
+          "modality": "tts"
+        }
+      ],
+      "expect_structural": {
+        "role_drop_rule": "key_equals_other_rows_role_value",
+        "must_drop_keys": ["ElevenLabs", "PlayHT", "Cartesia"],
+        "must_keep_keys": [
+          "elevenlabs/eleven-multilingual-v2",
+          "playht/PlayHT2.0",
+          "cartesia/sonic-english",
+          "openai/tts-1"
+        ],
+        "property": "any_kept_name_must_not_equal_another_rows_provider_or_organization_value"
+      },
+      "notes": "Incident-shaped batch as ONE domain among many. Assert structural property only — never 'ElevenLabs must be dropped' as the sole check; must_drop follows key==role-value."
+    }
+  ]
+}
