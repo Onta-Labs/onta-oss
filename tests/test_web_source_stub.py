@@ -87,6 +87,68 @@ def test_stub_is_free():
     assert cost == 0.0
 
 
+# --- provider capability scope (ONTA-461 / R3) ------------------------------
+
+
+def test_provider_accepts_defaults_true_when_missing():
+    """Legacy providers without accepts() stay in every ensemble slot."""
+    from cograph_client.web_sources.base import provider_accepts
+
+    class _NoAccepts:
+        name = "legacy"
+
+        async def discover(self, *a, **k):
+            return DiscoverResult()
+
+    assert provider_accepts(_NoAccepts(), "any query", {}) is True
+    assert provider_accepts(_NoAccepts(), "any query") is True
+
+
+def test_provider_accepts_respects_false():
+    from cograph_client.web_sources.base import provider_accepts
+
+    class _Scoped:
+        name = "scoped"
+
+        def accepts(self, query: str, context: dict) -> bool:
+            return "in-scope" in (query or "")
+
+        async def discover(self, *a, **k):
+            return DiscoverResult()
+
+    assert provider_accepts(_Scoped(), "in-scope batch", {}) is True
+    assert provider_accepts(_Scoped(), "unrelated batch", {}) is False
+
+
+def test_provider_accepts_degrades_open_on_raise():
+    """A broken accepts() must not sink discovery — treat as accept."""
+    from cograph_client.web_sources.base import provider_accepts
+
+    class _Broken:
+        name = "broken"
+
+        def accepts(self, query: str, context: dict) -> bool:
+            raise RuntimeError("provider bug")
+
+    assert provider_accepts(_Broken(), "q", {}) is True
+
+
+def test_provider_accepts_none_and_truthy_are_accept():
+    """Only explicit False is out-of-scope; None/True/"ok" all accept."""
+    from cograph_client.web_sources.base import provider_accepts
+
+    class _None:
+        def accepts(self, query, context):
+            return None
+
+    class _Truthy:
+        def accepts(self, query, context):
+            return "yes"
+
+    assert provider_accepts(_None(), "q", {}) is True
+    assert provider_accepts(_Truthy(), "q", {}) is True
+
+
 # --- query-kind routing (ONTA-190) ------------------------------------------
 
 
