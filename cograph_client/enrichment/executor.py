@@ -1641,8 +1641,18 @@ class EnrichmentExecutor:
             # review and applied states below). Makes the miss count visible from
             # logs so a run that simply found nothing is distinguishable from a
             # broken pipeline. NOT emitted on the cancelled/failed early-returns.
+            # Prefer the provider tally (every adapter actually attempted,
+            # including no_match / timeout / error) so a chain leader that
+            # returned empty (e.g. Parallel create without wait — fixed) still
+            # appears in logs. Fall back to winning-verdict sources when the
+            # tally is empty (should not happen after a real walk).
             sources_tried = sorted(
                 {
+                    pl.provider
+                    for pl in (job.provider_logs or [])
+                    if pl.provider and pl.status != "skipped"
+                }
+                or {
                     r.verdict.source
                     for r in all_rows
                     if r.verdict and getattr(r.verdict, "source", None)
@@ -2082,26 +2092,39 @@ class EnrichmentExecutor:
                 # the call shape is unchanged for every other adapter.
                 if entity_attrs:
                     ctx["entity_attributes"] = entity_attrs
+                # Bound every adapter call so one stalled lookup (e.g. a
+                # hung network call whose own client lacks a total-operation
+                # timeout) can never strand the whole job (COG-112).
+                # Per-adapter override: slow agentic providers (Parallel Task
+                # API) declare ``lookup_timeout_s`` so the global 30s default
+                # does not kill a still-running research task and silently
+                # fall through to the next chain source.
+                timeout_s = ADAPTER_LOOKUP_TIMEOUT_S
+                adapter_timeout = getattr(adapter, "lookup_timeout_s", None)
+                if adapter_timeout is not None:
+                    try:
+                        candidate = float(adapter_timeout)
+                        if candidate > 0:
+                            timeout_s = candidate
+                    except (TypeError, ValueError):
+                        pass
                 try:
-                    # Bound every adapter call so one stalled lookup (e.g. a
-                    # hung network call whose own client lacks a total-operation
-                    # timeout) can never strand the whole job (COG-112).
                     verdicts = await asyncio.wait_for(
                         adapter.lookup(entity_label, attribute, ctx),
-                        timeout=ADAPTER_LOOKUP_TIMEOUT_S,
+                        timeout=timeout_s,
                     )
                 except asyncio.TimeoutError:
                     logger.warning(
                         "enrichment_adapter_timeout",
                         adapter=name,
                         job_id=job.id,
-                        timeout_s=ADAPTER_LOOKUP_TIMEOUT_S,
+                        timeout_s=timeout_s,
                         entity=entity_label,
                         attribute=attribute,
                     )
                     verdicts = []
                     err_outcome = "timeout"
-                    err_msg = f"timed out after {ADAPTER_LOOKUP_TIMEOUT_S:.0f}s"
+                    err_msg = f"timed out after {timeout_s:.0f}s"
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         "enrichment_adapter_error",
