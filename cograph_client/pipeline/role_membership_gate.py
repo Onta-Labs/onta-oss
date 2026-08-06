@@ -229,10 +229,14 @@ def screen_role_membership(
     role_value_owners: dict[str, list[tuple[int, int]]] = {}
     # role_value_norm → True if some catalog-path instance uses it as a role value
     role_value_on_catalog: set[str] = set()
+    # Any catalog-path key in the batch (inventory with org/slug ids present).
+    batch_has_catalog_path = False
 
     for i, row in indexed:
         key_raw = row.get(key_attr)
         rank = identity_rank(key_raw)
+        if rank >= 2:
+            batch_has_catalog_path = True
         for attr, raw in row.items():
             if not _is_role_attr(attr, role_attrs):
                 continue
@@ -269,17 +273,32 @@ def screen_role_membership(
                     )
                     break
 
-        # --- Rule 2: sparse self-role + catalog-path batch evidence ---
-        if drop_reason is None and key_n and key_n in role_value_on_catalog:
-            if _is_sparse_self_role(row, key_attr, role_attrs):
-                # Only drop if some *other* catalog-path row uses this as role value.
-                # owners stores (row_index, identity_rank); rank 2 == catalog path.
-                owners = role_value_owners.get(key_n) or []
-                if any(j != i and b_rank >= 2 for j, b_rank in owners):
-                    drop_reason = (
-                        f"sparse-self-role: {key_display!r} equals its own role "
-                        f"field and is used as provider/role on catalog-path instances"
-                    )
+        # --- Rule 2: sparse self-role (name == own provider/org/…) ---
+        # Two evidence levels (both require sparse self-role shape):
+        # 2a. Cross-row: some *other* catalog-path instance uses this name as a
+        #     role value (classic provider brand duplicated as a row).
+        # 2b. Batch inventory: the batch already has any catalog-path instance
+        #     (typed inventory with org/slug ids). A sparse free-text row whose
+        #     name equals its own role field is then a bare brand/role token,
+        #     not another catalog instance — e.g. "ElevenLabs" next to
+        #     "fish-audio/s1". Without 2b those brands never drop because no
+        #     other row lists them as provider.
+        # Pure company lists (no catalog-path keys) keep sparse self-role rows.
+        if drop_reason is None and key_n and _is_sparse_self_role(
+            row, key_attr, role_attrs
+        ):
+            owners = role_value_owners.get(key_n) or []
+            if any(j != i and b_rank >= 2 for j, b_rank in owners):
+                drop_reason = (
+                    f"sparse-self-role: {key_display!r} equals its own role "
+                    f"field and is used as provider/role on catalog-path instances"
+                )
+            elif a_rank < 2 and batch_has_catalog_path:
+                # Catalog-path inventory present; this free-text row is name==role.
+                drop_reason = (
+                    f"sparse-self-role: {key_display!r} equals its own role "
+                    f"field in a batch that already has catalog-path instances"
+                )
 
         if drop_reason is not None:
             dropped.append(dict(row))
