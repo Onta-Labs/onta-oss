@@ -32,6 +32,13 @@ class SourceAdapter(Protocol):
     need to carry these attributes at all. A paid adapter opts in by setting
     ``is_paid = True`` and/or ``cost_per_call`` to its per-entity-lookup USD
     cost (either signal alone marks the adapter paid).
+
+    OPTIONAL: ``lookup_timeout_s`` — per-adapter ceiling (seconds) for the
+    executor's ``asyncio.wait_for`` around ``lookup``. Slow agentic providers
+    (e.g. Parallel Task API base p95 ~100s) declare a higher budget so the
+    global default (``COGRAPH_ADAPTER_LOOKUP_TIMEOUT_S``, 30s) does not kill
+    them mid-flight and silently fall through to the next chain adapter.
+    Absent → executor uses the global default.
     """
 
     name: str
@@ -39,6 +46,8 @@ class SourceAdapter(Protocol):
     # documentation only; defaulted to free in :func:`adapter_cost`.
     is_paid: bool
     cost_per_call: float
+    # Optional per-adapter lookup budget (seconds); see class docstring.
+    lookup_timeout_s: float
 
     async def lookup(
         self, entity_label: str, attribute: str, context: dict
