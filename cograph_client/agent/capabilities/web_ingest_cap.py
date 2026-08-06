@@ -140,6 +140,7 @@ from cograph_client.web_sources.base import (
     get_web_source,
     get_web_source_for_kind,
     has_kind_specialized_provider,
+    provider_accepts,
     provider_cost,
 )
 from cograph_client.web_sources.url_extract import extract_urls
@@ -1565,6 +1566,17 @@ class WebIngestCapability:
                         if remaining <= 0:
                             break
                         plog = plogs[prov.name]
+                        # ONTA-461 / R3 — provider self-declares capability scope.
+                        # Orchestrator only calls the generic predicate; never
+                        # hardcodes platform/brand substrings. Missing accepts →
+                        # True (backward compatible). False → skip discover,
+                        # record provider_skip / out_of_scope, do not bill an
+                        # attempt.
+                        if not provider_accepts(prov, sub_query, pctx):
+                            _record_provider_skip(
+                                job, prov.name, sub_query, reason="out_of_scope"
+                            )
+                            continue
                         # The WHOLE batch (discover → dedupe → ingest) is guarded:
                         # one provider returning garbage, or one batch failing to
                         # ingest, must not sink batches already landed — partial
@@ -3746,6 +3758,55 @@ def _host(url: str) -> str:
 # Cap on request-level traces persisted PER PROVIDER per run, so a heavy
 # sub-query fan-out (many pages × many sub-queries) can't bloat the stored job.
 _MAX_REQUEST_TRACES_PER_PROVIDER = 200
+
+
+def _record_provider_skip(
+    job,
+    provider_name: str,
+    sub_query: str,
+    *,
+    reason: str = "out_of_scope",
+) -> None:
+    """Record an ensemble (provider, sub-query) skip from :func:`provider_accepts`.
+
+    ONTA-461 / R3: when a provider self-declares the sub-query is outside its
+    capability scope, the orchestrator does not call ``discover`` and stamps a
+    P1 ``provider_skip`` stage-trace action (plus a structured log line) so the
+    Job Trace shows *why* that ensemble slot was empty — not a silent gap.
+    Observability never sinks the run: failures here are swallowed.
+    """
+    sq = (sub_query or "")[:200]
+    try:
+        logger.info(
+            "web_ingest_provider_skip",
+            provider=provider_name,
+            reason=reason,
+            sub_query=sq,
+        )
+    except Exception:
+        pass
+    if job is None:
+        return
+    try:
+        rec = attach_recorder(job)
+        if rec is None:
+            return
+        rec.action(
+            StageProjectId.p1,
+            "provider_skip",
+            detail=f"{provider_name}: {reason}",
+            meta={
+                "provider": provider_name,
+                "sub_query": sq,
+                "reason": reason,
+            },
+        )
+    except Exception:
+        logger.warning(
+            "stage_trace_provider_skip_failed",
+            provider=provider_name,
+            exc_info=True,
+        )
 
 
 def _record_requests(plog: ProviderLog, calls) -> None:
