@@ -6,7 +6,13 @@ Turn any CSV into a context graph — a knowledge graph you can query in natural
 
 One LLM call infers the schema. All rows are mapped deterministically. Ask questions, get answers backed by SPARQL.
 
-91.4% accuracy across 26 held-out knowledge graphs (302 questions, 4 domains, 3 seeds, 906 scored runs). Gold answers are derived by executing generated SPARQL against the graph and are not yet independently human-verified; eval artifacts and known limitations are in [`eval_holdout_v2/`](eval_holdout_v2/).
+This repository is the **OSS product runtime** (Python client, API, CLI packages). It is **not** the scientific freeze package for the *Structure Once, Query Cheaply* paper.
+
+| Package | Where |
+|---------|--------|
+| **Product OSS (this repo)** | Runtime + tests + examples |
+| **Eval-MH paper freeze (public)** | [infona-ai/structure-once-query-cheaply](https://github.com/infona-ai/structure-once-query-cheaply) — gold, released answers, offline scorer |
+| Historical Holdout v2 eval blobs | [`eval_holdout_v2/`](eval_holdout_v2/) — development holdout artifacts; **not** the Eval-MH arXiv freeze |
 
 ## Quickstart (5 minutes)
 
