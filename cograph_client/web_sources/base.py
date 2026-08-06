@@ -133,6 +133,21 @@ class WebSourceProvider(Protocol):
     vocabulary is generic and provider-independent: OSS knows the CATEGORY (a place
     query), never which concrete provider answers it — the same way the enrichment
     tier router decides lite/core without naming an adapter.
+
+    OPTIONAL (per-query capability scope, ONTA-461 / R3):
+    ``accepts(query: str, context: dict) -> bool`` — the provider self-declares
+    whether it can answer *this* sub-query. The discovery ensemble consults every
+    registered member for every sub-query; a specialized catalog API (one host's
+    models list, one registry of NPIs, …) must be able to opt out of unrelated
+    partitions without the orchestrator hardcoding platform names. When the
+    method is missing, :func:`provider_accepts` defaults to ``True`` (backward
+    compatible). When present and returns ``False``, the orchestrator SKIPS
+    ``discover`` for that (provider, sub-query) pair and records a
+    ``provider_skip`` / ``out_of_scope`` trace — it never decides scope by
+    ``if "…platform…" in query``. Scope logic lives ON the provider (registry
+    host metadata, self-declared affinity tokens, structured
+    ``context["source_constraint"]``, …), never as brand allow/denylists in the
+    capability.
     """
 
     name: str
@@ -178,6 +193,18 @@ class WebSourceProvider(Protocol):
         :class:`DiscoverResult` shape is UNCHANGED, but ``sources`` is the input
         URLs and ``provenance`` maps each row's natural key to the URL it came
         from. A query-only provider may ignore ``urls``.
+        """
+        ...
+
+    def accepts(self, query: str, context: dict) -> bool:
+        """Optional: whether this provider can answer ``query`` (ONTA-461).
+
+        Declared for typing/docs only. Implementations may omit it entirely —
+        :func:`provider_accepts` defaults missing/non-callable to ``True``. A
+        specialized provider returns ``False`` when the sub-query is outside its
+        self-declared scope (e.g. registry host affinity, structured
+        ``source_constraint`` in ``context``). Must not rely on the orchestrator
+        to know platform names.
         """
         ...
 
@@ -302,6 +329,37 @@ def provider_cost(provider: WebSourceProvider) -> tuple[bool, float]:
     return source_cost(provider)
 
 
+def provider_accepts(
+    provider: WebSourceProvider,
+    query: str,
+    context: Optional[dict] = None,
+) -> bool:
+    """Whether *provider* self-declares it can answer *query* (ONTA-461 / R3).
+
+    Reads optional ``accepts(query, context) -> bool`` DEFENSIVELY via
+    ``getattr``:
+
+    - method missing or non-callable → ``True`` (backward compatible: every
+      legacy provider stays in the ensemble for every sub-query);
+    - returns exactly ``False`` → out of scope, orchestrator must skip
+      ``discover``;
+    - any other return (including ``None``) → ``True``;
+    - raises → ``True`` (a broken ``accepts`` must never sink a discovery run;
+      degrade open and let ``discover`` decide).
+
+    The orchestrator only calls this predicate — it never hardcodes platform
+    names or brand substrings to decide which provider runs. Scope policy lives
+    on the provider (registry/self metadata).
+    """
+    fn = getattr(provider, "accepts", None)
+    if not callable(fn):
+        return True
+    try:
+        return fn(query, context if context is not None else {}) is not False
+    except Exception:
+        return True
+
+
 __all__ = [
     "DiscoverResult",
     "WebSourceProvider",
@@ -309,6 +367,7 @@ __all__ = [
     "get_web_source_for_kind",
     "has_kind_specialized_provider",
     "list_web_sources",
+    "provider_accepts",
     "provider_cost",
     "register_web_source",
     "reset_web_sources",

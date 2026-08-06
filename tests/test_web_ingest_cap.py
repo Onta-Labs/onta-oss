@@ -2637,6 +2637,218 @@ async def test_never_consulted_ensemble_member_is_skipped(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# ONTA-461 / R3 — provider capability scope (accepts)
+# ---------------------------------------------------------------------------
+
+
+class _ScopedFakeProvider(FakeProvider):
+    """Fake provider that self-declares scope via ``accepts``.
+
+    Scope is a pure predicate the *provider* owns — the orchestrator never
+    inspects platform names. ``accept_when`` is a callable(query) -> bool so
+    tests can express "in-scope vs out-of-scope" without hardcoding brands in
+    production code (brand-like tokens may appear only as synthetic fixtures).
+    """
+
+    def __init__(self, *, name: str = "scoped", accept_when=None, **kw):
+        super().__init__(**kw)
+        self.name = name
+        self._accept_when = accept_when or (lambda _q: True)
+
+    def accepts(self, query: str, context: dict) -> bool:
+        return bool(self._accept_when(query or ""))
+
+
+async def test_ensemble_skips_provider_when_accepts_false(monkeypatch):
+    """ONTA-461: provider.accepts()→False skips discover; True still runs.
+
+    Two ensemble members × two sub-queries. The scoped provider only accepts
+    sub-queries containing the token ``alpha``; the general provider accepts
+    everything (no accepts method). Assert discover call counts — the scoped
+    provider is never invoked for the beta partition.
+    """
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+    from cograph_client.agent.registry import PlanStep
+
+    general = FakeProvider(rows=[{"name": "g1", "city": "X"}])
+    # Override name after init — FakeProvider hardcodes name="fake".
+    general.name = "general"
+    scoped = _ScopedFakeProvider(
+        name="scoped_api",
+        accept_when=lambda q: "alpha" in q.lower(),
+        rows=[{"name": "s1", "city": "Y"}],
+    )
+    register_web_source(general)
+    register_web_source(scoped)
+
+    async def fake_ingest(
+        self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw
+    ):
+        rows = json.loads(content)
+        return IngestResult(
+            entities_extracted=len(rows), entities_resolved=len(rows)
+        )
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap,
+        "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    sub_a = "entities for alpha cluster"
+    sub_b = "entities for beta cluster"
+    step = PlanStep(
+        capability="web_ingest",
+        action="discover_ingest",
+        params={
+            "query": "entities for alpha and beta",
+            "subqueries": [sub_a, sub_b],
+            "proposed_type": "Entity",
+            "attributes": ["name", "city"],
+            "hint_columns": ["name", "city"],
+            "max_rows": 50,
+            "kg_name": "models",
+            "provider": "general",
+            "providers": ["general", "scoped_api"],
+            "urls": [],
+        },
+        rationale="test",
+        confidence=1.0,
+    )
+    store = InMemoryJobStore()
+    ack = await WebIngestCapability().execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    # General: called for BOTH sub-queries. Scoped: only alpha.
+    general_qs = [c[0] for c in general.calls if c[1] is False]
+    scoped_qs = [c[0] for c in scoped.calls if c[1] is False]
+    assert general_qs == [sub_a, sub_b], general_qs
+    assert scoped_qs == [sub_a], scoped_qs
+    assert sub_b not in scoped_qs
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    logs = {pl.provider: pl for pl in done.provider_logs}
+    # Scoped was consulted once (alpha) and produced matches.
+    assert logs["scoped_api"].attempts == 1
+    assert logs["scoped_api"].matches >= 1
+    assert logs["scoped_api"].status == "ok"
+    # General ran twice.
+    assert logs["general"].attempts == 2
+    assert logs["general"].status == "ok"
+
+    # stage_trace records provider_skip with reason out_of_scope (no platform
+    # name hardcoding — reason is the generic capability-scope tag).
+    skip_actions = []
+    if done.stage_trace is not None:
+        for proj in done.stage_trace.projects or []:
+            for act in proj.actions or []:
+                if getattr(act, "name", None) == "provider_skip":
+                    skip_actions.append(act)
+    assert skip_actions, "expected at least one provider_skip stage-trace action"
+    assert any(
+        (a.meta or {}).get("reason") == "out_of_scope"
+        and (a.meta or {}).get("provider") == "scoped_api"
+        for a in skip_actions
+    )
+
+
+async def test_ensemble_all_out_of_scope_leaves_provider_skipped(monkeypatch):
+    """When accepts() is False for every sub-query, discover is never called
+    and the provider log rolls up as status=skipped (attempts=0)."""
+    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from cograph_client.enrichment.models import JobStatus
+    from cograph_client.agent.registry import PlanStep
+
+    always_in = FakeProvider(rows=[{"name": "keep", "city": "Z"}])
+    always_in.name = "always_in"
+    always_out = _ScopedFakeProvider(
+        name="always_out",
+        accept_when=lambda _q: False,
+        rows=[{"name": "should-not-land", "city": "Z"}],
+    )
+    register_web_source(always_in)
+    register_web_source(always_out)
+
+    async def fake_ingest(
+        self, content, tenant_id, content_type="text", source="", instance_graph=None, **_kw
+    ):
+        rows = json.loads(content)
+        return IngestResult(
+            entities_extracted=len(rows), entities_resolved=len(rows)
+        )
+
+    monkeypatch.setattr(SchemaResolver, "ingest", fake_ingest)
+    spawned: dict = {}
+    monkeypatch.setattr(
+        web_ingest_cap,
+        "_spawn",
+        lambda coro: spawned.__setitem__("task", asyncio.ensure_future(coro)),
+    )
+
+    step = PlanStep(
+        capability="web_ingest",
+        action="discover_ingest",
+        params={
+            "query": "some entities",
+            "subqueries": ["part one", "part two"],
+            "proposed_type": "Entity",
+            "attributes": ["name", "city"],
+            "hint_columns": ["name", "city"],
+            "max_rows": 20,
+            "kg_name": "models",
+            "provider": "always_in",
+            "providers": ["always_in", "always_out"],
+            "urls": [],
+        },
+        rationale="test",
+        confidence=1.0,
+    )
+    store = InMemoryJobStore()
+    ack = await WebIngestCapability().execute(_ctx_with_store(store), step)
+    await spawned["task"]
+
+    assert always_out.calls == []
+    assert len([c for c in always_in.calls if c[1] is False]) == 2
+
+    done = await store.get(ack["job_id"])
+    assert done.status == JobStatus.applied
+    logs = {pl.provider: pl for pl in done.provider_logs}
+    assert logs["always_out"].attempts == 0
+    assert logs["always_out"].status == "skipped"
+    assert logs["always_in"].attempts == 2
+    assert logs["always_in"].status == "ok"
+
+
+def test_web_ingest_cap_skip_uses_provider_accepts_only():
+    """Hard rule: ensemble skip is ``provider_accepts`` only (ONTA-461).
+
+    The orchestrator must not branch on platform/brand substrings
+    (``if "vapi" in sub_query``, ``if "openrouter" in …``). Brand tokens may
+    appear elsewhere for LLM host attribution; this guard only forbids the
+    membership-style skip anti-pattern and pins the generic out_of_scope path.
+    """
+    import inspect
+    import re
+
+    src = inspect.getsource(web_ingest_cap)
+    assert "provider_accepts" in src
+    assert 'reason="out_of_scope"' in src or "reason='out_of_scope'" in src
+    bad = re.findall(
+        r"""if\s+["'](?:vapi|openrouter|elevenlabs)["']\s+in""",
+        src,
+        flags=re.IGNORECASE,
+    )
+    assert not bad, (
+        "web_ingest_cap must not hardcode platform names for skip logic; "
+        f"found {bad!r}. Use provider.accepts instead."
+    )
+
+
+# ---------------------------------------------------------------------------
 # ONTA-239 — honor user-specified fields + converge attribute names
 # ---------------------------------------------------------------------------
 

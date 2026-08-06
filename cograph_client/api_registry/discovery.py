@@ -10,13 +10,34 @@ protocol lands, this shim retargets to it without touching the capability.
 
 ``build_registry_sources`` turns a :class:`RoutingDecision` into the list of
 providers to splice (ahead of web) into the discovery ensemble.
+
+Capability scope (ONTA-461 follow-on)
+-------------------------------------
+Each registry provider self-declares ``served_hosts`` (from the catalog
+``base_url`` host) and ``registry_slug`` (the catalog slug). Its
+:meth:`accepts` returns ``False`` only when **structured** plan/context fields
+bind the sub-query to a *different* catalog or host — never via orchestrator
+brand if-strings. Recognized keys:
+
+* ``required_hosts`` — non-empty iterable of hosts the sub-query targets
+* ``target_registry_ids`` / ``target_registry_slugs`` — non-empty iterable of
+  registry slugs the sub-query targets
+* ``source_constraint`` — preferred nested shape
+  ``{hosts: [...], registry_ids: [...]}`` (same semantics as the flat keys)
+
+When those keys are absent/empty the provider accepts (don't over-skip).
+**Production ensemble skips only fire when plan-time populates one of these
+keys on the per-sub-query context** — today ``_provider_context`` does not; a
+follow-up can set them when the planner partitions by source without teaching
+the orchestrator platform names.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
+from urllib.parse import urlparse
 
 from ..web_sources.base import DiscoverResult
 from .catalog import ApiSourceCatalog
@@ -27,8 +48,79 @@ from .spec import ApiSourceSpec, AuthorityLevel
 logger = logging.getLogger(__name__)
 
 
+def _normalize_host(value: str) -> str:
+    """Lowercase host, strip a leading ``www.``, drop a trailing dot."""
+    h = (value or "").strip().lower().rstrip(".")
+    if h.startswith("www."):
+        h = h[4:]
+    return h
+
+
+def _host_from_base_url(base_url: str) -> str:
+    try:
+        return _normalize_host(urlparse(base_url or "").hostname or "")
+    except Exception:  # noqa: BLE001 — defensive; never break provider construction
+        return ""
+
+
+def _as_token_set(raw: Any) -> frozenset[str]:
+    """Coerce a context value into a frozenset of non-empty lowercased tokens.
+
+    Accepts a str, an iterable of str, or anything truthy that stringifies.
+    Empty / None → empty set (treated as "no constraint").
+    """
+    if raw is None:
+        return frozenset()
+    if isinstance(raw, str):
+        t = raw.strip().lower()
+        return frozenset({t}) if t else frozenset()
+    if isinstance(raw, (set, frozenset, list, tuple)):
+        out: set[str] = set()
+        for item in raw:
+            if item is None:
+                continue
+            t = str(item).strip().lower()
+            if t:
+                out.add(t)
+        return frozenset(out)
+    t = str(raw).strip().lower()
+    return frozenset({t}) if t else frozenset()
+
+
+def _constraint_hosts(context: dict) -> frozenset[str]:
+    """Hosts the sub-query is bound to, if any (normalized)."""
+    hosts = _as_token_set(context.get("required_hosts"))
+    sc = context.get("source_constraint")
+    if isinstance(sc, dict):
+        hosts = hosts | _as_token_set(sc.get("hosts"))
+    # Normalize each token as a host (www strip) so "www.openrouter.ai" matches.
+    return frozenset(_normalize_host(h) for h in hosts if _normalize_host(h))
+
+
+def _constraint_registry_ids(context: dict) -> frozenset[str]:
+    """Registry slugs the sub-query is bound to, if any."""
+    ids = (
+        _as_token_set(context.get("target_registry_ids"))
+        | _as_token_set(context.get("target_registry_slugs"))
+    )
+    sc = context.get("source_constraint")
+    if isinstance(sc, dict):
+        ids = ids | _as_token_set(sc.get("registry_ids")) | _as_token_set(
+            sc.get("registry_slugs")
+        )
+    return ids
+
+
 class RegistryDiscoverySource:
-    """A ``WebSourceProvider`` backed by one declarative catalog entry."""
+    """A ``WebSourceProvider`` backed by one declarative catalog entry.
+
+    Self-declares capability scope for the ONTA-461 ensemble skip:
+
+    * ``registry_slug`` — catalog slug (e.g. ``openrouter_models``)
+    * ``served_hosts`` — hosts this catalog entry serves (from ``base_url``)
+    * :meth:`accepts` — returns ``False`` only under structured context
+      constraints that exclude this entry (see module docstring)
+    """
 
     def __init__(
         self,
@@ -67,10 +159,49 @@ class RegistryDiscoverySource:
         # ingest_structured_rows (no soft multi-type re-extract). Same contract
         # as locate_scrape A1 rows after ONTA-272 / discovery quality.
         self.structured = True
+        # ONTA-461 follow-on: provider self-knowledge for ensemble scope.
+        # Derived from the catalog entry only — never a hardcoded brand list in
+        # the orchestrator. openrouter_models → served_hosts={"openrouter.ai"}.
+        self.registry_slug = (spec.slug or "").strip().lower()
+        host = _host_from_base_url(spec.base_url)
+        self.served_hosts: frozenset[str] = frozenset({host}) if host else frozenset()
 
     @property
     def is_source_of_truth(self) -> bool:
         return self._spec.authority_level is AuthorityLevel.source_of_truth
+
+    def accepts(self, query: str, context: dict) -> bool:
+        """Whether this registry catalog can answer *query* under *context*.
+
+        Policy (ONTA-461 follow-on — provider self-knowledge is OK; orchestrator
+        brand ifs are not):
+
+        * No structured host/registry constraint in ``context`` → ``True``
+          (ambiguous; don't over-skip). ``query`` alone never rejects.
+        * ``required_hosts`` / ``source_constraint.hosts`` non-empty and
+          disjoint from :attr:`served_hosts` → ``False``.
+        * ``target_registry_ids`` / ``target_registry_slugs`` /
+          ``source_constraint.registry_ids`` non-empty and this
+          :attr:`registry_slug` not among them → ``False``.
+        * Otherwise ``True``.
+
+        Plan-time must populate those context keys for production ensemble
+        skips to fire; empty context keeps every registry source in the
+        ensemble (backward-compatible with WS3 FakeProvider tests).
+        """
+        ctx = context if isinstance(context, dict) else {}
+
+        required_hosts = _constraint_hosts(ctx)
+        if required_hosts and not (required_hosts & self.served_hosts):
+            return False
+
+        target_ids = _constraint_registry_ids(ctx)
+        if target_ids and self.registry_slug not in target_ids:
+            # Also accept the api:{slug} form callers may stamp from provider.name.
+            if f"api:{self.registry_slug}" not in target_ids:
+                return False
+
+        return True
 
     def _secret_resolver(self):
         """A per-tenant secret resolver iff this source's auth uses a secret_ref;
