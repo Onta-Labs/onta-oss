@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from cograph_client.pipeline.discovery_quality import (
+    alnum_identity,
     apply_discovery_quality_gate,
+    catalog_identity_key,
+    catalog_path_segments,
+    catalog_surface_keys,
     merge_near_duplicates,
     normalize_entity_key,
     page_looks_like_list,
@@ -240,3 +244,177 @@ def test_normalize_and_host_helpers():
     assert "british" in key
     assert registrable_host("https://www.ubc.ca/foo") == "ubc.ca"
     assert registrable_host("ubc.ca") == "ubc.ca"
+
+
+# --------------------------------------------------------------------------- #
+# R1 — structural catalog-path identity (multi-domain; no brand logic in prod)
+# --------------------------------------------------------------------------- #
+
+
+def test_catalog_path_helpers_structural_only():
+    assert catalog_path_segments("org/model-slug") == ("org", "model-slug")
+    assert catalog_path_segments("@scope/pkg") == ("@scope", "pkg")
+    assert catalog_path_segments("owner/name") == ("owner", "name")
+    assert catalog_path_segments("Widget Pro") is None
+    assert catalog_path_segments("https://example.com/a/b") is None
+    assert catalog_path_segments("solo") is None
+    # @scope stripped in identity key so scoped and unscoped package ids match.
+    assert catalog_identity_key(("@scope", "pkg")) == catalog_identity_key(
+        ("scope", "pkg")
+    )
+    assert catalog_identity_key(("a", "b-hd")) != catalog_identity_key(
+        ("a", "b-turbo")
+    )
+    surfaces = catalog_surface_keys(("acme", "widget-pro"))
+    assert "widgetpro" in surfaces
+    assert "acmewidgetpro" in surfaces
+    assert alnum_identity("Widget Pro") == "widgetpro"
+
+
+def test_structural_identity_merges_model_catalog_path_with_title():
+    """Domain: model catalogs — org/slug ↔ display title."""
+    rows = [
+        {
+            "name": "acme-labs/widget-pro",
+            "context_length": "8192",
+            "provider": "acme-labs",
+        },
+        {
+            "name": "Widget Pro",
+            "description": "flagship widget model",
+            "provider": "acme-labs",
+        },
+        {"name": "other-org/unrelated-tool", "context_length": "4096"},
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows, "name", plan_attrs=["name", "context_length", "description", "provider"]
+    )
+    assert merged == 1
+    assert len(kept) == 2
+    survivor = next(r for r in kept if "widget" in r["name"].casefold())
+    # Prefer catalog-path form as survivor.
+    assert survivor["name"] == "acme-labs/widget-pro"
+    assert survivor.get("context_length") == "8192"
+    assert survivor.get("description") == "flagship widget model"
+    assert any(r["name"] == "other-org/unrelated-tool" for r in kept)
+
+
+def test_structural_identity_merges_package_scope_with_title():
+    """Domain: software packages — @scope/pkg or scope/pkg ↔ display title."""
+    rows = [
+        {"name": "Http Client", "license": "MIT", "stars": "1200"},
+        {"name": "@tools/http-client", "version": "3.2.1"},
+        {"name": "tools/http-client", "downloads": "9m"},  # same path, no @
+        {"name": "@tools/http-server", "version": "1.0.0"},  # sibling — keep
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows,
+        "name",
+        plan_attrs=["name", "license", "stars", "version", "downloads"],
+    )
+    assert merged >= 2  # free-text + two catalog forms of same package
+    names = {r["name"] for r in kept}
+    assert "@tools/http-server" in names
+    # One survivor for the client package; catalog form preferred.
+    client = [
+        r
+        for r in kept
+        if "http-client" in r["name"] or r["name"] == "Http Client"
+    ]
+    assert len(client) == 1
+    assert "/" in client[0]["name"]
+    assert "http-client" in client[0]["name"]
+    assert client[0].get("license") == "MIT"
+    assert client[0].get("version") == "3.2.1"
+    assert client[0].get("downloads") == "9m"
+
+
+def test_structural_identity_merges_dataset_owner_name_with_title():
+    """Domain: datasets — owner/name ↔ title."""
+    rows = [
+        {
+            "name": "civic-data/census-2020",
+            "rows": "331m",
+            "source_url": "https://catalog.example/datasets/1",
+        },
+        {
+            "name": "Census 2020",
+            "format": "parquet",
+            "source_url": "https://catalog.example/datasets/1",
+        },
+        {
+            "name": "civic-data/census-2010",
+            "rows": "309m",
+        },
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows, "name", plan_attrs=["name", "rows", "format"]
+    )
+    assert merged == 1
+    assert len(kept) == 2
+    census_2020 = next(r for r in kept if "2020" in r["name"])
+    assert census_2020["name"] == "civic-data/census-2020"
+    assert census_2020.get("format") == "parquet"
+    assert census_2020.get("rows") == "331m"
+    assert any(r["name"] == "civic-data/census-2010" for r in kept)
+
+
+def test_structural_identity_does_not_merge_sibling_catalog_suffixes():
+    """Distinct catalog paths must never merge (hd vs turbo, etc.)."""
+    rows = [
+        {"name": "acme/codec-hd", "bitrate": "320"},
+        {"name": "acme/codec-turbo", "bitrate": "128"},
+        {"name": "Codec HD", "language": "en"},  # joins hd only
+        {"name": "vendor/codec-hd", "bitrate": "256"},  # different org, same tail
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows, "name", plan_attrs=["name", "bitrate", "language"]
+    )
+    # Free-text joins at most one catalog path; sibling paths stay distinct.
+    catalog_names = sorted(r["name"] for r in kept if "/" in r["name"])
+    assert "acme/codec-hd" in catalog_names
+    assert "acme/codec-turbo" in catalog_names
+    assert "vendor/codec-hd" in catalog_names
+    # turbo must not absorb hd attrs or free-text incorrectly
+    turbo = next(r for r in kept if r["name"] == "acme/codec-turbo")
+    assert turbo.get("language") is None or turbo.get("language") == ""
+    assert turbo.get("bitrate") == "128"
+    # free-text "Codec HD" merges into one of the *-hd catalog rows (prefer path)
+    assert not any(r["name"] == "Codec HD" for r in kept)
+    hd_rows = [r for r in kept if r["name"].endswith("codec-hd")]
+    assert any(r.get("language") == "en" for r in hd_rows)
+    assert merged >= 1
+
+
+def test_structural_identity_catalog_before_free_text_order_independent():
+    """Merge works regardless of whether catalog path or title arrives first."""
+    catalog_first = [
+        {"name": "pubs/annual-report-2024", "pages": "48"},
+        {"name": "Annual Report 2024", "year": "2024"},
+    ]
+    title_first = list(reversed(catalog_first))
+    for rows in (catalog_first, title_first):
+        kept, merged, _ = merge_near_duplicates(
+            rows, "name", plan_attrs=["name", "pages", "year"]
+        )
+        assert merged == 1
+        assert len(kept) == 1
+        assert kept[0]["name"] == "pubs/annual-report-2024"
+        assert kept[0].get("pages") == "48"
+        assert kept[0].get("year") == "2024"
+
+
+def test_structural_identity_full_path_surface_match():
+    """Free-text that is a display transform of the full path also merges."""
+    rows = [
+        {"name": "team/alpha-bot", "status": "stable"},
+        {"name": "team alpha bot", "owner": "team"},
+    ]
+    kept, merged, _ = merge_near_duplicates(
+        rows, "name", plan_attrs=["name", "status", "owner"]
+    )
+    assert merged == 1
+    assert len(kept) == 1
+    assert kept[0]["name"] == "team/alpha-bot"
+    assert kept[0].get("owner") == "team"
+    assert kept[0].get("status") == "stable"
