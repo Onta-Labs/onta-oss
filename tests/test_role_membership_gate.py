@@ -120,6 +120,32 @@ def test_parent_still_droppable_when_caller_opts_in():
     assert "Child Org" in _kept_names(v)
 
 
+def test_sparse_brand_drops_when_catalog_path_inventory_present():
+    """Incident class: bare brand (name==provider) next to org/slug models drops."""
+    rows = [
+        {"name": "fish-audio/s2.1-pro", "provider": "fish-audio"},
+        {"name": "S2.1 Pro", "provider": "fish-audio"},
+        {"name": "ElevenLabs", "provider": "ElevenLabs"},
+        {"name": "Azure", "provider": "Azure"},
+        {"name": "hexgrad/kokoro-82m", "provider": "hexgrad"},
+    ]
+    v = screen_role_membership(rows, key_attr="name")
+    assert "ElevenLabs" in _dropped_names(v)
+    assert "Azure" in _dropped_names(v)
+    assert "fish-audio/s2.1-pro" in _kept_names(v)
+    assert "hexgrad/kokoro-82m" in _kept_names(v)
+
+
+def test_sparse_self_provider_kept_without_catalog_path_batch():
+    """Pure company list (no org/slug ids) must not drop name==provider rows."""
+    rows = [
+        {"name": "Acme", "provider": "Acme"},
+        {"name": "Contoso", "provider": "Contoso"},
+    ]
+    v = screen_role_membership(rows, key_attr="name")
+    assert set(_kept_names(v)) == {"Acme", "Contoso"}
+    assert _dropped_names(v) == []
+
 # --------------------------------------------------------------------------- #
 # Domain 1 — Physicians: hospital name stamped as Physician
 # --------------------------------------------------------------------------- #
