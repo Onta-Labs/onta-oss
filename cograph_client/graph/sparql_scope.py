@@ -589,12 +589,22 @@ def confine_generated_query(
     # layers reads schema instead of data. Both are repaired to the dataset the
     # route already chose.
     #
-    # A query naming a DIFFERENT graph of the SAME workspace is deliberately left
-    # alone. It is not a confinement failure (nothing crosses the workspace
-    # boundary), and "repairing" it would silently union a second KG into an
-    # answer the route scoped to one, turning a security guard into a semantics
-    # change. Picking the right KG within a workspace is a separate concern.
-    if any(_is_data_scope(g, tenant_id, allowed_defaults) for g in graphs):
+    # Also repair when the model named the *workspace base graph* (or other
+    # non-target tenant graphs) but omitted the route's target KG graph. Named
+    # KGs store instance data under ``…/kg/<name>``; ``FROM <…/graphs/tenant>``
+    # alone returns empty / wrong rows for kg-scoped /ask (Eval-MH freeze flaky
+    # fails: missing kg FROM). Injecting ``defaults`` restores the route's intent
+    # without removing model-named in-scope graphs.
+    #
+    # A query naming a DIFFERENT *kg-specific* graph of the SAME workspace is
+    # deliberately left alone. It is not a confinement failure (nothing crosses
+    # the workspace boundary), and "repairing" it would silently union a second
+    # KG into an answer the route scoped to one. Picking the right KG within a
+    # workspace is a separate concern.
+    if any(g in allowed_defaults for g in graphs):
+        return sparql
+    other_kgs = [g for g in graphs if "/kg/" in g and g not in allowed_defaults]
+    if other_kgs:
         return sparql
     repaired = _inject_dataset_clause(sparql, defaults, graphs)
     logger.warning(
