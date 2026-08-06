@@ -170,3 +170,140 @@ def test_build_registry_sources_skips_dormant_key_gated(monkeypatch):
 
     monkeypatch.setenv("SOME_REGISTRY_KEY", "present")
     assert [s.name for s in build_registry_sources(cat, dec)] == ["api:paid_dir"]
+
+
+# --------------------------------------------------------------------------- #
+# accepts() capability scope (ONTA-461 follow-on — production registry skip)
+# --------------------------------------------------------------------------- #
+
+
+def _openrouter_models_source() -> RegistryDiscoverySource:
+    """Real seed catalog entry (openrouter.ai / openrouter_models) — no network."""
+    cat = make_api_source_catalog()
+    spec = cat.get("openrouter_models")
+    assert spec is not None, "openrouter_models seed entry missing from catalog"
+    return RegistryDiscoverySource(spec, endpoint="list")
+
+
+def test_openrouter_models_declares_served_hosts_and_slug():
+    """Provider self-knowledge from catalog base_url / slug (not a brand list)."""
+    src = _openrouter_models_source()
+    assert src.name == "api:openrouter_models"
+    assert src.registry_slug == "openrouter_models"
+    assert src.served_hosts == frozenset({"openrouter.ai"})
+
+
+def test_accepts_true_when_context_unconstrained():
+    """Ambiguous / empty context → accept (don't over-skip). Query text alone
+    never rejects — orchestrator brand ifs stay out of this path."""
+    src = _openrouter_models_source()
+    assert src.accepts("TTS models on some other platform", {}) is True
+    assert src.accepts("OpenRouter TTS models", {}) is True
+    assert src.accepts("anything", {"tenant_id": "demo", "kg_name": "k"}) is True
+    # Empty constraint containers are not constraints.
+    assert src.accepts("q", {"required_hosts": []}) is True
+    assert src.accepts("q", {"target_registry_ids": []}) is True
+    assert src.accepts("q", {"source_constraint": {}}) is True
+    assert src.accepts("q", {"source_constraint": {"hosts": [], "registry_ids": []}}) is True
+
+
+def test_accepts_false_when_required_hosts_exclude_served():
+    """required_hosts set with no intersection → out of scope."""
+    src = _openrouter_models_source()
+    assert src.accepts("models on other.host", {"required_hosts": ["other.host"]}) is False
+    assert src.accepts("models", {"required_hosts": frozenset({"example.com", "api.other.ai"})}) is False
+    # Nested preferred shape.
+    assert src.accepts(
+        "models", {"source_constraint": {"hosts": ["npiregistry.cms.hhs.gov"]}}
+    ) is False
+
+
+def test_accepts_true_when_required_hosts_intersect_served():
+    """required_hosts that include our base_url host → accept (www. stripped)."""
+    src = _openrouter_models_source()
+    assert src.accepts("models", {"required_hosts": ["openrouter.ai"]}) is True
+    assert src.accepts("models", {"required_hosts": ["www.openrouter.ai"]}) is True
+    assert src.accepts(
+        "models",
+        {"required_hosts": ["openrouter.ai", "other.example"]},
+    ) is True
+    assert src.accepts(
+        "models",
+        {"source_constraint": {"hosts": ["OpenRouter.AI"]}},
+    ) is True
+
+
+def test_accepts_false_when_target_registry_ids_exclude_slug():
+    """target_registry_ids / slugs without us → out of scope."""
+    src = _openrouter_models_source()
+    assert src.accepts("q", {"target_registry_ids": ["nppes"]}) is False
+    assert src.accepts("q", {"target_registry_slugs": ["nppes", "census_acs"]}) is False
+    assert src.accepts(
+        "q", {"source_constraint": {"registry_ids": ["nppes"]}}
+    ) is False
+
+
+def test_accepts_true_when_target_registry_ids_include_slug():
+    """Our slug (or api:{slug} form) in the target set → accept."""
+    src = _openrouter_models_source()
+    assert src.accepts("q", {"target_registry_ids": ["openrouter_models"]}) is True
+    assert src.accepts("q", {"target_registry_slugs": ["openrouter_models", "nppes"]}) is True
+    # Callers may stamp provider.name (api:slug).
+    assert src.accepts("q", {"target_registry_ids": ["api:openrouter_models"]}) is True
+    assert src.accepts(
+        "q", {"source_constraint": {"registry_ids": ["openrouter_models"]}}
+    ) is True
+
+
+def test_accepts_false_when_either_constraint_excludes():
+    """Both host and registry constraints must pass when present."""
+    src = _openrouter_models_source()
+    # Host matches but registry does not.
+    assert src.accepts(
+        "q",
+        {
+            "required_hosts": ["openrouter.ai"],
+            "target_registry_ids": ["nppes"],
+        },
+    ) is False
+    # Registry matches but host does not.
+    assert src.accepts(
+        "q",
+        {
+            "required_hosts": ["other.host"],
+            "target_registry_ids": ["openrouter_models"],
+        },
+    ) is False
+
+
+def test_accepts_works_via_provider_accepts_helper():
+    """Ensemble path uses provider_accepts (ONTA-461); False must propagate."""
+    from cograph_client.web_sources.base import provider_accepts
+
+    src = _openrouter_models_source()
+    assert provider_accepts(src, "q", {}) is True
+    assert provider_accepts(
+        src, "q", {"required_hosts": ["not-our-host.example"]}
+    ) is False
+    assert provider_accepts(
+        src, "q", {"target_registry_ids": ["openrouter_models"]}
+    ) is True
+
+
+def test_nppes_accepts_metadata_from_own_base_url():
+    """Any registry entry gets the same self-declared scope from its catalog."""
+    cat = make_api_source_catalog()
+    spec = cat.get("nppes")
+    assert spec is not None
+    src = RegistryDiscoverySource(spec, endpoint="search")
+    assert "npiregistry.cms.hhs.gov" in src.served_hosts
+    assert src.registry_slug == "nppes"
+    assert src.accepts("cardiologists", {}) is True
+    assert src.accepts(
+        "cardiologists",
+        {"required_hosts": ["openrouter.ai"]},
+    ) is False
+    assert src.accepts(
+        "cardiologists",
+        {"required_hosts": ["npiregistry.cms.hhs.gov"]},
+    ) is True
