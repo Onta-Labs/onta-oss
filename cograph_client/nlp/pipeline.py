@@ -465,49 +465,44 @@ def _neptune_safe_duration(sparql: str) -> str:
 _RDFS_LABEL_IRI = "http://www.w3.org/2000/01/rdf-schema#label"
 
 
-def _prefer_attr_name_over_rdfs_label(sparql: str) -> str:
-    """Rewrite ``rdfs:label`` display bindings to ``types/<T>/attrs/name`` when safe.
+def _prefer_attr_name_over_rdfs_label(sparql: str, ontology_summary: str = "") -> str:
+    """Rewrite ``rdfs:label`` → ``types/<T>/attrs/name`` only when clearly safe.
 
-    When the query already constrains a subject to ``types/<T>`` and projects a
-    name via ``rdfs:label``, prefer the type's ``attrs/name`` attribute. CSV /
-    Path-B ingest often puts human-readable strings on ``attrs/name`` while
-    ``rdfs:label`` holds a slug or numeric id — so rank queries return
-    ``name: 5`` with the correct extreme value.
+    Gates (all required):
+    1. Query uses ``rdfs:label``.
+    2. Exactly one pure type IRI ``…/types/<T>`` (not multi-type joins).
+    3. Ontology summary declares ``types/<T>/attrs/name`` (when summary given).
+    4. Query does not already use that ``attrs/name`` URI.
 
-    Conservative: only rewrites when ``attrs/name`` for that type is not already
-    used in the query (so intentional label-only queries stay put).
+    Path-B/CSV KGs often put human names on ``attrs/name`` and slugs on
+    ``rdfs:label``; rank answers then show ``name: 5``. Without the ontology
+    gate we would blank labels on types that only have ``rdfs:label``.
     """
     if _RDFS_LABEL_IRI not in sparql and "rdfs:label" not in sparql.lower():
         return sparql
-    # Leaf type names from type IRIs (not .../types/T/attrs/...)
-    types = re.findall(
-        rf"{re.escape(IRI_BASE)}/types/([A-Za-z][A-Za-z0-9_]*)(?=/attrs|>)",
+    # Pure type IRIs only: <…/types/Person> — exclude <…/types/Person/attrs/…>
+    leaves: list[str] = []
+    for m in re.finditer(
+        rf"<{re.escape(IRI_BASE)}/types/([A-Za-z][A-Za-z0-9_]*)(/attrs/[^>]*)?>",
         sparql,
-    )
-    # Prefer pure type IRIs (.../types/Person>) over attr paths for the rewrite target
-    type_leaves = []
-    for t in types:
-        type_leaves.append(t)
-    # de-dupe preserving order
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for t in type_leaves:
-        if t not in seen:
-            seen.add(t)
-            ordered.append(t)
-    for t in ordered:
-        name_uri = f"{IRI_BASE}/types/{t}/attrs/name"
-        if name_uri in sparql:
-            continue
-        if f"{IRI_BASE}/types/{t}" not in sparql:
-            continue
-        # Replace full IRI form first, then bare rdfs:label
-        if f"<{_RDFS_LABEL_IRI}>" in sparql:
-            return sparql.replace(f"<{_RDFS_LABEL_IRI}>", f"<{name_uri}>", 1)
-        new = re.sub(r"\brdfs:label\b", f"<{name_uri}>", sparql, count=1, flags=re.I)
-        if new != sparql:
-            return new
-    return sparql
+    ):
+        if m.group(2) is None:
+            leaves.append(m.group(1))
+    leaves = list(dict.fromkeys(leaves))
+    if len(leaves) != 1:
+        return sparql
+    t = leaves[0]
+    name_uri = f"{IRI_BASE}/types/{t}/attrs/name"
+    if name_uri in sparql:
+        return sparql
+    if ontology_summary and (
+        name_uri not in ontology_summary
+        and f"/types/{t}/attrs/name" not in ontology_summary
+    ):
+        return sparql
+    if f"<{_RDFS_LABEL_IRI}>" in sparql:
+        return sparql.replace(f"<{_RDFS_LABEL_IRI}>", f"<{name_uri}>", 1)
+    return re.sub(r"\brdfs:label\b", f"<{name_uri}>", sparql, count=1, flags=re.I)
 
 
 _ENTITY_URI_PREFIX = ENTITY_URI_PREFIX
@@ -2870,7 +2865,7 @@ class NLQueryPipeline:
         # string — ranking queries then return "eventName: 5" with the right numeric
         # extreme (Eval-MH freeze flaky projection fails). Only rewrites when
         # attrs/name is not already used for that type in the query.
-        sparql = _prefer_attr_name_over_rdfs_label(sparql)
+        sparql = _prefer_attr_name_over_rdfs_label(sparql, ontology_summary)
 
         return sparql
 
