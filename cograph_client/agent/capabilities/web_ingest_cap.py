@@ -56,6 +56,7 @@ import math
 import os
 import re
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
@@ -98,6 +99,7 @@ from cograph_client.normalization.inference import list_type_schema
 from cograph_client.config import settings
 from cograph_client.pipeline.a1_validators import screen_row
 from cograph_client.pipeline.discovery_quality import apply_discovery_quality_gate
+from cograph_client.pipeline.role_membership_gate import screen_role_membership
 from cograph_client.pipeline.manifest import (
     HaltReasonKind,
     RunManifest,
@@ -427,6 +429,95 @@ def _screen_a1_rows(
                 )
         kept.append(row)
     return kept, rows_dropped, cells_scrubbed, reasons
+
+
+@dataclass
+class StructuralGateResult:
+    """Outcome of post-A1 structural quality gates (role membership + identity).
+
+    Order is fixed (ONTA-465 / WS6): role-membership first, then discovery
+    quality (website policy + structural near-dup / catalog-path identity).
+    Pure orchestration over pure modules — no I/O, never raises.
+    """
+
+    rows: list = field(default_factory=list)
+    role_drops: int = 0
+    identity_merges: int = 0
+    websites_scrubbed: int = 0
+    reasons: list[str] = field(default_factory=list)
+
+
+def apply_post_a1_structural_gates(
+    rows: list,
+    key_attr: str,
+    attributes: list[str],
+    *,
+    focus_type: Optional[str] = None,
+) -> StructuralGateResult:
+    """Run role-membership then discovery-quality on a post-A1 batch.
+
+    Call order (hard rule, plan v2):
+
+    1. :func:`screen_role_membership` — drop role entities mistaken for instances
+    2. :func:`apply_discovery_quality_gate` — website scrub + structural identity
+       merge (catalog-path ↔ surface form, near-dups)
+
+    Never raises; on internal failure returns the input rows with zero counters
+    so the write path cannot sink on observability. Input rows are not mutated
+    in place (both pure modules copy).
+    """
+    if not rows:
+        return StructuralGateResult()
+    reasons: list[str] = []
+    role_drops = 0
+    working = list(rows)
+    try:
+        # Only dict rows participate; non-dicts pass through (defensive).
+        dict_rows = [r for r in working if isinstance(r, dict)]
+        passthrough = [r for r in working if not isinstance(r, dict)]
+        rv = screen_role_membership(
+            dict_rows,
+            key_attr=key_attr,
+            focus_type=focus_type,
+        )
+        role_drops = len(rv.dropped)
+        for r in rv.reasons:
+            if r not in reasons and len(reasons) < 40:
+                reasons.append(r)
+        working = list(rv.kept) + passthrough
+    except Exception:  # noqa: BLE001 — gate never sinks write
+        logger.warning("web_ingest_role_membership_failed", exc_info=True)
+
+    identity_merges = 0
+    websites_scrubbed = 0
+    if not working:
+        return StructuralGateResult(
+            rows=[],
+            role_drops=role_drops,
+            reasons=reasons,
+        )
+    try:
+        qv = apply_discovery_quality_gate(
+            working,
+            key_attr,
+            list(attributes),
+        )
+        working = list(qv.rows)
+        identity_merges = int(qv.near_dups_merged or 0)
+        websites_scrubbed = int(qv.websites_scrubbed or 0)
+        for r in qv.reasons:
+            if r not in reasons and len(reasons) < 40:
+                reasons.append(r)
+    except Exception:  # noqa: BLE001 — gate never sinks write
+        logger.warning("web_ingest_quality_gate_failed", exc_info=True)
+
+    return StructuralGateResult(
+        rows=working,
+        role_drops=role_drops,
+        identity_merges=identity_merges,
+        websites_scrubbed=websites_scrubbed,
+        reasons=reasons,
+    )
 
 
 def _spawn(coro) -> None:
@@ -1485,6 +1576,11 @@ class WebIngestCapability:
             a1_rows_dropped = 0
             a1_cells_scrubbed = 0
             a1_drop_reasons: list[str] = []
+            # Structural quality counters (ONTA-465 / WS6): role-membership drops
+            # + catalog-path / near-dup identity merges. Surfaced on stage_trace
+            # actions and the terminal A1 contract / summary.
+            role_drops = 0
+            identity_merges = 0
             a2_extracted = 0
             a2_resolved = 0
             a2_source_rows = 0
@@ -1766,76 +1862,99 @@ class WebIngestCapability:
                                     )
                             if not batch:
                                 continue  # found rows; all deduped/suppressed/chrome
-                            # DISCOVERY QUALITY GATE: website policy (empty > wrong
-                            # list-page URLs as homepage) + near-dup merge (same
-                            # normalized name or website host → one row). Runs
-                            # after A1 shape validators, before SourceBundle /
-                            # write so soft-reifier and structured fast-path both
-                            # see clean material. Observability only on failure
-                            # to record — never raise into the write path.
-                            try:
-                                qv = apply_discovery_quality_gate(
-                                    batch,
-                                    key_attr,
-                                    list(attributes),
-                                )
+                            # STRUCTURAL QUALITY GATES (ONTA-465 / WS6): after A1
+                            # shape validators, before SourceBundle / write —
+                            # (1) role-membership (drop role entities mistaken for
+                            # instances) then (2) discovery quality (website policy
+                            # + structural identity merge including catalog-path ↔
+                            # surface form). No brand/platform denylists. Helper
+                            # never raises into the write path.
+                            sg = apply_post_a1_structural_gates(
+                                batch,
+                                key_attr,
+                                list(attributes),
+                                focus_type=proposed_type,
+                            )
+                            batch = sg.rows
+                            if sg.role_drops:
+                                role_drops += int(sg.role_drops)
+                            if sg.identity_merges:
+                                identity_merges += int(sg.identity_merges)
+                            if sg.websites_scrubbed:
+                                a1_cells_scrubbed += int(sg.websites_scrubbed)
+                            for _r in sg.reasons:
                                 if (
-                                    qv.websites_scrubbed
-                                    or qv.near_dups_merged
+                                    _r not in a1_drop_reasons
+                                    and len(a1_drop_reasons) < 20
                                 ):
-                                    batch = qv.rows
-                                    a1_cells_scrubbed += int(
-                                        qv.websites_scrubbed or 0
-                                    )
-                                    for _r in qv.reasons:
-                                        if (
-                                            _r not in a1_drop_reasons
-                                            and len(a1_drop_reasons) < 20
-                                        ):
-                                            a1_drop_reasons.append(_r)
-                                    try:
-                                        if job is not None:
-                                            rec = attach_recorder(job)
-                                            if rec is not None:
+                                    a1_drop_reasons.append(_r)
+                            if sg.role_drops or sg.identity_merges or sg.websites_scrubbed:
+                                try:
+                                    if job is not None:
+                                        rec = attach_recorder(job)
+                                        if rec is not None:
+                                            if sg.role_drops:
+                                                rec.action(
+                                                    StageProjectId.p1,
+                                                    "role_membership_gate",
+                                                    detail=(
+                                                        f"dropped {sg.role_drops} "
+                                                        f"role-inverted rows"
+                                                    ),
+                                                    meta={
+                                                        "role_drops": sg.role_drops,
+                                                        "rows_out": len(batch),
+                                                        "reasons": [
+                                                            r
+                                                            for r in sg.reasons
+                                                            if r.startswith(
+                                                                (
+                                                                    "role-inversion",
+                                                                    "sparse-self-role",
+                                                                )
+                                                            )
+                                                        ][:8],
+                                                        "provider": prov.name,
+                                                    },
+                                                )
+                                            if (
+                                                sg.identity_merges
+                                                or sg.websites_scrubbed
+                                            ):
                                                 rec.action(
                                                     StageProjectId.p1,
                                                     "quality_gate",
                                                     detail=(
                                                         f"scrubbed "
-                                                        f"{qv.websites_scrubbed} "
-                                                        f"website cells, merged "
-                                                        f"{qv.near_dups_merged} "
-                                                        f"near-dups → "
+                                                        f"{sg.websites_scrubbed} "
+                                                        f"website cells, "
+                                                        f"identity_merges="
+                                                        f"{sg.identity_merges} → "
                                                         f"{len(batch)} rows"
                                                     ),
                                                     meta={
                                                         "websites_scrubbed": (
-                                                            qv.websites_scrubbed
+                                                            sg.websites_scrubbed
                                                         ),
                                                         "near_dups_merged": (
-                                                            qv.near_dups_merged
+                                                            sg.identity_merges
+                                                        ),
+                                                        "identity_merges": (
+                                                            sg.identity_merges
                                                         ),
                                                         "rows_out": len(batch),
-                                                        "reasons": qv.reasons[:8],
+                                                        "reasons": sg.reasons[:8],
                                                         "provider": prov.name,
                                                     },
                                                 )
-                                    except Exception:  # noqa: BLE001
-                                        logger.warning(
-                                            "web_ingest_quality_gate_trace_failed",
-                                            job_id=(
-                                                job.id if job is not None else None
-                                            ),
-                                            exc_info=True,
-                                        )
-                                else:
-                                    batch = qv.rows
-                            except Exception:  # noqa: BLE001 — gate never sinks write
-                                logger.warning(
-                                    "web_ingest_quality_gate_failed",
-                                    job_id=job.id if job is not None else None,
-                                    exc_info=True,
-                                )
+                                except Exception:  # noqa: BLE001
+                                    logger.warning(
+                                        "web_ingest_structural_gate_trace_failed",
+                                        job_id=(
+                                            job.id if job is not None else None
+                                        ),
+                                        exc_info=True,
+                                    )
                             if not batch:
                                 continue
                             # A1 SOURCE BUNDLE (ONTA-346): materialize the
@@ -2451,6 +2570,8 @@ class WebIngestCapability:
                             a1_rows_dropped=a1_rows_dropped,
                             a1_cells_scrubbed=a1_cells_scrubbed,
                             a1_drop_reasons=a1_drop_reasons,
+                            role_drops=role_drops,
+                            identity_merges=identity_merges,
                             a2_extracted=a2_extracted,
                             a2_resolved=a2_resolved,
                             a2_source_rows=a2_source_rows,
@@ -2517,6 +2638,8 @@ class WebIngestCapability:
                         a1_rows_dropped=a1_rows_dropped,
                         a1_cells_scrubbed=a1_cells_scrubbed,
                         a1_drop_reasons=a1_drop_reasons,
+                        role_drops=role_drops,
+                        identity_merges=identity_merges,
                         a2_extracted=a2_extracted,
                         a2_resolved=a2_resolved,
                         a2_source_rows=a2_source_rows,
@@ -3973,6 +4096,8 @@ def _build_stage_contracts(
     a1_rows_dropped: int = 0,
     a1_cells_scrubbed: int = 0,
     a1_drop_reasons: Optional[list] = None,
+    role_drops: int = 0,
+    identity_merges: int = 0,
     a2_extracted: int,
     a2_resolved: int,
     a2_source_rows: int,
@@ -4014,6 +4139,11 @@ def _build_stage_contracts(
         a1["rows_dropped"] = int(a1_rows_dropped)
         a1["cells_scrubbed"] = int(a1_cells_scrubbed)
         a1["drop_reasons_sample"] = list(a1_drop_reasons or [])[:8]
+    # Structural quality gates (ONTA-465 / WS6): domain-agnostic counters.
+    if role_drops:
+        a1["role_drops"] = int(role_drops)
+    if identity_merges:
+        a1["identity_merges"] = int(identity_merges)
     a2 = summarize_a2_candidates(
         entities_extracted=a2_extracted,
         entities_resolved=a2_resolved,
@@ -4226,7 +4356,7 @@ async def _finish_job(
                     fanout_ratio=_fanout_ratio,
                     threshold=_DISCOVERY_FANOUT_WARN_RATIO,
                 )
-            job.stage_trace.summary = {
+            _summary = {
                 "result_count": entities,
                 "processed": processed,
                 "platforms": platforms,
@@ -4241,6 +4371,13 @@ async def _finish_job(
                 "a6_fact_count": a6.get("fact_count"),
                 "run_id": a1.get("run_id") or a6.get("run_id"),
             }
+            # Structural quality counters (ONTA-465) — only when non-zero so a
+            # clean run's summary stays compact / back-compat.
+            if a1.get("role_drops"):
+                _summary["role_drops"] = a1["role_drops"]
+            if a1.get("identity_merges"):
+                _summary["identity_merges"] = a1["identity_merges"]
+            job.stage_trace.summary = _summary
             job.stage_trace.status = "applied"
             # Safety sweep (ONTA-388): end any leftover running/pending stages.
             finalize_job_stage_trace(
