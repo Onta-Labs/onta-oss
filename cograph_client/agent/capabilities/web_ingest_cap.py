@@ -100,6 +100,7 @@ from cograph_client.config import settings
 from cograph_client.pipeline.a1_validators import screen_row
 from cograph_client.pipeline.discovery_quality import apply_discovery_quality_gate
 from cograph_client.pipeline.role_membership_gate import screen_role_membership
+from cograph_client.pipeline.source_scope import merge_provider_context
 from cograph_client.pipeline.manifest import (
     HaltReasonKind,
     RunManifest,
@@ -1657,18 +1658,16 @@ class WebIngestCapability:
                     # state that made a single reused resolver non-reentrant; the
                     # shared lock keeps their ontology mutations serialized.
                     resolver = _build_resolver(ctx, ontology_lock=ontology_lock)
+                    # ONTA-459: once per sub-query (not per provider) — structural
+                    # source_constraint from ensemble providers' own metadata.
+                    sub_pctx = merge_provider_context(pctx, sub_query, ensemble)
                     for prov in ensemble:
                         remaining = cap - processed
                         if remaining <= 0:
                             break
                         plog = plogs[prov.name]
-                        # ONTA-461 / R3 — provider self-declares capability scope.
-                        # Orchestrator only calls the generic predicate; never
-                        # hardcodes platform/brand substrings. Missing accepts →
-                        # True (backward compatible). False → skip discover,
-                        # record provider_skip / out_of_scope, do not bill an
-                        # attempt.
-                        if not provider_accepts(prov, sub_query, pctx):
+                        # ONTA-461 / R3 — provider_accepts only; no brand ifs.
+                        if not provider_accepts(prov, sub_query, sub_pctx):
                             _record_provider_skip(
                                 job, prov.name, sub_query, reason="out_of_scope"
                             )
@@ -1692,7 +1691,7 @@ class WebIngestCapability:
                                 sample=False,
                                 max_rows=min(per_sub_budget, remaining),
                                 hint_columns=hint_columns,
-                                context=pctx,
+                                context=sub_pctx,
                                 urls=urls or None,
                             )
                             any_discover_ok = True
@@ -2790,22 +2789,23 @@ names and pricing" -> ["name","pricing"]; "a list of models" -> []. When the use
 replies with a list (e.g. "Use these: name, provider, pricing" or "just the name") \
 treat THOSE as confirmed. snake_case; exclude nothing they named.
 - core_attributes: a SHORT list (aim for 2-4) of the few attributes that matter \
-MOST for this entity — the ones a user almost always wants and that best identify \
-or differentiate a record. MUST be a subset of suggested_attributes. These are the \
-ones we PRE-SELECT and show as chips; the rest of suggested_attributes stays a \
-behind-the-scenes fetch hint, NOT shown pre-checked. For Model: \
-["provider","context_length","input_price"]. For a Physician: \
-["specialty","city","phone"]. Keep it minimal — do NOT just repeat all of \
-suggested_attributes.
+MOST for THIS entity in THIS ask — the ones a user almost always wants and that \
+best identify or differentiate a record. MUST be a subset of suggested_attributes. \
+These are PRE-SELECTED chips; the rest of suggested_attributes stays a \
+behind-the-scenes fetch hint. Choose from the domain the user named (do NOT \
+default every "Model" to LLM fields like context_length — a speech/TTS/audio \
+model wants modality/pricing/languages; a physician wants specialty/city/phone; \
+a package wants version/license/downloads). Keep it minimal — do NOT just repeat \
+all of suggested_attributes.
 - suggested_attributes: a COMPREHENSIVE set (aim for 6-12) of the columns this \
-entity is typically described by ON THE WEB — every web-discoverable property a \
-rich source table (leaderboard, catalog, listing) would carry, snake_case, \
-EXCLUDING the key. This is the FETCH hint: the provider projects rows to it, so a \
-thin list silently drops the rest of the table before extraction. Be generous and \
-include any recurring provider/vendor/organization column and any score/rating/ \
-price/ranking column (those become reified entities downstream). For Model: \
-["provider","organization","open_source","context_length","input_price",\
-"output_price","modality","latency","rating","score","votes","release_date"]."""
+entity is typically described by ON THE WEB for the user's domain — every \
+web-discoverable property a rich source table would carry, snake_case, EXCLUDING \
+the key. This is the FETCH hint: the provider projects rows to it, so a thin list \
+silently drops the rest of the table before extraction. Be generous and include \
+any recurring provider/vendor/organization column and any score/rating/price/ \
+ranking/modality column relevant to the ask (those become reified entities \
+downstream). Match the modality of the ask (text LLM vs speech vs vision vs \
+product vs person) — do not force LLM-only columns onto non-LLM domains."""
 
 
 # How many leading named fields the DETERMINISTIC fallback pre-selects as the

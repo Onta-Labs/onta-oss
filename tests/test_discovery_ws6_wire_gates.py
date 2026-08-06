@@ -45,10 +45,12 @@ from cograph_client.web_sources import (
 
 def test_structural_gates_empty_batch():
     r = apply_post_a1_structural_gates([], "name", ["name", "provider"])
-    assert isinstance(r, StructuralGateResult)
-    assert r.rows == []
+    # Field check (not isinstance): dual import paths can yield two dataclass
+    # types for StructuralGateResult under full-suite collection.
+    assert getattr(r, "rows", None) == []
     assert r.role_drops == 0
     assert r.identity_merges == 0
+    assert type(r).__name__ == "StructuralGateResult"
 
 
 def test_structural_gates_role_drop_before_identity():
