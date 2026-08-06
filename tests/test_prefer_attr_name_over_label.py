@@ -133,3 +133,37 @@ def test_no_rewrite_when_ontology_summary_empty():
 def test_no_op_without_label():
     sparql = f"SELECT ?n WHERE {{ ?e <{IRI_BASE}/types/Person/attrs/name> ?n }}"
     assert _prefer_attr_name_over_rdfs_label(sparql, "anything") == sparql
+
+
+def test_rewrite_after_subclass_closure_path():
+    """Production path: Fix 4 rewrites type to <#type>/<#subClassOf>* first."""
+    sparql = f"""
+    SELECT ?eventName WHERE {{
+      ?event <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>/<http://www.w3.org/2000/01/rdf-schema#subClassOf>*
+        <{IRI_BASE}/types/Event> .
+      ?event <http://www.w3.org/2000/01/rdf-schema#label> ?eventName .
+    }}
+    """
+    ontology = f"name (string) — URI: <{IRI_BASE}/types/Event/attrs/name>"
+    out = _prefer_attr_name_over_rdfs_label(sparql, ontology)
+    assert f"{IRI_BASE}/types/Event/attrs/name" in out
+    assert "rdf-schema#label" not in out
+
+
+def test_fix_common_sparql_issues_rewrites_label_on_typed_subject():
+    """Integration: Fix 1 → Fix 4 → Fix 7 must still rewrite display labels."""
+    from cograph_client.nlp.pipeline import NLQueryPipeline
+
+    sparql = f"""
+    SELECT ?eventName ?injuredCount WHERE {{
+      ?event a <{IRI_BASE}/types/Event> .
+      ?event <http://www.w3.org/2000/01/rdf-schema#label> ?eventName .
+      ?event <{IRI_BASE}/types/Event/attrs/injured_count> ?injuredCount .
+    }}
+    """
+    ontology = f"name (string) — URI: <{IRI_BASE}/types/Event/attrs/name>"
+    out = NLQueryPipeline._fix_common_sparql_issues(sparql, ontology_summary=ontology)
+    assert f"{IRI_BASE}/types/Event/attrs/name" in out
+    assert "rdf-schema#label" not in out
+    # Fix 4 still applied
+    assert "subClassOf" in out

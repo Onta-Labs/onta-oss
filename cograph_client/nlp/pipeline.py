@@ -511,11 +511,17 @@ def _prefer_attr_name_over_rdfs_label(sparql: str, ontology_summary: str = "") -
         return sparql
 
     type_iri = f"{IRI_BASE}/types/{t}"
+    # Accept bare type predicates and the subclass-closure path Fix 4 injects
+    # (`<#type>/<#subClassOf>*`) so this rewrite still fires on the real /ask
+    # post-process chain (Fix 7 runs after Fix 4).
+    _rdf_type = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    _rdfs_sc = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
     typed_subj = re.compile(
         rf"\?([A-Za-z_][A-Za-z0-9_]*)\s+(?:"
         rf"a|"
         rf"rdf:type|"
-        rf"<{re.escape('http://www.w3.org/1999/02/22-rdf-syntax-ns#type')}>"
+        rf"<{re.escape(_rdf_type)}>"
+        rf"(?:\s*/\s*<{re.escape(_rdfs_sc)}>\*)?"
         rf")\s+<{re.escape(type_iri)}>",
         re.I,
     )
