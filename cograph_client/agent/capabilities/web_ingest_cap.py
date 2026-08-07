@@ -2241,6 +2241,11 @@ class WebIngestCapability:
                                         # ONTA-371: per-row A1 lineage handoff.
                                         fact_ids=micro_fact_ids,
                                         tier=micro_tier,
+                                        # ONTA-382: closed field list is a WRITE
+                                        # ceiling on the structured fast-path too
+                                        # (LLM extract already had this; API rows
+                                        # used to invent extra ontology attrs).
+                                        attributes_exhaustive=attributes_exhaustive,
                                     )
                                 else:
                                     content = json.dumps(
