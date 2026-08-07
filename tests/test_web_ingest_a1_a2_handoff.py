@@ -226,12 +226,14 @@ async def test_structured_fastpath_forwards_per_row_lineage_and_tier(monkeypatch
 
     async def spy_structured(self, rows, tenant_id, type_name, attributes=None,
                              source="", instance_graph=None, key_attribute=None,
-                             key_join=None, run_id=None, fact_ids=None, tier=None):
+                             key_join=None, run_id=None, fact_ids=None, tier=None,
+                             **_kw):
         calls.append({
             "rows": [dict(r) for r in rows],
             "run_id": run_id,
             "fact_ids": list(fact_ids or []),
             "tier": tier,
+            "attributes_exhaustive": _kw.get("attributes_exhaustive"),
         })
         return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
 
