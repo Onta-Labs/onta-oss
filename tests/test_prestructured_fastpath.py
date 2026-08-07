@@ -113,3 +113,101 @@ async def test_ingest_structured_rows_empty_is_noop(monkeypatch):
     result = await r.ingest_structured_rows([], "demo-tenant", "Physician")
     assert result.entities_extracted == 0
     assert result.rows_in == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_structured_rows_exhaustive_clips_extra_provider_columns(
+    monkeypatch,
+):
+    """ONTA-382 structured ceiling: rich API payload must not invent attrs.
+
+    Mirrors the TTS smoke: user confirmed name/provider/modality/input_price but
+    OpenRouter rows also carry context_length/description/display_name.
+    """
+    r = _resolver()
+    captured: dict = {}
+
+    async def fake_mapped(self, rows, mapping, tenant_id, source="",
+                          instance_graph=None, key_join=None, run_id=None):
+        captured.update(rows=rows, mapping=mapping)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest_mapped_records", fake_mapped)
+
+    rows = [
+        {
+            "name": "acme/tts-1",
+            "provider": "acme",
+            "modality": "text->speech",
+            "input_price": "0.000015",
+            "context_length": "0",  # must NOT be written under exhaustive
+            "description": "A speech model",
+            "display_name": "Acme TTS 1",
+            "source_url": "https://api.example/models",
+        },
+    ]
+    confirmed = ["name", "provider", "modality", "input_price"]
+    await r.ingest_structured_rows(
+        rows,
+        "demo-tenant",
+        "Model",
+        attributes=confirmed,
+        key_attribute="name",
+        attributes_exhaustive=True,
+    )
+
+    written = captured["rows"][0]
+    assert set(written.keys()) == {
+        "name",
+        "provider",
+        "modality",
+        "input_price",
+        "source_url",
+    }
+    assert "context_length" not in written
+    assert "description" not in written
+    assert "display_name" not in written
+
+    mapped_cols = {c.column_name for c in captured["mapping"].columns}
+    assert mapped_cols == {
+        "name",
+        "provider",
+        "modality",
+        "input_price",
+        "source_url",
+    }
+
+
+@pytest.mark.asyncio
+async def test_ingest_structured_rows_non_exhaustive_keeps_extra_columns(
+    monkeypatch,
+):
+    """Open attribute set: structured path still maps full provider rows."""
+    r = _resolver()
+    captured: dict = {}
+
+    async def fake_mapped(self, rows, mapping, tenant_id, source="",
+                          instance_graph=None, key_join=None, run_id=None):
+        captured.update(rows=rows, mapping=mapping)
+        return IngestResult(entities_extracted=len(rows), entities_resolved=len(rows))
+
+    monkeypatch.setattr(SchemaResolver, "ingest_mapped_records", fake_mapped)
+
+    rows = [
+        {
+            "name": "acme/tts-1",
+            "provider": "acme",
+            "context_length": "8192",
+            "source_url": "https://api.example/models",
+        },
+    ]
+    await r.ingest_structured_rows(
+        rows,
+        "demo-tenant",
+        "Model",
+        attributes=["name", "provider"],
+        key_attribute="name",
+        attributes_exhaustive=False,
+    )
+    assert "context_length" in captured["rows"][0]
+    assert "context_length" in {c.column_name for c in captured["mapping"].columns}

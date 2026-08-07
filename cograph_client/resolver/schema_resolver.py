@@ -1399,8 +1399,49 @@ def _drop_ungrounded_attributes(result: ExtractionResult) -> ExtractionResult:
     )
 
 
+# Provenance / lineage cells that may ride on structured rows even when the
+# user declared a closed attribute set (ONTA-382 ceiling). Never declared as
+# ordinary ontology attributes by the mapping.
+_STRUCTURED_PROVENANCE_COLS = frozenset({"source_url"})
+
+
+def _project_structured_rows_to_attributes(
+    rows: list[dict],
+    *,
+    key_field: str,
+    attributes: list[str] | None,
+    attributes_exhaustive: bool,
+) -> list[dict]:
+    """When ``attributes_exhaustive``, clip each row to the confirmed allowlist.
+
+    Discovery often fetches rich provider payloads (``hint_columns``) for
+    extraction quality, but a user-named closed field list is a WRITE ceiling
+    (ONTA-382). The structured fast-path used to map *every* cell and silently
+    invent ontology attributes (e.g. ``context_length`` when the user only asked
+    for ``name, provider, modality, input_price``). Non-exhaustive keeps the
+    full row (soft / open attribute set).
+
+    Always retains ``key_field`` and ``source_url`` (citation) when present.
+    """
+    if not attributes_exhaustive or not attributes:
+        return rows
+    allow = {str(a) for a in attributes if a} | {key_field} | set(
+        _STRUCTURED_PROVENANCE_COLS
+    )
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        out.append({k: v for k, v in row.items() if k in allow})
+    return out
+
+
 def _structured_rows_mapping(
-    rows: list[dict], type_name: str, key_field: str
+    rows: list[dict],
+    type_name: str,
+    key_field: str,
+    *,
+    attribute_allowlist: frozenset[str] | None = None,
 ) -> CSVSchemaMapping:
     """Build the fixed :class:`CSVSchemaMapping` for PRE-STRUCTURED rows (ONTA-272).
 
@@ -1411,13 +1452,20 @@ def _structured_rows_mapping(
     plain ``string`` literal — pre-structured sources deliver clean scalar cells,
     so there is no LLM datatype guessing. A degenerate ``key_field`` that never
     appears in the rows falls back to the first field so ``apply_mapping`` always
-    has a TYPE_ID (an all-empty key still mints via its synthetic-key path)."""
+    has a TYPE_ID (an all-empty key still mints via its synthetic-key path).
+
+    ``attribute_allowlist`` (ONTA-382 / structured ceiling): when set, only those
+    column names (+ key / source_url already folded into the set by the caller)
+    become mapping columns — a second belt if a row still carries extra keys.
+    """
     seen: set[str] = set()
     ordered: list[str] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         for k in row:
+            if attribute_allowlist is not None and k not in attribute_allowlist:
+                continue
             if k not in seen:
                 seen.add(k)
                 ordered.append(k)
@@ -2666,6 +2714,7 @@ class SchemaResolver:
         run_id: str | None = None,
         fact_ids: list[str] | None = None,
         tier: str | None = None,
+        attributes_exhaustive: bool = False,
     ) -> IngestResult:
         """FAST-PATH for PRE-STRUCTURED rows (ONTA-272) — no unstructured LLM ``_extract``.
 
@@ -2685,6 +2734,12 @@ class SchemaResolver:
         fast). ``require_evidence`` is asserted only when the rows actually carry a
         ``source_url``, so a provenance-less structured source is not force-failed.
         Returns the SAME :class:`IngestResult` the deterministic path produces.
+
+        ``attributes_exhaustive`` (ONTA-382, structured ceiling): when True with a
+        non-empty ``attributes`` list, ONLY those attributes (+ key +
+        ``source_url``) are written — rich provider payloads fetched via
+        ``hint_columns`` no longer invent ontology columns the user did not
+        confirm. Mirrors the LLM-extract path's allowlist under soft+exhaustive.
 
         ``run_id`` (ONTA-372): the run-scoped lineage id threaded from the discovery
         P1 entry (``web_ingest_cap``). Forwarded through
@@ -2713,6 +2768,22 @@ class SchemaResolver:
         # The key field is the join/identity column: an explicit key_attribute, else
         # the first confirmed attribute, else the row's natural "name".
         key_field = key_attribute or (attributes[0] if attributes else None) or "name"
+        # ONTA-382 structured ceiling: clip rich provider rows before A2 + mapping.
+        rows = _project_structured_rows_to_attributes(
+            rows,
+            key_field=key_field,
+            attributes=attributes,
+            attributes_exhaustive=bool(attributes_exhaustive),
+        )
+        if not rows:
+            return IngestResult(rows_in=0)
+        allowlist: frozenset[str] | None = None
+        if attributes_exhaustive and attributes:
+            allowlist = frozenset(
+                {str(a) for a in attributes if a}
+                | {key_field}
+                | set(_STRUCTURED_PROVENANCE_COLS)
+            )
         # A2 CONTRACT (zero ontology commitment): render the pre-structured rows as
         # candidate facts and assert soft-typed-only (+ evidence-linked where
         # provenance exists) at the point A2 is emitted.
@@ -2726,7 +2797,9 @@ class SchemaResolver:
             for r in rows
         )
         assert_soft_a2(witness, require_evidence=require_evidence)
-        mapping = _structured_rows_mapping(rows, type_name, key_field)
+        mapping = _structured_rows_mapping(
+            rows, type_name, key_field, attribute_allowlist=allowlist
+        )
         return await self.ingest_mapped_records(
             rows, mapping, tenant_id, source=source,
             instance_graph=instance_graph, key_join=key_join,
