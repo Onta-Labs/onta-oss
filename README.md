@@ -22,8 +22,36 @@ This repository is the **OSS product runtime** (Python client, API, CLI packages
 docker compose up -d
 ```
 
-No Docker? Run the pip-only embedded store instead — it serves the same
-endpoints, so nothing else changes:
+This starts **Fuseki** (current SPARQL path, port 3030) and **Neo4j 5
+Community** (property-graph migration path, Bolt 7687 / browser 7474). Dev
+auth for Neo4j is `neo4j` / `onta-dev-password` — set the matching `NEO4J_*`
+vars from [`.env.example`](.env.example). Neo4j only:
+
+```bash
+docker compose up -d neo4j
+pip install -e ".[neo4j]"   # or pip install -e ".[dev]"
+```
+
+Bootstrap constraints/indexes (idempotent; required before uniqueness-sensitive
+writes — see `cograph_client/graph/schema_bootstrap.py`):
+
+```python
+import asyncio
+from cograph_client.graph.store import get_graph_store
+
+async def main():
+    store = get_graph_store()
+    print(await store.bootstrap_schema())
+    await store.close()
+
+asyncio.run(main())
+```
+
+Integration tests against a live Neo4j: `pytest -m neo4j` (skipped unless
+`NEO4J_URI` + `NEO4J_PASSWORD` are set).
+
+No Docker? For the **current** SPARQL path, run the pip-only embedded store
+instead — it serves the same endpoints, so nothing else changes:
 
 ```bash
 pip install pyoxigraph python-multipart
