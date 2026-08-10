@@ -162,7 +162,7 @@ async def test_openrouter_500_still_raises_raw_httpstatuserror(monkeypatch):
 # --------------------------------------------------------------------------- #
 # (a2) the billing/auth message names the ACTUAL provider (2026-07-08 bug)
 #
-# openrouter_chat routes to Cerebras when OMNIX_LLM_PROVIDER=cerebras, but the
+# openrouter_chat routes to Cerebras when INFONA_LLM_PROVIDER=cerebras, but the
 # 402/401 message used to hardcode "OpenRouter". On 2026-07-08 a Cerebras 402
 # (Cerebras out of credits) told the operator to check the *OpenRouter* balance
 # — an hour lost debugging the wrong account. These assert the MECHANISM: the
@@ -258,8 +258,8 @@ async def test_cerebras_provider_message_flows_through_openrouter_chat(monkeypat
     names Cerebras (its host), not OpenRouter — proving the call site threads the
     provider actually served, not just the pure classifier. A BARE model slug is
     what routes to Cerebras (the #163 slug-shape flip); a vendor/model slug would
-    route to OpenRouter regardless of OMNIX_LLM_PROVIDER (see the next test)."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    route to OpenRouter regardless of INFONA_LLM_PROVIDER (see the next test)."""
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
     _patch_client(monkeypatch, 402)
     with pytest.raises(LLMBillingError) as ei:
@@ -271,13 +271,13 @@ async def test_cerebras_provider_message_flows_through_openrouter_chat(monkeypat
 
 
 async def test_cerebras_provider_with_slashed_model_names_openrouter(monkeypatch):
-    """Reconciliation guard (#162 x #163): OMNIX_LLM_PROVIDER=cerebras but a
+    """Reconciliation guard (#162 x #163): INFONA_LLM_PROVIDER=cerebras but a
     vendor/model (slash) slug routes to OpenRouter by slug shape, so a 402 there
     must name OpenRouter — the account that ACTUALLY served the call — never the
     globally-configured 'cerebras'. This is the interaction that a naive
     provider=_llm_provider() would misreport (and did, until the raise site began
     deriving the provider from the base it actually hit)."""
-    monkeypatch.setenv("OMNIX_LLM_PROVIDER", "cerebras")
+    monkeypatch.setenv("INFONA_LLM_PROVIDER", "cerebras")
     monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
     _patch_client(monkeypatch, 402)
     with pytest.raises(LLMBillingError) as ei:
@@ -290,7 +290,7 @@ async def test_cerebras_provider_with_slashed_model_names_openrouter(monkeypatch
 async def test_openrouter_provider_message_flows_through_openrouter_chat(monkeypatch):
     """Mirror end-to-end: the default (OpenRouter) backend's 402 names OpenRouter,
     not Cerebras."""
-    monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)  # default → openrouter
+    monkeypatch.delenv("INFONA_LLM_PROVIDER", raising=False)  # default → openrouter
     _patch_client(monkeypatch, 402)
     with pytest.raises(LLMBillingError) as ei:
         await openrouter_chat("openrouter-key", "sys", "user")

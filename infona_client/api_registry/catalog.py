@@ -128,7 +128,7 @@ def register_api_source_layer(name: str, specs: Iterable[ApiSourceSpec]) -> None
     """Register (or replace) a catalog layer by name.
 
     The premium package calls this from its plugin ``register()`` to contribute
-    the ``global_enhanced`` overlay — no ``cograph.*`` import crosses into OSS.
+    the ``global_enhanced`` overlay — no ``infona.*`` import crosses into OSS.
     Idempotent: re-registering the same layer name replaces it.
     """
     validated: list[ApiSourceSpec] = []

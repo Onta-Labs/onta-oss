@@ -40,7 +40,7 @@ from infona_client.pipeline.corrections import (
     literal_attribute_predicate,
 )
 
-logger = structlog.stdlib.get_logger("cograph.api.corrections")
+logger = structlog.stdlib.get_logger("infona.api.corrections")
 
 router = APIRouter(prefix="/graphs/{tenant}")
 

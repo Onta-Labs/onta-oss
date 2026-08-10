@@ -7,7 +7,7 @@ Renaming an attribute or moving it up the hierarchy (``phone_num → phone``)
 touches instance data. Instead of an eager rewrite, the ontology records an
 alias triple::
 
-    <old-attr-IRI> <https://graph.onta.sh/onto/aliasOf> <new-attr-IRI>
+    <old-attr-IRI> <https://graph.infona.ai/onto/aliasOf> <new-attr-IRI>
 
 and the query path resolves through aliases immediately — nothing breaks on
 day one. Old instance triples are rewritten lazily (backfill_aliases), after
@@ -47,7 +47,7 @@ renaming a *type* would also need entity-URI re-keying (``entities/<Type>/…``
 embeds the type leaf) and is intentionally out of scope for 407b.
 
 **alignedTo is NOT this mechanism.** Governance shape alignment
-(``cograph/governance/writer.write_alignment``) used to write tenant type URIs
+(``infona/governance/writer.write_alignment``) used to write tenant type URIs
 into the global layer as ``onto/alignedTo``; ONTA-402a stopped that. ONTA-407a
 decides **stop writing** (already done) rather than adding a reader — alignment
 audit lives in the shared provenance graph + changelog, not as a query-path
@@ -60,12 +60,12 @@ import math
 
 import structlog
 
-from infona_client.graph.ontology_queries import OMNIX_ONTO
+from infona_client.graph.ontology_queries import INFONA_ONTO
 from infona_client.graph.parser import parse_sparql_results
 
-logger = structlog.stdlib.get_logger("cograph.graph.aliases")
+logger = structlog.stdlib.get_logger("infona.graph.aliases")
 
-ALIAS_OF = f"{OMNIX_ONTO}/aliasOf"
+ALIAS_OF = f"{INFONA_ONTO}/aliasOf"
 
 
 class AliasStillReferencedError(Exception):

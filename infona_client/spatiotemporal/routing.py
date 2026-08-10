@@ -6,7 +6,7 @@ answers WITHOUT a Neptune round-trip. It is **purely the parsing/shaping layer**
 no LLM client, no Neptune, no index handle live here, so it is fully unit-testable.
 The orchestration (LLM intent call, anchor resolution, index query) lives in
 ``NLQueryPipeline``. As of ONTA-249 it is a SUPPORTED path, ENABLED BY DEFAULT
-(set ``COGRAPH_SPATIAL_ROUTING_ENABLED=0`` to force it off, e.g. for byte-stable
+(set ``INFONA_SPATIAL_ROUTING_ENABLED=0`` to force it off, e.g. for byte-stable
 evals); a free-text place-name anchor now resolves via the geocoder seam
 (``infona_client.spatiotemporal.geocoder``).
 

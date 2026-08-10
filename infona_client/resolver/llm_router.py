@@ -7,17 +7,17 @@ env-overridable; the defaults set the production primary/fallback. Nothing is
 hardcoded at the call sites — they pass their per-role model (which itself
 defaults to ``PRIMARY_MODEL``) and the fallback is applied here uniformly.
 
-**Provider selection (``OMNIX_LLM_PROVIDER``).** The backend is chosen by
-``OMNIX_LLM_PROVIDER`` (``openrouter`` | ``cerebras``), *defaulting to
+**Provider selection (``INFONA_LLM_PROVIDER``).** The backend is chosen by
+``INFONA_LLM_PROVIDER`` (``openrouter`` | ``cerebras``), *defaulting to
 ``openrouter``* so behaviour is byte-identical to the historical hardcoded
 OpenRouter path when the env is unset. When set to ``cerebras`` this routes the
 same OpenAI-shaped chat request to Cerebras (``https://api.cerebras.ai/v1``)
 instead — the auth key becomes ``CEREBRAS_API_KEY`` and the model is the bare
-``OMNIX_LLM_MODEL`` slug (e.g. ``gpt-oss-120b``, no ``openai/`` prefix). This
+``INFONA_LLM_MODEL`` slug (e.g. ``gpt-oss-120b``, no ``openai/`` prefix). This
 mirrors the query path's Cerebras support (``nlp/pipeline.py``); one env flip
 switches ALL extraction call sites at once because they all funnel through
 :func:`openrouter_chat` here. The query path has its OWN Cerebras selector
-(``OMNIX_QUERY_PROVIDER``) and is unaffected.
+(``INFONA_QUERY_PROVIDER``) and is unaffected.
 
 The flip is guarded per call by SLUG SHAPE: Cerebras serves only bare slugs, so
 a call whose effective model contains ``/`` (an OpenRouter ``vendor/model`` id —
@@ -44,20 +44,20 @@ from infona_client.retrieval.errors import classify_llm_status_error
 def _openrouter_base() -> str:
     """OpenAI-compatible chat base URL.
 
-    ``OMNIX_LLM_BASE_URL`` (preferred) or ``OMNIX_OPENROUTER_BASE_URL`` points
+    ``INFONA_LLM_BASE_URL`` (preferred) or ``INFONA_OPENROUTER_BASE_URL`` points
     extraction/resolver LLM traffic at a self-hosted endpoint (vLLM, Ollama
     with OpenAI shim, LiteLLM). Unset → public OpenRouter.
     """
     return (
-        os.environ.get("OMNIX_LLM_BASE_URL")
-        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        os.environ.get("INFONA_LLM_BASE_URL")
+        or os.environ.get("INFONA_OPENROUTER_BASE_URL")
         or "https://openrouter.ai/api/v1"
     ).rstrip("/")
 
 
 def _cerebras_base() -> str:
     return (
-        os.environ.get("OMNIX_CEREBRAS_BASE_URL")
+        os.environ.get("INFONA_CEREBRAS_BASE_URL")
         or "https://api.cerebras.ai/v1"
     ).rstrip("/")
 
@@ -69,11 +69,11 @@ CEREBRAS_BASE = _cerebras_base()
 
 # Primary model for all LLM calls, and the automatic fallback applied via
 # OpenRouter's `models` routing. Env-overridable; defaults are the production
-# choice. Per-role knobs (OMNIX_EXTRACT_MODEL, OMNIX_MATCH_MODEL, …) default to
-# PRIMARY_MODEL, so OMNIX_LLM_MODEL flips every role at once unless individually
+# choice. Per-role knobs (INFONA_EXTRACT_MODEL, INFONA_MATCH_MODEL, …) default to
+# PRIMARY_MODEL, so INFONA_LLM_MODEL flips every role at once unless individually
 # overridden.
-PRIMARY_MODEL = os.environ.get("OMNIX_LLM_MODEL", "anthropic/claude-opus-4.8")
-FALLBACK_MODEL = os.environ.get("OMNIX_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
+PRIMARY_MODEL = os.environ.get("INFONA_LLM_MODEL", "anthropic/claude-opus-4.8")
+FALLBACK_MODEL = os.environ.get("INFONA_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
 
 # A reasoning model (e.g. Cerebras gpt-oss-120b) spends part of its token budget on
 # a hidden reasoning phase before emitting content; too small a budget yields an
@@ -90,7 +90,7 @@ def _llm_provider() -> str:
     runtime reconfigure — can flip it without re-importing the module. Any value
     other than ``cerebras`` (including unset) means ``openrouter``, preserving the
     historical default byte-for-byte."""
-    return os.environ.get("OMNIX_LLM_PROVIDER", "openrouter").strip().lower()
+    return os.environ.get("INFONA_LLM_PROVIDER", "openrouter").strip().lower()
 
 
 def model_chain(primary: str | None = None) -> list[str]:
@@ -145,13 +145,13 @@ async def openrouter_chat(
     Every existing caller (both bare-string and ``return_finish_reason``-only)
     keeps its current return shape untouched.
 
-    **Provider routing.** When ``OMNIX_LLM_PROVIDER=cerebras`` the request is sent
+    **Provider routing.** When ``INFONA_LLM_PROVIDER=cerebras`` the request is sent
     to Cerebras (``api.cerebras.ai``) with the ``CEREBRAS_API_KEY`` and the bare
-    ``OMNIX_LLM_MODEL`` slug instead of OpenRouter — see the module docstring.
+    ``INFONA_LLM_MODEL`` slug instead of OpenRouter — see the module docstring.
     Cerebras only serves BARE slugs, so the flip applies per call by slug shape
     (the same heuristic the query path uses): a bare effective model
     (``model or PRIMARY_MODEL``) goes to Cerebras; a ``vendor/model`` slug —
-    e.g. a per-role knob like ``OMNIX_CSV_SCHEMA_MODEL``'s
+    e.g. a per-role knob like ``INFONA_CSV_SCHEMA_MODEL``'s
     ``google/gemini-2.5-flash`` default — can only be served by OpenRouter and
     keeps routing there with the caller's ``api_key``. Everything else (request
     params, return contract, error handling) is identical. Default (unset /
@@ -172,14 +172,14 @@ async def openrouter_chat(
             # asked for Cerebras, running on OpenRouter instead would hide a
             # misconfiguration (wrong key, wrong model slug) behind "it worked".
             raise RuntimeError(
-                "OMNIX_LLM_PROVIDER=cerebras but CEREBRAS_API_KEY is not set — "
-                "set the Cerebras key or unset OMNIX_LLM_PROVIDER to use OpenRouter."
+                "INFONA_LLM_PROVIDER=cerebras but CEREBRAS_API_KEY is not set — "
+                "set the Cerebras key or unset INFONA_LLM_PROVIDER to use OpenRouter."
             )
         base = _cerebras_base()
         request_key = cerebras_key
         # Cerebras takes a BARE model slug (e.g. "gpt-oss-120b"), not an
         # OpenRouter-prefixed one, and has no `models` fallback array. Use the
-        # caller's per-role model when supplied, else PRIMARY_MODEL (OMNIX_LLM_MODEL).
+        # caller's per-role model when supplied, else PRIMARY_MODEL (INFONA_LLM_MODEL).
         body: dict = {
             "model": effective_model,
             "messages": [
@@ -212,7 +212,7 @@ async def openrouter_chat(
     if response_format is not None:
         body["response_format"] = response_format
     chat_url = f"{base}/chat/completions"
-    # Fail closed under OMNIX_OFFLINE=1 unless base is allowlisted (localhost by
+    # Fail closed under INFONA_OFFLINE=1 unless base is allowlisted (localhost by
     # default — self-hosted vLLM/Ollama). Cloud OpenRouter / Cerebras hosts raise.
     assert_online_url(chat_url, purpose="LLM chat completion")
     async with httpx.AsyncClient(timeout=timeout) as client:

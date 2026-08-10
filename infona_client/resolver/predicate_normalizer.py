@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.resolver.predicate")
+logger = structlog.stdlib.get_logger("infona.resolver.predicate")
 
 # Common prefixes/suffixes that don't change predicate semantics
 _STRIP_PREFIXES = ("is_", "has_", "was_", "does_", "can_", "get_")

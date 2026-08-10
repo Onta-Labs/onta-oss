@@ -7,8 +7,8 @@ JSON coercion outside the substrate + its ONE sanctioned delegating wrapper
 ``test_write_path_convergence.py`` and runs standalone in the OSS repo (which has
 only ``infona_client/`` present).
 
-The premium half of the guard (``onta`` parent repo,
-``tests/test_retrieval_path_convergence.py``) additionally scans ``cograph/`` for
+The premium half of the guard (``infona`` parent repo,
+``tests/test_retrieval_path_convergence.py``) additionally scans ``infona/`` for
 re-integrated paid web-search/scrape APIs (M3); that can only run where both trees
 are checked out. Here we enforce the two OSS-relevant invariants AND assert the
 paid endpoints stay premium-only (they must never appear under ``infona_client/``).
@@ -52,7 +52,7 @@ _M2_ARRAY_FIND = re.compile(r"""\.find\(\s*['"]\[['"]\s*\)""")
 _M2_ARRAY_RFIND = re.compile(r"""\.rfind\(\s*['"]\]['"]\s*\)""")
 
 # Paid web-search/scrape ENDPOINT hosts — these must NEVER appear under
-# infona_client/ (they are premium-only integrations in cograph/). ``openrouter.ai``
+# infona_client/ (they are premium-only integrations in infona/). ``openrouter.ai``
 # is the LLM gateway (legit OSS usage) and is intentionally excluded.
 _PAID_HOST = re.compile(
     r"api\.exa\.ai|api\.parallel\.ai|serpapi\.com|api\.perplexity\.ai|"
@@ -143,7 +143,7 @@ def test_allowlist_entries_are_live():
 
 def test_no_paid_web_search_host_in_oss():
     """The paid web-search/scrape endpoints are premium-only — none may appear under
-    infona_client/ (they belong in cograph/providers|enrichment|firecrawl). The
+    infona_client/ (they belong in infona/providers|enrichment|firecrawl). The
     ``openrouter.ai`` LLM gateway is intentionally allowed and never matched."""
     offenders = [rel for rel, code in _iter_sources() if _PAID_HOST.search(code)]
     assert not offenders, (

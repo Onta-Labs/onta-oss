@@ -24,7 +24,7 @@ docker compose up -d
 
 This starts **Fuseki** (current SPARQL path, port 3030) and **Neo4j 5
 Community** (property-graph migration path, Bolt 7687 / browser 7474). Dev
-auth for Neo4j is `neo4j` / `onta-dev-password` — set the matching `NEO4J_*`
+auth for Neo4j is `neo4j` / `infona-dev-password` — set the matching `NEO4J_*`
 vars from [`.env.example`](.env.example). Neo4j only:
 
 ```bash
@@ -66,11 +66,9 @@ pip install -e .
 ```
 
 > **Python import path:** the package installs as `infona-client` on PyPI; import
-> `infona_client` (canonical). The legacy `cograph_client` import still works as a
-> deprecation shim. Graph IRIs under `https://cograph.tech/` are frozen technical IDs.
+> `infona_client`. Graph IRIs use `https://graph.infona.ai/`.
 
-> **CLI bins:** primary command is `infona`; `onta` is kept as a compatibility alias.
-> MCP: `infona-mcp` (primary), `onta-mcp` (alias).
+> **CLI / MCP bins:** `infona` and `infona-mcp`. Config lives in `~/.infona`.
 
 
 
@@ -147,7 +145,7 @@ The Node CLI (`npm install -g @infona-ai/cli`, requires Node 20+) covers both an
   /quit
 ```
 
-`/types` and `/type` are the fastest way to look around after an ingest — see the [npm README](packages/cograph/README.md) for screenshots. Bare lines auto-route to `/ask`.
+`/types` and `/type` are the fastest way to look around after an ingest — see the [npm README](packages/cli/README.md) for screenshots. Bare lines auto-route to `/ask`.
 
 ### Self-hosted CLI mode
 
@@ -159,7 +157,7 @@ infona --no-login                                # uses INFONA_API_URL env var
 INFONA_API_URL=http://my-host:8000 infona
 ```
 
-When self-hosted, the prompt shows the host suffix: `infona@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `OMNIX_API_KEYS` — empty means no auth, `tenant=default`.
+When self-hosted, the prompt shows the host suffix: `infona@localhost:8000 (kg) ▸`. The backend detects open-access vs auth-required mode by looking at `INFONA_API_KEYS` — empty means no auth, `tenant=default`.
 
 ### Auto-enrichment
 
@@ -227,7 +225,7 @@ Tools: `ask`, `search`, `agent`, `ingest_csv`, `list_knowledge_graphs`,
 `create_knowledge_graph`, `delete_knowledge_graph`, `view_ontology`,
 `inspect_graph_schema`, `evolve_ontology`, `apply_ontology_change(s)`,
 `schedule`, `list_jobs`, `get_job`, `wait_for_job`.
-See the [@infona-ai/mcp README](packages/cograph-mcp/README.md) for configuration.
+See the [@infona-ai/mcp README](packages/mcp/README.md) for configuration.
 
 ## API
 
@@ -258,7 +256,7 @@ with every `FROM` / `FROM NAMED` naming a graph inside the calling workspace:
 
 ```sparql
 SELECT ?s ?p ?o
-FROM <https://graph.onta.sh/graphs/{tenant}/kg/{kg_name}>
+FROM <https://graph.infona.ai/graphs/{tenant}/kg/{kg_name}>
 WHERE { ?s ?p ?o }
 ```
 
@@ -283,12 +281,12 @@ Cerebras, or Anthropic.
 ```bash
 # OpenRouter (recommended)
 export OPENROUTER_API_KEY=sk-or-...
-export OMNIX_QUERY_PROVIDER=openrouter
-export OMNIX_QUERY_MODEL=google/gemini-2.5-flash
+export INFONA_QUERY_PROVIDER=openrouter
+export INFONA_QUERY_MODEL=google/gemini-2.5-flash
 
 # Or Cerebras (fast inference)
-export OMNIX_QUERY_PROVIDER=cerebras
-export OMNIX_CEREBRAS_API_KEY=csk-...
+export INFONA_QUERY_PROVIDER=cerebras
+export INFONA_CEREBRAS_API_KEY=csk-...
 ```
 
 ## Eval Results

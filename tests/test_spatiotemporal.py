@@ -2,7 +2,7 @@
 
 Covers the in-memory default end-to-end, the factory/registration wiring, and the
 PostGIS adapter's emitted SQL via a fake asyncpg pool (no real Postgres). One
-``@pytest.mark.integration`` test exercises a live DB when ``OMNIX_DATABASE_URL`` is
+``@pytest.mark.integration`` test exercises a live DB when ``INFONA_DATABASE_URL`` is
 set, and skips otherwise.
 """
 
@@ -630,14 +630,14 @@ async def test_postgis_parse_attrs_variants(pg):
 
 
 # ---------------------------------------------------------------------------
-# Live DB integration test (skips without OMNIX_DATABASE_URL)
+# Live DB integration test (skips without INFONA_DATABASE_URL)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not os.environ.get("OMNIX_DATABASE_URL"),
-    reason="OMNIX_DATABASE_URL not set; needs a live PostGIS database",
+    not os.environ.get("INFONA_DATABASE_URL"),
+    reason="INFONA_DATABASE_URL not set; needs a live PostGIS database",
 )
 async def test_postgis_roundtrip_live():
     store = PostGISSpatioTemporalIndex()

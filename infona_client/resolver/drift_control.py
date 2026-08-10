@@ -15,7 +15,7 @@ It is intentionally:
     package** — so it can be unit-tested and reused without dragging in the
     resolver/graph stack.
   - **Flag-gated**: every NEW behavior in ADR 0004 sits behind
-    ``OMNIX_DRIFT_CONTROL``. With the flag OFF (default), nothing in the ingest
+    ``INFONA_DRIFT_CONTROL``. With the flag OFF (default), nothing in the ingest
     path calls into this module, so runtime behavior is byte-identical to today.
     The functions here are still importable and testable regardless of the flag
     — the flag governs whether *callers* wire them in, not whether the math runs.
@@ -33,9 +33,9 @@ Rule (ADR 0004 §1, calibrated at floor=20% + support>=5 + core-slot exemption):
 Env (read at *call time* via the helpers below, so tests can monkeypatch
 ``os.environ`` without re-importing):
 
-  - ``OMNIX_DRIFT_CONTROL``   -> ``DRIFT_CONTROL_ENABLED`` ("1" => True, else False)
-  - ``OMNIX_DRIFT_FLOOR_COV`` -> ``FLOOR_COV`` (float percent, default 20.0)
-  - ``OMNIX_DRIFT_FLOOR_COUNT`` -> ``FLOOR_COUNT`` (int, default 5)
+  - ``INFONA_DRIFT_CONTROL``   -> ``DRIFT_CONTROL_ENABLED`` ("1" => True, else False)
+  - ``INFONA_DRIFT_FLOOR_COV`` -> ``FLOOR_COV`` (float percent, default 20.0)
+  - ``INFONA_DRIFT_FLOOR_COUNT`` -> ``FLOOR_COUNT`` (int, default 5)
 """
 from __future__ import annotations
 
@@ -47,17 +47,17 @@ DEFAULT_FLOOR_COV: float = 20.0
 DEFAULT_FLOOR_COUNT: int = 5
 
 # Env var names (single source of truth so callers/tests don't hardcode strings).
-ENV_ENABLED = "OMNIX_DRIFT_CONTROL"
-ENV_OBSERVE_ONLY = "OMNIX_DRIFT_OBSERVE_ONLY"
-ENV_FLOOR_COV = "OMNIX_DRIFT_FLOOR_COV"
-ENV_FLOOR_COUNT = "OMNIX_DRIFT_FLOOR_COUNT"
+ENV_ENABLED = "INFONA_DRIFT_CONTROL"
+ENV_OBSERVE_ONLY = "INFONA_DRIFT_OBSERVE_ONLY"
+ENV_FLOOR_COV = "INFONA_DRIFT_FLOOR_COV"
+ENV_FLOOR_COUNT = "INFONA_DRIFT_FLOOR_COUNT"
 
 
 # --- Env helpers (read at CALL time, never cached at import) ------------------
 def drift_control_enabled() -> bool:
     """True iff the ADR 0004 drift-control feature flag is ON.
 
-    Gate for every NEW ADR 0004 behavior. ``OMNIX_DRIFT_CONTROL=="1"`` enables;
+    Gate for every NEW ADR 0004 behavior. ``INFONA_DRIFT_CONTROL=="1"`` enables;
     anything else (unset, "0", "true", ...) is OFF, so the default is a no-op and
     today's behavior is preserved exactly. Read live from ``os.environ`` so a
     test can flip it with ``monkeypatch.setenv`` mid-process.
@@ -75,13 +75,13 @@ def observe_only() -> bool:
     de-risking mode (ADR 0004): set the floor from a measured distribution across
     many KGs instead of trusting the hand-calibrated 20%. ``act`` =
     ``drift_control_enabled() and not observe_only()``. Only meaningful when
-    ``OMNIX_DRIFT_CONTROL=1``; default OFF.
+    ``INFONA_DRIFT_CONTROL=1``; default OFF.
     """
     return os.environ.get(ENV_OBSERVE_ONLY, "0") == "1"
 
 
 def env_floor_cov() -> float:
-    """Coverage floor (percent) from ``OMNIX_DRIFT_FLOOR_COV``, default 20.0.
+    """Coverage floor (percent) from ``INFONA_DRIFT_FLOOR_COV``, default 20.0.
 
     A malformed value falls back to the validated default rather than raising —
     a bad env var must never break ingest.
@@ -96,7 +96,7 @@ def env_floor_cov() -> float:
 
 
 def env_floor_count() -> int:
-    """Support-count floor from ``OMNIX_DRIFT_FLOOR_COUNT``, default 5.
+    """Support-count floor from ``INFONA_DRIFT_FLOOR_COUNT``, default 5.
 
     Malformed value falls back to the validated default (see ``env_floor_cov``).
     """

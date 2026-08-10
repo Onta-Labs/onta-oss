@@ -33,7 +33,7 @@ from infona_client.pipeline.stage_trace import (
     attach_recorder,
 )
 
-logger = structlog.stdlib.get_logger("cograph.pipeline.answer_run")
+logger = structlog.stdlib.get_logger("infona.pipeline.answer_run")
 
 # Truncate free-text fields stamped into stage_trace so a huge SPARQL/answer
 # never bloats the job jsonb payload.

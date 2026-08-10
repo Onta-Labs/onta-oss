@@ -6,7 +6,7 @@
       "id": "q-001",
       "tier": "T1",
       "question": "How many swap positions are recorded in the dataset?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?swapPosition) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?swapPosition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?swapPosition) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?swapPosition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n}",
       "expected_answer": "13601",
       "full_expected_items": [
         "13601"
@@ -48,7 +48,7 @@
       "id": "q-002",
       "tier": "T1",
       "question": "List all the unique contract names available in the dataset.",
-      "gold_sparql": "SELECT DISTINCT ?contractName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contractName .\n}",
+      "gold_sparql": "SELECT DISTINCT ?contractName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contractName .\n}",
       "expected_answer": "LITHIUM HYDROXIDE, ALUMINUM, ALUMINUM MWP, ALUMINIUM EURO PREM DUTY-PAID, STEEL-HRC, NORTH EURO HOT-ROLL COIL STEEL, STEEL SCRAP, PGP PROPYLENE (PCW) CAL, GULF JET NY HEAT OIL SPR, MARINE .5% FOB USGC/BRENT 1st ... (310 total)",
       "full_expected_items": [
         "LITHIUM HYDROXIDE",
@@ -399,7 +399,7 @@
       "id": "q-003",
       "tier": "T1",
       "question": "What are the different asset classes mentioned in the data?",
-      "gold_sparql": "SELECT DISTINCT ?assetClass FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?ac <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?ac <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> ?assetClass .\n}",
+      "gold_sparql": "SELECT DISTINCT ?assetClass FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?ac <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?ac <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> ?assetClass .\n}",
       "expected_answer": "Agriculture, Financial, Energy, Metals",
       "full_expected_items": [
         "Agriculture",
@@ -444,7 +444,7 @@
       "id": "q-004",
       "tier": "T1",
       "question": "How many distinct report dates are present in the dataset?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?reportDate) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?rd <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/ReportDate> .\n  ?rd <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/report_date> ?reportDate .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?reportDate) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?rd <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/ReportDate> .\n  ?rd <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/report_date> ?reportDate .\n}",
       "expected_answer": "53",
       "full_expected_items": [
         "53"
@@ -486,7 +486,7 @@
       "id": "q-005",
       "tier": "T2",
       "question": "How many swap positions have an open interest greater than 100000?",
-      "gold_sparql": "SELECT (COUNT(?swapPosition) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?swapPosition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?swapPosition <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/position_open_interest> ?openInterest .\n  FILTER (xsd:integer(?openInterest) > 100000)\n}",
+      "gold_sparql": "SELECT (COUNT(?swapPosition) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?swapPosition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?swapPosition <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/position_open_interest> ?openInterest .\n  FILTER (xsd:integer(?openInterest) > 100000)\n}",
       "expected_answer": "3993",
       "full_expected_items": [
         "3993"
@@ -528,7 +528,7 @@
       "id": "q-006",
       "tier": "T2",
       "question": "What are the labels of contracts with 'CHICAGO' in their exchange name?",
-      "gold_sparql": "SELECT DISTINCT ?contractLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_exchange> ?exchangeName .\n  ?contract <http://www.w3.org/2000/01/rdf-schema#label> ?contractLabel .\n  FILTER (CONTAINS(LCASE(STR(?exchangeName)), \"chicago\"))\n}",
+      "gold_sparql": "SELECT DISTINCT ?contractLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_exchange> ?exchangeName .\n  ?contract <http://www.w3.org/2000/01/rdf-schema#label> ?contractLabel .\n  FILTER (CONTAINS(LCASE(STR(?exchangeName)), \"chicago\"))\n}",
       "expected_answer": "SOYBEAN MEAL, USD Malaysian Crude Palm Oil C, ROUGH RICE, BUTTER (CASH SETTLED), MILK, Class III, NON FAT DRY MILK, CME MILK IV, DRY WHEY, LEAN HOGS, LIVE CATTLE ... (20 total)",
       "full_expected_items": [
         "SOYBEAN MEAL",
@@ -589,7 +589,7 @@
       "id": "q-007",
       "tier": "T3",
       "question": "How many swap positions are associated with each contract name?",
-      "gold_sparql": "SELECT ?contractName (COUNT(?swapPosition) AS ?numberOfSwapPositions) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?swapPosition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?swapPosition <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/position_for_contract> ?contract .\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contractName .\n} GROUP BY ?contractName ORDER BY DESC(?numberOfSwapPositions) LIMIT 10",
+      "gold_sparql": "SELECT ?contractName (COUNT(?swapPosition) AS ?numberOfSwapPositions) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?swapPosition <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?swapPosition <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/position_for_contract> ?contract .\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contractName .\n} GROUP BY ?contractName ORDER BY DESC(?numberOfSwapPositions) LIMIT 10",
       "expected_answer": "CALIF CARBON ALLOWANCE V2024 | 68\nMARINE .5% FOB USGC/BRENT 1st | 53\nSTEEL-HRC | 53\nGULF # 6 FUEL OIL CRACK | 53\nTX REC CRS V26 FRONT HALF | 53\nCG Mainline Basis | 53\nUSGC HSFO (PLATTS) | 53\nLITHIUM HYDROXIDE | 53\nGULF JET NY HEAT OIL SPR | 53\nALUMINIUM EURO PREM DUTY-PAID | 53",
       "full_expected_items": [
         "CALIF CARBON ALLOWANCE V2024 | 68",
@@ -640,7 +640,7 @@
       "id": "q-008",
       "tier": "T3",
       "question": "What are the contract names and their corresponding exchange names for contracts traded on 'CHICAGO BOARD OF TRADE'?",
-      "gold_sparql": "SELECT ?contractName ?exchangeName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_on_exchange> ?exchange .\n  ?exchange <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Exchange> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contractName .\n  ?exchange <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/exchange_name> ?exchangeName .\n  FILTER (?exchangeName = \"CHICAGO BOARD OF TRADE\")\n}",
+      "gold_sparql": "SELECT ?contractName ?exchangeName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_on_exchange> ?exchange .\n  ?exchange <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Exchange> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contractName .\n  ?exchange <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/exchange_name> ?exchangeName .\n  FILTER (?exchangeName = \"CHICAGO BOARD OF TRADE\")\n}",
       "expected_answer": "SOYBEAN OIL | CHICAGO BOARD OF TRADE\nSOYBEAN MEAL | CHICAGO BOARD OF TRADE\nROUGH RICE | CHICAGO BOARD OF TRADE\nWHEAT-SRW | CHICAGO BOARD OF TRADE\nWHEAT-HRW | CHICAGO BOARD OF TRADE\nCORN | CHICAGO BOARD OF TRADE\nOATS | CHICAGO BOARD OF TRADE\nSOYBEANS | CHICAGO BOARD OF TRADE\nMINI SOYBEANS | CHICAGO BOARD OF TRADE",
       "full_expected_items": [
         "SOYBEAN OIL | CHICAGO BOARD OF TRADE",
@@ -690,7 +690,7 @@
       "id": "q-009",
       "tier": "T3",
       "question": "List the asset classes and the number of contracts associated with each, for contracts with a commodity code starting with '00'.",
-      "gold_sparql": "SELECT ?assetClass (COUNT(?contract) AS ?numberOfContracts) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_in_asset_class> ?assetClassEntity .\n  ?assetClassEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?assetClassEntity <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> ?assetClass .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_commodity_code> ?commodityCode .\n  FILTER (STRSTARTS(?commodityCode, \"00\"))\n} GROUP BY ?assetClass ORDER BY DESC(?numberOfContracts)",
+      "gold_sparql": "SELECT ?assetClass (COUNT(?contract) AS ?numberOfContracts) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_in_asset_class> ?assetClassEntity .\n  ?assetClassEntity <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?assetClassEntity <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> ?assetClass .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_commodity_code> ?commodityCode .\n  FILTER (STRSTARTS(?commodityCode, \"00\"))\n} GROUP BY ?assetClass ORDER BY DESC(?numberOfContracts)",
       "expected_answer": "Energy | 45\nAgriculture | 4\nFinancial | 1",
       "full_expected_items": [
         "Energy | 45",
@@ -734,7 +734,7 @@
       "id": "q-010",
       "tier": "T4",
       "question": "What are the contract names and their corresponding asset classes for contracts traded on the 'CHICAGO BOARD OF TRADE'?",
-      "gold_sparql": "SELECT DISTINCT ?contract_name ?asset_class FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contract_name .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_on_exchange> ?exchange .\n  ?exchange <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Exchange> .\n  ?exchange <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/exchange_name> \"CHICAGO BOARD OF TRADE\" .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_in_asset_class> ?assetClass .\n  ?assetClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?assetClass <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> ?asset_class .\n}",
+      "gold_sparql": "SELECT DISTINCT ?contract_name ?asset_class FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contract_name .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_on_exchange> ?exchange .\n  ?exchange <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Exchange> .\n  ?exchange <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/exchange_name> \"CHICAGO BOARD OF TRADE\" .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_in_asset_class> ?assetClass .\n  ?assetClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?assetClass <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> ?asset_class .\n}",
       "expected_answer": "WHEAT-SRW | Agriculture\nWHEAT-HRW | Agriculture\nCORN | Agriculture\nSOYBEAN OIL | Financial\nSOYBEAN MEAL | Agriculture\nOATS | Energy\nSOYBEANS | Energy\nMINI SOYBEANS | Energy\nROUGH RICE | Metals",
       "full_expected_items": [
         "WHEAT-SRW | Agriculture",
@@ -784,7 +784,7 @@
       "id": "q-011",
       "tier": "T4",
       "question": "For each report year, what is the average 'position_open_interest' for swap positions associated with contracts that have a 'contract_commodity_code' of '001'?",
-      "gold_sparql": "SELECT ?report_year (AVG(xsd:float(?open_interest)) AS ?average_open_interest) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?position <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?position <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/position_open_interest> ?open_interest .\n  ?position <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/position_for_contract> ?contract .\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_commodity_code> \"001\" .\n  ?position <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/position_on_date> ?reportDate .\n  ?reportDate <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/ReportDate> .\n  ?reportDate <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/report_year> ?report_year .\n} GROUP BY ?report_year\nORDER BY ?report_year",
+      "gold_sparql": "SELECT ?report_year (AVG(xsd:float(?open_interest)) AS ?average_open_interest) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?position <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?position <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/position_open_interest> ?open_interest .\n  ?position <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/position_for_contract> ?contract .\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_commodity_code> \"001\" .\n  ?position <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/position_on_date> ?reportDate .\n  ?reportDate <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/ReportDate> .\n  ?reportDate <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/report_year> ?report_year .\n} GROUP BY ?report_year\nORDER BY ?report_year",
       "expected_answer": "2024 | 241405.19",
       "full_expected_items": [
         "2024 | 241405.19"
@@ -826,7 +826,7 @@
       "id": "q-012",
       "tier": "T4",
       "question": "Find the contract names for contracts that have swap positions with a 'position_swap_long' greater than 100000 and are associated with an asset class of 'Energy'.",
-      "gold_sparql": "SELECT DISTINCT ?contract_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contract_name .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_has_position> ?position .\n  ?position <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?position <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/position_swap_long> ?swap_long .\n  FILTER (xsd:float(?swap_long) > 100000) .\n  ?contract <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_in_asset_class> ?assetClass .\n  ?assetClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?assetClass <https://omnix.dev/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> \"Energy\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?contract_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-cftc-swap-data> WHERE {\n  ?contract <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/Contract> .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_name> ?contract_name .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_has_position> ?position .\n  ?position <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/SwapPosition> .\n  ?position <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/position_swap_long> ?swap_long .\n  FILTER (xsd:float(?swap_long) > 100000) .\n  ?contract <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/contract_in_asset_class> ?assetClass .\n  ?assetClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/type/AssetClass> .\n  ?assetClass <https://graph.infona.ai/holdout-v2/holdout-v2-cftc-swap-data/pred/asset_class> \"Energy\" .\n}",
       "expected_answer": "SOYBEANS",
       "full_expected_items": [
         "SOYBEANS"
@@ -868,37 +868,37 @@
   "tables": [
     {
       "table": "AssetClass",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/AssetClass.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/AssetClass.csv",
       "n_rows_used": 43,
       "n_cols": 2
     },
     {
       "table": "Contract",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/Contract.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/Contract.csv",
       "n_rows_used": 311,
       "n_cols": 5
     },
     {
       "table": "Exchange",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/Exchange.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/Exchange.csv",
       "n_rows_used": 10,
       "n_cols": 2
     },
     {
       "table": "Region",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/Region.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/Region.csv",
       "n_rows_used": 2,
       "n_cols": 2
     },
     {
       "table": "ReportDate",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/ReportDate.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/ReportDate.csv",
       "n_rows_used": 53,
       "n_cols": 3
     },
     {
       "table": "SwapPosition",
-      "source": "/Users/moeen/Desktop/omnix-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/SwapPosition.csv",
+      "source": "/Users/moeen/Desktop/infona-holdout-v2/eval_holdout_v2/multitable_csv/cftc-swap-data/SwapPosition.csv",
       "n_rows_used": 333,
       "n_cols": 19
     }

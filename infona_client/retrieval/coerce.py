@@ -27,7 +27,7 @@ function precisely because those tolerance rules diverge; merging them into one
 code path would silently change one caller's outputs. Keeping them side by side
 here removes the duplicated implementations without touching behaviour.
 
-Boundary: OSS. Imports only stdlib (``json``). No ``from cograph.*``.
+Boundary: OSS. Imports only stdlib (``json``). No ``from infona.*``.
 """
 
 from __future__ import annotations

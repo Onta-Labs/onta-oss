@@ -23,7 +23,7 @@ async wrapper around the deterministic offline ``default_extractor`` so tests
 and local/offline runs stay deterministic with zero network.
 
 Boundary: OSS file. Imports only stdlib / ``infona_client.*`` / ``httpx``.
-No ``from cograph.*`` and no proprietary identifiers.
+No ``from infona.*`` and no proprietary identifiers.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ _EXTRACT_SYSTEM = (
 
 
 def _extract_model() -> str:
-    return os.environ.get("OMNIX_ENRICH_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
+    return os.environ.get("INFONA_ENRICH_EXTRACT_MODEL", EXTRACT_MODEL_DEFAULT)
 
 
 def _openrouter_key() -> str:

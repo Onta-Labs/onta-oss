@@ -68,7 +68,7 @@ from infona_client.auth.workspace_store import (
 )
 from infona_client.config import settings
 
-logger = structlog.stdlib.get_logger("cograph.workspace_invites")
+logger = structlog.stdlib.get_logger("infona.workspace_invites")
 
 router = APIRouter()
 
@@ -450,7 +450,7 @@ async def create_invite(
             logger.warning(
                 "workspace_invite_no_redirect_base",
                 hint=(
-                    "set OMNIX_INVITE_ACCEPT_URL_BASE to enable sign-up "
+                    "set INFONA_INVITE_ACCEPT_URL_BASE to enable sign-up "
                     "invitation emails; returning link-only"
                 ),
             )

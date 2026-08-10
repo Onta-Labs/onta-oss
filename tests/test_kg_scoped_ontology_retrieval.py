@@ -46,10 +46,10 @@ from infona_client.nlp.pipeline import (
 from infona_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-TYPES = "https://graph.onta.sh/types/"
-GRAPH = "https://graph.onta.sh/graphs/inv-tenant"
-KG = "https://graph.onta.sh/graphs/inv-tenant/kg/TargetKG"
-SIBLING_KG = "https://graph.onta.sh/graphs/inv-tenant/kg/SiblingKG"
+TYPES = "https://graph.infona.ai/types/"
+GRAPH = "https://graph.infona.ai/graphs/inv-tenant"
+KG = "https://graph.infona.ai/graphs/inv-tenant/kg/TargetKG"
+SIBLING_KG = "https://graph.infona.ai/graphs/inv-tenant/kg/SiblingKG"
 
 
 # --------------------------------------------------------------------------- #
@@ -635,7 +635,7 @@ def test_delete_kg_evicts_ontology_and_active_type_caches(client, mock_neptune, 
     cached scope."""
     tenant = "test-tenant"
     kg = "TargetKG"
-    base = f"https://graph.onta.sh/graphs/{tenant}"
+    base = f"https://graph.infona.ai/graphs/{tenant}"
     instance = f"{base}/kg/{kg}"
 
     _ontology_cache[f"{base}|{instance}|"] = ("Type: Widget", 1e12)

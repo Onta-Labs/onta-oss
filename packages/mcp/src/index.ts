@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Client, OntaError, isTerminalJobStatus } from "@infona-ai/cli";
+import { Client, InfonaError, isTerminalJobStatus } from "@infona-ai/cli";
 import type {
   AgentResult,
   JobCategory,
@@ -112,7 +112,7 @@ function textResult(text: string) {
 
 function errorResult(err: unknown) {
   const msg =
-    err instanceof OntaError
+    err instanceof InfonaError
       ? `Infona error: ${err.message}`
       : err instanceof Error
         ? err.message
@@ -1317,7 +1317,7 @@ async function readScheduleResponse<T>(resp: Response): Promise<T> {
     } catch {
       /* body already consumed / empty */
     }
-    throw new OntaError(
+    throw new InfonaError(
       `schedules request failed (HTTP ${resp.status})${detail ? `: ${detail}` : ""}`,
     );
   }
@@ -1395,7 +1395,7 @@ server.registerTool(
 
       if (!kg_name) {
         return errorResult(
-          new OntaError("kg_name is required to create a schedule."),
+          new InfonaError("kg_name is required to create a schedule."),
         );
       }
       const intervalByCadence = {
@@ -1606,7 +1606,7 @@ export async function main(): Promise<void> {
 //
 // The comparison MUST resolve symlinks on both sides. `npx -y @infona-ai/mcp` and a
 // global `npm i -g @infona-ai/mcp` install the package's `bin` as a SYMLINK (e.g.
-// /usr/local/bin/onta-mcp -> …/@infona-ai/mcp/dist/index.js). When node runs the file
+// /usr/local/bin/infona-mcp -> …/@infona-ai/mcp/dist/index.js). When node runs the file
 // through that symlink, `process.argv[1]` is the symlink path while
 // `import.meta.url` is this module's realpath, so a raw href compare NEVER
 // matches — the guard stays false and the server silently never starts (spawns,
@@ -1634,7 +1634,7 @@ const isEntrypoint = (() => {
 if (isEntrypoint) {
   main().catch((err) => {
     process.stderr.write(
-      `cograph-mcp failed to start: ${err instanceof Error ? err.message : String(err)}\n`,
+      `infona-mcp failed to start: ${err instanceof Error ? err.message : String(err)}\n`,
     );
     process.exit(1);
   });

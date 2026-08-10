@@ -26,11 +26,11 @@ from infona_client.nlp.pipeline import (
     _drop_internal_predicate_rows,
 )
 
-ER = "https://graph.onta.sh/er/"
-ONTO = "https://graph.onta.sh/onto/"
+ER = "https://graph.infona.ai/er/"
+ONTO = "https://graph.infona.ai/onto/"
 ONTO_NORM = ONTO + "norm/"
-ATTRS = "https://graph.onta.sh/types/{t}/attrs/{a}"
-ENTITIES = "https://graph.onta.sh/entities/"
+ATTRS = "https://graph.infona.ai/types/{t}/attrs/{a}"
+ENTITIES = "https://graph.infona.ai/entities/"
 
 
 def _empty_neptune():

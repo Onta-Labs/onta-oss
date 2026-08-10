@@ -82,17 +82,17 @@ def test_sandbox_without_a_leak_passes(sandbox):
 LEAKS = [
     pytest.param(
         "eval_runs/probe.json",
-        '{"api_url": "http://demo-tenant.example.invalid"}',  # boundary-ok: fake infra string planted for this self-test
+        '{"api_url": "http://infona-demo-tenant-dev-1707774776.us-east-1.elb.amazonaws.com"}',  # boundary-ok: fake infra string planted for this self-test
         id="alb-host-in-eval-artifact",
     ),
     pytest.param(
         "probe.json",
-        '{"api_url": "http://OMNIX-DEMO-TENANT-DEV-1234.us-east-1.ELB.amazonaws.com"}',  # boundary-ok: fake infra string planted for this self-test
+        '{"api_url": "http://INFONA-DEMO-TENANT-DEV-1234.us-east-1.ELB.amazonaws.com"}',  # boundary-ok: fake infra string planted for this self-test
         id="alb-host-uppercased",
     ),
     pytest.param(
         "probe.md",
-        "123456789012.dkr.ecr.us-east-1.amazonaws.com/omnix-demo-tenant:latest",  # boundary-ok: fake infra string planted for this self-test
+        "123456789012.dkr.ecr.us-east-1.amazonaws.com/infona-demo-tenant:latest",  # boundary-ok: fake infra string planted for this self-test
         id="ecr-uri-with-account-id",
     ),
     pytest.param(
@@ -268,7 +268,7 @@ def test_local_dummy_postgres_dsn_is_allowed(sandbox):
 def test_docs_placeholder_keys_are_not_secrets(sandbox):
     """`sk-or-...` style placeholders in .env.example / README must stay green."""
     result = sandbox(
-        "probe.txt", "OPENROUTER_API_KEY=sk-or-...\nOMNIX_ANTHROPIC_API_KEY=sk-ant-...\n"
+        "probe.txt", "OPENROUTER_API_KEY=sk-or-...\nINFONA_ANTHROPIC_API_KEY=sk-ant-...\n"
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -299,7 +299,7 @@ def test_marker_is_ignored_on_a_minified_single_line_file(sandbox, tmp_path):
     choosing it. This is exactly the file class that caused the incident.
     """
     blob = (
-        '{"a":"http://omnix-demo-tenant-dev-9.us-east-1.elb.amazonaws.com",'  # boundary-ok: fake infra string planted for this self-test
+        '{"a":"http://infona-demo-tenant-dev-9.us-east-1.elb.amazonaws.com",'  # boundary-ok: fake infra string planted for this self-test
         '"k":"sk-ant-api03-9xQvT2mKp4Lw8Rn6Bz1Yc3Hd5Fg7Jk9Mq",'  # boundary-ok: fake credential planted for this self-test
         '"note":"boundary-ok: generated artifact",'
         '"pad":"' + "x" * 600 + '"}'
@@ -320,7 +320,7 @@ def test_marker_does_not_suppress_a_suffix_colliding_path(sandbox):
     package.json, LICENSE), and the failure was completely silent.
     """
     marked = "x\ny\nAKIAQ7WXYZ12ABCD34EF  boundary-ok: legit fixture\n"  # boundary-ok: fake infra string planted for this self-test
-    victim = "a\nb\nhost http://omnix-demo-tenant-dev-9.us-east-1.elb.amazonaws.com\n"  # boundary-ok: fake infra string planted for this self-test
+    victim = "a\nb\nhost http://infona-demo-tenant-dev-9.us-east-1.elb.amazonaws.com\n"  # boundary-ok: fake infra string planted for this self-test
 
     sandbox("notes.md", marked)
     result = sandbox("docs/notes.md", victim)

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     function_arns: str = "{}"
     log_level: str = "INFO"
     embeddings_s3_bucket: str = ""
-    embeddings_s3_prefix: str = "omnix/embeddings"
+    embeddings_s3_prefix: str = "infona/embeddings"
     embeddings_top_k: int = 15
 
     # HARD per-run spend ceiling (USD) for a discovery / enrichment run — the A9
@@ -21,17 +21,17 @@ class Settings(BaseSettings):
     # cost-envelope reason and an honest partial-coverage A9 manifest, instead of
     # silently continuing to overspend. 0.0 (the default) ⇒ UNLIMITED (no ceiling),
     # so every existing run is unchanged; a per-run override (EnrichJob
-    # `spend_ceiling_usd`) wins when set. env: OMNIX_ENRICH_SPEND_CEILING_USD.
+    # `spend_ceiling_usd`) wins when set. env: INFONA_ENRICH_SPEND_CEILING_USD.
     enrich_spend_ceiling_usd: float = 0.0
 
-    # Optional Postgres DSN (env OMNIX_DATABASE_URL). When set, the durable
+    # Optional Postgres DSN (env INFONA_DATABASE_URL). When set, the durable
     # PostgresJobStore is used for tracked jobs; when empty, jobs are kept in
     # process memory. This is a GENERIC DSN — any Postgres (local, Aurora, Neon,
     # Supabase, ...) — and intentionally carries no cloud-provider identifiers.
     database_url: str = ""
 
     # Optional base URL for workspace-invite accept links (ONTA-227), e.g. the
-    # web app's "/invite" page (env OMNIX_INVITE_ACCEPT_URL_BASE). The one-time
+    # web app's "/invite" page (env INFONA_INVITE_ACCEPT_URL_BASE). The one-time
     # accept token is appended as a path segment: "<base>/<token>". When unset,
     # invite creation still returns the raw token (accept_url is null) and no
     # sign-up email redirect can be built — link-only delivery.
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Optional auth plugin: a dotted "module.path:callable" that will be
     # imported at app startup. The callable is invoked with no arguments
     # and is expected to register an external API key verifier via
-    # omnix.auth.api_keys.register_external_verifier. Keeps omnix-oss
+    # infona.auth.api_keys.register_external_verifier. Keeps infona-oss
     # vendor-neutral while allowing downstream deployments to plug in
     # their own key verification backend (Clerk, WorkOS, custom, ...).
     auth_plugin: str = ""
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # and is expected to register paid source adapters via
     # infona_client.enrichment.sources.base.register_adapter and override
     # tier→chain mappings via infona_client.enrichment.tiers.register_tier.
-    # Keeps cograph-oss vendor-neutral while allowing downstream deployments
+    # Keeps infona-oss vendor-neutral while allowing downstream deployments
     # to plug in proprietary adapters (web search, LLM, GS1, ...).
     enrichment_plugin: str = ""
 
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # Optional router plugins: a comma-separated list of dotted
     # "module.path:callable" entries imported at app startup. Each callable is
     # invoked with the FastAPI app instance so it can mount additional routers
-    # via app.include_router(...). Keeps cograph-oss vendor-neutral while
+    # via app.include_router(...). Keeps infona-oss vendor-neutral while
     # letting downstream deployments attach proprietary endpoints (e.g. the
     # premium ontology recommender). Without it, only the OSS routers are
     # mounted.
@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # with no arguments and is expected to contribute the premium
     # "global_enhanced" catalog overlay via
     # infona_client.api_registry.register_api_source_layer. Without it, only
-    # the OSS "global_public" seed catalog is loaded. Keeps cograph-oss
+    # the OSS "global_public" seed catalog is loaded. Keeps infona-oss
     # vendor-neutral while letting a downstream deployment ship curated premium
     # (paid/licensed) API entries with no OSS change.
     api_registry_plugin: str = ""
@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # contribute the CURATED Global-Enhanced skill layer via
     # infona_client.skills.register_skill_layer. Without it, only the OSS
     # Global-Public seed content is loaded and resolution degrades to
-    # Tenant > Public. Keeps cograph-oss content-neutral: the mechanism
+    # Tenant > Public. Keeps infona-oss content-neutral: the mechanism
     # (storage, resolution, CRUD, injection seam) is OSS; the curated premium
     # PROSE is not.
     skills_plugin: str = ""
@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     # Places / Mapbox / Nominatim adapter in our deploy. Without it, the OSS
     # default (a deterministic offline gazetteer) is used, so a bare place-name
     # radius anchor still resolves for common places with no OSS change. Keeps
-    # cograph-oss vendor-neutral: no paid geocoding API is baked into OSS.
+    # infona-oss vendor-neutral: no paid geocoding API is baked into OSS.
     geocoder_plugin: str = ""
 
     # Optional secret-cipher plugin (ONTA-2xx): a dotted "module.path:callable"
@@ -116,8 +116,8 @@ class Settings(BaseSettings):
     # infona_client.api_registry.register_secret_cipher — e.g. an AWS-KMS
     # data-key cipher in our deploy. Without it, tenant-custom API credentials
     # are encrypted with the OSS default LocalAesGcmCipher keyed by
-    # OMNIX_SECRETS_KEY (below). Keeps cograph-oss vendor-neutral: a self-hoster
-    # needs only OMNIX_SECRETS_KEY; a cloud deploy points this at its KMS cipher.
+    # INFONA_SECRETS_KEY (below). Keeps infona-oss vendor-neutral: a self-hoster
+    # needs only INFONA_SECRETS_KEY; a cloud deploy points this at its KMS cipher.
     secrets_cipher_plugin: str = ""
 
     # Optional analytics plugin (ONTA-323): a dotted "module.path:callable"
@@ -126,9 +126,9 @@ class Settings(BaseSettings):
     # infona_client.analytics.register_analytics_sink — in our deploy the
     # proprietary hosted-analytics sink. Without it, the OSS default no-op sink is
     # used: emit() drops every event, so OSS stays analytics-free and standalone
-    # (no third-party analytics dependency). Keeps cograph-oss vendor-neutral:
+    # (no third-party analytics dependency). Keeps infona-oss vendor-neutral:
     # analytics that phones home to a SaaS is a proprietary concern; per-tenant
-    # usage metering (OMNIX usage/) stays OSS.
+    # usage metering (Infona usage/) stays OSS.
     analytics_plugin: str = ""
 
     # Optional local symmetric key for the OSS default secret cipher
@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     # under this key. Accepts base64/base64url (16/24/32 bytes) or a raw
     # passphrase (stretched to 32 bytes via SHA-256). Empty ⇒ no default cipher,
     # and the routes REFUSE to store a secret (fail closed) rather than store it
-    # in the clear. env: OMNIX_SECRETS_KEY.
+    # in the clear. env: INFONA_SECRETS_KEY.
     secrets_key: str = ""
 
     # Contact string sent as the User-Agent on SEC EDGAR requests
@@ -147,7 +147,7 @@ class Settings(BaseSettings):
     # is deliberately empty in OSS so a published build can never make requests
     # under some other operator's identity. When unset, the route falls back to
     # a neutral project-level UA (no personal address) and logs a one-time
-    # warning. env: OMNIX_SEC_USER_AGENT — e.g. "Acme Corp ops@acme.com".
+    # warning. env: INFONA_SEC_USER_AGENT — e.g. "Acme Corp ops@acme.com".
     sec_user_agent: str = ""
 
     def get_api_keys_map(self) -> dict[str, str]:
@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     def get_function_arns_map(self) -> dict[str, str]:
         return json.loads(self.function_arns)
 
-    model_config = {"env_prefix": "OMNIX_"}
+    model_config = {"env_prefix": "INFONA_"}
 
 
 settings = Settings()

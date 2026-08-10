@@ -50,7 +50,7 @@ from infona_client.graph.ontology_queries import (
 )
 from infona_client.graph.queries import GRAPH_URI_PREFIX, tenant_graph_uri
 
-logger = structlog.stdlib.get_logger("cograph.graph.text_markers")
+logger = structlog.stdlib.get_logger("infona.graph.text_markers")
 
 #: Average value length (chars) at or above which a TEXT-shaped attribute is
 #: UNAMBIGUOUSLY free-running prose and is marked without LLM adjudication.
@@ -60,7 +60,7 @@ logger = structlog.stdlib.get_logger("cograph.graph.text_markers")
 #: name (ONTA-177). Structural threshold, statable without domain nouns
 #: (ADR 0003 litmus).
 AUTO_FREE_TEXT_MIN_AVG_LEN = float(
-    os.environ.get("COGRAPH_FREE_TEXT_AUTO_MIN_AVG_LEN", "120")
+    os.environ.get("INFONA_FREE_TEXT_AUTO_MIN_AVG_LEN", "120")
 )
 
 
@@ -124,7 +124,7 @@ _cache: dict[str, tuple[float, dict[str, bool]]] = {}
 
 def _ttl_s() -> float:
     """TTL in seconds (env-overridable; read per call so tests can tune it)."""
-    return float(os.environ.get("COGRAPH_TEXT_MARKER_TTL_S", "60"))
+    return float(os.environ.get("INFONA_TEXT_MARKER_TTL_S", "60"))
 
 
 async def get_free_text_map(neptune, tenant_id: str) -> dict[str, bool]:
@@ -173,7 +173,7 @@ def invalidate_for_graph(graph_uri: str) -> None:
 
     Convenience for marker write sites that hold a graph URI rather than a
     bare tenant id (the SchemaResolver seams receive the tenant ONTOLOGY graph
-    ``https://graph.onta.sh/graphs/{tenant}``). Deriving the tenant here keeps
+    ``https://graph.infona.ai/graphs/{tenant}``). Deriving the tenant here keeps
     the URI-shape knowledge next to the cache instead of in every caller. An
     unrecognized shape over-invalidates (drops everything) — safe, since the
     only cost is one refetch per tenant on the next read.

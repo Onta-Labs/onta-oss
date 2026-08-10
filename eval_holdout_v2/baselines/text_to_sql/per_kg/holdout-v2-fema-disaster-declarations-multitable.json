@@ -11,7 +11,7 @@
         "20000"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?paProject) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?paProject) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2062,7 +2062,7 @@
         "(PW# 2303) DEBRIS REMOVAL"
       ],
       "full_result_count": 2157,
-      "gold_sparql": "SELECT ?applicantName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> . ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantName . }",
+      "gold_sparql": "SELECT ?applicantName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> . ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantName . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2125,7 +2125,7 @@
         "Other"
       ],
       "full_result_count": 12,
-      "gold_sparql": "SELECT DISTINCT ?incidentTypeLabel FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> . ?incidentType <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel . }",
+      "gold_sparql": "SELECT DISTINCT ?incidentTypeLabel FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> . ?incidentType <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2177,7 +2177,7 @@
         "9"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?damageCategory) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?damageCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/DamageCategory> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?damageCategory) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE { ?damageCategory <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/DamageCategory> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2229,7 +2229,7 @@
         "3109"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?project) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .\n  FILTER (xsd:integer(?amount) > 5000)\n}",
+      "gold_sparql": "SELECT (COUNT(?project) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/projectamount> ?amount .\n  FILTER (xsd:integer(?amount) > 5000)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2314,7 +2314,7 @@
         "Seale Junior High School"
       ],
       "full_result_count": 34,
-      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/application_title> ?title .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER (CONTAINS(LCASE(STR(?title)), \"school\"))\n}",
+      "gold_sparql": "SELECT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/application_title> ?title .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER (CONTAINS(LCASE(STR(?title)), \"school\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2366,7 +2366,7 @@
         "-2288936.8"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (SUM(xsd:float(?totalObligated)) AS ?sumTotalObligated) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) < 1000)\n}",
+      "gold_sparql": "SELECT (SUM(xsd:float(?totalObligated)) AS ?sumTotalObligated) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?project <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?project <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) < 1000)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2427,7 +2427,7 @@
         "COVID19 Emergency Response | 137"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?applicantLabel (COUNT(?paProject) AS ?numberOfPAProjects) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_has_applicant> ?applicant .\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantLabel .\n} GROUP BY ?applicantLabel ORDER BY DESC(?numberOfPAProjects) LIMIT 10",
+      "gold_sparql": "SELECT ?applicantLabel (COUNT(?paProject) AS ?numberOfPAProjects) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_has_applicant> ?applicant .\n  ?applicant <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Applicant> .\n  ?applicant <http://www.w3.org/2000/01/rdf-schema#label> ?applicantLabel .\n} GROUP BY ?applicantLabel ORDER BY DESC(?numberOfPAProjects) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -2479,7 +2479,7 @@
         "TX | 1.87847619E10"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT ?stateName (SUM(xsd:float(?totalObligated)) AS ?totalObligatedAmount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) > 0)\n} GROUP BY ?stateName ORDER BY DESC(?totalObligatedAmount) LIMIT 10",
+      "gold_sparql": "SELECT ?stateName (SUM(xsd:float(?totalObligated)) AS ?totalObligatedAmount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/pa_project_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/totalobligated> ?totalObligated .\n  FILTER (xsd:float(?totalObligated) > 0)\n} GROUP BY ?stateName ORDER BY DESC(?totalObligatedAmount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -2540,7 +2540,7 @@
         "Freezing | 2"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?incidentTypeLabel (COUNT(?disaster) AS ?numberOfDisasters) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel .\n} GROUP BY ?incidentTypeLabel ORDER BY DESC(?numberOfDisasters) LIMIT 10",
+      "gold_sparql": "SELECT ?incidentTypeLabel (COUNT(?disaster) AS ?numberOfDisasters) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> ?incidentTypeLabel .\n} GROUP BY ?incidentTypeLabel ORDER BY DESC(?numberOfDisasters) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -2592,7 +2592,7 @@
         "TX"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/declared_in_state> ?state .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> \"Hurricane\" .\n} GROUP BY ?stateName HAVING (COUNT(?disaster) >= 5)",
+      "gold_sparql": "SELECT ?stateName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/state_name> ?stateName .\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/declared_in_state> ?state .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/incident_type> \"Hurricane\" .\n} GROUP BY ?stateName HAVING (COUNT(?disaster) >= 5)",
       "per_seed": [
         {
           "seed": 1,
@@ -2653,7 +2653,7 @@
         "Winter Storm | 1718087.4"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?incidentTypeLabel (AVG(xsd:float(?federalShare)) AS ?averageFederalShare) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <http://www.w3.org/2000/01/rdf-schema#label> ?incidentTypeLabel .\n  ?disaster <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_pa_project> ?paProject .\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://omnix.dev/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/federalshareobligated> ?federalShare .\n} GROUP BY ?incidentTypeLabel",
+      "gold_sparql": "SELECT ?incidentTypeLabel (AVG(xsd:float(?federalShare)) AS ?averageFederalShare) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations-multitable> WHERE {\n  ?disaster <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/Disaster> .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_incident_type> ?incidentType .\n  ?incidentType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/IncidentType> .\n  ?incidentType <http://www.w3.org/2000/01/rdf-schema#label> ?incidentTypeLabel .\n  ?disaster <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/has_pa_project> ?paProject .\n  ?paProject <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/type/PAProject> .\n  ?paProject <https://graph.infona.ai/holdout-v2/holdout-v2-fema-disaster-declarations-multitable/pred/federalshareobligated> ?federalShare .\n} GROUP BY ?incidentTypeLabel",
       "per_seed": [
         {
           "seed": 1,

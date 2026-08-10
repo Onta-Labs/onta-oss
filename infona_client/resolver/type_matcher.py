@@ -23,12 +23,12 @@ from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from infona_client.resolver.models import MatchVerdict, TypeMatch
 from infona_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
-logger = structlog.stdlib.get_logger("cograph.resolver.type_matcher")
+logger = structlog.stdlib.get_logger("infona.resolver.type_matcher")
 
 # Type-matching decision model (reuse-vs-expand verdict + ambiguous judge
 # fan-out) — env-overridable; defaults to the shared primary, routed through
 # OpenRouter with the configured fallback.
-MATCH_MODEL = os.environ.get("OMNIX_MATCH_MODEL", PRIMARY_MODEL)
+MATCH_MODEL = os.environ.get("INFONA_MATCH_MODEL", PRIMARY_MODEL)
 
 # Embedding similarity thresholds
 EMBEDDING_SAME_THRESHOLD = 0.92

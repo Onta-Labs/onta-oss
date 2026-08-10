@@ -54,8 +54,8 @@ from infona_client.resolver.models import ValidatedTriple
 
 TENANT, KG = "onta276", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
-ACME = "https://graph.onta.sh/entities/Company/acme"
-REVENUE = "https://graph.onta.sh/onto/revenue"
+ACME = "https://graph.infona.ai/entities/Company/acme"
+REVENUE = "https://graph.infona.ai/onto/revenue"
 
 REV_10M = "10000000"
 REV_12M = "12000000"
@@ -216,7 +216,7 @@ async def _seed_fact(
         n,
         INSTANCE_GRAPH,
         [(subject, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "https://graph.onta.sh/types/Company")],
+          "https://graph.infona.ai/types/Company")],
     )
     await write_with_conflict_resolution(
         n, INSTANCE_GRAPH,

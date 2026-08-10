@@ -41,7 +41,7 @@ from infona_client.graph.queries import (
 
 router = APIRouter(prefix="/graphs/{tenant}/kgs")
 
-OMNIX_ONTO = ONTO_BASE
+INFONA_ONTO = ONTO_BASE
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 NAME_ATTRS = ("name", "title", "label", "headline")
 
@@ -55,7 +55,7 @@ NAME_ATTRS = ("name", "title", "label", "headline")
 # the shared post-write path (`kg_writer.refresh_after_write` →
 # `invalidate_triple_count`), plus again from explore.recompute_kg_stats when
 # type-stats recompute finishes.
-KG_TRIPLE_COUNT = f"{OMNIX_ONTO}/kg_triple_count"
+KG_TRIPLE_COUNT = f"{INFONA_ONTO}/kg_triple_count"
 
 
 # Canonical in ``graph/queries.py`` so create_kg, list_kgs, the shared write
@@ -103,7 +103,7 @@ def _skip_invalid_kg_name(name: str, op: str) -> bool:
     # Not hot: the valid-name fast path above returns before ever getting here.
     import structlog
 
-    structlog.get_logger("cograph.kg").warning(
+    structlog.get_logger("infona.kg").warning(
         "kg_name_invalid_skipped", kg_name=name, op=op
     )
     return True
@@ -266,8 +266,8 @@ async def list_kgs(
     # One query: KG registrations + their stored triple counts.
     sparql = (
         f"SELECT ?name ?desc ?count FROM <{base}> WHERE {{"
-        f"  ?kg <{OMNIX_ONTO}/kg_name> ?name ."
-        f"  OPTIONAL {{ ?kg <{OMNIX_ONTO}/kg_description> ?desc }}"
+        f"  ?kg <{INFONA_ONTO}/kg_name> ?name ."
+        f"  OPTIONAL {{ ?kg <{INFONA_ONTO}/kg_description> ?desc }}"
         f"  OPTIONAL {{ ?kg <{KG_TRIPLE_COUNT}> ?count }}"
         f"}}"
     )
@@ -454,12 +454,12 @@ async def create_kg(
     kg_uri = _kg_meta_uri(tenant.tenant_id, body.name)
 
     insert_lines = [
-        f'    <{kg_uri}> <{OMNIX_ONTO}/kg_name> "{_escape_literal(body.name)}" .',
+        f'    <{kg_uri}> <{INFONA_ONTO}/kg_name> "{_escape_literal(body.name)}" .',
         f"    <{kg_uri}> <{KG_TRIPLE_COUNT}> 0 .",
     ]
     if body.description:
         insert_lines.append(
-            f'    <{kg_uri}> <{OMNIX_ONTO}/kg_description> '
+            f'    <{kg_uri}> <{INFONA_ONTO}/kg_description> '
             f'"{_escape_literal(body.description)}" .'
         )
     insert_block = "\n".join(insert_lines)
@@ -467,7 +467,7 @@ async def create_kg(
         f"WITH <{base}>\n"
         f"INSERT {{\n{insert_block}\n}}\n"
         f"WHERE {{\n"
-        f"  FILTER NOT EXISTS {{ <{kg_uri}> <{OMNIX_ONTO}/kg_name> ?n }}\n"
+        f"  FILTER NOT EXISTS {{ <{kg_uri}> <{INFONA_ONTO}/kg_name> ?n }}\n"
         f"}}"
     )
 
@@ -492,8 +492,8 @@ async def create_kg(
     # we just wrote (description as given, count 0).
     read = (
         f"SELECT ?desc ?count FROM <{base}> WHERE {{\n"
-        f"  <{kg_uri}> <{OMNIX_ONTO}/kg_name> ?n .\n"
-        f"  OPTIONAL {{ <{kg_uri}> <{OMNIX_ONTO}/kg_description> ?desc }}\n"
+        f"  <{kg_uri}> <{INFONA_ONTO}/kg_name> ?n .\n"
+        f"  OPTIONAL {{ <{kg_uri}> <{INFONA_ONTO}/kg_description> ?desc }}\n"
         f"  OPTIONAL {{ <{kg_uri}> <{KG_TRIPLE_COUNT}> ?count }}\n"
         f"}}"
     )
@@ -557,7 +557,7 @@ async def delete_kg(
             if removed > 0:
                 bank.save()
                 import structlog
-                structlog.get_logger("cograph.kg").info(
+                structlog.get_logger("infona.kg").info(
                     "example_bank_purged", kg=kg_name, removed=removed,
                     remaining=len(bank._examples),
                 )
@@ -675,7 +675,7 @@ async def reindex_kg_semantic(
     double-scan. Deployments without a runner (no DSN, scheduler off) fall back
     to a fire-and-forget in-process task — single process, so no claim needed.
 
-    503 when the semantic index is disabled (``COGRAPH_SEMANTIC_INDEX_ENABLED``
+    503 when the semantic index is disabled (``INFONA_SEMANTIC_INDEX_ENABLED``
     is the master gate for the write hook AND the reconciler): accepting the
     request would acknowledge work that can never run.
     """
@@ -690,7 +690,7 @@ async def reindex_kg_semantic(
             status_code=503,
             detail=(
                 "Semantic indexing is disabled for this deployment "
-                "(set COGRAPH_SEMANTIC_INDEX_ENABLED=true to enable it)."
+                "(set INFONA_SEMANTIC_INDEX_ENABLED=true to enable it)."
             ),
         )
 
@@ -764,7 +764,7 @@ async def list_type_counts(
     returned here — fetch them via /ontology/types if the caller needs the
     full schema.
 
-    **Dual-backend (E5):** when ``COGRAPH_GRAPH_BACKEND=neo4j`` (or a process
+    **Dual-backend (E5):** when ``INFONA_GRAPH_BACKEND=neo4j`` (or a process
     GraphStore is configured for that backend), counts come from
     :func:`infona_client.graph.explore_store.type_counts` instead of SPARQL.
     Spatio-temporal index flags are still best-effort from the stats graph

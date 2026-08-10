@@ -21,7 +21,7 @@ Hermetic usage (no live DBs)::
 
 Live dry-run from Neptune::
 
-    export NEPTUNE_ENDPOINT=https://…:8182   # or OMNIX_NEPTUNE_ENDPOINT
+    export NEPTUNE_ENDPOINT=https://…:8182   # or INFONA_NEPTUNE_ENDPOINT
     python scripts/neptune_to_neo4j_etl.py --tenant demo-tenant --kg bookstore --dry-run
 
 Commit to Neo4j::
@@ -444,8 +444,8 @@ def sparql_bindings_to_triples(result: dict[str, Any]) -> list[tuple[str, str, s
 
 
 def neptune_endpoint_from_env() -> str | None:
-    """Prefer ``NEPTUNE_ENDPOINT``, fall back to ``OMNIX_NEPTUNE_ENDPOINT``."""
-    for key in ("NEPTUNE_ENDPOINT", "OMNIX_NEPTUNE_ENDPOINT"):
+    """Prefer ``NEPTUNE_ENDPOINT``, fall back to ``INFONA_NEPTUNE_ENDPOINT``."""
+    for key in ("NEPTUNE_ENDPOINT", "INFONA_NEPTUNE_ENDPOINT"):
         val = (os.environ.get(key) or "").strip()
         if val:
             return val
@@ -701,7 +701,7 @@ async def async_main(args: argparse.Namespace) -> int:
         if not endpoint:
             print(
                 "ERROR: provide --fixture or set NEPTUNE_ENDPOINT "
-                "(or OMNIX_NEPTUNE_ENDPOINT)",
+                "(or INFONA_NEPTUNE_ENDPOINT)",
                 file=sys.stderr,
             )
             return 2
@@ -886,7 +886,7 @@ async def async_main(args: argparse.Namespace) -> int:
                 )
                 return 2
             # Ensure product writers use GraphStore for this process.
-            os.environ.setdefault("COGRAPH_GRAPH_BACKEND", "neo4j")
+            os.environ.setdefault("INFONA_GRAPH_BACKEND", "neo4j")
             written = await write_facts_to_store(
                 facts,
                 tenant_id=tenant,

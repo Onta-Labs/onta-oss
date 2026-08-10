@@ -8,7 +8,7 @@ from starlette.responses import Response
 from infona_client.analytics import distinct_id_for, emit
 from infona_client.usage.recorder import get_usage_recorder
 
-logger = structlog.stdlib.get_logger("cograph.api")
+logger = structlog.stdlib.get_logger("infona.api")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):

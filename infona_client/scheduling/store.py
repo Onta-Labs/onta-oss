@@ -93,7 +93,7 @@ class PostgresScheduleStore:
     cloud-provider ARNs, account IDs, or hostnames live here.
     """
 
-    _TABLE = "cograph_schedules"
+    _TABLE = "infona_schedules"
 
     def __init__(self, dsn: Optional[str] = None) -> None:
         self._dsn = dsn if dsn is not None else settings.database_url

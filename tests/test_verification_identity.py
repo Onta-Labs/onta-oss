@@ -37,15 +37,15 @@ from infona_client.verification.verifier import (
 # --------------------------------------------------------------------------- #
 # Same-name-collision fixture: two "Dr. Smith" entities, one unambiguous "Dr. Jones".
 # --------------------------------------------------------------------------- #
-GRAPH = "https://omnix.dev/graphs/demo/kg"
+GRAPH = "https://graph.infona.ai/graphs/demo/kg"
 
-SMITH_A = "https://graph.onta.sh/entities/Person/dr_smith_stanford"
-SMITH_B = "https://graph.onta.sh/entities/Person/dr_smith_mit"
-SMITH_PROVISIONAL = "https://graph.onta.sh/entities/Person/Dr_Smith"  # the ambiguous mint
-JONES = "https://graph.onta.sh/entities/Person/dr_jones"
+SMITH_A = "https://graph.infona.ai/entities/Person/dr_smith_stanford"
+SMITH_B = "https://graph.infona.ai/entities/Person/dr_smith_mit"
+SMITH_PROVISIONAL = "https://graph.infona.ai/entities/Person/Dr_Smith"  # the ambiguous mint
+JONES = "https://graph.infona.ai/entities/Person/dr_jones"
 
-AFFILIATED = "https://graph.onta.sh/onto/affiliated_with"
-STANFORD = "https://graph.onta.sh/entities/Org/stanford"
+AFFILIATED = "https://graph.infona.ai/onto/affiliated_with"
+STANFORD = "https://graph.infona.ai/entities/Org/stanford"
 
 
 def _collision_context() -> IdentityContext:
@@ -115,7 +115,7 @@ def test_is_identity_conditional_predicate_fires_only_on_ambiguous_subject():
 def test_is_identity_conditional_bare_ambiguous_names_form():
     # The simplest call form: a bare set of ambiguous surface names, name derived
     # from the entity URI leaf.
-    f = _vf(entity_id="https://graph.onta.sh/entities/Person/Dr_Smith")
+    f = _vf(entity_id="https://graph.infona.ai/entities/Person/Dr_Smith")
     assert is_identity_conditional(f, ambiguous_names={"Dr_Smith"}) is True
     assert is_identity_conditional(f, ambiguous_names={"Someone_Else"}) is False
 
@@ -227,7 +227,7 @@ def test_recheck_merge_resolution_via_sameas_edge():
     fact = _conditional_fact()
 
     # SMITH_B merged into SMITH_A (canonical) — the sameAs lineage edge in the delta.
-    same_as = (SMITH_A, "https://graph.onta.sh/onto/sameAs", SMITH_B)
+    same_as = (SMITH_A, "https://graph.infona.ai/onto/sameAs", SMITH_B)
     delta = build_graph_delta(GRAPH, [same_as], run_id="r")
     [res] = recheck_after_resolution([fact], delta, context=ctx)
 
@@ -273,7 +273,7 @@ def test_recheck_non_resolving_delta_stays_identity_conditional():
     ctx = _collision_context()
     fact = _conditional_fact()
 
-    other = "https://graph.onta.sh/entities/Person/dr_unrelated"
+    other = "https://graph.infona.ai/entities/Person/dr_unrelated"
     delta = build_graph_delta(GRAPH, [(other, AFFILIATED, STANFORD)], run_id="r")
     [res] = recheck_after_resolution([fact], delta, context=ctx)
 
@@ -291,7 +291,7 @@ def test_recheck_ambiguous_both_candidates_present_without_value_match_stays_con
 
     # Both candidates present as subjects, but via a DIFFERENT predicate/object than the
     # fact's value (STANFORD), so the value tie-break can't pick one.
-    other_org = "https://graph.onta.sh/entities/Org/mit"
+    other_org = "https://graph.infona.ai/entities/Org/mit"
     delta = build_graph_delta(
         GRAPH,
         [(SMITH_A, AFFILIATED, other_org), (SMITH_B, AFFILIATED, other_org)],
@@ -309,7 +309,7 @@ def test_recheck_value_tiebreak_when_multiple_candidates_present():
     ctx = _collision_context()
     fact = _conditional_fact()  # value == STANFORD
 
-    other_org = "https://graph.onta.sh/entities/Org/mit"
+    other_org = "https://graph.infona.ai/entities/Org/mit"
     delta = build_graph_delta(
         GRAPH,
         [(SMITH_A, AFFILIATED, STANFORD), (SMITH_B, AFFILIATED, other_org)],

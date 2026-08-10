@@ -45,7 +45,7 @@ INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
 TYPE = "Company"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
-COMPANY_TYPE = "https://graph.onta.sh/types/Company"
+COMPANY_TYPE = "https://graph.infona.ai/types/Company"
 PHONE = attr_uri(TYPE, "phone")
 
 T1 = datetime(2021, 1, 1, tzinfo=timezone.utc)

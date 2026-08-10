@@ -24,7 +24,7 @@ from infona_client.config import settings
 from infona_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
 from infona_client.spatiotemporal.protocol import SpatioTemporalIndex
 
-logger = structlog.stdlib.get_logger("cograph.spatiotemporal.registry")
+logger = structlog.stdlib.get_logger("infona.spatiotemporal.registry")
 
 _registered: Optional[SpatioTemporalIndex] = None
 _default: Optional[SpatioTemporalIndex] = None

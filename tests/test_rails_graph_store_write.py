@@ -1,7 +1,7 @@
 """E7 — write rails wire GraphStore into kg_writer when neo4j backend is active.
 
 Hermetic: MemoryGraphStore only (no live Neo4j / Neptune). Default Neptune path
-must stay untouched when ``COGRAPH_GRAPH_BACKEND`` is unset.
+must stay untouched when ``INFONA_GRAPH_BACKEND`` is unset.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def memory_store(monkeypatch):
     yield store
     asyncio.run(store.close())
     reset_graph_store_for_tests()
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ def memory_store(monkeypatch):
 
 
 def test_get_optional_graph_store_default_none(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     reset_graph_store_for_tests()
     assert graph_backend() == "neptune"
     assert get_optional_graph_store() is None
@@ -57,12 +57,12 @@ def test_get_optional_graph_store_default_none(monkeypatch):
 
 
 def test_get_optional_graph_store_neo4j_returns_configured(memory_store, monkeypatch):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     assert resolve_optional_graph_store() is memory_store
 
 
 def test_get_optional_graph_store_neo4j_fails_closed_without_config(monkeypatch):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     monkeypatch.delenv("NEO4J_URI", raising=False)
     monkeypatch.delenv("NEO4J_PASSWORD", raising=False)
     reset_graph_store_for_tests()
@@ -77,7 +77,7 @@ def test_get_optional_graph_store_neo4j_fails_closed_without_config(monkeypatch)
 
 def test_schema_resolver_insert_facts_receives_store(memory_store, monkeypatch):
     """Ingest rail passes store= from resolve_optional_graph_store into insert_facts."""
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     captured: dict = {}
 
     async def spy(neptune, instance_graph, instance_triples=None, **kwargs):
@@ -132,7 +132,7 @@ def test_schema_resolver_source_wires_store_kwarg():
 
 def test_enrichment_insert_facts_receives_store(memory_store, monkeypatch):
     """Enrichment rail passes store into insert_facts when backend=neo4j."""
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     captured: dict = {}
 
     async def spy(neptune, instance_graph, instance_triples=None, **kwargs):
@@ -185,7 +185,7 @@ def test_enrichment_source_wires_store_kwarg():
 
 def test_normalization_insert_delete_receive_store(memory_store, monkeypatch):
     """Normalization write batch uses Memory store for insert + predicate clear."""
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     captured: list[dict] = []
 
     async def spy_insert(neptune, instance_graph, instance_triples=None, **kwargs):
@@ -277,7 +277,7 @@ def test_normalization_source_wires_store_kwarg():
 
 def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch):
     """ER rebuild passes store into rewrite_subject; Memory store re-keys entities."""
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     # Stub stats recompute side-effects.
     monkeypatch.setattr(
         "infona_client.graph.kg_writer.refresh_after_write",
@@ -316,14 +316,14 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
                 loser: NormalizedSignals(
                     name="jon smith",
                     name_tokens=("jon", "smith"),
-                    email="john.smith0@gmail.com",
+                    email="john.smith0@gmail.com",  # boundary-ok: synthetic ER fixture email
                     email_local="johnsmith0",
                     phone_e164="+442258595506",
                 ),
                 survivor: NormalizedSignals(
                     name="john smith",
                     name_tokens=("john", "smith"),
-                    email="john.smith0@gmail.com",
+                    email="john.smith0@gmail.com",  # boundary-ok: synthetic ER fixture email
                     email_local="johnsmith0",
                     phone_e164="+442258595506",
                 ),
@@ -383,7 +383,7 @@ def test_er_rebuild_source_wires_store_kwarg():
 
 def test_insert_facts_neptune_default_ignores_missing_store(monkeypatch):
     """Without neo4j backend, insert_facts does not call get_graph_store."""
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     reset_graph_store_for_tests()
     neptune = AsyncMock()
     neptune.update = AsyncMock()

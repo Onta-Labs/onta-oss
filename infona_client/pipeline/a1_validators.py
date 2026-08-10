@@ -20,7 +20,7 @@ extract→ingest gate, so garbage never reaches the writer:
 Every rejection hands back a human-readable REASON so the caller can keep the Job
 Trace honest about what it dropped and why.
 
-Pure OSS: stdlib (`re`) only, no I/O, no ``from cograph.*`` — unit-testable in
+Pure OSS: stdlib (`re`) only, no I/O, no ``from infona.*`` — unit-testable in
 isolation and importable on its own (see the boundary rules in CLAUDE.md).
 """
 from __future__ import annotations

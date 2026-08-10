@@ -26,7 +26,7 @@ from typing import Any, Literal, Optional
 import structlog
 from pydantic import BaseModel, Field
 
-logger = structlog.stdlib.get_logger("cograph.pipeline.stage_trace")
+logger = structlog.stdlib.get_logger("infona.pipeline.stage_trace")
 
 
 def _now() -> datetime:

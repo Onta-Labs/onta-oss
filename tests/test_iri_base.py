@@ -1,4 +1,4 @@
-"""Configurable IRI base (ONTA brand default + env override)."""
+"""Configurable IRI base (Infona brand default + env override)."""
 
 from infona_client.graph.iri import (
     DEFAULT_IRI_BASE,
@@ -13,10 +13,12 @@ from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from infona_client.nlp.validator import normalize_sparql
 
 
-def test_default_base_is_onta_branded():
-    assert IRI_BASE == DEFAULT_IRI_BASE == "https://graph.onta.sh"
+def test_default_base_is_infona_branded():
+    assert IRI_BASE == DEFAULT_IRI_BASE == "https://graph.infona.ai"
     assert not IRI_BASE.endswith("/")
     assert "cograph.tech" not in IRI_BASE
+    assert "graph.onta.sh" not in IRI_BASE
+    assert "omnix.dev" not in IRI_BASE
 
 
 def test_derived_prefixes_share_base():
@@ -32,26 +34,23 @@ def test_minters_use_live_base():
     assert kg_graph_uri("demo", "kg1") == f"{IRI_BASE}/graphs/demo/kg/kg1"
 
 
-def test_normalize_sparql_rewrites_legacy_hosts():
-    for legacy in LEGACY_IRI_BASES:
-        sparql = f"SELECT ?s WHERE {{ ?s a <{legacy}/types/Film> }}"
-        out = normalize_sparql(sparql)
-        assert f"<{IRI_BASE}/types/Film>" in out
-        assert legacy not in out
+def test_normalize_sparql_identity_on_live_base():
+    sparql = f"SELECT ?s WHERE {{ ?s a <{IRI_BASE}/types/Film> }}"
+    out = normalize_sparql(sparql)
+    assert f"<{IRI_BASE}/types/Film>" in out
 
 
-def test_legacy_bases_documented():
-    assert "https://cograph.tech" in LEGACY_IRI_BASES
-    assert "https://omnix.dev" in LEGACY_IRI_BASES
+def test_legacy_bases_empty_single_base_policy():
+    """Full rename: no dual-host rewrite table for retired brands."""
+    assert LEGACY_IRI_BASES == ()
 
 
 def test_no_runtime_host_literals_outside_allowlist():
-    """Deny-by-default: production code must not bake either brand host into
-    runtime string literals. Allowed: iri.py (default + legacy list), docs via
-    comments, and the prompt template that materializes IRI_BASE at import.
+    """Deny-by-default: production code must not bake retired brand hosts into
+    runtime string literals. Allowed: iri.py (default), docs via comments, and
+    the prompt template that materializes IRI_BASE at import.
     """
     import pathlib
-    import re
     import tokenize
     import io
 
@@ -60,8 +59,7 @@ def test_no_runtime_host_literals_outside_allowlist():
         "iri.py",
         "prompts.py",  # template uses default host then .replace(IRI_BASE)
     }
-    # hosts that must not appear as string-literal content outside allowlist
-    banned = ("https://cograph.tech", "https://graph.onta.sh")
+    banned = ("https://cograph.tech", "https://omnix.dev")  # retired hosts only; live base is allowed
     offenders: list[str] = []
     for path in root.rglob("*.py"):
         if path.name in allow_files:
@@ -74,20 +72,16 @@ def test_no_runtime_host_literals_outside_allowlist():
         for tok in tokens:
             if tok.type != tokenize.STRING:
                 continue
-            # unquote roughly
             s = tok.string
             if s.startswith(("f", "F", "r", "R", "b", "B", "u", "U")):
-                # strip prefixes
                 while s and s[0] in "fFrRbBuU":
                     s = s[1:]
             if len(s) >= 2 and s[0] in "\"'":
                 body = s[1:-1] if s[0] * 3 != s[:3] else s[3:-3]
             else:
                 body = s
-            # skip if it's clearly an f-string expression containing {IRI_BASE}
             if "{IRI_BASE}" in body:
                 continue
-            # Docstrings / prose examples are multi-line or long — not runtime mint sites.
             if "\n" in body or len(body) > 96:
                 continue
             for host in banned:

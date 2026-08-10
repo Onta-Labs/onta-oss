@@ -12,7 +12,7 @@
     {
       "id": "q-001",
       "question": "How many unique spending records are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?spendingRecord) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?spendingRecord) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n}",
       "full_expected_items": [
         "10531"
       ],
@@ -27,7 +27,7 @@
     {
       "id": "q-002",
       "question": "List all available drug names.",
-      "gold_sparql": "SELECT ?drugName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?drug <http://www.w3.org/2000/01/rdf-schema#label> ?drugName .\n}",
+      "gold_sparql": "SELECT ?drugName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?drug <http://www.w3.org/2000/01/rdf-schema#label> ?drugName .\n}",
       "full_expected_items": [
         "Daytrana",
         "Deferasirox",
@@ -2041,7 +2041,7 @@
     {
       "id": "q-003",
       "question": "What are the names of all manufacturers?",
-      "gold_sparql": "SELECT ?manufacturerName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?manufacturer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Manufacturer> .\n  ?manufacturer <http://www.w3.org/2000/01/rdf-schema#label> ?manufacturerName .\n}",
+      "gold_sparql": "SELECT ?manufacturerName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?manufacturer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Manufacturer> .\n  ?manufacturer <http://www.w3.org/2000/01/rdf-schema#label> ?manufacturerName .\n}",
       "full_expected_items": [
         "Thea Pharma Inc",
         "Oceanside Pharm",
@@ -3016,7 +3016,7 @@
     {
       "id": "q-004",
       "question": "How many distinct generic drug types are recorded?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?genericDrug) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?genericDrug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/GenericDrug> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?genericDrug) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?genericDrug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/GenericDrug> .\n}",
       "full_expected_items": [
         "1938"
       ],
@@ -3031,7 +3031,7 @@
     {
       "id": "q-005",
       "question": "How many spending records have a total spending in 2023 greater than 1,000,000?",
-      "gold_sparql": "SELECT (COUNT(?spendingRecord) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  FILTER(xsd:float(?totalSpending) > 1000000)\n}",
+      "gold_sparql": "SELECT (COUNT(?spendingRecord) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  FILTER(xsd:float(?totalSpending) > 1000000)\n}",
       "full_expected_items": [
         "4584"
       ],
@@ -3046,7 +3046,7 @@
     {
       "id": "q-006",
       "question": "What is the average total dosage units for spending records where the average spend per unit in 2023 is less than 5?",
-      "gold_sparql": "SELECT (AVG(xsd:float(?totalDosageUnits)) AS ?averageTotalDosageUnits) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_unit_2023> ?avgSpendPerUnit .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_dosage_units_2023> ?totalDosageUnits .\n  FILTER(xsd:float(?avgSpendPerUnit) < 5)\n}",
+      "gold_sparql": "SELECT (AVG(xsd:float(?totalDosageUnits)) AS ?averageTotalDosageUnits) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_unit_2023> ?avgSpendPerUnit .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_dosage_units_2023> ?totalDosageUnits .\n  FILTER(xsd:float(?avgSpendPerUnit) < 5)\n}",
       "full_expected_items": [
         "1.5581633E7"
       ],
@@ -3061,7 +3061,7 @@
     {
       "id": "q-007",
       "question": "Find the total number of spending records where the average spend per claim in 2023 contains '3' in its string representation.",
-      "gold_sparql": "SELECT (COUNT(?spendingRecord) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .\n  FILTER(CONTAINS(STR(?avgSpendPerClaim), \"3\"))\n}",
+      "gold_sparql": "SELECT (COUNT(?spendingRecord) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .\n  FILTER(CONTAINS(STR(?avgSpendPerClaim), \"3\"))\n}",
       "full_expected_items": [
         "7316"
       ],
@@ -3076,7 +3076,7 @@
     {
       "id": "q-008",
       "question": "What is the maximum total claims in 2023 for spending records that have '802020' as their total spending in 2023?",
-      "gold_sparql": "SELECT (MAX(xsd:float(?totalClaims)) AS ?maxTotalClaims) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_claims_2023> ?totalClaims .\n  FILTER(?totalSpending = \"802020\")\n}",
+      "gold_sparql": "SELECT (MAX(xsd:float(?totalClaims)) AS ?maxTotalClaims) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_claims_2023> ?totalClaims .\n  FILTER(?totalSpending = \"802020\")\n}",
       "full_expected_items": [
         "2321.0"
       ],
@@ -3091,7 +3091,7 @@
     {
       "id": "q-009",
       "question": "Which drugs have spending records with a total spending of more than 1,000,000 in 2023, and how many such records does each drug have?",
-      "gold_sparql": "SELECT ?drugLabel (COUNT(?spendingRecord) AS ?numberOfSpendingRecords) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?drug <http://www.w3.org/2000/01/rdf-schema#label> ?drugLabel .\n  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  FILTER (xsd:float(?totalSpending) > 1000000) .\n} GROUP BY ?drugLabel ORDER BY DESC(?numberOfSpendingRecords)",
+      "gold_sparql": "SELECT ?drugLabel (COUNT(?spendingRecord) AS ?numberOfSpendingRecords) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?drug <http://www.w3.org/2000/01/rdf-schema#label> ?drugLabel .\n  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  FILTER (xsd:float(?totalSpending) > 1000000) .\n} GROUP BY ?drugLabel ORDER BY DESC(?numberOfSpendingRecords)",
       "full_expected_items": [
         "Potassium Chloride* | 21",
         "Gabapentin | 18",
@@ -5105,7 +5105,7 @@
     {
       "id": "q-010",
       "question": "For each manufacturer, how many spending records are associated with them where the average spend per claim in 2023 was greater than 100?",
-      "gold_sparql": "SELECT ?manufacturerName (COUNT(?spendingRecord) AS ?numberOfSpendingRecords) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?manufacturer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Manufacturer> .\n  ?manufacturer <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_name> ?manufacturerName .\n  ?manufacturer <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_has_spending> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .\n  FILTER (xsd:float(?avgSpendPerClaim) > 100) .\n} GROUP BY ?manufacturerName ORDER BY DESC(?numberOfSpendingRecords)",
+      "gold_sparql": "SELECT ?manufacturerName (COUNT(?spendingRecord) AS ?numberOfSpendingRecords) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?manufacturer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Manufacturer> .\n  ?manufacturer <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_name> ?manufacturerName .\n  ?manufacturer <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_has_spending> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .\n  FILTER (xsd:float(?avgSpendPerClaim) > 100) .\n} GROUP BY ?manufacturerName ORDER BY DESC(?numberOfSpendingRecords)",
       "full_expected_items": [
         "Amneal Pharmace | 122",
         "Teva USA | 97",
@@ -5855,7 +5855,7 @@
     {
       "id": "q-011",
       "question": "List the generic drugs and the number of brand drugs associated with each, where the brand drug's total manufacturers count is greater than 1.",
-      "gold_sparql": "SELECT ?genericName (COUNT(DISTINCT ?brandDrug) AS ?numberOfBrandDrugs) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?genericDrug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/GenericDrug> .\n  ?genericDrug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .\n  ?brandDrug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?brandDrug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_generic> ?genericDrug .\n  ?brandDrug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_manufacturers> ?totalManufacturers .\n  FILTER (xsd:integer(?totalManufacturers) > 1) .\n} GROUP BY ?genericName ORDER BY DESC(?numberOfBrandDrugs)",
+      "gold_sparql": "SELECT ?genericName (COUNT(DISTINCT ?brandDrug) AS ?numberOfBrandDrugs) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?genericDrug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/GenericDrug> .\n  ?genericDrug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .\n  ?brandDrug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?brandDrug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_generic> ?genericDrug .\n  ?brandDrug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_manufacturers> ?totalManufacturers .\n  FILTER (xsd:integer(?totalManufacturers) > 1) .\n} GROUP BY ?genericName ORDER BY DESC(?numberOfBrandDrugs)",
       "full_expected_items": [
         "Pen Needle, Diabetic | 10",
         "Budesonide | 6",
@@ -6779,7 +6779,7 @@
     {
       "id": "q-012",
       "question": "For each manufacturer, what is the total number of distinct drugs they produce that have an associated spending record with a total spending in 2023 greater than 100000?",
-      "gold_sparql": "SELECT ?manufacturerName (COUNT(DISTINCT ?drug) AS ?numberOfDrugs) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?manufacturer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Manufacturer> .\n  ?manufacturer <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_name> ?manufacturerName .\n  ?manufacturer <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_has_spending> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/spending_for_drug> ?drug .\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  FILTER(xsd:float(?totalSpending) > 100000) .\n} GROUP BY ?manufacturerName",
+      "gold_sparql": "SELECT ?manufacturerName (COUNT(DISTINCT ?drug) AS ?numberOfDrugs) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?manufacturer <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Manufacturer> .\n  ?manufacturer <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_name> ?manufacturerName .\n  ?manufacturer <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/manufacturer_has_spending> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/spending_for_drug> ?drug .\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/total_spending_2023> ?totalSpending .\n  FILTER(xsd:float(?totalSpending) > 100000) .\n} GROUP BY ?manufacturerName",
       "full_expected_items": [
         "Somerset Therap | 12",
         "Oceanside Pharm | 41",
@@ -7529,7 +7529,7 @@
     {
       "id": "q-013",
       "question": "List the generic names of drugs that have an associated spending record flagged as an 'Outlier' and whose average spend per claim in 2023 is greater than 500.",
-      "gold_sparql": "SELECT DISTINCT ?genericName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .\n  ?drug <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .\n  ?outlierFlag <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/type/OutlierFlag> .\n  ?outlierFlag <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/outlier_label> \"Outlier\" .\n  ?spendingRecord <https://omnix.dev/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .\n  FILTER(xsd:float(?avgSpendPerClaim) > 500) .\n}",
+      "gold_sparql": "SELECT DISTINCT ?genericName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-medicare-part-d-pricing> WHERE {\n  ?drug <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/Drug> .\n  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/generic_name> ?genericName .\n  ?drug <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_spending_record> ?spendingRecord .\n  ?spendingRecord <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/SpendingRecord> .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/has_outlier_status> ?outlierFlag .\n  ?outlierFlag <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/type/OutlierFlag> .\n  ?outlierFlag <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/outlier_label> \"Outlier\" .\n  ?spendingRecord <https://graph.infona.ai/holdout-v2/holdout-v2-medicare-part-d-pricing/pred/avg_spend_per_claim_2023> ?avgSpendPerClaim .\n  FILTER(xsd:float(?avgSpendPerClaim) > 500) .\n}",
       "full_expected_items": [
         "Pentostatin",
         "Cyanocobalamin (Vitamin B-12)",

@@ -17,7 +17,7 @@ web/.env.local
 eval_reports/*
 !eval_reports/example_bank.jsonl
 
-# Node packages (cograph npm SDK + MCP)
+# Node packages (infona npm SDK + MCP)
 node_modules/
 *.log
 .env.local

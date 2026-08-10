@@ -37,7 +37,7 @@ from infona_client.graph.queries import (
 from infona_client.models.function import FunctionRef, FunctionTier
 from infona_client.resolver.validator import _typed_value
 
-logger = structlog.stdlib.get_logger("cograph.lambda_functions")
+logger = structlog.stdlib.get_logger("infona.lambda_functions")
 
 router = APIRouter()
 
@@ -62,7 +62,7 @@ def sec_user_agent() -> str:
 
     SEC's fair-access policy asks automated clients to identify themselves with
     a working contact and throttles those that do not, so every deployment
-    should set ``OMNIX_SEC_USER_AGENT`` to its own address. Unset falls back to
+    should set ``INFONA_SEC_USER_AGENT`` to its own address. Unset falls back to
     :data:`DEFAULT_SEC_USER_AGENT` and warns once per process rather than
     borrowing anyone else's contact.
     """
@@ -77,7 +77,7 @@ def sec_user_agent() -> str:
         logger.warning(
             "sec_user_agent_unset",
             fallback=DEFAULT_SEC_USER_AGENT,
-            hint="set OMNIX_SEC_USER_AGENT to your own contact (SEC EDGAR "
+            hint="set INFONA_SEC_USER_AGENT to your own contact (SEC EDGAR "
             "throttles clients that do not declare one)",
         )
     return DEFAULT_SEC_USER_AGENT
@@ -340,7 +340,7 @@ async def invoke_function(
     replaced_preds: list[str] = []
     # ONTA-236 value history: the NEW value each PRIMARY attribute predicate is
     # replaced WITH, so delete_facts can version a genuine old→new change (gated by
-    # COGRAPH_VALUE_HISTORY_ENABLED). Only PRIMARY attributes are tracked — the
+    # INFONA_VALUE_HISTORY_ENABLED). Only PRIMARY attributes are tracked — the
     # per-fact `_verified_at` / per-entity `lambda_refreshed_at` companions advance
     # every run by design, so treating their clock ticks as "value changes" would
     # be noise, not signal.

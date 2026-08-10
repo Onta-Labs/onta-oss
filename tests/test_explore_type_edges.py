@@ -14,16 +14,16 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"
-TYPES = "https://graph.onta.sh/types/"
-ENTITIES = "https://graph.onta.sh/entities/"
+TYPES = "https://graph.infona.ai/types/"
+ENTITIES = "https://graph.infona.ai/entities/"
 
 
 @pytest.fixture

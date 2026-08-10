@@ -43,7 +43,7 @@ from infona_client.semantic.protocol import (
     SemanticSearchResult,
 )
 
-logger = structlog.stdlib.get_logger("cograph.semantic.memory")
+logger = structlog.stdlib.get_logger("infona.semantic.memory")
 
 #: RRF constant — matches the ONTA-176 SQL (`1/(60+rank)`), the standard value
 #: from the original RRF paper. Not worth configuring.

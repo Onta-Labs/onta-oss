@@ -81,7 +81,7 @@ def _single_product_neptune():
     from unittest.mock import AsyncMock
 
     rows = [
-        {"uri": "https://graph.onta.sh/entities/Product/p1", "label": "Bosch", "vals": ""},
+        {"uri": "https://graph.infona.ai/entities/Product/p1", "label": "Bosch", "vals": ""},
     ]
     neptune = AsyncMock()
     neptune.query.return_value = _entities_query_response(rows)

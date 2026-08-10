@@ -77,7 +77,7 @@ from infona_client.agent.registry import (
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from infona_client.web_sources.url_extract import extract_urls
 
-logger = structlog.stdlib.get_logger("cograph.agent.planner")
+logger = structlog.stdlib.get_logger("infona.agent.planner")
 
 # Intents the classifier may return. "question" → answer; "ambiguous" → clarify;
 # the rest map to a capability name (clean→normalize).
@@ -124,7 +124,7 @@ _PROMPT_HISTORY_TURNS = 16
 # redeploy) and claim it again. execute_plan itself finishes in seconds (long
 # work is spawned as background jobs), so anything past this is a dead claim,
 # not a slow one. Env-overridable so ops can retune without a deploy.
-_EXECUTING_STALE_S = float(os.environ.get("COGRAPH_PLAN_EXECUTING_STALE_S", "600"))
+_EXECUTING_STALE_S = float(os.environ.get("INFONA_PLAN_EXECUTING_STALE_S", "600"))
 
 
 _CLASSIFY_SYSTEM = """\
@@ -1198,7 +1198,7 @@ async def execute_plan(ctx: AgentContext, plan_id: str) -> dict:
     acks/job ids verbatim, marked ``"replayed": True``, so a retried confirm
     converges to the same response; a confirm that races a still-running
     execution gets ``{kind:"error", code:"plan_already_executing"}``. A claim
-    older than ``COGRAPH_PLAN_EXECUTING_STALE_S`` (default 600s — the executor
+    older than ``INFONA_PLAN_EXECUTING_STALE_S`` (default 600s — the executor
     presumably died mid-run) is claimable again so a crash cannot strand the
     plan un-runnable forever.
 

@@ -5,168 +5,168 @@
       "name": "accepting_new_patients",
       "range": "http://www.w3.org/2001/XMLSchema#boolean",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/accepting_new_patients"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/accepting_new_patients"
     },
     {
       "kind": "relationship",
       "name": "affiliated_with",
-      "range": "https://graph.onta.sh/types/Organization",
+      "range": "https://graph.infona.ai/types/Organization",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/affiliated_with"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/affiliated_with"
     },
     {
       "kind": "literal",
       "name": "credential",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/credential"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/credential"
     },
     {
       "kind": "relationship",
       "name": "has_specialty",
-      "range": "https://graph.onta.sh/types/Specialty",
+      "range": "https://graph.infona.ai/types/Specialty",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/has_specialty"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/has_specialty"
     },
     {
       "kind": "relationship",
       "name": "in_state",
-      "range": "https://graph.onta.sh/types/State",
+      "range": "https://graph.infona.ai/types/State",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/in_state"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/in_state"
     },
     {
       "kind": "relationship",
       "name": "located_in",
-      "range": "https://graph.onta.sh/types/City",
+      "range": "https://graph.infona.ai/types/City",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/located_in"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/located_in"
     },
     {
       "kind": "literal",
       "name": "npi",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/npi"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/npi"
     },
     {
       "kind": "literal",
       "name": "phone",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/types/NursePractitioner/attrs/phone"
+      "uri": "https://graph.infona.ai/types/NursePractitioner/attrs/phone"
     },
     {
       "kind": "literal",
       "name": "accepting_new_patients",
       "range": "http://www.w3.org/2001/XMLSchema#boolean",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/accepting_new_patients"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/accepting_new_patients"
     },
     {
       "kind": "relationship",
       "name": "affiliated_with",
-      "range": "https://graph.onta.sh/types/Organization",
+      "range": "https://graph.infona.ai/types/Organization",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/affiliated_with"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/affiliated_with"
     },
     {
       "kind": "literal",
       "name": "credential",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/credential"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/credential"
     },
     {
       "kind": "relationship",
       "name": "has_specialty",
-      "range": "https://graph.onta.sh/types/Specialty",
+      "range": "https://graph.infona.ai/types/Specialty",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/has_specialty"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/has_specialty"
     },
     {
       "kind": "relationship",
       "name": "in_state",
-      "range": "https://graph.onta.sh/types/State",
+      "range": "https://graph.infona.ai/types/State",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/in_state"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/in_state"
     },
     {
       "kind": "relationship",
       "name": "located_in",
-      "range": "https://graph.onta.sh/types/City",
+      "range": "https://graph.infona.ai/types/City",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/located_in"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/located_in"
     },
     {
       "kind": "literal",
       "name": "npi",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/npi"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/npi"
     },
     {
       "kind": "literal",
       "name": "phone",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/types/Physician/attrs/phone"
+      "uri": "https://graph.infona.ai/types/Physician/attrs/phone"
     },
     {
       "kind": "literal",
       "name": "accepting_new_patients",
       "range": "http://www.w3.org/2001/XMLSchema#boolean",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/accepting_new_patients"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/accepting_new_patients"
     },
     {
       "kind": "relationship",
       "name": "affiliated_with",
-      "range": "https://graph.onta.sh/types/Organization",
+      "range": "https://graph.infona.ai/types/Organization",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/affiliated_with"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/affiliated_with"
     },
     {
       "kind": "literal",
       "name": "credential",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/credential"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/credential"
     },
     {
       "kind": "relationship",
       "name": "has_specialty",
-      "range": "https://graph.onta.sh/types/Specialty",
+      "range": "https://graph.infona.ai/types/Specialty",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/has_specialty"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/has_specialty"
     },
     {
       "kind": "relationship",
       "name": "in_state",
-      "range": "https://graph.onta.sh/types/State",
+      "range": "https://graph.infona.ai/types/State",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/in_state"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/in_state"
     },
     {
       "kind": "relationship",
       "name": "located_in",
-      "range": "https://graph.onta.sh/types/City",
+      "range": "https://graph.infona.ai/types/City",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/located_in"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/located_in"
     },
     {
       "kind": "literal",
       "name": "npi",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/npi"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/npi"
     },
     {
       "kind": "literal",
       "name": "phone",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant/attrs/phone"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant/attrs/phone"
     }
   ],
   "entities": [
@@ -174,781 +174,781 @@
       "also_types": [],
       "id": "Ashcombe",
       "label": "Ashcombe",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Ashcombe"
+      "uri": "https://graph.infona.ai/entities/City/Ashcombe"
     },
     {
       "also_types": [],
       "id": "Elmbrook",
       "label": "Elmbrook",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Elmbrook"
+      "uri": "https://graph.infona.ai/entities/City/Elmbrook"
     },
     {
       "also_types": [],
       "id": "Fallingwood",
       "label": "Fallingwood",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Fallingwood"
+      "uri": "https://graph.infona.ai/entities/City/Fallingwood"
     },
     {
       "also_types": [],
       "id": "Marrowdale",
       "label": "Marrowdale",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Marrowdale"
+      "uri": "https://graph.infona.ai/entities/City/Marrowdale"
     },
     {
       "also_types": [],
       "id": "Bartholomew Quimby",
       "label": "Bartholomew Quimby",
-      "rdf_type": "https://graph.onta.sh/types/NursePractitioner",
+      "rdf_type": "https://graph.infona.ai/types/NursePractitioner",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/entities/NursePractitioner/Bartholomew_Quimby"
+      "uri": "https://graph.infona.ai/entities/NursePractitioner/Bartholomew_Quimby"
     },
     {
       "also_types": [],
       "id": "Rosalind Featherstone",
       "label": "Rosalind Featherstone",
-      "rdf_type": "https://graph.onta.sh/types/NursePractitioner",
+      "rdf_type": "https://graph.infona.ai/types/NursePractitioner",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/entities/NursePractitioner/Rosalind_Featherstone"
+      "uri": "https://graph.infona.ai/entities/NursePractitioner/Rosalind_Featherstone"
     },
     {
       "also_types": [],
       "id": "Tamsin Brightwater",
       "label": "Tamsin Brightwater",
-      "rdf_type": "https://graph.onta.sh/types/NursePractitioner",
+      "rdf_type": "https://graph.infona.ai/types/NursePractitioner",
       "type": "NursePractitioner",
-      "uri": "https://graph.onta.sh/entities/NursePractitioner/Tamsin_Brightwater"
+      "uri": "https://graph.infona.ai/entities/NursePractitioner/Tamsin_Brightwater"
     },
     {
       "also_types": [],
       "id": "Copperfield Clinic",
       "label": "Copperfield Clinic",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
+      "rdf_type": "https://graph.infona.ai/types/Organization",
       "type": "Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Copperfield_Clinic"
+      "uri": "https://graph.infona.ai/entities/Organization/Copperfield_Clinic"
     },
     {
       "also_types": [],
       "id": "Lakeshore General Hospital",
       "label": "Lakeshore General Hospital",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
+      "rdf_type": "https://graph.infona.ai/types/Organization",
       "type": "Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Lakeshore_General_Hospital"
+      "uri": "https://graph.infona.ai/entities/Organization/Lakeshore_General_Hospital"
     },
     {
       "also_types": [],
       "id": "Rivergate Medical Center",
       "label": "Rivergate Medical Center",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
+      "rdf_type": "https://graph.infona.ai/types/Organization",
       "type": "Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Rivergate_Medical_Center"
+      "uri": "https://graph.infona.ai/entities/Organization/Rivergate_Medical_Center"
     },
     {
       "also_types": [],
       "id": "Summit Ridge Hospital",
       "label": "Summit Ridge Hospital",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
+      "rdf_type": "https://graph.infona.ai/types/Organization",
       "type": "Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Summit_Ridge_Hospital"
+      "uri": "https://graph.infona.ai/entities/Organization/Summit_Ridge_Hospital"
     },
     {
       "also_types": [],
       "id": "Dr. Constance Ilberis",
       "label": "Dr. Constance Ilberis",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Constance_Ilberis"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Constance_Ilberis"
     },
     {
       "also_types": [],
       "id": "Dr. Everett Kaczmarek",
       "label": "Dr. Everett Kaczmarek",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Everett_Kaczmarek"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Everett_Kaczmarek"
     },
     {
       "also_types": [],
       "id": "Dr. Horatio Blackwood",
       "label": "Dr. Horatio Blackwood",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Horatio_Blackwood"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Horatio_Blackwood"
     },
     {
       "also_types": [],
       "id": "Dr. Ignatius Prewett",
       "label": "Dr. Ignatius Prewett",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Ignatius_Prewett"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Ignatius_Prewett"
     },
     {
       "also_types": [],
       "id": "Dr. Marlowe Vantham",
       "label": "Dr. Marlowe Vantham",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Marlowe_Vantham"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Marlowe_Vantham"
     },
     {
       "also_types": [],
       "id": "Dr. Percival Underhill",
       "label": "Dr. Percival Underhill",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Percival_Underhill"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Percival_Underhill"
     },
     {
       "also_types": [],
       "id": "Dr. Priscilla Onwuka",
       "label": "Dr. Priscilla Onwuka",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Priscilla_Onwuka"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Priscilla_Onwuka"
     },
     {
       "also_types": [],
       "id": "Dr. Seraphina Loxley",
       "label": "Dr. Seraphina Loxley",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Seraphina_Loxley"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Seraphina_Loxley"
     },
     {
       "also_types": [],
       "id": "Dr. Yolanda Fereday",
       "label": "Dr. Yolanda Fereday",
-      "rdf_type": "https://graph.onta.sh/types/Physician",
+      "rdf_type": "https://graph.infona.ai/types/Physician",
       "type": "Physician",
-      "uri": "https://graph.onta.sh/entities/Physician/Dr__Yolanda_Fereday"
+      "uri": "https://graph.infona.ai/entities/Physician/Dr__Yolanda_Fereday"
     },
     {
       "also_types": [],
       "id": "Delphine Marchetti",
       "label": "Delphine Marchetti",
-      "rdf_type": "https://graph.onta.sh/types/PhysicianAssistant",
+      "rdf_type": "https://graph.infona.ai/types/PhysicianAssistant",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/entities/PhysicianAssistant/Delphine_Marchetti"
+      "uri": "https://graph.infona.ai/entities/PhysicianAssistant/Delphine_Marchetti"
     },
     {
       "also_types": [],
       "id": "Gideon Sparrowhawk",
       "label": "Gideon Sparrowhawk",
-      "rdf_type": "https://graph.onta.sh/types/PhysicianAssistant",
+      "rdf_type": "https://graph.infona.ai/types/PhysicianAssistant",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+      "uri": "https://graph.infona.ai/entities/PhysicianAssistant/Gideon_Sparrowhawk"
     },
     {
       "also_types": [],
       "id": "Ottoline Vasquez",
       "label": "Ottoline Vasquez",
-      "rdf_type": "https://graph.onta.sh/types/PhysicianAssistant",
+      "rdf_type": "https://graph.infona.ai/types/PhysicianAssistant",
       "type": "PhysicianAssistant",
-      "uri": "https://graph.onta.sh/entities/PhysicianAssistant/Ottoline_Vasquez"
+      "uri": "https://graph.infona.ai/entities/PhysicianAssistant/Ottoline_Vasquez"
     },
     {
       "also_types": [],
       "id": "Addiction Medicine",
       "label": "Addiction Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Addiction_Medicine"
+      "uri": "https://graph.infona.ai/entities/Specialty/Addiction_Medicine"
     },
     {
       "also_types": [],
       "id": "Adolescent Medicine",
       "label": "Adolescent Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Adolescent_Medicine"
+      "uri": "https://graph.infona.ai/entities/Specialty/Adolescent_Medicine"
     },
     {
       "also_types": [],
       "id": "Cardiology",
       "label": "Cardiology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Cardiology"
+      "uri": "https://graph.infona.ai/entities/Specialty/Cardiology"
     },
     {
       "also_types": [],
       "id": "Dermatology",
       "label": "Dermatology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Dermatology"
+      "uri": "https://graph.infona.ai/entities/Specialty/Dermatology"
     },
     {
       "also_types": [],
       "id": "Family Medicine",
       "label": "Family Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Family_Medicine"
+      "uri": "https://graph.infona.ai/entities/Specialty/Family_Medicine"
     },
     {
       "also_types": [],
       "id": "Gastroenterology",
       "label": "Gastroenterology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Gastroenterology"
+      "uri": "https://graph.infona.ai/entities/Specialty/Gastroenterology"
     },
     {
       "also_types": [],
       "id": "Geriatric Medicine",
       "label": "Geriatric Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Geriatric_Medicine"
+      "uri": "https://graph.infona.ai/entities/Specialty/Geriatric_Medicine"
     },
     {
       "also_types": [],
       "id": "Internal Medicine",
       "label": "Internal Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Internal_Medicine"
+      "uri": "https://graph.infona.ai/entities/Specialty/Internal_Medicine"
     },
     {
       "also_types": [],
       "id": "Neurology",
       "label": "Neurology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Neurology"
+      "uri": "https://graph.infona.ai/entities/Specialty/Neurology"
     },
     {
       "also_types": [],
       "id": "Obstetrics and Gynecology",
       "label": "Obstetrics and Gynecology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Obstetrics_and_Gynecology"
+      "uri": "https://graph.infona.ai/entities/Specialty/Obstetrics_and_Gynecology"
     },
     {
       "also_types": [],
       "id": "Ophthalmology",
       "label": "Ophthalmology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Ophthalmology"
+      "uri": "https://graph.infona.ai/entities/Specialty/Ophthalmology"
     },
     {
       "also_types": [],
       "id": "Orthopedic Surgery",
       "label": "Orthopedic Surgery",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Orthopedic_Surgery"
+      "uri": "https://graph.infona.ai/entities/Specialty/Orthopedic_Surgery"
     },
     {
       "also_types": [],
       "id": "Pediatrics",
       "label": "Pediatrics",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Pediatrics"
+      "uri": "https://graph.infona.ai/entities/Specialty/Pediatrics"
     },
     {
       "also_types": [],
       "id": "Psychiatry",
       "label": "Psychiatry",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Psychiatry"
+      "uri": "https://graph.infona.ai/entities/Specialty/Psychiatry"
     },
     {
       "also_types": [],
       "id": "Urgent Care",
       "label": "Urgent Care",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
       "type": "Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Urgent_Care"
+      "uri": "https://graph.infona.ai/entities/Specialty/Urgent_Care"
     },
     {
       "also_types": [],
       "id": "MI",
       "label": "MI",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/MI"
+      "uri": "https://graph.infona.ai/entities/State/MI"
     },
     {
       "also_types": [],
       "id": "OH",
       "label": "OH",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/OH"
+      "uri": "https://graph.infona.ai/entities/State/OH"
     }
   ],
   "node_materializations": [
     {
       "label": "Ashcombe",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Ashcombe"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Ashcombe"
     },
     {
       "label": "Elmbrook",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Elmbrook"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Elmbrook"
     },
     {
       "label": "Fallingwood",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Fallingwood"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Fallingwood"
     },
     {
       "label": "Marrowdale",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Marrowdale"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Marrowdale"
     },
     {
       "label": "Copperfield Clinic",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Copperfield_Clinic"
+      "rdf_type": "https://graph.infona.ai/types/Organization",
+      "uri": "https://graph.infona.ai/entities/Organization/Copperfield_Clinic"
     },
     {
       "label": "Lakeshore General Hospital",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Lakeshore_General_Hospital"
+      "rdf_type": "https://graph.infona.ai/types/Organization",
+      "uri": "https://graph.infona.ai/entities/Organization/Lakeshore_General_Hospital"
     },
     {
       "label": "Rivergate Medical Center",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Rivergate_Medical_Center"
+      "rdf_type": "https://graph.infona.ai/types/Organization",
+      "uri": "https://graph.infona.ai/entities/Organization/Rivergate_Medical_Center"
     },
     {
       "label": "Summit Ridge Hospital",
-      "rdf_type": "https://graph.onta.sh/types/Organization",
-      "uri": "https://graph.onta.sh/entities/Organization/Summit_Ridge_Hospital"
+      "rdf_type": "https://graph.infona.ai/types/Organization",
+      "uri": "https://graph.infona.ai/entities/Organization/Summit_Ridge_Hospital"
     },
     {
       "label": "Addiction Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Addiction_Medicine"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Addiction_Medicine"
     },
     {
       "label": "Adolescent Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Adolescent_Medicine"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Adolescent_Medicine"
     },
     {
       "label": "Cardiology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Cardiology"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Cardiology"
     },
     {
       "label": "Dermatology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Dermatology"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Dermatology"
     },
     {
       "label": "Family Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Family_Medicine"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Family_Medicine"
     },
     {
       "label": "Gastroenterology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Gastroenterology"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Gastroenterology"
     },
     {
       "label": "Geriatric Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Geriatric_Medicine"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Geriatric_Medicine"
     },
     {
       "label": "Internal Medicine",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Internal_Medicine"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Internal_Medicine"
     },
     {
       "label": "Neurology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Neurology"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Neurology"
     },
     {
       "label": "Obstetrics and Gynecology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Obstetrics_and_Gynecology"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Obstetrics_and_Gynecology"
     },
     {
       "label": "Ophthalmology",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Ophthalmology"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Ophthalmology"
     },
     {
       "label": "Orthopedic Surgery",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Orthopedic_Surgery"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Orthopedic_Surgery"
     },
     {
       "label": "Pediatrics",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Pediatrics"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Pediatrics"
     },
     {
       "label": "Psychiatry",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Psychiatry"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Psychiatry"
     },
     {
       "label": "Urgent Care",
-      "rdf_type": "https://graph.onta.sh/types/Specialty",
-      "uri": "https://graph.onta.sh/entities/Specialty/Urgent_Care"
+      "rdf_type": "https://graph.infona.ai/types/Specialty",
+      "uri": "https://graph.infona.ai/entities/Specialty/Urgent_Care"
     },
     {
       "label": "MI",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/MI"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/MI"
     },
     {
       "label": "OH",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/OH"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/OH"
     }
   ],
   "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
-      "object": "https://graph.onta.sh/entities/Organization/Lakeshore_General_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Bartholomew_Quimby"
+      "object": "https://graph.infona.ai/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Bartholomew_Quimby"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Addiction_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Bartholomew_Quimby"
+      "object": "https://graph.infona.ai/entities/Specialty/Addiction_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Bartholomew_Quimby"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Psychiatry",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Bartholomew_Quimby"
+      "object": "https://graph.infona.ai/entities/Specialty/Psychiatry",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Bartholomew_Quimby"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Bartholomew_Quimby"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Bartholomew_Quimby"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Marrowdale",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Bartholomew_Quimby"
+      "object": "https://graph.infona.ai/entities/City/Marrowdale",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Bartholomew_Quimby"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Rivergate_Medical_Center",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Rosalind_Featherstone"
+      "object": "https://graph.infona.ai/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Rosalind_Featherstone"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Geriatric_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Rosalind_Featherstone"
+      "object": "https://graph.infona.ai/entities/Specialty/Geriatric_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Rosalind_Featherstone"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Rosalind_Featherstone"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Rosalind_Featherstone"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Elmbrook",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Rosalind_Featherstone"
+      "object": "https://graph.infona.ai/entities/City/Elmbrook",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Rosalind_Featherstone"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Rivergate_Medical_Center",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Tamsin_Brightwater"
+      "object": "https://graph.infona.ai/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Tamsin_Brightwater"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Family_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Tamsin_Brightwater"
+      "object": "https://graph.infona.ai/entities/Specialty/Family_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Tamsin_Brightwater"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Tamsin_Brightwater"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Tamsin_Brightwater"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Elmbrook",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/NursePractitioner/Tamsin_Brightwater"
+      "object": "https://graph.infona.ai/entities/City/Elmbrook",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/NursePractitioner/Tamsin_Brightwater"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Lakeshore_General_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Constance_Ilberis"
+      "object": "https://graph.infona.ai/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Constance_Ilberis"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Dermatology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Constance_Ilberis"
+      "object": "https://graph.infona.ai/entities/Specialty/Dermatology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Constance_Ilberis"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Constance_Ilberis"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Constance_Ilberis"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Marrowdale",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Constance_Ilberis"
+      "object": "https://graph.infona.ai/entities/City/Marrowdale",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Constance_Ilberis"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Summit_Ridge_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Everett_Kaczmarek"
+      "object": "https://graph.infona.ai/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Everett_Kaczmarek"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Orthopedic_Surgery",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Everett_Kaczmarek"
+      "object": "https://graph.infona.ai/entities/Specialty/Orthopedic_Surgery",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Everett_Kaczmarek"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Everett_Kaczmarek"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Everett_Kaczmarek"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Fallingwood",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Everett_Kaczmarek"
+      "object": "https://graph.infona.ai/entities/City/Fallingwood",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Everett_Kaczmarek"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Copperfield_Clinic",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Horatio_Blackwood"
+      "object": "https://graph.infona.ai/entities/Organization/Copperfield_Clinic",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Horatio_Blackwood"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Gastroenterology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Horatio_Blackwood"
+      "object": "https://graph.infona.ai/entities/Specialty/Gastroenterology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Horatio_Blackwood"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Internal_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Horatio_Blackwood"
+      "object": "https://graph.infona.ai/entities/Specialty/Internal_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Horatio_Blackwood"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Horatio_Blackwood"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Horatio_Blackwood"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Ashcombe",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Horatio_Blackwood"
+      "object": "https://graph.infona.ai/entities/City/Ashcombe",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Horatio_Blackwood"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Copperfield_Clinic",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Ignatius_Prewett"
+      "object": "https://graph.infona.ai/entities/Organization/Copperfield_Clinic",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Ignatius_Prewett"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Neurology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Ignatius_Prewett"
+      "object": "https://graph.infona.ai/entities/Specialty/Neurology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Ignatius_Prewett"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Ignatius_Prewett"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Ignatius_Prewett"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Ashcombe",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Ignatius_Prewett"
+      "object": "https://graph.infona.ai/entities/City/Ashcombe",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Ignatius_Prewett"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Rivergate_Medical_Center",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Marlowe_Vantham"
+      "object": "https://graph.infona.ai/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Marlowe_Vantham"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Family_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Marlowe_Vantham"
+      "object": "https://graph.infona.ai/entities/Specialty/Family_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Marlowe_Vantham"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Geriatric_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Marlowe_Vantham"
+      "object": "https://graph.infona.ai/entities/Specialty/Geriatric_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Marlowe_Vantham"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Marlowe_Vantham"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Marlowe_Vantham"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Elmbrook",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Marlowe_Vantham"
+      "object": "https://graph.infona.ai/entities/City/Elmbrook",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Marlowe_Vantham"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Summit_Ridge_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Percival_Underhill"
+      "object": "https://graph.infona.ai/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Percival_Underhill"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Ophthalmology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Percival_Underhill"
+      "object": "https://graph.infona.ai/entities/Specialty/Ophthalmology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Percival_Underhill"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Percival_Underhill"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Percival_Underhill"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Fallingwood",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Percival_Underhill"
+      "object": "https://graph.infona.ai/entities/City/Fallingwood",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Percival_Underhill"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Rivergate_Medical_Center",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Priscilla_Onwuka"
+      "object": "https://graph.infona.ai/entities/Organization/Rivergate_Medical_Center",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Priscilla_Onwuka"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Cardiology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Priscilla_Onwuka"
+      "object": "https://graph.infona.ai/entities/Specialty/Cardiology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Priscilla_Onwuka"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Internal_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Priscilla_Onwuka"
+      "object": "https://graph.infona.ai/entities/Specialty/Internal_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Priscilla_Onwuka"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Priscilla_Onwuka"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Priscilla_Onwuka"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Elmbrook",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Priscilla_Onwuka"
+      "object": "https://graph.infona.ai/entities/City/Elmbrook",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Priscilla_Onwuka"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Lakeshore_General_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Seraphina_Loxley"
+      "object": "https://graph.infona.ai/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Seraphina_Loxley"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Obstetrics_and_Gynecology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Seraphina_Loxley"
+      "object": "https://graph.infona.ai/entities/Specialty/Obstetrics_and_Gynecology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Seraphina_Loxley"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Seraphina_Loxley"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Seraphina_Loxley"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Marrowdale",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Seraphina_Loxley"
+      "object": "https://graph.infona.ai/entities/City/Marrowdale",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Seraphina_Loxley"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Summit_Ridge_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Yolanda_Fereday"
+      "object": "https://graph.infona.ai/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Yolanda_Fereday"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Adolescent_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Yolanda_Fereday"
+      "object": "https://graph.infona.ai/entities/Specialty/Adolescent_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Yolanda_Fereday"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Pediatrics",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Yolanda_Fereday"
+      "object": "https://graph.infona.ai/entities/Specialty/Pediatrics",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Yolanda_Fereday"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Yolanda_Fereday"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Yolanda_Fereday"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Fallingwood",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/Physician/Dr__Yolanda_Fereday"
+      "object": "https://graph.infona.ai/entities/City/Fallingwood",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/Physician/Dr__Yolanda_Fereday"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Copperfield_Clinic",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Delphine_Marchetti"
+      "object": "https://graph.infona.ai/entities/Organization/Copperfield_Clinic",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Delphine_Marchetti"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Family_Medicine",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Delphine_Marchetti"
+      "object": "https://graph.infona.ai/entities/Specialty/Family_Medicine",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Delphine_Marchetti"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Urgent_Care",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Delphine_Marchetti"
+      "object": "https://graph.infona.ai/entities/Specialty/Urgent_Care",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Delphine_Marchetti"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Delphine_Marchetti"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Delphine_Marchetti"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Ashcombe",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Delphine_Marchetti"
+      "object": "https://graph.infona.ai/entities/City/Ashcombe",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Delphine_Marchetti"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Summit_Ridge_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+      "object": "https://graph.infona.ai/entities/Organization/Summit_Ridge_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Gideon_Sparrowhawk"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Orthopedic_Surgery",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+      "object": "https://graph.infona.ai/entities/Specialty/Orthopedic_Surgery",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Gideon_Sparrowhawk"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OH",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+      "object": "https://graph.infona.ai/entities/State/OH",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Gideon_Sparrowhawk"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Fallingwood",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Gideon_Sparrowhawk"
+      "object": "https://graph.infona.ai/entities/City/Fallingwood",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Gideon_Sparrowhawk"
     },
     {
-      "object": "https://graph.onta.sh/entities/Organization/Lakeshore_General_Hospital",
-      "predicate": "https://graph.onta.sh/onto/affiliated_with",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Ottoline_Vasquez"
+      "object": "https://graph.infona.ai/entities/Organization/Lakeshore_General_Hospital",
+      "predicate": "https://graph.infona.ai/onto/affiliated_with",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Ottoline_Vasquez"
     },
     {
-      "object": "https://graph.onta.sh/entities/Specialty/Dermatology",
-      "predicate": "https://graph.onta.sh/onto/has_specialty",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Ottoline_Vasquez"
+      "object": "https://graph.infona.ai/entities/Specialty/Dermatology",
+      "predicate": "https://graph.infona.ai/onto/has_specialty",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Ottoline_Vasquez"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/MI",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Ottoline_Vasquez"
+      "object": "https://graph.infona.ai/entities/State/MI",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Ottoline_Vasquez"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Marrowdale",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/PhysicianAssistant/Ottoline_Vasquez"
+      "object": "https://graph.infona.ai/entities/City/Marrowdale",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/PhysicianAssistant/Ottoline_Vasquez"
     }
   ],
   "types": [
@@ -956,63 +956,63 @@
       "kind": "primary",
       "name": "City",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/City"
+      "uri": "https://graph.infona.ai/types/City"
     },
     {
       "kind": "ancestor",
       "name": "HealthcareProvider",
       "subclass_of": [
-        "https://graph.onta.sh/types/Person"
+        "https://graph.infona.ai/types/Person"
       ],
-      "uri": "https://graph.onta.sh/types/HealthcareProvider"
+      "uri": "https://graph.infona.ai/types/HealthcareProvider"
     },
     {
       "kind": "subtype",
       "name": "NursePractitioner",
       "subclass_of": [
-        "https://graph.onta.sh/types/HealthcareProvider"
+        "https://graph.infona.ai/types/HealthcareProvider"
       ],
-      "uri": "https://graph.onta.sh/types/NursePractitioner"
+      "uri": "https://graph.infona.ai/types/NursePractitioner"
     },
     {
       "kind": "primary",
       "name": "Organization",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/Organization"
+      "uri": "https://graph.infona.ai/types/Organization"
     },
     {
       "kind": "ancestor",
       "name": "Person",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/Person"
+      "uri": "https://graph.infona.ai/types/Person"
     },
     {
       "kind": "subtype",
       "name": "Physician",
       "subclass_of": [
-        "https://graph.onta.sh/types/HealthcareProvider"
+        "https://graph.infona.ai/types/HealthcareProvider"
       ],
-      "uri": "https://graph.onta.sh/types/Physician"
+      "uri": "https://graph.infona.ai/types/Physician"
     },
     {
       "kind": "subtype",
       "name": "PhysicianAssistant",
       "subclass_of": [
-        "https://graph.onta.sh/types/HealthcareProvider"
+        "https://graph.infona.ai/types/HealthcareProvider"
       ],
-      "uri": "https://graph.onta.sh/types/PhysicianAssistant"
+      "uri": "https://graph.infona.ai/types/PhysicianAssistant"
     },
     {
       "kind": "primary",
       "name": "Specialty",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/Specialty"
+      "uri": "https://graph.infona.ai/types/Specialty"
     },
     {
       "kind": "primary",
       "name": "State",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/State"
+      "uri": "https://graph.infona.ai/types/State"
     }
   ]
 }

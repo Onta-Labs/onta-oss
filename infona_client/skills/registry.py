@@ -12,7 +12,7 @@ The two global layers:
   skills. Two sources, merged at read:
 
   1. **Process registry** (this module) — boot-time / file-seeded content via
-     :func:`register_skill_layer` (premium ``OMNIX_SKILLS_PLUGIN`` overlay).
+     :func:`register_skill_layer` (premium ``INFONA_SKILLS_PLUGIN`` overlay).
   2. **Durable store** (``skills/global_store.py``) — authored Enhanced skills
      that survive restart/redeploy. Preferred authoring path (ONTA-399). The
      store maintains a write-through process mirror so this sync read path
@@ -30,7 +30,7 @@ front-matter block delimited by ``---`` carrying ``title`` / ``summary`` /
 the slug from the FILENAME, so a file can never disagree with its own location.
 The OSS seed directory is reserved empty — do not add skill files there.
 
-Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from cograph.*``.
+Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from infona.*``.
 Enhanced *content* is premium; this *mechanism* is OSS.
 """
 

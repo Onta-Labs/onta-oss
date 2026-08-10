@@ -14,9 +14,6 @@ export class InfonaError extends Error {
   }
 }
 
-/** @deprecated Prefer {@link InfonaError}. */
-export const OntaError = InfonaError;
-export type OntaError = InfonaError;
 
 
 export interface ClientOptions {
@@ -29,7 +26,7 @@ export interface IngestOptions {
   kg?: string;
   contentType?: "text" | "csv" | "json" | string;
   /** Treat `pathOrText` as a FILE PATH, not as raw text. When set, a path that
-   *  does not resolve to a readable file throws a `OntaError` instead of
+   *  does not resolve to a readable file throws a `InfonaError` instead of
    *  silently POSTing the path string itself as text content (ONTA-253: a
    *  file-intent caller — e.g. the MCP `ingest_csv` tool — must never fabricate
    *  a success by LLM-extracting entities out of a nonexistent filename). The
@@ -105,16 +102,7 @@ export interface AskOptions {
 }
 
 function envVar(name: string, fallback?: string): string | undefined {
-  // Precedence: INFONA_ (current brand) → ONTA_ → COGRAPH_ → OMNIX_ (legacy)
-  // so old configs keep working. Lineage: omnix → cograph → onta → infona.
-  // INFONA_* wins; older prefixes stay honored for back-compat.
-  return (
-    process.env[`INFONA_${name}`] ||
-    process.env[`ONTA_${name}`] ||
-    process.env[`COGRAPH_${name}`] ||
-    process.env[`OMNIX_${name}`] ||
-    fallback
-  );
+  return process.env[`INFONA_${name}`] || fallback;
 }
 
 const EXT_FORMAT: Record<string, string> = {
@@ -216,8 +204,8 @@ export class Client {
   private tenantHealPromise: Promise<void> | null = null;
 
   constructor(opts: ClientOptions = {}) {
-    // Resolution order for each field: explicit opts → env var → ~/.onta/config.json
-    // (written by `cograph login`) → built-in default. Reading the config eagerly
+    // Resolution order for each field: explicit opts → env var → ~/.infona/config.json
+    // (written by `infona login`) → built-in default. Reading the config eagerly
     // is cheap (small JSON file) and lets users skip env vars entirely after login.
     const cfg = readConfig();
     this.apiKey = opts.apiKey ?? envVar("API_KEY") ?? cfg.apiKey;
@@ -237,9 +225,9 @@ export class Client {
   private async healTenantIfNeeded(): Promise<void> {
     if (!isClerkUserId(this.tenant)) return;
     if (!this.apiKey) {
-      throw new OntaError(
+      throw new InfonaError(
         `Configured tenant "${this.tenant}" looks like a Clerk user id, not a workspace. ` +
-          `Set INFONA_TENANT to a workspace id from the dashboard (or re-run \`onta login\`).`,
+          `Set INFONA_TENANT to a workspace id from the dashboard (or re-run \`infona login\`).`,
       );
     }
     if (!this.tenantHealPromise) {
@@ -253,7 +241,7 @@ export class Client {
           signal: AbortSignal.timeout(15_000),
         });
         if (!res.ok) {
-          throw new OntaError(
+          throw new InfonaError(
             `Configured tenant "${bogus}" is a user id, not a workspace, and ` +
               `listing workspaces failed (HTTP ${res.status}). Set INFONA_TENANT ` +
               `to a real workspace id.`,
@@ -278,7 +266,7 @@ export class Client {
           }
         }
         if (!first) {
-          throw new OntaError(
+          throw new InfonaError(
             `Configured tenant "${bogus}" is a user id, and this key has no workspaces. ` +
               `Create a workspace in the dashboard, then set INFONA_TENANT.`,
           );
@@ -287,7 +275,7 @@ export class Client {
         try {
           writeConfig({ tenant: first });
         } catch {
-          // best-effort migrate of ~/.onta/config.json
+          // best-effort migrate of ~/.infona/config.json
         }
       })();
     }
@@ -506,7 +494,7 @@ export class Client {
    *
    * Unlike {@link request}, this does NOT inspect `res.ok` and does NOT parse or
    * reshape the body. A 4xx/5xx comes back as a resolved `Response` (the caller
-   * reads `.status`/`.headers`/`.body`), NOT a thrown {@link OntaError}. The
+   * reads `.status`/`.headers`/`.body`), NOT a thrown {@link InfonaError}. The
    * only rejection paths are a genuine network failure or a timeout abort —
    * exactly the cases where there is no HTTP response to hand back.
    *
@@ -542,9 +530,9 @@ export class Client {
       // so this is the one case we surface as a thrown error. A non-2xx HTTP
       // status is NOT an error here — it resolves above as a Response.
       if (err instanceof Error && err.name === "AbortError") {
-        throw new OntaError(`Request to ${path} timed out after ${timeoutMs}ms`);
+        throw new InfonaError(`Request to ${path} timed out after ${timeoutMs}ms`);
       }
-      throw new OntaError(
+      throw new InfonaError(
         `Network error contacting ${path}: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
@@ -620,9 +608,9 @@ export class Client {
     } catch (err) {
       clearTimeout(timer);
       if (err instanceof Error && err.name === "AbortError") {
-        throw new OntaError(`Request to ${url} timed out after ${timeoutMs}ms`);
+        throw new InfonaError(`Request to ${url} timed out after ${timeoutMs}ms`);
       }
-      throw new OntaError(
+      throw new InfonaError(
         `Network error contacting ${url}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
@@ -640,14 +628,14 @@ export class Client {
         res.status === 403 &&
         /grant access to tenant ['"]user_/i.test(text)
       ) {
-        throw new OntaError(
+        throw new InfonaError(
           `HTTP 403: ${text}\n` +
             `Hint: INFONA_TENANT / config tenant is set to a Clerk user id. ` +
-            `Set it to a workspace id (dashboard → workspace switcher) or re-run \`onta login\`.`,
+            `Set it to a workspace id (dashboard → workspace switcher) or re-run \`infona login\`.`,
           { status: res.status, body: text },
         );
       }
-      throw new OntaError(`HTTP ${res.status}: ${text}`, {
+      throw new InfonaError(`HTTP ${res.status}: ${text}`, {
         status: res.status,
         body: text,
       });
@@ -701,7 +689,7 @@ export class Client {
     // the CLI's intentional `ingest <raw text>` path. Text-intent callers pass
     // asText so an existing path string is still POSTed as content, not re-read.
     if (opts.asFile && !isFile) {
-      throw new OntaError(
+      throw new InfonaError(
         `File not found or not a readable file: ${pathOrText}. ` +
           `Pass raw text without asFile to ingest it as text.`,
       );
@@ -710,7 +698,7 @@ export class Client {
     if (isFile) {
       const ext = extname(pathOrText).toLowerCase();
       if (ext === ".pdf") {
-        throw new OntaError(
+        throw new InfonaError(
           // Do NOT point at another surface: neither the Python CLI nor the raw
           // API accepts a PDF either. There is no PDF ingest path anywhere in
           // the product, so say so rather than sending the user hunting.
@@ -746,7 +734,7 @@ export class Client {
     const concurrency = opts.concurrency ?? 4;
 
     const rows = parseCsv(content);
-    if (rows.length === 0) throw new OntaError("CSV is empty");
+    if (rows.length === 0) throw new InfonaError("CSV is empty");
     const headers = Object.keys(rows[0]!);
 
     let mappingToPost: Record<string, unknown>;
@@ -960,7 +948,7 @@ export class Client {
 
   /** List the tenants the authenticated user can access (GET /v1/me/tenants).
    *  Keyed by the API key (X-API-Key → user), so it's independent of the active
-   *  tenant. Throws OntaError with status 501 on deployments without a tenant
+   *  tenant. Throws InfonaError with status 501 on deployments without a tenant
    *  provider (e.g. OSS-only). */
   async listTenants(): Promise<Array<{ id: string; label: string }>> {
     return this.request<Array<{ id: string; label: string }>>(
@@ -1341,7 +1329,7 @@ export class Client {
    *
    * `topK` is clamped server-side to 1..50 (the response echoes the effective
    * value). An unknown `kg` yields empty hits, not an error. A deployment with
-   * the semantic index gate (`COGRAPH_SEMANTIC_INDEX_ENABLED`) OFF does NOT
+   * the semantic index gate (`INFONA_SEMANTIC_INDEX_ENABLED`) OFF does NOT
    * error: the vector leg is simply never populated, so the route degrades to
    * the keyword leg and answers 200 with `degraded: true`. (It historically
    * 503'd there; that dead-ended callers for no correctness benefit.)
@@ -1393,8 +1381,8 @@ export class Client {
    * 1..200 and echoed, the scan runs under a short dedicated timeout, and the
    * route is rate-limited. `truncated: true` means the limit was hit and more
    * matches exist. A deployment may disable the surface entirely
-   * (`COGRAPH_GREP_ENABLED=false`), which answers 503 naming the gate (thrown
-   * here as an OntaError).
+   * (`INFONA_GREP_ENABLED=false`), which answers 503 naming the gate (thrown
+   * here as an InfonaError).
    */
   async grep(
     q: string,
@@ -2262,7 +2250,7 @@ export interface GrepResponse {
  *
  *  - it does NOT throw on a non-2xx status (a 404/500 resolves as a `Response`
  *    whose `.status` the caller inspects — contrast the typed methods, which
- *    throw {@link OntaError}); and
+ *    throw {@link InfonaError}); and
  *  - it does NOT parse or reshape the body (the caller gets the unread stream;
  *    contrast e.g. {@link Client.listKgs}, which unwraps `{kgs:[]}`).
  *

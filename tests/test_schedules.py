@@ -247,10 +247,10 @@ def test_postgres_store_create_runs_ddl_and_insert(monkeypatch):
     asyncio.run(run())
 
     sqls = [r[1] for r in rec]
-    assert any("CREATE TABLE IF NOT EXISTS cograph_schedules" in s for s in sqls)
+    assert any("CREATE TABLE IF NOT EXISTS infona_schedules" in s for s in sqls)
     assert any("CREATE INDEX IF NOT EXISTS" in s and "tenant_id" in s for s in sqls)
     insert = next(
-        r for r in rec if r[0] == "execute" and "INSERT INTO cograph_schedules" in r[1]
+        r for r in rec if r[0] == "execute" and "INSERT INTO infona_schedules" in r[1]
     )
     assert "ON CONFLICT (id) DO UPDATE" in insert[1]
     params = insert[2]
@@ -328,10 +328,10 @@ def test_postgres_store_update_and_delete(monkeypatch):
 
     asyncio.run(run())
     assert any(
-        r[0] == "execute" and "INSERT INTO cograph_schedules" in r[1] for r in rec
+        r[0] == "execute" and "INSERT INTO infona_schedules" in r[1] for r in rec
     )
     delete = next(
-        r for r in rec if r[0] == "execute" and "DELETE FROM cograph_schedules" in r[1]
+        r for r in rec if r[0] == "execute" and "DELETE FROM infona_schedules" in r[1]
     )
     assert delete[2] == ("sched-1",)
 
@@ -351,7 +351,7 @@ def _reset_schedule_singleton():
 
 
 def test_route_create_and_list_happy_path(client, auth_headers):
-    # Force the in-memory store regardless of any ambient OMNIX_DATABASE_URL.
+    # Force the in-memory store regardless of any ambient INFONA_DATABASE_URL.
     from infona_client.config import settings
 
     settings.database_url = ""

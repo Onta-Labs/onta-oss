@@ -39,7 +39,7 @@ def test_changelog_route_returns_entries(client, auth_headers, mock_neptune):
     mock_neptune.query.return_value = _changelog_response(
         [
             {
-                "entry": "https://graph.onta.sh/gov/log/11111111-2222-3333-4444-555555555555",
+                "entry": "https://graph.infona.ai/gov/log/11111111-2222-3333-4444-555555555555",
                 "action": "commit_ontology",
                 "subject": tenant_graph_uri("test-tenant"),
                 "timestamp": "2026-07-28T12:00:00Z",
@@ -120,7 +120,7 @@ def test_changelog_route_rejects_injection_subject(
 ):
     """A subject carrying `>` that tries to inject GRAPH <other-tenant> is
     rejected at the route boundary (422) and NEVER reaches Neptune."""
-    victim = "https://graph.onta.sh/graphs/VICTIM/changelog"
+    victim = "https://graph.infona.ai/graphs/VICTIM/changelog"
     payload = f"http://x> }} UNION {{ GRAPH <{victim}> {{ ?entry ?p ?o "
     resp = client.get(
         "/graphs/test-tenant/ontology/changelog",

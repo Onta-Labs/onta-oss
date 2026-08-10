@@ -42,7 +42,7 @@ from infona_client.resolver.schema_resolver import (
     SchemaResolver,
 )
 
-GRAPH = "https://graph.onta.sh/graphs/test-tenant"
+GRAPH = "https://graph.infona.ai/graphs/test-tenant"
 TENANT = "test-tenant"
 
 

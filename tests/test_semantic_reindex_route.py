@@ -46,7 +46,7 @@ def _chunk(kg_name: str, n: int) -> SemanticChunk:
     return SemanticChunk(
         tenant_id=TENANT,
         kg_name=kg_name,
-        entity_uri=f"https://graph.onta.sh/entities/Doc/{kg_name}-{n}",
+        entity_uri=f"https://graph.infona.ai/entities/Doc/{kg_name}-{n}",
         attr="description",
         chunk_ix=0,
         chunk_text=text,
@@ -60,7 +60,7 @@ def _chunk(kg_name: str, n: int) -> SemanticChunk:
 def test_reindex_returns_202_and_seeds_due_now_schedule(
     monkeypatch, client, auth_headers
 ):
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     register_semantic_index(InMemorySemanticIndex())
 
     resp = client.post(
@@ -86,7 +86,7 @@ def test_reindex_returns_202_and_seeds_due_now_schedule(
 def test_reindex_reports_scheduled_mode_when_runner_present(
     monkeypatch, app, client, auth_headers
 ):
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     app.state.schedule_runner = object()  # a live runner claims the row instead
 
     resp = client.post(
@@ -97,16 +97,16 @@ def test_reindex_reports_scheduled_mode_when_runner_present(
 
 
 def test_reindex_503_when_semantic_index_disabled(monkeypatch, client, auth_headers):
-    monkeypatch.delenv("COGRAPH_SEMANTIC_INDEX_ENABLED", raising=False)
+    monkeypatch.delenv("INFONA_SEMANTIC_INDEX_ENABLED", raising=False)
     resp = client.post(
         f"/graphs/{TENANT}/kgs/kg1/search/reindex", headers=auth_headers
     )
     assert resp.status_code == 503
-    assert "COGRAPH_SEMANTIC_INDEX_ENABLED" in resp.json()["detail"]
+    assert "INFONA_SEMANTIC_INDEX_ENABLED" in resp.json()["detail"]
 
 
 def test_reindex_requires_auth(monkeypatch, client):
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     resp = client.post(f"/graphs/{TENANT}/kgs/kg1/search/reindex")
     assert resp.status_code in (401, 403)
 
@@ -114,7 +114,7 @@ def test_reindex_requires_auth(monkeypatch, client):
 def test_reindex_static_key_foreign_tenant_is_403(monkeypatch, client, auth_headers):
     """A static key on a foreign path tenant is 403 — never schedules reconcile
     work under the key's tenant (or the path tenant) via silent reroute."""
-    monkeypatch.setenv("COGRAPH_SEMANTIC_INDEX_ENABLED", "true")
+    monkeypatch.setenv("INFONA_SEMANTIC_INDEX_ENABLED", "true")
     resp = client.post(
         "/graphs/other-tenant/kgs/kg1/search/reindex", headers=auth_headers
     )

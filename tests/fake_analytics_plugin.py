@@ -2,7 +2,7 @@
 
 `register()` receives no arguments and registers a sink via the OSS seam,
 mirroring how the proprietary PostHog sink registers itself at app boot through
-the ``OMNIX_ANALYTICS_PLUGIN`` hook.
+the ``INFONA_ANALYTICS_PLUGIN`` hook.
 """
 
 from infona_client.analytics import register_analytics_sink

@@ -16,7 +16,7 @@ from infona_client.resolver.profiler import profile_table
 # present on dev machines, absent in fresh OSS clones. Tests that need them
 # skip with a clear reason when the file is missing.
 DATASETS_ROOT = Path(
-    os.environ.get("COGRAPH_DATASETS_ROOT") or Path(__file__).resolve().parents[2]
+    os.environ.get("INFONA_DATASETS_ROOT") or Path(__file__).resolve().parents[2]
 )
 
 
@@ -25,7 +25,7 @@ def _load_dataset(relpath: str) -> tuple[list[str], list[dict]]:
     if not path.exists():
         pytest.skip(
             f"dataset CSV not present: {path} "
-            "(gitignored, lives in the parent repo — set COGRAPH_DATASETS_ROOT)"
+            "(gitignored, lives in the parent repo — set INFONA_DATASETS_ROOT)"
         )
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)

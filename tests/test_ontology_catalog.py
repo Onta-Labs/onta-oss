@@ -418,7 +418,7 @@ def test_schema_types_for_kg_with_counts(store):
 
 
 def test_resolve_catalog_session_env_backend(store, monkeypatch):
-    monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
+    monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
     configure_graph_store(store)
     try:
         assert graph_backend() == "neo4j"
@@ -427,18 +427,18 @@ def test_resolve_catalog_session_env_backend(store, monkeypatch):
         assert sess.scope.kg == ONTOLOGY_KG
     finally:
         reset_graph_store_for_tests()
-        monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+        monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
 
 
 def test_resolve_catalog_session_none_when_neptune(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     reset_graph_store_for_tests()
     assert graph_backend() == "neptune"
     assert resolve_catalog_session(layer="tenant", tenant_id="demo") is None
 
 
 def test_sparql_path_requires_client_without_store(monkeypatch):
-    monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)
+    monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     reset_graph_store_for_tests()
 
     async def run():

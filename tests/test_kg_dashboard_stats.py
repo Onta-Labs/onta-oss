@@ -68,7 +68,7 @@ def _scan_rows(person_count: int, knows_edges: int):
              "p": {"value": RDF_TYPE},
              "cnt": {"value": str(person_count)}, "rel": {"value": "0"}},
             {"type": {"value": TYPE_URI_PREFIX + "Person"},
-             "p": {"value": "https://graph.onta.sh/onto/knows"},
+             "p": {"value": "https://graph.infona.ai/onto/knows"},
              "cnt": {"value": str(knows_edges)},
              "sample": {"value": ENTITY_URI_PREFIX + "Person/x"},
              "rel": {"value": str(knows_edges)}},

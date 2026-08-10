@@ -19,7 +19,7 @@ Determinism / CI-safety — NO network:
   doc touches — orthogonal to the entire corpus — so their hits can only be
   carried by the FTS leg, which is exactly what that class guards.
 * Both backends run: InMemory always; Postgres+pgvector when
-  ``OMNIX_DATABASE_URL`` is set (mirroring ``test_semantic_parity.py`` — CI's
+  ``INFONA_DATABASE_URL`` is set (mirroring ``test_semantic_parity.py`` — CI's
   DSN-gated step runs this file against the pgvector service container). The
   vector dimension is 8, matching the ``vector(8)`` table the other DSN-gated
   semantic tests create in the shared CI database.
@@ -59,8 +59,8 @@ from infona_client.semantic.extract import (
 from infona_client.semantic.postgres import PostgresSemanticIndex
 from infona_client.semantic.protocol import IDENTITY_ATTR
 
-DSN = os.environ.get("OMNIX_DATABASE_URL", "")
-needs_pg_reason = "OMNIX_DATABASE_URL not set; needs live Postgres with pgvector"
+DSN = os.environ.get("INFONA_DATABASE_URL", "")
+needs_pg_reason = "INFONA_DATABASE_URL not set; needs live Postgres with pgvector"
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "semantic_golden_speeches.json"
 _FIXTURE = json.loads(FIXTURE_PATH.read_text())
@@ -94,7 +94,7 @@ def _vec(topics: dict[str, float]) -> list[float]:
 def _doc_triples(doc: dict) -> list[tuple[str, str, str]]:
     """The triples ingestion would write for one speech entity — typed, with a
     name for the denormalized label and the marked ``transcript`` text."""
-    type_uri = f"https://graph.onta.sh/types/{doc['type']}"
+    type_uri = f"https://graph.infona.ai/types/{doc['type']}"
     attr_base = f"{type_uri}/attrs"
     return [
         (doc["entity_uri"], RDF_TYPE, type_uri),

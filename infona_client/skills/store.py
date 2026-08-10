@@ -39,7 +39,7 @@ The two GLOBAL layers deliberately do NOT live here. PUBLIC is reserved empty
 ``skills/global_store.py`` (ONTA-399), with a process-registry bootstrap path
 in ``skills/registry.py`` for the premium file overlay.
 
-Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from cograph.*``.
+Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from infona.*``.
 """
 
 from __future__ import annotations

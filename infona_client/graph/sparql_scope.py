@@ -26,7 +26,7 @@ A. The query MUST carry at least one dataset clause, and every graph named by a
    by a dataset we validated.
 
 B. Independently of A, no IRI anywhere in the RAW query text may sit under
-   ``https://graph.onta.sh/graphs/`` unless it belongs to the calling tenant.
+   ``https://graph.infona.ai/graphs/`` unless it belongs to the calling tenant.
    This is the belt for A's suspenders. It CATCHES the plainly-spelled inline
    ``GRAPH <victim>``, but do not lean on it there: it is a raw-text scan, so a
    ``\\u``-escaped namespace or an IRI whose match its terminator class truncates
@@ -123,7 +123,7 @@ from collections.abc import Iterable, Sequence
 
 import structlog
 
-logger = structlog.stdlib.get_logger("cograph.graph.sparql_scope")
+logger = structlog.stdlib.get_logger("infona.graph.sparql_scope")
 
 GRAPH_NAMESPACE = GRAPH_URI_PREFIX
 
@@ -263,12 +263,12 @@ def dataset_graphs(query_part) -> list[str]:
     the ``URIRef`` values would report this query as scoped to its first clause
     while the store reads the second:
 
-        PREFIX g: <https://graph.onta.sh/gr>
+        PREFIX g: <https://graph.infona.ai/gr>
         SELECT * FROM <...own graph...> FROM g:aphs\\/victim WHERE { ?s ?p ?o }
 
     ``PN_LOCAL_ESC`` allows a backslash-escaped ``/`` inside a local name, so the
     prefix can be split anywhere and the literal text
-    ``https://graph.onta.sh/graphs/`` never appears, which keeps rule B blind too.
+    ``https://graph.infona.ai/graphs/`` never appears, which keeps rule B blind too.
     Rejecting prefixed names outright is the honest fix: resolving one means
     trusting a PREFIX declaration to expand exactly the way the store will, and
     the escape rules are precisely where that assumption breaks.

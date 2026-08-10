@@ -2,10 +2,11 @@ Infona (infona-oss)
 Copyright 2026 Infona Contributors
 
 This product includes software developed as part of the Infona project
-(https://github.com/infona-ai/infona-oss), previously published under the
-names "omnix", "cograph", and "onta".
+(https://github.com/infona-ai/infona-oss).
 
-Legacy technical identifiers intentionally retained:
-- Graph / entity IRIs under https://cograph.tech/ (primary keys; do not rename)
-- Python import shim package name `cograph_client` (prefer `infona_client`)
-- Env var prefixes OMNIX_*, COGRAPH_*, ONTA_* (still accepted for back-compat)
+Canonical identifiers (this is a complete rename — no compatibility shims):
+- Graph / entity IRIs under https://graph.infona.ai/
+- Python package / import path: `infona_client` (PyPI: `infona-client`)
+- Env var prefix: INFONA_*
+- CLI / MCP bins: `infona`, `infona-mcp`
+- Config directory: ~/.infona

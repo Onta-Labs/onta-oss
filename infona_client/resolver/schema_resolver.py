@@ -103,7 +103,7 @@ from infona_client.resolver.verdict_cache import JsonVerdictCache
 # the orchestrator can never disagree on whether verification is on.
 from infona_client.verification.verifier import _policy_enabled, verify_clean_facts
 
-logger = structlog.stdlib.get_logger("cograph.resolver")
+logger = structlog.stdlib.get_logger("infona.resolver")
 
 EXTRACTION_SYSTEM = """\
 You are a knowledge graph extraction engine. Given raw text and the current \
@@ -513,18 +513,18 @@ def _apply_attribute_ceiling(result, constraint):
 # near-synonym kinds (College / University / PublicInstitution under an
 # Institution focus); ONTA-383 anchored those as SUBTYPES, but they still surface
 # as separate Explorer collections (the dogfood's ``College (23)``) that the user
-# never confirmed. Set ``COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0`` to restore the
+# never confirmed. Set ``INFONA_DISCOVERY_COLLAPSE_SUBTYPES=0`` to restore the
 # ONTA-383 anchor-as-subtype behavior without a redeploy.
 _DISCOVERY_COLLAPSE_SUBTYPES = (
-    os.environ.get("COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES", "1") != "0"
+    os.environ.get("INFONA_DISCOVERY_COLLAPSE_SUBTYPES", "1") != "0"
 )
 
 # ONTA-394: kill-switch for the node-label plausibility gate (default ON). The
 # gate runs on the SHARED resolver promotion branch (discovery + open ingest), so
 # a deploy-free revert is available if its conservative heuristics ever keep a
-# legitimate relationship value as a literal. Set COGRAPH_NODE_LABEL_GUARD=0 to
+# legitimate relationship value as a literal. Set INFONA_NODE_LABEL_GUARD=0 to
 # restore the pre-ONTA-394 "always mint the node" behavior.
-_NODE_LABEL_GUARD = os.environ.get("COGRAPH_NODE_LABEL_GUARD", "1") != "0"
+_NODE_LABEL_GUARD = os.environ.get("INFONA_NODE_LABEL_GUARD", "1") != "0"
 
 
 # ONTA-394: a value is a real numeric range like "2020-2021" / "1998–99" (a bare
@@ -1487,30 +1487,30 @@ def _structured_rows_mapping(
 class SchemaResolver:
     # Primary extraction model, routed through OpenRouter with the configured
     # fallback. Defaults to the shared primary.
-    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", PRIMARY_MODEL)
-    EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
+    EXTRACT_MODEL = os.environ.get("INFONA_EXTRACT_MODEL", PRIMARY_MODEL)
+    EXTRACT_PROVIDER = os.environ.get("INFONA_EXTRACT_PROVIDER", "openrouter")
     # Anthropic-SDK offline fallback (used only when no OpenRouter key is set) —
     # must be a NATIVE Anthropic model id. Env-overridable.
-    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-opus-4-8")
-    ONTOLOGY_REFRESH_INTERVAL = int(os.environ.get("OMNIX_ONTOLOGY_REFRESH_INTERVAL", "50"))
+    INFER_MODEL = os.environ.get("INFONA_INFER_MODEL", "claude-opus-4-8")
+    ONTOLOGY_REFRESH_INTERVAL = int(os.environ.get("INFONA_ONTOLOGY_REFRESH_INTERVAL", "50"))
     # Output ceiling for one extraction call. Raised 4096 → 8192 (ONTA-196) →
     # 16384 (ONTA-381): the reification/lift prompt makes each record emit MANY
     # more entities + relationships, and a dense multi-attribute page routinely
     # expands past 8192 even at 5 records (``finish_reason=length`` mid-JSON →
     # parse error → reactive split). Env-overridable.
-    EXTRACT_MAX_TOKENS = int(os.environ.get("OMNIX_EXTRACT_MAX_TOKENS", "16384"))
+    EXTRACT_MAX_TOKENS = int(os.environ.get("INFONA_EXTRACT_MAX_TOKENS", "16384"))
     # Absolute hard ceiling adaptive completion may stretch to for a single
     # multi-record call (ONTA-381). Beyond this we shrink the chunk instead of
     # unbounded cost. Must be ≥ EXTRACT_MAX_TOKENS.
     EXTRACT_MAX_TOKENS_HARD = int(
-        os.environ.get("OMNIX_EXTRACT_MAX_TOKENS_HARD", "32768")
+        os.environ.get("INFONA_EXTRACT_MAX_TOKENS_HARD", "32768")
     )
     # Bounded concurrency for the JSON/text chunk-extraction fan-out (ONTA-197
     # item 3). Independent chunks each take ~70s sequentially; running them under
     # a semaphore overlaps the independent LLM calls while capping how many are
     # in flight at once (avoid hammering the provider / exhausting rate limits).
     # Env-overridable so ops can widen/narrow without a deploy.
-    EXTRACT_CONCURRENCY = int(os.environ.get("OMNIX_EXTRACT_CONCURRENCY", "5"))
+    EXTRACT_CONCURRENCY = int(os.environ.get("INFONA_EXTRACT_CONCURRENCY", "5"))
 
     def __init__(
         self,
@@ -1543,11 +1543,11 @@ class SchemaResolver:
         # Cross-file entity resolution. Best-effort: failures never block ingest.
         from infona_client.resolver.er import ERPipeline
         self._er = ERPipeline(neptune)
-        self._er_enabled = os.environ.get("COGRAPH_ER_ENABLED", "1") != "0"
+        self._er_enabled = os.environ.get("INFONA_ER_ENABLED", "1") != "0"
         # Per-fact provenance (ADR 0002 §4): statement-metadata nodes in the
         # companion provenance graph. Default OFF so default triple output and
         # Neptune call pattern stay byte-identical.
-        self._provenance_enabled = os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+        self._provenance_enabled = os.environ.get("INFONA_PROVENANCE_ENABLED", "0") == "1"
         # Per-attribute DISPLAY provenance companions (ONTA-245 F1): the same
         # attr_meta `source_url` / `verified_at` instance companions enrichment
         # always writes (metadata namespace, never ontology attributes — ONTA-262),
@@ -1559,14 +1559,14 @@ class SchemaResolver:
         # signal. Flows through the SAME shared write path (insert_facts) as every
         # other fact — the companions ride in the instance-triple collector.
         self._attr_provenance_enabled = (
-            os.environ.get("COGRAPH_DISCOVERY_ATTR_PROVENANCE", "0") == "1"
+            os.environ.get("INFONA_DISCOVERY_ATTR_PROVENANCE", "0") == "1"
         )
         # Governance seam (ADR 0002 §2): when ON, a brand-new type is ALSO
         # proposed to an LLM judge panel; on majority approval it is written
         # to the Global-Public layer with governance provenance. The tenant
         # write stays today's behavior either way — governance never blocks
-        # or gates ingest. Default OFF (matching COGRAPH_PROVENANCE_ENABLED).
-        self._governance_enabled = os.environ.get("COGRAPH_GOVERNANCE_ENABLED", "0") == "1"
+        # or gates ingest. Default OFF (matching INFONA_PROVENANCE_ENABLED).
+        self._governance_enabled = os.environ.get("INFONA_GOVERNANCE_ENABLED", "0") == "1"
         if self._governance_enabled:
             from infona_client.resolver.governance import GovernanceEngine, LLMJudgePanel
             self._governance = GovernanceEngine(neptune)
@@ -2349,12 +2349,12 @@ class SchemaResolver:
                             # a mint-time URI mutation.
                             #
                             # Opt back into the old suffix with
-                            # COGRAPH_ER_FINGERPRINT=1 (not recommended for
+                            # INFONA_ER_FINGERPRINT=1 (not recommended for
                             # multi-table CSVs).
                             normalized, keys = self._er.signals_and_keys(entity)
                             if (
                                 er_applies
-                                and os.environ.get("COGRAPH_ER_FINGERPRINT", "0") == "1"
+                                and os.environ.get("INFONA_ER_FINGERPRINT", "0") == "1"
                                 and normalized is not None
                             ):
                                 import hashlib
@@ -4274,7 +4274,7 @@ class SchemaResolver:
         #     circuits at the top of this method and is REUSED — a prior confirmed
         #     subtype is never collapsed. Dimension-only nodes (is_primary=False)
         #     keep free minting.
-        #   * ANCHOR (COGRAPH_DISCOVERY_COLLAPSE_SUBTYPES=0, the ONTA-383 fallback):
+        #   * ANCHOR (INFONA_DISCOVERY_COLLAPSE_SUBTYPES=0, the ONTA-383 fallback):
         #     an evidence-free primary is anchored as a SUBTYPE of the focus rather
         #     than an orphan peer.
         # ``same_as`` is preserved in BOTH modes: an explicit "this is the SAME AS
@@ -4441,7 +4441,7 @@ class SchemaResolver:
         ``self._governance_tasks``; await :meth:`drain_governance` to
         deterministically wait for all scheduled outcomes. Best-effort: any
         failure (scheduling or in-task) is logged and never blocks or crashes
-        ingest. No-op when COGRAPH_GOVERNANCE_ENABLED is off (default).
+        ingest. No-op when INFONA_GOVERNANCE_ENABLED is off (default).
         """
         if not self._governance_enabled:
             return
@@ -4538,7 +4538,7 @@ class SchemaResolver:
         This is ~10-50x faster because it avoids per-entity Neptune INSERT calls.
 
         If _collect_provenance is provided (COG-46), per-fact provenance triples
-        (when COGRAPH_PROVENANCE_ENABLED is on) are likewise appended for the
+        (when INFONA_PROVENANCE_ENABLED is on) are likewise appended for the
         caller to flush in one batched INSERT into the companion provenance
         graph, instead of being inserted here per entity.
 
@@ -4886,7 +4886,7 @@ class SchemaResolver:
                 else:
                     result.rejections.append(validated)
 
-        # Per-fact provenance (ADR 0002 §4), gated by COGRAPH_PROVENANCE_ENABLED
+        # Per-fact provenance (ADR 0002 §4), gated by INFONA_PROVENANCE_ENABLED
         # (default off). Statement-metadata triples target the COMPANION
         # provenance graph — a different graph than the instance-triple
         # collector. With a _collect_provenance collector (the batched fast
@@ -4912,7 +4912,7 @@ class SchemaResolver:
                     await self._neptune.update(sparql)
 
         # Per-attribute DISPLAY provenance companions (ONTA-245 F1), gated by
-        # COGRAPH_DISCOVERY_ATTR_PROVENANCE (default off). The SAME
+        # INFONA_DISCOVERY_ATTR_PROVENANCE (default off). The SAME
         # `<attr>_source_url` / `<attr>_verified_at` instance companions enrichment
         # always writes, so a DISCOVERED fact and an ENRICHED fact are
         # provenance-symmetric at the ATTRIBUTE level (not just the per-record

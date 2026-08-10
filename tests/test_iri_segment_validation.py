@@ -2,7 +2,7 @@
 
 ONTA-425 (``type_name``) and ONTA-422 (``tenant``) are the two remaining halves
 of the defect ONTA-414 fixed for ``kg_name``: a name interpolated straight into
-``<https://graph.onta.sh/…>`` inside generated SPARQL, with no check that it can
+``<https://graph.infona.ai/…>`` inside generated SPARQL, with no check that it can
 legally sit there. A ``>`` closes the IRI and everything after it is parsed as
 SPARQL — on a read path that is a cross-graph read or a 500, and on a write path
 it lands in ``client.update``, where ``;`` starts a second operation and
@@ -14,7 +14,7 @@ takes a name off a path segment or a request body without its own pattern still
 fails closed. Two properties this file pins hardest, because both are places the
 earlier fix went wrong:
 
-1. **Fail SOFT when enumerating.** onta-oss#274 had to undo an ONTA-414
+1. **Fail SOFT when enumerating.** infona-oss#274 had to undo an ONTA-414
    regression where one pre-existing malformed name 422'd an entire listing. Any
    read that fans out over stored names must skip the bad one, not raise.
 2. **No stricter than it has to be.** The type/attribute rule is deliberately
@@ -30,8 +30,8 @@ import pytest
 import structlog
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
@@ -51,7 +51,7 @@ from infona_client.graph.queries import (
 
 TENANT = "test-tenant"
 KG = "movies"
-VICTIM = "https://graph.onta.sh/graphs/victim"
+VICTIM = "https://graph.infona.ai/graphs/victim"
 
 # Payloads that break OUT of `<…>`. Each is a real escape, not a mutation of one:
 # the first appends a second dataset clause naming another workspace's graph, the
@@ -83,7 +83,7 @@ BREAKOUT_PAYLOADS = [
 
 # Names that MUST keep working. Shape-checked against the live registry rather
 # than by grepping this repo (the ONTA-414 verification mistake that produced
-# onta-oss#274): 158 type names and 714 attribute names across the two live
+# infona-oss#274): 158 type names and 714 attribute names across the two live
 # workspaces, none carrying an IRIREF-illegal character. `city/town` and
 # `county/parish` are REAL attribute names in production today — a
 # `[A-Za-z0-9_-]+` rule of the kind `kg_name` uses would have broken them for no
@@ -149,9 +149,9 @@ def test_layer_type_uri_refuses_in_every_layer(layer, payload):
 @pytest.mark.parametrize("name", REAL_NAMES)
 def test_real_names_still_mint_their_uri(name):
     assert is_valid_type_name(name) is True
-    assert type_uri(name) == f"https://graph.onta.sh/types/{name}"
+    assert type_uri(name) == f"https://graph.infona.ai/types/{name}"
     assert attr_uri("Address", name) == (
-        f"https://graph.onta.sh/types/Address/attrs/{name}"
+        f"https://graph.infona.ai/types/Address/attrs/{name}"
     )
     for layer in Layer:
         assert layer_type_uri(layer, name).endswith(name)
@@ -169,7 +169,7 @@ def test_the_write_path_builder_refuses_rather_than_emitting_the_injection():
         insert_type(tenant_graph_uri(TENANT), payload)
     # And the pre-fix behaviour is genuinely dangerous, not merely malformed:
     # spelled out so the test states what it is preventing.
-    assert "DROP ALL" in f"https://graph.onta.sh/types/{payload}"
+    assert "DROP ALL" in f"https://graph.infona.ai/types/{payload}"
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ def test_workspace_ids_the_slug_rule_would_reject_still_work(tenant_id):
     A self-hosted deployment picks its own workspace id with nothing validating
     it, and ids predating the 3-40-char lowercase slug rule keep working.
     Enforcing the slug shape here would make an existing workspace's data
-    unreachable — the onta-oss#274 mistake, one layer down.
+    unreachable — the infona-oss#274 mistake, one layer down.
     """
     assert is_valid_tenant_id(tenant_id) is True
     assert tenant_graph_uri(tenant_id) == GRAPH_URI_PREFIX + tenant_id
@@ -342,7 +342,7 @@ def test_ontology_write_route_fails_closed_before_the_update(
 def test_search_skips_one_corrupt_stored_name_instead_of_failing_the_listing(
     client, auth_headers, mock_neptune
 ):
-    """The onta-oss#274 lesson, applied on arrival rather than as a follow-up.
+    """The infona-oss#274 lesson, applied on arrival rather than as a follow-up.
 
     A corrupt ontology row does not need out-of-band DB access to exist:
     ``POST /graphs/{tenant}/triples`` writes arbitrary triples into the same
@@ -357,7 +357,7 @@ def test_search_skips_one_corrupt_stored_name_instead_of_failing_the_listing(
             "head": {"vars": ["type", "label"]},
             "results": {
                 "bindings": [
-                    {"type": {"value": f"https://graph.onta.sh/types/{n}"},
+                    {"type": {"value": f"https://graph.infona.ai/types/{n}"},
                      "label": {"value": n}}
                     for n in names
                 ]
@@ -396,11 +396,11 @@ def test_search_skips_one_corrupt_stored_name_instead_of_failing_the_listing(
 # nothing else. Every case below was a real regression caught in review — the
 # first draft of this change fail-softed only the Explorer's search and left the
 # NL planner's ontology summary, the embedding chunks and the drift report to
-# raise, which is onta-oss#274 all over again on hotter paths.
+# raise, which is infona-oss#274 all over again on hotter paths.
 # ---------------------------------------------------------------------------
 
 CORRUPT_LABEL = "Movie> <injected"
-TYPES_NS = "https://graph.onta.sh/types/"
+TYPES_NS = "https://graph.infona.ai/types/"
 XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
 
@@ -495,7 +495,7 @@ def test_the_core_slot_membership_test_answers_false_rather_than_raising():
     """
     from infona_client.api.routes.explore import _is_core_slot
 
-    core = {"https://graph.onta.sh/types/Movie/attrs/title"}
+    core = {"https://graph.infona.ai/types/Movie/attrs/title"}
     assert _is_core_slot("Movie", "title", core) is True
     assert _is_core_slot("", "title", core) is False
     assert _is_core_slot("Movie", "", core) is False

@@ -30,7 +30,7 @@
 **Root cause:** The v1 `/ask` handler has a multi-attempt retry loop with error feedback. The client-side path is single-shot. If the LLM emits a close-but-wrong predicate URI, v1 retries with the error; multi-table doesn't.
 
 **Fix:** Two options.
-- **(a) Backend**: land the /ask ontology fallback inside `omnix-oss/omnix/nlp/pipeline.py::_fetch_ontology`. Requires a deploy (blocked until 5pm by daytime commit hook).
+- **(a) Backend**: land the /ask ontology fallback inside `infona-oss/infona/nlp/pipeline.py::_fetch_ontology`. Requires a deploy (blocked until 5pm by daytime commit hook).
 - **(b) Client**: port `_fix_attribute_uris` + retry-with-error-feedback into `ask_client_side`. No deploy needed. ~60 min work.
 
 **Impact:** Probably worth +5-8pp on the headline (fema-multi and FDIC are both ~40% right now; target is ~80%).

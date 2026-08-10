@@ -45,7 +45,7 @@ from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 from infona_client.resolver.models import CSVSchemaMapping, TypeExtension
 from infona_client.resolver.promotion_consent import require_promotion_consent
 
-logger = structlog.stdlib.get_logger("cograph.resolver.governance")
+logger = structlog.stdlib.get_logger("infona.resolver.governance")
 
 # Governance vocabulary — record nodes live in the Public graphf's companion
 # provenance graph (same encoding pattern as COG-38 statement metadata);
@@ -135,9 +135,9 @@ Return JSON:
 
 # OSS governance judge model — env-overridable; defaults to the shared primary,
 # routed through OpenRouter with the configured fallback. The premium
-# ShapeJudgePanel uses COGRAPH_GOV_JUDGE_MODEL (no default) and overrides this
+# ShapeJudgePanel uses INFONA_GOV_JUDGE_MODEL (no default) and overrides this
 # panel entirely when registered.
-DEFAULT_GOV_JUDGE_MODEL = os.environ.get("OMNIX_GOV_JUDGE_MODEL", PRIMARY_MODEL)
+DEFAULT_GOV_JUDGE_MODEL = os.environ.get("INFONA_GOV_JUDGE_MODEL", PRIMARY_MODEL)
 
 
 class LLMJudgePanel:

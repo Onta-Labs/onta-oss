@@ -66,7 +66,7 @@ def test_staged_conflict_carries_both_sources(monkeypatch):
         vat_pred = _attr_uri("Widget", "sku_verified_at")
         existing_stamp = "2020-01-01T00:00:00+00:00"
         rows = [{
-            "uri": "https://graph.onta.sh/entities/Widget/e1",
+            "uri": "https://graph.infona.ai/entities/Widget/e1",
             "label": "Alpha Widget",
             "vals": (
                 f"{sku_pred}::WX-OLD||"
@@ -106,7 +106,7 @@ def test_conflict_survives_store_roundtrip_and_applies():
 
     async def run():
         row = RowResult(
-            entity_uri="https://graph.onta.sh/entities/Widget/e1",
+            entity_uri="https://graph.infona.ai/entities/Widget/e1",
             attribute="sku",
             existing_value="WX-OLD",
             verdict=Verdict(value="WX-NEW", confidence=0.9, source="web",

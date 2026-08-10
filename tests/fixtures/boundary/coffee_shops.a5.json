@@ -5,56 +5,56 @@
       "name": "address",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/address"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/address"
     },
     {
       "kind": "relationship",
       "name": "has_category",
-      "range": "https://graph.onta.sh/types/Category",
+      "range": "https://graph.infona.ai/types/Category",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/has_category"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/has_category"
     },
     {
       "kind": "relationship",
       "name": "in_state",
-      "range": "https://graph.onta.sh/types/State",
+      "range": "https://graph.infona.ai/types/State",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/in_state"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/in_state"
     },
     {
       "kind": "relationship",
       "name": "located_in",
-      "range": "https://graph.onta.sh/types/City",
+      "range": "https://graph.infona.ai/types/City",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/located_in"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/located_in"
     },
     {
       "kind": "literal",
       "name": "outdoor_seating",
       "range": "http://www.w3.org/2001/XMLSchema#boolean",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/outdoor_seating"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/outdoor_seating"
     },
     {
       "kind": "literal",
       "name": "price_level",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/price_level"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/price_level"
     },
     {
       "kind": "literal",
       "name": "rating",
       "range": "http://www.w3.org/2001/XMLSchema#float",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/rating"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/rating"
     },
     {
       "kind": "literal",
       "name": "shop_id",
       "range": "http://www.w3.org/2001/XMLSchema#string",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/types/CoffeeShop/attrs/shop_id"
+      "uri": "https://graph.infona.ai/types/CoffeeShop/attrs/shop_id"
     }
   ],
   "entities": [
@@ -62,705 +62,705 @@
       "also_types": [],
       "id": "Bakery",
       "label": "Bakery",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Bakery"
+      "uri": "https://graph.infona.ai/entities/Category/Bakery"
     },
     {
       "also_types": [],
       "id": "Breakfast",
       "label": "Breakfast",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Breakfast"
+      "uri": "https://graph.infona.ai/entities/Category/Breakfast"
     },
     {
       "also_types": [],
       "id": "Brunch",
       "label": "Brunch",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Brunch"
+      "uri": "https://graph.infona.ai/entities/Category/Brunch"
     },
     {
       "also_types": [],
       "id": "Cafe",
       "label": "Cafe",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Cafe"
+      "uri": "https://graph.infona.ai/entities/Category/Cafe"
     },
     {
       "also_types": [],
       "id": "Coffee",
       "label": "Coffee",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Coffee"
+      "uri": "https://graph.infona.ai/entities/Category/Coffee"
     },
     {
       "also_types": [],
       "id": "Dessert",
       "label": "Dessert",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Dessert"
+      "uri": "https://graph.infona.ai/entities/Category/Dessert"
     },
     {
       "also_types": [],
       "id": "Espresso Bar",
       "label": "Espresso Bar",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Espresso_Bar"
+      "uri": "https://graph.infona.ai/entities/Category/Espresso_Bar"
     },
     {
       "also_types": [],
       "id": "Lunch",
       "label": "Lunch",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Lunch"
+      "uri": "https://graph.infona.ai/entities/Category/Lunch"
     },
     {
       "also_types": [],
       "id": "Tea",
       "label": "Tea",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Tea"
+      "uri": "https://graph.infona.ai/entities/Category/Tea"
     },
     {
       "also_types": [],
       "id": "Vegan",
       "label": "Vegan",
-      "rdf_type": "https://graph.onta.sh/types/Category",
+      "rdf_type": "https://graph.infona.ai/types/Category",
       "type": "Category",
-      "uri": "https://graph.onta.sh/entities/Category/Vegan"
+      "uri": "https://graph.infona.ai/entities/Category/Vegan"
     },
     {
       "also_types": [],
       "id": "Austin",
       "label": "Austin",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Austin"
+      "uri": "https://graph.infona.ai/entities/City/Austin"
     },
     {
       "also_types": [],
       "id": "Chicago",
       "label": "Chicago",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Chicago"
+      "uri": "https://graph.infona.ai/entities/City/Chicago"
     },
     {
       "also_types": [],
       "id": "Denver",
       "label": "Denver",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Denver"
+      "uri": "https://graph.infona.ai/entities/City/Denver"
     },
     {
       "also_types": [],
       "id": "Portland",
       "label": "Portland",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Portland"
+      "uri": "https://graph.infona.ai/entities/City/Portland"
     },
     {
       "also_types": [],
       "id": "Santa Cruz",
       "label": "Santa Cruz",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Santa_Cruz"
+      "uri": "https://graph.infona.ai/entities/City/Santa_Cruz"
     },
     {
       "also_types": [],
       "id": "Seattle",
       "label": "Seattle",
-      "rdf_type": "https://graph.onta.sh/types/City",
+      "rdf_type": "https://graph.infona.ai/types/City",
       "type": "City",
-      "uri": "https://graph.onta.sh/entities/City/Seattle"
+      "uri": "https://graph.infona.ai/entities/City/Seattle"
     },
     {
       "also_types": [],
       "id": "Ashen Mug Coffeehouse",
       "label": "Ashen Mug Coffeehouse",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
       "also_types": [],
       "id": "Driftwood Coffee Co",
       "label": "Driftwood Coffee Co",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
       "also_types": [],
       "id": "Emberlight Cafe",
       "label": "Emberlight Cafe",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
       "also_types": [],
       "id": "Fernwood Roasters",
       "label": "Fernwood Roasters",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
       "also_types": [],
       "id": "Gilded Portafilter",
       "label": "Gilded Portafilter",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
       "also_types": [],
       "id": "Hollow Reed Cafe",
       "label": "Hollow Reed Cafe",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
       "also_types": [],
       "id": "Marlowe & Bean",
       "label": "Marlowe & Bean",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
       "also_types": [],
       "id": "Quillfeather Roastery",
       "label": "Quillfeather Roastery",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
       "also_types": [],
       "id": "The Copper Kettle",
       "label": "The Copper Kettle",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
       "also_types": [],
       "id": "The Wandering Bean",
       "label": "The Wandering Bean",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
       "also_types": [],
       "id": "Thimbleweed Espresso",
       "label": "Thimbleweed Espresso",
-      "rdf_type": "https://graph.onta.sh/types/CoffeeShop",
+      "rdf_type": "https://graph.infona.ai/types/CoffeeShop",
       "type": "CoffeeShop",
-      "uri": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
+      "uri": "https://graph.infona.ai/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
       "also_types": [],
       "id": "CA",
       "label": "CA",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/CA"
+      "uri": "https://graph.infona.ai/entities/State/CA"
     },
     {
       "also_types": [],
       "id": "CO",
       "label": "CO",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/CO"
+      "uri": "https://graph.infona.ai/entities/State/CO"
     },
     {
       "also_types": [],
       "id": "IL",
       "label": "IL",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/IL"
+      "uri": "https://graph.infona.ai/entities/State/IL"
     },
     {
       "also_types": [],
       "id": "OR",
       "label": "OR",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/OR"
+      "uri": "https://graph.infona.ai/entities/State/OR"
     },
     {
       "also_types": [],
       "id": "TX",
       "label": "TX",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/TX"
+      "uri": "https://graph.infona.ai/entities/State/TX"
     },
     {
       "also_types": [],
       "id": "WA",
       "label": "WA",
-      "rdf_type": "https://graph.onta.sh/types/State",
+      "rdf_type": "https://graph.infona.ai/types/State",
       "type": "State",
-      "uri": "https://graph.onta.sh/entities/State/WA"
+      "uri": "https://graph.infona.ai/entities/State/WA"
     }
   ],
   "node_materializations": [
     {
       "label": "Bakery",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Bakery"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Bakery"
     },
     {
       "label": "Breakfast",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Breakfast"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Breakfast"
     },
     {
       "label": "Brunch",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Brunch"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Brunch"
     },
     {
       "label": "Cafe",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Cafe"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Cafe"
     },
     {
       "label": "Coffee",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Coffee"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Coffee"
     },
     {
       "label": "Dessert",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Dessert"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Dessert"
     },
     {
       "label": "Espresso Bar",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Espresso_Bar"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Espresso_Bar"
     },
     {
       "label": "Lunch",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Lunch"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Lunch"
     },
     {
       "label": "Tea",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Tea"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Tea"
     },
     {
       "label": "Vegan",
-      "rdf_type": "https://graph.onta.sh/types/Category",
-      "uri": "https://graph.onta.sh/entities/Category/Vegan"
+      "rdf_type": "https://graph.infona.ai/types/Category",
+      "uri": "https://graph.infona.ai/entities/Category/Vegan"
     },
     {
       "label": "Austin",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Austin"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Austin"
     },
     {
       "label": "Chicago",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Chicago"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Chicago"
     },
     {
       "label": "Denver",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Denver"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Denver"
     },
     {
       "label": "Portland",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Portland"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Portland"
     },
     {
       "label": "Santa Cruz",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Santa_Cruz"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Santa_Cruz"
     },
     {
       "label": "Seattle",
-      "rdf_type": "https://graph.onta.sh/types/City",
-      "uri": "https://graph.onta.sh/entities/City/Seattle"
+      "rdf_type": "https://graph.infona.ai/types/City",
+      "uri": "https://graph.infona.ai/entities/City/Seattle"
     },
     {
       "label": "CA",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/CA"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/CA"
     },
     {
       "label": "CO",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/CO"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/CO"
     },
     {
       "label": "IL",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/IL"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/IL"
     },
     {
       "label": "OR",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/OR"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/OR"
     },
     {
       "label": "TX",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/TX"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/TX"
     },
     {
       "label": "WA",
-      "rdf_type": "https://graph.onta.sh/types/State",
-      "uri": "https://graph.onta.sh/entities/State/WA"
+      "rdf_type": "https://graph.infona.ai/types/State",
+      "uri": "https://graph.infona.ai/entities/State/WA"
     }
   ],
   "ontology_version": "e3b0c44298fc1c14",
   "relationship_edges": [
     {
-      "object": "https://graph.onta.sh/entities/Category/Breakfast",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.infona.ai/entities/Category/Breakfast",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/IL",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.infona.ai/entities/State/IL",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Chicago",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
+      "object": "https://graph.infona.ai/entities/City/Chicago",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Ashen_Mug_Coffeehouse"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Bakery",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/Category/Bakery",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Breakfast",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/Category/Breakfast",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Brunch",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/Category/Brunch",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Vegan",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/Category/Vegan",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/CA",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/State/CA",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/TX",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/State/TX",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Austin",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/City/Austin",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Santa_Cruz",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Driftwood_Coffee_Co"
+      "object": "https://graph.infona.ai/entities/City/Santa_Cruz",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Driftwood_Coffee_Co"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Cafe",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.infona.ai/entities/Category/Cafe",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Lunch",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.infona.ai/entities/Category/Lunch",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/CO",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.infona.ai/entities/State/CO",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Denver",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Emberlight_Cafe"
+      "object": "https://graph.infona.ai/entities/City/Denver",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Emberlight_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Bakery",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/Category/Bakery",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Breakfast",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/Category/Breakfast",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OR",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/State/OR",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/WA",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/State/WA",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Portland",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/City/Portland",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Seattle",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Fernwood_Roasters"
+      "object": "https://graph.infona.ai/entities/City/Seattle",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Fernwood_Roasters"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Dessert",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.infona.ai/entities/Category/Dessert",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.infona.ai/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/CO",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.infona.ai/entities/State/CO",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Denver",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Gilded_Portafilter"
+      "object": "https://graph.infona.ai/entities/City/Denver",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Gilded_Portafilter"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Breakfast",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.infona.ai/entities/Category/Breakfast",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Cafe",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.infona.ai/entities/Category/Cafe",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Lunch",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.infona.ai/entities/Category/Lunch",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/TX",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.infona.ai/entities/State/TX",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Austin",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Hollow_Reed_Cafe"
+      "object": "https://graph.infona.ai/entities/City/Austin",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Hollow_Reed_Cafe"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Bakery",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/Category/Bakery",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Tea",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/Category/Tea",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/IL",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/State/IL",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/WA",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/State/WA",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Chicago",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/City/Chicago",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Seattle",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Marlowe___Bean"
+      "object": "https://graph.infona.ai/entities/City/Seattle",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Marlowe___Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Bakery",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.infona.ai/entities/Category/Bakery",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Dessert",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.infona.ai/entities/Category/Dessert",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.infona.ai/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/WA",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.infona.ai/entities/State/WA",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Seattle",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Quillfeather_Roastery"
+      "object": "https://graph.infona.ai/entities/City/Seattle",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Quillfeather_Roastery"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Cafe",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/Category/Cafe",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Tea",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/Category/Tea",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/CO",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/State/CO",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OR",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/State/OR",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Denver",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/City/Denver",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Portland",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Copper_Kettle"
+      "object": "https://graph.infona.ai/entities/City/Portland",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Copper_Kettle"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Brunch",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.infona.ai/entities/Category/Brunch",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Cafe",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.infona.ai/entities/Category/Cafe",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/CA",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.infona.ai/entities/State/CA",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Santa_Cruz",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/The_Wandering_Bean"
+      "object": "https://graph.infona.ai/entities/City/Santa_Cruz",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/The_Wandering_Bean"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Coffee",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.infona.ai/entities/Category/Coffee",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
-      "object": "https://graph.onta.sh/entities/Category/Espresso_Bar",
-      "predicate": "https://graph.onta.sh/onto/has_category",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.infona.ai/entities/Category/Espresso_Bar",
+      "predicate": "https://graph.infona.ai/onto/has_category",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
-      "object": "https://graph.onta.sh/entities/State/OR",
-      "predicate": "https://graph.onta.sh/onto/in_state",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.infona.ai/entities/State/OR",
+      "predicate": "https://graph.infona.ai/onto/in_state",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Thimbleweed_Espresso"
     },
     {
-      "object": "https://graph.onta.sh/entities/City/Portland",
-      "predicate": "https://graph.onta.sh/onto/located_in",
-      "subject": "https://graph.onta.sh/entities/CoffeeShop/Thimbleweed_Espresso"
+      "object": "https://graph.infona.ai/entities/City/Portland",
+      "predicate": "https://graph.infona.ai/onto/located_in",
+      "subject": "https://graph.infona.ai/entities/CoffeeShop/Thimbleweed_Espresso"
     }
   ],
   "types": [
@@ -768,25 +768,25 @@
       "kind": "primary",
       "name": "Category",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/Category"
+      "uri": "https://graph.infona.ai/types/Category"
     },
     {
       "kind": "primary",
       "name": "City",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/City"
+      "uri": "https://graph.infona.ai/types/City"
     },
     {
       "kind": "primary",
       "name": "CoffeeShop",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/CoffeeShop"
+      "uri": "https://graph.infona.ai/types/CoffeeShop"
     },
     {
       "kind": "primary",
       "name": "State",
       "subclass_of": [],
-      "uri": "https://graph.onta.sh/types/State"
+      "uri": "https://graph.infona.ai/types/State"
     }
   ]
 }

@@ -49,7 +49,7 @@ from infona_client.resolver.models import (
 from infona_client.resolver.predicate_normalizer import normalize_predicate
 from infona_client.resolver.type_matcher import TypeMatcher
 
-logger = structlog.stdlib.get_logger("cograph.resolver.ontology")
+logger = structlog.stdlib.get_logger("infona.resolver.ontology")
 
 
 # Primitive datatypes a relationship is NOT: anything else as a datatype_hint
@@ -66,7 +66,7 @@ APPLY_CONFIDENCE_FLOOR = 0.70
 
 
 # Intent-parse LLM contract. ONE call per ask; mirrors the CSVResolver
-# provider/model config (OMNIX_EXTRACT_MODEL via OpenRouter, Anthropic offline
+# provider/model config (INFONA_EXTRACT_MODEL via OpenRouter, Anthropic offline
 # fallback). Output is a flat list of change-intents.
 INTENT_SYSTEM_PROMPT = """\
 You decompose a natural-language request to evolve a knowledge-graph ontology
@@ -178,9 +178,9 @@ class OntologyResolver:
 
     # Mirror CSVResolver's provider/model config so the single intent-parse call
     # uses the same routing knobs as the rest of the resolver pipeline.
-    EXTRACT_MODEL = os.environ.get("OMNIX_EXTRACT_MODEL", PRIMARY_MODEL)
-    EXTRACT_PROVIDER = os.environ.get("OMNIX_EXTRACT_PROVIDER", "openrouter")
-    INFER_MODEL = os.environ.get("OMNIX_INFER_MODEL", "claude-opus-4-8")
+    EXTRACT_MODEL = os.environ.get("INFONA_EXTRACT_MODEL", PRIMARY_MODEL)
+    EXTRACT_PROVIDER = os.environ.get("INFONA_EXTRACT_PROVIDER", "openrouter")
+    INFER_MODEL = os.environ.get("INFONA_INFER_MODEL", "claude-opus-4-8")
 
     def __init__(
         self,

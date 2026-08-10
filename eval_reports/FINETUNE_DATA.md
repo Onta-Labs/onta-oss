@@ -15,7 +15,7 @@ Each line is a JSON object with a verified correct (question → SPARQL) pair:
 {
   "question": "How many movies have runtime > 180?",
   "ontology": "Type: Movie — URI: <...>\n  Attributes: runtime (float)...",
-  "graph_uri": "https://omnix.dev/graphs/demo-tenant/kg/imdb-movies",
+  "graph_uri": "https://graph.infona.ai/graphs/demo-tenant/kg/imdb-movies",
   "sparql": "SELECT (COUNT(...)) FROM <...> WHERE { ... }",
   "source": "eval",
   "dataset": "imdb-top-1000-clean.csv",
@@ -24,7 +24,7 @@ Each line is a JSON object with a verified correct (question → SPARQL) pair:
 ```
 
 **How it grows:**
-- Automatically after every eval run (`omnix eval` saves correct pairs)
+- Automatically after every eval run (`infona eval` saves correct pairs)
 - Automatically after Spider4SPARQL benchmark runs
 - Deduped by (question, graph_uri) — newer SPARQL replaces older for same question
 
@@ -37,7 +37,7 @@ the reason it failed:
 {
   "question": "How many singers are from France?",
   "ontology": "Type: Singer — URI: <...>...",
-  "graph_uri": "https://omnix.dev/graphs/demo-tenant/kg/...",
+  "graph_uri": "https://graph.infona.ai/graphs/demo-tenant/kg/...",
   "sparql": "SELECT ... (the wrong query)",
   "answer": "0",
   "expected": "3",
@@ -72,7 +72,7 @@ the reason it failed:
 
 ## How to Grow the Dataset
 
-1. **Run evals on our 8 KGs**: `omnix eval --query-only --cache-questions --fast-judge --kg <name> <csv>`
+1. **Run evals on our 8 KGs**: `infona eval --query-only --cache-questions --fast-judge --kg <name> <csv>`
    Each run adds correct pairs to `finetune_pairs.jsonl` and wrong pairs to
    `finetune_negatives.jsonl`.
 

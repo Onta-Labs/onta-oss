@@ -11,7 +11,7 @@
         "2"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?providerType) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?providerType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/ProviderType> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?providerType) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?providerType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/ProviderType> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -74,7 +74,7 @@
         "Vision Care"
       ],
       "full_result_count": 12,
-      "gold_sparql": "SELECT ?taxonomyGroupName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?taxonomyGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/TaxonomyGroup> .\n  ?taxonomyGroup <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/taxonomy_group_name> ?taxonomyGroupName .\n}",
+      "gold_sparql": "SELECT ?taxonomyGroupName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?taxonomyGroup <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/TaxonomyGroup> .\n  ?taxonomyGroup <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/taxonomy_group_name> ?taxonomyGroupName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -126,7 +126,7 @@
         "10000"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?practiceLocation) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?practiceLocation) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -229,7 +229,7 @@
         "ZZ"
       ],
       "full_result_count": 52,
-      "gold_sparql": "SELECT ?stateName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/state_name> ?stateName .\n}",
+      "gold_sparql": "SELECT ?stateName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/state_name> ?stateName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -281,7 +281,7 @@
         "24"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?provider) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/display_name> ?displayName .\n  FILTER(CONTAINS(LCASE(STR(?displayName)), LCASE('LAKE REGIONAL')))\n}",
+      "gold_sparql": "SELECT (COUNT(?provider) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/display_name> ?displayName .\n  FILTER(CONTAINS(LCASE(STR(?displayName)), LCASE('LAKE REGIONAL')))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -336,7 +336,7 @@
         "Springfield"
       ],
       "full_result_count": 4,
-      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/city_name> ?cityName .\n  ?city <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(STRSTARTS(LCASE(STR(?cityName)), LCASE('Spring')))\n}",
+      "gold_sparql": "SELECT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/city_name> ?cityName .\n  ?city <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(STRSTARTS(LCASE(STR(?cityName)), LCASE('Spring')))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -388,7 +388,7 @@
         "16"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?specialty) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER(CONTAINS(LCASE(STR(?specialtyName)), LCASE('Technician')))\n}",
+      "gold_sparql": "SELECT (COUNT(?specialty) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER(CONTAINS(LCASE(STR(?specialtyName)), LCASE('Technician')))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -485,7 +485,7 @@
         "MA"
       ],
       "full_result_count": 46,
-      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/country_code> ?countryCode .\n  ?state <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(?countryCode = 'US')\n}",
+      "gold_sparql": "SELECT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/country_code> ?countryCode .\n  ?state <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(?countryCode = 'US')\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -532,21 +532,21 @@
       "id": "q-009",
       "tier": "T3",
       "question": "How many providers are associated with each practice location?",
-      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1",
+      "expected_answer": "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1",
       "full_expected_items": [
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1"
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1598934572__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1760114839__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1366647794__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1811596877__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1003576810__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1295447886__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1043451859__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1922158385__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1669775771__loc | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/PracticeLocation/1992830467__loc | 1"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?practiceLocation (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?practiceLocation ORDER BY DESC(?providerCount) LIMIT 10",
+      "gold_sparql": "SELECT ?practiceLocation (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/provider_has_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?practiceLocation ORDER BY DESC(?providerCount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -593,21 +593,21 @@
       "id": "q-010",
       "tier": "T3",
       "question": "Which cities host the most practice locations, and how many do they host?",
-      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218",
+      "expected_answer": "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218",
       "full_expected_items": [
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218"
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/KY__louisa | 972",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/IA__ankeny | 455",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/IA__ames | 415",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/MO__osage_beach | 397",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/OH__dublin | 355",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/OH__westerville | 324",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/OH__columbus | 299",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/CA__rancho_cucamonga | 273",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/KY__paintsville | 248",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/City/CA__pomona | 218"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?city (COUNT(DISTINCT ?practiceLocation) AS ?practiceLocationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/city_hosts_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?city ORDER BY DESC(?practiceLocationCount) LIMIT 10",
+      "gold_sparql": "SELECT ?city (COUNT(DISTINCT ?practiceLocation) AS ?practiceLocationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?city <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/City> .\n  ?city <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/city_hosts_practice_location> ?practiceLocation .\n  ?practiceLocation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/PracticeLocation> .\n} GROUP BY ?city ORDER BY DESC(?practiceLocationCount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -654,18 +654,18 @@
       "id": "q-011",
       "tier": "T3",
       "question": "How many providers are there for each specialty, specifically for specialties with 'Unknown' in their name?",
-      "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1",
+      "expected_answer": "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1",
       "full_expected_items": [
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1",
-        "https://omnix.dev/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1"
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/208VP0000X | 29",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2086S0129X | 6",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2085R0001X | 6",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/213ES0131X | 2",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/222Z00000X | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2084N0600X | 1",
+        "https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/Specialty/2085N0904X | 1"
       ],
       "full_result_count": 7,
-      "gold_sparql": "SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/provider_has_specialty> ?specialty .\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://omnix.dev/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER (CONTAINS(LCASE(?specialtyName), 'unknown'))\n} GROUP BY ?specialty ORDER BY DESC(?providerCount) LIMIT 10",
+      "gold_sparql": "SELECT ?specialty (COUNT(DISTINCT ?provider) AS ?providerCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-npi-registry> WHERE {\n  ?provider <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Provider> .\n  ?provider <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/provider_has_specialty> ?specialty .\n  ?specialty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/type/Specialty> .\n  ?specialty <https://graph.infona.ai/holdout-v2/holdout-v2-npi-registry/pred/specialty_name> ?specialtyName .\n  FILTER (CONTAINS(LCASE(?specialtyName), 'unknown'))\n} GROUP BY ?specialty ORDER BY DESC(?providerCount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,

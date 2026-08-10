@@ -24,17 +24,17 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
-os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
+os.environ["INFONA_API_KEYS"] = '{"test-key": "test-tenant"}'
+os.environ["INFONA_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"
-TYPES = "https://graph.onta.sh/types/"
-ENTITIES = "https://graph.onta.sh/entities/"
-ONTO = "https://graph.onta.sh/onto/"
+TYPES = "https://graph.infona.ai/types/"
+ENTITIES = "https://graph.infona.ai/entities/"
+ONTO = "https://graph.infona.ai/onto/"
 SCHEMA_URL = f"/graphs/{TENANT}/explore/kgs/{KG}/schema"
 
 
@@ -254,7 +254,7 @@ def test_internal_predicates_and_legacy_companions_are_hidden(
              "cnt": "10", "rel": "0", "target": ""},
             {"type": TYPES + "Drug", "pred": ONTO + "batch_id",
              "cnt": "10", "rel": "0", "target": ""},
-            {"type": TYPES + "Drug", "pred": "https://graph.onta.sh/er/erSignal_name",
+            {"type": TYPES + "Drug", "pred": "https://graph.infona.ai/er/erSignal_name",
              "cnt": "10", "rel": "0", "target": ""},
         ),
     }
@@ -433,7 +433,7 @@ def test_layered_declaration_collapses_onto_tenant_namespace_instances(
     # under the historical TENANT namespace must resolve to ONE entry, not a
     # populated orphan plus a phantom empty type. The tenant namespace is a
     # PREFIX of the public one, so the URI parse has to be longest-first.
-    public = "https://graph.onta.sh/types/public/"
+    public = "https://graph.infona.ai/types/public/"
     stats = {
         "entity_count": _rows({"type": TYPES + "Drug", "ec": "8", "sp": "", "tp": ""}),
         "preds": _rows(

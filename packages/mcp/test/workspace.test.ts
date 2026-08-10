@@ -43,8 +43,8 @@ function touch(path: string, contents = "a,b\n1,2\n", mtimeSeconds?: number): st
 beforeEach(() => {
   // realpath: on macOS the tmpdir is /var/... which is a symlink to /private/var,
   // and every containment comparison in this module is canonical-vs-canonical.
-  root = realpathSync(mkdtempSync(join(tmpdir(), "onta-mcp-root-")));
-  outside = realpathSync(mkdtempSync(join(tmpdir(), "onta-mcp-outside-")));
+  root = realpathSync(mkdtempSync(join(tmpdir(), "infona-mcp-root-")));
+  outside = realpathSync(mkdtempSync(join(tmpdir(), "infona-mcp-outside-")));
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -69,34 +69,13 @@ describe("resolveRoots: dormant unless explicitly configured", () => {
     expect(res.roots).not.toContain(process.cwd());
   });
 
-  it("honors the INFONA_ then ONTA_ then COGRAPH_ then OMNIX_ precedence", () => {
+  it("uses INFONA_LOCAL_FILES_DIR only (no dual-brand env aliases)", () => {
     expect(LOCAL_FILES_ENV_VARS).toEqual([
       "INFONA_LOCAL_FILES_DIR",
-      "ONTA_LOCAL_FILES_DIR",
-      "COGRAPH_LOCAL_FILES_DIR",
-      "OMNIX_LOCAL_FILES_DIR",
     ]);
-    const both = resolveRoots({
-      INFONA_LOCAL_FILES_DIR: root,
-      ONTA_LOCAL_FILES_DIR: outside,
-      COGRAPH_LOCAL_FILES_DIR: outside,
-      OMNIX_LOCAL_FILES_DIR: outside,
-    });
-    expect(both.roots).toEqual([root]);
-    expect(both.varName).toBe("INFONA_LOCAL_FILES_DIR");
-
-    // ONTA_ still wins over COGRAPH_/OMNIX_ when INFONA_ is unset.
-    const onta = resolveRoots({
-      ONTA_LOCAL_FILES_DIR: root,
-      COGRAPH_LOCAL_FILES_DIR: outside,
-      OMNIX_LOCAL_FILES_DIR: outside,
-    });
-    expect(onta.roots).toEqual([root]);
-    expect(onta.varName).toBe("ONTA_LOCAL_FILES_DIR");
-
-    const legacy = resolveRoots({ OMNIX_LOCAL_FILES_DIR: root });
-    expect(legacy.roots).toEqual([root]);
-    expect(legacy.varName).toBe("OMNIX_LOCAL_FILES_DIR");
+    const res = resolveRoots({ INFONA_LOCAL_FILES_DIR: root });
+    expect(res.roots).toEqual([root]);
+    expect(res.varName).toBe("INFONA_LOCAL_FILES_DIR");
   });
 
   it("rejects a relative path (it would resolve against the client-controlled cwd)", () => {

@@ -1,7 +1,7 @@
 """Query-LLM robustness guards for the Cerebras query-provider flip.
 
 Two real defects surfaced when switching the NL->SPARQL query model to a
-Cerebras-served reasoning model (`OMNIX_QUERY_PROVIDER=cerebras`):
+Cerebras-served reasoning model (`INFONA_QUERY_PROVIDER=cerebras`):
 
   1. `_generate_via_cerebras` capped `max_completion_tokens` at 512. A reasoning
      model spends output tokens on reasoning BEFORE emitting the answer, so 512

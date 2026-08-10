@@ -14,7 +14,7 @@ from infona_client.graph.queries import (
     sparql_string_literal,
 )
 
-OMNIX_ONTO = ONTO_BASE
+INFONA_ONTO = ONTO_BASE
 RDFS = "http://www.w3.org/2000/01/rdf-schema"
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns"
 XSD = "http://www.w3.org/2001/XMLSchema"
@@ -91,7 +91,7 @@ def _safe_id(raw_id: str) -> str:
 
 def entity_uri(type_name: str, raw_id: str) -> str:
     """Canonical instance-node IRI for ``raw_id`` of ``type_name``:
-    ``https://graph.onta.sh/entities/<type_name>/<_safe_id(raw_id)>``. The single
+    ``https://graph.infona.ai/entities/<type_name>/<_safe_id(raw_id)>``. The single
     source of truth every write rail mints entity nodes through — keep it byte-for-
     byte stable, since the slug is the node's identity (changing it orphans data)."""
     return f"{IRI_BASE}/entities/{type_name}/{_safe_id(raw_id)}"
@@ -559,14 +559,14 @@ def upsert_attribute_text_kind(
     a_uri = attr_uri(type_name, attr_name)
     if text_kind:
         kind_insert = (
-            f"INSERT {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{OMNIX_ONTO}/textKind> \"{_esc(text_kind)}\" }} }}\n"
+            f"INSERT {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{INFONA_ONTO}/textKind> \"{_esc(text_kind)}\" }} }}\n"
         )
     else:
         kind_insert = ""
     return (
-        f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{OMNIX_ONTO}/textKind> ?k }} }}\n"
+        f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{INFONA_ONTO}/textKind> ?k }} }}\n"
         f"{kind_insert}"
-        f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{OMNIX_ONTO}/textKind> ?k }} }} }}"
+        f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{INFONA_ONTO}/textKind> ?k }} }} }}"
     )
 
 
@@ -581,7 +581,7 @@ def text_kind_map_query(graph_uri: str) -> str:
     return (
         f"SELECT ?attr ?kind FROM <{graph_uri}>\n"
         f"WHERE {{\n"
-        f"  ?attr <{OMNIX_ONTO}/textKind> ?kind .\n"
+        f"  ?attr <{INFONA_ONTO}/textKind> ?kind .\n"
         f"}}"
     )
 
@@ -599,7 +599,7 @@ def mark_core_slot(graph_uri: str, type_name: str, slot_name: str) -> str:
     return (
         f"INSERT DATA {{\n"
         f"  GRAPH <{graph_uri}> {{\n"
-        f'    <{a_uri}> <{OMNIX_ONTO}/coreSlot> "true"^^<{XSD}#boolean> .\n'
+        f'    <{a_uri}> <{INFONA_ONTO}/coreSlot> "true"^^<{XSD}#boolean> .\n'
         f"  }}\n"
         f"}}"
     )
@@ -686,10 +686,10 @@ def get_type_functions_query(graph_uri: str, type_name: str) -> str:
     return (
         f"SELECT ?name ?endpoint ?desc FROM <{graph_uri}>\n"
         f"WHERE {{\n"
-        f"  ?func <{OMNIX_ONTO}/attachedTo> <{t_uri}> .\n"
-        f"  ?func <{OMNIX_ONTO}/name> ?name .\n"
-        f"  OPTIONAL {{ ?func <{OMNIX_ONTO}/endpointUrl> ?endpoint }}\n"
-        f"  OPTIONAL {{ ?func <{OMNIX_ONTO}/description> ?desc }}\n"
+        f"  ?func <{INFONA_ONTO}/attachedTo> <{t_uri}> .\n"
+        f"  ?func <{INFONA_ONTO}/name> ?name .\n"
+        f"  OPTIONAL {{ ?func <{INFONA_ONTO}/endpointUrl> ?endpoint }}\n"
+        f"  OPTIONAL {{ ?func <{INFONA_ONTO}/description> ?desc }}\n"
         f"}}"
     )
 
@@ -756,7 +756,7 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
 
     Deterministic and regex-based — no ontology lookup, no Neptune, no LLM:
       - Only matches type-assertion predicate position whose OBJECT is a
-        `https://graph.onta.sh/types/...` URI (the only place rewriting is valid).
+        `https://graph.infona.ai/types/...` URI (the only place rewriting is valid).
       - Closure over a leaf type is set-equal to the leaf itself, so the rewrite
         is safe to apply unconditionally.
       - Idempotent: a triple already using the closure path (`.../subClassOf>*`)
@@ -780,7 +780,7 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
 
     Deterministic and regex-based — no ontology lookup, no Neptune, no LLM:
       - Only matches type-assertion predicate position whose OBJECT is a
-        `https://graph.onta.sh/types/...` URI (the only place rewriting is valid).
+        `https://graph.infona.ai/types/...` URI (the only place rewriting is valid).
       - Closure over a leaf type is set-equal to the leaf itself, so the rewrite
         is safe to apply unconditionally.
       - Idempotent: a triple already using the closure path (`.../subClassOf>*`)
@@ -803,14 +803,14 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
     rdf_type_full = f"<{RDF}#type>"
     types_obj = re.escape(_TYPES_URI)
 
-    # Form A: `?var a <https://graph.onta.sh/types/X>`
+    # Form A: `?var a <https://graph.infona.ai/types/X>`
     sparql = re.sub(
         rf'(\?\w+)\s+a\s+(<{types_obj}\w+>)',
         rf'\1 {_CLOSURE_PATH} \2',
         sparql,
     )
 
-    # Form B: `?var <http://...#type> <https://graph.onta.sh/types/X>`
+    # Form B: `?var <http://...#type> <https://graph.infona.ai/types/X>`
     # The negative-lookahead on the predicate guards idempotence: skip when the
     # predicate is already the closure path (which itself contains <...#type>).
     sparql = re.sub(
@@ -819,7 +819,7 @@ def rewrite_type_predicate_to_closure(sparql: str) -> str:
         sparql,
     )
 
-    # Form C: prefixed `?var rdf:type <https://graph.onta.sh/types/X>`. Common
+    # Form C: prefixed `?var rdf:type <https://graph.infona.ai/types/X>`. Common
     # when the model declares `PREFIX rdf:`. Negative-lookahead on `/` keeps it
     # idempotent against an already-rewritten `rdf:type/rdfs:subClassOf*`.
     sparql = re.sub(
@@ -839,7 +839,7 @@ def _rewrite_indirect_type_constraints(sparql: str) -> str:
 
     Handles COG-34 forms D/E/F (VALUES, FILTER `=`, FILTER `IN`). For each
     candidate variable `?t` we (1) confirm it is the bare object of an rdf:type
-    triple, (2) confirm it is constrained to at least one `https://graph.onta.sh/
+    triple, (2) confirm it is constrained to at least one `https://graph.infona.ai/
     types/...` URI via VALUES or FILTER, then (3) upgrade ONLY that triple's
     rdf:type predicate to the closure path. The object variable is untouched, so
     the existing VALUES/FILTER constraint keeps pinning it to the named type(s)
@@ -926,7 +926,7 @@ def _rewrite_indirect_type_constraints(sparql: str) -> str:
 # the SAME predicate ``pipeline/mutations.py`` mints — kept here too because the
 # read-side builder needs the constant with no import from the mutation layer. NOT
 # standard ``owl:sameAs``; the repo has no ``2002/07/owl`` namespace.
-SAME_AS = f"{OMNIX_ONTO}/sameAs"
+SAME_AS = f"{INFONA_ONTO}/sameAs"
 
 # Instance-node IRIs are the ONLY URIs a sameAs alias applies to (types/attr/onto
 # URIs are schema, never re-keyed by a merge). The rewrite is scoped narrowly to
@@ -996,7 +996,7 @@ def rewrite_entity_ref_to_sameas_closure(sparql: str) -> str:
     query is always semantics-preserving.
 
     Scoped and idempotent by construction:
-      - Only ``https://graph.onta.sh/entities/…`` IRIs are touched — a ``types/`` /
+      - Only ``https://graph.infona.ai/entities/…`` IRIs are touched — a ``types/`` /
         ``attrs/`` / ``onto/`` URI (schema, never sameAs-aliased) is left verbatim,
         so this never disturbs the subclass-closure or attribute rewrites.
       - SUBJECT/OBJECT position is classified by the following token: an entity IRI
@@ -1118,8 +1118,8 @@ def get_full_ontology_query(graph_uri: str) -> str:
         f"    OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
         f"  }}\n"
         f"  OPTIONAL {{\n"
-        f"    ?func <{OMNIX_ONTO}/attachedTo> ?type .\n"
-        f"    ?func <{OMNIX_ONTO}/name> ?funcName .\n"
+        f"    ?func <{INFONA_ONTO}/attachedTo> ?type .\n"
+        f"    ?func <{INFONA_ONTO}/name> ?funcName .\n"
         f"  }}\n"
         f"}}"
     )
@@ -1185,13 +1185,13 @@ def full_ontology_detail_query(graph_uri: str) -> str:
         f"    ?attr <{RDFS}#label> ?attrLabel .\n"
         f"    OPTIONAL {{ ?attr <{RDFS}#comment> ?attrComment }}\n"
         f"    OPTIONAL {{ ?attr <{RDFS}#range> ?range }}\n"
-        f"    OPTIONAL {{ ?attr <{OMNIX_ONTO}/coreSlot> ?core }}\n"
+        f"    OPTIONAL {{ ?attr <{INFONA_ONTO}/coreSlot> ?core }}\n"
         f"  }}\n"
         f"  OPTIONAL {{\n"
-        f"    ?func <{OMNIX_ONTO}/attachedTo> ?type .\n"
-        f"    ?func <{OMNIX_ONTO}/name> ?funcName .\n"
-        f"    OPTIONAL {{ ?func <{OMNIX_ONTO}/description> ?funcDesc }}\n"
-        f"    OPTIONAL {{ ?func <{OMNIX_ONTO}/endpointUrl> ?funcEndpoint }}\n"
+        f"    ?func <{INFONA_ONTO}/attachedTo> ?type .\n"
+        f"    ?func <{INFONA_ONTO}/name> ?funcName .\n"
+        f"    OPTIONAL {{ ?func <{INFONA_ONTO}/description> ?funcDesc }}\n"
+        f"    OPTIONAL {{ ?func <{INFONA_ONTO}/endpointUrl> ?funcEndpoint }}\n"
         f"  }}\n"
         f"}}\n"
         f"ORDER BY ?type ?typeLabel ?typeComment ?parent ?attr ?attrLabel "

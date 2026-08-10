@@ -5,9 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "infona-mcp": "./dist/index.js",
-    "onta-mcp": "./dist/index.js",
-    "mcp": "./dist/index.js"
+    "infona-mcp": "./dist/index.js"
   },
   "publishConfig": {
     "access": "public"
@@ -21,7 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepack": "node ../../scripts/chmod-bin.js packages/cograph-mcp/dist/index.js"
+    "prepack": "node ../../scripts/chmod-bin.js packages/mcp/dist/index.js"
   },
   "keywords": [
     "knowledge-graph",
@@ -39,7 +37,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/infona-ai/infona-oss.git",
-    "directory": "packages/cograph-mcp"
+    "directory": "packages/mcp"
   },
   "bugs": {
     "url": "https://github.com/infona-ai/infona-oss/issues"

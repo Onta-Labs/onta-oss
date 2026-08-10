@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Client,
-  OntaError,
+  InfonaError,
   isTerminalJobStatus,
   TERMINAL_JOB_STATUSES,
 } from "../src/client.js";
@@ -99,7 +99,7 @@ describe("non-throwing + non-reshaping passthrough", () => {
 
   it("returns a 404 Response WITHOUT throwing (contrast: typed method throws)", async () => {
     // Same backend 404 drives both calls; the raw method resolves, the typed
-    // method rejects with a OntaError carrying the status + body.
+    // method rejects with a InfonaError carrying the status + body.
     installFetch(new Response('{"detail":"not found"}', { status: 404 }));
     const client = makeClient();
 
@@ -107,7 +107,7 @@ describe("non-throwing + non-reshaping passthrough", () => {
     expect(raw.status).toBe(404);
     expect(await raw.text()).toBe('{"detail":"not found"}'); // body UNPARSED / unreshaped
 
-    await expect(client.enrichJob("missing")).rejects.toBeInstanceOf(OntaError);
+    await expect(client.enrichJob("missing")).rejects.toBeInstanceOf(InfonaError);
   });
 
   it("does not reshape a 2xx body — caller gets the raw envelope", async () => {
@@ -141,13 +141,13 @@ describe("non-throwing + non-reshaping passthrough", () => {
     });
     vi.stubGlobal("fetch", spy);
     const client = makeClient();
-    await expect(client.raw.kgs()).rejects.toBeInstanceOf(OntaError);
+    await expect(client.raw.kgs()).rejects.toBeInstanceOf(InfonaError);
   });
 
-  it("maps an abort/timeout to OntaError (no Response to return)", async () => {
+  it("maps an abort/timeout to InfonaError (no Response to return)", async () => {
     // When the timeout fires, the AbortController aborts the fetch and the
     // platform rejects with a DOMException/Error named "AbortError". requestRaw
-    // surfaces that one case as a thrown OntaError (there is no Response).
+    // surfaces that one case as a thrown InfonaError (there is no Response).
     const spy = vi.fn(async (_input: unknown, init?: RequestInit) => {
       const signal = init?.signal;
       throw await new Promise<never>((_resolve, reject) => {
@@ -163,7 +163,7 @@ describe("non-throwing + non-reshaping passthrough", () => {
     vi.stubGlobal("fetch", spy);
     const client = makeClient();
     // 0ms timeout → controller aborts on the next tick → fetch rejects AbortError.
-    await expect(client.raw.kgs({ timeoutMs: 0 })).rejects.toBeInstanceOf(OntaError);
+    await expect(client.raw.kgs({ timeoutMs: 0 })).rejects.toBeInstanceOf(InfonaError);
   });
 });
 
@@ -554,9 +554,9 @@ describe("new typed parsed variants of the missing methods", () => {
     expect(got).toEqual(rules);
   });
 
-  it("typed missing method throws OntaError on non-2xx", async () => {
+  it("typed missing method throws InfonaError on non-2xx", async () => {
     installFetch(new Response("boom", { status: 503 }));
-    await expect(makeClient().exploreTypeEdges("kg1")).rejects.toBeInstanceOf(OntaError);
+    await expect(makeClient().exploreTypeEdges("kg1")).rejects.toBeInstanceOf(InfonaError);
   });
 
   it("search (typed, ONTA-178) maps opts to the canonical body and parses the envelope", async () => {
@@ -627,11 +627,11 @@ describe("new typed parsed variants of the missing methods", () => {
     });
   });
 
-  it("search (typed) surfaces the disabled-deployment 503 as OntaError", async () => {
+  it("search (typed) surfaces the disabled-deployment 503 as InfonaError", async () => {
     installFetch(
-      new Response('{"detail":"… COGRAPH_SEMANTIC_INDEX_ENABLED …"}', { status: 503 }),
+      new Response('{"detail":"… INFONA_SEMANTIC_INDEX_ENABLED …"}', { status: 503 }),
     );
-    await expect(makeClient().search("x")).rejects.toBeInstanceOf(OntaError);
+    await expect(makeClient().search("x")).rejects.toBeInstanceOf(InfonaError);
   });
 
   it("grep (typed, ONTA-416) maps opts to the canonical body and parses the envelope", async () => {
@@ -644,7 +644,7 @@ describe("new typed parsed variants of the missing methods", () => {
           entity_uri: "e:m1",
           label: "The Matrix",
           type: "Movie",
-          predicate: "https://graph.onta.sh/onto/title",
+          predicate: "https://graph.infona.ai/onto/title",
           attr: "title",
           value: "The Matrix",
           snippet: "The Matrix",
@@ -706,9 +706,9 @@ describe("new typed parsed variants of the missing methods", () => {
     expect(JSON.parse(String(calls[0]!.init.body)).case_sensitive).toBe(false);
   });
 
-  it("grep (typed) surfaces the too-short-needle 400 as OntaError", async () => {
+  it("grep (typed) surfaces the too-short-needle 400 as InfonaError", async () => {
     installFetch(new Response('{"detail":"q must contain at least 2 …"}', { status: 400 }));
-    await expect(makeClient().grep("a", "movies")).rejects.toBeInstanceOf(OntaError);
+    await expect(makeClient().grep("a", "movies")).rejects.toBeInstanceOf(InfonaError);
   });
 
   it("ontologyApplyBatch (typed) wraps changes in {changes}, hits the canonical batch path, and passes the envelope through", async () => {
@@ -744,9 +744,9 @@ describe("new typed parsed variants of the missing methods", () => {
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ changes });
   });
 
-  it("ontologyApplyBatch (typed) surfaces a non-2xx as OntaError", async () => {
+  it("ontologyApplyBatch (typed) surfaces a non-2xx as InfonaError", async () => {
     installFetch(new Response("boom", { status: 500 }));
-    await expect(makeClient().ontologyApplyBatch([] as never)).rejects.toBeInstanceOf(OntaError);
+    await expect(makeClient().ontologyApplyBatch([] as never)).rejects.toBeInstanceOf(InfonaError);
   });
 });
 

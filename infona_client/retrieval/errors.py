@@ -189,7 +189,7 @@ class RateLimitEscalator:
 #:
 #: Cautionary tale (the bug this template fixes): the message used to hardcode
 #: "OpenRouter", but :func:`openrouter_chat` routes to Cerebras when
-#: ``OMNIX_LLM_PROVIDER=cerebras``. On 2026-07-08 a Cerebras 402 (Cerebras out of
+#: ``INFONA_LLM_PROVIDER=cerebras``. On 2026-07-08 a Cerebras 402 (Cerebras out of
 #: credits) surfaced telling the operator to check the *OpenRouter* balance,
 #: sending debugging in the wrong direction. The provider is now DERIVED from the
 #: caller-supplied slug/host — no provider name is hardcoded here.
@@ -209,7 +209,7 @@ def _provider_phrase(provider: str | None, host: str | None) -> str:
     """A human phrase naming the LLM backend that returned the error.
 
     DERIVED purely from the caller-supplied ``provider`` slug (e.g. the value of
-    ``OMNIX_LLM_PROVIDER`` — ``"cerebras"`` / ``"openrouter"`` / any future
+    ``INFONA_LLM_PROVIDER`` — ``"cerebras"`` / ``"openrouter"`` / any future
     backend) and/or the base ``host`` (``api.cerebras.ai`` / ``openrouter.ai``);
     nothing provider-specific is hardcoded here, so a brand-new backend names
     itself correctly with no code change. Degrades to a generic phrase when the
@@ -246,7 +246,7 @@ def classify_llm_status_error(
     run-level halt separately, by :class:`RateLimitEscalator` — which the run owns
     and which alone has the streak context a per-call classifier lacks (ONTA-273).
 
-    ``provider`` (the backend slug, e.g. ``OMNIX_LLM_PROVIDER``) and ``host`` (the
+    ``provider`` (the backend slug, e.g. ``INFONA_LLM_PROVIDER``) and ``host`` (the
     base API host, e.g. ``api.cerebras.ai``) make the message name the account
     that ACTUALLY rejected the call — a Cerebras 402 says "Cerebras", an
     OpenRouter 402 says "OpenRouter". Both are optional and default to ``None`` so

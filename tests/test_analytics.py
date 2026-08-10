@@ -4,7 +4,7 @@ The seam mirrors the established plugin pattern (register_delivery_sink, …): a
 process-wide sink registry with a NO-OP default, plus a fire-and-forget
 ``emit()`` that MUST never raise and MUST be a no-op unless a real sink is
 registered. The proprietary PostHog sink registers over this seam via the
-``OMNIX_ANALYTICS_PLUGIN`` hook at app boot; OSS itself never imports posthog.
+``INFONA_ANALYTICS_PLUGIN`` hook at app boot; OSS itself never imports posthog.
 """
 
 import pytest
@@ -311,7 +311,7 @@ def test_query_executed_degraded_result_without_rows_metadata_is_zero():
     assert props["ok"] is False
 
 
-# --- OMNIX_ANALYTICS_PLUGIN loader (mirrors the router/enrichment loaders) --- #
+# --- INFONA_ANALYTICS_PLUGIN loader (mirrors the router/enrichment loaders) --- #
 
 
 def test_analytics_plugin_loaded_at_startup(monkeypatch):

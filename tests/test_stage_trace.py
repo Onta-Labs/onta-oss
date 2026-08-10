@@ -297,7 +297,7 @@ def test_summarize_a2_a3_a6_contract_shapes():
     a6 = summarize_a6_graph_delta(
         graph_delta={
             "run_id": "run-1",
-            "instance_graph": "https://omnix.dev/graphs/demo/universities",
+            "instance_graph": "https://graph.infona.ai/graphs/demo/universities",
             "facts": [
                 ["f1", "s1", "p1", "o1"],
                 ["f2", "s2", "p2", "o2"],
@@ -358,7 +358,7 @@ async def test_discovery_finish_emits_contract_shaped_p1_p2_p3_p6():
         a6_triples=10,
         a6_facts_sample=[["f", "s", "p", "o"]],
         a6_run_id="run-d",
-        a6_instance_graph="https://omnix.dev/graphs/demo-tenant/universities",
+        a6_instance_graph="https://graph.infona.ai/graphs/demo-tenant/universities",
         entities_written=2,
         focus_type="University",
         focus_attributes=["name", "website"],
@@ -579,7 +579,7 @@ async def test_enrichment_executor_persists_live_stage_trace():
                 {
                     "e": {
                         "type": "uri",
-                        "value": "https://graph.onta.sh/entities/Product/p1",
+                        "value": "https://graph.infona.ai/entities/Product/p1",
                     },
                     "label": {"type": "literal", "value": "Widget"},
                     "vals": {"type": "literal", "value": ""},

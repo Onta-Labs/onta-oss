@@ -11,7 +11,7 @@
         "434"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -105,7 +105,7 @@
         "B"
       ],
       "full_result_count": 43,
-      "gold_sparql": "SELECT DISTINCT ?classCode FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode . }",
+      "gold_sparql": "SELECT DISTINCT ?classCode FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode . }",
       "per_seed": [
         {
           "seed": 1,
@@ -524,7 +524,7 @@
         "Express Scripts, Inc."
       ],
       "full_result_count": 368,
-      "gold_sparql": "SELECT DISTINCT ?ownerName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName . }",
+      "gold_sparql": "SELECT DISTINCT ?ownerName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName . }",
       "per_seed": [
         {
           "seed": 1,
@@ -576,7 +576,7 @@
         "22"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?country) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?country <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Country> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?country) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?country <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Country> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -628,7 +628,7 @@
         "89"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/serial_number> ?serialNumber .\n  FILTER(STRSTARTS(?serialNumber, \"770000\"))\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/serial_number> ?serialNumber .\n  FILTER(STRSTARTS(?serialNumber, \"770000\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -696,7 +696,7 @@
         "Sucre Designs, LLC"
       ],
       "full_result_count": 17,
-      "gold_sparql": "SELECT ?ownerName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/city> ?city .\n  FILTER(?city = \"New York\")\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n}",
+      "gold_sparql": "SELECT ?ownerName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/city> ?city .\n  FILTER(?city = \"New York\")\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -748,7 +748,7 @@
         "15"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode .\n  FILTER(xsd:integer(?classCode) > 30)\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode .\n  FILTER(xsd:integer(?classCode) > 30)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -800,7 +800,7 @@
         "5"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?markElement .\n  FILTER(?markElement = \"BETTER SEX\")\n}",
+      "gold_sparql": "SELECT (COUNT(?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?markElement .\n  FILTER(?markElement = \"BETTER SEX\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -856,7 +856,7 @@
         "C.A.R.E. WEAR | 1"
       ],
       "full_result_count": 5,
-      "gold_sparql": "SELECT ?ownerName (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/city> \"NEW YORK\" .\n} GROUP BY ?ownerName ORDER BY DESC(?trademarkCount) LIMIT 10",
+      "gold_sparql": "SELECT ?ownerName (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/city> \"NEW YORK\" .\n} GROUP BY ?ownerName ORDER BY DESC(?trademarkCount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -918,7 +918,7 @@
         "Plastic molding compounds for use in plastic extrusion operations; Plastic molding compounds for use in the manufacture of molded plastic articles"
       ],
       "full_result_count": 11,
-      "gold_sparql": "SELECT DISTINCT ?goodsDescription FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?goods <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n  ?goods <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_in_nice_class> ?niceClass .\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> \"001\" .\n  ?goods <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_description> ?goodsDescription .\n}",
+      "gold_sparql": "SELECT DISTINCT ?goodsDescription FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?goods <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n  ?goods <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_in_nice_class> ?niceClass .\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> \"001\" .\n  ?goods <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_description> ?goodsDescription .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -978,7 +978,7 @@
         "Abandoned due to incomplete response.  The response did not satisfy all issues in the Office action.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 1"
       ],
       "full_result_count": 9,
-      "gold_sparql": "SELECT ?statusDescription (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_has_status> ?statusType .\n  ?statusType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/StatusType> .\n  ?statusType <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/status_description> ?statusDescription .\n} GROUP BY ?statusDescription ORDER BY DESC(?trademarkCount) LIMIT 10",
+      "gold_sparql": "SELECT ?statusDescription (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_has_status> ?statusType .\n  ?statusType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/StatusType> .\n  ?statusType <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/status_description> ?statusDescription .\n} GROUP BY ?statusDescription ORDER BY DESC(?trademarkCount) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -1397,7 +1397,7 @@
         "SENSIA LLC | 1"
       ],
       "full_result_count": 368,
-      "gold_sparql": "SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  {\n    SELECT ?owner (COUNT(DISTINCT ?goodsServices) AS ?numGoodsServices) WHERE {\n      ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n      ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n      ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goodsServices .\n      ?goodsServices <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n    } GROUP BY ?owner\n  }\n} GROUP BY ?ownerName",
+      "gold_sparql": "SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  {\n    SELECT ?owner (COUNT(DISTINCT ?goodsServices) AS ?numGoodsServices) WHERE {\n      ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n      ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n      ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goodsServices .\n      ?goodsServices <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n    } GROUP BY ?owner\n  }\n} GROUP BY ?ownerName",
       "per_seed": [
         {
           "seed": 1,

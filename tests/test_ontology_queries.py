@@ -15,22 +15,22 @@ from infona_client.graph.ontology_queries import (
     attr_uri,
 )
 
-GRAPH = "https://graph.onta.sh/graphs/test"
+GRAPH = "https://graph.infona.ai/graphs/test"
 
 
 def test_type_uri():
-    assert type_uri("Place") == "https://graph.onta.sh/types/Place"
+    assert type_uri("Place") == "https://graph.infona.ai/types/Place"
 
 
 def test_attr_uri():
-    assert attr_uri("Place", "name") == "https://graph.onta.sh/types/Place/attrs/name"
+    assert attr_uri("Place", "name") == "https://graph.infona.ai/types/Place/attrs/name"
 
 
 def test_insert_type_basic():
     sparql = insert_type(GRAPH, "Place")
     assert "INSERT DATA" in sparql
-    assert "GRAPH <https://graph.onta.sh/graphs/test>" in sparql
-    assert "graph.onta.sh/types/Place" in sparql
+    assert "GRAPH <https://graph.infona.ai/graphs/test>" in sparql
+    assert "graph.infona.ai/types/Place" in sparql
     assert "Class" in sparql
     assert '"Place"' in sparql
 
@@ -43,13 +43,13 @@ def test_insert_type_with_description():
 def test_insert_type_with_parent():
     sparql = insert_type(GRAPH, "Park", parent_type="Place")
     assert "subClassOf" in sparql
-    assert "graph.onta.sh/types/Place" in sparql
+    assert "graph.infona.ai/types/Place" in sparql
 
 
 def test_insert_attribute():
     sparql = insert_attribute(GRAPH, "Place", "name", "The name", "string")
     assert "INSERT DATA" in sparql
-    assert "graph.onta.sh/types/Place/attrs/name" in sparql
+    assert "graph.infona.ai/types/Place/attrs/name" in sparql
     assert "Property" in sparql
     assert "domain" in sparql
     assert "range" in sparql
@@ -67,9 +67,9 @@ def test_mark_core_slot():
     # empty core slots" as its work queue.
     sparql = mark_core_slot(GRAPH, "SKU", "issued_by")
     assert "INSERT DATA" in sparql
-    assert "GRAPH <https://graph.onta.sh/graphs/test>" in sparql
-    assert "graph.onta.sh/types/SKU/attrs/issued_by" in sparql
-    assert "graph.onta.sh/onto/coreSlot" in sparql
+    assert "GRAPH <https://graph.infona.ai/graphs/test>" in sparql
+    assert "graph.infona.ai/types/SKU/attrs/issued_by" in sparql
+    assert "graph.infona.ai/onto/coreSlot" in sparql
     assert '"true"^^<http://www.w3.org/2001/XMLSchema#boolean>' in sparql
 
 
@@ -83,27 +83,27 @@ def test_mark_core_slot_targets_attr_uri():
 def test_insert_subtype():
     sparql = insert_subtype(GRAPH, "Place", "Park")
     assert "subClassOf" in sparql
-    assert "graph.onta.sh/types/Park" in sparql
-    assert "graph.onta.sh/types/Place" in sparql
+    assert "graph.infona.ai/types/Park" in sparql
+    assert "graph.infona.ai/types/Place" in sparql
 
 
 def test_list_types_query():
     sparql = list_types_query(GRAPH)
     assert "SELECT" in sparql
     assert "Class" in sparql
-    assert "FROM <https://graph.onta.sh/graphs/test>" in sparql
+    assert "FROM <https://graph.infona.ai/graphs/test>" in sparql
 
 
 def test_get_type_detail_query():
     sparql = get_type_detail_query(GRAPH, "Place")
-    assert "graph.onta.sh/types/Place" in sparql
+    assert "graph.infona.ai/types/Place" in sparql
     assert "label" in sparql
 
 
 def test_get_type_attributes_query():
     sparql = get_type_attributes_query(GRAPH, "Place")
     assert "domain" in sparql
-    assert "graph.onta.sh/types/Place" in sparql
+    assert "graph.infona.ai/types/Place" in sparql
 
 
 def test_get_subtypes_query():
@@ -114,7 +114,7 @@ def test_get_subtypes_query():
 def test_get_type_functions_query():
     sparql = get_type_functions_query(GRAPH, "Place")
     assert "attachedTo" in sparql
-    assert "graph.onta.sh/types/Place" in sparql
+    assert "graph.infona.ai/types/Place" in sparql
 
 
 def test_get_full_ontology_query():

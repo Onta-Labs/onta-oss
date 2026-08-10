@@ -184,7 +184,7 @@ def test_assert_cypher_return_only_needs_params_not_property_keys():
 def test_maybe_require_entity_write_identity_on_merge():
     maybe_require_entity_write_identity(
         "MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id}) RETURN e",
-        {"id": "https://cograph.tech/entities/Book/1"},
+        {"id": "https://graph.infona.ai/entities/Book/1"},
     )
     with pytest.raises(GraphScopeError, match="non-empty id"):
         maybe_require_entity_write_identity(
@@ -236,7 +236,7 @@ def test_merge_scope_params_allows_global_read_without_privilege():
 
 
 def test_require_entity_write_identity():
-    require_entity_write_identity({"id": "https://cograph.tech/entities/Book/1"})
+    require_entity_write_identity({"id": "https://graph.infona.ai/entities/Book/1"})
     with pytest.raises(GraphScopeError, match="non-empty id"):
         require_entity_write_identity({})
     with pytest.raises(GraphScopeError, match="non-empty id"):
@@ -325,7 +325,7 @@ async def test_memory_store_merge_and_get_entity():
     written = await session.execute_write(
         ENTITY_MERGE_CYPHER,
         {
-            "id": "https://cograph.tech/entities/Person/alice",
+            "id": "https://graph.infona.ai/entities/Person/alice",
             "primary_type": "Person",
             "name": "Alice",
             "source": "unit",
@@ -342,7 +342,7 @@ async def test_memory_store_merge_and_get_entity():
 
     rows = await session.execute_read(
         ENTITY_GET_CYPHER,
-        {"id": "https://cograph.tech/entities/Person/alice"},
+        {"id": "https://graph.infona.ai/entities/Person/alice"},
     )
     assert len(rows) == 1
     assert rows[0]["primary_type"] == "Person"

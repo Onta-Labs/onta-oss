@@ -18,7 +18,7 @@ like that extractor, it NEVER raises: any error / missing key / malformed JSON
 collapses to a deterministic fallback plan so a planner hiccup can't sink a run.
 
 Boundary: OSS file. Imports only stdlib / ``infona_client.*`` / ``httpx``.
-No ``from cograph.*`` and no proprietary identifiers.
+No ``from infona.*`` and no proprietary identifiers.
 """
 
 from __future__ import annotations

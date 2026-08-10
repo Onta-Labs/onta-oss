@@ -6,7 +6,7 @@
       "id": "q-001",
       "tier": "T1",
       "question": "How many distinct trademarks are there?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> . }",
       "expected_answer": "434",
       "full_expected_items": [
         "434"
@@ -48,7 +48,7 @@
       "id": "q-002",
       "tier": "T1",
       "question": "List all available Nice Class codes.",
-      "gold_sparql": "SELECT DISTINCT ?classCode FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode . }",
+      "gold_sparql": "SELECT DISTINCT ?classCode FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> . ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode . }",
       "expected_answer": "001, 003, 038, 011, 014, 040, 020, 030, 010, 036 ... (43 total)",
       "full_expected_items": [
         "001",
@@ -132,7 +132,7 @@
       "id": "q-003",
       "tier": "T1",
       "question": "What are the names of all the owners?",
-      "gold_sparql": "SELECT DISTINCT ?ownerName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName . }",
+      "gold_sparql": "SELECT DISTINCT ?ownerName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> . ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName . }",
       "expected_answer": "OPTIMISCORP, ACI INTERNATIONAL, Fuel TV, Inc., 9 TV Productions, LLC, IDENTITY COPS INC., RealNetworks, Inc., Energy Maintenance Services Group I, LLC, Long, Matthew M, PUNKYTAN, INC., WhitePages.com, Inc. ... (368 total)",
       "full_expected_items": [
         "OPTIMISCORP",
@@ -541,7 +541,7 @@
       "id": "q-004",
       "tier": "T1",
       "question": "How many different countries are represented in the dataset?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?country) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?country <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Country> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?country) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE { ?country <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Country> . }",
       "expected_answer": "22",
       "full_expected_items": [
         "22"
@@ -583,7 +583,7 @@
       "id": "q-005",
       "tier": "T2",
       "question": "How many trademarks have a serial number starting with '770000'?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/serial_number> ?serialNumber .\n  FILTER(STRSTARTS(?serialNumber, \"770000\"))\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/serial_number> ?serialNumber .\n  FILTER(STRSTARTS(?serialNumber, \"770000\"))\n}",
       "expected_answer": "89",
       "full_expected_items": [
         "89"
@@ -625,7 +625,7 @@
       "id": "q-006",
       "tier": "T2",
       "question": "What are the names of owners whose city is 'New York'?",
-      "gold_sparql": "SELECT ?ownerName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/city> ?city .\n  FILTER(?city = \"New York\")\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n}",
+      "gold_sparql": "SELECT ?ownerName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/city> ?city .\n  FILTER(?city = \"New York\")\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n}",
       "expected_answer": "Health Management Systems, Inc., KFPR, Inc., NBC Universal, Inc., Molecular International Research, Inc., The Organized Student LLC, AQ Design, Inc., Yak Pak, Inc., HarperCollins Publishers L.L.C., Gucci America, Inc., Wathne Limited ... (17 total)",
       "full_expected_items": [
         "Health Management Systems, Inc.",
@@ -683,7 +683,7 @@
       "id": "q-007",
       "tier": "T2",
       "question": "Count the number of NiceClasses with a class code greater than '030'.",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode .\n  FILTER(xsd:integer(?classCode) > 30)\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?niceClass) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> ?classCode .\n  FILTER(xsd:integer(?classCode) > 30)\n}",
       "expected_answer": "15",
       "full_expected_items": [
         "15"
@@ -725,7 +725,7 @@
       "id": "q-008",
       "tier": "T2",
       "question": "How many trademarks have 'BETTER SEX' as a mark element?",
-      "gold_sparql": "SELECT (COUNT(?trademark) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?markElement .\n  FILTER(?markElement = \"BETTER SEX\")\n}",
+      "gold_sparql": "SELECT (COUNT(?trademark) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/mark_element> ?markElement .\n  FILTER(?markElement = \"BETTER SEX\")\n}",
       "expected_answer": "5",
       "full_expected_items": [
         "5"
@@ -767,7 +767,7 @@
       "id": "q-009",
       "tier": "T3",
       "question": "How many trademarks are owned by each owner, for owners located in the city of 'NEW YORK'?",
-      "gold_sparql": "SELECT ?ownerName (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/city> \"NEW YORK\" .\n} GROUP BY ?ownerName ORDER BY DESC(?trademarkCount) LIMIT 10",
+      "gold_sparql": "SELECT ?ownerName (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/city> \"NEW YORK\" .\n} GROUP BY ?ownerName ORDER BY DESC(?trademarkCount) LIMIT 10",
       "expected_answer": "NEWTEK BUSINESS SERVICES CORP. | 2\nLIBERTY SKIS CORPORATION | 1\nBANDSINTOWN MEDIA LLC | 1\nTPC NEW YORK CORP. | 1\nC.A.R.E. WEAR | 1",
       "full_expected_items": [
         "NEWTEK BUSINESS SERVICES CORP. | 2",
@@ -813,7 +813,7 @@
       "id": "q-010",
       "tier": "T3",
       "question": "What are the descriptions of goods and services that belong to Nice Class '001'?",
-      "gold_sparql": "SELECT DISTINCT ?goodsDescription FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?goods <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n  ?goods <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_in_nice_class> ?niceClass .\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> \"001\" .\n  ?goods <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_description> ?goodsDescription .\n}",
+      "gold_sparql": "SELECT DISTINCT ?goodsDescription FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?goods <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n  ?goods <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_in_nice_class> ?niceClass .\n  ?niceClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/NiceClass> .\n  ?niceClass <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/class_code> \"001\" .\n  ?goods <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/goods_description> ?goodsDescription .\n}",
       "expected_answer": "Potting soil; unexposed photographic film, Chemicals for use in industry; unprocessed artificial resins, unprocessed synthetic resins and artificial resin material, namely, unprocessed artificial resins and synthetic resins as raw material in the form of liquids and chips; unprocessed plastics in the form of chips and pellets; raw materials in the nature of unprocessed artificial and synthetic resins in the form of powders, liquids or chips for the production of laminate in particular for use as coatings for floors, reservoirs and swimmi, chemical ingredient for cosmetic products, Chemical ingredient for cosmetic products, Water soluble polymers for use in the manufacture of industrial applications, Botanical extracts for use in the manufacture of nutraceuticals and pharmaceuticals, Organic growing media which may or may not be mixed with other materials to grow plants, grasses and similar items and for other horticultural uses, Botanical extracts for use as nutritional ingredients in the further manufacture of goods and botanical extracts for use in the manufacture of nutraceuticals, Chemicals for use in manufacturing lubricants, coatings, polyeurthanes, fibers, apparel and cosmetics, Chemicals for use in the manufacture of a wide variety of goods ... (11 total)",
       "full_expected_items": [
         "Potting soil; unexposed photographic film",
@@ -865,7 +865,7 @@
       "id": "q-011",
       "tier": "T3",
       "question": "Count the number of trademarks associated with each status type.",
-      "gold_sparql": "SELECT ?statusDescription (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_has_status> ?statusType .\n  ?statusType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/StatusType> .\n  ?statusType <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/status_description> ?statusDescription .\n} GROUP BY ?statusDescription ORDER BY DESC(?trademarkCount) LIMIT 10",
+      "gold_sparql": "SELECT ?statusDescription (COUNT(DISTINCT ?trademark) AS ?trademarkCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n  ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_has_status> ?statusType .\n  ?statusType <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/StatusType> .\n  ?statusType <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/status_description> ?statusDescription .\n} GROUP BY ?statusDescription ORDER BY DESC(?trademarkCount) LIMIT 10",
       "expected_answer": "Registration cancelled because registrant did not file an acceptable declaration under Section 8.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 141\nAbandoned because the applicant failed to respond or filed a late response to an Office action.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 116\nThe registration has been renewed. | 98\nAbandoned because no Statement of Use or Extension Request timely filed after Notice of Allowance was issued.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 66\nAbandoned because the applicant filed an express abandonment.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 4\nRegistration cancelled under Section 7 because the registrant surrendered the registration. | 4\nAbandoned after an appeal of the examining attorney's final refusal.  For further information, see TTABVUE on the Trademark Trial and Appeal Board web page. | 2\nAbandoned after an inter partes decision by the Trademark Trial and Appeal Board.  For further information, see TTABVUE on the Trademark Trial and Appeal Board web page. | 2\nAbandoned due to incomplete response.  The response did not satisfy all issues in the Office action.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 1",
       "full_expected_items": [
         "Registration cancelled because registrant did not file an acceptable declaration under Section 8.  To view all documents in this file, click on the Trademark Document Retrieval link at the top of this page. | 141",
@@ -915,7 +915,7 @@
       "id": "q-012",
       "tier": "T4",
       "question": "What is the average number of goods and services covered by trademarks owned by each owner?",
-      "gold_sparql": "SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  {\n    SELECT ?owner (COUNT(DISTINCT ?goodsServices) AS ?numGoodsServices) WHERE {\n      ?owner <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n      ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n      ?trademark <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goodsServices .\n      ?goodsServices <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n    } GROUP BY ?owner\n  }\n} GROUP BY ?ownerName",
+      "gold_sparql": "SELECT ?ownerName (AVG(?numGoodsServices) AS ?averageGoodsServices) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-uspto-trademarks> WHERE {\n  ?owner <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Owner> .\n  ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_name> ?ownerName .\n  {\n    SELECT ?owner (COUNT(DISTINCT ?goodsServices) AS ?numGoodsServices) WHERE {\n      ?owner <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/owner_owns_trademark> ?trademark .\n      ?trademark <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/Trademark> .\n      ?trademark <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/pred/trademark_covers_goods> ?goodsServices .\n      ?goodsServices <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-uspto-trademarks/type/GoodsServices> .\n    } GROUP BY ?owner\n  }\n} GROUP BY ?ownerName",
       "expected_answer": "THE SEVENEX GROUP, LLC | 2\nASOLO S.P.A. | 2\nAmerican Century Home Fabrics, Inc. | 6\nBarnes, Jan | 1\nFrames & Mats R Us Inc. | 1\nKoenig, Allen | 1\nCaprio, Ray Vincent | 1\nABB ASEA BROWN BOVERI LTD | 1\nGreene, Daniel J. | 1\nByTheZip.com Directory, Inc. | 1\n... (368 total rows)",
       "full_expected_items": [
         "THE SEVENEX GROUP, LLC | 2",
@@ -1324,55 +1324,55 @@
   "tables": [
     {
       "table": "Country",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/Country.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/Country.csv",
       "n_rows_used": 22,
       "n_cols": 3
     },
     {
       "table": "EntityType",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/EntityType.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/EntityType.csv",
       "n_rows_used": 9,
       "n_cols": 3
     },
     {
       "table": "FilingBasis",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/FilingBasis.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/FilingBasis.csv",
       "n_rows_used": 4,
       "n_cols": 3
     },
     {
       "table": "GoodsServices",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/GoodsServices.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/GoodsServices.csv",
       "n_rows_used": 222,
       "n_cols": 8
     },
     {
       "table": "NiceClass",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/NiceClass.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/NiceClass.csv",
       "n_rows_used": 43,
       "n_cols": 3
     },
     {
       "table": "Owner",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/Owner.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/Owner.csv",
       "n_rows_used": 222,
       "n_cols": 9
     },
     {
       "table": "State",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/State.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/State.csv",
       "n_rows_used": 59,
       "n_cols": 3
     },
     {
       "table": "StatusType",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/StatusType.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/StatusType.csv",
       "n_rows_used": 9,
       "n_cols": 3
     },
     {
       "table": "Trademark",
-      "source": "/Users/moeen/Desktop/omnix/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/Trademark.csv",
+      "source": "/Users/moeen/Desktop/infona/benchmarks/datasets/holdout_v2_staged/holdout-v2-uspto-trademarks/Trademark.csv",
       "n_rows_used": 222,
       "n_cols": 15
     }

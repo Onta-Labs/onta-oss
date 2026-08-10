@@ -424,9 +424,9 @@ class MemNeptune:
         return out
 
 
-PUBLIC = "https://graph.onta.sh/graphs/global/public"
-ENHANCED = "https://graph.onta.sh/graphs/global/enhanced"
-TENANT = "https://graph.onta.sh/graphs/acme"
+PUBLIC = "https://graph.infona.ai/graphs/global/public"
+ENHANCED = "https://graph.infona.ai/graphs/global/enhanced"
+TENANT = "https://graph.infona.ai/graphs/acme"
 
 
 async def _seed_basic(n: MemNeptune, graph: str) -> None:
@@ -579,8 +579,8 @@ def test_diff_symmetry():
         core_slots=[("Person", "name")],
         text_kinds={("Person", "bio"): "free_text"},
         alias_map={
-            "https://graph.onta.sh/types/Person/attrs/phone_num":
-            "https://graph.onta.sh/types/Person/attrs/phone",
+            "https://graph.infona.ai/types/Person/attrs/phone_num":
+            "https://graph.infona.ai/types/Person/attrs/phone",
         },
     )
     b = _shape(
@@ -625,7 +625,7 @@ async def test_snapshot_mutate_restore_fingerprint_identity():
         n,
         PUBLIC,
         kind="release",
-        publisher="ops@onta",
+        publisher="ops@infona.ai",
         change_summary="initial public release",
         # Free-form compat_class is ignored for releases (ONTA-404 classifier).
         compat_class="major",
@@ -634,7 +634,7 @@ async def test_snapshot_mutate_restore_fingerprint_identity():
     assert rec.version == 1
     assert rec.fingerprint == fp0
     assert rec.snapshot_graph_uri == f"{PUBLIC}/v1"
-    assert rec.publisher == "ops@onta"
+    assert rec.publisher == "ops@infona.ai"
     # First release (no parent / empty delta) → classifier says additive.
     assert rec.compat_class == "additive"
 

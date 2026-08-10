@@ -101,7 +101,7 @@ from infona_client.normalization.clean import clean_value
 from infona_client.resolver.models import CleanReport, ValidatedTriple
 from infona_client.resolver.validator import _to_wkt_point, validate_triple
 
-logger = structlog.stdlib.get_logger("cograph.enrichment")
+logger = structlog.stdlib.get_logger("infona.enrichment")
 
 
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
@@ -156,8 +156,8 @@ REFRESH_AUTHORITY = AuthorityLevel.source_of_truth
 # moves on and the job completes). Generous enough to cover a slow
 # multi-step adapter (e.g. wikidata's search→claims→label round-trips) while
 # still failing fast relative to "forever". Overridable via the
-# COGRAPH_ADAPTER_LOOKUP_TIMEOUT_S env var.
-ADAPTER_LOOKUP_TIMEOUT_S = float(os.environ.get("COGRAPH_ADAPTER_LOOKUP_TIMEOUT_S", "30"))
+# INFONA_ADAPTER_LOOKUP_TIMEOUT_S env var.
+ADAPTER_LOOKUP_TIMEOUT_S = float(os.environ.get("INFONA_ADAPTER_LOOKUP_TIMEOUT_S", "30"))
 
 # Cap stored per-provider error/summary messages so a chatty adapter exception
 # can't bloat the job payload (it is serialized whole into the job store).
@@ -418,7 +418,7 @@ def _is_iso_datetime(v: str) -> bool:
 
 def _entity_iri_type(value: str) -> str | None:
     """Parse the ``<TypeName>`` out of a canonical entity IRI of the form
-    ``https://graph.onta.sh/entities/<TypeName>/<id>``, else None.
+    ``https://graph.infona.ai/entities/<TypeName>/<id>``, else None.
 
     Returns the bare type name (e.g. ``Manufacturer``) so the caller can decide
     whether a column of entity IRIs is a relationship to a single target type.
@@ -861,11 +861,11 @@ def _now() -> datetime:
 
 def _canonical_provenance_enabled() -> bool:
     """Whether enrichment feeds the canonical companion-provenance GRAPH (ADR 0002
-    §4). Gated by the SAME ``COGRAPH_PROVENANCE_ENABLED`` env the ingest path uses
+    §4). Gated by the SAME ``INFONA_PROVENANCE_ENABLED`` env the ingest path uses
     (default OFF) so the heavier governance/undo substrate only accrues when it is
     switched on. The always-on per-attribute DISPLAY companions
     (``*_source_url`` / ``*_verified_at``) are independent of this flag."""
-    return os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+    return os.environ.get("INFONA_PROVENANCE_ENABLED", "0") == "1"
 
 
 def _build_select_query(
@@ -1742,7 +1742,7 @@ class EnrichmentExecutor:
                 )
                 # Canonical companion-provenance-GRAPH records (F1) for every applied
                 # fill, dated from the verdict — flowed through the shared
-                # insert_facts provenance seam (gated by COGRAPH_PROVENANCE_ENABLED).
+                # insert_facts provenance seam (gated by INFONA_PROVENANCE_ENABLED).
                 prov_graph_triples = self._canonical_provenance_triples(
                     [r for r in all_rows if self._row_is_applied(r, write_policy)],
                     job.type_name,
@@ -2262,7 +2262,7 @@ class EnrichmentExecutor:
         verdict's real source date so re-reading provenance shows WHEN the source
         knew the fact, not when we wrote it.
 
-        Gated by ``COGRAPH_PROVENANCE_ENABLED`` (the SAME env the ingest path uses),
+        Gated by ``INFONA_PROVENANCE_ENABLED`` (the SAME env the ingest path uses),
         so the heavier substrate only accrues when governance/undo is switched on;
         the always-on per-attribute display companions above are unaffected.
 
@@ -2806,7 +2806,7 @@ class EnrichmentExecutor:
             self._log_clean_report(clean_report, type_name=job.type_name, phase="apply_decisions")
             # Canonical companion-provenance-GRAPH records (F1) for the accepted
             # decisions, dated from the verdict — same seam as the auto-apply path
-            # (gated by COGRAPH_PROVENANCE_ENABLED).
+            # (gated by INFONA_PROVENANCE_ENABLED).
             prov_graph_triples = self._canonical_provenance_triples(
                 accepted, job.type_name
             )

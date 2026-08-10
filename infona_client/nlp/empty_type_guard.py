@@ -5,7 +5,7 @@ observable signal, "the generated SPARQL was valid and returned zero rows":
 
 1. **Retrieval miss.** Semantic retrieval handed the planner a REDUCED ontology
    subset, and the planner built its query out of types/predicates that do not
-   exist in this knowledge graph at all (onta-oss #273's Oliver demo:
+   exist in this knowledge graph at all (infona-oss #273's Oliver demo:
    ``ClinicalTrial.interventions`` / ``conditions``). Widening to the full
    ontology and regenerating is the right recovery.
 2. **Honest empty.** The question named a type that IS declared in the ontology
@@ -44,9 +44,9 @@ import re
 NO_INSTANCES_MARK = "[no instances]"
 
 # Type URIs a query can reference, in either the bare-type or attribute form:
-#   <https://graph.onta.sh/types/Sprocket>
-#   <https://graph.onta.sh/types/Sprocket/attrs/name>
-#   <https://graph.onta.sh/types/public/Person>   (layered — ONTA-397)
+#   <https://graph.infona.ai/types/Sprocket>
+#   <https://graph.infona.ai/types/Sprocket/attrs/name>
+#   <https://graph.infona.ai/types/public/Person>   (layered — ONTA-397)
 _TYPE_URI_RE = re.compile(rf"<({re.escape(IRI_BASE)}/types/[^>\s]+)>")
 
 
@@ -54,7 +54,7 @@ def _type_headers(ontology: str):
     """Yield ``(type_name, trailing_text)`` for each ``Type:`` header line.
 
     Header shape (``_fetch_ontology`` / the semantic retriever's chunk text):
-    ``Type: Sprocket — URI: <https://graph.onta.sh/types/Sprocket> [no instances]``.
+    ``Type: Sprocket — URI: <https://graph.infona.ai/types/Sprocket> [no instances]``.
     Splitting on the em dash mirrors the existing ``types_in_summary`` parsing in
     ``pipeline.py`` and tolerates a type name containing spaces. A header with no
     URI part still parses.

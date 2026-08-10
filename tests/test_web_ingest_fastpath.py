@@ -7,7 +7,7 @@ JSON path runs (freezing today's behavior — ``test_web_ingest_registry`` stays
 green).
 
 FILE-ORDER NOTE: these tests drive the discovery ``execute`` machinery, which
-exercises the shared ``cograph.graph.kg_writer`` logger under the app's
+exercises the shared ``infona.graph.kg_writer`` logger under the app's
 ``cache_logger_on_first_use=True`` config. structlog's ``capture_logs`` (used by
 ``test_semantic_write_hook``) cannot intercept an already-cached bound logger, so
 any ``execute``-running test that sorts BEFORE ``test_semantic_write_hook`` would

@@ -32,9 +32,9 @@ module implements NO second fetch, SSRF guard, pagination loop, or cost seam.
 worker thread) and FAILS CLOSED to UNVERIFIABLE if it cannot.
 
 Boundary: OSS. Imports only stdlib + ``infona_client.*`` (the substrate transitively
-pulls ``httpx``) — never ``from cograph.*``. The OSS default is offline/BYOK: it
+pulls ``httpx``) — never ``from infona.*``. The OSS default is offline/BYOK: it
 fetches only URLs it is handed; paid fact-check / web-search adapters belong in
-``cograph/`` behind ``register_fact_verifier`` (never here).
+``infona/`` behind ``register_fact_verifier`` (never here).
 """
 
 from __future__ import annotations

@@ -25,10 +25,10 @@ function response(over: Partial<GrepResponse> = {}): GrepResponse {
 }
 
 const MATCH = {
-  entity_uri: "https://graph.onta.sh/entities/Movie/m1",
+  entity_uri: "https://graph.infona.ai/entities/Movie/m1",
   label: "The Matrix",
   type: "Movie",
-  predicate: "https://graph.onta.sh/onto/title",
+  predicate: "https://graph.infona.ai/onto/title",
   attr: "title",
   value: "The Matrix",
   snippet: "The Matrix",

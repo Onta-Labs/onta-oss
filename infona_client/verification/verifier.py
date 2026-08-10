@@ -20,7 +20,7 @@ default :class:`DefaultOfflineVerifier` returns a principled
 :attr:`TruthVerdict.SUPPORTED`, because a fact is not "verified" until a source
 DISTINCT from its own corroborates it, and the offline path has no such source.
 
-Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from cograph.*``.
+Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from infona.*``.
 No network anywhere in the default path.
 """
 
@@ -116,7 +116,7 @@ def register_fact_verifier(verifier: Optional[FactVerifier]) -> None:
     """Register (or clear) the process-wide fact verifier.
 
     Downstream/premium deployments plug in a paid fact-check API, an LLM judge, or a
-    cross-source corroboration verifier here without forking cograph-oss. Pass
+    cross-source corroboration verifier here without forking infona-oss. Pass
     ``None`` to clear and fall back to the offline default. Mirrors
     :func:`infona_client.auth.api_keys.register_external_verifier`."""
     global _fact_verifier

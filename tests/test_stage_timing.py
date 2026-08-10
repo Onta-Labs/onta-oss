@@ -8,7 +8,7 @@ self-profiles instead of being reconstructed from CloudWatch request gaps.
 
 The assertions record against a mock logger rather than
 ``structlog.testing.capture_logs()`` on purpose: under the full suite the
-``cograph.resolver`` module logger is cached by earlier tests, so ``capture_logs``
+``infona.resolver`` module logger is cached by earlier tests, so ``capture_logs``
 would silently intercept nothing. A mock swapped in for the module logger is
 order-independent.
 """

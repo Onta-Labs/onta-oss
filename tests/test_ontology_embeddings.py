@@ -17,7 +17,7 @@ from infona_client.nlp.ontology_embeddings import (
 )
 
 
-GRAPH_URI = "https://graph.onta.sh/graphs/test-tenant"
+GRAPH_URI = "https://graph.infona.ai/graphs/test-tenant"
 
 
 def _make_fake_embedding(dim: int = 1536, seed: int = 0) -> list[float]:
@@ -34,14 +34,14 @@ def _make_ontology_bindings_raw(types_info: dict[str, list[str]]) -> list[dict]:
     for type_name, attrs in types_info.items():
         for attr in attrs:
             bindings.append({
-                "type": {"type": "uri", "value": f"https://graph.onta.sh/types/{type_name}"},
+                "type": {"type": "uri", "value": f"https://graph.infona.ai/types/{type_name}"},
                 "typeLabel": {"type": "literal", "value": type_name},
                 "attrLabel": {"type": "literal", "value": attr},
                 "range": {"type": "uri", "value": "http://www.w3.org/2001/XMLSchema#string"},
             })
         if not attrs:
             bindings.append({
-                "type": {"type": "uri", "value": f"https://graph.onta.sh/types/{type_name}"},
+                "type": {"type": "uri", "value": f"https://graph.infona.ai/types/{type_name}"},
                 "typeLabel": {"type": "literal", "value": type_name},
             })
     return bindings
@@ -53,14 +53,14 @@ def _make_ontology_bindings(types_info: dict[str, list[str]]) -> list[dict]:
     for type_name, attrs in types_info.items():
         for attr in attrs:
             bindings.append({
-                "type": f"https://graph.onta.sh/types/{type_name}",
+                "type": f"https://graph.infona.ai/types/{type_name}",
                 "typeLabel": type_name,
                 "attrLabel": attr,
                 "range": "http://www.w3.org/2001/XMLSchema#string",
             })
         if not attrs:
             bindings.append({
-                "type": f"https://graph.onta.sh/types/{type_name}",
+                "type": f"https://graph.infona.ai/types/{type_name}",
                 "typeLabel": type_name,
             })
     return bindings
@@ -111,8 +111,8 @@ class TestHelpers:
         assert sims[0] == 0.0
 
     def test_extract_tenant_id(self):
-        assert _extract_tenant_id("https://graph.onta.sh/graphs/my-tenant") == "my-tenant"
-        assert _extract_tenant_id("https://graph.onta.sh/graphs/t1/kg/zillow") == "t1"
+        assert _extract_tenant_id("https://graph.infona.ai/graphs/my-tenant") == "my-tenant"
+        assert _extract_tenant_id("https://graph.infona.ai/graphs/t1/kg/zillow") == "t1"
 
     def test_parse_ontology_bindings(self):
         bindings = _make_ontology_bindings({"Property": ["price", "address"], "City": ["name"]})

@@ -11,7 +11,7 @@
         "34"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?organization) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?organization) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -87,7 +87,7 @@
         "Kings"
       ],
       "full_result_count": 25,
-      "gold_sparql": "SELECT ?county_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n}",
+      "gold_sparql": "SELECT ?county_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -159,7 +159,7 @@
         "Wetland Riverine-Emergent"
       ],
       "full_result_count": 21,
-      "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n}",
+      "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -211,7 +211,7 @@
         "44"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?huc8_code) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?huc8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/HUC8> .\n  ?huc8 <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/huc8_code> ?huc8_code .\n}",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?huc8_code) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?huc8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/HUC8> .\n  ?huc8 <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/huc8_code> ?huc8_code .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -263,7 +263,7 @@
         "National Park Service Water Resources Division"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT ?label FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?name .\n  ?organization <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(CONTAINS(LCASE(STR(?name)), \"national park service\"))\n}",
+      "gold_sparql": "SELECT ?label FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?name .\n  ?organization <http://www.w3.org/2000/01/rdf-schema#label> ?label .\n  FILTER(CONTAINS(LCASE(STR(?name)), \"national park service\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -318,7 +318,7 @@
         "Monterey"
       ],
       "full_result_count": 4,
-      "gold_sparql": "SELECT ?county_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n  FILTER(STRSTARTS(?county_name, \"M\"))\n}",
+      "gold_sparql": "SELECT ?county_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> ?county_name .\n  FILTER(STRSTARTS(?county_name, \"M\"))\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -370,7 +370,7 @@
         "3"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?station) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_elevation> ?elevation_str .\n  BIND(xsd:integer(?elevation_str) AS ?elevation) .\n  FILTER(?elevation > 1000)\n}",
+      "gold_sparql": "SELECT (COUNT(?station) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_elevation> ?elevation_str .\n  BIND(xsd:integer(?elevation_str) AS ?elevation) .\n  FILTER(?elevation > 1000)\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -455,7 +455,7 @@
         "Soboba Band of Luiseno Indians, California (Tribal) | 2"
       ],
       "full_result_count": 34,
-      "gold_sparql": "SELECT ?organizationName (COUNT(?sample) AS ?sampleCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organizationName .\n} GROUP BY ?organizationName ORDER BY DESC(?sampleCount)",
+      "gold_sparql": "SELECT ?organizationName (COUNT(?sample) AS ?sampleCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organizationName .\n} GROUP BY ?organizationName ORDER BY DESC(?sampleCount)",
       "per_seed": [
         {
           "seed": 1,
@@ -507,7 +507,7 @@
         "Dissolved oxygen (DO) | 4692"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT ?parameterName (COUNT(?sample) AS ?sampleCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_measures_parameter> ?parameter .\n  ?parameter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Parameter> .\n  ?parameter <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/parameter_name> ?parameterName .\n} GROUP BY ?parameterName ORDER BY DESC(?sampleCount)",
+      "gold_sparql": "SELECT ?parameterName (COUNT(?sample) AS ?sampleCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_measures_parameter> ?parameter .\n  ?parameter <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Parameter> .\n  ?parameter <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/parameter_name> ?parameterName .\n} GROUP BY ?parameterName ORDER BY DESC(?sampleCount)",
       "per_seed": [
         {
           "seed": 1,
@@ -568,7 +568,7 @@
         "Lopez Creek 1 | 86"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?station_name (COUNT(?sample) AS ?sample_count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_has_sample> ?sample .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name .\n} GROUP BY ?station_name ORDER BY DESC(?sample_count) LIMIT 10",
+      "gold_sparql": "SELECT ?station_name (COUNT(?sample) AS ?sample_count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE {\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_has_sample> ?sample .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_name> ?station_name .\n} GROUP BY ?station_name ORDER BY DESC(?sample_count) LIMIT 10",
       "per_seed": [
         {
           "seed": 1,
@@ -622,7 +622,7 @@
         "Quechan Tribe of the Fort Yuma Indian Reservation, California &amp; Arizona (Tribal) | 12"
       ],
       "full_result_count": 3,
-      "gold_sparql": "SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> \"Imperial\" .\n  { \n    SELECT ?organization (COUNT(?sample) AS ?sample_count) WHERE {\n      ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n      ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n      ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n    } GROUP BY ?organization\n  }\n} GROUP BY ?organization_name",
+      "gold_sparql": "SELECT ?organization_name (AVG(?sample_count) AS ?average_samples) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_in_county> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/County> .\n  ?county <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/county_name> \"Imperial\" .\n  { \n    SELECT ?organization (COUNT(?sample) AS ?sample_count) WHERE {\n      ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n      ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n      ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n    } GROUP BY ?organization\n  }\n} GROUP BY ?organization_name",
       "per_seed": [
         {
           "seed": 1,
@@ -685,7 +685,7 @@
         "Buena Vista Rancheria of Me-Wuk Indians of California (Tribal)"
       ],
       "full_result_count": 12,
-      "gold_sparql": "SELECT DISTINCT ?organization_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_horizontal_datum> \"WGS84\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?organization_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Organization> .\n  ?organization <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/organization_name> ?organization_name .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_by_organization> ?organization .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_media> \"Water\" .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_operated_by> ?organization .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_horizontal_datum> \"WGS84\" .\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -757,7 +757,7 @@
         "Wetland Palustrine-Shrub-Scrub"
       ],
       "full_result_count": 21,
-      "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_waterbody_type> ?waterbodytype .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station .\n  ?sample <https://omnix.dev/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_activity_type> \"Field Msr/Obs\" .\n}",
+      "gold_sparql": "SELECT DISTINCT ?waterbodytype_name FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-epa-water-quality-portal> WHERE { \n  ?waterbodytype <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/WaterBodyType> .\n  ?waterbodytype <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/waterbodytype_name> ?waterbodytype_name .\n  ?station <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Station> .\n  ?station <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/station_waterbody_type> ?waterbodytype .\n  ?sample <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/type/Sample> .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_at_station> ?station .\n  ?sample <https://graph.infona.ai/holdout-v2/holdout-v2-epa-water-quality-portal/pred/sample_activity_type> \"Field Msr/Obs\" .\n}",
       "per_seed": [
         {
           "seed": 1,

@@ -20,7 +20,7 @@ Boundary split (docs/oss_proprietary_boundary.md §22):
 - **Premium (NOT here, just the hook):** a RELIABLE delivery sink — retries with
   backoff + DLQ, HMAC request signing, per-tenant rate limiting — registers via
   :func:`register_delivery_sink` at app boot and transparently supersedes the OSS
-  default. That code lives in the proprietary ``cograph/`` tree and this OSS
+  default. That code lives in the proprietary ``infona/`` tree and this OSS
   module never imports it.
 
 SSRF: the outbound POST target is a tenant-/LLM-chosen URL, so it is an SSRF
@@ -38,7 +38,7 @@ carries a ``secret_ref`` (an opaque ciphertext produced by the OSS
 row never contains plaintext secret material.
 
 Boundary: OSS. Imports only stdlib / ``infona_client.*`` / ``httpx``. No
-``from cograph.*`` and no proprietary identifiers.
+``from infona.*`` and no proprietary identifiers.
 """
 
 from __future__ import annotations
@@ -52,11 +52,11 @@ import structlog
 
 from infona_client.retrieval.safety import host_dns_blocked, is_fetchable_url
 
-logger = structlog.stdlib.get_logger("cograph.scheduling.delivery")
+logger = structlog.stdlib.get_logger("infona.scheduling.delivery")
 
 # Bounds the outbound POST so a slow/hostile endpoint can't wedge a runner tick.
 _DEFAULT_TIMEOUT = 10.0
-_UA = "Mozilla/5.0 (compatible; OntaNotifyBot/1.0; +https://onta.sh/bot)"
+_UA = "Mozilla/5.0 (compatible; InfonaNotifyBot/1.0; +https://infona.ai/bot)"
 
 
 @dataclass

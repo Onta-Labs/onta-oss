@@ -37,7 +37,7 @@ from infona_client.graph.queries import kg_graph_uri
 from infona_client.normalization.rules import NormalizationRule, make_rule_id
 from infona_client.resolver.llm_router import PRIMARY_MODEL, openrouter_chat
 
-logger = structlog.stdlib.get_logger("cograph.normalization.inference")
+logger = structlog.stdlib.get_logger("infona.normalization.inference")
 
 ATTRS_INFIX = "/attrs/"
 

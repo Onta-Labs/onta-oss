@@ -14,7 +14,7 @@ over the denorm ``Entity.primary_type`` property alone. Optional subclass
 expansion walks ``:Class``-``SUBCLASS_OF`` when ``include_subclasses=True``.
 
 **Dual-backend:** when an explicit ``store`` / ``session`` is passed, or
-``COGRAPH_GRAPH_BACKEND=neo4j``, reads run through GraphStore templates /
+``INFONA_GRAPH_BACKEND=neo4j``, reads run through GraphStore templates /
 native session methods. Otherwise helpers return ``None`` / raise so the
 existing SPARQL explore routes remain the default until cutover.
 
@@ -137,7 +137,7 @@ class EntityPage:
 
 def graph_backend() -> str:
     """Same switch as :func:`infona_client.graph.kg_writer.graph_backend`."""
-    return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower()
+    return (os.environ.get("INFONA_GRAPH_BACKEND") or "neptune").strip().lower()
 
 
 def resolve_explore_session(

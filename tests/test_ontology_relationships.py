@@ -23,7 +23,7 @@ from infona_client.graph.ontology_queries import (
 # Canonical reverse mapper (ONTA-397 moved the route-local helper; tests the
 # shared graph helper which is what layered reads use).
 _xsd_to_datatype = xsd_to_datatype
-TYPE_URI_PREFIX = "https://graph.onta.sh/types/"
+TYPE_URI_PREFIX = "https://graph.infona.ai/types/"
 
 
 # ---------------------------------------------------------------------------
@@ -53,17 +53,17 @@ class TestDatatypeToXsd:
         """Non-primitive datatype should map to a type URI."""
         result = _datatype_to_xsd("Person")
         assert result == type_uri("Person")
-        assert result == "https://graph.onta.sh/types/Person"
+        assert result == "https://graph.infona.ai/types/Person"
 
     def test_type_reference_place(self):
         result = _datatype_to_xsd("Place")
-        assert result == "https://graph.onta.sh/types/Place"
+        assert result == "https://graph.infona.ai/types/Place"
 
     def test_type_reference_not_xsd(self):
         """Type references should NOT produce XSD URIs."""
         result = _datatype_to_xsd("Vehicle")
         assert "XMLSchema" not in result
-        assert "graph.onta.sh/types/Vehicle" in result
+        assert "graph.infona.ai/types/Vehicle" in result
 
 
 # ---------------------------------------------------------------------------
@@ -85,20 +85,20 @@ class TestXsdToDatatype:
 
     def test_type_uri_person(self):
         """Type URI ranges should return the type name, not 'string'."""
-        result = _xsd_to_datatype("https://graph.onta.sh/types/Person")
+        result = _xsd_to_datatype("https://graph.infona.ai/types/Person")
         assert result == "Person"
 
     def test_type_uri_place(self):
-        result = _xsd_to_datatype("https://graph.onta.sh/types/Place")
+        result = _xsd_to_datatype("https://graph.infona.ai/types/Place")
         assert result == "Place"
 
     def test_type_uri_vehicle(self):
-        result = _xsd_to_datatype("https://graph.onta.sh/types/Vehicle")
+        result = _xsd_to_datatype("https://graph.infona.ai/types/Vehicle")
         assert result == "Vehicle"
 
     def test_type_uri_not_primitive(self):
         """Type references should not be returned as primitives."""
-        result = _xsd_to_datatype("https://graph.onta.sh/types/Residence")
+        result = _xsd_to_datatype("https://graph.infona.ai/types/Residence")
         assert result not in PRIMITIVE_TYPES
         assert result == "Residence"
 
@@ -109,18 +109,18 @@ class TestXsdToDatatype:
 
 class TestInsertAttributeTypeRef:
     def test_attribute_with_primitive_range(self):
-        sparql = insert_attribute("https://graph.onta.sh/graphs/test", "Property", "price", "", "integer")
+        sparql = insert_attribute("https://graph.infona.ai/graphs/test", "Property", "price", "", "integer")
         assert "XMLSchema#integer" in sparql
 
     def test_attribute_with_type_reference_range(self):
         """When datatype is a type name, range should be the type URI."""
-        sparql = insert_attribute("https://graph.onta.sh/graphs/test", "Property", "location", "", "Place")
-        assert "graph.onta.sh/types/Place" in sparql
+        sparql = insert_attribute("https://graph.infona.ai/graphs/test", "Property", "location", "", "Place")
+        assert "graph.infona.ai/types/Place" in sparql
         assert "XMLSchema" not in sparql
 
     def test_attribute_with_type_reference_person(self):
-        sparql = insert_attribute("https://graph.onta.sh/graphs/test", "Transaction", "buyer", "", "Person")
-        assert "graph.onta.sh/types/Person" in sparql
+        sparql = insert_attribute("https://graph.infona.ai/graphs/test", "Transaction", "buyer", "", "Person")
+        assert "graph.infona.ai/types/Person" in sparql
 
 
 # ---------------------------------------------------------------------------

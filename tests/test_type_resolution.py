@@ -35,7 +35,7 @@ def _types_response(names):
     """SPARQL result mirroring list_types_query: a ?type class URI + ?label."""
     bindings = [
         {
-            "type": {"type": "uri", "value": f"https://graph.onta.sh/types/{n}"},
+            "type": {"type": "uri", "value": f"https://graph.infona.ai/types/{n}"},
             "label": {"type": "literal", "value": n},
         }
         for n in names
@@ -118,7 +118,7 @@ def test_list_declared_types_ignores_non_type_rows():
                     {
                         "e": {
                             "type": "uri",
-                            "value": "https://graph.onta.sh/entities/Product/p1",
+                            "value": "https://graph.infona.ai/entities/Product/p1",
                         },
                         "label": {"type": "literal", "value": "Bosch"},
                     }

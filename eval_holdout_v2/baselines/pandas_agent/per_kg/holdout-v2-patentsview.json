@@ -4,7 +4,7 @@
     "id": "q-001",
     "tier": "T1",
     "question": "How many citations are there in the database?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> . }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Citation> . }",
     "expected_answer": "117660",
     "full_expected_items": [
       "117660"
@@ -49,7 +49,7 @@
     "id": "q-002",
     "tier": "T1",
     "question": "How many patents are in the database?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> . }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> . }",
     "expected_answer": "92836",
     "full_expected_items": [
       "92836"
@@ -94,7 +94,7 @@
     "id": "q-003",
     "tier": "T1",
     "question": "How many unique CPC classes are defined in the system?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/CPCClass> . }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/CPCClass> . }",
     "expected_answer": "25447",
     "full_expected_items": [
       "25447"
@@ -139,7 +139,7 @@
     "id": "q-004",
     "tier": "T1",
     "question": "How many inventors are listed in the database?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Inventor> . }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?x) AS ?n) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?x <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Inventor> . }",
     "expected_answer": "14039",
     "full_expected_items": [
       "14039"
@@ -184,7 +184,7 @@
     "id": "q-005",
     "tier": "T2",
     "question": "How many utility patents have more than 20 claims?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?patent) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> \"utility\" . ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/num_claims> ?numClaims . FILTER(xsd:integer(?numClaims) > 20) }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?patent) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> . ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_type> \"utility\" . ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/num_claims> ?numClaims . FILTER(xsd:integer(?numClaims) > 20) }",
     "expected_answer": "635",
     "full_expected_items": [
       "635"
@@ -229,7 +229,7 @@
     "id": "q-006",
     "tier": "T2",
     "question": "How many inventors are listed with a sequence number greater than 10?",
-    "gold_sparql": "SELECT (COUNT(DISTINCT ?inventor) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?inventor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Inventor> . ?inventor <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/inventor_sequence> ?seq . FILTER(xsd:integer(?seq) > 10) }",
+    "gold_sparql": "SELECT (COUNT(DISTINCT ?inventor) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?inventor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Inventor> . ?inventor <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/inventor_sequence> ?seq . FILTER(xsd:integer(?seq) > 10) }",
     "expected_answer": "77",
     "full_expected_items": [
       "77"
@@ -274,7 +274,7 @@
     "id": "q-007",
     "tier": "T2",
     "question": "Find all assignees whose organization name contains the word 'Technology'.",
-    "gold_sparql": "SELECT ?assigneeId ?orgName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Assignee> . ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/assignee_id> ?assigneeId . ?assignee <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?orgName . FILTER(CONTAINS(?orgName, \"Technology\")) }",
+    "gold_sparql": "SELECT ?assigneeId ?orgName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE { ?assignee <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Assignee> . ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/assignee_id> ?assigneeId . ?assignee <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/disambig_assignee_organization> ?orgName . FILTER(CONTAINS(?orgName, \"Technology\")) }",
     "expected_answer": "ba3ecc52-2929-4d0e-9203-20b91cdb6630 | Beijing E-Town Semiconductor Technology Co., Ltd.\nf7cf7c89-c39f-421c-a1e5-e3d403782dc7 | Industrial Technology Research Institute\n6276fb79-21ef-420c-8037-6e586cc49e56 | Ormazabal Corporate Technology, A.I.E.\n09cc6f08-128f-4298-ba1a-9539b8e192e6 | Praxair Technology, Inc.\n557784be-231b-4aef-a9f4-740b36729a1b | Ojai Retinal Technology, LLC\n0f9a639e-9224-423e-9f5f-0b64121f154b | Sensor Electronic Technology, Inc.\neb2ebb85-8503-414d-9730-aed37c7ab928 | Japan Science and Technology Agency\nb815f470-f656-4e72-b06e-71fd2d04f22c | Fu Da Tong Technology Co., Ltd.\n1149ebbb-6368-440e-ae2f-0f1303eb4bcb | Ningbo Defeng Power Technology Co., Ltd.\n845130de-72da-4cbb-b225-374b1c819d91 | Commonwealth Of Australia represented by Department of Defence, Defence Science and Technology Organisation\n... (67 total rows)",
     "full_expected_items": [
       "ba3ecc52-2929-4d0e-9203-20b91cdb6630 | Beijing E-Town Semiconductor Technology Co., Ltd.",
@@ -385,19 +385,19 @@
     "id": "q-008",
     "tier": "T3",
     "question": "For each patent, count how many outgoing citations it has, considering only utility patents filed after 2000.",
-    "gold_sparql": "SELECT ?patent (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .\n  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_type> \"utility\" .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .\n  FILTER(?date > \"2000-01-01\")\n} GROUP BY ?patent ORDER BY DESC(?citationCount) LIMIT 10",
-    "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585",
+    "gold_sparql": "SELECT ?patent (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/has_outgoing_citation> ?citation .\n  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Citation> .\n  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_type> \"utility\" .\n  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_date> ?date .\n  FILTER(?date > \"2000-01-01\")\n} GROUP BY ?patent ORDER BY DESC(?citationCount) LIMIT 10",
+    "expected_answer": "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585",
     "full_expected_items": [
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585"
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542974 | 4770",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542991 | 1962",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555769 | 1879",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10524872 | 1849",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542967 | 1574",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10525236 | 800",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10556090 | 614",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10553241 | 611",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10543064 | 602",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10591877 | 585"
     ],
     "full_result_count": 10,
     "per_seed": [
@@ -439,19 +439,19 @@
     "id": "q-009",
     "tier": "T3",
     "question": "List inventors and the number of patents they are associated with, focusing only on inventors whose last name contains 'Smith'.",
-    "gold_sparql": "SELECT ?inventor (COUNT(DISTINCT ?patent) AS ?patentCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?inventor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Inventor> .\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/has_inventor> ?inventor .\n  ?inventor <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/disambig_inventor_name_last> ?lastName .\n  FILTER(CONTAINS(?lastName, \"Smith\"))\n} GROUP BY ?inventor ORDER BY DESC(?patentCount) LIMIT 10",
-    "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ami_ln%3Asmith-108 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aja_ln%3Asmith-72 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Atr_ln%3Asmith-11 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-102 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-256 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ama_ln%3Asmith-175 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Abr_ln%3Asmith-149 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ach_ln%3Asmith-58 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aro_ln%3Asmith-78 | 1\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ary_ln%3Asmith-15 | 1",
+    "gold_sparql": "SELECT ?inventor (COUNT(DISTINCT ?patent) AS ?patentCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?inventor <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Inventor> .\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/has_inventor> ?inventor .\n  ?inventor <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/disambig_inventor_name_last> ?lastName .\n  FILTER(CONTAINS(?lastName, \"Smith\"))\n} GROUP BY ?inventor ORDER BY DESC(?patentCount) LIMIT 10",
+    "expected_answer": "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ami_ln%3Asmith-108 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aja_ln%3Asmith-72 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Atr_ln%3Asmith-11 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-102 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-256 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ama_ln%3Asmith-175 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Abr_ln%3Asmith-149 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ach_ln%3Asmith-58 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aro_ln%3Asmith-78 | 1\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ary_ln%3Asmith-15 | 1",
     "full_expected_items": [
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ami_ln%3Asmith-108 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aja_ln%3Asmith-72 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Atr_ln%3Asmith-11 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-102 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-256 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ama_ln%3Asmith-175 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Abr_ln%3Asmith-149 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ach_ln%3Asmith-58 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aro_ln%3Asmith-78 | 1",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ary_ln%3Asmith-15 | 1"
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ami_ln%3Asmith-108 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aja_ln%3Asmith-72 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Atr_ln%3Asmith-11 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-102 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ada_ln%3Asmith-256 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ama_ln%3Asmith-175 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Abr_ln%3Asmith-149 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ach_ln%3Asmith-58 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Aro_ln%3Asmith-78 | 1",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Inventor/fl%3Ary_ln%3Asmith-15 | 1"
     ],
     "full_result_count": 10,
     "per_seed": [
@@ -493,19 +493,19 @@
     "id": "q-010",
     "tier": "T3",
     "question": "List the patents that have been cited by the most citations, along with the number of citations each has received, considering only patents that have at least one citation.",
-    "gold_sparql": "SELECT ?patent ?title (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Citation> .\n  ?citation <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/citation_targets_patent> ?patent .\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://omnix.dev/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?title .\n}\nGROUP BY ?patent ?title\nHAVING (COUNT(DISTINCT ?citation) >= 1)\nORDER BY DESC(?citationCount)\nLIMIT 10",
-    "expected_answer": "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | Surgical stapling system comprising a jaw attachment lockout | 955\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | Surgical instrument including a control system | 611\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | Flexible circuits for electrosurgical instrument | 351\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10531929 | Control of robotic arm motion based on sensed load on cutting tool | 246\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10574705 | Data processing and scanning systems for generating and populating a data inventory | 224\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/D874034 | Vehicle rear taillamp | 182\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10599155 | Autonomous vehicle operation feature monitoring and evaluation of effectiveness | 132\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10579028 | Systems and methods for monitoring building health | 125\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555318 | Guided wave communication system with resource allocation and methods for use therewith | 124\nhttps://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10552058 | Techniques for delegating data processing to a cooperative memory controller | 113",
+    "gold_sparql": "SELECT ?patent ?title (COUNT(DISTINCT ?citation) AS ?citationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-patentsview> WHERE {\n  ?citation <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Citation> .\n  ?citation <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/citation_targets_patent> ?patent .\n  ?patent <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/type/Patent> .\n  ?patent <https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/pred/patent_title> ?title .\n}\nGROUP BY ?patent ?title\nHAVING (COUNT(DISTINCT ?citation) >= 1)\nORDER BY DESC(?citationCount)\nLIMIT 10",
+    "expected_answer": "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542991 | Surgical stapling system comprising a jaw attachment lockout | 955\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542974 | Surgical instrument including a control system | 611\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555769 | Flexible circuits for electrosurgical instrument | 351\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10531929 | Control of robotic arm motion based on sensed load on cutting tool | 246\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10574705 | Data processing and scanning systems for generating and populating a data inventory | 224\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/D874034 | Vehicle rear taillamp | 182\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10599155 | Autonomous vehicle operation feature monitoring and evaluation of effectiveness | 132\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10579028 | Systems and methods for monitoring building health | 125\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555318 | Guided wave communication system with resource allocation and methods for use therewith | 124\nhttps://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10552058 | Techniques for delegating data processing to a cooperative memory controller | 113",
     "full_expected_items": [
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542991 | Surgical stapling system comprising a jaw attachment lockout | 955",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10542974 | Surgical instrument including a control system | 611",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555769 | Flexible circuits for electrosurgical instrument | 351",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10531929 | Control of robotic arm motion based on sensed load on cutting tool | 246",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10574705 | Data processing and scanning systems for generating and populating a data inventory | 224",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/D874034 | Vehicle rear taillamp | 182",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10599155 | Autonomous vehicle operation feature monitoring and evaluation of effectiveness | 132",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10579028 | Systems and methods for monitoring building health | 125",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10555318 | Guided wave communication system with resource allocation and methods for use therewith | 124",
-      "https://omnix.dev/holdout-v2/holdout-v2-patentsview/Patent/10552058 | Techniques for delegating data processing to a cooperative memory controller | 113"
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542991 | Surgical stapling system comprising a jaw attachment lockout | 955",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10542974 | Surgical instrument including a control system | 611",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555769 | Flexible circuits for electrosurgical instrument | 351",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10531929 | Control of robotic arm motion based on sensed load on cutting tool | 246",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10574705 | Data processing and scanning systems for generating and populating a data inventory | 224",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/D874034 | Vehicle rear taillamp | 182",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10599155 | Autonomous vehicle operation feature monitoring and evaluation of effectiveness | 132",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10579028 | Systems and methods for monitoring building health | 125",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10555318 | Guided wave communication system with resource allocation and methods for use therewith | 124",
+      "https://graph.infona.ai/holdout-v2/holdout-v2-patentsview/Patent/10552058 | Techniques for delegating data processing to a cooperative memory controller | 113"
     ],
     "full_result_count": 10,
     "per_seed": [

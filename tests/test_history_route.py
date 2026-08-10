@@ -8,8 +8,8 @@ transitions from the companion history graph — the queryable surface a
 from infona_client.graph.history import history_graph_uri
 from infona_client.graph.queries import kg_graph_uri
 
-SUBJ = "https://graph.onta.sh/entities/Widget/w1"
-PRED = "https://graph.onta.sh/types/Widget/attrs/weight_kg"
+SUBJ = "https://graph.infona.ai/entities/Widget/w1"
+PRED = "https://graph.infona.ai/types/Widget/attrs/weight_kg"
 
 
 def _history_response(rows):
@@ -85,7 +85,7 @@ def test_history_route_rejects_injection_subject(client, auth_headers, mock_nept
     """TENANT ISOLATION: a subject carrying a `>` that tries to inject a
     GRAPH <other-tenant> block is rejected at the route boundary (422) and NEVER
     reaches Neptune — so it cannot read another tenant's history."""
-    victim = "https://graph.onta.sh/graphs/VICTIM/kg/secret/history"
+    victim = "https://graph.infona.ai/graphs/VICTIM/kg/secret/history"
     payload = f"http://x> }} UNION {{ GRAPH <{victim}> {{ ?node ?p ?o "
     resp = client.get(
         "/graphs/test-tenant/history",

@@ -40,7 +40,7 @@ from infona_client.graph.store import (
     scrub_store_detail,
 )
 
-logger = structlog.stdlib.get_logger("cograph.graph.neo4j")
+logger = structlog.stdlib.get_logger("infona.graph.neo4j")
 
 _MAX_TRANSPORT_ATTEMPTS = 3
 _RETRY_BACKOFF_S = 0.5

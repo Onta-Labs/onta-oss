@@ -9,7 +9,7 @@ Two layers, mirroring ``test_spatiotemporal.py``:
   hnsw_iterative) incl. the pgvector-0.8 capability probe and its
   placeholder-GUC false-positive guard, the degraded lexical-only path, the
   queue SQL, the ``list_docs`` doc-listing SQL, and the registry seam.
-* **Live integration tests** gated on ``OMNIX_DATABASE_URL`` (skipped without
+* **Live integration tests** gated on ``INFONA_DATABASE_URL`` (skipped without
   it): the full protocol contract against a real Postgres + pgvector. These
   run in CI against the ``pgvector/pgvector:pg16`` service container, and
   locally against a scratch cluster. They are written to pass on BOTH pgvector
@@ -40,7 +40,7 @@ from infona_client.semantic.postgres import (
 )
 from infona_client.semantic.protocol import IDENTITY_ATTR
 
-DSN = os.environ.get("OMNIX_DATABASE_URL", "")
+DSN = os.environ.get("INFONA_DATABASE_URL", "")
 
 TENANT = "demo-tenant"
 KG = "kg1"
@@ -118,9 +118,9 @@ def test_invalid_embed_dim_rejected():
 
 
 def test_env_knobs_are_read(monkeypatch):
-    monkeypatch.setenv("OMNIX_SEMANTIC_TS_CONFIG", "english")
-    monkeypatch.setenv("OMNIX_SEMANTIC_EMBED_DIM", "8")
-    monkeypatch.setenv("OMNIX_SEMANTIC_EXACT_SCAN_THRESHOLD", "123")
+    monkeypatch.setenv("INFONA_SEMANTIC_TS_CONFIG", "english")
+    monkeypatch.setenv("INFONA_SEMANTIC_EMBED_DIM", "8")
+    monkeypatch.setenv("INFONA_SEMANTIC_EXACT_SCAN_THRESHOLD", "123")
     idx = PostgresSemanticIndex(dsn="postgres://x")
     assert idx._ts_config == "english"
     assert idx._embed_dim == 8
@@ -570,7 +570,7 @@ async def test_search_entity_uris_bound_into_leg_filter(pg):
     and an empty allowlist short-circuits without a fetch."""
     store, recorder, conn, _pool = pg
     conn.gate_count = 2
-    allow = ["https://graph.onta.sh/entities/Report/a", "e:wind"]
+    allow = ["https://graph.infona.ai/entities/Report/a", "e:wind"]
     await store.search(
         TENANT,
         "solar",
@@ -780,11 +780,11 @@ async def test_mark_embed_failed_is_one_batched_update(pg):
 
 
 # ---------------------------------------------------------------------------
-# Live DB integration tests (skip without OMNIX_DATABASE_URL)
+# Live DB integration tests (skip without INFONA_DATABASE_URL)
 # ---------------------------------------------------------------------------
 
 needs_pg = pytest.mark.skipif(
-    not DSN, reason="OMNIX_DATABASE_URL not set; needs live Postgres with pgvector"
+    not DSN, reason="INFONA_DATABASE_URL not set; needs live Postgres with pgvector"
 )
 
 #: All live tests use dim-8 vectors — the table is created once per database

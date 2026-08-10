@@ -43,7 +43,7 @@ from tests._hermetic import ALLOW_LIVE_VAR
 # present on dev machines, absent in fresh OSS clones. Tests that need them
 # skip with a clear reason when the file is missing.
 DATASETS_ROOT = Path(
-    os.environ.get("COGRAPH_DATASETS_ROOT") or Path(__file__).resolve().parents[2]
+    os.environ.get("INFONA_DATASETS_ROOT") or Path(__file__).resolve().parents[2]
 )
 
 
@@ -52,7 +52,7 @@ def _load_dataset(relpath: str) -> tuple[list[str], list[dict]]:
     if not path.exists():
         pytest.skip(
             f"dataset CSV not present: {path} "
-            "(gitignored, lives in the parent repo — set COGRAPH_DATASETS_ROOT)"
+            "(gitignored, lives in the parent repo — set INFONA_DATASETS_ROOT)"
         )
     with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -482,7 +482,7 @@ class TestRankSampleRows:
 
 class TestInferSchemaRetry:
     """Retry contract of the LEGACY single-call path. These tests predate the
-    ADR 0003 v2 pipeline (now the default), so they pin OMNIX_CSV_INFERENCE_V2=0
+    ADR 0003 v2 pipeline (now the default), so they pin INFONA_CSV_INFERENCE_V2=0
     to keep exercising the code path they were written for; the v2 retry
     contract is covered in TestInferSchemaV2Retry below."""
 
@@ -490,7 +490,7 @@ class TestInferSchemaRetry:
     async def test_retries_on_validation_error(self, monkeypatch):
         from unittest.mock import AsyncMock
 
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")
         resolver = CSVResolver(client=None, openrouter_key="")
         valid_data = {
             "entity_type": "Mentor",
@@ -521,7 +521,7 @@ class TestInferSchemaRetry:
 
     @pytest.mark.asyncio
     async def test_propagates_when_retry_also_fails(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")
         resolver = CSVResolver(client=None, openrouter_key="")
         bad_data = {"entity_type_oops": "Mentor", "columns": []}
 
@@ -558,7 +558,7 @@ class TestInferSchemaEmptyLLMResponseRetry:
     still catches JSON errors, since ``json.JSONDecodeError ⊂ ValueError``).
 
     These exercise the REAL ``openrouter_chat → _chat_openrouter → _call_llm``
-    chain via the legacy single-call path (``OMNIX_CSV_INFERENCE_V2=0``); the
+    chain via the legacy single-call path (``INFONA_CSV_INFERENCE_V2=0``); the
     only thing mocked is ``openrouter_chat`` itself. Invented tokens; no network.
     """
 
@@ -571,7 +571,7 @@ class TestInferSchemaEmptyLLMResponseRetry:
         returns valid JSON → inference RECOVERS. With the old
         ``json.JSONDecodeError`` tuple the first ValueError would escape and the
         retry would never run, so this asserts the widening restored recovery."""
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")  # legacy single-call path
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")  # legacy single-call path
         resolver = CSVResolver(client=None, openrouter_key="test-or-key")
 
         valid = {
@@ -608,7 +608,7 @@ class TestInferSchemaEmptyLLMResponseRetry:
         """A persistently-empty response retries once (temp 0.3) and then
         propagates as the SAME ``ValueError`` the /ingest/csv/schema route maps
         to a clean 422 — never an uncaught non-ValueError that would 500."""
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")
         resolver = CSVResolver(client=None, openrouter_key="test-or-key")
         temps: list[float] = []
 
@@ -635,7 +635,7 @@ class TestInferSchemaEmptyLLMResponseRetry:
         persistently returns an empty response yields a clean 422 (with retry
         guidance), NOT an uncaught 500. TestClient re-raises uncaught server
         errors, so a regression here would ERROR, not silently pass."""
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")  # legacy single-call path
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")  # legacy single-call path
         monkeypatch.setenv("OPENROUTER_API_KEY", "test-or-key")  # reach openrouter_chat
 
         async def always_empty(*args, **kwargs):
@@ -895,7 +895,7 @@ class TestInferSchemaV2:
 
     @pytest.mark.asyncio
     async def test_flag_off_runs_legacy_path_with_keyword_patch(self, monkeypatch):
-        monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
+        monkeypatch.setenv("INFONA_CSV_INFERENCE_V2", "0")
         resolver = CSVResolver(client=None, openrouter_key="")
 
         async def fake_legacy(user_content, temperature=0.0):
@@ -2074,11 +2074,11 @@ class TestLiveHotelPMSInference:
     via OpenRouter) on the hotel PMS export — ADR 0003's generality check:
     zero domain hints anywhere in the prompts. Run on a dev machine with:
 
-        ONTA_TEST_ALLOW_LIVE_LLM=1 COGRAPH_DATASETS_ROOT=<parent repo> \
+        INFONA_TEST_ALLOW_LIVE_LLM=1 INFONA_DATASETS_ROOT=<parent repo> \
             OPENROUTER_API_KEY=sk-or-... \
             pytest tests/test_csv_resolver.py -m integration -v
 
-    The ONTA_TEST_ALLOW_LIVE_LLM=1 opt-in is required: tests/conftest.py clears
+    The INFONA_TEST_ALLOW_LIVE_LLM=1 opt-in is required: tests/conftest.py clears
     the provider credentials by default so the unit suite can never egress to a
     live LLM, and without it the key above is stripped and this class skips.
     """
@@ -2141,11 +2141,11 @@ class TestLiveGraingerCompletion:
     via OpenRouter) on the Grainger-shaped catalog — the COG-52 acceptance
     scenario with zero domain hints in any prompt. Run on a dev machine with:
 
-        ONTA_TEST_ALLOW_LIVE_LLM=1 COGRAPH_DATASETS_ROOT=<parent repo> \
+        INFONA_TEST_ALLOW_LIVE_LLM=1 INFONA_DATASETS_ROOT=<parent repo> \
             OPENROUTER_API_KEY=sk-or-... \
             pytest tests/test_csv_resolver.py -m integration -v
 
-    The ONTA_TEST_ALLOW_LIVE_LLM=1 opt-in is required: tests/conftest.py clears
+    The INFONA_TEST_ALLOW_LIVE_LLM=1 opt-in is required: tests/conftest.py clears
     the provider credentials by default so the unit suite can never egress to a
     live LLM, and without it the key above is stripped and this class skips.
     """
@@ -2352,7 +2352,7 @@ class TestSchemaInferenceModel:
 
     Its cost is fixed per file (three sequential passes; row ingest is LLM-free),
     so it dominates a small upload's latency. A regression once let it inherit
-    PRIMARY_MODEL (Opus) via ``OMNIX_EXTRACT_MODEL``'s default, so a 24-row CSV
+    PRIMARY_MODEL (Opus) via ``INFONA_EXTRACT_MODEL``'s default, so a 24-row CSV
     paid ~3× an Opus round-trip stuck at "0 of ~24". These lock the fast default
     and the decoupling in.
     """
@@ -2389,10 +2389,10 @@ class TestSchemaInferenceModel:
         # Ops can still pin the model via the dedicated knob (re-read at import).
         import importlib
 
-        monkeypatch.setenv("OMNIX_CSV_SCHEMA_MODEL", "test/custom-schema-model")
+        monkeypatch.setenv("INFONA_CSV_SCHEMA_MODEL", "test/custom-schema-model")
         reloaded = importlib.reload(csv_resolver)
         try:
             assert reloaded.CSVResolver.EXTRACT_MODEL == "test/custom-schema-model"
         finally:
-            monkeypatch.delenv("OMNIX_CSV_SCHEMA_MODEL", raising=False)
+            monkeypatch.delenv("INFONA_CSV_SCHEMA_MODEL", raising=False)
             importlib.reload(csv_resolver)

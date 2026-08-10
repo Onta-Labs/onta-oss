@@ -23,7 +23,7 @@ cleaning A4 was already doing silently.
 
 Reuses the primitives in ``resolver/validator.py`` (``validate_value`` /
 ``coerce_value``) — it does NOT re-implement cleaning. OSS: stdlib +
-``infona_client.*`` only, no ``from cograph.*``.
+``infona_client.*`` only, no ``from infona.*``.
 """
 from __future__ import annotations
 

@@ -20,7 +20,7 @@ reject one the self-gate would admit at the same (entity_type, attribute). That
 equivalence is what makes replacing the O(N) linear self-gating scan with
 retrieve-top-K safe.
 
-Pure data + stdlib — no network, no ``cograph.*`` import, no dependency on the
+Pure data + stdlib — no network, no ``infona.*`` import, no dependency on the
 enrichment tier machinery — so it is importable from either rail without a cycle.
 """
 

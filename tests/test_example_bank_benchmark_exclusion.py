@@ -36,7 +36,7 @@ from infona_client.nlp.example_bank import (
     is_benchmark_kg,
 )
 
-GRAPH = "https://graph.onta.sh/graphs/demo-tenant/kg/{kg}"
+GRAPH = "https://graph.infona.ai/graphs/demo-tenant/kg/{kg}"
 
 
 def _row(kg: str, question: str) -> dict:

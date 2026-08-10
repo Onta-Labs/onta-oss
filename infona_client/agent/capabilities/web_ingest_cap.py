@@ -154,7 +154,7 @@ from infona_client.web_sources.base import (
 )
 from infona_client.web_sources.url_extract import extract_urls
 
-logger = structlog.stdlib.get_logger("cograph.agent.web_ingest")
+logger = structlog.stdlib.get_logger("infona.agent.web_ingest")
 
 _bg_tasks: set[asyncio.Task] = set()
 
@@ -184,7 +184,7 @@ _PREVIEW_SOURCES = 5
 # ops can retune (e.g. a batch/back-office deployment that wants the old 200 and
 # accepts a longer _RUN_TIMEOUT_S) without a deploy. Mirrors the enrich plan's
 # _DEFAULT_PLAN_LIMIT pattern; still user-overridable per plan.
-_DEFAULT_PLAN_CAP = max(1, int(os.environ.get("COGRAPH_DISCOVERY_DEFAULT_CAP", "50")))
+_DEFAULT_PLAN_CAP = max(1, int(os.environ.get("INFONA_DISCOVERY_DEFAULT_CAP", "50")))
 
 # Wall-clock budgets for building the plan-time PREVIEW, sized well under the
 # Explorer proxy's 55s backend abort (web/app/api/demo/agent/route.ts
@@ -200,8 +200,8 @@ _DEFAULT_PLAN_CAP = max(1, int(os.environ.get("COGRAPH_DISCOVERY_DEFAULT_CAP", "
 # Together (22 + 15 = 37s) they leave headroom under the 55s budget for the small
 # upstream classify + spec-resolve LLM calls; the sample's web fan-out is the
 # bigger variable, so it gets the larger share.
-_SAMPLE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SAMPLE_BUDGET_S", "22"))
-_SHAPE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SHAPE_BUDGET_S", "15"))
+_SAMPLE_BUDGET_S = float(os.environ.get("INFONA_WEB_SAMPLE_BUDGET_S", "22"))
+_SHAPE_BUDGET_S = float(os.environ.get("INFONA_WEB_SHAPE_BUDGET_S", "15"))
 
 # Hard wall-clock budget for the WHOLE background discovery run (all sub-queries,
 # providers, and the LLM-extraction ingest of every batch). Without it a run
@@ -211,7 +211,7 @@ _SHAPE_BUDGET_S = float(os.environ.get("COGRAPH_WEB_SHAPE_BUDGET_S", "15"))
 # flip to a terminal state (ONTA-196). On timeout we route to _fail_job so the
 # job honestly shows ``failed``, never a stuck ``running``. Generous default so a
 # legitimately large pull isn't cut short; env-overridable for ops tuning.
-_RUN_TIMEOUT_S = float(os.environ.get("OMNIX_DISCOVERY_RUN_TIMEOUT_S", "600"))
+_RUN_TIMEOUT_S = float(os.environ.get("INFONA_DISCOVERY_RUN_TIMEOUT_S", "600"))
 
 # Auto-confirm gate. Discovery plans whose provider cost is at or under this are
 # treated as CHEAP: clients start the job straight from the attribute confirm
@@ -221,7 +221,7 @@ _RUN_TIMEOUT_S = float(os.environ.get("OMNIX_DISCOVERY_RUN_TIMEOUT_S", "600"))
 # confirmable step; the full sample+shape preview is reserved for providers
 # ABOVE the gate, where a human reviews real money and the estimate earns its
 # cost. The web client auto-confirms plans up to this same figure.
-_PREVIEW_GATE_USD = float(os.environ.get("COGRAPH_WEB_PREVIEW_GATE_USD", "0.50"))
+_PREVIEW_GATE_USD = float(os.environ.get("INFONA_WEB_PREVIEW_GATE_USD", "0.50"))
 
 # ONTA-199 follow-up (the decomposition fix). Discovery extraction defaults to
 # SOFT (seed) mode: the user-confirmed target type + attributes are passed as a
@@ -231,9 +231,9 @@ _PREVIEW_GATE_USD = float(os.environ.get("COGRAPH_WEB_PREVIEW_GATE_USD", "0.50")
 # Physician), real-world values lifted to nodes (city -> City, specialty ->
 # Specialty), multi-valued fields split, measurements kept literal. The old HARD
 # cage (flat single literal-only type) is retained behind this flag purely as a
-# kill-switch: set COGRAPH_DISCOVERY_SOFT_EXTRACT=0 to revert without a deploy.
+# kill-switch: set INFONA_DISCOVERY_SOFT_EXTRACT=0 to revert without a deploy.
 _DISCOVERY_SOFT_EXTRACT = (
-    os.environ.get("COGRAPH_DISCOVERY_SOFT_EXTRACT", "1") != "0"
+    os.environ.get("INFONA_DISCOVERY_SOFT_EXTRACT", "1") != "0"
 )
 
 # ONTA-272 / quality fix: pre-structured fast-path. A provider that returns
@@ -245,9 +245,9 @@ _DISCOVERY_SOFT_EXTRACT = (
 # DEFENSIVELY via getattr), rows commit through
 # ``resolver.ingest_structured_rows`` → ``ingest_mapped_records`` with NO
 # ``_extract``. Default ON (2026-07 quality bar): set
-# ``COGRAPH_DISCOVERY_STRUCTURED_FASTPATH=0`` to kill-switch back to soft re-extract.
+# ``INFONA_DISCOVERY_STRUCTURED_FASTPATH=0`` to kill-switch back to soft re-extract.
 _DISCOVERY_STRUCTURED_FASTPATH = (
-    os.environ.get("COGRAPH_DISCOVERY_STRUCTURED_FASTPATH", "1") != "0"
+    os.environ.get("INFONA_DISCOVERY_STRUCTURED_FASTPATH", "1") != "0"
 )
 
 # In-session progress observability (ONTA-243). A single (sub-query, provider)
@@ -264,7 +264,7 @@ _DISCOVERY_STRUCTURED_FASTPATH = (
 # calls for real streaming progress; env-overridable so ops can retune the
 # progress-granularity vs call-count balance without a deploy.
 _DISCOVERY_INGEST_SUBBATCH = max(
-    1, int(os.environ.get("COGRAPH_DISCOVERY_INGEST_SUBBATCH", "5"))
+    1, int(os.environ.get("INFONA_DISCOVERY_INGEST_SUBBATCH", "5"))
 )
 
 # ONTA-394: entity fan-out observability. Soft extract can multiply a keyed A1
@@ -276,7 +276,7 @@ _DISCOVERY_INGEST_SUBBATCH = max(
 # and stamps ``entity_fanout_high`` on the stage-trace summary. Observability
 # ONLY — never drops entities (a page can legitimately name several subjects).
 _DISCOVERY_FANOUT_WARN_RATIO = float(
-    os.environ.get("COGRAPH_DISCOVERY_FANOUT_WARN_RATIO", "2.0")
+    os.environ.get("INFONA_DISCOVERY_FANOUT_WARN_RATIO", "2.0")
 )
 
 
@@ -1051,7 +1051,7 @@ class WebIngestCapability:
             # BECAUSE it is at/under the gate — say so explicitly, so clients
             # obey the server's judgment instead of re-deriving it from a
             # hardcoded twin constant (interface-drift risk: a client whose
-            # threshold skews from COGRAPH_WEB_PREVIEW_GATE_USD would either
+            # threshold skews from INFONA_WEB_PREVIEW_GATE_USD would either
             # show a preview-less spend card or auto-run an ungated plan).
             # ONTA-428: withhold the auto-confirm when the target graph is missing
             # AND the workspace has others, i.e. the typo shape. Everywhere else
@@ -3640,7 +3640,7 @@ def _build_resolver(ctx: AgentContext, *, ontology_lock: "asyncio.Lock | None" =
     from infona_client.resolver.schema_resolver import SchemaResolver
     from infona_client.resolver.verdict_cache import JsonVerdictCache
 
-    cache = JsonVerdictCache(Path(tempfile.gettempdir()) / "omnix-verdict-cache.json")
+    cache = JsonVerdictCache(Path(tempfile.gettempdir()) / "infona-verdict-cache.json")
     return SchemaResolver(
         neptune=ctx.neptune,
         anthropic_key=ctx.anthropic_key,

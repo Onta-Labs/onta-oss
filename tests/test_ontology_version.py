@@ -139,7 +139,7 @@ class PyoxiNeptune:
 
 
 def _make_resolver(neptune) -> SchemaResolver:
-    os.environ["COGRAPH_ER_ENABLED"] = "0"  # deterministic URIs, no signal-hash suffix
+    os.environ["INFONA_ER_ENABLED"] = "0"  # deterministic URIs, no signal-hash suffix
     cache_path = pathlib.Path(tempfile.gettempdir()) / f"onta270_verdicts_{time.time_ns()}.json"
     return SchemaResolver(
         neptune=neptune,

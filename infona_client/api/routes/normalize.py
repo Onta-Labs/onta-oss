@@ -56,7 +56,7 @@ _SUPPORTED_RULE_TYPES = {"list_explode", "strip_emoji", "promote_to_node"}
 _VALID_LIST_EXPLODE_TARGETS = {"entity", "literal"}
 _VALID_PROMOTE_KEY_BY = {"value", "owner"}
 
-logger = structlog.stdlib.get_logger("cograph.normalization.routes")
+logger = structlog.stdlib.get_logger("infona.normalization.routes")
 
 router = APIRouter(prefix="/graphs/{tenant}/normalize")
 

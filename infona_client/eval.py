@@ -31,16 +31,16 @@ Usage
 Via CLI::
 
     # Full eval: ontology quality + query accuracy
-    omnix eval data/listings.csv --kg real-estate --questions 20
+    infona eval data/listings.csv --kg real-estate --questions 20
 
     # Ontology quality only (no questions)
-    omnix eval --ontology-only --kg real-estate
+    infona eval --ontology-only --kg real-estate
 
     # Query accuracy only (ontology already ingested)
-    omnix eval --query-only data/listings.csv --kg real-estate
+    infona eval --query-only data/listings.csv --kg real-estate
 
     # Multi-domain test: ingest two datasets, check ontology reuse
-    omnix eval data/listings.csv data/restaurants.csv --kg combined
+    infona eval data/listings.csv data/restaurants.csv --kg combined
 
 Via Python::
 
@@ -124,7 +124,7 @@ Report Format
 =============
 The eval produces a JSON report and a human-readable summary::
 
-    OMNIX EVAL REPORT
+    INFONA EVAL REPORT
     ════════════════════════════════════════════════════════════
     Dataset:      listings.csv (1000 rows)
     KG:           real-estate
@@ -171,7 +171,7 @@ To add a new question tier:
   3. Update the report formatting in _format_report()
 
 To change the judge model:
-  Set OMNIX_EVAL_MODEL env var (default: uses the same provider as query generation)
+  Set INFONA_EVAL_MODEL env var (default: uses the same provider as query generation)
 """
 
 
@@ -192,14 +192,14 @@ import structlog
 if TYPE_CHECKING:  # the bank is imported lazily; this is for the signature only
     from infona_client.nlp.example_bank import ExampleBank
 
-logger = structlog.stdlib.get_logger("cograph.eval")
+logger = structlog.stdlib.get_logger("infona.eval")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-EVAL_MODEL = os.environ.get("OMNIX_EVAL_MODEL", "deepseek/deepseek-v3.2")
-EVAL_PROVIDER = os.environ.get("OMNIX_EVAL_PROVIDER", "openrouter")
+EVAL_MODEL = os.environ.get("INFONA_EVAL_MODEL", "deepseek/deepseek-v3.2")
+EVAL_PROVIDER = os.environ.get("INFONA_EVAL_PROVIDER", "openrouter")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Maximum chars of source data to include in judge context.
@@ -533,7 +533,7 @@ Evaluate the answer and respond with valid JSON:
 }}
 
 Failure categories:
-- "bad_predicate_uri": SPARQL uses wrong predicate URIs (e.g., <price> instead of <https://graph.onta.sh/types/Property/attrs/price>)
+- "bad_predicate_uri": SPARQL uses wrong predicate URIs (e.g., <price> instead of <https://graph.infona.ai/types/Property/attrs/price>)
 - "missing_join": Query doesn't traverse a relationship that's needed
 - "wrong_filter": Filter condition is malformed or uses wrong comparison
 - "wrong_aggregation": COUNT/AVG/SUM is wrong or applied to wrong variable
@@ -1289,7 +1289,7 @@ class QueryEvaluator:
                 failure_cat = "empty_result"
             elif answer.startswith("Could not answer") or answer.startswith("ERROR"):
                 failure_cat = "error"
-            elif "http" in ans_lower and (IRI_BASE.split("://",1)[-1] in ans_lower or "cograph.tech" in ans_lower or "graph.onta.sh" in ans_lower):
+            elif "http" in ans_lower and (IRI_BASE.split("://",1)[-1] in ans_lower or "graph.infona.ai" in ans_lower or "graph.infona.ai" in ans_lower):
                 failure_cat = "uri_instead_of_value"
             else:
                 failure_cat = "wrong_answer"
@@ -1380,8 +1380,8 @@ async def run_full_eval(
     dataset_stats = all_stats[0] if all_stats else None
 
     # Determine which models are used for each role
-    extraction_model = os.environ.get("OMNIX_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
-    query_model_resolved = query_model or os.environ.get("OMNIX_QUERY_MODEL", "google/gemini-2.5-flash")
+    extraction_model = os.environ.get("INFONA_EXTRACT_MODEL", "deepseek/deepseek-v3.2")
+    query_model_resolved = query_model or os.environ.get("INFONA_QUERY_MODEL", "google/gemini-2.5-flash")
     models = ModelConfig(
         eval_judge=EVAL_MODEL,
         question_gen=EVAL_MODEL,
@@ -1565,7 +1565,7 @@ async def rebuild_example_bank(
     on the machine that ran the eval. That file is gitignored and machine-local,
     so a dev evaluating one KG and committing the result silently shrank the
     shared bank to their own subset. That is the most likely way the 148
-    Spider4SPARQL entries reached the OSS bank (onta-oss#280 stopped the bank
+    Spider4SPARQL entries reached the OSS bank (infona-oss#280 stopped the bank
     being truncated to ZERO, by skipping ``save()`` when nothing was accepted;
     it did not stop 114 entries being replaced by 12).
 
@@ -1652,7 +1652,7 @@ def format_report(report: EvalReport) -> str:
     """
     lines = []
     lines.append("")
-    lines.append("OMNIX EVAL REPORT")
+    lines.append("INFONA EVAL REPORT")
     lines.append("=" * 70)
     lines.append(f"  Dataset:      {', '.join(report.dataset_names) or '(none)'}")
     lines.append(f"  KG:           {report.kg_name}")
@@ -1793,19 +1793,19 @@ def report_to_json(report: EvalReport) -> dict:
 
 
 async def eval_cli(args) -> None:
-    """CLI handler for `omnix eval`. Called from omnix/cli.py.
+    """CLI handler for `infona eval`.
 
     This function is async because the eval pipeline makes concurrent
-    API calls. The CLI wrapper in cli.py runs it with asyncio.run().
+    API calls. The parent-repo CLI wrapper runs it with asyncio.run().
     """
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
     if not openrouter_key:
         print("OPENROUTER_API_KEY required for eval (LLM judge calls)", file=__import__("sys").stderr)
         __import__("sys").exit(1)
 
-    api_url = os.environ.get("OMNIX_API_URL", "http://localhost:8000")
-    api_key = os.environ.get("OMNIX_API_KEY", "dev-key-001")
-    tenant = os.environ.get("OMNIX_TENANT", "demo-tenant")
+    api_url = os.environ.get("INFONA_API_URL", "http://localhost:8000")
+    api_key = os.environ.get("INFONA_API_KEY", "dev-key-001")
+    tenant = os.environ.get("INFONA_TENANT", "demo-tenant")
 
     dataset_paths = args.files if hasattr(args, "files") and args.files else []
     kg_name = args.kg if hasattr(args, "kg") else None

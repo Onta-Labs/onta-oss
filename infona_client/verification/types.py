@@ -25,7 +25,7 @@ lives OUTSIDE the ``qc/boundary.py`` harness (``tests/test_verification_boundary
 fixtures stay byte-identical.
 
 Boundary: OSS. Imports only stdlib + ``infona_client.*`` — never ``from
-cograph.*``. No network anywhere in this module.
+infona.*``. No network anywhere in this module.
 """
 
 from __future__ import annotations

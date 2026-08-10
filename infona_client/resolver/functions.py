@@ -23,7 +23,7 @@ declared exception):
   expensive, or metered).
 
 Cached outputs are DERIVED data per ADR 0001 rule 6: stored under a distinct
-predicate namespace (``https://graph.onta.sh/derived/<name>``) with a
+predicate namespace (``https://graph.infona.ai/derived/<name>``) with a
 per-function computed-at timestamp triple, so they are regenerable, trivially
 identifiable, and never confused with asserted facts.
 

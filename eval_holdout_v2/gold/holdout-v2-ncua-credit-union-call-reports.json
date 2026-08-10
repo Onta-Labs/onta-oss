@@ -12,7 +12,7 @@
     {
       "id": "q-001",
       "question": "How many distinct financial metrics are recorded in the system?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?financialMetric) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?financialMetric) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . }",
       "full_expected_items": [
         "46255"
       ],
@@ -27,7 +27,7 @@
     {
       "id": "q-002",
       "question": "List all the names of the credit unions.",
-      "gold_sparql": "SELECT ?creditUnionName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> . ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName . }",
+      "gold_sparql": "SELECT ?creditUnionName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> . ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName . }",
       "full_expected_items": [
         "KONE EMPLOYEES",
         "CENTRAL CREDIT UNION OF ILLINOIS",
@@ -2041,7 +2041,7 @@
     {
       "id": "q-003",
       "question": "What are the different types of branches recorded?",
-      "gold_sparql": "SELECT DISTINCT ?branchType FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?branch <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/Branch> . ?branch <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/branch_type> ?branchType . }",
+      "gold_sparql": "SELECT DISTINCT ?branchType FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?branch <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/Branch> . ?branch <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/branch_type> ?branchType . }",
       "full_expected_items": [
         "Corporate Office",
         "Branch Office"
@@ -2057,7 +2057,7 @@
     {
       "id": "q-004",
       "question": "How many call reports are there in total?",
-      "gold_sparql": "SELECT (COUNT(?callReport) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CallReport> . }",
+      "gold_sparql": "SELECT (COUNT(?callReport) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CallReport> . }",
       "full_expected_items": [
         "4631"
       ],
@@ -2072,7 +2072,7 @@
     {
       "id": "q-005",
       "question": "How many financial metrics have a metric code that contains 'RATIO'?",
-      "gold_sparql": "SELECT (COUNT(?financialMetric) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_code> ?metricCode . FILTER(CONTAINS(LCASE(STR(?metricCode)), 'ratio')) }",
+      "gold_sparql": "SELECT (COUNT(?financialMetric) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_code> ?metricCode . FILTER(CONTAINS(LCASE(STR(?metricCode)), 'ratio')) }",
       "full_expected_items": [
         "23116"
       ],
@@ -2087,7 +2087,7 @@
     {
       "id": "q-006",
       "question": "List the names of financial metrics where the metric value is greater than 0.001.",
-      "gold_sparql": "SELECT ?metricName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> ?metricName . ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue . FILTER(xsd:float(?metricValue) > 0.001) }",
+      "gold_sparql": "SELECT ?metricName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> ?metricName . ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue . FILTER(xsd:float(?metricValue) > 0.001) }",
       "full_expected_items": [
         "Loan-to-Share Ratio",
         "Net Worth Ratio",
@@ -4101,7 +4101,7 @@
     {
       "id": "q-007",
       "question": "Find the maximum metric value among all financial metrics that have 'Total' in their name.",
-      "gold_sparql": "SELECT (MAX(xsd:float(?metricValue)) AS ?maxMetricValue) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> ?metricName . ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue . FILTER(CONTAINS(LCASE(STR(?metricName)), 'total')) }",
+      "gold_sparql": "SELECT (MAX(xsd:float(?metricValue)) AS ?maxMetricValue) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE { ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> . ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> ?metricName . ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue . FILTER(CONTAINS(LCASE(STR(?metricName)), 'total')) }",
       "full_expected_items": [
         "1.7769354E11"
       ],
@@ -4116,7 +4116,7 @@
     {
       "id": "q-008",
       "question": "How many financial metrics have a metric value greater than 0.001?",
-      "gold_sparql": "SELECT (COUNT(?financialMetric) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue .\n  FILTER(xsd:float(?metricValue) > 0.001)\n}",
+      "gold_sparql": "SELECT (COUNT(?financialMetric) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue .\n  FILTER(xsd:float(?metricValue) > 0.001)\n}",
       "full_expected_items": [
         "38536"
       ],
@@ -4131,7 +4131,7 @@
     {
       "id": "q-009",
       "question": "How many branches does each credit union have?",
-      "gold_sparql": "SELECT ?creditUnionName (COUNT(?branch) AS ?numberOfBranches) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/has_branch> ?branch .\n  ?branch <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/Branch> .\n} GROUP BY ?creditUnionName ORDER BY DESC(?numberOfBranches)",
+      "gold_sparql": "SELECT ?creditUnionName (COUNT(?branch) AS ?numberOfBranches) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/has_branch> ?branch .\n  ?branch <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/Branch> .\n} GROUP BY ?creditUnionName ORDER BY DESC(?numberOfBranches)",
       "full_expected_items": [
         "NAVY FEDERAL CREDIT UNION | 363",
         "STATE EMPLOYEES' | 286",
@@ -6145,7 +6145,7 @@
     {
       "id": "q-010",
       "question": "What are the names of credit unions that have a 'Net Worth Ratio' greater than 0.05?",
-      "gold_sparql": "SELECT DISTINCT ?creditUnionName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_for_creditunion> ?creditUnion .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> \"Net Worth Ratio\" .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue .\n  FILTER (xsd:float(?metricValue) > 0.05)\n}",
+      "gold_sparql": "SELECT DISTINCT ?creditUnionName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_for_creditunion> ?creditUnion .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> \"Net Worth Ratio\" .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue .\n  FILTER (xsd:float(?metricValue) > 0.05)\n}",
       "full_expected_items": [
         "TROY",
         "KAHUKU",
@@ -8159,7 +8159,7 @@
     {
       "id": "q-011",
       "question": "Find the names of credit unions that have at least one branch in a state where the state name contains 'New', and for which the 'Total Assets' metric is greater than 1000000.",
-      "gold_sparql": "SELECT DISTINCT ?creditUnionName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/has_branch> ?branch .\n  ?branch <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/Branch> .\n  ?branch <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/branch_located_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/State> .\n  ?state <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/state_name> ?stateName .\n  FILTER (CONTAINS(LCASE(STR(?stateName)), \"new\")) .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_for_creditunion> ?creditUnion .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> \"Total Assets\" .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?totalAssetsValue .\n  FILTER (xsd:float(?totalAssetsValue) > 1000000)\n}",
+      "gold_sparql": "SELECT DISTINCT ?creditUnionName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/has_branch> ?branch .\n  ?branch <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/Branch> .\n  ?branch <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/branch_located_in_state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/State> .\n  ?state <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/state_name> ?stateName .\n  FILTER (CONTAINS(LCASE(STR(?stateName)), \"new\")) .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_for_creditunion> ?creditUnion .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> \"Total Assets\" .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?totalAssetsValue .\n  FILTER (xsd:float(?totalAssetsValue) > 1000000)\n}",
       "full_expected_items": [
         "THE SUMMIT",
         "PALISADES",
@@ -8669,7 +8669,7 @@
     {
       "id": "q-012",
       "question": "Which credit unions have a 'Net Worth Ratio' greater than 0.05 in any of their call reports, and what are their names?",
-      "gold_sparql": "SELECT DISTINCT ?creditUnionName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?creditUnion <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/has_call_report> ?callReport .\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CallReport> .\n  ?callReport <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/callreport_has_metric> ?financialMetric .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> \"Net Worth Ratio\" .\n  ?financialMetric <https://omnix.dev/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue .\n  FILTER (xsd:float(?metricValue) > 0.05)\n}",
+      "gold_sparql": "SELECT DISTINCT ?creditUnionName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-ncua-credit-union-call-reports> WHERE {\n  ?creditUnion <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CreditUnion> .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/creditunion_cu_name> ?creditUnionName .\n  ?creditUnion <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/has_call_report> ?callReport .\n  ?callReport <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/CallReport> .\n  ?callReport <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/callreport_has_metric> ?financialMetric .\n  ?financialMetric <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/type/FinancialMetric> .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_name> \"Net Worth Ratio\" .\n  ?financialMetric <https://graph.infona.ai/holdout-v2/holdout-v2-ncua-credit-union-call-reports/pred/metric_value> ?metricValue .\n  FILTER (xsd:float(?metricValue) > 0.05)\n}",
       "full_expected_items": [
         "VERMONT",
         "ONENEBRASKA",

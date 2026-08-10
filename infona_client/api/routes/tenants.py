@@ -3,7 +3,7 @@
 These are the *single* backend routes both the CLI and the web Explorer use to
 manage tenants, so the two surfaces can never drift. The work itself (reading and
 writing the user's tenant list on their identity profile) is delegated to a
-registered ``TenantProvider``; cograph-oss ships none, so an OSS-only deployment
+registered ``TenantProvider``; infona-oss ships none, so an OSS-only deployment
 returns 501 here. The premium Clerk integration registers a provider.
 
 Auth: the caller proves identity with their own ``X-API-Key`` — the same key used
@@ -36,7 +36,7 @@ from infona_client.auth.workspace_store import (
     resolve_subject,
 )
 
-logger = structlog.stdlib.get_logger("cograph.tenants")
+logger = structlog.stdlib.get_logger("infona.tenants")
 
 router = APIRouter(prefix="/v1/me/tenants")
 

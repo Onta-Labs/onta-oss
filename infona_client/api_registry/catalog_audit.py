@@ -1,7 +1,7 @@
 """Scheduled catalog freshness + live-smoke audit (ONTA-194, phase 4 — OSS).
 
 The read-path mirror of the premium pricing-freshness audit
-(``cograph/enrichment/pricing_audit.py``): where that keeps paid-adapter *prices*
+(``infona/enrichment/pricing_audit.py``): where that keeps paid-adapter *prices*
 honest, this keeps the API-source *catalog* honest. A declarative entry can
 silently rot — the upstream endpoint moves, the auth scheme changes, the result
 shape shifts — and nothing surfaces it until a live request quietly returns
@@ -25,7 +25,7 @@ diagnostic (network) for a human re-confirming an entry; its findings are
 reported but do **not** by themselves change the exit code.
 
 Boundary (CLAUDE.md): OSS. Imports only stdlib + ``infona_client.*`` — no
-``from cograph.*`` — so it ships in the public package and audits the public seed
+``from infona.*`` — so it ships in the public package and audits the public seed
 catalog. Premium overlay entries (registered via ``register_api_source_layer``)
 are audited by the same function whenever the premium package is importable.
 """

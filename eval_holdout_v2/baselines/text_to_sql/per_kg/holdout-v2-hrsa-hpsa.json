@@ -11,7 +11,7 @@
         "724"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -144,7 +144,7 @@
         "05E01167"
       ],
       "full_result_count": 82,
-      "gold_sparql": "SELECT ?organizationName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Organization> . ?organization <https://omnix.dev/types/Organization/attrs/name> ?organizationName . }",
+      "gold_sparql": "SELECT ?organizationName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Organization> . ?organization <https://graph.infona.ai/types/Organization/attrs/name> ?organizationName . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2195,7 +2195,7 @@
         "OUTREACH COMMUNITY HEALTH CENTERS, INCORPORATED"
       ],
       "full_result_count": 2197,
-      "gold_sparql": "SELECT ?componentName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?component <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Component> . ?component <https://omnix.dev/types/Component/attrs/name> ?componentName . }",
+      "gold_sparql": "SELECT ?componentName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?component <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Component> . ?component <https://graph.infona.ai/types/Component/attrs/name> ?componentName . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2247,7 +2247,7 @@
         "423"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?zipCode) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?zipCode <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/ZipCode> . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?zipCode) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE { ?zipCode <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/ZipCode> . }",
       "per_seed": [
         {
           "seed": 1,
@@ -2299,7 +2299,7 @@
         "7"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/common_state_fips_code> ?fipsCode .\n  FILTER(?fipsCode = \"66\")\n}",
+      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/common_state_fips_code> ?fipsCode .\n  FILTER(?fipsCode = \"66\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2351,7 +2351,7 @@
         "128860.07"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (AVG(?population) AS ?averageDesignationPopulation) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/designation_type> ?designationType .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_designation_population> ?population .\n  FILTER(?designationType = \"Federally Qualified Health Center\")\n}",
+      "gold_sparql": "SELECT (AVG(?population) AS ?averageDesignationPopulation) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/designation_type> ?designationType .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_designation_population> ?population .\n  FILTER(?designationType = \"Federally Qualified Health Center\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2707,7 +2707,7 @@
         "NORTH BIG HORN HOSPITAL CLINIC"
       ],
       "full_result_count": 305,
-      "gold_sparql": "SELECT ?hpsaName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Hpsa> .\n  ?hpsa <https://omnix.dev/types/Hpsa/attrs/component_type_code> ?componentTypeCode .\n  ?hpsa <https://omnix.dev/types/Hpsa/attrs/name> ?hpsaName .\n  FILTER(?componentTypeCode = \"UNK\")\n}",
+      "gold_sparql": "SELECT ?hpsaName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Hpsa> .\n  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/component_type_code> ?componentTypeCode .\n  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/name> ?hpsaName .\n  FILTER(?componentTypeCode = \"UNK\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2759,7 +2759,7 @@
         "424"
       ],
       "full_result_count": 1,
-      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Hpsa> .\n  ?hpsa <https://omnix.dev/types/Hpsa/attrs/degree_of_shortage> ?degreeOfShortage .\n  FILTER(STR(?degreeOfShortage) > \"3\")\n}",
+      "gold_sparql": "SELECT (COUNT(?hpsa) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Hpsa> .\n  ?hpsa <https://graph.infona.ai/types/Hpsa/attrs/degree_of_shortage> ?degreeOfShortage .\n  FILTER(STR(?degreeOfShortage) > \"3\")\n}",
       "per_seed": [
         {
           "seed": 1,
@@ -2822,7 +2822,7 @@
         "New York | 1"
       ],
       "full_result_count": 12,
-      "gold_sparql": "SELECT ?stateName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/onto/state_name> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/State> .\n  ?state <https://omnix.dev/types/State/attrs/name> ?stateName .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_discipline_class> \"Primary Care\" .\n}\nGROUP BY ?stateName\nORDER BY DESC(?hpsaCount)",
+      "gold_sparql": "SELECT ?stateName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/onto/state_name> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/State> .\n  ?state <https://graph.infona.ai/types/State/attrs/name> ?stateName .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_discipline_class> \"Primary Care\" .\n}\nGROUP BY ?stateName\nORDER BY DESC(?hpsaCount)",
       "per_seed": [
         {
           "seed": 1,
@@ -3066,7 +3066,7 @@
         "Johnson County | 1"
       ],
       "full_result_count": 193,
-      "gold_sparql": "SELECT ?countyName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/onto/common_county_name> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/County> .\n  ?county <https://omnix.dev/types/County/attrs/name> ?countyName .\n  ?hpsa <https://omnix.dev/types/HealthProfessionalShortageArea/attrs/hpsa_status> \"Designated\" .\n}\nGROUP BY ?countyName\nORDER BY DESC(?hpsaCount)",
+      "gold_sparql": "SELECT ?countyName (COUNT(?hpsa) AS ?hpsaCount)\nFROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa>\nWHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/onto/common_county_name> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/County> .\n  ?county <https://graph.infona.ai/types/County/attrs/name> ?countyName .\n  ?hpsa <https://graph.infona.ai/types/HealthProfessionalShortageArea/attrs/hpsa_status> \"Designated\" .\n}\nGROUP BY ?countyName\nORDER BY DESC(?hpsaCount)",
       "per_seed": [
         {
           "seed": 1,
@@ -3127,7 +3127,7 @@
         "0537600 | 1"
       ],
       "full_result_count": 10,
-      "gold_sparql": "SELECT ?organizationName (COUNT(?hpsa) AS ?hpsaCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://omnix.dev/onto/bhcmis_organization_identification_number> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Organization> .\n  ?organization <https://omnix.dev/types/Organization/attrs/name> ?organizationName .\n} GROUP BY ?organizationName\nORDER BY DESC(?hpsaCount)\nLIMIT 10",
+      "gold_sparql": "SELECT ?organizationName (COUNT(?hpsa) AS ?hpsaCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-hrsa-hpsa> WHERE {\n  ?hpsa <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/HealthProfessionalShortageArea> .\n  ?hpsa <https://graph.infona.ai/onto/bhcmis_organization_identification_number> ?organization .\n  ?organization <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Organization> .\n  ?organization <https://graph.infona.ai/types/Organization/attrs/name> ?organizationName .\n} GROUP BY ?organizationName\nORDER BY DESC(?hpsaCount)\nLIMIT 10",
       "per_seed": [
         {
           "seed": 1,

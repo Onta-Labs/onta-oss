@@ -29,7 +29,7 @@ from infona_client.normalization.rules import (  # noqa: E402
     make_rule_id,
 )
 
-ENT = "https://graph.onta.sh/entities/"
+ENT = "https://graph.infona.ai/entities/"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
 RDFS_RANGE = "http://www.w3.org/2000/01/rdf-schema#range"
@@ -98,7 +98,7 @@ async def test_owner_keyed_typed_literal_is_deleted_and_lossless():
 
     # 2 DISTINCT Rating nodes (identical 4.6 not merged), value preserved.
     nr = (await _bindings(n, f'SELECT (COUNT(DISTINCT ?r) AS ?n) WHERE {{ GRAPH <{kgg}> {{ '
-                             f'?s <https://graph.onta.sh/onto/rating> ?r . '
+                             f'?s <https://graph.infona.ai/onto/rating> ?r . '
                              f'?r <{RDF_TYPE}> <{type_uri("Rating")}> }} }}'))[0]["n"]["value"]
     assert nr == "2"
     vals = sorted(b["v"]["value"] for b in await _bindings(
@@ -108,7 +108,7 @@ async def test_owner_keyed_typed_literal_is_deleted_and_lossless():
 
     # edge is on the onto/<leaf> relationship predicate, not attrs/<leaf>.
     assert len(await _bindings(
-        n, f'SELECT ?s WHERE {{ GRAPH <{kgg}> {{ ?s <https://graph.onta.sh/onto/rating> ?r }} }}')) == 2
+        n, f'SELECT ?s WHERE {{ GRAPH <{kgg}> {{ ?s <https://graph.infona.ai/onto/rating> ?r }} }}')) == 2
 
     # ontology: range flipped to types/Rating, Rating declared an rdfs:Class.
     rng = (await _bindings(n, f'SELECT ?r WHERE {{ GRAPH <{onto}> {{ <{rattr}> <{RDFS_RANGE}> ?r }} }}'))[0]["r"]["value"]
@@ -144,7 +144,7 @@ async def test_value_keyed_shares_nodes_on_typed_int():
     assert summary == {"nodes_created": 2, "edges_added": 3, "literals_promoted": 3}
     # shared: 1999 is ONE node used by m1 + m2.
     assert len(await _bindings(
-        n, f'SELECT ?m WHERE {{ GRAPH <{kgg}> {{ ?m <https://graph.onta.sh/onto/year> '
+        n, f'SELECT ?m WHERE {{ GRAPH <{kgg}> {{ ?m <https://graph.infona.ai/onto/year> '
            f'<{ENT}Year/1999> }} }}')) == 2
     # typed originals removed.
     assert await _bindings(

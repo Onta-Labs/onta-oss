@@ -31,11 +31,11 @@ from infona_client.resolver.schema_resolver import SchemaResolver
 from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 router = APIRouter(prefix="/graphs/{tenant}")
-_log = structlog.stdlib.get_logger("cograph.api.ingest")
+_log = structlog.stdlib.get_logger("infona.api.ingest")
 
 # Verdict cache lives alongside the app data. For ECS/Fargate deployments,
 # this should be on an EFS mount or replaced with DynamoDB.
-_CACHE_PATH = Path("/tmp/omnix-verdict-cache.json")
+_CACHE_PATH = Path("/tmp/infona-verdict-cache.json")
 
 
 def _get_verdict_cache() -> JsonVerdictCache:
@@ -148,7 +148,7 @@ async def infer_csv_schema(
 ):
     """Step 1: Infer column mapping from CSV headers + sample rows.
 
-    Default (``OMNIX_CSV_INFERENCE_V2`` unset/truthy) is the ADR 0003
+    Default (``INFONA_CSV_INFERENCE_V2`` unset/truthy) is the ADR 0003
     evidence-grounded pipeline: a deterministic column profile (Pass A) feeds
     a REASON LLM call (Pass B), an adversarial REFUTE LLM call (Pass C), and
     a conceptual COMPLETE LLM call (Pass D). The response is the same
@@ -157,7 +157,7 @@ async def infer_csv_schema(
     entities/columns), ``key_strategy`` per entity, the refute pass's
     ``violations``, an ``inference_audit`` block, and the completion pass's
     ``ontology_extensions`` (dependent-entity promotions, core slots, dataset
-    constants, rejected candidates). ``OMNIX_CSV_INFERENCE_V2=0`` falls back
+    constants, rejected candidates). ``INFONA_CSV_INFERENCE_V2=0`` falls back
     to the legacy single-LLM-call path.
 
     Confirm gate (COG-52, until COG-56's judge panel lands): promotions and

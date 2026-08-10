@@ -17,7 +17,7 @@ NUCC codes) to their canonical NUCC description. It is deliberately CONSERVATIVE
   code ("207X00000X") is honored directly instead of being re-derived into a
   colloquial term — so a caller who already knows the right NUCC value keeps it.
 
-Pure stdlib, no network, no ``cograph.*`` import — safe for the OSS package.
+Pure stdlib, no network, no ``infona.*`` import — safe for the OSS package.
 """
 
 from __future__ import annotations

@@ -20,7 +20,7 @@ not carry skills** — only Enhanced and Tenant do. The model still tags a
 :mod:`infona_client.skills.resolve`) and the reserved-empty Public seed path
 stay coherent; writers refuse non-empty Public registration at the seam.
 
-Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from cograph.*``.
+Boundary: OSS. Pure ``infona_client.*`` / stdlib — no ``from infona.*``.
 """
 
 from __future__ import annotations

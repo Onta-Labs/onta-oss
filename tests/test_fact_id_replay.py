@@ -44,13 +44,13 @@ RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 # 1. Pure build_graph_delta projection (no store, no pyoxigraph)
 # --------------------------------------------------------------------------- #
 def test_build_graph_delta_excludes_nonces_and_is_deterministic():
-    g = "https://graph.onta.sh/graphs/t/kg/k"
+    g = "https://graph.infona.ai/graphs/t/kg/k"
     triples = [
-        ("https://graph.onta.sh/entities/E/1", RDF_TYPE, "https://graph.onta.sh/types/E"),
-        ("https://graph.onta.sh/entities/E/1", "https://graph.onta.sh/onto/name", "Alice"),
+        ("https://graph.infona.ai/entities/E/1", RDF_TYPE, "https://graph.infona.ai/types/E"),
+        ("https://graph.infona.ai/entities/E/1", "https://graph.infona.ai/onto/name", "Alice"),
         # The two nonces the delta must project OUT.
-        ("https://graph.onta.sh/entities/E/1", "https://graph.onta.sh/onto/ingested_at", "2026-07-13T00:00:00+00:00"),
-        ("https://graph.onta.sh/entities/E/1", "https://graph.onta.sh/onto/batch_id", "batch-xyz"),
+        ("https://graph.infona.ai/entities/E/1", "https://graph.infona.ai/onto/ingested_at", "2026-07-13T00:00:00+00:00"),
+        ("https://graph.infona.ai/entities/E/1", "https://graph.infona.ai/onto/batch_id", "batch-xyz"),
     ]
     d1 = build_graph_delta(g, triples, run_id="run-1")
     d2 = build_graph_delta(g, list(reversed(triples)), run_id="run-1")
@@ -60,14 +60,14 @@ def test_build_graph_delta_excludes_nonces_and_is_deterministic():
     # Nonce predicates never appear in the delta facts.
     preds = {p for _fid, _s, p, _o in d1.facts}
     assert preds.isdisjoint(DELTA_NONCE_PREDICATES)
-    assert preds == {RDF_TYPE, "https://graph.onta.sh/onto/name"}
+    assert preds == {RDF_TYPE, "https://graph.infona.ai/onto/name"}
     # Each fact carries a stable per-subject fact_id (uuid5 form).
     assert all(len(fid) == 36 and fid.count("-") == 4 for fid, *_ in d1.facts)
 
 
 def test_build_graph_delta_run_id_scopes_the_fact_ids():
-    g = "https://graph.onta.sh/graphs/t/kg/k"
-    triples = [("https://graph.onta.sh/entities/E/1", "https://graph.onta.sh/onto/name", "Alice")]
+    g = "https://graph.infona.ai/graphs/t/kg/k"
+    triples = [("https://graph.infona.ai/entities/E/1", "https://graph.infona.ai/onto/name", "Alice")]
     a = build_graph_delta(g, triples, run_id="run-A")
     b = build_graph_delta(g, triples, run_id="run-B")
     # Same facts, different run → different fact_ids → different receipt. This is
@@ -77,11 +77,11 @@ def test_build_graph_delta_run_id_scopes_the_fact_ids():
 
 
 def test_build_graph_delta_records_fan_in():
-    g = "https://graph.onta.sh/graphs/t/kg/k"
-    triples = [("https://graph.onta.sh/entities/E/canon", "https://graph.onta.sh/onto/name", "Alice")]
+    g = "https://graph.infona.ai/graphs/t/kg/k"
+    triples = [("https://graph.infona.ai/entities/E/canon", "https://graph.infona.ai/onto/name", "Alice")]
     d = build_graph_delta(
         g, triples, run_id="run-1",
-        fan_in={"https://graph.onta.sh/entities/E/dup": "https://graph.onta.sh/entities/E/canon"},
+        fan_in={"https://graph.infona.ai/entities/E/dup": "https://graph.infona.ai/entities/E/canon"},
     )
     assert len(d.fan_in) == 1
     src_fid, canon_fid = d.fan_in[0]
@@ -167,7 +167,7 @@ def _er_disabled(monkeypatch):
     ``os.environ[...] = "0"`` would leak globally and (since this file sorts before
     ``test_multityping_retail.py``) disable ER for the ER-dependent tests that run
     after it."""
-    monkeypatch.setenv("COGRAPH_ER_ENABLED", "0")
+    monkeypatch.setenv("INFONA_ER_ENABLED", "0")
 
 
 def _make_resolver(neptune) -> SchemaResolver:

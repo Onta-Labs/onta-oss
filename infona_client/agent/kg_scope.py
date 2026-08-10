@@ -4,7 +4,7 @@ Why this exists
 ---------------
 ``kg_graph_uri()`` happily mints an IRI for ANY syntactically legal name, and
 SPARQL against a named graph that does not exist returns ZERO ROWS rather than an
-error. ONTA-413 (onta-oss#263) fixed the consequence for the READ path only:
+error. ONTA-413 (infona-oss#263) fixed the consequence for the READ path only:
 ``QueryCapability.answer`` probes with :func:`~infona_client.graph.kg_status.kg_data_status`
 and turns a typo into a clarify instead of a confident "No results found.". Two
 holes were left open, and both are worse on an action turn than on a question:
@@ -82,7 +82,7 @@ from infona_client.graph.kg_status import (
     missing_kg_message,
 )
 
-logger = structlog.stdlib.get_logger("cograph.agent.kg_scope")
+logger = structlog.stdlib.get_logger("infona.agent.kg_scope")
 
 # The attribute a capability sets to declare its policy (see the module docstring).
 KG_SCOPE_ATTR = "kg_scope_policy"

@@ -136,7 +136,7 @@ class FakeDeliveryProvider:
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     reset_workspace_store()
-    monkeypatch.delenv("COGRAPH_WORKSPACE_ENFORCE_OWNERSHIP", raising=False)
+    monkeypatch.delenv("INFONA_WORKSPACE_ENFORCE_OWNERSHIP", raising=False)
     yield
     register_external_verifier(None)
     register_tenant_provider(None)
@@ -268,7 +268,7 @@ def test_effective_status_computes_expiry():
 
 
 def test_static_key_gets_403(client, verifier):
-    # conftest's OMNIX_API_KEYS maps "test-key" — valid but subject-less.
+    # conftest's INFONA_API_KEYS maps "test-key" — valid but subject-less.
     r = client.get("/v1/me/tenants/acme-co/invites", headers={"X-API-Key": "test-key"})
     assert r.status_code == 403
     assert "user-scoped" in r.json()["detail"]
@@ -352,7 +352,7 @@ def test_invite_role_round_trips_through_the_whole_lifecycle(
     accept → membership, carrying its capability the whole way.
 
     ONTA-451: ``reader`` landed in the role model (#257) and reached the CLI
-    (onta#326), but no test here ever sent it at the canonical routes — every
+    (infona-oss#326), but no test here ever sent it at the canonical routes — every
     invite case used ``member``/``writer``, so the reader path was pinned only
     at the CLI's argparse layer and by the pure-unit capability helpers, never
     against the routes + store that actually carry it. Parametrizing over
@@ -777,7 +777,7 @@ def _enforce(monkeypatch):
     """Enable enforcement: env flag + a durable-marked store (the in-memory
     singleton is monkeypatched durable so the gate can be exercised without
     Postgres — production durability comes from database_url selection)."""
-    monkeypatch.setenv("COGRAPH_WORKSPACE_ENFORCE_OWNERSHIP", "1")
+    monkeypatch.setenv("INFONA_WORKSPACE_ENFORCE_OWNERSHIP", "1")
     store = make_workspace_store()
     store.durable = True
     return store
@@ -856,7 +856,7 @@ def test_create_flag_without_durable_store_does_not_enforce(
     client, verifier, monkeypatch
 ):
     register_tenant_provider(FakeTenantProvider())
-    monkeypatch.setenv("COGRAPH_WORKSPACE_ENFORCE_OWNERSHIP", "1")
+    monkeypatch.setenv("INFONA_WORKSPACE_ENFORCE_OWNERSHIP", "1")
     # In-memory store stays durable=False → the 403 must NOT fire (an
     # in-memory registry forgetting owners on restart would re-run
     # first-claim-wins, worse than not pretending).

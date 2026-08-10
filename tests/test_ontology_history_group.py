@@ -27,9 +27,9 @@ def _entry(
         for k in (kinds or [ChangeKind.ADD_TYPE])
     ]
     return ChangelogEntry(
-        entry_uri=f"https://graph.onta.sh/gov/log/{n:04d}",
+        entry_uri=f"https://graph.infona.ai/gov/log/{n:04d}",
         action=action,
-        subject="https://graph.onta.sh/graphs/acme",
+        subject="https://graph.infona.ai/graphs/acme",
         timestamp=ts,
         tenant_id="acme",
         actor=actor,

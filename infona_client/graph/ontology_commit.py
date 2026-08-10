@@ -38,7 +38,7 @@ from infona_client.graph.aliases import (
     retire_alias,
 )
 from infona_client.graph.ontology_queries import (
-    OMNIX_ONTO,
+    INFONA_ONTO,
     XSD,
     attr_uri,
     delete_attribute_declaration,
@@ -66,7 +66,7 @@ from infona_client.models.ontology import (
     OntologyOpKind,
 )
 
-logger = structlog.stdlib.get_logger("cograph.graph.ontology_commit")
+logger = structlog.stdlib.get_logger("infona.graph.ontology_commit")
 
 # Shared serialization point for ALL ontology-schema writes. SchemaResolver
 # defaults to this same lock (see its ``ontology_lock`` constructor arg) so
@@ -80,7 +80,7 @@ _ONTOLOGY_WRITE_LOCK = asyncio.Lock()
 # revision store exists yet (plan §4); this RDF counter is the minimal
 # monotonic bump ONTA-403 requires. ONTA-406 materializes revision snapshots
 # and release records on the same companion.
-_REV_PRED = f"{OMNIX_ONTO}/workspaceRevision"
+_REV_PRED = f"{INFONA_ONTO}/workspaceRevision"
 _REV_GRAPH_SUFFIX = "/versions"
 
 # Published A/B release graphs (`…/public/v{N}`, `…/enhanced/v{N}`) and C
@@ -131,8 +131,8 @@ class OntologyOpNotSupported(ValueError):
 
 # Deprecation markers on type / attribute subjects (ONTA-404).
 # Part of published schema identity — included in OntologyShape.fingerprint.
-DEPRECATED_AT = f"{OMNIX_ONTO}/deprecatedAt"
-SUPERSEDED_BY = f"{OMNIX_ONTO}/supersededBy"
+DEPRECATED_AT = f"{INFONA_ONTO}/deprecatedAt"
+SUPERSEDED_BY = f"{INFONA_ONTO}/supersededBy"
 
 
 class OntologyGraphImmutable(Exception):
@@ -188,7 +188,7 @@ def is_immutable_version_graph(graph_uri: str) -> bool:
 def release_graph_uri(live_graph_uri: str, version: int) -> str:
     """Published release snapshot graph for layer A or B: ``{live}/v{N}``.
 
-    Example: ``https://graph.onta.sh/graphs/global/public/v3``.
+    Example: ``https://graph.infona.ai/graphs/global/public/v3``.
     """
     if version < 1:
         raise ValueError(f"release version must be >= 1, got {version}")
@@ -210,7 +210,7 @@ def changelog_graph_uri_for(graph_uri: str) -> str:
     """Append-only changelog companion for a workspace (or global) ontology graph.
 
     Global governance still writes to the fixed
-    ``https://graph.onta.sh/graphs/global/changelog`` via
+    ``https://graph.infona.ai/graphs/global/changelog`` via
     :func:`infona_client.resolver.governance.changelog_graph_uri`; workspace
     commits use a per-graph companion so tenant isolation is by named graph.
     """
@@ -469,7 +469,7 @@ async def load_ontology_shape(neptune, graph_uri: str) -> OntologyShape:
             kind = row.get("kind") or ""
             if not a_uri or not kind:
                 continue
-            # attr URI: https://graph.onta.sh/types/<Type>/attrs/<leaf>
+            # attr URI: https://graph.infona.ai/types/<Type>/attrs/<leaf>
             parts = a_uri.split("/types/", 1)
             if len(parts) != 2 or "/attrs/" not in parts[1]:
                 continue
@@ -630,8 +630,8 @@ async def _apply_one(
             # statement-level SPARQL.
             a_uri = attr_uri(mut.type_name, mut.slot_name)
             await neptune.update(
-                f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{OMNIX_ONTO}/coreSlot> ?c }} }}\n"
-                f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{OMNIX_ONTO}/coreSlot> ?c }} }} }}"
+                f"DELETE {{ GRAPH <{graph_uri}> {{ <{a_uri}> <{INFONA_ONTO}/coreSlot> ?c }} }}\n"
+                f"WHERE {{ GRAPH <{graph_uri}> {{ OPTIONAL {{ <{a_uri}> <{INFONA_ONTO}/coreSlot> ?c }} }} }}"
             )
         else:
             await neptune.update(mark_core_slot(graph_uri, mut.type_name, mut.slot_name))

@@ -11,7 +11,7 @@
     {
       "id": "q-001",
       "question": "How many FemaDeclarations are there?",
-      "gold_sparql": "SELECT (COUNT(?femaDeclaration) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> . }",
+      "gold_sparql": "SELECT (COUNT(?femaDeclaration) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> . }",
       "full_expected_items": [
         "724"
       ],
@@ -26,7 +26,7 @@
     {
       "id": "q-002",
       "question": "List all available regions.",
-      "gold_sparql": "SELECT DISTINCT ?regionName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Region> . ?region <https://omnix.dev/types/Region/attrs/name> ?regionName . }",
+      "gold_sparql": "SELECT DISTINCT ?regionName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Region> . ?region <https://graph.infona.ai/types/Region/attrs/name> ?regionName . }",
       "full_expected_items": [
         "9",
         "6",
@@ -50,7 +50,7 @@
     {
       "id": "q-003",
       "question": "How many distinct incident types are recorded in Declarations?",
-      "gold_sparql": "SELECT (COUNT(DISTINCT ?incidentType) AS ?count) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Declaration> . ?declaration <https://omnix.dev/types/Declaration/attrs/type> ?incidentType . }",
+      "gold_sparql": "SELECT (COUNT(DISTINCT ?incidentType) AS ?count) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Declaration> . ?declaration <https://graph.infona.ai/types/Declaration/attrs/type> ?incidentType . }",
       "full_expected_items": [
         "21"
       ],
@@ -65,7 +65,7 @@
     {
       "id": "q-004",
       "question": "What are the names of all counties?",
-      "gold_sparql": "SELECT DISTINCT ?countyName FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/County> . ?county <https://omnix.dev/types/County/attrs/name> ?countyName . }",
+      "gold_sparql": "SELECT DISTINCT ?countyName FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE { ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/County> . ?county <https://graph.infona.ai/types/County/attrs/name> ?countyName . }",
       "full_expected_items": [
         "Bedford",
         "Choctaw",
@@ -2079,7 +2079,7 @@
     {
       "id": "q-005",
       "question": "How many FemaDeclarations are associated with each State, for declarations made in fiscal year 2020?",
-      "gold_sparql": "SELECT ?stateName (COUNT(DISTINCT ?femaDeclaration) AS ?declarationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n  ?femaDeclaration <https://omnix.dev/onto/state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/State> .\n  ?state <https://omnix.dev/types/State/attrs/name> ?stateName .\n  ?femaDeclaration <https://omnix.dev/types/FemaDeclaration/attrs/fy_declared> \"2020\" .\n} GROUP BY ?stateName ORDER BY DESC(?declarationCount)",
+      "gold_sparql": "SELECT ?stateName (COUNT(DISTINCT ?femaDeclaration) AS ?declarationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n  ?femaDeclaration <https://graph.infona.ai/onto/state> ?state .\n  ?state <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/State> .\n  ?state <https://graph.infona.ai/types/State/attrs/name> ?stateName .\n  ?femaDeclaration <https://graph.infona.ai/types/FemaDeclaration/attrs/fy_declared> \"2020\" .\n} GROUP BY ?stateName ORDER BY DESC(?declarationCount)",
       "full_expected_items": [
         "CA | 27",
         "OR | 17",
@@ -2126,7 +2126,7 @@
     {
       "id": "q-006",
       "question": "For each County, how many FemaDeclarations have designated it as an area, where the declaration type is 'DR'?",
-      "gold_sparql": "SELECT ?countyName (COUNT(DISTINCT ?femaDeclaration) AS ?declarationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n  ?femaDeclaration <https://omnix.dev/onto/designated_area> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/County> .\n  ?county <https://omnix.dev/types/County/attrs/name> ?countyName .\n  ?femaDeclaration <https://omnix.dev/types/FemaDeclaration/attrs/declaration_type> \"DR\" .\n} GROUP BY ?countyName ORDER BY DESC(?declarationCount)",
+      "gold_sparql": "SELECT ?countyName (COUNT(DISTINCT ?femaDeclaration) AS ?declarationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n  ?femaDeclaration <https://graph.infona.ai/onto/designated_area> ?county .\n  ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/County> .\n  ?county <https://graph.infona.ai/types/County/attrs/name> ?countyName .\n  ?femaDeclaration <https://graph.infona.ai/types/FemaDeclaration/attrs/declaration_type> \"DR\" .\n} GROUP BY ?countyName ORDER BY DESC(?declarationCount)",
       "full_expected_items": [
         "Lincoln (County) | 30",
         "Jackson (County) | 30",
@@ -4134,7 +4134,7 @@
     {
       "id": "q-007",
       "question": "Which Regions have the most FemaDeclarations where the HM program was declared?",
-      "gold_sparql": "SELECT ?regionName (COUNT(DISTINCT ?femaDeclaration) AS ?declarationCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n  ?femaDeclaration <https://omnix.dev/onto/region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/Region> .\n  ?region <https://omnix.dev/types/Region/attrs/name> ?regionName .\n  ?femaDeclaration <https://omnix.dev/types/FemaDeclaration/attrs/hm_program_declared> true .\n} GROUP BY ?regionName ORDER BY DESC(?declarationCount)",
+      "gold_sparql": "SELECT ?regionName (COUNT(DISTINCT ?femaDeclaration) AS ?declarationCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n  ?femaDeclaration <https://graph.infona.ai/onto/region> ?region .\n  ?region <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/Region> .\n  ?region <https://graph.infona.ai/types/Region/attrs/name> ?regionName .\n  ?femaDeclaration <https://graph.infona.ai/types/FemaDeclaration/attrs/hm_program_declared> true .\n} GROUP BY ?regionName ORDER BY DESC(?declarationCount)",
       "full_expected_items": [
         "9 | 156",
         "10 | 133",
@@ -4158,7 +4158,7 @@
     {
       "id": "q-008",
       "question": "What is the average number of counties designated per FemaDeclaration for each incident type?",
-      "gold_sparql": "SELECT ?incident_type (AVG(?county_count) AS ?average_counties) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?fema_declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n  ?fema_declaration <https://omnix.dev/types/FemaDeclaration/attrs/incident_type> ?incident_type .\n  {\n    SELECT ?fema_declaration (COUNT(DISTINCT ?county) AS ?county_count) WHERE {\n      ?fema_declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n      ?fema_declaration <https://omnix.dev/onto/designated_area> ?county .\n      ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/County> .\n    } GROUP BY ?fema_declaration\n  }\n} GROUP BY ?incident_type",
+      "gold_sparql": "SELECT ?incident_type (AVG(?county_count) AS ?average_counties) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?fema_declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n  ?fema_declaration <https://graph.infona.ai/types/FemaDeclaration/attrs/incident_type> ?incident_type .\n  {\n    SELECT ?fema_declaration (COUNT(DISTINCT ?county) AS ?county_count) WHERE {\n      ?fema_declaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n      ?fema_declaration <https://graph.infona.ai/onto/designated_area> ?county .\n      ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/County> .\n    } GROUP BY ?fema_declaration\n  }\n} GROUP BY ?incident_type",
       "full_expected_items": [
         "Severe Storm | 12.77027027027027027027",
         "Hurricane | 27.66666666666666666667",
@@ -4190,7 +4190,7 @@
     {
       "id": "q-009",
       "question": "For each FEMA declaration type, what is the average number of designated counties involved?",
-      "gold_sparql": "SELECT ?declaration_type (AVG(?countyCount) AS ?averageCountyCount) FROM <https://omnix.dev/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n  ?femaDeclaration <https://omnix.dev/types/FemaDeclaration/attrs/declaration_type> ?declaration_type .\n  {\n    SELECT ?femaDeclaration (COUNT(DISTINCT ?county) AS ?countyCount) WHERE {\n      ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/FemaDeclaration> .\n      ?femaDeclaration <https://omnix.dev/onto/designated_area> ?county .\n      ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://omnix.dev/types/County> .\n    } GROUP BY ?femaDeclaration\n  }\n} GROUP BY ?declaration_type ORDER BY DESC(?averageCountyCount)",
+      "gold_sparql": "SELECT ?declaration_type (AVG(?countyCount) AS ?averageCountyCount) FROM <https://graph.infona.ai/graphs/demo-tenant/kg/holdout-v2-fema-disaster-declarations> WHERE {\n  ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n  ?femaDeclaration <https://graph.infona.ai/types/FemaDeclaration/attrs/declaration_type> ?declaration_type .\n  {\n    SELECT ?femaDeclaration (COUNT(DISTINCT ?county) AS ?countyCount) WHERE {\n      ?femaDeclaration <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/FemaDeclaration> .\n      ?femaDeclaration <https://graph.infona.ai/onto/designated_area> ?county .\n      ?county <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://graph.infona.ai/types/County> .\n    } GROUP BY ?femaDeclaration\n  }\n} GROUP BY ?declaration_type ORDER BY DESC(?averageCountyCount)",
       "full_expected_items": [
         "DR | 19.125",
         "EM | 11.83333333333333333333",
