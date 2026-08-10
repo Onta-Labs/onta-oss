@@ -57,6 +57,7 @@ from infona_client.graph.ontology_snapshots import (
     _current_revision_counter,
     diff_graphs,
 )
+from infona_client.graph.kg_writer import graph_backend
 from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
 from infona_client.models.ontology import (
     AliasBackfill,
@@ -134,7 +135,15 @@ async def _workspace_ontology(
 
     Base layer is resolved from the workspace pin (ONTA-405) so a global
     release does not silently change the effective ontology until upgrade.
+
+    **Dual-backend (E9):** when ``INFONA_GRAPH_BACKEND=neo4j``, tenant catalog
+    types/attrs come from :mod:`ontology_catalog` (GraphStore). Layered Public
+    / Enhanced shadowing stays a SPARQL LayerStack concern — neo4j returns the
+    tenant catalog only until catalog layers are ported.
     """
+    if graph_backend() == "neo4j":
+        return await _workspace_ontology_store(tenant)
+
     stack = await layer_stack_for_tenant(client, tenant, auto_ensure=True)
     catalog = await _workspace_catalog(tenant.tenant_id)
     return await fetch_ontology(
@@ -144,6 +153,76 @@ async def _workspace_ontology(
         entitled=is_entitled(tenant),
         tenant_id=tenant.tenant_id,
         apply_shadowing=True,
+    )
+
+
+async def _workspace_ontology_store(
+    tenant: TenantContext,
+) -> WorkspaceOntologyResponse:
+    """Tenant-layer ontology from GraphStore catalog (neo4j dual-backend)."""
+    from infona_client.graph.ontology_catalog import (
+        list_attributes as cat_list_attrs,
+        list_types as cat_list_types,
+    )
+    from infona_client.models.ontology import (
+        GlobalOntologyAttribute,
+        GlobalOntologyRelationship,
+    )
+
+    type_rows = await cat_list_types(
+        layer="tenant", tenant_id=tenant.tenant_id
+    )
+    attr_rows = await cat_list_attrs(
+        layer="tenant", tenant_id=tenant.tenant_id, type_name=None
+    )
+    attrs_by_domain: dict[str, list] = {}
+    for a in attr_rows:
+        attrs_by_domain.setdefault(a.domain, []).append(a)
+
+    children: dict[str, list[str]] = {}
+    for t in type_rows:
+        if t.parent_type:
+            children.setdefault(t.parent_type, []).append(t.name)
+
+    types_out: list[WorkspaceOntologyType] = []
+    for t in type_rows:
+        attributes: list[GlobalOntologyAttribute] = []
+        relationships: list[GlobalOntologyRelationship] = []
+        for a in attrs_by_domain.get(t.name, []):
+            if a.kind == "relationship":
+                relationships.append(
+                    GlobalOntologyRelationship(
+                        name=a.name,
+                        target_type=a.range_type or "Thing",
+                        description=a.description or None,
+                    )
+                )
+            else:
+                attributes.append(
+                    GlobalOntologyAttribute(
+                        name=a.name,
+                        datatype=a.datatype or "string",
+                        description=a.description or None,
+                    )
+                )
+        types_out.append(
+            WorkspaceOntologyType(
+                name=t.name,
+                description=t.description or None,
+                parent_type=t.parent_type,
+                attributes=attributes,
+                relationships=relationships,
+                subtypes=sorted(children.get(t.name, [])),
+                functions=[],
+                layer="tenant",
+            )
+        )
+
+    return WorkspaceOntologyResponse(
+        tenant_id=tenant.tenant_id,
+        types=types_out,
+        entitled=is_entitled(tenant),
+        layers=[],
     )
 
 
@@ -237,6 +316,31 @@ async def create_type(
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     # WRITE path: tenant graph only. Never a global layer.
+    # Dual-backend (E9): ontology_catalog upserts when neo4j.
+    if graph_backend() == "neo4j":
+        from infona_client.graph.ontology_catalog import (
+            upsert_attribute as cat_upsert_attr,
+            upsert_type as cat_upsert_type,
+        )
+
+        await cat_upsert_type(
+            name=body.name,
+            description=body.description or "",
+            parent_type=body.parent_type,
+            layer="tenant",
+            tenant_id=tenant.tenant_id,
+        )
+        for attr in body.attributes:
+            await cat_upsert_attr(
+                type_name=body.name,
+                attr_name=attr.name,
+                description=attr.description or "",
+                datatype=attr.datatype or "string",
+                layer="tenant",
+                tenant_id=tenant.tenant_id,
+            )
+        return {"created": body.name, "attributes": len(body.attributes)}
+
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     muts = [
         OntologyMutation(
@@ -301,6 +405,22 @@ async def add_attributes(
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     # WRITE path: tenant graph only.
+    if graph_backend() == "neo4j":
+        from infona_client.graph.ontology_catalog import (
+            upsert_attribute as cat_upsert_attr,
+        )
+
+        for attr in body.attributes:
+            await cat_upsert_attr(
+                type_name=type_name,
+                attr_name=attr.name,
+                description=attr.description or "",
+                datatype=attr.datatype or "string",
+                layer="tenant",
+                tenant_id=tenant.tenant_id,
+            )
+        return {"type": type_name, "attributes_added": len(body.attributes)}
+
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     muts = []
     for attr in body.attributes:
@@ -334,6 +454,18 @@ async def add_subtype(
     client: NeptuneClient = Depends(get_neptune_client),
 ):
     # WRITE path: tenant graph only.
+    if graph_backend() == "neo4j":
+        from infona_client.graph.ontology_catalog import upsert_type as cat_upsert_type
+
+        # Subtype is an OntoType with parent_type = type_name.
+        await cat_upsert_type(
+            name=body.subtype,
+            parent_type=type_name,
+            layer="tenant",
+            tenant_id=tenant.tenant_id,
+        )
+        return {"parent": type_name, "subtype": body.subtype}
+
     graph_uri = tenant_graph_uri(tenant.tenant_id)
     await commit_ontology(
         client,
