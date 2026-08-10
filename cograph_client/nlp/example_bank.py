@@ -48,6 +48,20 @@ PATTERN_DETECTORS: list[tuple[str, str]] = [
     ("group_by", r"GROUP\s+BY"),
 ]
 
+# Pattern tags for Cypher (E6). Overlap names with SPARQL so diversity logic
+# still works across a mixed bank.
+CYPHER_PATTERN_DETECTORS: list[tuple[str, str]] = [
+    ("count", r"\bcount\s*\("),
+    ("avg", r"\bavg\s*\("),
+    ("max", r"\bmax\s*\("),
+    ("sum", r"\bsum\s*\("),
+    ("filter", r"\bWHERE\b"),
+    ("contains", r"\b(?:contains|toLower|toUpper)\s*\("),
+    ("group_by", r"\bWITH\b"),
+    ("order", r"\bORDER\s+BY\b"),
+    ("limit", r"\bLIMIT\b"),
+]
+
 # Default file paths
 DEFAULT_BANK_PATH = Path(__file__).resolve().parent.parent.parent / "eval_reports" / "example_bank.jsonl"
 EVAL_REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "eval_reports"
@@ -226,21 +240,33 @@ def example_key(question: str, kg_name: str | None) -> tuple[str, str]:
 
 @dataclass
 class Example:
-    """A single (question, SPARQL) example with metadata."""
+    """A single (question, query) example with metadata.
+
+    SPARQL remains the primary few-shot language for Neptune. Cypher is an
+    **optional** sibling field (E6): mixed banks load without error; Cypher
+    mode only formats rows that carry a non-empty ``cypher`` string.
+    """
 
     question: str
-    sparql: str
-    kg_name: str
-    ontology_context: str
+    sparql: str = ""
+    kg_name: str = ""
+    ontology_context: str = ""
     pattern_tags: list[str] = field(default_factory=list)
     embedding: list[float] = field(default_factory=list)
+    cypher: str = ""
 
     @property
     def key(self) -> tuple[str, str]:
         """See :func:`example_key`."""
         return example_key(self.question, self.kg_name)
 
-    def refresh_from(self, sparql: str, ontology_context: str) -> bool:
+    def refresh_from(
+        self,
+        sparql: str = "",
+        ontology_context: str = "",
+        *,
+        cypher: str = "",
+    ) -> bool:
         """Update this example's answer in place. True if anything changed.
 
         The embedding is NOT recomputed: it is keyed on the question, and the
@@ -257,13 +283,19 @@ class Example:
             self.sparql = sparql
             self.pattern_tags = detect_pattern_tags(sparql)
             changed = True
+        if cypher and cypher != self.cypher:
+            self.cypher = cypher
+            # Prefer Cypher tags when refreshing a Cypher answer; keep SPARQL
+            # tags if only sparql changed above.
+            self.pattern_tags = detect_pattern_tags_cypher(cypher) or self.pattern_tags
+            changed = True
         if ontology_context and ontology_context != self.ontology_context:
             self.ontology_context = ontology_context
             changed = True
         return changed
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "question": self.question,
             "sparql": self.sparql,
             "kg_name": self.kg_name,
@@ -271,16 +303,25 @@ class Example:
             "pattern_tags": self.pattern_tags,
             "embedding": self.embedding,
         }
+        # Omit empty cypher so SPARQL-only bank lines stay byte-stable.
+        if self.cypher:
+            d["cypher"] = self.cypher
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Example":
+        sparql = d.get("sparql", "") or ""
+        cypher = d.get("cypher", "") or ""
+        if not sparql and not cypher:
+            raise KeyError("example requires sparql and/or cypher")
         return cls(
             question=d["question"],
-            sparql=d["sparql"],
+            sparql=sparql,
             kg_name=d.get("kg_name", ""),
             ontology_context=d.get("ontology_context", ""),
             pattern_tags=d.get("pattern_tags", []),
             embedding=d.get("embedding", []),
+            cypher=cypher,
         )
 
 
@@ -308,6 +349,18 @@ def detect_pattern_tags(sparql: str) -> list[str]:
     if triple_count >= 3:
         tags.append("multi_hop")
 
+    return sorted(set(tags))
+
+
+def detect_pattern_tags_cypher(cypher: str) -> list[str]:
+    """Auto-detect pattern tags from Cypher text (E6 example bank)."""
+    tags: list[str] = []
+    for tag, pattern in CYPHER_PATTERN_DETECTORS:
+        if re.search(pattern, cypher or "", re.IGNORECASE):
+            tags.append(tag)
+    # join: 2+ MATCH clauses
+    if len(re.findall(r"\bMATCH\b", cypher or "", re.IGNORECASE)) >= 2:
+        tags.append("join")
     return sorted(set(tags))
 
 
@@ -465,6 +518,60 @@ class ExampleBank:
                 ontology_context=ontology_context,
                 pattern_tags=pattern_tags,
                 embedding=embedding,
+                cypher="",
+            )
+        )
+        return True
+
+    async def add_cypher(
+        self,
+        question: str,
+        cypher: str,
+        kg_name: str,
+        ontology_context: str,
+        *,
+        sparql: str = "",
+    ) -> bool:
+        """Embed and store a Cypher (or mixed) example. Returns True if changed.
+
+        Same identity rules as :meth:`add`. ``sparql`` may be empty for
+        Cypher-only rows; existing SPARQL rows can gain a ``cypher`` field via
+        refresh without losing their SPARQL answer.
+        """
+        if is_benchmark_kg(kg_name):
+            logger.debug("Refusing benchmark-KG example from %s (ONTA-449)", kg_name)
+            return False
+        if not (cypher or "").strip() and not (sparql or "").strip():
+            return False
+
+        key = example_key(question, kg_name)
+        for ex in self._examples:
+            if ex.key == key:
+                if ex.refresh_from(sparql, ontology_context, cypher=cypher):
+                    logger.debug("Refreshed existing example (cypher): %s", question[:80])
+                    return True
+                logger.debug("Skipping unchanged duplicate question: %s", question[:80])
+                return False
+
+        if len(self._examples) >= MAX_BANK_SIZE:
+            logger.warning("Example bank at capacity (%d), skipping add", MAX_BANK_SIZE)
+            return False
+
+        tags = (
+            detect_pattern_tags_cypher(cypher)
+            if cypher
+            else detect_pattern_tags(sparql)
+        )
+        embedding = await self._embed_single(question)
+        self._examples.append(
+            Example(
+                question=question,
+                sparql=sparql or "",
+                kg_name=kg_name,
+                ontology_context=ontology_context,
+                pattern_tags=tags,
+                embedding=embedding,
+                cypher=cypher or "",
             )
         )
         return True
@@ -526,7 +633,11 @@ class ExampleBank:
         for key, item in collapsed.items():
             existing = by_key.get(key)
             if existing is not None:
-                if existing.refresh_from(item["sparql"], item.get("ontology_context", "")):
+                if existing.refresh_from(
+                    item.get("sparql", "") or "",
+                    item.get("ontology_context", ""),
+                    cypher=item.get("cypher", "") or "",
+                ):
                     refreshed.add(key)
                 continue
             pending[key] = item
@@ -556,14 +667,21 @@ class ExampleBank:
             embeddings = await self._embed_texts(questions)
 
             for item, emb in zip(new_items, embeddings):
+                sparql = item.get("sparql", "") or ""
+                cypher = item.get("cypher", "") or ""
+                if cypher and not sparql:
+                    tags = detect_pattern_tags_cypher(cypher)
+                else:
+                    tags = detect_pattern_tags(sparql) if sparql else detect_pattern_tags_cypher(cypher)
                 self._examples.append(
                     Example(
                         question=item["question"],
-                        sparql=item["sparql"],
+                        sparql=sparql,
                         kg_name=item.get("kg_name", ""),
                         ontology_context=item.get("ontology_context", ""),
-                        pattern_tags=detect_pattern_tags(item["sparql"]),
+                        pattern_tags=tags,
                         embedding=emb,
+                        cypher=cypher,
                     )
                 )
 
@@ -939,36 +1057,64 @@ def sanitize_example_sparql(sparql: str, target_graph_uri: str = "") -> str:
     return _ANY_GRAPH_IRI_RE.sub(lambda _m: f"<{replacement}>", out)
 
 
+def sanitize_example_cypher(cypher: str) -> str:
+    """Strip literal tenant/kg values from a few-shot Cypher example.
+
+    Cypher isolation uses ``$tenant_id`` / ``$kg`` parameters (not SPARQL
+    ``FROM``). A stored example must never teach the model to hardcode a
+    workspace id. We rewrite common literal forms to the parameter tokens.
+    """
+    text = cypher or ""
+    # Map-form literals: tenant_id: 'demo-tenant' → tenant_id: $tenant_id
+    text = re.sub(
+        r"\btenant_id\s*:\s*(?:'[^']*'|\"[^\"]*\"|\$\w+)",
+        "tenant_id: $tenant_id",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\bkg\s*:\s*(?:'[^']*'|\"[^\"]*\"|\$\w+)",
+        "kg: $kg",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
 def format_examples_for_prompt(
     examples: list[Example],
     target_graph_uri: str = "",
+    *,
+    language: str = "sparql",
 ) -> str:
-    """Format retrieved examples for injection into the SPARQL generation prompt.
+    """Format retrieved examples for injection into the generation prompt.
 
     Args:
         examples: Retrieved examples, in prompt order.
         target_graph_uri: The graph the CURRENT question runs against. Every
-            example's ``FROM`` clause is rewritten to it (see
+            SPARQL example's ``FROM`` clause is rewritten to it (see
             :func:`sanitize_example_sparql`). When empty, a ``<TARGET_GRAPH>``
             placeholder is emitted instead and the header tells the model to
-            substitute it.
+            substitute it. Ignored for ``language="cypher"`` (params instead).
+        language: ``"sparql"`` (default Neptune path) or ``"cypher"`` (Neo4j).
+            Cypher mode only includes examples that have a non-empty ``cypher``
+            field; SPARQL-only rows are skipped so the model is not shown the
+            wrong language.
 
-    Output format:
-        Similar queries that worked. Some may come from OTHER graphs, so reuse
-        their SHAPE and check every type/attribute URI against the ontology
-        schema above instead of copying it. Their FROM clause has been rewritten
-        to your target graph.
+    Output format (SPARQL):
+        Similar queries that worked. ...
+          SPARQL: SELECT ... FROM <graph> WHERE { ... }
 
-        Example 1 (count + join):
-          Q: How many events are in the Mission District?
-          SPARQL: SELECT (COUNT(DISTINCT ?event) AS ?count) FROM <graph> WHERE { ... }
-
-        Example 2 (avg + filter):
-          Q: What is the average price of condos?
-          SPARQL: SELECT (AVG(?price) AS ?avg) FROM <graph> WHERE { ... }
+    Output format (Cypher):
+        Similar Cypher queries that worked. ...
+          Cypher: MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) ...
     """
     if not examples:
         return ""
+
+    lang = (language or "sparql").strip().lower()
+    if lang == "cypher":
+        return _format_cypher_examples(examples)
 
     if target_graph_uri:
         from_note = "Their FROM clause has been rewritten to your target graph."
@@ -992,6 +1138,8 @@ def format_examples_for_prompt(
     ]
 
     for i, ex in enumerate(examples, 1):
+        if not (ex.sparql or "").strip():
+            continue
         tag_str = " + ".join(ex.pattern_tags) if ex.pattern_tags else "basic"
         # Compact the SPARQL — collapse excessive whitespace but keep it readable
         sparql_compact = " ".join(sanitize_example_sparql(ex.sparql, target_graph_uri).split())
@@ -1000,6 +1148,31 @@ def format_examples_for_prompt(
         lines.append(f"  Q: {ex.question}")
         lines.append(f"  SPARQL: {sparql_compact}")
 
+    # If every example was Cypher-only, return empty rather than a header alone.
+    if len(lines) <= 2:
+        return ""
+    return "\n".join(lines)
+
+
+def _format_cypher_examples(examples: list[Example]) -> str:
+    """Format examples that carry a ``cypher`` field for the Cypher prompt."""
+    usable = [ex for ex in examples if (ex.cypher or "").strip()]
+    if not usable:
+        return ""
+    lines = [
+        "Similar Cypher queries that worked. Some may come from OTHER graphs, so "
+        "reuse their SHAPE and check every type/property name against the ontology "
+        "schema above instead of copying it.",
+        "Always scope MATCH with {tenant_id: $tenant_id, kg: $kg}; never hardcode "
+        "workspace ids. Session parameters are injected at execution time.",
+    ]
+    for i, ex in enumerate(usable, 1):
+        tag_str = " + ".join(ex.pattern_tags) if ex.pattern_tags else "basic"
+        cypher_compact = " ".join(sanitize_example_cypher(ex.cypher).split())
+        lines.append("")
+        lines.append(f"Example {i} ({tag_str}):")
+        lines.append(f"  Q: {ex.question}")
+        lines.append(f"  Cypher: {cypher_compact}")
     return "\n".join(lines)
 
 
