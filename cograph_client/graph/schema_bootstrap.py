@@ -113,6 +113,120 @@ RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
 ORDER BY e.id
 """.strip()
 
+# --- Ontology catalog (E4 / model §5) ----------------------------------------
+
+ONTO_TYPE_UPSERT_CYPHER = """
+MERGE (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
+ON CREATE SET
+  t.description = $description,
+  t.label_token = $label_token,
+  t.uri = $uri
+ON MATCH SET
+  t.description = CASE WHEN $description = '' THEN t.description ELSE $description END,
+  t.label_token = coalesce($label_token, t.label_token),
+  t.uri = coalesce($uri, t.uri)
+RETURN t.name AS name, t.layer AS layer, t.description AS description,
+       t.label_token AS label_token, t.uri AS uri,
+       t.tenant_id AS tenant_id, t.kg AS kg
+""".strip()
+
+ONTO_SUBCLASS_SET_CYPHER = """
+MATCH (child:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
+OPTIONAL MATCH (child)-[old:SUBCLASS_OF]->()
+DELETE old
+WITH child
+MERGE (parent:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $parent_name})
+ON CREATE SET parent.label_token = $parent_label_token
+MERGE (child)-[:SUBCLASS_OF]->(parent)
+RETURN child.name AS name, parent.name AS parent_type
+""".strip()
+
+ONTO_SUBCLASS_CLEAR_CYPHER = """
+MATCH (child:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
+OPTIONAL MATCH (child)-[old:SUBCLASS_OF]->()
+DELETE old
+RETURN child.name AS name, null AS parent_type
+""".strip()
+
+ONTO_TYPE_LIST_CYPHER = """
+MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg})
+WHERE $layer IS NULL OR t.layer = $layer
+OPTIONAL MATCH (t)-[:SUBCLASS_OF]->(p:OntoType)
+RETURN t.name AS name, t.layer AS layer, coalesce(t.description, '') AS description,
+       t.label_token AS label_token, t.uri AS uri,
+       p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg
+ORDER BY t.name
+""".strip()
+
+ONTO_TYPE_GET_CYPHER = """
+MATCH (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $name})
+OPTIONAL MATCH (t)-[:SUBCLASS_OF]->(p:OntoType)
+RETURN t.name AS name, t.layer AS layer, coalesce(t.description, '') AS description,
+       t.label_token AS label_token, t.uri AS uri,
+       p.name AS parent_type, t.tenant_id AS tenant_id, t.kg AS kg
+""".strip()
+
+ONTO_ATTR_UPSERT_CYPHER = """
+MERGE (a:OntoAttr {
+  tenant_id: $tenant_id, kg: $kg, layer: $layer, domain: $domain, name: $name
+})
+ON CREATE SET
+  a.kind = $kind,
+  a.datatype = $datatype,
+  a.range_type = $range_type,
+  a.cardinality = $cardinality,
+  a.description = $description,
+  a.prop_key = $prop_key
+ON MATCH SET
+  a.kind = $kind,
+  a.datatype = $datatype,
+  a.range_type = $range_type,
+  a.cardinality = coalesce($cardinality, a.cardinality),
+  a.description = CASE WHEN $description = '' THEN a.description ELSE $description END,
+  a.prop_key = coalesce($prop_key, a.prop_key)
+WITH a
+MERGE (t:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $domain})
+ON CREATE SET t.label_token = $domain_label_token
+MERGE (t)-[:DECLARES]->(a)
+RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
+       a.datatype AS datatype, a.range_type AS range_type,
+       a.cardinality AS cardinality, coalesce(a.description, '') AS description,
+       a.prop_key AS prop_key, a.layer AS layer,
+       a.tenant_id AS tenant_id, a.kg AS kg
+""".strip()
+
+ONTO_ATTR_RANGE_TYPE_CYPHER = """
+MATCH (a:OntoAttr {
+  tenant_id: $tenant_id, kg: $kg, layer: $layer, domain: $domain, name: $name
+})
+OPTIONAL MATCH (a)-[old:RANGE_TYPE]->()
+DELETE old
+WITH a
+MERGE (rt:OntoType {tenant_id: $tenant_id, kg: $kg, layer: $layer, name: $range_type})
+ON CREATE SET rt.label_token = $range_label_token
+MERGE (a)-[:RANGE_TYPE]->(rt)
+RETURN a.name AS name, rt.name AS range_type
+""".strip()
+
+ONTO_ATTR_LIST_CYPHER = """
+MATCH (a:OntoAttr {tenant_id: $tenant_id, kg: $kg})
+WHERE ($domain IS NULL OR a.domain = $domain)
+  AND ($layer IS NULL OR a.layer = $layer)
+RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
+       a.datatype AS datatype, a.range_type AS range_type,
+       a.cardinality AS cardinality, coalesce(a.description, '') AS description,
+       a.prop_key AS prop_key, a.layer AS layer,
+       a.tenant_id AS tenant_id, a.kg AS kg
+ORDER BY a.domain, a.name
+""".strip()
+
+ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE e.primary_type IS NOT NULL
+RETURN e.primary_type AS primary_type, count(*) AS n
+ORDER BY e.primary_type
+""".strip()
+
 
 @dataclass(frozen=True, slots=True)
 class CypherTemplate:
@@ -145,6 +259,51 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
         cypher=ENTITY_LIST_BY_TYPE_CYPHER,
         writing=False,
         require_entity_id=False,
+    ),
+    "onto_type_upsert": CypherTemplate(
+        name="onto_type_upsert",
+        cypher=ONTO_TYPE_UPSERT_CYPHER,
+        writing=True,
+    ),
+    "onto_subclass_set": CypherTemplate(
+        name="onto_subclass_set",
+        cypher=ONTO_SUBCLASS_SET_CYPHER,
+        writing=True,
+    ),
+    "onto_subclass_clear": CypherTemplate(
+        name="onto_subclass_clear",
+        cypher=ONTO_SUBCLASS_CLEAR_CYPHER,
+        writing=True,
+    ),
+    "onto_type_list": CypherTemplate(
+        name="onto_type_list",
+        cypher=ONTO_TYPE_LIST_CYPHER,
+        writing=False,
+    ),
+    "onto_type_get": CypherTemplate(
+        name="onto_type_get",
+        cypher=ONTO_TYPE_GET_CYPHER,
+        writing=False,
+    ),
+    "onto_attr_upsert": CypherTemplate(
+        name="onto_attr_upsert",
+        cypher=ONTO_ATTR_UPSERT_CYPHER,
+        writing=True,
+    ),
+    "onto_attr_range_type": CypherTemplate(
+        name="onto_attr_range_type",
+        cypher=ONTO_ATTR_RANGE_TYPE_CYPHER,
+        writing=True,
+    ),
+    "onto_attr_list": CypherTemplate(
+        name="onto_attr_list",
+        cypher=ONTO_ATTR_LIST_CYPHER,
+        writing=False,
+    ),
+    "entity_count_by_primary_type": CypherTemplate(
+        name="entity_count_by_primary_type",
+        cypher=ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER,
+        writing=False,
     ),
 }
 
