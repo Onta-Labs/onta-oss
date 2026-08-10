@@ -286,3 +286,23 @@ NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=onta-dev-passwor
 | `COGRAPH_GRAPH_BACKEND` | `neptune` | Set to `neo4j` to enable GraphStore writers/readers and NL→Cypher `/ask` |
 
 No platform or AWS-managed credentials are embedded in this package.
+
+## Public SPARQL hard-break (E9 / ADR 0012 L2)
+
+When `COGRAPH_GRAPH_BACKEND=neo4j`, the **public** raw SPARQL HTTP surfaces are
+**gone** — not shimmed:
+
+| Route | Neptune (default) | Neo4j |
+|-------|-------------------|--------|
+| `POST /graphs/{tenant}/query` | Scoped SPARQL SELECT/ASK/… | **410 Gone** |
+| `POST /graphs/{tenant}/update` | Operator SPARQL Update | **410 Gone** |
+
+Response body points callers at the agent, SDK, and high-level APIs
+(`/ask`, `/agent`, `/triples`, `/kgs`, ingest, explore). There is **no** SPARQL
+compatibility façade over Neo4j.
+
+**Not deleted:** SPARQL client code, `sparql_scope`, internal Neptune readers,
+and the route modules themselves remain for Neptune deployments and remaining
+internal paths. Only the public HTTP contract hard-breaks in neo4j mode.
+
+Hermetic tests: `tests/test_query_neo4j_hard_break.py`.
