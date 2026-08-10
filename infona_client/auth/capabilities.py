@@ -1,4 +1,4 @@
-"""Tenant-level access capability (read | write) — ONTA membership v1.
+"""Tenant-level access capability (read | write) — Infona membership v1.
 
 Product model (tenant-scoped first; graph-level grants are a later phase):
 

@@ -59,7 +59,7 @@ function showBanner(): void {
     ];
     for (const l of lines) stdout.write(l + "\n");
   } else {
-    stdout.write(`\n  ${CYAN_BOLD}ONTA${RESET}\n`);
+    stdout.write(`\n  ${CYAN_BOLD}INFONA${RESET}\n`);
     stdout.write(`  ${DIM}The object graph for AI agents${RESET}\n\n`);
   }
   showCommands();
