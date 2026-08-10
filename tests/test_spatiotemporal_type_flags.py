@@ -24,8 +24,8 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from cograph_client.api.app import create_app
-from cograph_client.api.routes.explore import (
+from infona_client.api.app import create_app
+from infona_client.api.routes.explore import (
     RDF_TYPE,
     _IndexFlagAccumulator,
     _ST_FLAG_AGGREGATES,
@@ -33,8 +33,8 @@ from cograph_client.api.routes.explore import (
     _STAT_TEMPORAL,
     recompute_kg_stats,
 )
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.spatiotemporal.extract import GEO_WKT
+from infona_client.graph.client import NeptuneClient
+from infona_client.spatiotemporal.extract import GEO_WKT
 
 TENANT = "test-tenant"
 KG = "web"
@@ -255,7 +255,7 @@ def test_type_counts_survive_flag_read_failure(client, mock_neptune, auth_header
 
 
 def test_summary_reads_flags_from_stats(client, mock_neptune, auth_headers):
-    from cograph_client.api.routes import explore as _explore_mod
+    from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
 
     def route(sparql, *a, **k):
@@ -283,7 +283,7 @@ def test_summary_reads_flags_from_stats(client, mock_neptune, auth_headers):
 def test_summary_accepts_numeric_boolean_lexical_form(client, mock_neptune, auth_headers):
     """"1"^^xsd:boolean is an equally valid true — a backfill writer using the
     numeric lexical form must not silently read as False."""
-    from cograph_client.api.routes import explore as _explore_mod
+    from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
 
     def route(sparql, *a, **k):
@@ -308,7 +308,7 @@ def test_summary_accepts_numeric_boolean_lexical_form(client, mock_neptune, auth
 
 
 def test_summary_computes_flags_on_live_scan_fallback(client, mock_neptune, auth_headers):
-    from cograph_client.api.routes import explore as _explore_mod
+    from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
 
     def route(sparql, *a, **k):

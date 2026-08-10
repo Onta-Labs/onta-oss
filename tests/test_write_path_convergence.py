@@ -12,7 +12,7 @@ second time and the *enumerated* guard couldn't see it because ``api/routes/``
 wasn't on its list.
 
 Shape (ADR 0007 §4): the structural guard is now **scan-everything-with-allowlist**
-instead of enumerate-known-writers. It scans ALL of ``cograph_client/`` for
+instead of enumerate-known-writers. It scans ALL of ``infona_client/`` for
 bespoke instance-write markers and **fails by default** on any hit outside an
 explicit, justified allowlist — so a NEW writer that hand-rolls a write is caught
 even if nobody remembered to add it to a list.
@@ -31,10 +31,10 @@ import re
 import tokenize
 from unittest.mock import AsyncMock, patch
 
-import cograph_client
-import cograph_client.api.routes.ingest as ingest_route_mod
-import cograph_client.enrichment.executor as executor_mod
-import cograph_client.resolver.schema_resolver as schema_resolver_mod
+import infona_client
+import infona_client.api.routes.ingest as ingest_route_mod
+import infona_client.enrichment.executor as executor_mod
+import infona_client.resolver.schema_resolver as schema_resolver_mod
 
 
 def _calls(src: str, name: str) -> bool:
@@ -46,14 +46,14 @@ def _calls(src: str, name: str) -> bool:
 # --- Behavioral: the JSON/free-text ingest method delegates housekeeping -------
 
 
-@patch("cograph_client.api.routes.ingest.refresh_after_write", new_callable=AsyncMock)
-@patch("cograph_client.api.routes.ingest.SchemaResolver")
+@patch("infona_client.api.routes.ingest.refresh_after_write", new_callable=AsyncMock)
+@patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_ingest_route_delegates_housekeeping_to_shared_writer(
     mock_resolver_cls, mock_refresh, client, auth_headers
 ):
     """POST /ingest must run its post-write refresh through the shared
     refresh_after_write — not a re-inlined embed/cache-invalidate."""
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.resolver.models import IngestResult
 
     inst = AsyncMock()
     inst.ingest.return_value = IngestResult(
@@ -157,7 +157,7 @@ _CYPHER_WRITE_ALLOWLIST: dict[str, str] = {
     "graph/facts.py": "Fact IR + sanitizers; no store I/O.",
 }
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 
 
 def _strip_comments(src: str) -> str:
@@ -201,7 +201,7 @@ def _cypher_instance_write_markers(code: str) -> list[str]:
 
 
 def test_no_bespoke_instance_write_outside_allowlist():
-    """Scan ALL of ``cograph_client/`` for bespoke instance-write markers and fail
+    """Scan ALL of ``infona_client/`` for bespoke instance-write markers and fail
     on any hit outside the justified allowlist (ADR 0007 §4).
 
     This replaces the old enumerate-known-writers guard, which structurally
@@ -268,7 +268,7 @@ def test_lambda_functions_route_uses_primitives():
     """api/routes/lambda_functions.py (the site that drifted) materializes
     lambda-computed attributes through delete_facts + insert_facts + one
     refresh_after_write — no raw DELETE, no bare insert_triples."""
-    import cograph_client.api.routes.lambda_functions as mod
+    import infona_client.api.routes.lambda_functions as mod
 
     src = inspect.getsource(mod)
     assert _calls(src, "delete_facts"), "lambda route must clear old values via kg_writer.delete_facts"
@@ -288,7 +288,7 @@ def test_er_rebuild_uses_rewrite_subject():
     """resolver/er/rebuild.py folds every ER merge through kg_writer.rewrite_subject
     (a re-key event, so derived indexes re-key instead of leaving ghosts) and
     refreshes once per batch — no hand-rolled DELETE/INSERT merge SPARQL."""
-    import cograph_client.resolver.er.rebuild as mod
+    import infona_client.resolver.er.rebuild as mod
 
     src = inspect.getsource(mod)
     assert _calls(src, "rewrite_subject"), "ER rebuild must merge via kg_writer.rewrite_subject"
@@ -304,7 +304,7 @@ def test_normalization_rules_store_uses_primitives():
     """normalization/rules.py persists a rule (metadata subject) via
     delete_facts (clear) + insert_facts (write) — no bespoke insert_triples or
     hand-rolled delete-by-subject SPARQL."""
-    import cograph_client.normalization.rules as mod
+    import infona_client.normalization.rules as mod
 
     src = inspect.getsource(mod)
     assert _calls(src, "delete_facts"), "rule store must clear prior triples via kg_writer.delete_facts"
@@ -360,7 +360,7 @@ def test_normalization_writer_uses_shared_path():
     insert_facts, its removals through delete_facts, and its post-write
     housekeeping through refresh_after_write — no bespoke batched insert,
     stats-recompute, or raw delete_triples."""
-    import cograph_client.normalization.execute as norm_mod
+    import infona_client.normalization.execute as norm_mod
 
     src = inspect.getsource(norm_mod)
     assert _calls(src, "insert_facts"), "normalization must insert via kg_writer.insert_facts"
@@ -386,8 +386,8 @@ def test_dedupe_writers_use_shared_refresh():
     """The dedupe / entity-resolution writers (which mutate counts, not schema)
     must run their post-write refresh through the shared refresh_after_write, not
     a bare schedule_recompute."""
-    import cograph_client.agent.capabilities.dedup_cap as dedup_mod
-    import cograph_client.api.routes.actions as actions_mod
+    import infona_client.agent.capabilities.dedup_cap as dedup_mod
+    import infona_client.api.routes.actions as actions_mod
 
     for mod, name in [(dedup_mod, "dedup_cap"), (actions_mod, "actions")]:
         src = inspect.getsource(mod)
@@ -406,7 +406,7 @@ def test_web_ingest_calls_refresh_after_write():
     the same post-write housekeeping as every other writer — otherwise the
     ontology expansion stays invisible to NL planning + Explorer. The refresh must
     go through the shared refresh_after_write, not a re-inlined embed/cache step."""
-    import cograph_client.agent.capabilities.web_ingest_cap as web_ingest_mod
+    import infona_client.agent.capabilities.web_ingest_cap as web_ingest_mod
 
     src = inspect.getsource(web_ingest_mod)
     assert _calls(src, "refresh_after_write"), (
@@ -426,7 +426,7 @@ def test_shared_writer_is_the_single_housekeeping_owner():
     """Sanity: the shared writer itself is the one place embed/cache-invalidate/
     recompute AND the removal primitives live, so delegating to it actually
     centralizes the behavior."""
-    import cograph_client.graph.kg_writer as kg_writer_mod
+    import infona_client.graph.kg_writer as kg_writer_mod
 
     src = inspect.getsource(kg_writer_mod)
     assert _calls(src, "batched_insert_triples"), "insert_facts must batch"
@@ -454,8 +454,8 @@ def test_shared_writer_is_the_single_housekeeping_owner():
 
 def test_semantic_index_writers_use_shared_seams():
     """ONTA-181 drift guard for the semantic-index write hook + reconciler."""
-    import cograph_client.graph.kg_writer as kg_writer_mod
-    import cograph_client.semantic.reconciler as reconciler_mod
+    import infona_client.graph.kg_writer as kg_writer_mod
+    import infona_client.semantic.reconciler as reconciler_mod
 
     # The write hook (kg_writer._index_semantic) chunks via the shared extractor
     # and writes via the protocol — no bespoke chunker/hasher, no direct rows.

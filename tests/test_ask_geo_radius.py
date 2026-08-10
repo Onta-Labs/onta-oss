@@ -6,7 +6,7 @@ a bare place NAME never resolved, so the whole radius path fell through and the
 user had to enumerate cities by hand.
 
 Fix: spatial routing is now a supported, default-ENABLED path, and a free-text
-geocoder SEAM (cograph_client.spatiotemporal.geocoder) turns a place name into
+geocoder SEAM (infona_client.spatiotemporal.geocoder) turns a place name into
 coords. OSS ships a deterministic offline gazetteer default; a premium geocoder
 registers over it. These tests use an INVENTED gazetteer + invented entities so
 nothing overfits: "within N km of <invented place>" returns entities inside the
@@ -19,18 +19,18 @@ import time
 
 import pytest
 
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.nlp.pipeline import NLQueryPipeline
-from cograph_client.spatiotemporal.geocoder import (
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.nlp.pipeline import NLQueryPipeline
+from infona_client.spatiotemporal.geocoder import (
     GazetteerGeocoder,
     GeoNamesGeocoder,
     get_geocoder,
     register_geocoder,
     reset_geocoder,
 )
-from cograph_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
-from cograph_client.spatiotemporal.protocol import SpatioTemporalFact
-from cograph_client.spatiotemporal.registry import (
+from infona_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
+from infona_client.spatiotemporal.protocol import SpatioTemporalFact
+from infona_client.spatiotemporal.registry import (
     register_spatiotemporal_index,
     reset_spatiotemporal_index,
 )
@@ -180,8 +180,8 @@ async def test_unknown_place_falls_through_to_sparql():
 def test_premium_geocoder_loads_via_plugin_spec(monkeypatch):
     """A premium geocoder registers through the standard module:callable startup
     hook (mirrors _load_enrichment_plugin), so no paid API is baked into OSS."""
-    from cograph_client.api import app as app_mod
-    from cograph_client.spatiotemporal.geocoder import get_geocoder
+    from infona_client.api import app as app_mod
+    from infona_client.spatiotemporal.geocoder import get_geocoder
 
     # Point the plugin spec at THIS module's registrar (stands in for premium).
     monkeypatch.setattr(

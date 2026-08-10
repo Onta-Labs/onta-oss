@@ -5,7 +5,7 @@ Lives in its own module (like `tests/_enrichment_prov_helpers.py`) so that
 integration tests can all reference one definition. Importing these from
 `conftest` instead would execute it a second time under a different module name.
 
-Deliberately imports nothing from `cograph_client`: `conftest` pulls this in
+Deliberately imports nothing from `infona_client`: `conftest` pulls this in
 before the package is first imported, and must not trigger that import early.
 """
 

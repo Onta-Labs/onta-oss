@@ -16,7 +16,7 @@ fully offline — no network / LLM.
 
 from __future__ import annotations
 
-from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity
+from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity
 
 
 def test_bool_true_coerced_to_lowercase_string():

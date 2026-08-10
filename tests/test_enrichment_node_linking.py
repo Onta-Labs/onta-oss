@@ -11,12 +11,12 @@ both rails.
 """
 from __future__ import annotations
 
-from cograph_client.enrichment.executor import (
+from infona_client.enrichment.executor import (
     RDF_TYPE,
     RDFS_LABEL,
     EnrichmentExecutor,
 )
-from cograph_client.graph.ontology_queries import _safe_id, entity_uri, type_uri
+from infona_client.graph.ontology_queries import _safe_id, entity_uri, type_uri
 
 _ITV = EnrichmentExecutor._instance_triples_for_value
 PHYS = "https://graph.onta.sh/entities/Physician/p1"

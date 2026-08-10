@@ -28,12 +28,12 @@ from typing import Optional
 
 import pytest
 
-from cograph_client.auth.api_keys import register_external_verifier
-from cograph_client.config import settings
-from cograph_client.semantic.extract import content_hash
-from cograph_client.semantic.memory import InMemorySemanticIndex
-from cograph_client.semantic.protocol import SemanticChunk
-from cograph_client.semantic.registry import (
+from infona_client.auth.api_keys import register_external_verifier
+from infona_client.config import settings
+from infona_client.semantic.extract import content_hash
+from infona_client.semantic.memory import InMemorySemanticIndex
+from infona_client.semantic.protocol import SemanticChunk
+from infona_client.semantic.registry import (
     register_semantic_index,
     reset_semantic_index,
 )
@@ -185,7 +185,7 @@ def test_search_gate_off_forces_lexical_even_with_embed_key(monkeypatch, client,
         embed_calls.append(texts)
         return [V_SOLAR for _ in texts]
 
-    monkeypatch.setattr("cograph_client.nlp.embed_client.embed_texts", spy_embed)
+    monkeypatch.setattr("infona_client.nlp.embed_client.embed_texts", spy_embed)
     resp = _search(client, {"query": "solar panel subsidies"}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["degraded"] is True
@@ -411,7 +411,7 @@ def test_search_entity_uris_combined_with_type(client, auth_headers):
 
 def test_search_entity_uris_over_cap_is_400(client, auth_headers):
     """More than ENTITY_URIS_MAX unique URIs → 400 with a clear message."""
-    from cograph_client.api.routes.search import ENTITY_URIS_MAX
+    from infona_client.api.routes.search import ENTITY_URIS_MAX
 
     _seed(*_corpus())
     too_many = [f"e:entity-{i}" for i in range(ENTITY_URIS_MAX + 1)]
@@ -467,7 +467,7 @@ def test_search_degraded_on_embed_failure(monkeypatch, client, auth_headers):
     async def boom(texts, *, api_key, timeout=30):
         raise RuntimeError("embed service down")
 
-    monkeypatch.setattr("cograph_client.nlp.embed_client.embed_texts", boom)
+    monkeypatch.setattr("infona_client.nlp.embed_client.embed_texts", boom)
     resp = _search(client, {"query": "solar panel subsidies"}, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
@@ -503,7 +503,7 @@ def test_search_happy_path_hybrid(monkeypatch, client, auth_headers):
         embed_calls.append(texts)
         return [V_SOLAR for _ in texts]
 
-    monkeypatch.setattr("cograph_client.nlp.embed_client.embed_texts", fake_embed)
+    monkeypatch.setattr("infona_client.nlp.embed_client.embed_texts", fake_embed)
 
     resp = _search(
         client, {"query": "  solar panel subsidies  ", "top_k": 5}, headers=auth_headers

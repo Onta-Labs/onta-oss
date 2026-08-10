@@ -30,9 +30,9 @@ import json
 
 import pytest
 
-from cograph_client.graph.kg_writer import GraphDelta, insert_facts
-from cograph_client.graph.ontology_queries import entity_uri
-from cograph_client.graph.provenance import (
+from infona_client.graph.kg_writer import GraphDelta, insert_facts
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.provenance import (
     EVENT_MERGE,
     LIN_ORIGIN,
     ORIGIN_CANONICAL,
@@ -42,8 +42,8 @@ from cograph_client.graph.provenance import (
     PROV_SUBJECT,
     build_merge_lineage_triples,
 )
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.pipeline.mutations import (
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.pipeline.mutations import (
     SAME_AS,
     MergeReceipt,
     SplitReceipt,
@@ -147,8 +147,8 @@ def _quiet_housekeeping(monkeypatch):
     best-effort downstreams are no-ops here. The spatiotemporal index defaults to the
     zero-config in-memory backend, so the merge's rewritten_subjects re-key is a
     harmless no-op over facts with no geometry."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
@@ -388,7 +388,7 @@ async def test_merge_rejects_self_merge():
 async def test_merge_records_a_run_manifest_item():
     """A9 wiring (low-cost, mirroring supersede): a merge handed a RunManifest records
     the op as a completed item."""
-    from cograph_client.pipeline.manifest import RunManifest
+    from infona_client.pipeline.manifest import RunManifest
 
     n = PyoxiNeptune()
     await _seed(n, TWITTER, TWITTER_FACTS)

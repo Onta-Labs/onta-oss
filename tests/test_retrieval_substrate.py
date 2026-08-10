@@ -4,11 +4,11 @@
 Two jobs:
 
 1. **Freeze the fetch layer's behaviour at its NEW canonical home**
-   (:mod:`cograph_client.retrieval`) — the SSRF string guard, the resolve-and-check
+   (:mod:`infona_client.retrieval`) — the SSRF string guard, the resolve-and-check
    DNS guard, the static fetcher's offline/blocked/redirect handling, the ladder
    registry ordering, and the HTML→text reduction. These mirror the behaviour the
    ONTA-166 hardening suite pinned when the code lived in ``research.fetch``; they
-   now assert it against ``cograph_client.retrieval`` so the move is a no-op in
+   now assert it against ``infona_client.retrieval`` so the move is a no-op in
    behaviour, not just in imports.
 
 2. **Freeze the compatibility contract** — the published ``research.fetch`` shim
@@ -26,14 +26,14 @@ from __future__ import annotations
 import httpx
 import pytest
 
-import cograph_client.research as research_pkg
-import cograph_client.research.fetch as research_fetch
-import cograph_client.research.types as research_types
-import cograph_client.retrieval as retrieval
-import cograph_client.retrieval.fetch as rfetch
-import cograph_client.retrieval.safety as rsafety
-import cograph_client.retrieval.types as rtypes
-from cograph_client.retrieval import (
+import infona_client.research as research_pkg
+import infona_client.research.fetch as research_fetch
+import infona_client.research.types as research_types
+import infona_client.retrieval as retrieval
+import infona_client.retrieval.fetch as rfetch
+import infona_client.retrieval.safety as rsafety
+import infona_client.retrieval.types as rtypes
+from infona_client.retrieval import (
     FetchedPage,
     StaticHttpFetcher,
     default_ladder,
@@ -406,7 +406,7 @@ def test_fetchedpage_home_is_substrate_and_reexported():
     assert FetchedPage is rtypes.FetchedPage
     assert research_types.FetchedPage is rtypes.FetchedPage
     assert research_fetch.FetchedPage is rtypes.FetchedPage
-    assert FetchedPage.__module__ == "cograph_client.retrieval.types"
+    assert FetchedPage.__module__ == "infona_client.retrieval.types"
 
 
 def test_research_package_reexports_substrate_ladder():
@@ -439,7 +439,7 @@ class _Src:
 
 
 def test_source_cost_reads_generically_and_never_raises():
-    from cograph_client.retrieval import rows_per_call, source_cost
+    from infona_client.retrieval import rows_per_call, source_cost
 
     assert source_cost(_Src()) == (False, 0.0)
     assert source_cost(_Src(is_paid=True, cost_per_call=0.02)) == (True, 0.02)
@@ -454,9 +454,9 @@ def test_source_cost_reads_generically_and_never_raises():
 
 def test_provider_adapter_fetcher_cost_delegate_to_source_cost():
     # The three per-rail cost reducers must be behavioural aliases of the one seam.
-    from cograph_client.enrichment.sources.base import adapter_cost
-    from cograph_client.retrieval import fetcher_cost, source_cost
-    from cograph_client.web_sources.base import provider_cost
+    from infona_client.enrichment.sources.base import adapter_cost
+    from infona_client.retrieval import fetcher_cost, source_cost
+    from infona_client.web_sources.base import provider_cost
 
     for src in (_Src(), _Src(is_paid=True, cost_per_call=0.017), _Src(cost_per_call=0.5)):
         want = source_cost(src)
@@ -467,7 +467,7 @@ def test_provider_adapter_fetcher_cost_delegate_to_source_cost():
 
 # --- per-request error policy (P1-rest) --------------------------------------- #
 def test_fetch_error_policy_semantics_and_hierarchy():
-    from cograph_client.retrieval import FetchError, FetchErrorPolicy, RetrievalError
+    from infona_client.retrieval import FetchError, FetchErrorPolicy, RetrievalError
 
     assert FetchErrorPolicy.RAISE.raises is True
     assert FetchErrorPolicy.DEGRADE.raises is False

@@ -9,7 +9,7 @@ registered. The proprietary PostHog sink registers over this seam via the
 
 import pytest
 
-from cograph_client.analytics import (
+from infona_client.analytics import (
     NoOpSink,
     distinct_id_for,
     emit,
@@ -230,7 +230,7 @@ def test_no_posthog_import_in_oss_analytics():
     """The OSS seam pulls in zero third-party analytics dependency."""
     import sys
 
-    import cograph_client.analytics  # noqa: F401
+    import infona_client.analytics  # noqa: F401
 
     assert "posthog" not in sys.modules
 
@@ -239,7 +239,7 @@ def test_no_posthog_import_in_oss_analytics():
 
 
 def _tenant(subject="user_9", tenant_id="acme"):
-    from cograph_client.auth.api_keys import TenantContext
+    from infona_client.auth.api_keys import TenantContext
 
     return TenantContext(tenant_id=tenant_id, api_key="k", subject=subject)
 
@@ -248,8 +248,8 @@ def test_query_executed_emits_result_count_and_returned_rows():
     """The /ask emit carries cheap result-quality signal + the NL mode tag."""
     import time
 
-    from cograph_client.api.routes.ask import _emit_query_executed
-    from cograph_client.models.query import NLResult
+    from infona_client.api.routes.ask import _emit_query_executed
+    from infona_client.models.query import NLResult
 
     sink = RecordingSink()
     register_analytics_sink(sink)
@@ -277,8 +277,8 @@ def test_query_executed_zero_rows_reports_returned_rows_false():
     """A query that returned nothing → result_count 0, returned_rows False."""
     import time
 
-    from cograph_client.api.routes.ask import _emit_query_executed
-    from cograph_client.models.query import NLResult
+    from infona_client.api.routes.ask import _emit_query_executed
+    from infona_client.models.query import NLResult
 
     sink = RecordingSink()
     register_analytics_sink(sink)
@@ -296,8 +296,8 @@ def test_query_executed_degraded_result_without_rows_metadata_is_zero():
     """The graceful-degrade NLResult (empty timing) reports 0 rows, not a crash."""
     import time
 
-    from cograph_client.api.routes.ask import _emit_query_executed
-    from cograph_client.models.query import NLResult
+    from infona_client.api.routes.ask import _emit_query_executed
+    from infona_client.models.query import NLResult
 
     sink = RecordingSink()
     register_analytics_sink(sink)
@@ -316,8 +316,8 @@ def test_query_executed_degraded_result_without_rows_metadata_is_zero():
 
 def test_analytics_plugin_loaded_at_startup(monkeypatch):
     """register() runs during create_app() and installs the sink over the seam."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(
         settings, "analytics_plugin", "tests.fake_analytics_plugin:register"
@@ -340,8 +340,8 @@ def test_analytics_plugin_loaded_at_startup(monkeypatch):
 
 def test_analytics_plugin_invalid_format_logged(monkeypatch):
     """Malformed spec is logged but does not raise (app still starts)."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "analytics_plugin", "no_colon_here")
     # Must not raise.
@@ -350,8 +350,8 @@ def test_analytics_plugin_invalid_format_logged(monkeypatch):
 
 def test_analytics_plugin_import_failure_does_not_crash(monkeypatch):
     """A plugin that can't be imported is logged; the app still starts."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "analytics_plugin", "tests.does_not_exist:register")
     # Must not raise.

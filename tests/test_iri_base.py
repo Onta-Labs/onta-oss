@@ -1,6 +1,6 @@
 """Configurable IRI base (ONTA brand default + env override)."""
 
-from cograph_client.graph.iri import (
+from infona_client.graph.iri import (
     DEFAULT_IRI_BASE,
     ENTITY_URI_PREFIX,
     GRAPH_URI_PREFIX,
@@ -8,9 +8,9 @@ from cograph_client.graph.iri import (
     LEGACY_IRI_BASES,
     TYPE_URI_PREFIX,
 )
-from cograph_client.graph.ontology_queries import entity_uri, type_uri
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
-from cograph_client.nlp.validator import normalize_sparql
+from infona_client.graph.ontology_queries import entity_uri, type_uri
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.nlp.validator import normalize_sparql
 
 
 def test_default_base_is_onta_branded():
@@ -55,7 +55,7 @@ def test_no_runtime_host_literals_outside_allowlist():
     import tokenize
     import io
 
-    root = pathlib.Path(__file__).resolve().parents[1] / "cograph_client"
+    root = pathlib.Path(__file__).resolve().parents[1] / "infona_client"
     allow_files = {
         "iri.py",
         "prompts.py",  # template uses default host then .replace(IRI_BASE)

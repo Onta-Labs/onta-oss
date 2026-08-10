@@ -20,7 +20,7 @@ All deterministic string-level assertions — no live Neptune, no LLM.
 
 from __future__ import annotations
 
-from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
 
 CLOSURE = (
     "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"

@@ -27,14 +27,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from cograph_client.pipeline.manifest import (
+from infona_client.pipeline.manifest import (
     HaltReasonKind,
     RunCoverage,
     RunManifest,
     RunState,
     classify_halt,
 )
-from cograph_client.retrieval.errors import (
+from infona_client.retrieval.errors import (
     RATE_LIMIT_HALT_THRESHOLD,
     LLMAuthError,
     LLMBillingError,
@@ -109,7 +109,7 @@ def test_manifest_records_drops_and_retries_and_spend():
 
 
 def test_manifest_items_list_is_bounded_but_counters_stay_exact():
-    from cograph_client.pipeline.manifest import _MAX_ITEMS
+    from infona_client.pipeline.manifest import _MAX_ITEMS
 
     m = RunManifest(run_id="r1").start(total=_MAX_ITEMS + 50)
     for i in range(_MAX_ITEMS + 50):
@@ -216,8 +216,8 @@ def test_default_threshold_is_reasonable():
 # --------------------------------------------------------------------------- #
 # 3. /api/v1/key balance helper — mocked httpx, no live call
 # --------------------------------------------------------------------------- #
-from cograph_client.resolver import llm_router  # noqa: E402
-from cograph_client.resolver.llm_router import (  # noqa: E402
+from infona_client.resolver import llm_router  # noqa: E402
+from infona_client.resolver.llm_router import (  # noqa: E402
     OpenRouterKeyStatus,
     openrouter_key_status,
 )
@@ -305,20 +305,20 @@ async def test_key_status_402_on_diagnosis_raises_billing_error(monkeypatch):
 #    to terminal FAILED with a provider-exhaustion reason + a partial-coverage
 #    manifest. Reuses the proven ONTA-201 discovery harness.
 # --------------------------------------------------------------------------- #
-from cograph_client.agent.capabilities import web_ingest_cap  # noqa: E402
-from cograph_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
+from infona_client.agent.capabilities import web_ingest_cap  # noqa: E402
+from infona_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
     WebIngestCapability,
 )
-from cograph_client.agent.registry import AgentContext  # noqa: E402
-from cograph_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
-from cograph_client.enrichment.models import JobStatus  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.agent.registry import AgentContext  # noqa: E402
+from infona_client.enrichment.job_store import InMemoryJobStore  # noqa: E402
+from infona_client.enrichment.models import JobStatus  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.web_sources import (  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.web_sources import (  # noqa: E402
     DiscoverResult,
     register_web_source,
     reset_web_sources,
@@ -492,9 +492,9 @@ async def test_injected_402_halts_discovery_run_with_partial_coverage_manifest(m
 # --------------------------------------------------------------------------- #
 from datetime import datetime, timezone  # noqa: E402
 
-from cograph_client.enrichment.cache import EnrichmentCache  # noqa: E402
-from cograph_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
-from cograph_client.enrichment.models import (  # noqa: E402
+from infona_client.enrichment.cache import EnrichmentCache  # noqa: E402
+from infona_client.enrichment.executor import EnrichmentExecutor  # noqa: E402
+from infona_client.enrichment.models import (  # noqa: E402
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,

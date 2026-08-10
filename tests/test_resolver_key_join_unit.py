@@ -12,19 +12,19 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     attr_uri,
     entities_by_key_value_query,
     type_uri,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     IngestResult,
     KeyJoin,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 KGG = "https://graph.onta.sh/graphs/t/k"
 

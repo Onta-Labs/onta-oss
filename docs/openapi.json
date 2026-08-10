@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Omnix",
+    "title": "Infona",
     "description": "Living Knowledge Graph Platform",
     "version": "0.1.0"
   },

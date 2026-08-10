@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from cograph_client.graph.explore_store import (
+from infona_client.graph.explore_store import (
     DEFAULT_PAGE_LIMIT,
     MAX_PAGE_LIMIT,
     EntityDetail,
@@ -24,14 +24,14 @@ from cograph_client.graph.explore_store import (
     resolve_explore_session,
     type_counts,
 )
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_queries import entity_uri
-from cograph_client.graph.queries import InvalidTypeName
-from cograph_client.graph.schema_bootstrap import TEMPLATES
-from cograph_client.graph.scope import GraphScope, GraphScopeError
-from cograph_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.queries import InvalidTypeName
+from infona_client.graph.schema_bootstrap import TEMPLATES
+from infona_client.graph.scope import GraphScope, GraphScopeError
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 
 
 @pytest.fixture
@@ -368,8 +368,8 @@ def test_default_page_limit_constant():
 
 def test_list_and_count_use_instance_of_not_primary_type_alone(store):
     """ADR 0013: explore type list/count follow INSTANCE_OF→Class, not primary_type denorm."""
-    from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
-    from cograph_client.graph.scope import GraphScope
+    from infona_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
+    from infona_client.graph.scope import GraphScope
 
     async def run():
         # Seed one Person via normal path (INSTANCE_OF written).
@@ -386,7 +386,7 @@ def test_list_and_count_use_instance_of_not_primary_type_alone(store):
             ),
         )
         # Corrupt denorm primary_type so primary_type-only filters would miss it.
-        from cograph_client.graph.pg_ops import merge_entity
+        from infona_client.graph.pg_ops import merge_entity
 
         await merge_entity(session, dana, primary_type="NotARealType", name="Dana")
 
@@ -414,10 +414,10 @@ def test_list_and_count_use_instance_of_not_primary_type_alone(store):
 
 def test_list_entities_include_subclasses(store):
     """include_subclasses expands Class SUBCLASS_OF for explore list/count."""
-    from cograph_client.graph.kg_writer import insert_facts as _ins
-    from cograph_client.graph.ontology_queries import type_uri
-    from cograph_client.graph.rdf_model import set_subclass_of
-    from cograph_client.graph.scope import GraphScope
+    from infona_client.graph.kg_writer import insert_facts as _ins
+    from infona_client.graph.ontology_queries import type_uri
+    from infona_client.graph.rdf_model import set_subclass_of
+    from infona_client.graph.scope import GraphScope
 
     async def run():
         graph = _graph()

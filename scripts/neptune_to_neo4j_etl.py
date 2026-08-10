@@ -52,12 +52,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from cograph_client.graph.assertion_model import (  # noqa: E402
+from infona_client.graph.assertion_model import (  # noqa: E402
     AssertionFact,
     property_uri,
     type_membership_property_id,
 )
-from cograph_client.graph.facts import (  # noqa: E402
+from infona_client.graph.facts import (  # noqa: E402
     Fact,
     classify_triple,
     group_facts_by_subject,
@@ -65,14 +65,14 @@ from cograph_client.graph.facts import (  # noqa: E402
     sanitize_rel_type,
     triples_to_facts,
 )
-from cograph_client.graph.labels import sanitize_domain_label  # noqa: E402
-from cograph_client.graph.predicates import RDFS_NS  # noqa: E402
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
-from cograph_client.graph.rdf_model import (  # noqa: E402
+from infona_client.graph.labels import sanitize_domain_label  # noqa: E402
+from infona_client.graph.predicates import RDFS_NS  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
+from infona_client.graph.rdf_model import (  # noqa: E402
     class_iri,
     fact_to_assertion_fact,
 )
-from cograph_client.graph.scope import GraphScopeError  # noqa: E402
+from infona_client.graph.scope import GraphScopeError  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Catalog predicates (ontology triples → Class/Property hierarchy)
@@ -472,7 +472,7 @@ async def fetch_triples_from_neptune(
     limit: int | None = None,
 ) -> list[tuple[str, str, str]]:
     """SELECT ?s ?p ?o from one named graph or the default union."""
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.graph.client import NeptuneClient
 
     client = NeptuneClient(endpoint, backend=backend)
     try:
@@ -503,7 +503,7 @@ async def list_instance_graphs_from_neptune(
     kg: str | None = None,
 ) -> list[str]:
     """Discover ``…/graphs/{tenant}/kg/{kg}`` named graphs on the endpoint."""
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.graph.client import NeptuneClient
 
     client = NeptuneClient(endpoint, backend=backend)
     try:
@@ -541,8 +541,8 @@ async def write_facts_to_store(
     ``pg_ops.apply_facts`` MERGEs Entity cache + calls ``assert_fact`` so
     :Assertion / Class / Property / INSTANCE_OF land on the ADR 0013 model.
     """
-    from cograph_client.graph.kg_writer import insert_facts
-    from cograph_client.graph.store import get_graph_store
+    from infona_client.graph.kg_writer import insert_facts
+    from infona_client.graph.store import get_graph_store
 
     store = get_graph_store()
     await store.bootstrap_schema()
@@ -570,13 +570,13 @@ async def write_catalog_to_store(
     """Write SUBCLASS_OF / SUBPROPERTY_OF via rdf_model helpers (scoped session)."""
     if not catalog:
         return 0
-    from cograph_client.graph.rdf_model import (
+    from infona_client.graph.rdf_model import (
         merge_property_node,
         set_subclass_of,
         set_subproperty_of,
     )
-    from cograph_client.graph.scope import GraphScope
-    from cograph_client.graph.store import get_graph_store
+    from infona_client.graph.scope import GraphScope
+    from infona_client.graph.store import get_graph_store
 
     store = get_graph_store()
     await store.bootstrap_schema()

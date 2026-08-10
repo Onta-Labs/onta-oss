@@ -13,7 +13,7 @@ from datetime import date
 import httpx
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     ApiSourceSpec,
     RegistryApiSource,
     audit_catalog,
@@ -21,14 +21,14 @@ from cograph_client.api_registry import (
     make_api_source_catalog,
     validate_spec,
 )
-from cograph_client.api_registry.catalog import (
+from infona_client.api_registry.catalog import (
     ApiSourceCatalog,
     register_api_source_layer,
     reset_api_source_catalog,
     reset_api_source_layers,
 )
-from cograph_client.api_registry.catalog_audit import _needs_review, main
-from cograph_client.retrieval import safety as safety_mod
+from infona_client.api_registry.catalog_audit import _needs_review, main
+from infona_client.retrieval import safety as safety_mod
 
 # Pinned "today" for deterministic freshness math. Must be >= the newest seed
 # verified_at (a future-dated stamp is flagged as a typo and gates) — advance

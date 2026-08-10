@@ -164,8 +164,8 @@ def test_get_full_schema(client, auth_headers, mock_neptune):
 
 def test_register_and_list_aliases(client, auth_headers, mock_neptune):
     """POST /aliases goes through commit_ontology; GET returns the map."""
-    from cograph_client.graph.aliases import ALIAS_OF
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.aliases import ALIAS_OF
+    from infona_client.graph.ontology_queries import attr_uri
 
     old_uri = attr_uri("Guest", "phone_num")
     new_uri = attr_uri("Guest", "phone")
@@ -224,8 +224,8 @@ def test_register_alias_rejects_self(client, auth_headers, mock_neptune):
 
 def test_rename_attribute_via_api(client, auth_headers, mock_neptune):
     """POST /aliases/rename goes through RENAME_ATTRIBUTE (always creates alias)."""
-    from cograph_client.graph.aliases import ALIAS_OF
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.aliases import ALIAS_OF
+    from infona_client.graph.ontology_queries import attr_uri
 
     old_uri = attr_uri("Guest", "phone_num")
     new_uri = attr_uri("Guest", "phone")
@@ -253,7 +253,7 @@ def test_rename_attribute_via_api(client, auth_headers, mock_neptune):
 
 def test_retire_alias_conflict_when_refs_remain(client, auth_headers, mock_neptune):
     """DELETE /aliases returns 409 when instance triples still use the old predicate."""
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.ontology_queries import attr_uri
 
     old_uri = attr_uri("Guest", "phone_num")
     # commit path: fingerprint + count probe. Count returns 2 remaining.

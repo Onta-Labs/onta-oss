@@ -27,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 # Helpers / imports under test
 # ---------------------------------------------------------------------------
 
-from cograph_client.resolver.er.types import (
+from infona_client.resolver.er.types import (
     DEFAULT_PROPERTY_CONFIG,
     ERConfig,
     MergeAction,
@@ -39,13 +39,13 @@ from cograph_client.resolver.er.types import (
     config_for_with_hierarchy,
     primary_type,
 )
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     parent_map_query,
     rewrite_type_predicate_to_closure,
     type_uri,
     with_subclass_closure,
 )
-from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
+from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
 
 GRAPH_URI = "https://graph.onta.sh/graphs/test-tenant"
 TYPES_URI = "https://graph.onta.sh/types/"
@@ -222,8 +222,8 @@ def mock_neptune():
 @pytest.mark.asyncio
 async def test_ingestion_stamps_leaf_type_condo(mock_neptune):
     """The rdf:type triple written to Neptune must reference Condo, not Property."""
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     cache = JsonVerdictCache.__new__(JsonVerdictCache)
     cache._path = None
@@ -240,7 +240,7 @@ async def test_ingestion_stamps_leaf_type_condo(mock_neptune):
     result = IngestResult(entities_extracted=1)
 
     with patch.object(resolver._type_matcher, "match") as mock_match:
-        from cograph_client.resolver.models import MatchVerdict, TypeMatch
+        from infona_client.resolver.models import MatchVerdict, TypeMatch
         mock_match.return_value = TypeMatch(
             proposed="Condo",
             resolved="Condo",
@@ -265,8 +265,8 @@ async def test_ingestion_stamps_leaf_type_condo(mock_neptune):
 @pytest.mark.asyncio
 async def test_ancestor_synthesis_creates_parent_type(mock_neptune):
     """_synthesize_ancestors must call neptune.update for any missing ancestor."""
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     cache = JsonVerdictCache.__new__(JsonVerdictCache)
     cache._path = None
@@ -296,8 +296,8 @@ async def test_ancestor_synthesis_creates_parent_type(mock_neptune):
 @pytest.mark.asyncio
 async def test_ancestor_synthesis_idempotent_when_parent_exists(mock_neptune):
     """If Property is already in existing_types, no redundant Neptune writes."""
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     cache = JsonVerdictCache.__new__(JsonVerdictCache)
     cache._path = None
@@ -351,9 +351,9 @@ async def test_er_pipeline_merges_duplicate_condos(mock_neptune):
     so we can control the blocker response (returning the first Condo as a candidate).
     Without chain-walk this test would see SKIP (no config found for Condo).
     """
-    from cograph_client.resolver.er.engine import ERPipeline
-    from cograph_client.resolver.er.normalize import DefaultNormalizer
-    from cograph_client.resolver.er.types import NormalizedSignals
+    from infona_client.resolver.er.engine import ERPipeline
+    from infona_client.resolver.er.normalize import DefaultNormalizer
+    from infona_client.resolver.er.types import NormalizedSignals
 
     address = "123 main st san francisco ca 94105"
 
@@ -364,7 +364,7 @@ async def test_er_pipeline_merges_duplicate_condos(mock_neptune):
 
     # Normalize the address the same way the normalizer would so signals match.
     normalizer = DefaultNormalizer()
-    from cograph_client.resolver.er.engine import extract_signals
+    from infona_client.resolver.er.engine import extract_signals
     raw1 = extract_signals(entity1)
     norm1 = normalizer.normalize(raw1)
 
@@ -401,7 +401,7 @@ async def test_er_pipeline_merges_duplicate_condos(mock_neptune):
 @pytest.mark.asyncio
 async def test_er_skips_condo_without_parent_map():
     """Contrast test: without the parent map, config is None and ER is skipped."""
-    from cograph_client.resolver.er.engine import ERPipeline
+    from infona_client.resolver.er.engine import ERPipeline
 
     entity = _condo_entity("123 Main St San Francisco CA 94105")
     mock_neptune_er = _make_neptune_mock()

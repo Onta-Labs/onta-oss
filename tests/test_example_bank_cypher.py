@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cograph_client.nlp.example_bank import (
+from infona_client.nlp.example_bank import (
     Example,
     ExampleBank,
     detect_pattern_tags_cypher,

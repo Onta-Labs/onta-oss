@@ -13,15 +13,15 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor, _attr_uri
-from cograph_client.graph.provenance import attr_provenance_companion_uri
-from cograph_client.enrichment.job_store import (
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor, _attr_uri
+from infona_client.graph.provenance import attr_provenance_companion_uri
+from infona_client.enrichment.job_store import (
     InMemoryJobStore,
     PostgresJobStore,
     make_job_store,
 )
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.models import (
     ConflictPolicy,
     ConflictReview,
     EnrichJob,
@@ -42,7 +42,7 @@ from tests._enrichment_prov_helpers import (
 def test_make_job_store_defaults_to_postgres_when_dsn_present(monkeypatch):
     """The default store is durable (Postgres) whenever a DSN is configured, so the
     review queue survives a restart; in-memory only when no DSN."""
-    from cograph_client.enrichment import job_store as js
+    from infona_client.enrichment import job_store as js
 
     monkeypatch.setattr(js.settings, "database_url", "postgresql://x/y", raising=False)
     assert isinstance(make_job_store(), PostgresJobStore)
@@ -56,7 +56,7 @@ def test_staged_conflict_carries_both_sources(monkeypatch):
     """A staged conflict row carries BOTH sources' provenance: the incumbent value's
     source (read from its companions at selection time) AND the proposed verdict's
     source. Invented Widget schema."""
-    import cograph_client.api.routes.explore as explore_mod
+    import infona_client.api.routes.explore as explore_mod
 
     monkeypatch.setattr(explore_mod, "schedule_recompute", lambda *a, **k: None)
 

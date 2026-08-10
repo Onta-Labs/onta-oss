@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import re
 
-from cograph_client.nlp import pipeline as pl
-from cograph_client.nlp.pipeline import (
+from infona_client.nlp import pipeline as pl
+from infona_client.nlp.pipeline import (
     NLQueryPipeline,
     ONTOLOGY_EMPTY,
     ONTOLOGY_FETCH_ERROR,

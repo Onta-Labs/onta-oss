@@ -1,4 +1,4 @@
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     insert_type,
     insert_attribute,
     insert_subtype,

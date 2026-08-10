@@ -26,11 +26,11 @@ import json
 import pytest
 from unittest.mock import MagicMock
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-from cograph_client.agent.registry import AgentContext
-from cograph_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
-from cograph_client.pipeline.source_bundle import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.registry import AgentContext
+from infona_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
+from infona_client.pipeline.source_bundle import (
     KNOWN_TIERS,
     SOURCE_BUNDLE_STAGE,
     TIER_AUTHORITATIVE,
@@ -41,14 +41,14 @@ from cograph_client.pipeline.source_bundle import (
     build_source_bundle,
     is_secret_ref,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.web_sources import (
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.web_sources import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,

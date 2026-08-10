@@ -10,18 +10,18 @@ stats) running best-effort.
 import asyncio
 from unittest.mock import AsyncMock
 
-import cograph_client.api.routes.explore as explore_mod
-import cograph_client.nlp.pipeline as pipeline_mod
-from cograph_client.graph.kg_writer import (
+import infona_client.api.routes.explore as explore_mod
+import infona_client.nlp.pipeline as pipeline_mod
+from infona_client.graph.kg_writer import (
     delete_facts,
     insert_facts,
     refresh_after_write,
     rewrite_subject,
 )
-from cograph_client.graph.provenance import provenance_graph_uri
-from cograph_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
-from cograph_client.spatiotemporal.protocol import SpatioTemporalFact
-from cograph_client.spatiotemporal.registry import (
+from infona_client.graph.provenance import provenance_graph_uri
+from infona_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
+from infona_client.spatiotemporal.protocol import SpatioTemporalFact
+from infona_client.spatiotemporal.registry import (
     register_spatiotemporal_index,
     reset_spatiotemporal_index,
 )
@@ -105,7 +105,7 @@ def test_refresh_after_write_runs_all_three(monkeypatch):
             calls["triple_count"].append((tenant_id, name))
 
         monkeypatch.setattr(
-            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            "infona_client.api.routes.knowledge_graphs.invalidate_triple_count",
             fake_invalidate_triple_count,
         )
 
@@ -192,7 +192,7 @@ def test_refresh_after_write_skips_recompute_without_kg(monkeypatch):
             triple_counts.append((tenant_id, name))
 
         monkeypatch.setattr(
-            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            "infona_client.api.routes.knowledge_graphs.invalidate_triple_count",
             fake_invalidate_triple_count,
         )
         await refresh_after_write(AsyncMock(), tenant_id="t", kg_name=None, affected_types={"X"})
@@ -224,7 +224,7 @@ def test_refresh_after_write_invalidates_triple_count_even_without_recompute(mon
             triple_counts.append((tenant_id, name))
 
         monkeypatch.setattr(
-            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            "infona_client.api.routes.knowledge_graphs.invalidate_triple_count",
             fake_invalidate_triple_count,
         )
         await refresh_after_write(
@@ -256,7 +256,7 @@ def test_refresh_after_write_triple_count_invalidate_is_best_effort(monkeypatch)
             raise RuntimeError("metadata graph down")
 
         monkeypatch.setattr(
-            "cograph_client.api.routes.knowledge_graphs.invalidate_triple_count",
+            "infona_client.api.routes.knowledge_graphs.invalidate_triple_count",
             boom,
         )
         await refresh_after_write(AsyncMock(), tenant_id="t", kg_name="k")
@@ -461,9 +461,9 @@ def test_refresh_after_write_evicts_deleted_subjects_from_semantic_index(monkeyp
     evict semantic docs exactly like spatiotemporal rows (rewrites evict the
     stale key; re-indexing the new key is the hook/reconciler's job). Gated:
     with the env gate off the semantic backend must not even be touched."""
-    from cograph_client.semantic.memory import InMemorySemanticIndex
-    from cograph_client.semantic.protocol import SemanticChunk
-    from cograph_client.semantic.registry import (
+    from infona_client.semantic.memory import InMemorySemanticIndex
+    from infona_client.semantic.protocol import SemanticChunk
+    from infona_client.semantic.registry import (
         register_semantic_index,
         reset_semantic_index,
     )

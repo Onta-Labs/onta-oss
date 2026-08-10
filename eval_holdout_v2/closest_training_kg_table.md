@@ -1,4 +1,4 @@
-# Per-KG closest-training-KG distance table — Omnix Holdout v2.0
+# Per-KG closest-training-KG distance table — Infona Holdout v2.0
 
 Generated: 2026-04-15T07:48:37Z
 Source: HOLDOUT_V2_SPEC §8.2 item 13

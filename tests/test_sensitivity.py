@@ -1,6 +1,6 @@
 """Sensitivity tags + v1 enforcement tests (ADR 0002 §5, COG-42).
 
-Covers cograph_client/resolver/sensitivity.py:
+Covers infona_client/resolver/sensitivity.py:
 
   - rule 1: guard_enrichment_payload strips sensitive attrs entirely
   - rule 2: filter_response_attrs strips unless entitled
@@ -17,7 +17,7 @@ module-level default registry is never mutated.
 
 from __future__ import annotations
 
-from cograph_client.resolver.sensitivity import (
+from infona_client.resolver.sensitivity import (
     PII,
     PUBLIC,
     REDACTED,
@@ -29,7 +29,7 @@ from cograph_client.resolver.sensitivity import (
     redact_for_log,
     resolve_sensitivity_map,
 )
-from cograph_client.resolver.strategy import WELL_KNOWN_ENTRIES, default_registry
+from infona_client.resolver.strategy import WELL_KNOWN_ENTRIES, default_registry
 
 PARENT_OF = {"HotelGuest": "Guest", "Guest": "Person"}
 

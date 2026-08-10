@@ -2,7 +2,7 @@
 
 Status: **DRAFT (pre-freeze)** — version string `2.0-DRAFT`.
 
-This directory holds the Omnix / Cograph Holdout Benchmark v2.0 artifacts. The
+This directory holds the Infona / Infona Holdout Benchmark v2.0 artifacts. The
 definitive specification is `docs/HOLDOUT_V2_SPEC.md`; when the spec and any file
 here disagree, the spec wins.
 

@@ -11,10 +11,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cograph_client.enrichment.models import JobCategory
-from cograph_client.scheduling.models import Schedule
-from cograph_client.scheduling.next_run import compute_next_run
-from cograph_client.scheduling.store import (
+from infona_client.enrichment.models import JobCategory
+from infona_client.scheduling.models import Schedule
+from infona_client.scheduling.next_run import compute_next_run
+from infona_client.scheduling.store import (
     InMemoryScheduleStore,
     PostgresScheduleStore,
     make_schedule_store,
@@ -115,7 +115,7 @@ def test_compute_next_run_cron_best_effort():
 
 
 def test_make_schedule_store_inmemory_when_no_db(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
     store = make_schedule_store()
@@ -123,7 +123,7 @@ def test_make_schedule_store_inmemory_when_no_db(monkeypatch):
 
 
 def test_make_schedule_store_postgres_when_db_set(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
     store = make_schedule_store()
@@ -343,7 +343,7 @@ def test_postgres_store_update_and_delete(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_schedule_singleton():
-    from cograph_client.scheduling.store import reset_schedule_store
+    from infona_client.scheduling.store import reset_schedule_store
 
     reset_schedule_store()
     yield
@@ -352,7 +352,7 @@ def _reset_schedule_singleton():
 
 def test_route_create_and_list_happy_path(client, auth_headers):
     # Force the in-memory store regardless of any ambient OMNIX_DATABASE_URL.
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
 
@@ -380,7 +380,7 @@ def test_route_create_and_list_happy_path(client, auth_headers):
 
 
 def test_route_create_rejects_both_recurrences(client, auth_headers):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     r = client.post(
@@ -405,7 +405,7 @@ def test_route_create_rejects_system_managed_actions(client, auth_headers):
     GLOBAL (fetch_pending(tenant_id=None)) and route-minted reconcile rows get
     uuid ids the KG-delete cleanup never removes.
     """
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     for action in ("semantic-embed-fill", "semantic-reconcile"):
@@ -427,7 +427,7 @@ def test_route_create_accepts_all_user_schedulable_actions(client, auth_headers)
     """The user-schedulable actions (incl. ONTA-235 ``notify``) work end-to-end
     (create → get → patch → delete). This is the SAME canonical route the MCP
     ``schedule`` tool and the CLI reach through the SDK — interface convergence."""
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     for action, category in (
@@ -495,7 +495,7 @@ def _seed_system_reconcile_row(app) -> Schedule:
 def test_route_update_rejects_system_managed_row(app, client, auth_headers):
     """Every PATCH to a system-managed row is a 403 — cadence, action flips,
     even an enabled toggle (silently pausing index maintenance)."""
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     row = _seed_system_reconcile_row(app)
@@ -527,7 +527,7 @@ def test_route_update_rejects_flipping_user_row_to_system_action(client, auth_he
     """PATCHing a user row's action TO a system-managed value is a 422 (body
     validator) — a tenant must not convert an ordinary row into a semantic
     maintenance row."""
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     created = client.post(
@@ -553,7 +553,7 @@ def test_route_delete_system_managed_row_allowed(app, client, auth_headers):
     """DELETE of a system row is deliberately allowed (documented as NOT a
     durable opt-out — the reconciler's ensure-* hooks recreate it on the next
     KG write / reindex)."""
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     row = _seed_system_reconcile_row(app)
@@ -568,7 +568,7 @@ def test_route_delete_system_managed_row_allowed(app, client, auth_headers):
 
 
 def test_route_get_patch_delete(client, auth_headers):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     settings.database_url = ""
     created = client.post(

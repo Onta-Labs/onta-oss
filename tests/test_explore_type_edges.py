@@ -17,8 +17,8 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from cograph_client.api.app import create_app
-from cograph_client.graph.client import NeptuneClient
+from infona_client.api.app import create_app
+from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "test"

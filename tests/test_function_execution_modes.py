@@ -1,6 +1,6 @@
 """Per-function execution mode tests (ADR 0002 §6, COG-41).
 
-Covers cograph_client/resolver/functions.py:
+Covers infona_client/resolver/functions.py:
 
   - defaults by cost class: sparql -> query_time, lambda -> cached; explicit
     fn['mode'] always wins; unknown kind is a definition error
@@ -14,7 +14,7 @@ Covers cograph_client/resolver/functions.py:
     lambda_runner (the premium plug point) flows through the cached path
   - backward-compat regression: 'functions' rides the COG-39 strategy
     resolver as a bundle entry without disturbing 'er' resolution, and the
-    new module coexists with the legacy cograph_client.functions package
+    new module coexists with the legacy infona_client.functions package
 
 All mocked — no live Neptune, no LLM, no network. The executor's clock is
 injected; no env is touched.
@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.resolver.functions import (
+from infona_client.graph.client import NeptuneClient
+from infona_client.resolver.functions import (
     DERIVED_NS,
     FunctionExecutor,
     computed_at_predicate,
@@ -317,7 +317,7 @@ class TestBackwardCompat:
     def test_functions_entry_rides_strategy_resolver(self):
         """'functions' resolves through COG-39's chain walk like any bundle
         entry — HotelGuest inherits Guest's function defs."""
-        from cograph_client.resolver.strategy import resolve_entry
+        from infona_client.resolver.strategy import resolve_entry
 
         registry = {"Guest": {"functions": [AGE_FN]}}
         parent_of = {"HotelGuest": "Guest", "Guest": "Person"}
@@ -326,7 +326,7 @@ class TestBackwardCompat:
     def test_er_resolution_unchanged(self):
         """Regression: the ER chain walk over the real defaults still returns
         the identical config objects — the functions machinery is additive."""
-        from cograph_client.resolver.er.types import (
+        from infona_client.resolver.er.types import (
             DEFAULT_GUEST_CONFIG,
             config_for_with_hierarchy,
         )
@@ -335,10 +335,10 @@ class TestBackwardCompat:
         assert cfg is DEFAULT_GUEST_CONFIG
 
     def test_new_module_coexists_with_legacy_functions_package(self):
-        """cograph_client.resolver.functions must not shadow or break the
-        pre-existing cograph_client.functions package."""
-        import cograph_client.functions.registry as legacy_registry
-        import cograph_client.resolver.functions as new_module
+        """infona_client.resolver.functions must not shadow or break the
+        pre-existing infona_client.functions package."""
+        import infona_client.functions.registry as legacy_registry
+        import infona_client.resolver.functions as new_module
 
         assert hasattr(legacy_registry, "get_functions_for_entity")
         assert hasattr(new_module, "FunctionExecutor")

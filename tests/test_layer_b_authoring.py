@@ -19,26 +19,26 @@ import asyncio
 
 import pytest
 
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.entitlement import (
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.entitlement import (
     is_entitled,
     register_entitlement_checker,
 )
-from cograph_client.graph.layer_content import LayerContentError
-from cograph_client.graph.layers import (
+from infona_client.graph.layer_content import LayerContentError
+from infona_client.graph.layers import (
     Layer,
     LayerStack,
     enhanced_graph_uri,
     layer_type_uri,
     public_graph_uri,
 )
-from cograph_client.graph.queries import (
+from infona_client.graph.queries import (
     list_functions_query,
     register_function_triple,
     resolve_function_attachment,
     tenant_graph_uri,
 )
-from cograph_client.skills import (
+from infona_client.skills import (
     InMemoryGlobalTypeSkillStore,
     TypeSkill,
     global_skills_for_type,
@@ -145,7 +145,7 @@ def test_register_function_triple_refuses_public():
 
 def test_enhanced_function_surfaces_in_layer_graph_read():
     """Simulate write into Enhanced graph + read via full_ontology folding."""
-    from cograph_client.graph.global_ontology import _TypeAccumulator
+    from infona_client.graph.global_ontology import _TypeAccumulator
 
     # Build the INSERT — attachment identity must be layer-qualified.
     type_uri = layer_type_uri(Layer.ENHANCED, "Organization")
@@ -260,7 +260,7 @@ def test_durable_skill_survives_restart_simulation():
 
         # Simulate process restart: drop registry + mirror, keep store rows.
         reset_skill_layers()
-        from cograph_client.skills.global_store import reset_durable_skills_mirror
+        from infona_client.skills.global_store import reset_durable_skills_mirror
 
         reset_durable_skills_mirror()
         assert global_skills_for_type("Organization") == []
@@ -300,8 +300,8 @@ def test_durable_skill_shadows_process_registry_on_same_slug():
 
 
 def test_store_selection_follows_dsn(monkeypatch):
-    from cograph_client.config import settings
-    from cograph_client.skills.global_store import PostgresGlobalTypeSkillStore
+    from infona_client.config import settings
+    from infona_client.skills.global_store import PostgresGlobalTypeSkillStore
 
     reset_global_type_skill_store()
     monkeypatch.setattr(settings, "database_url", None, raising=False)
@@ -393,9 +393,9 @@ def test_functions_route_tenant_register_and_list():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.deps import get_neptune_client
-    from cograph_client.api.routes import functions as functions_routes
-    from cograph_client.auth import api_keys
+    from infona_client.api.deps import get_neptune_client
+    from infona_client.api.routes import functions as functions_routes
+    from infona_client.auth import api_keys
 
     updates: list[str] = []
     queries: list[str] = []
@@ -462,9 +462,9 @@ def test_functions_route_operator_can_register_enhanced():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.deps import get_neptune_client
-    from cograph_client.api.routes import functions as functions_routes
-    from cograph_client.auth import api_keys
+    from infona_client.api.deps import get_neptune_client
+    from infona_client.api.routes import functions as functions_routes
+    from infona_client.auth import api_keys
 
     updates: list[str] = []
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api_registry.jsonpath import (
+from infona_client.api_registry.jsonpath import (
     extract_path,
     extract_records,
     is_valid_path,

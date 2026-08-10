@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from cograph_client.pipeline.source_scope import (
+from infona_client.pipeline.source_scope import (
     REGISTRY_NONE,
     derive_source_constraint,
     has_named_source_signal,
     merge_provider_context,
     provider_identity_tokens,
 )
-from cograph_client.web_sources.base import provider_accepts
+from infona_client.web_sources.base import provider_accepts
 
 
 def _catalog_prov(
@@ -174,7 +174,7 @@ def test_short_slug_parts_do_not_false_bind():
 
 
 def test_registry_none_forces_accepts_false():
-    from cograph_client.api_registry import (
+    from infona_client.api_registry import (
         RegistryDiscoverySource,
         make_api_source_catalog,
     )
@@ -211,7 +211,7 @@ def test_merge_provider_context_respects_explicit_constraint():
 
 def test_ensemble_openrouter_skips_foreign_named_source():
     """Incident class: OpenRouter catalog must not run for a foreign 'offered by'."""
-    from cograph_client.api_registry import (
+    from infona_client.api_registry import (
         RegistryDiscoverySource,
         make_api_source_catalog,
     )
@@ -228,7 +228,7 @@ def test_ensemble_openrouter_skips_foreign_named_source():
 
 
 def test_ensemble_openrouter_runs_for_own_named_source():
-    from cograph_client.api_registry import (
+    from infona_client.api_registry import (
         RegistryDiscoverySource,
         make_api_source_catalog,
     )
@@ -248,7 +248,7 @@ def test_no_incident_brand_literals_in_source_scope_module():
 
     src = (
         pathlib.Path(__file__).resolve().parents[1]
-        / "cograph_client"
+        / "infona_client"
         / "pipeline"
         / "source_scope.py"
     ).read_text(encoding="utf-8")
@@ -258,7 +258,7 @@ def test_no_incident_brand_literals_in_source_scope_module():
 
 def test_spec_prompt_does_not_hardcode_model_llm_core_chips():
     """WS4: _SPEC_SYSTEM must not force Model core chips to LLM-only attrs."""
-    from cograph_client.agent.capabilities import web_ingest_cap as cap
+    from infona_client.agent.capabilities import web_ingest_cap as cap
 
     prompt = cap._SPEC_SYSTEM
     # Old overfit example removed

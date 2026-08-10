@@ -93,7 +93,7 @@ describe("stdio entrypoint auto-start", () => {
 
     const res = await handshake(link);
     expect((res.result as Record<string, unknown>) ?? {}).toMatchObject({
-      serverInfo: { name: "cograph" },
+      serverInfo: { name: "infona" },
     });
   });
 
@@ -103,7 +103,7 @@ describe("stdio entrypoint auto-start", () => {
     }
     const res = await handshake(distEntry);
     expect((res.result as Record<string, unknown>) ?? {}).toMatchObject({
-      serverInfo: { name: "cograph" },
+      serverInfo: { name: "infona" },
     });
   });
 });

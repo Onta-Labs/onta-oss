@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.spatiotemporal import (
+from infona_client.spatiotemporal import (
     InMemorySpatioTemporalIndex,
     STQueryResult,
     SpatioTemporalFact,
@@ -23,7 +23,7 @@ from cograph_client.spatiotemporal import (
     register_spatiotemporal_index,
     reset_spatiotemporal_index,
 )
-from cograph_client.spatiotemporal.postgis import PostGISSpatioTemporalIndex
+from infona_client.spatiotemporal.postgis import PostGISSpatioTemporalIndex
 
 # Real-world coordinates (lon, lat).
 SF_FERRY = (-122.3933, 37.7956)  # SF Ferry Building
@@ -307,14 +307,14 @@ async def test_delete_scoped_to_kg(idx):
 
 
 def test_factory_returns_inmemory_when_no_dsn(monkeypatch):
-    from cograph_client import config
+    from infona_client import config
 
     monkeypatch.setattr(config.settings, "database_url", "", raising=False)
     assert isinstance(make_spatiotemporal_index(), InMemorySpatioTemporalIndex)
 
 
 def test_factory_returns_postgis_when_dsn_set(monkeypatch):
-    from cograph_client import config
+    from infona_client import config
 
     monkeypatch.setattr(config.settings, "database_url", "postgres://u@h/db", raising=False)
     assert isinstance(make_spatiotemporal_index(), PostGISSpatioTemporalIndex)
@@ -403,7 +403,7 @@ def pg(monkeypatch):
     # clear its per-DSN cache so each test gets THIS test's fake, not a
     # previous test's (and the lazily-bound asyncio.Lock is re-created on the
     # current event loop).
-    from cograph_client.db.pool import reset_pg_pools
+    from infona_client.db.pool import reset_pg_pools
 
     reset_pg_pools()
     store = PostGISSpatioTemporalIndex(dsn="postgres://user@host/db")

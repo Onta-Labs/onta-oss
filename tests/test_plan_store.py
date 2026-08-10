@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cograph_client.agent.plan_store import (
+from infona_client.agent.plan_store import (
     InMemoryPlanStore,
     PostgresPlanStore,
     StoredPlan,
@@ -25,7 +25,7 @@ from cograph_client.agent.plan_store import (
     make_plan_store,
     reset_plan_store,
 )
-from cograph_client.agent.registry import PlanStep
+from infona_client.agent.registry import PlanStep
 
 
 def _make_plan(
@@ -340,7 +340,7 @@ def test_storedplan_roundtrip_preserves_result_and_executed_at():
 
 
 def test_make_plan_store_inmemory_when_no_db(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
     reset_plan_store()
@@ -351,7 +351,7 @@ def test_make_plan_store_inmemory_when_no_db(monkeypatch):
 
 
 def test_make_plan_store_postgres_when_db_set(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
     reset_plan_store()
@@ -363,7 +363,7 @@ def test_make_plan_store_postgres_memoized_across_calls(monkeypatch):
     """The durable backend is a process-level singleton: two calls return the
     SAME instance (one asyncpg pool per process, not one per agent turn), and
     ``reset_plan_store`` clears it so the next call builds a fresh one."""
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "postgresql://x/y")
     reset_plan_store()
@@ -377,7 +377,7 @@ def test_make_plan_store_postgres_memoized_across_calls(monkeypatch):
 
 
 def test_reset_plan_store_clears_singleton(monkeypatch):
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
 
@@ -641,13 +641,13 @@ def test_confirm_execute_resolves_plan_via_store(monkeypatch):
     """The durable store backs the confirm→execute handoff: a plan saved by one
     call to ``make_plan_store()`` is resolved by ``execute_plan`` through another
     call — exactly the cross-call handoff the durable store exists to survive."""
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "database_url", "")
     reset_plan_store()
 
-    from cograph_client.agent import planner as planner_mod
-    from cograph_client.agent.registry import (
+    from infona_client.agent import planner as planner_mod
+    from infona_client.agent.registry import (
         AgentContext,
         register_capability,
         reset_capabilities,

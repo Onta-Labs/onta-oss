@@ -23,14 +23,14 @@ import pathlib
 
 import pytest
 
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ColumnRole,
     ExtractionResult,
     soft_a2_from_structured_rows,
     validate_soft_a2,
 )
-from cograph_client.resolver.schema_resolver import IngestResult, SchemaResolver
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.schema_resolver import IngestResult, SchemaResolver
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 def _resolver() -> SchemaResolver:

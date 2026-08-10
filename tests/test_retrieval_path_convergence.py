@@ -1,20 +1,20 @@
 """Drift guard (OSS half): every OSS process that consults the web reaches it
-through the ONE shared retrieval substrate (``cograph_client/retrieval/``) — the
+through the ONE shared retrieval substrate (``infona_client/retrieval/``) — the
 fetch ladder + SSRF/HTML safety module + the tolerant web-JSON coercers. No OSS
 module may re-implement the page fetch / SSRF guard or the tolerant web-response
 JSON coercion outside the substrate + its ONE sanctioned delegating wrapper
 (ONTA-193 P5, ADR 0008). This is the read-path mirror of
 ``test_write_path_convergence.py`` and runs standalone in the OSS repo (which has
-only ``cograph_client/`` present).
+only ``infona_client/`` present).
 
 The premium half of the guard (``onta`` parent repo,
 ``tests/test_retrieval_path_convergence.py``) additionally scans ``cograph/`` for
 re-integrated paid web-search/scrape APIs (M3); that can only run where both trees
 are checked out. Here we enforce the two OSS-relevant invariants AND assert the
-paid endpoints stay premium-only (they must never appear under ``cograph_client/``).
+paid endpoints stay premium-only (they must never appear under ``infona_client/``).
 
 Shape: a deny-by-default source scan (ADR 0007 §4) — scan ALL of
-``cograph_client/`` for bespoke-retrieval markers, fail on any hit outside a small
+``infona_client/`` for bespoke-retrieval markers, fail on any hit outside a small
 justified allowlist, plus planted-violation self-tests proving the scan fires.
 """
 
@@ -26,8 +26,8 @@ import pathlib
 import re
 import tokenize
 
-import cograph_client
-import cograph_client.enrichment.extraction as extraction_mod
+import infona_client
+import infona_client.enrichment.extraction as extraction_mod
 
 
 # --- Markers ----------------------------------------------------------------- #
@@ -52,7 +52,7 @@ _M2_ARRAY_FIND = re.compile(r"""\.find\(\s*['"]\[['"]\s*\)""")
 _M2_ARRAY_RFIND = re.compile(r"""\.rfind\(\s*['"]\]['"]\s*\)""")
 
 # Paid web-search/scrape ENDPOINT hosts — these must NEVER appear under
-# cograph_client/ (they are premium-only integrations in cograph/). ``openrouter.ai``
+# infona_client/ (they are premium-only integrations in cograph/). ``openrouter.ai``
 # is the LLM gateway (legit OSS usage) and is intentionally excluded.
 _PAID_HOST = re.compile(
     r"api\.exa\.ai|api\.parallel\.ai|serpapi\.com|api\.perplexity\.ai|"
@@ -82,7 +82,7 @@ _ALLOWLIST: dict[str, str] = {
     "enrichment/extraction.py": "enrichment _try_parse_json — a thin delegate to retrieval.coerce.parse_json_object (public name kept for importers).",
 }
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 
 
 def _strip_comments(src: str) -> str:
@@ -110,11 +110,11 @@ def _iter_sources():
         yield rel.as_posix(), _strip_comments(path.read_text())
 
 
-# --- Structural tripwire: deny-by-default scan of cograph_client/ ------------- #
+# --- Structural tripwire: deny-by-default scan of infona_client/ ------------- #
 
 
 def test_no_bespoke_retrieval_outside_allowlist():
-    """Scan ALL of ``cograph_client/`` for bespoke-retrieval markers; fail on any
+    """Scan ALL of ``infona_client/`` for bespoke-retrieval markers; fail on any
     hit outside the justified allowlist (deny-by-default, ADR 0008 P5)."""
     violations = [
         f"{rel}: {', '.join(m)}"
@@ -123,7 +123,7 @@ def test_no_bespoke_retrieval_outside_allowlist():
     ]
     assert not violations, (
         "Bespoke web-retrieval markers found OUTSIDE the retrieval-path convergence "
-        "allowlist. Route web access through cograph_client/retrieval/ (fetch ladder "
+        "allowlist. Route web access through infona_client/retrieval/ (fetch ladder "
         "+ safety SSRF guards + coerce.parse_json_*), not a hand-rolled copy. "
         "Offenders:\n  " + "\n  ".join(violations)
     )
@@ -143,7 +143,7 @@ def test_allowlist_entries_are_live():
 
 def test_no_paid_web_search_host_in_oss():
     """The paid web-search/scrape endpoints are premium-only — none may appear under
-    cograph_client/ (they belong in cograph/providers|enrichment|firecrawl). The
+    infona_client/ (they belong in cograph/providers|enrichment|firecrawl). The
     ``openrouter.ai`` LLM gateway is intentionally allowed and never matched."""
     offenders = [rel for rel, code in _iter_sources() if _PAID_HOST.search(code)]
     assert not offenders, (
@@ -167,15 +167,15 @@ def test_extraction_wrapper_delegates_to_substrate():
 
 
 def test_substrate_owns_the_primitives():
-    from cograph_client.retrieval import (
+    from infona_client.retrieval import (
         is_fetchable_url,
         parse_json_array,
         parse_json_object,
     )
 
-    assert is_fetchable_url.__module__ == "cograph_client.retrieval.safety"
-    assert parse_json_array.__module__ == "cograph_client.retrieval.coerce"
-    assert parse_json_object.__module__ == "cograph_client.retrieval.coerce"
+    assert is_fetchable_url.__module__ == "infona_client.retrieval.safety"
+    assert parse_json_array.__module__ == "infona_client.retrieval.coerce"
+    assert parse_json_object.__module__ == "infona_client.retrieval.coerce"
 
 
 # --- Guard self-tests: the scan actually catches planted bespoke retrieval ----- #

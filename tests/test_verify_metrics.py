@@ -4,7 +4,7 @@
 This IS the Tier-1 definition-of-done gate for P4 (Verify). For each gold fixture
 under ``tests/fixtures/verification/verify_gold_*.json`` it scores a set of
 predicted verdicts against the human-adjudicated gold verdicts with
-``cograph_client.verification.verify_metrics`` and asserts the metric bundle.
+``infona_client.verification.verify_metrics`` and asserts the metric bundle.
 
 Load-bearing control: a RUBBER-STAMP verifier that returns SUPPORTED for every fact
 must FAIL the anti-gaming counter (false-SUPPORTED rate, plus identity-blindness on
@@ -24,14 +24,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from cograph_client.resolver.models import CleanFact, CleanOutcome
-from cograph_client.verification import (
+from infona_client.resolver.models import CleanFact, CleanOutcome
+from infona_client.verification import (
     TruthVerdict,
     VerifierResult,
     register_fact_verifier,
     verify_clean_facts,
 )
-from cograph_client.verification.verify_metrics import (
+from infona_client.verification.verify_metrics import (
     VerifyMetrics,
     VerifyThresholds,
     fact_key,

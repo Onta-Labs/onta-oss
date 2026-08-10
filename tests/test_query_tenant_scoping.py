@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.auth.api_keys import TenantContext, get_tenant
-from cograph_client.graph.sparql_scope import (
+from infona_client.auth.api_keys import TenantContext, get_tenant
+from infona_client.graph.sparql_scope import (
     TenantScopeError,
     enforce_query_scope,
     tenant_owns_graph,
@@ -353,7 +353,7 @@ def test_published_cli_clear_loop_still_works(client, auth_headers, mock_neptune
 
 
 def test_eval_diagnosis_probe_shapes_still_work(client, auth_headers, mock_neptune):
-    """The two probes in cograph_client/eval_diagnosis.py, unchanged."""
+    """The two probes in infona_client/eval_diagnosis.py, unchanged."""
     kg_graph = f"{OWN_GRAPH}/kg/imdb"
     for query in (
         f"SELECT (COUNT(?v) AS ?cnt) FROM <{kg_graph}> "
@@ -509,7 +509,7 @@ def test_every_accepted_query_really_carries_an_owned_dataset_clause(query):
     """
     from rdflib.plugins.sparql.parser import parseQuery
 
-    from cograph_client.graph.sparql_scope import dataset_graphs, tenant_owns_graph
+    from infona_client.graph.sparql_scope import dataset_graphs, tenant_owns_graph
 
     enforce_query_scope(query, TENANT)
 
@@ -544,7 +544,7 @@ def test_dataset_graphs_refuses_rather_than_drops_an_unresolvable_clause():
     """
     from rdflib.plugins.sparql.parser import parseQuery
 
-    from cograph_client.graph.sparql_scope import dataset_graphs
+    from infona_client.graph.sparql_scope import dataset_graphs
 
     query = (
         "PREFIX g: <https://graph.onta.sh/gr> "
@@ -628,7 +628,7 @@ def test_open_access_self_host_keeps_the_update_escape_hatch(
     monkeypatch, app, client, mock_neptune
 ):
     """With no auth configured there is no tenant boundary to protect."""
-    from cograph_client.auth import api_keys
+    from infona_client.auth import api_keys
 
     monkeypatch.setattr(api_keys, "_has_static_keys", lambda: False)
     monkeypatch.setattr(api_keys, "_external_verifier", None)
@@ -643,7 +643,7 @@ def test_open_access_self_host_still_scopes_reads(monkeypatch, client, mock_nept
     """The READ guard is not conditional on auth: it is a correctness rule about
     which graphs a query names, and staying on in open-access mode keeps a
     self-hosted multi-workspace install honest."""
-    from cograph_client.auth import api_keys
+    from infona_client.auth import api_keys
 
     monkeypatch.setattr(api_keys, "_has_static_keys", lambda: False)
     monkeypatch.setattr(api_keys, "_external_verifier", None)
@@ -663,7 +663,7 @@ def test_every_route_on_the_passthrough_router_is_guarded():
     """
     import inspect
 
-    from cograph_client.api.routes import query as query_routes
+    from infona_client.api.routes import query as query_routes
 
     for route in query_routes.router.routes:
         source = inspect.getsource(route.endpoint)

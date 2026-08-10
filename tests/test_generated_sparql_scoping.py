@@ -26,7 +26,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.sparql_scope import (
+from infona_client.graph.sparql_scope import (
     CrossTenantQueryError,
     TenantScopeError,
     confine_generated_query,
@@ -57,7 +57,7 @@ def _dataset_of(sparql: str) -> list[str]:
     """
     from rdflib.plugins.sparql.parser import parseQuery
 
-    from cograph_client.graph.sparql_scope import dataset_graphs
+    from infona_client.graph.sparql_scope import dataset_graphs
 
     return dataset_graphs(parseQuery(sparql)[1])
 
@@ -416,7 +416,7 @@ def test_no_target_graph_at_all_is_refused():
 
 
 def _pipeline():
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     return NLQueryPipeline(AsyncMock(), "test-key")
 
@@ -443,8 +443,8 @@ async def test_ask_never_sends_an_unscoped_generated_query_to_the_store():
     """
     from unittest.mock import patch
 
-    from cograph_client.nlp import pipeline as pipeline_mod
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp import pipeline as pipeline_mod
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     seen: list[str] = []
 
@@ -486,8 +486,8 @@ async def test_ask_hard_fails_on_a_generated_cross_workspace_query():
     """No retry, no repair, no store call. ``/ask`` degrades at its boundary."""
     from unittest.mock import patch
 
-    from cograph_client.nlp import pipeline as pipeline_mod
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp import pipeline as pipeline_mod
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     neptune = AsyncMock()
     p = NLQueryPipeline(neptune, "invented-anthropic-key")
@@ -525,7 +525,7 @@ def test_ask_route_degrades_and_never_forwards_the_foreign_query(
     from unittest.mock import AsyncMock as _AsyncMock
     from unittest.mock import patch
 
-    from cograph_client.models.query import NLResult
+    from infona_client.models.query import NLResult
 
     generated = {
         "sparql": f"SELECT ?s FROM <{VICTIM_GRAPH}> WHERE {{ ?s ?p ?o }}",
@@ -533,10 +533,10 @@ def test_ask_route_degrades_and_never_forwards_the_foreign_query(
         "functions_needed": [],
     }
     with patch(
-        "cograph_client.nlp.pipeline.NLQueryPipeline._generate_sparql",
+        "infona_client.nlp.pipeline.NLQueryPipeline._generate_sparql",
         new_callable=_AsyncMock,
     ) as gen, patch(
-        "cograph_client.nlp.pipeline.NLQueryPipeline._fetch_ontology",
+        "infona_client.nlp.pipeline.NLQueryPipeline._fetch_ontology",
         new_callable=_AsyncMock,
     ) as onto:
         gen.return_value = generated
@@ -695,7 +695,7 @@ def test_every_generated_sparql_execution_site_is_guarded():
     """
     import inspect
 
-    from cograph_client.nlp import pipeline as pipeline_mod
+    from infona_client.nlp import pipeline as pipeline_mod
 
     confined, unconfined = _scan_execution_sites(inspect.getsource(pipeline_mod))
     assert not unconfined, (
@@ -788,7 +788,7 @@ async def test_label_resolution_is_scoped_to_the_requests_own_graph():
     every named graph, so it returned whatever label ANOTHER workspace attached
     to that IRI and the answer rendered it as ours.
     """
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     seen: list[str] = []
 
@@ -828,7 +828,7 @@ async def test_label_lookup_cannot_be_injected_by_a_literal_in_the_graph():
     ``<{u}>`` let it close the IRI and append a ``SERVICE`` call: an outbound
     channel from inside the VPC, the same one rule C rejects on the raw route.
     """
-    from cograph_client.nlp.pipeline import NLQueryPipeline, _is_interpolatable_iri
+    from infona_client.nlp.pipeline import NLQueryPipeline, _is_interpolatable_iri
 
     # The payload is only interesting if it really would have worked.
     values_clause = f"<{SERVICE_INJECTION_VALUE}>"
@@ -881,7 +881,7 @@ async def test_label_lookup_cannot_be_injected_by_a_literal_in_the_graph():
 
 
 def test_interpolatable_iri_uses_the_grammar_not_a_payload_blocklist():
-    from cograph_client.nlp.pipeline import _is_interpolatable_iri
+    from infona_client.nlp.pipeline import _is_interpolatable_iri
 
     assert _is_interpolatable_iri("https://graph.onta.sh/entities/Film/x")
     assert not _is_interpolatable_iri("")
@@ -903,7 +903,7 @@ async def test_agent_degrades_in_contract_instead_of_raising_a_500():
     """
     from unittest.mock import patch
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     ctx = AsyncMock()
     ctx.tenant_id = TENANT
@@ -913,7 +913,7 @@ async def test_agent_degrades_in_contract_instead_of_raising_a_500():
     ctx.extras = {}
 
     with patch(
-        "cograph_client.nlp.pipeline.NLQueryPipeline.ask",
+        "infona_client.nlp.pipeline.NLQueryPipeline.ask",
         side_effect=CrossTenantQueryError("nope"),
     ):
         out = await QueryCapability().answer(ctx, "how many things")

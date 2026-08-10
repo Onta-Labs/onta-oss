@@ -11,17 +11,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cograph_client.agent.capabilities.web_research_cap import WebResearchCapability
-from cograph_client.agent.registry import AgentContext, PlanStep
-from cograph_client.research import extract as research_extract
-from cograph_client.research.fetch import (
+from infona_client.agent.capabilities.web_research_cap import WebResearchCapability
+from infona_client.agent.registry import AgentContext, PlanStep
+from infona_client.research import extract as research_extract
+from infona_client.research.fetch import (
     FetchedPage,
     register_page_fetcher,
     reset_page_fetchers,
 )
-from cograph_client.research.types import ResearchRow
-from cograph_client.research.verify import reset_research_verifier
-from cograph_client.web_sources.base import register_web_source, reset_web_sources
+from infona_client.research.types import ResearchRow
+from infona_client.research.verify import reset_research_verifier
+from infona_client.web_sources.base import register_web_source, reset_web_sources
 
 
 @pytest.fixture(autouse=True)
@@ -68,8 +68,8 @@ def test_oss_boot_registers_no_page_fetcher():
     that nothing is wired by default. Premium registers into it; an OSS deployment
     can opt back in by calling `register_default_fetchers()` itself.
     """
-    from cograph_client.agent.planner import register_default_capabilities
-    from cograph_client.retrieval import get_page_fetchers, register_default_fetchers
+    from infona_client.agent.planner import register_default_capabilities
+    from infona_client.retrieval import get_page_fetchers, register_default_fetchers
 
     register_default_capabilities()
     assert get_page_fetchers() == []
@@ -148,7 +148,7 @@ class _Provider:
     name = "fake"
 
     async def discover(self, query, **kw):  # pragma: no cover - not called in plan
-        from cograph_client.web_sources.base import DiscoverResult
+        from infona_client.web_sources.base import DiscoverResult
 
         return DiscoverResult()
 
@@ -179,7 +179,7 @@ async def test_provider_without_fetcher_does_not_resurrect_an_implicit_fetcher()
     assert steps[0].action == "answer"
     assert "don't retrieve pages from the web" in steps[0].params["answer_payload"]["answer"]
     # ...and the substrate agrees: nothing registered means nothing to fetch with.
-    from cograph_client.retrieval import default_ladder
+    from infona_client.retrieval import default_ladder
 
     assert default_ladder() == []
 
@@ -189,7 +189,7 @@ async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
     # clarifying questions — the confirm-before-spend research step is never made.
     # Questions ride the payload STRUCTURED (question + options) for reply chips,
     # with the options also inlined in the plain-text answer.
-    from cograph_client.research.types import (
+    from infona_client.research.types import (
         ClarifyingQuestion,
         ResearchPlan,
         SchemaField,
@@ -211,7 +211,7 @@ async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "cograph_client.research.plan.plan_research", _ambiguous_plan
+        "infona_client.research.plan.plan_research", _ambiguous_plan
     )
     register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
@@ -233,7 +233,7 @@ async def test_plan_asks_for_clarification_when_ambiguous(monkeypatch):
 
 async def test_plan_single_clarifying_question_is_canonical_chip(monkeypatch):
     # One question is a perfect fit for the canonical {question, options} shape.
-    from cograph_client.research.types import ClarifyingQuestion, ResearchPlan
+    from infona_client.research.types import ClarifyingQuestion, ResearchPlan
 
     async def _one_q(instruction, **kw):
         return ResearchPlan(
@@ -244,7 +244,7 @@ async def test_plan_single_clarifying_question_is_canonical_chip(monkeypatch):
             ],
         )
 
-    monkeypatch.setattr("cograph_client.research.plan.plan_research", _one_q)
+    monkeypatch.setattr("infona_client.research.plan.plan_research", _one_q)
     register_page_fetcher(_FakeFetcher())
     cap = WebResearchCapability()
     steps = await cap.plan(_ctx(urls=["https://example.com/x"]), "best models?")

@@ -32,8 +32,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
-from cograph_client.qc.isolation import (
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.qc.isolation import (
     IsolationViolation,
     WorkspaceScope,
     check_isolation,

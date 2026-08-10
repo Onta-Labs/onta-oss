@@ -1,7 +1,7 @@
 """Token-usage instrumentation for the NL→SPARQL /ask path (whitepaper v3).
 
 Covers:
-  * helpers in ``cograph_client.nlp.token_usage`` (parse / attach / ledger)
+  * helpers in ``infona_client.nlp.token_usage`` (parse / attach / ledger)
   * SPARQL generators attaching provider usage without changing the public
     ``sparql`` / ``explanation`` / ``functions_needed`` shape
   * ``ask()`` collecting per-attempt events onto ``NLResult.token_usage``
@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from cograph_client.nlp import pipeline as pipeline_mod
-from cograph_client.nlp.pipeline import NLQueryPipeline
-from cograph_client.nlp.token_usage import (
+from infona_client.nlp import pipeline as pipeline_mod
+from infona_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.token_usage import (
     STAGE_REPHRASE,
     STAGE_RETRY,
     STAGE_SPARQL_GEN,

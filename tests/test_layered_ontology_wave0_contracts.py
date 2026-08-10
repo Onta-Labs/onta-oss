@@ -13,24 +13,24 @@ from typing import get_type_hints
 
 import pytest
 
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.entitlement import (
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.entitlement import (
     EntitlementChecker,
     get_entitlement_checker,
     is_entitled,
     register_entitlement_checker,
 )
-from cograph_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
-from cograph_client.graph.layer_content import (
+from infona_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
+from infona_client.graph.layer_content import (
     LAYER_A_CONTENT_ENFORCEMENT,
     LAYER_CONTENT_MATRIX,
     ContentKind,
     forbidden_kinds,
     permits,
 )
-from cograph_client.graph.layers import Layer
-from cograph_client.graph.ontology_commit import commit_ontology
-from cograph_client.models.ontology import (
+from infona_client.graph.layers import Layer
+from infona_client.graph.ontology_commit import commit_ontology
+from infona_client.models.ontology import (
     ChangeKind,
     ChangeRecord,
     GlobalOntologyResponse,
@@ -165,7 +165,7 @@ def test_entitlement_checker_type_alias_is_callable():
 
 def test_skills_route_entitled_delegates_to_seam():
     """The route-local ``_entitled`` must not re-hardcode False independently."""
-    from cograph_client.api.routes import skills as skills_routes
+    from infona_client.api.routes import skills as skills_routes
 
     register_entitlement_checker(None)
     tenant = TenantContext(tenant_id="acme", api_key="k")
@@ -180,8 +180,8 @@ def test_skills_route_entitled_delegates_to_seam():
 
 def test_layer_stack_for_helper_uses_is_entitled():
     """ONTA-398: layered reads construct stacks via the single helper."""
-    from cograph_client.graph.entitlement import layer_stack_for
-    from cograph_client.graph.layers import Layer
+    from infona_client.graph.entitlement import layer_stack_for
+    from infona_client.graph.layers import Layer
 
     register_entitlement_checker(None)
     free = TenantContext(tenant_id="free", api_key="k")

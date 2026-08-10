@@ -12,7 +12,7 @@ thing mints under TWO different URIs and the shared node splits in half. Modelle
 on ``test_write_path_convergence.py`` — a deny-by-default source scan plus positive
 assertions that the converged sites route through the shared minter.
 
-Three markers, scanned across ALL of ``cograph_client/`` and allowed in exactly ONE
+Three markers, scanned across ALL of ``infona_client/`` and allowed in exactly ONE
 file (the minter's home):
   - **MS** — the id-sanitizer character class ``[^a-zA-Z0-9_-]`` (any
     re-implementation of ``_safe_id`` / a ``_slug`` twin, whatever it is named).
@@ -34,12 +34,12 @@ import pathlib
 import re
 import tokenize
 
-import cograph_client
-import cograph_client.enrichment.executor as executor_mod
-import cograph_client.normalization.execute as normalization_mod
-import cograph_client.resolver.csv_resolver as csv_resolver_mod
-import cograph_client.resolver.schema_resolver as schema_resolver_mod
-from cograph_client.graph.ontology_queries import _safe_id, entity_uri
+import infona_client
+import infona_client.enrichment.executor as executor_mod
+import infona_client.normalization.execute as normalization_mod
+import infona_client.resolver.csv_resolver as csv_resolver_mod
+import infona_client.resolver.schema_resolver as schema_resolver_mod
+from infona_client.graph.ontology_queries import _safe_id, entity_uri
 
 
 def _calls(src: str, name: str) -> bool:
@@ -53,8 +53,8 @@ def _calls(src: str, name: str) -> bool:
 def test_entity_uri_and_safe_id_live_in_ontology_queries():
     """Both primitives are defined in the cycle-free home (ontology_queries imports
     nothing from the resolver, so every rail can converge on it)."""
-    assert _safe_id.__module__ == "cograph_client.graph.ontology_queries"
-    assert entity_uri.__module__ == "cograph_client.graph.ontology_queries"
+    assert _safe_id.__module__ == "infona_client.graph.ontology_queries"
+    assert entity_uri.__module__ == "infona_client.graph.ontology_queries"
 
 
 def test_entity_uri_is_prefix_plus_safe_id():
@@ -98,7 +98,7 @@ _ME2 = re.compile(r"ENTITY_URI_PREFIX\}\{")
 # the shared primitive both markers describe.
 _HOME = "graph/ontology_queries.py"
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 
 
 def _strip_comments(src: str) -> str:
@@ -132,7 +132,7 @@ def _mint_markers(code: str) -> list[str]:
 
 
 def test_no_bespoke_entity_uri_minting_outside_the_shared_home():
-    """Scan ALL of ``cograph_client/`` for a re-defined id sanitizer or an inline
+    """Scan ALL of ``infona_client/`` for a re-defined id sanitizer or an inline
     canonical-node-IRI mint, and fail on any hit outside the shared minter's home.
 
     Deny-by-default: a NEW rail that copies the ``_safe_id`` character class or
@@ -185,7 +185,7 @@ def test_enrichment_node_linking_uses_shared_entity_uri():
     src = inspect.getsource(executor_mod)
     assert "entity_uri as _entity_uri" in src
     assert _calls(src, "_entity_uri"), "enrichment must mint node targets via the shared _entity_uri"
-    assert "from cograph_client.resolver.schema_resolver import _safe_id" not in src, (
+    assert "from infona_client.resolver.schema_resolver import _safe_id" not in src, (
         "enrichment reintroduced the cross-module _safe_id import — use "
         "graph.ontology_queries.entity_uri"
     )

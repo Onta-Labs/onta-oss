@@ -4,7 +4,7 @@ Hard rules (plan v2, anti-overfit):
 
 * Fixtures test **properties** (role inversion, identity merge, sibling
   non-merge), never "ElevenLabs must be dropped" as the sole assertion.
-* Production code under ``cograph_client/pipeline/`` and the ensemble skip path
+* Production code under ``infona_client/pipeline/`` and the ensemble skip path
   must not contain incident brand strings as code literals. Tests and fixtures
   are exempt.
 * Multi-domain synthetic fixtures are required; the incident TTS batch is an
@@ -24,7 +24,7 @@ import re
 import tokenize
 from typing import Any, Callable, Optional
 
-import cograph_client
+import infona_client
 import pytest
 
 # --------------------------------------------------------------------------- #
@@ -36,7 +36,7 @@ _FIXTURES = _TESTS_ROOT / "fixtures" / "discovery"
 _ROLE_FIXTURE = _FIXTURES / "role_inversion_multi_domain.json"
 _IDENTITY_FIXTURE = _FIXTURES / "identity_catalog_surface.json"
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).resolve().parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).resolve().parent
 _PIPELINE_DIR = _PKG_ROOT / "pipeline"
 # Ensemble skip / provider-scope paths (R3 wiring lives here; guard both).
 _ENSEMBLE_PATHS = (
@@ -473,7 +473,7 @@ def test_production_pipeline_has_no_incident_brand_literals():
             violations.append(f"{rel}: {hit}")
     assert not violations, (
         "Incident brand strings must not appear as production code literals "
-        "in cograph_client/pipeline/ or ensemble skip paths "
+        "in infona_client/pipeline/ or ensemble skip paths "
         f"(ONTA-462 denylist guard). Hits:\n  - "
         + "\n  - ".join(violations)
     )
@@ -513,7 +513,7 @@ def test_denylist_guard_ignores_comments_only(tmp_path: pathlib.Path):
 
 def _try_import_role_gate() -> Optional[Any]:
     try:
-        return importlib.import_module("cograph_client.pipeline.role_membership_gate")
+        return importlib.import_module("infona_client.pipeline.role_membership_gate")
     except ModuleNotFoundError:
         return None
 
@@ -613,7 +613,7 @@ def role_gate_fn():
     mod = _try_import_role_gate()
     if mod is None:
         pytest.skip(
-            "cograph_client.pipeline.role_membership_gate not merged yet (WS2)"
+            "infona_client.pipeline.role_membership_gate not merged yet (WS2)"
         )
     fn = _resolve_role_gate_fn(mod)
     if fn is None:
@@ -721,7 +721,7 @@ def _probe_supports_catalog_surface(fn: Callable[..., Any]) -> bool:
 def _try_identity_merge_fn() -> Optional[Callable[..., Any]]:
     """Locate structural catalog-path identity merge if WS1 has landed."""
     try:
-        dq = importlib.import_module("cograph_client.pipeline.discovery_quality")
+        dq = importlib.import_module("infona_client.pipeline.discovery_quality")
     except ModuleNotFoundError:
         return None
     for name in _DEDICATED_IDENTITY_HELPERS:
@@ -851,8 +851,8 @@ def test_identity_merge_importorskip_documents_ws1_gap():
     ``merge_near_duplicates`` remains as the pre-WS1 baseline (not sufficient
     for catalog↔surface — property tests skip until WS1 lands).
     """
-    pytest.importorskip("cograph_client.pipeline.discovery_quality")
-    dq = importlib.import_module("cograph_client.pipeline.discovery_quality")
+    pytest.importorskip("infona_client.pipeline.discovery_quality")
+    dq = importlib.import_module("infona_client.pipeline.discovery_quality")
     dedicated = any(
         callable(getattr(dq, n, None)) for n in _DEDICATED_IDENTITY_HELPERS
     )
@@ -865,4 +865,4 @@ def test_identity_merge_importorskip_documents_ws1_gap():
 
 def test_role_membership_importorskip_documents_ws2_gap():
     """Explicit importorskip for the WS2 module name."""
-    pytest.importorskip("cograph_client.pipeline.role_membership_gate")
+    pytest.importorskip("infona_client.pipeline.role_membership_gate")

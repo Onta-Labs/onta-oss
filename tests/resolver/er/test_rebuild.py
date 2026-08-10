@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.graph.queries import rewrite_subject_update
-from cograph_client.resolver.er.rebuild import (
+from infona_client.graph.queries import rewrite_subject_update
+from infona_client.resolver.er.rebuild import (
     choose_canonical,
     compute_clusters,
     rebuild_type,
 )
-from cograph_client.resolver.er.types import DEFAULT_GUEST_CONFIG, NormalizedSignals
+from infona_client.resolver.er.types import DEFAULT_GUEST_CONFIG, NormalizedSignals
 
 
 def _ns(**kwargs) -> NormalizedSignals:

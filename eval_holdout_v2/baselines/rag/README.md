@@ -2,7 +2,7 @@
 
 Floor baseline for the v2.0 holdout head-to-head. Proves that vector-retrieval
 RAG cannot handle structured multi-hop questions even when given the same
-underlying data and the same answer-generation LLM as Omnix.
+underlying data and the same answer-generation LLM as Infona.
 
 ## Pipeline
 
@@ -20,7 +20,7 @@ underlying data and the same answer-generation LLM as Omnix.
    depending on question shape. 3 seeds per question.
 5. **Judging.** The same `fast_judge` (T1 / scalar) and `full_set_judge`
    (T2-T4 / list questions with `full_result_count >= 20`) as the primary
-   Omnix baseline, applied directly to the free-text answer (no second parser
+   Infona baseline, applied directly to the free-text answer (no second parser
    LLM).
 6. **Aggregation.** Majority-vote over 3 seeds + seed-level Wilson 95% CI,
    matching `scripts/build_baseline_report.py` exactly.

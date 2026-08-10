@@ -1,4 +1,4 @@
-# Cross-LLM Ablation — Omnix Holdout v2.0
+# Cross-LLM Ablation — Infona Holdout v2.0
 
 Generated: 2026-04-14T20:40:22Z
 Gold: 78 questions across 7 KGs (wave-8)

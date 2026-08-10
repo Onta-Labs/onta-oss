@@ -36,7 +36,7 @@ function printJson(data: unknown): void {
   process.stdout.write(JSON.stringify(data, null, 2) + "\n");
 }
 
-/** Resolve the working context graph: explicit --kg wins, else `onta use`. */
+/** Resolve the working context graph: explicit --kg wins, else `infona use`. */
 function resolveKg(explicit?: string): string | undefined {
   return explicit ?? readConfig().defaultKg;
 }
@@ -269,12 +269,12 @@ async function reviewMapping(
 
 const program = new Command();
 program
-  .name("onta")
-  .description("Onta Context Graph CLI")
+  .name("infona")
+  .description("Infona Context Graph CLI")
   .version(pkgVersion())
   // Default action when no subcommand is given: drop into the interactive
-  // shell. So `onta` (or `npx onta`) Just Works for the common case;
-  // subcommands like `onta ingest <file>` still route to their own
+  // shell. So `infona` / `onta` (compat alias) Just Works for the common case;
+  // subcommands like `infona ingest <file>` still route to their own
   // actions because commander dispatches subcommands first.
   .option("--local", "Use http://localhost:8000 and skip login (self-hosted)")
   .option("--no-login", "Skip browser login (assume open-access backend)")
@@ -653,7 +653,7 @@ export async function runAgentCommand(
       ]
         .filter(Boolean)
         .join(" ");
-      const hint = `onta agent --confirm ${planId}${flags ? " " + flags : ""} ${JSON.stringify(message)}`;
+      const hint = `infona agent --confirm ${planId}${flags ? " " + flags : ""} ${JSON.stringify(message)}`;
       process.stdout.write(
         `${dim("Confirm & run:")} ${hint}\n` +
           `${dim("  or re-run with --yes to execute now.")}\n`,
@@ -835,9 +835,9 @@ program
   .command("enrich [target]")
   .description(
     "Agentic enrichment — fill an attribute from web sources, with citations. " +
-      "Target is Type.attribute (e.g. `onta enrich Product.price --kg my-kg`).",
+      "Target is Type.attribute (e.g. `infona enrich Product.price --kg my-kg`).",
   )
-  .option("--kg <name>", "Context graph (or set one once with `onta use <kg>`)")
+  .option("--kg <name>", "Context graph (or set one once with `infona use <kg>`)")
   .option("--type <Type>", "Entity type to enrich (alternative to the Type.attribute argument)")
   .option("--attribute <attr>", "Attribute to fill (alternative to the Type.attribute argument)")
   .option("--tier <tier>", "auto | lite | base | core | pro (auto routes free Wikidata vs richer chains; OSS has no paid web search)", "auto")
@@ -860,7 +860,7 @@ program
       await withErrors(async () => {
         const c = client();
         const kg = resolveKg(opts.kg);
-        if (!kg) fail("Error: no context graph — pass --kg or set one with `onta use <kg>`.");
+        if (!kg) fail("Error: no context graph — pass --kg or set one with `infona use <kg>`.");
         // `Type.attribute` argument and --type/--attribute flags are equivalent;
         // explicit flags win when both are given.
         let typeName = opts.type;
@@ -876,7 +876,7 @@ program
         }
         if (!typeName || !attribute) {
           fail(
-            "Error: tell me what to fill — `onta enrich Type.attribute --kg <kg>` (or --type/--attribute).",
+            "Error: tell me what to fill — `infona enrich Type.attribute --kg <kg>` (or --type/--attribute).",
           );
         }
         // Queued (default) runs cover every matched entity unless capped;
@@ -959,7 +959,7 @@ program
           );
         } else if (job.status === "review") {
           // Review walkthrough is shell-only (`/enrich review`); there is no
-          // non-interactive `onta enrich review` subcommand.
+          // non-interactive `infona enrich review` subcommand.
           process.stdout.write(
             `Needs review (${p.conflicts} conflict${p.conflicts === 1 ? "" : "s"}) — open the shell and run: /enrich review ${jobId.slice(0, 8)}\n`,
           );
@@ -1101,7 +1101,7 @@ program
 program
   .command("schedule [target]")
   .description(
-    "Recurring enrichment — `onta schedule Type.attribute --kg <kg> --weekly`, or `onta schedule list`",
+    "Recurring enrichment — `infona schedule Type.attribute --kg <kg> --weekly`, or `infona schedule list`",
   )
   .option("--kg <name>", "Context graph")
   .option("--weekly", "Re-run once a week")
@@ -1164,11 +1164,11 @@ program
         const dot = target.indexOf(".");
         if (dot <= 0) {
           fail(
-            "Error: tell me what to keep fresh — `onta schedule Type.attribute --kg <kg> --weekly`.",
+            "Error: tell me what to keep fresh — `infona schedule Type.attribute --kg <kg> --weekly`.",
           );
         }
         const kg = resolveKg(opts.kg);
-        if (!kg) fail("Error: no context graph — pass --kg or set one with `onta use <kg>`.");
+        if (!kg) fail("Error: no context graph — pass --kg or set one with `infona use <kg>`.");
         const interval = opts.weekly
           ? 604800
           : opts.daily
@@ -1220,7 +1220,7 @@ program
       if (!kg) {
         const kgs = await c.listKgs();
         if (!kgs.length) {
-          fail("No context graphs found. Run 'onta ingest' first.");
+          fail("No context graphs found. Run 'infona ingest' first.");
         }
         kg = String(kgs[0].name ?? "");
       }
@@ -1411,9 +1411,9 @@ program
   .option("--no-login", "Skip browser login (assume open-access backend)")
   .action(
     async (opts: { kg?: string; local?: boolean; login?: boolean }) => {
-      // Parent program also accepts --local/--no-login (so `onta --local`
+      // Parent program also accepts --local/--no-login (so `infona --local`
       // works without a subcommand). When commander parses
-      // `onta shell --local`, the parent sees --local first and the
+      // `infona shell --local`, the parent sees --local first and the
       // subcommand never gets it — so merge from program.opts() too.
       const parentOpts = program.opts() as {
         local?: boolean;
@@ -1430,7 +1430,7 @@ program
 
 // ---------------------------------------------------------------------------
 
-/** True when this module is the process entry point (run as `onta …`), not
+/** True when this module is the process entry point (run as `infona …`), not
  *  when it's imported (e.g. by the unit tests that exercise `runAgentCommand`).
  *  Guards the auto-parse so importing the module has no side effects.
  *

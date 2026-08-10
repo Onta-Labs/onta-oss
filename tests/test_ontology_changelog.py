@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.ontology_changelog import (
+from infona_client.graph.ontology_changelog import (
     GOV_ACTION,
     GOV_NS,
     GOV_SUBJECT,
@@ -25,14 +25,14 @@ from cograph_client.graph.ontology_changelog import (
     parse_change_records,
     serialize_change_records,
 )
-from cograph_client.graph.ontology_commit import commit_ontology
-from cograph_client.models.ontology import (
+from infona_client.graph.ontology_commit import commit_ontology
+from infona_client.models.ontology import (
     ChangeKind,
     ChangeRecord,
     OntologyMutation,
     OntologyOpKind,
 )
-from cograph_client.resolver.governance import changelog_triples
+from infona_client.resolver.governance import changelog_triples
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +386,7 @@ async def test_append_only_n_commits_n_distinct_uuid_entries():
 @pytest.mark.asyncio
 async def test_same_ms_commits_still_distinct_entry_nodes(monkeypatch):
     """Two commits forced to the same timestamp still mint distinct uuid nodes."""
-    from cograph_client.graph import ontology_commit as oc
+    from infona_client.graph import ontology_commit as oc
 
     fixed = "2026-07-28T00:00:00Z"
 

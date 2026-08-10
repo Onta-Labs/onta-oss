@@ -22,10 +22,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.ontology_queries import type_uri
-from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
-from cograph_client.resolver.schema_resolver import SchemaResolver
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.ontology_queries import type_uri
+from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity, IngestResult
+from infona_client.resolver.schema_resolver import SchemaResolver
 
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
@@ -43,7 +43,7 @@ def mock_neptune():
 @pytest.fixture
 def resolver(mock_neptune):
     verdict_path = Path(tempfile.mkdtemp()) / "verdicts.json"
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     with patch.dict("os.environ", {
         "ANTHROPIC_API_KEY": "test-key",
@@ -208,13 +208,13 @@ PERSON = "<https://graph.onta.sh/types/Person>"
     f"?p rdf:type {PERSON}",                                               # Form C: prefixed
 ])
 def test_closure_rewrite_all_forms(query_fragment):
-    from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+    from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
     out = rewrite_type_predicate_to_closure(f"SELECT ?p WHERE {{ {query_fragment} }}")
     assert f"?p {CLOSURE} {PERSON}" in out
 
 
 def test_closure_rewrite_is_idempotent():
-    from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+    from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
     once = rewrite_type_predicate_to_closure(f"SELECT ?p WHERE {{ ?p a {PERSON} }}")
     twice = rewrite_type_predicate_to_closure(once)
     assert once == twice
@@ -222,7 +222,7 @@ def test_closure_rewrite_is_idempotent():
 
 
 def test_closure_rewrite_leaves_non_type_triples_alone():
-    from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+    from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
     # A normal predicate whose object is a types URI must NOT be rewritten.
     q = "SELECT ?p WHERE { ?p <https://graph.onta.sh/onto/works_at> ?c }"
     assert rewrite_type_predicate_to_closure(q) == q

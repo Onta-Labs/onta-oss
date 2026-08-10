@@ -27,9 +27,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.graph.ontology_queries import entity_uri, type_uri
-from cograph_client.resolver.attribute_resolver import AttributeSchema
-from cograph_client.resolver.models import (
+from infona_client.graph.ontology_queries import entity_uri, type_uri
+from infona_client.resolver.attribute_resolver import AttributeSchema
+from infona_client.resolver.models import (
     CleanOutcome,
     ExtractedAttribute,
     ExtractedEntity,
@@ -38,12 +38,12 @@ from cograph_client.resolver.models import (
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import (
+from infona_client.resolver.schema_resolver import (
     SchemaResolver,
     _drop_offplan_compound_attributes,
     _is_implausible_node_label,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"

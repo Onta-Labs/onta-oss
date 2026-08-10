@@ -37,18 +37,18 @@ import time
 
 import pytest
 
-from cograph_client.graph.predicates import ATTR_META_NS, is_internal_predicate
-from cograph_client.graph.provenance import (
+from infona_client.graph.predicates import ATTR_META_NS, is_internal_predicate
+from infona_client.graph.provenance import (
     SURFACE_FORM_SUFFIX,
     attr_provenance_companion_uri,
     build_surface_form_companion,
 )
-from cograph_client.normalization.clean import (
+from infona_client.normalization.clean import (
     clean_value,
     surface_form_companion_triples,
 )
-from cograph_client.resolver.models import RejectedValue, ValidatedTriple
-from cograph_client.resolver.validator import validate_triple
+from infona_client.resolver.models import RejectedValue, ValidatedTriple
+from infona_client.resolver.validator import validate_triple
 
 SUBJ = "https://graph.onta.sh/entities/Event/e1"
 
@@ -169,15 +169,15 @@ def test_validate_triple_dropped_has_no_companion():
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.ontology_queries import attr_uri, entity_uri  # noqa: E402
-from cograph_client.graph.queries import kg_graph_uri  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.graph.ontology_queries import attr_uri, entity_uri  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 TENANT = "onta347"
 KG = "events"
@@ -284,7 +284,7 @@ async def test_surface_form_companion_persisted_and_flows_through_insert_facts(m
     canonical ISO value (as the attribute) AND a queryable attr_meta surface-form
     companion holding the ORIGINAL "12/31/2020" — and that companion flows through the
     shared write path (insert_facts)."""
-    import cograph_client.resolver.schema_resolver as sr
+    import infona_client.resolver.schema_resolver as sr
 
     captured: list[tuple[str, str, str]] = []
     real_insert = sr.insert_facts

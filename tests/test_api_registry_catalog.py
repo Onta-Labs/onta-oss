@@ -23,14 +23,14 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     ApiSourceSpec,
     Entitlement,
     make_api_source_catalog,
     url_lint_errors,
     validate_spec,
 )
-from cograph_client.api_registry.catalog import (
+from infona_client.api_registry.catalog import (
     _DATA_DIR,
     load_catalog_dir,
     reset_api_source_layers,

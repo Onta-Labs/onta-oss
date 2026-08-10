@@ -36,7 +36,7 @@ import time
 
 import pytest
 
-from cograph_client.graph.ontology_queries import (  # noqa: E402
+from infona_client.graph.ontology_queries import (  # noqa: E402
     insert_type,
     ontology_version,
     type_uri,
@@ -99,16 +99,16 @@ def test_empty_ontology_version_matches_frozen_a5_stamp():
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.type_matcher import MatchVerdict, TypeMatch  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.type_matcher import MatchVerdict, TypeMatch  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_CLASS = "http://www.w3.org/2000/01/rdf-schema#Class"

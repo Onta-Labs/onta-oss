@@ -9,14 +9,14 @@ if that recurs.
 
 from __future__ import annotations
 
-from cograph_client.resolver.er.blocking import (
+from infona_client.resolver.er.blocking import (
     SparqlBlocker,
     _bindings_to_signals,
     generate_block_keys,
 )
-from cograph_client.resolver.er.normalize import DefaultNormalizer
-from cograph_client.resolver.er.scoring import DefaultScorer
-from cograph_client.resolver.er.types import DEFAULT_ORG_CONFIG, EntitySignals
+from infona_client.resolver.er.normalize import DefaultNormalizer
+from infona_client.resolver.er.scoring import DefaultScorer
+from infona_client.resolver.er.types import DEFAULT_ORG_CONFIG, EntitySignals
 
 
 N = DefaultNormalizer()

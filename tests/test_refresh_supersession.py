@@ -28,24 +28,24 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.api_registry.spec import AuthorityLevel
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.api_registry.spec import AuthorityLevel
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
     Verdict,
 )
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.ontology_queries import attr_uri
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.suppression import is_suppressed
-from cograph_client.graph.validity import current_objects_query, fetch_history
-from cograph_client.pipeline.corrections import UserAssertion, apply_user_assertion
-from cograph_client.pipeline.mutations import retract_fact, write_with_conflict_resolution
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.ontology_queries import attr_uri
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.suppression import is_suppressed
+from infona_client.graph.validity import current_objects_query, fetch_history
+from infona_client.pipeline.corrections import UserAssertion, apply_user_assertion
+from infona_client.pipeline.mutations import retract_fact, write_with_conflict_resolution
 
 from tests._enrichment_prov_helpers import FakeWikidata
 
@@ -95,8 +95,8 @@ def _quiet_housekeeping(monkeypatch):
     stats recompute) so these tests isolate the refresh/supersession/suppression
     mechanism — exactly as tests/test_user_assertion.py + tests/test_validity_
     resurrection.py do. The real rail STILL calls refresh_after_write."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)

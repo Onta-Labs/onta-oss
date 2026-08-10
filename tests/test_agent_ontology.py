@@ -17,16 +17,16 @@ import asyncio
 
 import pytest
 
-from cograph_client.agent import planner as planner_mod
-from cograph_client.agent.capabilities import ontology_cap as ontology_mod
-from cograph_client.agent.capabilities.ontology_cap import OntologyCapability
-from cograph_client.agent.planner import (
+from infona_client.agent import planner as planner_mod
+from infona_client.agent.capabilities import ontology_cap as ontology_mod
+from infona_client.agent.capabilities.ontology_cap import OntologyCapability
+from infona_client.agent.planner import (
     execute_plan,
     handle,
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (
+from infona_client.agent.registry import (
     AgentContext,
     PlanStep,
     get_capabilities,

@@ -1,4 +1,4 @@
-# Omnix API Reference
+# Infona API Reference
 
 **Version:** 0.1.0
 

@@ -34,23 +34,23 @@ import pytest
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
-from cograph_client.graph.queries import kg_graph_uri  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.graph.ontology_queries import attr_uri, type_uri  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
-from cograph_client.verification.policy import VerifyPolicy  # noqa: E402
-from cograph_client.verification.types import (  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.verification.policy import VerifyPolicy  # noqa: E402
+from infona_client.verification.types import (  # noqa: E402
     EvidenceRef,
     TruthVerdict,
     VerifiedFact,
     VerifierResult,
 )
-from cograph_client.verification.verifier import register_fact_verifier  # noqa: E402
+from infona_client.verification.verifier import register_fact_verifier  # noqa: E402
 
 TENANT = "onta370"
 KG = "providers"

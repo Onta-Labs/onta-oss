@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 
 @pytest.fixture

@@ -13,12 +13,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cograph_client.agent import planner as planner_mod
-from cograph_client.agent.capabilities.enrich_cap import EnrichCapability
-from cograph_client.agent.capabilities.normalize_cap import NormalizeCapability
-from cograph_client.agent.capabilities.query import QueryCapability
-from cograph_client.agent.conversation_store import reset_conversation_store
-from cograph_client.agent.planner import (
+from infona_client.agent import planner as planner_mod
+from infona_client.agent.capabilities.enrich_cap import EnrichCapability
+from infona_client.agent.capabilities.normalize_cap import NormalizeCapability
+from infona_client.agent.capabilities.query import QueryCapability
+from infona_client.agent.conversation_store import reset_conversation_store
+from infona_client.agent.planner import (
     StoredPlan,
     execute_plan,
     handle,
@@ -26,7 +26,7 @@ from cograph_client.agent.planner import (
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (
+from infona_client.agent.registry import (
     AgentContext,
     PlanStep,
     get_capabilities,
@@ -35,7 +35,7 @@ from cograph_client.agent.registry import (
     register_capability,
     reset_capabilities,
 )
-from cograph_client.normalization.rules import NormalizationRule
+from infona_client.normalization.rules import NormalizationRule
 
 TIMEOUT = 5.0
 
@@ -122,9 +122,9 @@ def _track_bg_tasks(monkeypatch):
     nothing leaks. We replace ``_spawn`` with one that creates a real task and
     keeps a strong ref — the underlying apply/run is itself stubbed per-test.
     """
-    import cograph_client.agent.capabilities.dedup_cap as dedup_cap
-    import cograph_client.agent.capabilities.enrich_cap as enrich_cap
-    import cograph_client.agent.capabilities.normalize_cap as norm_cap
+    import infona_client.agent.capabilities.dedup_cap as dedup_cap
+    import infona_client.agent.capabilities.enrich_cap as enrich_cap
+    import infona_client.agent.capabilities.normalize_cap as norm_cap
 
     spawned: list = []
 
@@ -165,10 +165,10 @@ def _stub_schema(monkeypatch, schema: dict | None = None):
         return schema
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.normalize_cap.list_type_schema", fake_schema
     )
 
 
@@ -180,7 +180,7 @@ def _stub_enrich_extract(monkeypatch, payload: dict):
         return json.dumps(payload)
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
+        "infona_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
     )
 
 
@@ -192,7 +192,7 @@ def _stub_normalize_extract(monkeypatch, payload: dict):
         return json.dumps(payload)
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.openrouter_chat", fake_chat
+        "infona_client.agent.capabilities.normalize_cap.openrouter_chat", fake_chat
     )
 
 
@@ -411,7 +411,7 @@ async def test_zero_match_empty_type_offers_discovery(monkeypatch):
         return [], "literal"
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -432,7 +432,7 @@ async def test_zero_match_empty_type_offers_discovery(monkeypatch):
     # A discovery option is offered (not only "Enrich all Sprocket").
     assert any("discover" in o.lower() for o in opts), opts
     # And clicking it re-routes to discovery — it matches the deterministic guard.
-    from cograph_client.agent.planner import _is_web_discovery_request
+    from infona_client.agent.planner import _is_web_discovery_request
 
     discover_opt = next(o for o in opts if "discover" in o.lower())
     assert _is_web_discovery_request(discover_opt)
@@ -445,7 +445,7 @@ def _stub_kg_types(monkeypatch, names: list[str]):
         return list(names)
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap._list_types", fake_list_types
+        "infona_client.agent.capabilities.enrich_cap._list_types", fake_list_types
     )
 
 
@@ -464,7 +464,7 @@ async def test_enrich_infers_type_from_message_over_selection(monkeypatch):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_enrich_extract(
         monkeypatch, {"attributes": ["website"], "scope": None, "tier": "core"}
@@ -491,7 +491,7 @@ async def test_enrich_infers_type_with_no_selection(monkeypatch):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_enrich_extract(
         monkeypatch, {"attributes": ["website"], "scope": None, "tier": "core"}
@@ -522,7 +522,7 @@ def _stub_subset_resolver(monkeypatch, uris: list[str]):
         return list(uris)
 
     monkeypatch.setattr(
-        "cograph_client.nlp.pipeline.NLQueryPipeline.select_entity_uris", fake_select
+        "infona_client.nlp.pipeline.NLQueryPipeline.select_entity_uris", fake_select
     )
 
 
@@ -538,7 +538,7 @@ async def test_enrich_resolves_ranked_subset_to_entity_uris(monkeypatch):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_enrich_extract(
         monkeypatch,
@@ -582,7 +582,7 @@ async def test_enrich_unresolvable_subset_fails_closed(monkeypatch):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_enrich_extract(
         monkeypatch,
@@ -625,7 +625,7 @@ async def test_enrich_zero_match_scope_clarifies(monkeypatch):
         return [], "literal"
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -763,7 +763,7 @@ async def test_multi_value_scope_matches_case_insensitively(monkeypatch):
         return {"attributes": ["rating", "region"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_enrich_extract(
         monkeypatch,
@@ -811,7 +811,7 @@ async def test_replace_intent_plan_sets_overwrite_param(monkeypatch):
         return {"attributes": ["rating", "region"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_enrich_extract(
         monkeypatch,
@@ -900,7 +900,7 @@ async def test_multi_value_scope_no_match_stays_on_enrich_rail(monkeypatch):
     user on the ENRICH rail (offer "Enrich all"), and does NOT lead with a
     discovery option — the mis-route this fix closes. The clicked option must NOT
     be a web-discovery trigger."""
-    from cograph_client.agent.planner import _is_web_discovery_request
+    from infona_client.agent.planner import _is_web_discovery_request
 
     _stub_classifier(monkeypatch, "enrich")
     _stub_kg_types(monkeypatch, ["Widget"])
@@ -960,7 +960,7 @@ async def test_execute_enrich_passes_entity_uris(monkeypatch):
 def test_pipeline_entity_uris_from_bindings():
     """The resolver extracts the ?uri column (deduped, order-preserving, capped),
     falling back to the first IRI-looking value when a row lacks ?uri."""
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     bindings = [
         {"uri": "https://onta.dev/e/b/1", "n": "299"},
@@ -1021,7 +1021,7 @@ async def test_clean_before_enrich_composes_depends_on(monkeypatch):
         return (["English__Persian", "English"], "relationship")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -1044,7 +1044,7 @@ async def test_clean_before_enrich_composes_depends_on(monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.suggest_rules_for_predicates",
+        "infona_client.agent.capabilities.normalize_cap.suggest_rules_for_predicates",
         fake_suggest,
     )
 
@@ -1086,7 +1086,7 @@ async def test_no_prereq_when_scope_target_atomic(monkeypatch):
         return (["English", "Persian"], "relationship")  # atomic
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
     out = await asyncio.wait_for(
@@ -1118,7 +1118,7 @@ async def test_execute_plan_runs_in_dependency_order(monkeypatch):
         return (["English__Persian"], "relationship")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -1138,7 +1138,7 @@ async def test_execute_plan_runs_in_dependency_order(monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.suggest_rules_for_predicates",
+        "infona_client.agent.capabilities.normalize_cap.suggest_rules_for_predicates",
         fake_suggest,
     )
 
@@ -1163,7 +1163,7 @@ async def test_execute_plan_runs_in_dependency_order(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.NormalizationRuleStore.save",
+        "infona_client.agent.capabilities.normalize_cap.NormalizationRuleStore.save",
         fake_save,
     )
 
@@ -1418,8 +1418,8 @@ async def test_route_confirm_executes_plan(monkeypatch):
 
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.app import create_app
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.api.app import create_app
+    from infona_client.graph.client import NeptuneClient
 
     _stub_classifier(monkeypatch, "enrich")
     _stub_schema(monkeypatch)
@@ -1436,7 +1436,7 @@ async def test_route_confirm_executes_plan(monkeypatch):
         return (["English"], "relationship")  # atomic → single enrich step
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -1448,7 +1448,7 @@ async def test_route_confirm_executes_plan(monkeypatch):
         return 3
 
     monkeypatch.setattr(
-        "cograph_client.enrichment.executor.EnrichmentExecutor.count_entities",
+        "infona_client.enrichment.executor.EnrichmentExecutor.count_entities",
         fake_count,
     )
 
@@ -1533,7 +1533,7 @@ async def test_enrich_extracts_real_attr_and_web_tier(monkeypatch):
         return (["English", "Persian"], "relationship")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -1566,7 +1566,7 @@ async def test_enrich_drops_stray_modifier_word_on_fallback(monkeypatch):
         raise RuntimeError("no llm")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", boom
+        "infona_client.agent.capabilities.enrich_cap.openrouter_chat", boom
     )
 
     out = await asyncio.wait_for(
@@ -1601,7 +1601,7 @@ async def test_normalize_strip_emoji_on_title_is_a_plan(monkeypatch):
         return (["🚀 Founder", "CTO"], "attribute")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.normalize_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -1639,7 +1639,7 @@ async def test_normalize_list_explode_maps_languages_to_speaks(monkeypatch):
         return (["English__Persian", "French"], "relationship")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.normalize_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.normalize_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -1672,12 +1672,12 @@ async def test_normalize_vague_message_still_clarifies(monkeypatch):
 # --------------------------------------------------------------------------- #
 # 7. COG-123 cost estimate + COG-121 confidence — the agent's plan is honest
 # --------------------------------------------------------------------------- #
-from cograph_client.enrichment.models import EnrichmentTier  # noqa: E402
-from cograph_client.enrichment.sources.base import (  # noqa: E402
+from infona_client.enrichment.models import EnrichmentTier  # noqa: E402
+from infona_client.enrichment.sources.base import (  # noqa: E402
     _adapters,
     register_adapter,
 )
-from cograph_client.enrichment.tiers import register_tier, reset_tiers  # noqa: E402
+from infona_client.enrichment.tiers import register_tier, reset_tiers  # noqa: E402
 
 
 class _CountingExecutor:
@@ -1868,7 +1868,7 @@ def test_estimate_cost_keys_match_web_contract():
     AgentChat.tsx ``PlanStepRow``). Asserting on the literal keys here pins the
     contract so a future rename can't silently blank the cost badge again. Covers
     both the free and paid branches of _estimate_cost."""
-    from cograph_client.agent.capabilities.enrich_cap import _estimate_cost
+    from infona_client.agent.capabilities.enrich_cap import _estimate_cost
 
     # Free branch (no paid adapter).
     free = _estimate_cost(
@@ -1976,8 +1976,8 @@ async def test_plan_limit_carried_into_enrich_job(monkeypatch, _adapters_and_tie
 # --------------------------------------------------------------------------- #
 # 8. Dedup capability (COG-122) — registered → plans + drives the ER engine
 # --------------------------------------------------------------------------- #
-from cograph_client.agent.capabilities.dedup_cap import DedupCapability  # noqa: E402
-from cograph_client.enrichment.models import JobCategory, JobStatus  # noqa: E402
+from infona_client.agent.capabilities.dedup_cap import DedupCapability  # noqa: E402
+from infona_client.enrichment.models import JobCategory, JobStatus  # noqa: E402
 
 
 def test_dedup_capability_is_registered_by_default():
@@ -2065,12 +2065,12 @@ async def test_dedup_execute_drives_rebuild_engine(monkeypatch):
     # Patch the engine entry point + the recompute hook the worker imports
     # lazily from the route module.
     monkeypatch.setattr(
-        "cograph_client.resolver.er.rebuild.rebuild_kg", fake_rebuild_kg
+        "infona_client.resolver.er.rebuild.rebuild_kg", fake_rebuild_kg
     )
 
     recompute_calls: list = []
     monkeypatch.setattr(
-        "cograph_client.api.routes.explore.schedule_recompute",
+        "infona_client.api.routes.explore.schedule_recompute",
         lambda client, tenant_id, kg_name: recompute_calls.append((tenant_id, kg_name)),
     )
 
@@ -2113,10 +2113,10 @@ async def test_dedup_execute_records_failure(monkeypatch):
         raise RuntimeError("merge blew up")
 
     monkeypatch.setattr(
-        "cograph_client.resolver.er.rebuild.rebuild_kg", boom_rebuild
+        "infona_client.resolver.er.rebuild.rebuild_kg", boom_rebuild
     )
     monkeypatch.setattr(
-        "cograph_client.api.routes.explore.schedule_recompute",
+        "infona_client.api.routes.explore.schedule_recompute",
         lambda *a, **k: None,
     )
 
@@ -2157,10 +2157,10 @@ async def test_dedup_execute_via_plan_store(monkeypatch):
         return {"types": [], "fragments_absorbed_total": 0}
 
     monkeypatch.setattr(
-        "cograph_client.resolver.er.rebuild.rebuild_kg", fake_rebuild_kg
+        "infona_client.resolver.er.rebuild.rebuild_kg", fake_rebuild_kg
     )
     monkeypatch.setattr(
-        "cograph_client.api.routes.explore.schedule_recompute",
+        "infona_client.api.routes.explore.schedule_recompute",
         lambda *a, **k: None,
     )
 
@@ -2197,7 +2197,7 @@ def test_discovery_guard_not_forced_by_enrichment_adjective(message):
     """A read-only ask that says "not enrichment <noun>" is NOT a discovery job —
     'enrichment' is an adjective here, and 'show me'/'list'/'give me' are read-only
     display verbs. The guard must leave these to normal classification."""
-    from cograph_client.agent.planner import _is_web_discovery_request
+    from infona_client.agent.planner import _is_web_discovery_request
 
     assert _is_web_discovery_request(message) is False
 
@@ -2225,7 +2225,7 @@ def test_discovery_guard_still_fires_on_genuine_self_label(message):
     including mid-sentence), a leading discover/scrape imperative, or a '... from the
     web' fetch still force-routes to discovery — the nit fix must not break the real
     path, nor under-trigger on a mid-sentence positive self-label."""
-    from cograph_client.agent.planner import _is_web_discovery_request
+    from infona_client.agent.planner import _is_web_discovery_request
 
     assert _is_web_discovery_request(message) is True
 
@@ -2245,7 +2245,7 @@ def test_discovery_guard_still_fires_on_genuine_self_label(message):
 
 
 def _turn(role, text, kind=None):
-    from cograph_client.agent.conversation_store import Turn
+    from infona_client.agent.conversation_store import Turn
 
     return Turn(role=role, text=text, kind=kind)
 
@@ -2317,7 +2317,7 @@ async def test_completed_prior_request_does_not_bleed_through_planner(monkeypatc
         return {"attributes": ["price", "weight"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
 
     captured: dict = {}
@@ -2334,7 +2334,7 @@ async def test_completed_prior_request_does_not_bleed_through_planner(monkeypatc
         }
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap._extract_enrich_request",
+        "infona_client.agent.capabilities.enrich_cap._extract_enrich_request",
         fake_extract,
     )
 
@@ -2361,7 +2361,7 @@ def test_live_message_type_beats_stale_history_mention():
     """The type named in the CURRENT message wins over one lingering in the
     accumulated instruction — an explicit live target must not be overridden by a
     stale mention (even a longer one)."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     resolved = _resolve_target_type(
         instruction="enrich BetaGadget entities\nnow enrich Alpha entities",
@@ -2377,7 +2377,7 @@ def test_open_ask_type_beats_wrong_selection():
     """When the current message names no type, the type named in the open ask
     (accumulated instruction) is used — and it beats a wrong UI selection, so a
     clarify-chain reply resolves the right type."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     resolved = _resolve_target_type(
         instruction="enrich Alpha entities\nall of them",
@@ -2391,7 +2391,7 @@ def test_open_ask_type_beats_wrong_selection():
 def test_resolve_target_type_backward_compatible_without_current_message():
     """Omitting current_message (a direct/legacy call) collapses to the prior
     instruction-first behavior — existing callers are unaffected."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     assert (
         _resolve_target_type("enrich Alpha entities", ["Alpha", "Beta"], "Beta")
@@ -2429,7 +2429,7 @@ def test_head_type_beats_negated_comention():
     persona's "(NOT Organization entities)" workaround BACKFIRED under the old
     longest-wins matcher, which selected the very token it injected). Passing the
     explicit type_name='Model' too must not change the answer."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     msg = "enrich pricing on Model entities (NOT Organization entities)"
     assert _resolve_target_type(msg, _VOICE_TYPES, "Model", current_message=msg) == "Model"
@@ -2439,7 +2439,7 @@ def test_head_type_beats_scope_qualifier_comention():
     """A-3: with no explicit type, the head noun ("Model") the user targets wins
     over a type named only as a scope qualifier ("…whose organization is X"). The
     RCA e13 case (old longest-wins picked Organization(12) > Model(5))."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     msg = "enrich for all Model entities whose organization is ElevenLabs"
     assert _resolve_target_type(msg, _VOICE_TYPES, None, current_message=msg) == "Model"
@@ -2450,7 +2450,7 @@ def test_type_inside_attribute_name_is_not_selected():
     RealtimeModel …" resolves RealtimeModel, NOT the `Language` buried in the
     attribute name. The RCA result-4 case (old matcher resolved Language and would
     have spent ~$4.21 enriching Language nodes)."""
-    from cograph_client.agent.capabilities.enrich_cap import (
+    from infona_client.agent.capabilities.enrich_cap import (
         _match_type_in_text,
         _resolve_target_type,
     )
@@ -2471,7 +2471,7 @@ def test_camelcase_solid_multiword_type_matches():
     """A-2: a solidly-spelled multi-word type matches when written exactly as the
     ontology spells it — the tokenizer CamelCase-splits so ['realtime','model']
     lines up with the fused "RealtimeModel"."""
-    from cograph_client.agent.capabilities.enrich_cap import _match_type_in_text
+    from infona_client.agent.capabilities.enrich_cap import _match_type_in_text
 
     assert _match_type_in_text("enrich RealtimeModel entities", _VOICE_TYPES) == "RealtimeModel"
 
@@ -2480,7 +2480,7 @@ def test_stale_sticky_selection_not_named_does_not_hijack():
     """A stale sticky UI ``selected`` the user does NOT name must NOT win — the
     type named in the live turn does. (RealtimeModel is selected but never
     mentioned; the message names Organization.)"""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     msg = "enrich contact info for Organization entities"
     assert (
@@ -2495,7 +2495,7 @@ def test_stale_sticky_selection_named_only_as_qualifier_does_not_hijack():
     user targets ('brokers') does. An earlier "corroboration" branch that honored
     ``selected`` on ANY mention regressed this (returned PropertyListing); it was
     removed in favor of pure first-standalone-mention."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     types = ["Broker", "PropertyListing", "Property"]
     for msg in (
@@ -2512,7 +2512,7 @@ def test_terse_deliberate_type_name_honored_when_prose_names_no_type():
     """A terse call whose prose names no type still honors an explicit caller
     ``type_name`` via the legacy step-3 fallback — so a deliberate MCP arg is not
     lost when the user gives only attributes."""
-    from cograph_client.agent.capabilities.enrich_cap import _resolve_target_type
+    from infona_client.agent.capabilities.enrich_cap import _resolve_target_type
 
     msg = "enrich pricing and latency"
     assert _resolve_target_type(msg, _VOICE_TYPES, "Model", current_message=msg) == "Model"
@@ -2524,7 +2524,7 @@ def test_same_position_tiebreak_prefers_longer_specific_type():
     ("property listing") so BOTH types genuinely match at index 0 and the tie-break
     is actually exercised (a fused "PropertyListing" would match only the compound
     type, not testing the tie)."""
-    from cograph_client.agent.capabilities.enrich_cap import _match_type_in_text
+    from infona_client.agent.capabilities.enrich_cap import _match_type_in_text
 
     assert (
         _match_type_in_text("enrich property listing rows", ["Property", "PropertyListing"])
@@ -2538,7 +2538,7 @@ def test_same_position_tiebreak_prefers_longer_specific_type():
 def test_validate_enrich_intersects_multi_attrs_with_schema():
     """[foo, bar, baz] on a schema with {foo, bar, qux} → {foo, bar}: baz is
     dropped as a non-member (real fields present → strict intersection)."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["foo", "bar", "baz"]},
@@ -2552,7 +2552,7 @@ def test_validate_enrich_intersects_multi_attrs_with_schema():
 def test_validate_enrich_splits_crammed_list_not_one_garbled_token():
     """A crammed list + a stray "attributes:" label in ONE string is parsed into
     the individual real fields, NOT fused into a single garbled token."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["attributes: foo, bar, qux"]},
@@ -2567,7 +2567,7 @@ def test_validate_enrich_splits_crammed_list_not_one_garbled_token():
 def test_validate_enrich_drops_hallucinated_and_type_name_attrs():
     """A real field mixed with a hallucinated attr and the TYPE NAME itself keeps
     only the real field — the hallucinations are dropped."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["foo", "data_from", "Widget"]},
@@ -2581,7 +2581,7 @@ def test_validate_enrich_drops_hallucinated_and_type_name_attrs():
 def test_validate_enrich_keeps_new_attribute_when_none_in_schema():
     """When NO extracted attr matches the schema, the user is naming a brand-new
     attribute to add — keep the clean noun, but never the type name itself."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["company", "Widget"]},
@@ -2595,7 +2595,7 @@ def test_validate_enrich_keeps_new_attribute_when_none_in_schema():
 def test_validate_enrich_empty_schema_keeps_named_attrs():
     """An empty/uningested schema can't validate members, so clean named attrs are
     kept (minus the type name) — a brand-new type is still enrichable."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["foo", "bar"]},
@@ -2608,7 +2608,7 @@ def test_validate_enrich_empty_schema_keeps_named_attrs():
 
 def test_validate_enrich_exact_lead_sponsor_auto_accepts():
     """Exact schema leaf auto-accepts — no approval gate."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["lead_sponsor"], "tier": "core"},
@@ -2624,7 +2624,7 @@ def test_validate_enrich_weak_sponsor_needs_approval_not_silent_map():
     """Bare 'sponsor' is only a weak match for lead_sponsor — do NOT silent-map;
     surface attr_approvals so plan() can clarify / agent-approve. Pending names
     must NOT stay in attributes (fail-closed if short-circuit is skipped)."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["sponsor"], "tier": "core"},
@@ -2641,7 +2641,7 @@ def test_validate_enrich_weak_sponsor_needs_approval_not_silent_map():
 
 def test_validate_enrich_high_similarity_typo_auto_accepts():
     """Near-identical spelling of a schema leaf auto-accepts without clarify."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["lead_sponsr"]},  # missing 'o'
@@ -2655,7 +2655,7 @@ def test_validate_enrich_high_similarity_typo_auto_accepts():
 
 def test_validate_enrich_soft_match_ambiguous_suffix_keeps_new_attr():
     """When two schema attrs score similarly, do NOT guess or request a pair."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["sponsor"]},
@@ -2669,7 +2669,7 @@ def test_validate_enrich_soft_match_ambiguous_suffix_keeps_new_attr():
 
 
 def test_attr_match_clarify_step_offers_schema_leaf():
-    from cograph_client.agent.capabilities.enrich_cap import _attr_match_clarify_step
+    from infona_client.agent.capabilities.enrich_cap import _attr_match_clarify_step
 
     step = _attr_match_clarify_step(
         "ClinicalTrial",
@@ -2684,7 +2684,7 @@ def test_attr_match_clarify_step_offers_schema_leaf():
 
 def test_website_does_not_weak_map_to_title():
     """Noise pairs (website↔title ~0.5) must not trigger attr_approvals."""
-    from cograph_client.agent.capabilities.enrich_cap import _validate_enrich_request
+    from infona_client.agent.capabilities.enrich_cap import _validate_enrich_request
 
     out = _validate_enrich_request(
         {"attributes": ["company", "website"], "tier": "core"},
@@ -2697,8 +2697,8 @@ def test_website_does_not_weak_map_to_title():
 
 
 def test_source_clause_names_clinicaltrials_gov():
-    from cograph_client.agent.capabilities.enrich_cap import _source_clause
-    from cograph_client.enrichment.models import EnrichmentTier
+    from infona_client.agent.capabilities.enrich_cap import _source_clause
+    from infona_client.enrichment.models import EnrichmentTier
 
     clause = _source_clause(
         EnrichmentTier.base,
@@ -2712,7 +2712,7 @@ def test_source_clause_names_clinicaltrials_gov():
 
 def test_registry_covers_clinical_trial_lead_sponsor():
     """Seed catalog: ClinicalTrial.lead_sponsor is covered by free CT.gov."""
-    from cograph_client.enrichment.tier_router import _registry_covers
+    from infona_client.enrichment.tier_router import _registry_covers
 
     assert _registry_covers(["lead_sponsor"], "ClinicalTrial") == {
         "lead_sponsor": "clinicaltrials_gov"
@@ -2741,7 +2741,7 @@ def test_registry_covers_clinical_trial_lead_sponsor():
 
 
 def _kg_turn(role, text, kind=None, kg_name=None):
-    from cograph_client.agent.conversation_store import Turn
+    from infona_client.agent.conversation_store import Turn
 
     return Turn(role=role, text=text, kind=kind, kg_name=kg_name)
 
@@ -2755,7 +2755,7 @@ def _ctx_on(kg_name: str):
 
 def test_turn_roundtrips_kg_name():
     """The new field survives the jsonb payload round-trip."""
-    from cograph_client.agent.conversation_store import Turn
+    from infona_client.agent.conversation_store import Turn
 
     t = Turn(role="user", text="hi", kg_name="kg_a")
     assert t.to_dict()["kg_name"] == "kg_a"
@@ -2766,7 +2766,7 @@ def test_turn_from_dict_defaults_missing_kg_name():
     """A turn persisted BEFORE this field existed still loads. No migration is
     needed because the transcript lives in a jsonb payload and ``from_dict``
     defaults every missing key."""
-    from cograph_client.agent.conversation_store import Turn
+    from infona_client.agent.conversation_store import Turn
 
     legacy = {"role": "user", "text": "clean the Alpha field", "kind": None}
     t = Turn.from_dict(legacy)
@@ -2959,7 +2959,7 @@ async def test_history_does_not_leak_across_kgs_through_planner(monkeypatch):
         return {"attributes": ["price", "weight"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
 
     prompts: list[str] = []
@@ -2986,7 +2986,7 @@ async def test_history_does_not_leak_across_kgs_through_planner(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap._extract_enrich_request",
+        "infona_client.agent.capabilities.enrich_cap._extract_enrich_request",
         fake_extract,
     )
 
@@ -3020,7 +3020,7 @@ async def test_open_clarify_on_one_kg_still_accumulates(monkeypatch):
         return {"attributes": ["price", "weight"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
     _stub_classifier(monkeypatch, "enrich")
 
@@ -3047,7 +3047,7 @@ async def test_open_clarify_on_one_kg_still_accumulates(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap._extract_enrich_request",
+        "infona_client.agent.capabilities.enrich_cap._extract_enrich_request",
         fake_extract,
     )
 
@@ -3096,7 +3096,7 @@ async def test_prior_clarify_count_is_scoped_to_the_kg(monkeypatch):
 async def test_record_turn_stamps_the_kg_name(monkeypatch):
     """Both the user turn and the assistant reply carry the graph they were made
     against, so a later turn on another graph can scope them out."""
-    from cograph_client.agent.conversation_store import make_conversation_store
+    from infona_client.agent.conversation_store import make_conversation_store
 
     _stub_classifier(monkeypatch, "ambiguous", clarify="Which one?")
     session = {"id": "stamp-sess"}
@@ -3151,7 +3151,7 @@ class KGStateNeptune(FakeNeptune):
 @pytest.fixture(autouse=True)
 def _clear_kg_status_cache():
     """The KG-status probe caches POSITIVE verdicts; keep tests independent."""
-    from cograph_client.graph.kg_status import invalidate_kg_status
+    from infona_client.graph.kg_status import invalidate_kg_status
 
     invalidate_kg_status("t1")
     yield
@@ -3168,7 +3168,7 @@ async def test_question_about_missing_kg_clarifies_instead_of_answering(monkeypa
     async def boom(*args, **kwargs):
         raise AssertionError("pipeline must not run against a nonexistent KG")
 
-    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", boom)
+    monkeypatch.setattr("infona_client.nlp.pipeline.NLQueryPipeline.ask", boom)
 
     ctx = _ctx(
         neptune=KGStateNeptune(
@@ -3193,7 +3193,7 @@ async def test_question_about_empty_kg_answers_explicitly(monkeypatch):
     async def boom(*args, **kwargs):
         raise AssertionError("pipeline must not run against an empty KG")
 
-    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", boom)
+    monkeypatch.setattr("infona_client.nlp.pipeline.NLQueryPipeline.ask", boom)
 
     ctx = _ctx(neptune=KGStateNeptune(registered=True, has_data=False))
     out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
@@ -3214,11 +3214,11 @@ async def test_question_about_empty_kg_still_answers_from_the_base_graph(monkeyp
 
     async def fake_ask(self, question, graph_uri, instance_graph=None, **kwargs):
         seen["ran"] = True
-        from cograph_client.models.query import NLResult
+        from infona_client.models.query import NLResult
 
         return NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
-    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
+    monkeypatch.setattr("infona_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
 
     ctx = _ctx(
         neptune=KGStateNeptune(registered=True, has_data=False, base_instances=True)
@@ -3246,7 +3246,7 @@ async def test_question_about_missing_kg_clarifies_even_with_base_instances(
     async def boom(*args, **kwargs):
         raise AssertionError("pipeline must not run against a nonexistent KG")
 
-    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", boom)
+    monkeypatch.setattr("infona_client.nlp.pipeline.NLQueryPipeline.ask", boom)
 
     ctx = _ctx(
         neptune=KGStateNeptune(
@@ -3272,11 +3272,11 @@ async def test_question_about_populated_kg_runs_the_pipeline(monkeypatch):
 
     async def fake_ask(self, question, graph_uri, instance_graph=None, **kwargs):
         seen["ran"] = True
-        from cograph_client.models.query import NLResult
+        from infona_client.models.query import NLResult
 
         return NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
-    monkeypatch.setattr("cograph_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
+    monkeypatch.setattr("infona_client.nlp.pipeline.NLQueryPipeline.ask", fake_ask)
 
     ctx = _ctx(neptune=KGStateNeptune(registered=True, has_data=True))
     out = await asyncio.wait_for(handle(ctx, "how many mentors are there?"), TIMEOUT)
@@ -3308,7 +3308,7 @@ class _ScopeCap:
     """
 
     def __init__(self, name: str, steps=None):
-        from cograph_client.agent.kg_scope import scope_policy
+        from infona_client.agent.kg_scope import scope_policy
 
         self.name = name
         self.planned: list[str] = []
@@ -3390,7 +3390,7 @@ async def test_missing_kg_does_not_refuse_the_create_capable_discovery_rail(
 
     assert out["kind"] == "plan"
     assert cap.planned == ["kg1"]
-    from cograph_client.agent.kg_scope import CTX_KG_STATUS
+    from infona_client.agent.kg_scope import CTX_KG_STATUS
 
     assert ctx.extras[CTX_KG_STATUS] == "missing"
 
@@ -3506,7 +3506,7 @@ async def test_not_kg_scoped_capabilities_are_never_gated(monkeypatch):
 def test_scope_policy_defaults_to_require_for_an_undeclared_capability():
     """A downstream/premium capability that declares nothing gets the
     conservative verdict, the one that ASKS rather than silently acts."""
-    from cograph_client.agent.kg_scope import (
+    from infona_client.agent.kg_scope import (
         DEFAULT_SCOPE_POLICY,
         SCOPE_REQUIRE,
         scope_policy,
@@ -3530,7 +3530,7 @@ def test_scope_policy_defaults_to_require_for_an_undeclared_capability():
 def test_query_declares_itself_out_of_the_planner_gate():
     """The read path keeps ONE check, its own richer ONTA-413 probe, which also
     distinguishes registered-but-empty and honours the base-graph union."""
-    from cograph_client.agent.kg_scope import SCOPE_NONE, scope_policy
+    from infona_client.agent.kg_scope import SCOPE_NONE, scope_policy
 
     assert scope_policy(QueryCapability()) == SCOPE_NONE
 

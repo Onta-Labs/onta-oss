@@ -4,8 +4,8 @@ import re
 
 import pytest
 
-from cograph_client.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
-from cograph_client.resolver.validator import coerce_value, validate_triple, validate_value
+from infona_client.resolver.models import RejectedValue, ValidatedTriple, ValidationOutcome
+from infona_client.resolver.validator import coerce_value, validate_triple, validate_value
 
 
 class TestCoerceValue:

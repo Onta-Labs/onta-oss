@@ -12,21 +12,21 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
 )
-from cograph_client.usage.recorder import (
+from infona_client.usage.recorder import (
     FLUSH_INTERVAL_S,
     UsageRecorder,
     classify_request,
     key_hint,
     reset_usage_recorder,
 )
-from cograph_client.usage.store import (
+from infona_client.usage.store import (
     InMemoryUsageStore,
     UsageBucket,
     reset_usage_store,
@@ -298,8 +298,8 @@ def test_unauthenticated_pre_auth_responses_record_nothing(client):
     storage-amplification vector if they were)."""
     import asyncio
 
-    from cograph_client.usage.recorder import get_usage_recorder
-    from cograph_client.usage.store import get_usage_store
+    from infona_client.usage.recorder import get_usage_recorder
+    from infona_client.usage.store import get_usage_store
 
     # No key: 404 (no such route), 405 (wrong method), 401 (real route).
     assert client.get("/graphs/victim-tenant/zzz-not-a-route").status_code == 404
@@ -328,8 +328,8 @@ def test_cross_tenant_path_is_403_and_records_nothing(client, auth_headers):
     either the path tenant or the key's tenant for that request."""
     import asyncio
 
-    from cograph_client.usage.recorder import get_usage_recorder
-    from cograph_client.usage.store import get_usage_store
+    from infona_client.usage.recorder import get_usage_recorder
+    from infona_client.usage.store import get_usage_store
 
     assert (
         client.get("/graphs/other-tenant/jobs", headers=auth_headers).status_code
@@ -376,7 +376,7 @@ def test_usage_route_tenant_isolation(client, auth_headers):
     # ...and pre-seeded usage for the other tenant that must NOT be readable.
     import asyncio
 
-    from cograph_client.usage.store import get_usage_store
+    from infona_client.usage.store import get_usage_store
 
     asyncio.run(
         get_usage_store().add(

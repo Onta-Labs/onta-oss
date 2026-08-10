@@ -7,7 +7,8 @@ MCP (Model Context Protocol) server for [Infona](https://infona.ai). Gives AI ag
 No install needed — use `npx`:
 
 ```bash
-npx -y -p @infona-ai/mcp onta-mcp
+npx -y -p @infona-ai/mcp infona-mcp
+# `onta-mcp` remains a compatibility alias for the same binary
 ```
 
 ## Claude Desktop / Cursor / Claude Code
@@ -17,7 +18,7 @@ npx -y -p @infona-ai/mcp onta-mcp
   "mcpServers": {
     "infona": {
       "command": "npx",
-      "args": ["-y", "-p", "@infona-ai/mcp", "onta-mcp"],
+      "args": ["-y", "-p", "@infona-ai/mcp", "infona-mcp"],
       "env": {
         "INFONA_API_KEY": "your-key",
         "INFONA_API_URL": "https://api.infona.ai",
@@ -42,7 +43,7 @@ The server registers **18** tools, plus **1 more** (`list_local_files`) when you
 - `create_knowledge_graph` — create a new, empty KG (optionally with a description).
 - `delete_knowledge_graph` — delete a KG and all of its data (irreversible).
 - `ingest_csv` — ingest a CSV file by absolute path into a named KG; the schema is inferred automatically. Set `join_on` to merge each row onto the existing entity that carries the same key value instead of minting duplicates.
-- `ingest_text` — ingest free-form text (or JSON) into a named KG **without writing a file first**. Posts through the same canonical `POST /graphs/{tenant}/ingest` route as the CLI's `onta ingest --text` (LLM entity extraction → ontology resolve → insert). Use for notes, meeting summaries, or any unstructured knowledge; use `ingest_csv` for tabular files on disk.
+- `ingest_text` — ingest free-form text (or JSON) into a named KG **without writing a file first**. Posts through the same canonical `POST /graphs/{tenant}/ingest` route as the CLI's `infona ingest --text` (LLM entity extraction → ontology resolve → insert). Use for notes, meeting summaries, or any unstructured knowledge; use `ingest_csv` for tabular files on disk.
 - `evolve_ontology` — resolve a fuzzy natural-language ontology-evolution ask (no exact names needed); auto-applies high-confidence changes and returns a summary plus any proposals to confirm.
 - `apply_ontology_change` — confirm and commit a single proposal returned by `evolve_ontology`.
 - `apply_ontology_changes` — confirm and commit several proposals from `evolve_ontology` in one call (one round-trip instead of N; idempotent, per-proposal outcomes).

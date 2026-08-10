@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from cograph_client.graph.client import NeptuneClient, SparqlQueryError
-from cograph_client.nlp import pipeline as pipeline_mod
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.graph.client import NeptuneClient, SparqlQueryError
+from infona_client.nlp import pipeline as pipeline_mod
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 # A realistic Neptune malformed-query body (with a URL to prove scrubbing).
 _MALFORMED_BODY = {

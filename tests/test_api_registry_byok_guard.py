@@ -44,13 +44,13 @@ import re
 import httpx
 import pytest
 
-import cograph_client.api_registry as api_registry_pkg
-from cograph_client.api_registry.executor import RegistryApiSource
-from cograph_client.api_registry.spec import ApiSourceSpec, AuthMode, validate_spec
+import infona_client.api_registry as api_registry_pkg
+from infona_client.api_registry.executor import RegistryApiSource
+from infona_client.api_registry.spec import ApiSourceSpec, AuthMode, validate_spec
 
 _PKG_ROOT = pathlib.Path(api_registry_pkg.__file__).parent
 _DATA_DIR = _PKG_ROOT / "data"
-# api_registry/__init__.py → api_registry → cograph_client → repo root.
+# api_registry/__init__.py → api_registry → infona_client → repo root.
 _REPO_ROOT = _PKG_ROOT.parent.parent
 _ENV_EXAMPLE = _REPO_ROOT / ".env.example"
 

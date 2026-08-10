@@ -39,12 +39,12 @@ import os
 
 import pytest
 
-from cograph_client.qc.tier3_fixture import (
+from infona_client.qc.tier3_fixture import (
     FixtureValidationError,
     Tier3Fixture,
     load_fixture,
 )
-from cograph_client.qc.tier3_grade import (
+from infona_client.qc.tier3_grade import (
     BROKEN_BC_PROFILE,
     POST_FIX_PROFILE_THRESHOLDS,
     EnumerationProfileScore,

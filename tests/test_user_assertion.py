@@ -30,16 +30,16 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.api_registry.spec import (
+from infona_client.api_registry.spec import (
     AUTHORITY_CONFIDENCE,
     AUTHORITY_RANK,
     AuthorityLevel,
 )
-from cograph_client.graph.kg_writer import GraphDelta, insert_facts
-from cograph_client.graph.provenance import PROV_AUTHORITY, fetch_provenance
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.validity import current_objects_query, fetch_history
-from cograph_client.pipeline.corrections import (
+from infona_client.graph.kg_writer import GraphDelta, insert_facts
+from infona_client.graph.provenance import PROV_AUTHORITY, fetch_provenance
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.validity import current_objects_query, fetch_history
+from infona_client.pipeline.corrections import (
     USER_ASSERTION_AUTHORITY,
     UserAssertion,
     UserAssertionError,
@@ -47,7 +47,7 @@ from cograph_client.pipeline.corrections import (
     build_user_assertion_provenance,
     literal_attribute_predicate,
 )
-from cograph_client.pipeline.mutations import write_with_conflict_resolution
+from infona_client.pipeline.mutations import write_with_conflict_resolution
 
 TENANT, KG = "onta281", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
@@ -149,8 +149,8 @@ def _quiet_housekeeping(monkeypatch):
     stats recompute) so the end-to-end tests isolate the correction mechanism — as
     tests/test_supersession.py + tests/test_conflict_policy.py do. The writer STILL
     calls refresh_after_write."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
@@ -273,9 +273,9 @@ def test_correction_route_mints_predicate_and_calls_writer(client, auth_headers,
     shared writer — returning the correction receipt."""
     from unittest.mock import AsyncMock
 
-    import cograph_client.api.routes.corrections as route_mod
-    from cograph_client.graph.kg_writer import build_graph_delta
-    from cograph_client.pipeline.mutations import MutationReceipt
+    import infona_client.api.routes.corrections as route_mod
+    from infona_client.graph.kg_writer import build_graph_delta
+    from infona_client.pipeline.mutations import MutationReceipt
 
     captured = {}
 

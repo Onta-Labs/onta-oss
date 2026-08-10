@@ -27,19 +27,19 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
-import cograph_client.graph.text_markers as tm
-import cograph_client.semantic.reconciler as rec
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
-from cograph_client.scheduling.store import get_schedule_store, reset_schedule_store
-from cograph_client.semantic.extract import (
+import infona_client.graph.text_markers as tm
+import infona_client.semantic.reconciler as rec
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.scheduling.store import get_schedule_store, reset_schedule_store
+from infona_client.semantic.extract import (
     canonicalize_values,
     extract_semantic_chunks,
 )
-from cograph_client.semantic.protocol import IDENTITY_ATTR
-from cograph_client.semantic.memory import InMemorySemanticIndex
-from cograph_client.semantic.protocol import SemanticChunk
-from cograph_client.semantic.registry import (
+from infona_client.semantic.protocol import IDENTITY_ATTR
+from infona_client.semantic.memory import InMemorySemanticIndex
+from infona_client.semantic.protocol import SemanticChunk
+from infona_client.semantic.registry import (
     register_semantic_index,
     reset_semantic_index,
 )

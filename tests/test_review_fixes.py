@@ -22,21 +22,21 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.api_registry.spec import AuthorityLevel
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import REFRESH_AUTHORITY, EnrichmentExecutor
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.api_registry.spec import AuthorityLevel
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import REFRESH_AUTHORITY, EnrichmentExecutor
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
     Verdict,
 )
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.ontology_queries import attr_uri, entity_uri
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.validity import current_objects_query
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.ontology_queries import attr_uri, entity_uri
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.validity import current_objects_query
 
 from tests._enrichment_prov_helpers import FakeWikidata
 
@@ -54,9 +54,9 @@ T1 = datetime(2021, 1, 1, tzinfo=timezone.utc)
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.pipeline import mutations as mutations_mod  # noqa: E402
-import cograph_client.enrichment.executor as executor_mod  # noqa: E402
-from cograph_client.pipeline.mutations import (  # noqa: E402
+from infona_client.pipeline import mutations as mutations_mod  # noqa: E402
+import infona_client.enrichment.executor as executor_mod  # noqa: E402
+from infona_client.pipeline.mutations import (  # noqa: E402
     write_with_conflict_resolution,
 )
 

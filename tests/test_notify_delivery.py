@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.api.routes.actions import dispatch_scheduled_action
-from cograph_client.scheduling.delivery import (
+from infona_client.api.routes.actions import dispatch_scheduled_action
+from infona_client.scheduling.delivery import (
     DeliveryResult,
     DeliveryTarget,
     HttpPostSink,
@@ -29,9 +29,9 @@ from cograph_client.scheduling.delivery import (
     register_delivery_sink,
     reset_delivery_sink,
 )
-from cograph_client.scheduling.models import Schedule
-from cograph_client.scheduling.store import InMemoryScheduleStore
-from cograph_client.scheduling.watch import (
+from infona_client.scheduling.models import Schedule
+from infona_client.scheduling.store import InMemoryScheduleStore
+from infona_client.scheduling.watch import (
     SNAPSHOT_KEY,
     diff_snapshots,
     snapshot_watch,
@@ -95,7 +95,7 @@ def _notify_schedule(
     last_snapshot: dict | None = None,
     kg_name: str = "widgets-kg",
 ) -> Schedule:
-    from cograph_client.enrichment.models import JobCategory
+    from infona_client.enrichment.models import JobCategory
 
     params: dict = {"watch": watch}
     if sink is not None:
@@ -143,7 +143,7 @@ def test_http_sink_posts_to_allowed_url(monkeypatch):
             captured["headers"] = headers
             return _Resp()
 
-    import cograph_client.scheduling.delivery as delivery_mod
+    import infona_client.scheduling.delivery as delivery_mod
 
     monkeypatch.setattr(delivery_mod.httpx, "AsyncClient", _FakeClient)
     # Force the DNS re-check to allow (no real resolution in the test).
@@ -210,7 +210,7 @@ def test_http_sink_applies_secret_ref_as_bearer(monkeypatch):
             captured["headers"] = headers
             return _Resp()
 
-    import cograph_client.scheduling.delivery as delivery_mod
+    import infona_client.scheduling.delivery as delivery_mod
 
     monkeypatch.setattr(delivery_mod.httpx, "AsyncClient", _FakeClient)
     monkeypatch.setattr(
@@ -219,7 +219,7 @@ def test_http_sink_applies_secret_ref_as_bearer(monkeypatch):
 
     # Encrypt a token via the OSS cipher seam (local AES key from env).
     monkeypatch.setenv("OMNIX_SECRETS_KEY", "unit-test-secret-key-please")
-    from cograph_client.api_registry.crypto import (
+    from infona_client.api_registry.crypto import (
         get_secret_cipher,
         reset_secret_cipher,
     )

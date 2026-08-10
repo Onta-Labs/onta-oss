@@ -1,6 +1,6 @@
 """ADR 0004 drift-control decision-logic tests.
 
-Pure-math tests for ``cograph_client.resolver.drift_control``. They pin the
+Pure-math tests for ``infona_client.resolver.drift_control``. They pin the
 calibrated rule (floor=20% + support>=5 + core-slot exemption) against the four
 REFERENCE TRUTH cases from the ADR / ``scripts/adr4_drift_threshold_experiment``,
 plus env-override behavior, the reconcile split, drift-report shape, and the
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.resolver import drift_control as dc
+from infona_client.resolver import drift_control as dc
 
 
 # --- coverage math ------------------------------------------------------------

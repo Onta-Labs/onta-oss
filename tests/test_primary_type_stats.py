@@ -23,15 +23,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.api.routes import explore
-from cograph_client.api.routes.explore import (
+from infona_client.api.routes import explore
+from infona_client.api.routes.explore import (
     RDF_TYPE,
     TYPE_URI_PREFIX,
     _PRIMARY_TYPE_GUARD,
     recompute_kg_stats,
 )
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.resolver.er.types import primary_type
+from infona_client.graph.client import NeptuneClient
+from infona_client.resolver.er.types import primary_type
 
 TENANT = "test-tenant"
 KG = "demo"

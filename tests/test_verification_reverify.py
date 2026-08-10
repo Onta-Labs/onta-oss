@@ -29,29 +29,29 @@ import re
 
 import pytest
 
-from cograph_client.api_registry.spec import (
+from infona_client.api_registry.spec import (
     AUTHORITY_CONFIDENCE,
     AUTHORITY_RANK,
     AuthorityLevel,
 )
-from cograph_client.graph.kg_writer import GraphDelta, insert_facts
-from cograph_client.graph.provenance import fetch_provenance
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.validity import (
+from infona_client.graph.kg_writer import GraphDelta, insert_facts
+from infona_client.graph.provenance import fetch_provenance
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.validity import (
     STATUS_DEPRECATED,
     current_objects_query,
     fetch_history,
 )
-from cograph_client.pipeline.conflict import REASON_AUTHORITY
-from cograph_client.pipeline.corrections import UserAssertion, apply_user_assertion
-from cograph_client.verification.reverify import (
+from infona_client.pipeline.conflict import REASON_AUTHORITY
+from infona_client.pipeline.corrections import UserAssertion, apply_user_assertion
+from infona_client.verification.reverify import (
     MACHINE_REVERIFICATION_AUTHORITY,
     MachineReverification,
     MachineReverificationReceipt,
     apply_machine_reverification,
     literal_attribute_predicate,
 )
-from cograph_client.verification.types import TruthVerdict, VerifierResult
+from infona_client.verification.types import TruthVerdict, VerifierResult
 
 TENANT, KG = "onta363", "corp"
 INSTANCE_GRAPH = kg_graph_uri(TENANT, KG)
@@ -135,8 +135,8 @@ class PyoxiNeptune:
 def _quiet_housekeeping(monkeypatch):
     """Silence the shared refresh_after_write internals so the e2e isolates the
     conflict/authority mechanism — the op STILL calls refresh_after_write."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)
@@ -155,7 +155,7 @@ async def _seed_scraped(
     """Seed an initial current fact WITH its trust signals persisted in provenance,
     via the SAME conflict-resolving write path — exactly how an upstream A4 fact
     lands, and what makes the seeded value's authority readable at re-verify time."""
-    from cograph_client.pipeline.mutations import write_with_conflict_resolution
+    from infona_client.pipeline.mutations import write_with_conflict_resolution
 
     await insert_facts(
         n,
@@ -374,10 +374,10 @@ async def test_refuted_without_distinct_corrected_value_writes_nothing():
 async def test_write_routes_through_conflict_writer(monkeypatch):
     """The correction is written through ``write_with_conflict_resolution`` — the ONE
     converged conflict writer — stamped at machine_reverification authority."""
-    import cograph_client.verification.reverify as reverify_mod
+    import infona_client.verification.reverify as reverify_mod
     from unittest.mock import AsyncMock
 
-    from cograph_client.pipeline.mutations import ConflictReceipt
+    from infona_client.pipeline.mutations import ConflictReceipt
 
     fake_delta = GraphDelta(run_id="spy", instance_graph=INSTANCE_GRAPH, facts=())
     spy = AsyncMock(return_value=ConflictReceipt(
@@ -407,7 +407,7 @@ def test_reverify_module_has_no_bespoke_write_markers():
     """Structural: reverify.py hand-rolls NO instance write — no ``insert_triples(``
     and no raw SPARQL DELETE. It only orchestrates the converged writer."""
     src = inspect.getsource(__import__(
-        "cograph_client.verification.reverify", fromlist=["x"]
+        "infona_client.verification.reverify", fromlist=["x"]
     ))
     assert re.search(r"(?<![\w.])insert_triples\(", src) is None
     assert re.search(r"DELETE\s*\{|DELETE\s+WHERE|DELETE\s+DATA", src) is None

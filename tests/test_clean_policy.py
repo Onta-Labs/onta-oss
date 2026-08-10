@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from cograph_client.normalization.policy import (
+from infona_client.normalization.policy import (
     DEFAULT_UNKNOWN_TOKENS,
     MODE_AUTO,
     MODE_OFF,

@@ -15,14 +15,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from cograph_client.auth.api_keys import AuthVerdict, register_external_verifier
-from cograph_client.auth.capabilities import INVITABLE_ROLES
-from cograph_client.auth.tenant_directory import (
+from infona_client.auth.api_keys import AuthVerdict, register_external_verifier
+from infona_client.auth.capabilities import INVITABLE_ROLES
+from infona_client.auth.tenant_directory import (
     Tenant,
     TenantProviderError,
     register_tenant_provider,
 )
-from cograph_client.auth.workspace_store import (
+from infona_client.auth.workspace_store import (
     DuplicatePendingInviteError,
     InMemoryWorkspaceStore,
     WorkspaceInvite,
@@ -32,7 +32,7 @@ from cograph_client.auth.workspace_store import (
     register_tenant_grant_provider,
     reset_workspace_store,
 )
-from cograph_client.config import settings
+from infona_client.config import settings
 
 _run = asyncio.run
 

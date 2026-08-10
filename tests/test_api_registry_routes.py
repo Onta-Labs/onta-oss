@@ -13,7 +13,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     RegistryApiSource,
     reset_api_source_catalog,
     reset_secret_cipher,
@@ -70,7 +70,7 @@ def multi_tenant_key():
 
     (A static single-tenant key like `test-key` also 403s on a foreign path
     tenant; this fixture exercises the user-scoped multi-tenant grant path.)"""
-    from cograph_client.auth.api_keys import register_external_verifier
+    from infona_client.auth.api_keys import register_external_verifier
 
     def verifier(api_key: str):
         if api_key == "multi-key":
@@ -190,7 +190,7 @@ def test_delete_global_slug_is_403(client):
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def operator_key():
-    from cograph_client.auth.api_keys import AuthVerdict, register_external_verifier
+    from infona_client.auth.api_keys import AuthVerdict, register_external_verifier
 
     def verifier(api_key: str):
         if api_key == "operator-key":
@@ -296,7 +296,7 @@ def test_test_call_with_inline_spec(client, monkeypatch):
     canned_rows = [{"name": "Acme Row"}]
 
     async def fake_execute(self, spec, bindings=None, **kw):
-        from cograph_client.api_registry.executor import ApiCallResult
+        from infona_client.api_registry.executor import ApiCallResult
         return ApiCallResult(slug=spec.slug, rows=canned_rows, source=f"api:{spec.slug}")
 
     monkeypatch.setattr(RegistryApiSource, "execute", fake_execute)

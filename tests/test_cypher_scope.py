@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.nlp.cypher_scope import (
+from infona_client.nlp.cypher_scope import (
     CypherScopeError,
     confine_generated_cypher,
     has_sparql_leftovers,

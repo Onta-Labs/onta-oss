@@ -14,11 +14,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.api.deps import get_neptune_client
-from cograph_client.api.routes import ontology as ontology_routes
-from cograph_client.auth import api_keys
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.kg_stats_store import (
+from infona_client.api.deps import get_neptune_client
+from infona_client.api.routes import ontology as ontology_routes
+from infona_client.auth import api_keys
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.kg_stats_store import (
     KgStats,
     get_kg_stats_store,
     reset_kg_stats_store,

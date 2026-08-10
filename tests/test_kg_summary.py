@@ -13,8 +13,8 @@ import asyncio
 
 import pytest
 
-from cograph_client.graph import kg_summary
-from cograph_client.graph.kg_stats_store import (
+from infona_client.graph import kg_summary
+from infona_client.graph.kg_stats_store import (
     InMemoryKgStatsStore,
     KgStats,
     PostgresKgStatsStore,
@@ -88,7 +88,7 @@ def test_generate_happy_path(monkeypatch):
         return "Orange County physicians.\n"
 
     monkeypatch.setattr(
-        "cograph_client.resolver.llm_router.openrouter_chat", fake_chat
+        "infona_client.resolver.llm_router.openrouter_chat", fake_chat
     )
     out = asyncio.run(
         kg_summary.generate_kg_summary("oc-physicians", {"Physician": 5}, api_key="k")
@@ -100,7 +100,7 @@ def test_generate_swallows_llm_error(monkeypatch):
     async def boom(*a, **k):
         raise RuntimeError("openrouter down")
 
-    monkeypatch.setattr("cograph_client.resolver.llm_router.openrouter_chat", boom)
+    monkeypatch.setattr("infona_client.resolver.llm_router.openrouter_chat", boom)
     out = asyncio.run(
         kg_summary.generate_kg_summary("kg", {"Physician": 5}, api_key="k")
     )
@@ -194,8 +194,8 @@ def test_resolve_summary_failed_regen_keeps_old_line_and_stale_signature():
 
 
 def test_run_summary_backfill_fills_and_persists(monkeypatch):
-    from cograph_client.api.routes import explore as explore_mod
-    from cograph_client.graph import kg_stats_store as store_mod
+    from infona_client.api.routes import explore as explore_mod
+    from infona_client.graph import kg_stats_store as store_mod
 
     store = InMemoryKgStatsStore()
     monkeypatch.setattr(store_mod, "get_kg_stats_store", lambda: store)
@@ -215,7 +215,7 @@ def test_run_summary_backfill_fills_and_persists(monkeypatch):
 
 
 def test_schedule_summary_backfill_only_schedules_pending(monkeypatch):
-    from cograph_client.api.routes import explore as explore_mod
+    from infona_client.api.routes import explore as explore_mod
 
     scheduled: list[list[str]] = []
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.semantic import (
+from infona_client.semantic import (
     InMemorySemanticIndex,
     SemanticChunk,
     SemanticIndex,
@@ -88,7 +88,7 @@ def test_protocol_conformance(idx):
 
 def test_factory_returns_inmemory(monkeypatch):
     # Unconditional for now — the pgvector branch is the ONTA-176 seam.
-    from cograph_client import config
+    from infona_client import config
 
     monkeypatch.setattr(config.settings, "database_url", "", raising=False)
     assert isinstance(make_semantic_index(), InMemorySemanticIndex)

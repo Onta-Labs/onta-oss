@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.web_sources import (
+from infona_client.web_sources import (
     DiscoverResult,
     get_web_source,
     get_web_source_for_kind,
@@ -18,7 +18,7 @@ from cograph_client.web_sources import (
     register_web_source,
     reset_web_sources,
 )
-from cograph_client.web_sources.stub import StubWebSource, register
+from infona_client.web_sources.stub import StubWebSource, register
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +80,7 @@ async def test_generic_query_synthesizes_wellformed_rows():
 
 
 def test_stub_is_free():
-    from cograph_client.web_sources.base import provider_cost
+    from infona_client.web_sources.base import provider_cost
 
     is_paid, cost = provider_cost(StubWebSource())
     assert is_paid is False
@@ -92,7 +92,7 @@ def test_stub_is_free():
 
 def test_provider_accepts_defaults_true_when_missing():
     """Legacy providers without accepts() stay in every ensemble slot."""
-    from cograph_client.web_sources.base import provider_accepts
+    from infona_client.web_sources.base import provider_accepts
 
     class _NoAccepts:
         name = "legacy"
@@ -105,7 +105,7 @@ def test_provider_accepts_defaults_true_when_missing():
 
 
 def test_provider_accepts_respects_false():
-    from cograph_client.web_sources.base import provider_accepts
+    from infona_client.web_sources.base import provider_accepts
 
     class _Scoped:
         name = "scoped"
@@ -122,7 +122,7 @@ def test_provider_accepts_respects_false():
 
 def test_provider_accepts_degrades_open_on_raise():
     """A broken accepts() must not sink discovery — treat as accept."""
-    from cograph_client.web_sources.base import provider_accepts
+    from infona_client.web_sources.base import provider_accepts
 
     class _Broken:
         name = "broken"
@@ -135,7 +135,7 @@ def test_provider_accepts_degrades_open_on_raise():
 
 def test_provider_accepts_none_and_truthy_are_accept():
     """Only explicit False is out-of-scope; None/True/"ok" all accept."""
-    from cograph_client.web_sources.base import provider_accepts
+    from infona_client.web_sources.base import provider_accepts
 
     class _None:
         def accepts(self, query, context):

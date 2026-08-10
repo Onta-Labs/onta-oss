@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.graph.facts import Fact
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.kg_writer import insert_facts, rewrite_subject
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_queries import entity_uri
-from cograph_client.graph.store import (
+from infona_client.graph.facts import Fact
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import insert_facts, rewrite_subject
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.store import (
     GraphConfigError,
     configure_graph_store,
     get_optional_graph_store,
@@ -24,8 +24,8 @@ from cograph_client.graph.store import (
     reset_graph_store_for_tests,
     resolve_optional_graph_store,
 )
-from cograph_client.resolver.er.rebuild import rebuild_type
-from cograph_client.resolver.er.types import DEFAULT_GUEST_CONFIG
+from infona_client.resolver.er.rebuild import rebuild_type
+from infona_client.resolver.er.types import DEFAULT_GUEST_CONFIG
 
 
 def _graph(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
@@ -87,7 +87,7 @@ def test_schema_resolver_insert_facts_receives_store(memory_store, monkeypatch):
             neptune, instance_graph, instance_triples, **kwargs
         )
 
-    import cograph_client.resolver.schema_resolver as sr
+    import infona_client.resolver.schema_resolver as sr
 
     monkeypatch.setattr(sr, "insert_facts", spy)
     # Resolve the same way the rail does, then simulate its write call shape.
@@ -118,7 +118,7 @@ def test_schema_resolver_source_wires_store_kwarg():
     """Source guard: schema_resolver write site passes store= (E7)."""
     import inspect
 
-    import cograph_client.resolver.schema_resolver as sr
+    import infona_client.resolver.schema_resolver as sr
 
     src = inspect.getsource(sr)
     assert "resolve_optional_graph_store" in src
@@ -141,7 +141,7 @@ def test_enrichment_insert_facts_receives_store(memory_store, monkeypatch):
             neptune, instance_graph, instance_triples, **kwargs
         )
 
-    import cograph_client.enrichment.executor as ex
+    import infona_client.enrichment.executor as ex
 
     monkeypatch.setattr(ex, "insert_facts", spy)
     store = ex.resolve_optional_graph_store()
@@ -171,7 +171,7 @@ def test_enrichment_insert_facts_receives_store(memory_store, monkeypatch):
 def test_enrichment_source_wires_store_kwarg():
     import inspect
 
-    import cograph_client.enrichment.executor as ex
+    import infona_client.enrichment.executor as ex
 
     src = inspect.getsource(ex)
     assert "resolve_optional_graph_store" in src
@@ -196,11 +196,11 @@ def test_normalization_insert_delete_receive_store(memory_store, monkeypatch):
 
     async def spy_delete(neptune, instance_graph, **kwargs):
         captured.append({"op": "delete", "store": kwargs.get("store")})
-        from cograph_client.graph.kg_writer import delete_facts
+        from infona_client.graph.kg_writer import delete_facts
 
         return await delete_facts(neptune, instance_graph, **kwargs)
 
-    import cograph_client.normalization.execute as nx
+    import infona_client.normalization.execute as nx
 
     monkeypatch.setattr(nx, "insert_facts", spy_insert)
     monkeypatch.setattr(nx, "delete_facts", spy_delete)
@@ -263,7 +263,7 @@ def test_normalization_insert_delete_receive_store(memory_store, monkeypatch):
 def test_normalization_source_wires_store_kwarg():
     import inspect
 
-    import cograph_client.normalization.execute as nx
+    import infona_client.normalization.execute as nx
 
     src = inspect.getsource(nx)
     assert "resolve_optional_graph_store" in src
@@ -280,7 +280,7 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
     monkeypatch.setenv("COGRAPH_GRAPH_BACKEND", "neo4j")
     # Stub stats recompute side-effects.
     monkeypatch.setattr(
-        "cograph_client.graph.kg_writer.refresh_after_write",
+        "infona_client.graph.kg_writer.refresh_after_write",
         AsyncMock(),
     )
 
@@ -310,7 +310,7 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
             pass
 
         async def all_entities_with_signals(self, instance_graph, type_uri):
-            from cograph_client.resolver.er.types import NormalizedSignals
+            from infona_client.resolver.er.types import NormalizedSignals
 
             return {
                 loser: NormalizedSignals(
@@ -330,7 +330,7 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
             }
 
     monkeypatch.setattr(
-        "cograph_client.resolver.er.rebuild.SparqlBlocker",
+        "infona_client.resolver.er.rebuild.SparqlBlocker",
         _FakeBlocker,
     )
 
@@ -344,7 +344,7 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
         )
 
     monkeypatch.setattr(
-        "cograph_client.resolver.er.rebuild.rewrite_subject",
+        "infona_client.resolver.er.rebuild.rewrite_subject",
         spy_rewrite,
     )
 
@@ -369,7 +369,7 @@ def test_er_rebuild_rewrite_subject_with_memory_store(memory_store, monkeypatch)
 def test_er_rebuild_source_wires_store_kwarg():
     import inspect
 
-    import cograph_client.resolver.er.rebuild as rb
+    import infona_client.resolver.er.rebuild as rb
 
     src = inspect.getsource(rb)
     assert "resolve_optional_graph_store" in src

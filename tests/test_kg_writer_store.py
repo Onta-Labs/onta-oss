@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from cograph_client.graph.facts import (
+from infona_client.graph.facts import (
     RESERVED_ENTITY_PROPERTY_KEYS,
     Fact,
     classify_triple,
@@ -19,18 +19,18 @@ from cograph_client.graph.facts import (
     sanitize_rel_type,
     triples_to_facts,
 )
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.kg_writer import (
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.kg_writer import (
     delete_facts,
     graph_backend,
     insert_facts,
     refresh_after_write,
     rewrite_subject,
 )
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_queries import entity_uri
-from cograph_client.graph.scope import GraphScope, GraphScopeError
-from cograph_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph.scope import GraphScope, GraphScopeError
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 
 
 @pytest.fixture
@@ -333,7 +333,7 @@ def test_refresh_after_write_store_skips_neptune_registration(store, monkeypatch
             raise AssertionError("should not register on store path")
 
         monkeypatch.setattr(
-            "cograph_client.graph.kg_writer.ensure_kg_registered", boom
+            "infona_client.graph.kg_writer.ensure_kg_registered", boom
         )
         await refresh_after_write(
             None,
@@ -386,7 +386,7 @@ def test_entity_uri_used_as_id(store):
 
 def test_session_instance_graph_scope_mismatch():
     """P2: explicit session + instance_graph must agree on tenant/kg."""
-    from cograph_client.graph.kg_writer import _resolve_graph_session
+    from infona_client.graph.kg_writer import _resolve_graph_session
 
     mem = MemoryGraphStore()
     session = mem.session(GraphScope.for_instance("demo-tenant", "bookstore"))
@@ -403,8 +403,8 @@ def test_session_instance_graph_scope_mismatch():
 
 def test_neo4j_rewrite_free_id_and_existing_mock():
     """P0 hermetic Neo4j mock: free-id SETs id; existing rebinds then DETACH DELETEs."""
-    from cograph_client.graph.neo4j_store import Neo4jGraphSession
-    from cograph_client.graph.store import GraphRecord
+    from infona_client.graph.neo4j_store import Neo4jGraphSession
+    from infona_client.graph.store import GraphRecord
 
     class _FakeNeo4jStore:
         def __init__(self) -> None:

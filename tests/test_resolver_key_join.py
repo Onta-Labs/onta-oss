@@ -23,22 +23,22 @@ import pytest
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.ontology_queries import (  # noqa: E402
+from infona_client.graph.ontology_queries import (  # noqa: E402
     attr_uri,
     entity_uri,
     insert_attribute,
     insert_type,
     type_uri,
 )
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ColumnMapping,
     ColumnRole,
     CSVSchemaMapping,
     KeyJoin,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
@@ -300,8 +300,8 @@ async def test_key_join_via_resolve_and_insert_path():
     """The route path (`_resolve_and_insert`, used by POST /ingest/csv/rows) honors
     key_join too — same merge, exercised through the inner pipeline the route calls
     directly rather than through _ingest_mapped."""
-    from cograph_client.resolver.csv_resolver import CSVResolver
-    from cograph_client.resolver.models import ExtractionResult, IngestResult
+    from infona_client.resolver.csv_resolver import CSVResolver
+    from infona_client.resolver.models import ExtractionResult, IngestResult
 
     n = PyoxiNeptune()
     kgg, onto = kg_graph_uri(TENANT, KG), tenant_graph_uri(TENANT)

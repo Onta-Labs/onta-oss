@@ -1,0 +1,63 @@
+from fastapi import Request
+
+from infona_client.enrichment.cache import get_enrichment_cache
+from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.enrichment.job_store import make_job_store
+from infona_client.enrichment.sources.wikidata import WikidataAdapter
+from infona_client.graph.client import NeptuneClient
+from infona_client.scheduling.store import make_schedule_store
+
+
+def get_neptune_client(request: Request) -> NeptuneClient:
+    return request.app.state.neptune_client
+
+
+def _ensure_enrichment_state(state) -> None:
+    if getattr(state, "enrichment_job_store", None) is None:
+        state.enrichment_job_store = make_job_store()
+    if getattr(state, "enrichment_cache", None) is None:
+        state.enrichment_cache = get_enrichment_cache()
+    if getattr(state, "enrichment_wikidata", None) is None:
+        state.enrichment_wikidata = WikidataAdapter()
+    if getattr(state, "enrichment_executor", None) is None:
+        state.enrichment_executor = EnrichmentExecutor(
+            neptune_client=state.neptune_client,
+            job_store=state.enrichment_job_store,
+            cache=state.enrichment_cache,
+            wikidata_adapter=state.enrichment_wikidata,
+        )
+        # ONTA-194 phase 3: register the API source registry as authoritative
+        # enrichment adapters that LEAD the chain (source-of-truth verdicts
+        # outrank wikidata / web adapters). Each entry self-gates on
+        # (entity_type, attribute), so this is inert for anything it can't answer.
+        try:
+            from infona_client.api_registry.enrichment import (
+                register_registry_enrichment,
+            )
+
+            register_registry_enrichment()
+        except Exception:  # noqa: BLE001 - never block enrichment startup
+            pass
+
+
+def get_executor(request: Request) -> EnrichmentExecutor:
+    """Lazily build and stash the enrichment executor on app.state."""
+    _ensure_enrichment_state(request.app.state)
+    return request.app.state.enrichment_executor
+
+
+def get_enrichment_job_store(request: Request):
+    _ensure_enrichment_state(request.app.state)
+    return request.app.state.enrichment_job_store
+
+
+def get_schedule_store(request: Request):
+    """Lazily build and stash the schedule store on app.state (COG-135).
+
+    Mirrors get_enrichment_job_store: selects Postgres when a database_url is
+    configured, else the in-memory default. Attached to app.state so it's a
+    single per-process instance.
+    """
+    if getattr(request.app.state, "schedule_store", None) is None:
+        request.app.state.schedule_store = make_schedule_store()
+    return request.app.state.schedule_store

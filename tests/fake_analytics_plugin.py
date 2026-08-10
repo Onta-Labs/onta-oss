@@ -5,7 +5,7 @@ mirroring how the proprietary PostHog sink registers itself at app boot through
 the ``OMNIX_ANALYTICS_PLUGIN`` hook.
 """
 
-from cograph_client.analytics import register_analytics_sink
+from infona_client.analytics import register_analytics_sink
 
 LOADED = False
 CAPTURED: list[dict] = []

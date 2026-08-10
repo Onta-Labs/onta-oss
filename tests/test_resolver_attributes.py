@@ -2,13 +2,13 @@
 
 import pytest
 
-from cograph_client.resolver.attribute_resolver import (
+from infona_client.resolver.attribute_resolver import (
     AttributeSchema,
     check_promotion,
     is_junk_type_name,
     resolve_attribute,
 )
-from cograph_client.resolver.models import AttrAction, ExtractedAttribute, ExtractedEntity
+from infona_client.resolver.models import AttrAction, ExtractedAttribute, ExtractedEntity
 
 
 class TestResolveAttribute:

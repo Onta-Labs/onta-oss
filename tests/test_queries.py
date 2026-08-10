@@ -1,6 +1,6 @@
 import pytest
 
-from cograph_client.graph.queries import (
+from infona_client.graph.queries import (
     tenant_graph_uri,
     insert_triples,
     delete_triples,
@@ -80,7 +80,7 @@ def test_register_function_triple():
 
 
 def test_register_function_triple_enhanced_layer_qualified():
-    from cograph_client.graph.layers import Layer, enhanced_graph_uri, layer_type_uri
+    from infona_client.graph.layers import Layer, enhanced_graph_uri, layer_type_uri
 
     sparql = register_function_triple(
         "https://graph.onta.sh/graphs/t1",
@@ -107,7 +107,7 @@ def test_list_functions_query_by_type():
 
 
 def test_list_functions_query_by_enhanced_type():
-    from cograph_client.graph.layers import Layer, layer_type_uri
+    from infona_client.graph.layers import Layer, layer_type_uri
 
     sparql = list_functions_query(
         "https://graph.onta.sh/graphs/global/enhanced",
@@ -122,7 +122,7 @@ def test_list_functions_query_by_enhanced_type():
 # ONTA-414: kg_name can never break out of the graph IRI
 # --------------------------------------------------------------------------- #
 def test_kg_graph_uri_accepts_a_legal_name():
-    from cograph_client.graph.queries import kg_graph_uri
+    from infona_client.graph.queries import kg_graph_uri
 
     assert (
         kg_graph_uri("acme", "imdb-movies_2")
@@ -154,7 +154,7 @@ def test_kg_graph_uri_accepts_a_legal_name():
     ],
 )
 def test_kg_graph_uri_rejects_iri_breaking_names(bad):
-    from cograph_client.graph.queries import InvalidKGName, kg_graph_uri
+    from infona_client.graph.queries import InvalidKGName, kg_graph_uri
 
     with pytest.raises(InvalidKGName):
         kg_graph_uri("acme", bad)
@@ -162,7 +162,7 @@ def test_kg_graph_uri_rejects_iri_breaking_names(bad):
 
 def test_invalid_kg_name_is_a_value_error():
     """Subclassing ValueError keeps any pre-existing `except ValueError` intact."""
-    from cograph_client.graph.queries import InvalidKGName
+    from infona_client.graph.queries import InvalidKGName
 
     assert issubclass(InvalidKGName, ValueError)
 
@@ -177,8 +177,8 @@ def test_kg_name_guard_agrees_with_the_create_pattern():
     """
     import pydantic
 
-    from cograph_client.api.routes.knowledge_graphs import KGCreate
-    from cograph_client.graph.queries import is_valid_kg_name
+    from infona_client.api.routes.knowledge_graphs import KGCreate
+    from infona_client.graph.queries import is_valid_kg_name
 
     for candidate in ["imdb", "a-b_c", "kg\n", "kg ", "kg\r\n", "a/b", "x>y", ""]:
         try:
@@ -191,12 +191,12 @@ def test_kg_name_guard_agrees_with_the_create_pattern():
 
 def test_kg_writer_uses_the_shared_guard_not_a_local_copy():
     """The drifted second copy in kg_writer is gone (it accepted "kg\\n")."""
-    import cograph_client.graph.kg_writer as kw
+    import infona_client.graph.kg_writer as kw
 
     assert not hasattr(kw, "_KG_NAME_RE")
 
 
 def test_kg_graph_uri_round_trips_through_parse():
-    from cograph_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
+    from infona_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
 
     assert parse_kg_graph_uri(kg_graph_uri("acme", "imdb")) == ("acme", "imdb")

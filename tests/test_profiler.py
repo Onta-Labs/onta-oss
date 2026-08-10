@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.resolver.models import TableProfile, ValueShape
-from cograph_client.resolver.profiler import profile_table
+from infona_client.resolver.models import TableProfile, ValueShape
+from infona_client.resolver.profiler import profile_table
 
 # The dataset CSVs live in the proprietary parent repo and are gitignored —
 # present on dev machines, absent in fresh OSS clones. Tests that need them

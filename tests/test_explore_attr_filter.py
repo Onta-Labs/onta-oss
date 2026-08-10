@@ -30,13 +30,13 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from cograph_client.api.app import create_app
-from cograph_client.api.routes.explore import (
+from infona_client.api.app import create_app
+from infona_client.api.routes.explore import (
     RDF_TYPE,
     _assemble_summary,
     _is_internal_predicate,
 )
-from cograph_client.graph.client import NeptuneClient
+from infona_client.graph.client import NeptuneClient
 
 TENANT = "test-tenant"
 KG = "web"
@@ -314,7 +314,7 @@ def test_live_scan_keeps_entity_valued_source_relationship(client, mock_neptune,
     ``onto/batch_id`` → ``source`` shows as a relationship, batch_id is hidden."""
     # The /summary endpoint memoizes per (tenant, kg, type) in a module cache;
     # another test in this file warms the same key, so clear it to read fresh.
-    from cograph_client.api.routes import explore as _explore_mod
+    from infona_client.api.routes import explore as _explore_mod
     _explore_mod._summary_cache.clear()
 
     def route(sparql, *a, **k):

@@ -1,6 +1,6 @@
 """Boundary-fixture characterization tests (ONTA-266).
 
-The harness (``cograph_client.qc.boundary``) renders the ingestion pipeline's three
+The harness (``infona_client.qc.boundary``) renders the ingestion pipeline's three
 inter-stage artifacts — A2 candidate facts, A4 verified facts, A5 placement plan — from
 the canonical decomp datasets through the pipeline's REAL deterministic transforms
 (``validate_triple``, ``resolve_attribute``, ``normalize_predicate``, the URI/ontology
@@ -8,7 +8,7 @@ builders). These tests are the diff guard: a re-render must byte-match the froze
 fixtures, so a later refactor that changes what one stage hands the next is caught.
 
 Fully deterministic + offline — no LLM, no store. To intentionally update the frozen
-fixtures after a real behavior change:  ``python -m cograph_client.qc.boundary --freeze``.
+fixtures after a real behavior change:  ``python -m infona_client.qc.boundary --freeze``.
 """
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ import json
 
 import pytest
 
-from cograph_client.normalization.clean import clean_value
-from cograph_client.qc import boundary as b
-from cograph_client.resolver.models import (
+from infona_client.normalization.clean import clean_value
+from infona_client.qc import boundary as b
+from infona_client.resolver.models import (
     CleanOutcome,
     CleanReport,
     ExtractedAttribute,
@@ -46,7 +46,7 @@ def test_frozen_fixture_matches_rerender(domain, tier):
     rendered = b._dumps(b.render_domain(domain).tier(tier))
     assert rendered == frozen, (
         f"{domain}.{tier} drifted from its frozen fixture. "
-        f"If intentional, re-freeze with `python -m cograph_client.qc.boundary --freeze`."
+        f"If intentional, re-freeze with `python -m infona_client.qc.boundary --freeze`."
     )
 
 
@@ -255,7 +255,7 @@ def test_a5_reuses_shared_target_nodes_across_rows():
 # A2 is the candidate-fact extraction, and it re-renders from the canonical dataset.
 # --------------------------------------------------------------------------- #
 def test_a2_decomposes_rows_into_typed_entities_and_edges():
-    from cograph_client.qc.boundary import BOUNDARY_SPECS, render_extraction, _load_rows
+    from infona_client.qc.boundary import BOUNDARY_SPECS, render_extraction, _load_rows
 
     spec = BOUNDARY_SPECS["coffee_shops"]
     ext = render_extraction(_load_rows("coffee_shops"), spec)

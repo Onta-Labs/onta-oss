@@ -12,15 +12,15 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.nlp.pipeline import NLQueryPipeline
-from cograph_client.spatiotemporal.protocol import STQueryResult, SpatioTemporalFact
-from cograph_client.spatiotemporal.registry import (
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.nlp.pipeline import NLQueryPipeline
+from infona_client.spatiotemporal.protocol import STQueryResult, SpatioTemporalFact
+from infona_client.spatiotemporal.registry import (
     register_spatiotemporal_index,
     reset_spatiotemporal_index,
 )
-from cograph_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
-from cograph_client.spatiotemporal.routing import (
+from infona_client.spatiotemporal.memory import InMemorySpatioTemporalIndex
+from infona_client.spatiotemporal.routing import (
     STQueryIntent,
     SpatialAnchor,
     filter_by_type,

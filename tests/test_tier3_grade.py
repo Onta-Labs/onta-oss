@@ -21,8 +21,8 @@ import os
 
 import pytest
 
-from cograph_client.qc.tier3_fixture import Tier3Fixture, load_fixture
-from cograph_client.qc.tier3_grade import (
+from infona_client.qc.tier3_fixture import Tier3Fixture, load_fixture
+from infona_client.qc.tier3_grade import (
     CORRECT,
     ERROR,
     PARTIAL,

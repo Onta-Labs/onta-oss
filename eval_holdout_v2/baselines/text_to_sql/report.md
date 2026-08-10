@@ -1,6 +1,6 @@
 # Holdout v2.0 Text-to-SQL Baseline Report
 
-- **Baseline:** text_to_sql (same data, same LLM, same judge as Cograph)
+- **Baseline:** text_to_sql (same data, same LLM, same judge as Infona)
 - **Model:** google/gemini-3-flash-preview @ T=0
 - **Seeds:** 1, 2, 3  (3 independent SQL generations per question)
 - **Questions:** 302  |  **KGs:** 26  |  **Converted:** 26
@@ -13,7 +13,7 @@
 
 **Majority-vote (n=302): 68.5% [63.1, 73.5]**
 
-*Cograph primary baseline (same data, same model): 89.4%*
+*Infona primary baseline (same data, same model): 89.4%*
 
 ## 2. Per-Domain Accuracy
 

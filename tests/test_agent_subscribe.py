@@ -14,20 +14,20 @@ import json
 
 import pytest
 
-from cograph_client.agent.planner import (
+from infona_client.agent.planner import (
     handle,
     execute_plan,
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (
+from infona_client.agent.registry import (
     AgentContext,
     get_capability,
     reset_capabilities,
 )
-import cograph_client.agent.planner as planner_mod
-from cograph_client.agent.conversation_store import reset_conversation_store
-from cograph_client.scheduling.store import InMemoryScheduleStore
+import infona_client.agent.planner as planner_mod
+from infona_client.agent.conversation_store import reset_conversation_store
+from infona_client.scheduling.store import InMemoryScheduleStore
 
 TIMEOUT = 5.0
 
@@ -188,7 +188,7 @@ async def test_subscribe_without_url_still_creates_schedule(monkeypatch):
 
 
 def test_subscribe_guard_fires_on_standing_alert():
-    from cograph_client.agent.planner import _is_subscribe_request
+    from infona_client.agent.planner import _is_subscribe_request
 
     assert _is_subscribe_request(
         "Set up a standing weekly alert that notifies my webhook when X changes"

@@ -35,15 +35,15 @@ from typing import Optional
 import pytest
 import structlog
 
-import cograph_client.graph.text_markers as tm
-import cograph_client.nlp.embed_client as embed_client_mod
-import cograph_client.semantic.reconciler as rec
-from cograph_client.graph.ontology_queries import attr_uri
-from cograph_client.scheduling.models import Schedule
-from cograph_client.scheduling.store import InMemoryScheduleStore, reset_schedule_store
-from cograph_client.semantic.memory import InMemorySemanticIndex
-from cograph_client.semantic.protocol import IDENTITY_ATTR, SemanticChunk
-from cograph_client.semantic.registry import reset_semantic_index
+import infona_client.graph.text_markers as tm
+import infona_client.nlp.embed_client as embed_client_mod
+import infona_client.semantic.reconciler as rec
+from infona_client.graph.ontology_queries import attr_uri
+from infona_client.scheduling.models import Schedule
+from infona_client.scheduling.store import InMemoryScheduleStore, reset_schedule_store
+from infona_client.semantic.memory import InMemorySemanticIndex
+from infona_client.semantic.protocol import IDENTITY_ATTR, SemanticChunk
+from infona_client.semantic.registry import reset_semantic_index
 
 TENANT = "t1"
 KG = "kg1"
@@ -243,7 +243,7 @@ def _named_entities(n: int = 2) -> dict:
 
 
 def _chunk(entity_n: int, text: str, *, attr: str = "description") -> SemanticChunk:
-    from cograph_client.semantic.extract import content_hash
+    from infona_client.semantic.extract import content_hash
 
     return SemanticChunk(
         tenant_id=TENANT,
@@ -698,7 +698,7 @@ def test_scan_keyset_keeps_straddling_entity_group_whole(monkeypatch):
     scan WHOLE (the trailing partial group is held back and re-fetched from
     the last complete entity) — extract's intra-entity dedup and its
     multi-value canonicalization assume whole-entity groups."""
-    from cograph_client.semantic.extract import canonicalize_values, content_hash
+    from infona_client.semantic.extract import canonicalize_values, content_hash
 
     monkeypatch.setenv("COGRAPH_SEMANTIC_SCAN_PAGE_SIZE", "4")
     v_a = f"{PROSE} Straddle part alpha."
@@ -1052,7 +1052,7 @@ def test_hook_ensure_memo_expires_so_crud_deletes_cannot_poison_it(monkeypatch):
     schedules-CRUD DELETE of the auto-created reconcile row (which never
     touches this module) is re-ensured within one TTL window by the next hook
     write — deleting the row is NOT a durable opt-out (the env gate is)."""
-    from cograph_client.scheduling.store import make_schedule_store
+    from infona_client.scheduling.store import make_schedule_store
 
     async def run():
         store = make_schedule_store()  # the same in-memory singleton the hook uses
@@ -1096,8 +1096,8 @@ def test_two_runner_instances_fire_a_semantic_row_exactly_once(monkeypatch):
     """Claim exclusivity: semantic rows ride the SAME claim-then-advance path
     as every other schedule, so two runner instances over one store (the
     rolling-deploy overlap) dispatch a due row exactly once."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.scheduling.runner import ScheduleRunner
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.scheduling.runner import ScheduleRunner
 
     fired: list[tuple[str, str]] = []
 
@@ -1131,9 +1131,9 @@ def test_semantic_row_flows_through_for_update_skip_locked(monkeypatch):
     """On Postgres the semantic row is claimed by the runner's existing
     FOR UPDATE SKIP LOCKED transaction — asserted as SQL text shape against a
     fake pool, mirroring test_schedule_runner's approach (no live DB)."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.scheduling.runner import ScheduleRunner
-    from cograph_client.scheduling.store import PostgresScheduleStore
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.scheduling.runner import ScheduleRunner
+    from infona_client.scheduling.store import PostgresScheduleStore
 
     fired: list[str] = []
 

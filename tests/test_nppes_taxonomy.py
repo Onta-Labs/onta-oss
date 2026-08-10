@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api_registry.nppes_taxonomy import normalize_taxonomy
+from infona_client.api_registry.nppes_taxonomy import normalize_taxonomy
 
 
 @pytest.mark.parametrize(

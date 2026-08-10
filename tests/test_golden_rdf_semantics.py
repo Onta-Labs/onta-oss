@@ -6,7 +6,7 @@ frozen gold — not SPARQL↔Cypher translation.
 Run::
 
     pytest tests/test_golden_rdf_semantics.py -q
-    python -m cograph_client.graph.golden_neo4j
+    python -m infona_client.graph.golden_neo4j
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.graph.assertion_model import type_membership_property_id
-from cograph_client.graph.golden_fixture import build_mini_people
-from cograph_client.graph.golden_neo4j import (
+from infona_client.graph.assertion_model import type_membership_property_id
+from infona_client.graph.golden_fixture import build_mini_people
+from infona_client.graph.golden_neo4j import (
     DEFAULT_SUITE,
     CaseResult,
     compare_answers,
@@ -27,8 +27,8 @@ from cograph_client.graph.golden_neo4j import (
     run_case,
     run_suite,
 )
-from cograph_client.graph.ontology_queries import entity_uri
-from cograph_client.graph import rdfs_helpers as H
+from infona_client.graph.ontology_queries import entity_uri
+from infona_client.graph import rdfs_helpers as H
 
 
 FIXTURE_DIR = DEFAULT_SUITE.parent
@@ -126,7 +126,7 @@ def test_full_suite_all_pass():
 
 def test_no_sparql_in_helpers_source():
     """Harness must not couple to SPARQL text (plan §2.2)."""
-    helpers = Path(__file__).resolve().parents[1] / "cograph_client" / "graph" / "rdfs_helpers.py"
+    helpers = Path(__file__).resolve().parents[1] / "infona_client" / "graph" / "rdfs_helpers.py"
     text = helpers.read_text(encoding="utf-8")
     # Executable SPARQL surface — not docstring mentions that forbid it.
     assert "SELECT ?" not in text

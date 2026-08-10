@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.resolver.er.scoring import DefaultScorer
-from cograph_client.resolver.er.types import (
+from infona_client.resolver.er.scoring import DefaultScorer
+from infona_client.resolver.er.types import (
     DEFAULT_GUEST_CONFIG,
     ERConfig,
     NormalizedSignals,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from cograph_client.resolver.csv_resolver import _is_opaque_identifier
+from infona_client.resolver.csv_resolver import _is_opaque_identifier
 
 
 @pytest.mark.parametrize(

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.pipeline import ArtifactEnvelope, derive_fact_id
+from infona_client.pipeline import ArtifactEnvelope, derive_fact_id
 
 
 def test_construct_root_envelope():

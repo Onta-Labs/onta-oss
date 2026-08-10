@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from cograph_client.resolver.er.types import (
+from infona_client.resolver.er.types import (
     DEFAULT_GUEST_CONFIG,
     DEFAULTS_BY_TYPE,
     ERConfig,
@@ -28,13 +28,13 @@ from cograph_client.resolver.er.types import (
     primary_type,
     primary_config_type,
 )
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     rewrite_type_predicate_to_closure,
     with_subclass_closure,
     insert_type,
     insert_subtype,
 )
-from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity
+from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity
 
 
 # ---------------------------------------------------------------------------
@@ -143,10 +143,10 @@ async def test_er_patient_merges_via_ancestor_config() -> None:
     We test the slightly simpler case where `Patient` itself resolves — the
     decisive-email path fires and AUTO_MERGE is returned.
     """
-    from cograph_client.resolver.er.engine import ERPipeline, extract_signals
-    from cograph_client.resolver.er.types import MergeAction
-    from cograph_client.resolver.er.normalize import DefaultNormalizer
-    from cograph_client.resolver.er.blocking import generate_block_keys
+    from infona_client.resolver.er.engine import ERPipeline, extract_signals
+    from infona_client.resolver.er.types import MergeAction
+    from infona_client.resolver.er.normalize import DefaultNormalizer
+    from infona_client.resolver.er.blocking import generate_block_keys
 
     SHARED_EMAIL = "alice.nguyen@hospital.org"
     entity1 = _patient_entity("alice-1", SHARED_EMAIL, "Alice Nguyen")
@@ -198,9 +198,9 @@ async def test_er_novel_patient_subtype_merges_via_chain() -> None:
     HospitalPatient -> Patient -> Person: config resolved at Patient level.
     This would be None under flat config_for, proving hierarchy walk is essential.
     """
-    from cograph_client.resolver.er.engine import ERPipeline, extract_signals
-    from cograph_client.resolver.er.types import MergeAction
-    from cograph_client.resolver.er.normalize import DefaultNormalizer
+    from infona_client.resolver.er.engine import ERPipeline, extract_signals
+    from infona_client.resolver.er.types import MergeAction
+    from infona_client.resolver.er.normalize import DefaultNormalizer
 
     novel_parent_of = {"HospitalPatient": "Patient", "Patient": "Person"}
 
@@ -265,8 +265,8 @@ async def test_er_skips_without_hierarchy() -> None:
     passes neither config nor parent_of, find_match falls back to flat lookup
     (DEFAULTS_BY_TYPE.get) and returns SKIP for HospitalPatient.
     """
-    from cograph_client.resolver.er.engine import ERPipeline
-    from cograph_client.resolver.er.types import MergeAction
+    from infona_client.resolver.er.engine import ERPipeline
+    from infona_client.resolver.er.types import MergeAction
 
     mock_neptune = AsyncMock()
     pipeline = ERPipeline(mock_neptune)
@@ -405,20 +405,20 @@ async def test_synthesize_ancestors_creates_person_when_patient_ingested() -> No
     parent Person, Person is inserted into the ontology if not present.
     """
     from unittest.mock import AsyncMock as AM
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.models import IngestResult
 
     mock_neptune = AM()
     mock_neptune.update = AM(return_value=None)
     mock_neptune.query = AM(return_value={"head": {"vars": []}, "results": {"bindings": []}})
 
     # Build a minimal resolver — avoid touching Anthropic/OpenRouter keys.
-    # settings is imported lazily inside __init__ via `from cograph_client.config import settings`
+    # settings is imported lazily inside __init__ via `from infona_client.config import settings`
     mock_settings = MagicMock()
     mock_settings.openrouter_api_key = ""
-    with patch("cograph_client.resolver.schema_resolver.anthropic"):
-        with patch("cograph_client.config.settings", mock_settings):
-            from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    with patch("infona_client.resolver.schema_resolver.anthropic"):
+        with patch("infona_client.config.settings", mock_settings):
+            from infona_client.resolver.verdict_cache import JsonVerdictCache
             verdict_cache = MagicMock(spec=JsonVerdictCache)
             resolver = SchemaResolver(
                 neptune=mock_neptune,

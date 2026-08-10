@@ -32,7 +32,7 @@ os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 # change. Clearing the keys here makes the default run hermetic and reproducible —
 # the dispatch falls through to the Anthropic path the tests actually mock.
 #
-# This has to happen at MODULE scope, before cograph_client is imported, because
+# This has to happen at MODULE scope, before infona_client is imported, because
 # `config.settings` is a module-level pydantic-settings singleton that snapshots
 # the environment at import time; a fixture would run too late to affect it.
 #
@@ -52,8 +52,8 @@ if not live_llm_opted_in():
         os.environ.pop(_live_provider_key, None)
     os.environ[HERMETIC_SENTINEL_VAR] = "1"
 
-from cograph_client.api.app import create_app
-from cograph_client.graph.client import NeptuneClient
+from infona_client.api.app import create_app
+from infona_client.graph.client import NeptuneClient
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +66,7 @@ def _reset_enrichment_chain_state():
     after every test makes exact-chain assertions robust-by-construction rather
     than relying on each test file to remember to reset.
     """
-    from cograph_client.enrichment.tiers import reset_tiers
+    from infona_client.enrichment.tiers import reset_tiers
 
     reset_tiers()
     yield
@@ -83,7 +83,7 @@ def _reset_active_types_cache():
     reuses the same KG URI with a different active set. Cleared here rather than
     per test file so a new test cannot fall into the same trap.
     """
-    from cograph_client.nlp.pipeline import _active_types_cache
+    from infona_client.nlp.pipeline import _active_types_cache
 
     _active_types_cache.clear()
     yield

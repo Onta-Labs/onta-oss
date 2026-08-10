@@ -43,7 +43,7 @@ real NPIs, tickers, or trials is coincidental.
 ## Vocabulary this spec uses (grounded in the resolver code)
 
 These are the actual mechanisms the ingest uses; the assertions below are written in
-terms of them. Sources in `cograph_client/`:
+terms of them. Sources in `infona_client/`:
 
 | Concept | Where it lives | Concrete form |
 |---|---|---|

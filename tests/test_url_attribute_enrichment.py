@@ -17,14 +17,14 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.enrichment.extraction import (
+from infona_client.enrichment.extraction import (
     coerce_url_attribute_value,
     is_url_attribute,
     is_website_attribute,
     looks_like_url,
     normalize_url,
 )
-from cograph_client.enrichment.models import Verdict
+from infona_client.enrichment.models import Verdict
 
 
 def _v(value: str, source_url: str | None = None) -> Verdict:

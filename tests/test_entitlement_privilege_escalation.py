@@ -16,21 +16,21 @@ import inspect
 import pytest
 from fastapi import HTTPException
 
-from cograph_client.auth.api_keys import (
+from infona_client.auth.api_keys import (
     AuthVerdict,
     TenantContext,
     _resolve_allowed,
     get_tenant,
     register_external_verifier,
 )
-from cograph_client.graph.entitlement import (
+from infona_client.graph.entitlement import (
     get_entitlement_checker,
     is_entitled,
     layer_stack_for,
     register_entitlement_checker,
 )
-from cograph_client.graph.layers import Layer, enhanced_graph_uri
-from cograph_client.graph.queries import tenant_graph_uri
+from infona_client.graph.layers import Layer, enhanced_graph_uri
+from infona_client.graph.queries import tenant_graph_uri
 
 
 @pytest.fixture(autouse=True)
@@ -181,7 +181,7 @@ def test_client_cannot_inject_entitled_tenants_via_static_key(monkeypatch):
     """Static API keys never carry enhanced_entitled (defaults False)."""
     import json
 
-    from cograph_client.config import settings
+    from infona_client.config import settings
 
     monkeypatch.setattr(
         settings, "api_keys", json.dumps({"static-key": "acme"})
@@ -197,7 +197,7 @@ def test_raw_triples_admin_api_scopes_to_tenant_graph_only():
     A free client cannot reach ``graphs/global/enhanced`` through the admin
     triples API — the route hardcodes ``tenant_graph_uri(tenant.tenant_id)``.
     """
-    import cograph_client.api.routes.triples as triples_mod
+    import infona_client.api.routes.triples as triples_mod
 
     src = inspect.getsource(triples_mod)
     assert "tenant_graph_uri" in src

@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_catalog import upsert_type_pg
-from cograph_client.graph.scope import GraphScope
-from cograph_client.graph.store import GraphQueryError, GraphRecord
-from cograph_client.nlp.cypher_generate import (
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_catalog import upsert_type_pg
+from infona_client.graph.scope import GraphScope
+from infona_client.graph.store import GraphQueryError, GraphRecord
+from infona_client.nlp.cypher_generate import (
     format_schema_types_for_cypher,
     records_to_bindings,
     try_deterministic_cypher,
@@ -20,7 +20,7 @@ from cograph_client.nlp.cypher_generate import (
     try_list_query,
     try_stub_count_query,
 )
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 
 def _kg_uri(tenant: str = "demo-tenant", kg: str = "bookstore") -> str:
@@ -123,7 +123,7 @@ def test_deterministic_priority_hop_over_list():
 
 
 def test_format_schema_types_for_cypher():
-    from cograph_client.graph.ontology_catalog import (
+    from infona_client.graph.ontology_catalog import (
         OntoAttrRecord,
         SchemaTypeSummary,
     )
@@ -169,7 +169,7 @@ def test_format_schema_types_for_cypher():
 
 async def _seed_bookstore(store: MemoryGraphStore) -> None:
     """Seed via Assertion SoT (+ dual-write cache) so ADR 0013 NL templates match."""
-    from cograph_client.graph.rdf_model import AssertionFact, assert_fact
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
 
     scope = GraphScope.for_instance("demo-tenant", "bookstore")
     session = store.session(scope)
@@ -465,7 +465,7 @@ async def test_ask_default_path_does_not_enter_cypher_when_disabled(monkeypatch)
 @pytest.mark.asyncio
 async def test_ask_cypher_rejects_model_tenant_in_params_via_confine():
     """Session overwrites evil tenant even if fixture somehow set it."""
-    from cograph_client.graph.rdf_model import AssertionFact, assert_fact
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
 
     store = MemoryGraphStore()
     scope = GraphScope.for_instance("demo-tenant", "bookstore")
@@ -508,7 +508,7 @@ async def test_ask_cypher_rejects_model_tenant_in_params_via_confine():
             }
         return out
 
-    import cograph_client.nlp.pipeline as pl
+    import infona_client.nlp.pipeline as pl
 
     old = pl.try_deterministic_cypher
     pl.try_deterministic_cypher = evil_det  # type: ignore[assignment]
@@ -533,7 +533,7 @@ def test_records_to_bindings():
 
 
 def test_build_cypher_prompt_includes_error_feedback():
-    from cograph_client.nlp.prompts import build_cypher_generation_prompt
+    from infona_client.nlp.prompts import build_cypher_generation_prompt
 
     user = build_cypher_generation_prompt(
         "How many books?",

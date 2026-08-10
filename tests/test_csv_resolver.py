@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.resolver import csv_resolver
-from cograph_client.resolver.csv_resolver import (
+from infona_client.resolver import csv_resolver
+from infona_client.resolver.csv_resolver import (
     COLUMN_ASSIGN_SYSTEM,
     COMPLETE_SYSTEM,
     ENTITY_SYSTEM,
@@ -25,7 +25,7 @@ from cograph_client.resolver.csv_resolver import (
     _snake_case,
     _v2_max_tokens,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ColumnMapping,
     ColumnRole,
     CoreSlot,
@@ -36,7 +36,7 @@ from cograph_client.resolver.models import (
     OntologyExtensions,
     TypeExtension,
 )
-from cograph_client.resolver.profiler import profile_table
+from infona_client.resolver.profiler import profile_table
 from tests._hermetic import ALLOW_LIVE_VAR
 
 # The dataset CSVs live in the proprietary parent repo and are gitignored —
@@ -658,7 +658,7 @@ class TestInferSchemaEmptyLLMResponseRetry:
 
 class TestBatchedInsertTriples:
     def test_batching(self):
-        from cograph_client.graph.queries import batched_insert_triples
+        from infona_client.graph.queries import batched_insert_triples
 
         triples = [(f"s{i}", "p", "o") for i in range(1200)]
         batches = batched_insert_triples("https://g", triples, batch_size=500)
@@ -666,11 +666,11 @@ class TestBatchedInsertTriples:
         assert "INSERT DATA" in batches[0]
 
     def test_empty(self):
-        from cograph_client.graph.queries import batched_insert_triples
+        from infona_client.graph.queries import batched_insert_triples
         assert batched_insert_triples("https://g", []) == []
 
     def test_small(self):
-        from cograph_client.graph.queries import batched_insert_triples
+        from infona_client.graph.queries import batched_insert_triples
         triples = [("s", "p", "o")]
         batches = batched_insert_triples("https://g", triples)
         assert len(batches) == 1
@@ -1063,7 +1063,7 @@ class TestInferSchemaV2Retry:
         _mock_v2(monkeypatch, resolver, [bad, copy.deepcopy(bad)], [])
 
         async def fake_legacy(self, headers, sample_rows, existing_types, total_rows=0, existing_attrs=None):
-            from cograph_client.resolver.models import (
+            from infona_client.resolver.models import (
                 ColumnMapping, ColumnRole, CSVSchemaMapping, EntitySpec,
             )
             return CSVSchemaMapping(
@@ -2365,7 +2365,7 @@ class TestSchemaInferenceModel:
 
     def test_decoupled_from_reasoning_primary(self):
         # The bug: schema inference tracking PRIMARY_MODEL (Opus). It must not.
-        from cograph_client.resolver.llm_router import PRIMARY_MODEL
+        from infona_client.resolver.llm_router import PRIMARY_MODEL
 
         assert CSVResolver.EXTRACT_MODEL != PRIMARY_MODEL
         assert "opus" not in CSVResolver.EXTRACT_MODEL.lower()

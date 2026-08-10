@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from cograph_client.graph import client as client_mod
-from cograph_client.graph.client import (
+from infona_client.graph import client as client_mod
+from infona_client.graph.client import (
     _MAX_TRANSPORT_ATTEMPTS,
     NeptuneClient,
     SparqlQueryError,

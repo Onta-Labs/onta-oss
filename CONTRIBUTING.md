@@ -1,13 +1,13 @@
-# Contributing to Onta
+# Contributing to Infona
 
 ## What can ship here (OSS boundary — read first)
 
-`onta-oss` is published publicly to npm (and PyPI). **Public publication is a
+`infona-oss` is published publicly to npm (and PyPI). **Public publication is a
 one-way door** — once code ships, it's in mirrors, archives, and forks within
 hours. Everything in this repo must be OSS-safe.
 
 **Ships here (OSS):**
-- `cograph_client/` — ingest, resolver, **core ER engine** (normalize, block,
+- `infona_client/` — ingest, resolver, **core ER engine** (normalize, block,
   score, merge), REST API surface, embedding service
 - `packages/cograph` (TS SDK + CLI, published as `@infona-ai/cli`) and `packages/cograph-mcp` (MCP server, published as `@infona-ai/mcp`)
 - Plugin **protocols**: `register_external_verifier` (auth),
@@ -18,12 +18,12 @@ hours. Everything in this repo must be OSS-safe.
 **Does NOT ship here (proprietary — lives in the parent `cograph/` repo):**
 - Paid enrichment adapters (Exa, Perplexity, GS1, Anthropic web_search)
 - Production Clerk auth integration (`cograph-auth-clerk`)
-- Cograph Explorer web app, AWS/SAM infra, deploy workflows
+- Infona Explorer web app, AWS/SAM infra, deploy workflows
 - Entitlement / billing / rate-limit logic
 - Advanced ER tooling (review-queue UI, embedding matchers, active learning)
 
 The canonical, fuller table with reasoning lives in the parent repo at
-[`docs/oss_proprietary_boundary.md`](https://github.com/Onta-Labs/onta/blob/main/docs/oss_proprietary_boundary.md).
+[`docs/oss_proprietary_boundary.md`](https://github.com/infona-ai/infona/blob/main/docs/oss_proprietary_boundary.md).
 When in doubt, surface the question before writing code.
 
 **Entitlement gating is NOT done in OSS (incl. the MCP server).** The MCP server
@@ -47,7 +47,7 @@ bash scripts/check_npm_bundle.sh    # inspect published tarballs for forbidden p
 
 CI runs `check_boundary.sh` on every PR (`.github/workflows/boundary.yml`), and
 the publish workflow runs `check_npm_bundle.sh` before any `npm publish`. A PR
-that adds `from cograph.<anything>` under `cograph_client/` or `packages/` fails.
+that adds `from cograph.<anything>` under `infona_client/` or `packages/` fails.
 
 ## Contributor License Agreement (CLA)
 
@@ -71,8 +71,8 @@ retroactive — and you keep the copyright to your contribution.
 
 ```bash
 # Clone
-git clone https://github.com/Onta-Labs/onta-oss.git
-cd onta-oss
+git clone https://github.com/infona-ai/infona-oss.git
+cd infona-oss
 
 # Start graph DB
 docker compose up -d
@@ -93,13 +93,13 @@ pytest tests/ -v --tb=short
 
 ```bash
 source .env
-uvicorn cograph_client.api.app:create_app --factory --port 8000
+uvicorn infona_client.api.app:create_app --factory --port 8000
 ```
 
 ## Project Structure
 
 ```
-cograph_client/
+infona_client/
   api/          FastAPI routes and middleware
   auth/         API key authentication
   graph/        SPARQL client and query builders
@@ -154,7 +154,7 @@ pytest tests/ -v
 pytest tests/test_validator.py -v
 
 # Run with coverage
-pytest tests/ --cov=cograph_client --cov-report=term-missing
+pytest tests/ --cov=infona_client --cov-report=term-missing
 ```
 
 Tests mock the Neptune/Fuseki client. No running graph DB needed for unit tests.

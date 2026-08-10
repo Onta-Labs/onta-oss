@@ -2,7 +2,7 @@
 
 The field used to be called ``skills``. In this product a "skill" is now
 type-attached, human-authored markdown PROSE consumed by LM agents
-(``cograph_client.skills``) — the opposite of the executable functions this
+(``infona_client.skills``) — the opposite of the executable functions this
 endpoint attaches. The response field was therefore renamed to ``functions``.
 
 Because ``DiscoveredEntity.skills`` is part of the SHIPPED
@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cograph_client.api.routes import lambda_functions
+from infona_client.api.routes import lambda_functions
 
 
 def _sparql(rows: list[dict[str, str]], variables: list[str]) -> dict:
