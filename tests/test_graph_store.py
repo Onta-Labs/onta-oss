@@ -552,6 +552,32 @@ async def test_set_entity_type_labels_memory():
     await store.close()
 
 
+@pytest.mark.asyncio
+async def test_set_entity_type_labels_union_not_replace():
+    """P1: incremental domain labels accumulate (Neo4j SET e:Label is additive)."""
+    store = MemoryGraphStore()
+    session = store.session(GraphScope.for_instance("t", "k"))
+    await session.execute_template(
+        "entity_merge",
+        {
+            "id": "e1",
+            "primary_type": "Person",
+            "name": "P",
+            "source": "s",
+            "ts": "t",
+        },
+    )
+    await set_entity_type_labels(session, "e1", ["Person"])
+    rows = await set_entity_type_labels(session, "e1", ["Author"])
+    labels = rows[0]["labels"]
+    assert "Entity" in labels
+    assert "Person" in labels
+    assert "Author" in labels
+    # Second call must not wipe the first domain label.
+    assert labels == ["Entity", "Person", "Author"]
+    await store.close()
+
+
 def test_sanitize_domain_label_b1_rules():
     assert sanitize_domain_label("Person") == "Person"
     assert sanitize_domain_label("city/town") == "city_town"

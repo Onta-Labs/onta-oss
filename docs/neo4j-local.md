@@ -129,11 +129,47 @@ await set_entity_type_labels(session, eid, ["Book"])  # sanitized, reserved-safe
 Leaves are sanitized (`[^A-Za-z0-9_]` → `_`, digit prefix → `T_`) and rejected
 if they collide with reserved system labels (`Entity`, `OntoType`, …).
 
+## Explore / KG-admin reads (E5)
+
+Module: `cograph_client.graph.explore_store`. Dual-backend like `kg_writer` /
+`ontology_catalog`: pass `store=` / `session=` or set
+`COGRAPH_GRAPH_BACKEND=neo4j`; otherwise helpers return `None` so SPARQL explore
+routes stay the default.
+
+```python
+from cograph_client.graph.explore_store import (
+    list_entities_by_type,
+    get_entity_detail,
+    type_counts,
+    count_entities,
+)
+
+# Paged list (primary_type or match="label"); type_name is ONTA-425 validated.
+page = await list_entities_by_type(
+    store=store, tenant_id="demo-tenant", kg="bookstore",
+    type_name="Person", limit=50, after_id=None,
+)
+detail = await get_entity_detail(
+    store=store, tenant_id="demo-tenant", kg="bookstore", entity_id=eid,
+)
+counts = await type_counts(store=store, tenant_id="demo-tenant", kg="bookstore")
+n = await count_entities(store=store, tenant_id="demo-tenant", kg="bookstore")
+```
+
+**KG list / registry:** full `:KgMeta` registry is deferred (model §10.1 B7).
+Until then, `count_entities` is the minimal per-kg size signal when listing
+from the instance store alone. Route smoke: `GET …/kgs/{kg}/type-counts`
+already prefers GraphStore when the neo4j backend is active.
+
+Allowlisted templates: `entity_list_by_type_page`, `entity_count_by_type`,
+`entity_count_total`, `entity_detail`, `entity_rels` (+ existing
+`entity_count_by_primary_type`).
+
 ## Tests
 
 ```bash
 # Hermetic (default CI) — in-memory store + scope unit tests
-pytest tests/test_graph_store.py -q
+pytest tests/test_graph_store.py tests/test_explore_store.py -q
 
 # Live Neo4j smoke (compose up first)
 NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=onta-dev-password \
