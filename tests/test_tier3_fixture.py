@@ -17,7 +17,7 @@ import os
 
 import pytest
 
-from cograph_client.qc.tier3_fixture import (
+from infona_client.qc.tier3_fixture import (
     TIER_LABELS,
     FixtureValidationError,
     SourceSeed,

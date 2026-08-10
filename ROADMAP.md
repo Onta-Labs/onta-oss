@@ -1,4 +1,4 @@
-# Omnix Roadmap
+# Infona Roadmap
 
 ## Current State (April 8, 2026)
 

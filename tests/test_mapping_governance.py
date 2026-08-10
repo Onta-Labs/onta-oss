@@ -25,7 +25,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 
-from cograph_client.resolver.governance import (
+from infona_client.resolver.governance import (
     LOW_CONFIDENCE_THRESHOLD,
     MappingShapeProposal,
     PendingShapeProposals,
@@ -37,7 +37,7 @@ from cograph_client.resolver.governance import (
     pending_shape_proposals,
     register_governance_panel,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ColumnMapping,
     ColumnRole,
     CoreSlot,
@@ -347,7 +347,7 @@ def live_client(app, mock_neptune):
 def mock_schema_resolver():
     from unittest.mock import patch
 
-    with patch("cograph_client.api.routes.ingest.SchemaResolver") as cls:
+    with patch("infona_client.api.routes.ingest.SchemaResolver") as cls:
         instance = AsyncMock()
         instance._fetch_ontology.return_value = ({}, {})
         instance._resolve_and_insert.return_value = IngestResult()

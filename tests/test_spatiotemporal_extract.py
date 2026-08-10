@@ -2,7 +2,7 @@
 spatio-temporal index.
 
 Covers :func:`extract_spatiotemporal_facts` (triples → facts) and the auto-index
-hook inside :func:`cograph_client.graph.kg_writer.insert_facts` (every converged
+hook inside :func:`infona_client.graph.kg_writer.insert_facts` (every converged
 writer indexes its geometry-bearing entities, scoped per-KG, best-effort).
 """
 
@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
-from cograph_client.spatiotemporal.extract import extract_spatiotemporal_facts
-from cograph_client.spatiotemporal.registry import (
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.queries import kg_graph_uri, parse_kg_graph_uri
+from infona_client.spatiotemporal.extract import extract_spatiotemporal_facts
+from infona_client.spatiotemporal.registry import (
     get_spatiotemporal_index,
     register_spatiotemporal_index,
     reset_spatiotemporal_index,

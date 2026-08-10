@@ -1,6 +1,6 @@
 # Holdout v2.0 -- Public Eval Artifacts
 
-Public subset of the Cograph holdout v2 evaluation, published for
+Public subset of the Infona holdout v2 evaluation, published for
 reproducibility. These artifacts are referenced throughout the paper.
 
 ## Contents
@@ -22,7 +22,7 @@ reproducibility. These artifacts are referenced throughout the paper.
 
 - **`gold_private/`** -- held-back gold questions for anti-contamination.
   Not published to prevent benchmark leakage.
-- **`baseline_run/`** -- primary Cograph run artifacts (the cross_llm_runs
+- **`baseline_run/`** -- primary Infona run artifacts (the cross_llm_runs
   already include the primary Opus result).
 - Two pandas_agent files >10 MB containing raw LLM outputs were excluded
   to keep the OSS repo lean.

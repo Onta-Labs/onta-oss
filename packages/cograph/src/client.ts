@@ -2,17 +2,22 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { isClerkUserId, readConfig, writeConfig } from "./config.js";
 
-export class OntaError extends Error {
+export class InfonaError extends Error {
   status?: number;
   body?: string;
 
   constructor(message: string, opts?: { status?: number; body?: string }) {
     super(message);
-    this.name = "OntaError";
+    this.name = "InfonaError";
     this.status = opts?.status;
     this.body = opts?.body;
   }
 }
+
+/** @deprecated Prefer {@link InfonaError}. */
+export const OntaError = InfonaError;
+export type OntaError = InfonaError;
+
 
 export interface ClientOptions {
   apiKey?: string;

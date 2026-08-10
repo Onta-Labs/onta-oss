@@ -20,14 +20,14 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from cograph_client.obs import timed
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.models import (
+from infona_client.obs import timed
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 def _stage_calls(mock_logger):
@@ -72,7 +72,7 @@ def mock_neptune():
 
 
 async def test_ingest_emits_extract_and_resolve_spans(mock_neptune, tmp_path, monkeypatch):
-    import cograph_client.resolver.schema_resolver as sr
+    import infona_client.resolver.schema_resolver as sr
 
     rec = MagicMock()
     monkeypatch.setattr(sr, "logger", rec)

@@ -6,7 +6,7 @@ Pure string-level assertions — no Neptune, no network. These guard that
 blindly appending like the legacy ``insert_*`` builders.
 """
 
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     upsert_type,
     upsert_attribute,
     type_uri,

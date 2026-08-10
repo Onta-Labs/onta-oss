@@ -1,6 +1,6 @@
 """Unit tests for OMNIX_OFFLINE / COGRAPH_OFFLINE fail-closed network guard.
 
-Covers cograph_client/offline.py and its wiring at the main outbound
+Covers infona_client/offline.py and its wiring at the main outbound
 entrypoints (LLM router, embed client, Wikidata). Default is OFF — no behavior
 change for normal OSS users.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.offline import (
+from infona_client.offline import (
     OfflineModeError,
     assert_online_host,
     assert_online_url,
@@ -165,7 +165,7 @@ class TestEntrypointWiring:
         monkeypatch.delenv("OMNIX_OPENROUTER_BASE_URL", raising=False)
         monkeypatch.delenv("OMNIX_LLM_PROVIDER", raising=False)
 
-        from cograph_client.resolver import llm_router
+        from infona_client.resolver import llm_router
 
         # Force default cloud base even if import-time env differed.
         monkeypatch.setattr(
@@ -187,7 +187,7 @@ class TestEntrypointWiring:
         monkeypatch.setenv("OMNIX_OFFLINE", "1")
         monkeypatch.setenv("OMNIX_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
 
-        from cograph_client.resolver import llm_router
+        from infona_client.resolver import llm_router
 
         captured: dict = {}
 
@@ -224,7 +224,7 @@ class TestEntrypointWiring:
         monkeypatch.delenv("OMNIX_LLM_BASE_URL", raising=False)
         monkeypatch.delenv("OMNIX_OPENROUTER_BASE_URL", raising=False)
 
-        from cograph_client.nlp import embed_client
+        from infona_client.nlp import embed_client
 
         monkeypatch.setattr(
             embed_client,
@@ -239,7 +239,7 @@ class TestEntrypointWiring:
     async def test_wikidata_lookup_blocks(self, monkeypatch):
         monkeypatch.setenv("OMNIX_OFFLINE", "1")
 
-        from cograph_client.enrichment.sources.wikidata import WikidataAdapter
+        from infona_client.enrichment.sources.wikidata import WikidataAdapter
 
         src = WikidataAdapter()
         with pytest.raises(OfflineModeError) as ei:
@@ -250,7 +250,7 @@ class TestEntrypointWiring:
     async def test_page_fetch_degrades_offline(self, monkeypatch):
         monkeypatch.setenv("OMNIX_OFFLINE", "1")
 
-        from cograph_client.retrieval.fetch import StaticHttpFetcher
+        from infona_client.retrieval.fetch import StaticHttpFetcher
 
         page = await StaticHttpFetcher().fetch("https://example.com/page")
         assert page.ok is False
@@ -259,6 +259,6 @@ class TestEntrypointWiring:
 
 def test_offline_blocks_anthropic_host(monkeypatch):
     monkeypatch.setenv("OMNIX_OFFLINE", "1")
-    from cograph_client.offline import OfflineModeError, assert_online_host
+    from infona_client.offline import OfflineModeError, assert_online_host
     with pytest.raises(OfflineModeError):
         assert_online_host("api.anthropic.com", purpose="Anthropic extract")

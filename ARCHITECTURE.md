@@ -1,4 +1,4 @@
-# Omnix Architecture
+# Infona Architecture
 
 Knowledge graph platform that ingests structured and unstructured data, resolves it
 against a shared ontology, stores it in Neptune (RDF), and answers natural language
@@ -118,9 +118,9 @@ follow the same resolution + insertion path.
 
 Web-discovery ingest confirms a single target type + attribute set with the user
 before pulling the full result set, then extracts against that confirmation via an
-opt-in `ExtractionConstraint` (`cograph_client/resolver/models.py`), passed as
+opt-in `ExtractionConstraint` (`infona_client/resolver/models.py`), passed as
 `SchemaResolver.ingest()`'s `constrain_types` / `constrain_attributes` /
-`constrain_soft` kwargs (`cograph_client/resolver/schema_resolver.py`). Two modes,
+`constrain_soft` kwargs (`infona_client/resolver/schema_resolver.py`). Two modes,
 selected by `ExtractionConstraint.soft`:
 
 - **Hard cage (`soft=False`)** — flattens extraction to exactly the confirmed type +
@@ -257,7 +257,7 @@ failures.
 
 ## Data Normalization Subsystem
 
-`cograph_client/normalization/` — infer normalization rules from real data, confirm
+`infona_client/normalization/` — infer normalization rules from real data, confirm
 with a human, execute, and auto-apply to future inserts.
 
 **Lifecycle: infer → confirm → execute → auto-apply.**
@@ -443,12 +443,12 @@ The example bank must stay in sync with the ontology. Stale examples (referencin
 old predicate URIs or wrong datatypes) cause regressions because the LLM copies
 broken SPARQL patterns.
 
-**Auto-purge on KG delete** (`cograph_client/api/routes/knowledge_graphs.py`):
+**Auto-purge on KG delete** (`infona_client/api/routes/knowledge_graphs.py`):
 When `DELETE /kgs/{name}` is called, all examples for that KG are removed from
 the bank. This prevents stale SPARQL patterns from poisoning few-shot retrieval
 after reingest. The clear → reingest cycle starts with a clean slate.
 
-**Auto-merge on eval completion** (`cograph_client/eval.py:rebuild_example_bank`):
+**Auto-merge on eval completion** (`infona_client/eval.py:rebuild_example_bank`):
 After each eval run saves correct pairs to `finetune_pairs.jsonl`, those pairs
 are merged into the example bank. Every eval round produces a better bank. The
 flow:
@@ -779,7 +779,7 @@ running container, causing 500 errors on in-flight requests.
 
 LLM model routing (all resolver/governance/query calls go through OpenRouter
 with a primary model + automatic fallback via OpenRouter's `models` array, see
-`cograph_client/resolver/llm_router.py`):
+`infona_client/resolver/llm_router.py`):
 - `OMNIX_LLM_MODEL` — default `anthropic/claude-opus-4.8`. Primary model for every
   decision/inference call. Per-role knobs below default to this, so changing it
   flips all roles at once unless one is individually overridden.

@@ -31,16 +31,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-from cograph_client.agent.registry import AgentContext, PlanStep
-from cograph_client.pipeline.source_bundle import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.registry import AgentContext, PlanStep
+from infona_client.pipeline.source_bundle import (
     TIER_AUTHORITATIVE,
     TIER_WEB,
     SourceBundle,
 )
-from cograph_client.resolver.schema_resolver import IngestResult, SchemaResolver
-from cograph_client.web_sources.base import (
+from infona_client.resolver.schema_resolver import IngestResult, SchemaResolver
+from infona_client.web_sources.base import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,

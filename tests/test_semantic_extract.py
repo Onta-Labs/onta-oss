@@ -17,7 +17,7 @@ import hashlib
 
 import structlog
 
-from cograph_client.semantic.extract import (
+from infona_client.semantic.extract import (
     MAX_CHUNK_CHARS,
     MAX_CHUNKS_PER_ENTITY,
     MAX_IDENTITY_CHUNKS,
@@ -30,7 +30,7 @@ from cograph_client.semantic.extract import (
     is_identity_predicate,
     is_identity_value,
 )
-from cograph_client.semantic.protocol import IDENTITY_ATTR
+from infona_client.semantic.protocol import IDENTITY_ATTR
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"

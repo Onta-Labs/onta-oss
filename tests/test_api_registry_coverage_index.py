@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api_registry.coverage_index import (
+from infona_client.api_registry.coverage_index import (
     CoverageIndex,
     rank_lexical,
 )
-from cograph_client.api_registry.ranking import coverage_text
-from cograph_client.api_registry.spec import (
+from infona_client.api_registry.ranking import coverage_text
+from infona_client.api_registry.spec import (
     ApiSourceSpec,
     Coverage,
     EndpointSpec,

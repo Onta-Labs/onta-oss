@@ -1,7 +1,7 @@
 """Integration test: ingest bookstore.csv and ask 5 questions.
 
 OBSOLETE in this form — skipped by default. These tests drove ingest/ask/clear
-through the Python CLI (``python -m cograph_client.cli``), which no longer exists:
+through the Python CLI (``python -m infona_client.cli``), which no longer exists:
 the CLI was migrated to the TypeScript ``packages/cograph`` npm package. They also
 require a live SPARQL endpoint (Fuseki/Neptune) and an LLM API key, so they were
 never part of the unit-test CI job.
@@ -31,9 +31,9 @@ import pytest
 # or the TS CLI. This replaces the old --run-integration opt-in, whose
 # pytest_addoption/pytest_collection_modifyitems hooks never fired: pytest only
 # honors those hooks from conftest.py or plugins, not from a test module, so the
-# tests errored at setup ("No module named cograph_client.cli") instead of skipping.
+# tests errored at setup ("No module named infona_client.cli") instead of skipping.
 pytestmark = pytest.mark.skip(
-    reason="obsolete: drove the removed Python CLI (cograph_client.cli); "
+    reason="obsolete: drove the removed Python CLI (infona_client.cli); "
     "needs porting to the REST API / TS CLI + a live server. See module docstring."
 )
 
@@ -56,7 +56,7 @@ def _run_cli(*args) -> subprocess.CompletedProcess:
     if API_KEY:
         env["OMNIX_API_KEY"] = API_KEY
     return subprocess.run(
-        [sys.executable, "-m", "cograph_client.cli", *args],
+        [sys.executable, "-m", "infona_client.cli", *args],
         capture_output=True,
         text=True,
         env=env,

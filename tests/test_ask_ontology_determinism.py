@@ -16,7 +16,7 @@ No persona tokens.
 
 from __future__ import annotations
 
-from cograph_client.nlp.pipeline import (
+from infona_client.nlp.pipeline import (
     NLQueryPipeline,
     ONTOLOGY_EMPTY,
     ONTOLOGY_FETCH_ERROR,

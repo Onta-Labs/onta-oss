@@ -24,9 +24,9 @@ These tests pin:
 import asyncio
 from unittest.mock import AsyncMock
 
-import cograph_client.api.routes.explore as explore_mod
-import cograph_client.nlp.pipeline as pipeline_mod
-from cograph_client.graph.kg_writer import (
+import infona_client.api.routes.explore as explore_mod
+import infona_client.nlp.pipeline as pipeline_mod
+from infona_client.graph.kg_writer import (
     _KG_NAME_PRED,
     _kg_meta_uri,
     ensure_kg_registered,
@@ -329,9 +329,9 @@ def test_register_then_list_roundtrip():
         store = _InMemoryTripleStore()
         await ensure_kg_registered(store, TENANT, "my-kg")
 
-        from cograph_client.api.routes.knowledge_graphs import OMNIX_ONTO
-        from cograph_client.graph.parser import parse_sparql_results
-        from cograph_client.graph.queries import tenant_graph_uri
+        from infona_client.api.routes.knowledge_graphs import OMNIX_ONTO
+        from infona_client.graph.parser import parse_sparql_results
+        from infona_client.graph.queries import tenant_graph_uri
 
         base = tenant_graph_uri(TENANT)
         sparql = (

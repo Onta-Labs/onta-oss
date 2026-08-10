@@ -32,12 +32,12 @@ Bare lines (no leading `/`) auto-route to `/ask`. Full walkthrough at [infona.ai
 Pointing the CLI at your own backend skips the browser sign-in:
 
 ```bash
-onta --local                          # defaults to http://localhost:8000
-onta --no-login                       # uses INFONA_API_URL env var
-INFONA_API_URL=http://my-host:8000 onta
+infona --local                          # defaults to http://localhost:8000
+infona --no-login                       # uses INFONA_API_URL env var
+INFONA_API_URL=http://my-host:8000 infona
 ```
 
-When self-hosted, the prompt shows the host suffix: `onta@localhost:8000 (kg) ▸`. Bare `onta` still triggers the hosted-version login flow.
+When self-hosted, the prompt shows the host suffix: `infona@localhost:8000 (kg) ▸`. Bare `infona` still triggers the hosted-version login flow.
 
 ## Auto-enrichment
 
@@ -59,20 +59,20 @@ Use `/enrich watch <job_id>` for live progress, `/enrich jobs` to list recent jo
 npm install @infona-ai/cli        # or: npm install -g @infona-ai/cli
 ```
 
-Requires Node 20+. The global install exposes the `onta` command.
+Requires Node 20+. The global install exposes the `infona` command (`onta` remains a compatibility alias).
 
 ## Browsing what got ingested
 
 After ingest, look around before asking questions:
 
 ```text
-onta (mentors) [37,715] ▸ /types
+infona (mentors) [37,715] ▸ /types
   Type           Entities
   Mentor              988
   Skill               412
   Industry             38
 
-onta (mentors) [37,715] ▸ /type Mentor
+infona (mentors) [37,715] ▸ /type Mentor
   Mentor  1,000 entities
 
   Attributes (6)
@@ -91,7 +91,7 @@ onta (mentors) [37,715] ▸ /type Mentor
 ## SDK
 
 ```ts
-import { Client, OntaError } from "@infona-ai/cli";
+import { Client, InfonaError } from "@infona-ai/cli";
 
 const client = new Client({ apiKey: process.env.INFONA_API_KEY });
 
@@ -125,7 +125,7 @@ new Client({
 - `normalizeSuggest(kg, type)`, `normalizeRules({ kg?, status? })`, `normalizeConfirmRule(id)`, `normalizeRejectRule(id)`, `normalizeApplyRule(id)` — inferred-normalization rule lifecycle.
 - `ontologyRecommend(body?)` — recommend ontology relationships/changes for a KG.
 
-All errors throw `OntaError`.
+All errors throw `InfonaError` (alias: `OntaError`).
 
 ### Raw / passthrough API (`client.raw.*`)
 
@@ -181,7 +181,7 @@ npx @infona-ai/cli clear --kg my-data --yes
 
 ### Environment
 
-- `INFONA_API_KEY` — required for headless / CI use; interactive `onta login` writes one to `~/.onta/config.json` automatically.
+- `INFONA_API_KEY` — required for headless / CI use; interactive `infona login` writes one to `~/.onta/config.json` automatically.
 - `INFONA_API_URL` — default `https://api.infona.ai` (legacy hosts `api.onta.sh` / `api.getonta.com` still work).
 - `INFONA_TENANT` — default `demo-tenant`. The login flow sets this to your workspace id.
 

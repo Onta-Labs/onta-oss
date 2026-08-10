@@ -43,9 +43,9 @@ import json
 
 import pytest
 
-from cograph_client.eval import rebuild_example_bank
-from cograph_client.nlp import example_bank as bank_mod
-from cograph_client.nlp.example_bank import ExampleBank
+from infona_client.eval import rebuild_example_bank
+from infona_client.nlp import example_bank as bank_mod
+from infona_client.nlp.example_bank import ExampleBank
 
 GRAPH = "https://graph.onta.sh/graphs/demo-tenant/kg/{kg}"
 LEGACY_GRAPH = "https://omnix.dev/graphs/demo-tenant/kg/{kg}"
@@ -536,7 +536,7 @@ def test_run_full_eval_still_calls_the_rebuild():
     """The helper is only worth testing if the eval still routes through it."""
     import inspect
 
-    from cograph_client import eval as eval_mod
+    from infona_client import eval as eval_mod
 
     src = inspect.getsource(eval_mod.run_full_eval)
     assert "await rebuild_example_bank(ft_path)" in src, (

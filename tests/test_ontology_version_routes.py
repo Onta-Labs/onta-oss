@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.graph.ontology_base_pin import BasePin, UpgradePreview
-from cograph_client.graph.ontology_changelog import ChangelogEntry
-from cograph_client.graph.queries import tenant_graph_uri
-from cograph_client.models.ontology import ChangeKind, ChangeRecord
+from infona_client.graph.ontology_base_pin import BasePin, UpgradePreview
+from infona_client.graph.ontology_changelog import ChangelogEntry
+from infona_client.graph.queries import tenant_graph_uri
+from infona_client.models.ontology import ChangeKind, ChangeRecord
 
 
 # ---------------------------------------------------------------------------
@@ -38,15 +38,15 @@ def test_base_pin_get(client, auth_headers, mock_neptune):
     pin = _pin()
     with (
         patch(
-            "cograph_client.api.routes.ontology.ensure_workspace_base_pin",
+            "infona_client.api.routes.ontology.ensure_workspace_base_pin",
             new=AsyncMock(return_value=pin),
         ),
         patch(
-            "cograph_client.api.routes.ontology.latest_base_release_version",
+            "infona_client.api.routes.ontology.latest_base_release_version",
             new=AsyncMock(return_value=3),
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=42),
         ),
     ):
@@ -80,7 +80,7 @@ def test_base_pin_preview(client, auth_headers, mock_neptune):
         to_fingerprint="bbb",
     )
     with patch(
-        "cograph_client.api.routes.ontology.preview_base_upgrade",
+        "infona_client.api.routes.ontology.preview_base_upgrade",
         new=AsyncMock(return_value=preview),
     ):
         resp = client.get(
@@ -100,15 +100,15 @@ def test_base_pin_upgrade(client, auth_headers, mock_neptune):
     upgraded = _pin(base_version=3, previous_version=2)
     with (
         patch(
-            "cograph_client.api.routes.ontology.upgrade_base_pin",
+            "infona_client.api.routes.ontology.upgrade_base_pin",
             new=AsyncMock(return_value=upgraded),
         ),
         patch(
-            "cograph_client.api.routes.ontology.latest_base_release_version",
+            "infona_client.api.routes.ontology.latest_base_release_version",
             new=AsyncMock(return_value=3),
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=7),
         ),
     ):
@@ -126,7 +126,7 @@ def test_base_pin_upgrade(client, auth_headers, mock_neptune):
 
 def test_base_pin_upgrade_rejects_unknown_version(client, auth_headers, mock_neptune):
     with patch(
-        "cograph_client.api.routes.ontology.upgrade_base_pin",
+        "infona_client.api.routes.ontology.upgrade_base_pin",
         new=AsyncMock(side_effect=ValueError("no public release v99")),
     ):
         resp = client.post(
@@ -142,15 +142,15 @@ def test_base_pin_rollback(client, auth_headers, mock_neptune):
     rolled = _pin(base_version=1, previous_version=2)
     with (
         patch(
-            "cograph_client.api.routes.ontology.rollback_base_pin",
+            "infona_client.api.routes.ontology.rollback_base_pin",
             new=AsyncMock(return_value=rolled),
         ),
         patch(
-            "cograph_client.api.routes.ontology.latest_base_release_version",
+            "infona_client.api.routes.ontology.latest_base_release_version",
             new=AsyncMock(return_value=3),
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=7),
         ),
     ):
@@ -170,7 +170,7 @@ def test_base_pin_requires_auth(client, mock_neptune):
 
 def test_base_pin_graph_uri_tenant_scoped():
     """Pin storage is per-tenant companion — isolation by named graph."""
-    from cograph_client.graph.ontology_base_pin import base_pin_graph_uri
+    from infona_client.graph.ontology_base_pin import base_pin_graph_uri
 
     a = base_pin_graph_uri("acme")
     b = base_pin_graph_uri("other")
@@ -187,11 +187,11 @@ def test_base_pin_graph_uri_tenant_scoped():
 def test_history_empty_is_200(client, auth_headers, mock_neptune):
     with (
         patch(
-            "cograph_client.api.routes.ontology.fetch_ontology_changelog",
+            "infona_client.api.routes.ontology.fetch_ontology_changelog",
             new=AsyncMock(return_value=[]),
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=0),
         ),
     ):
@@ -227,11 +227,11 @@ def test_history_grouped_collapses_burst(client, auth_headers, mock_neptune):
     ]
     with (
         patch(
-            "cograph_client.api.routes.ontology.fetch_ontology_changelog",
+            "infona_client.api.routes.ontology.fetch_ontology_changelog",
             new=AsyncMock(return_value=entries),
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=20),
         ),
     ):
@@ -263,11 +263,11 @@ def test_history_flat_when_grouped_false(client, auth_headers, mock_neptune):
     ]
     with (
         patch(
-            "cograph_client.api.routes.ontology.fetch_ontology_changelog",
+            "infona_client.api.routes.ontology.fetch_ontology_changelog",
             new=AsyncMock(return_value=entries),
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=1),
         ),
     ):
@@ -289,11 +289,11 @@ def test_history_scopes_fetch_to_tenant(client, auth_headers, mock_neptune):
     fetch = AsyncMock(return_value=[])
     with (
         patch(
-            "cograph_client.api.routes.ontology.fetch_ontology_changelog",
+            "infona_client.api.routes.ontology.fetch_ontology_changelog",
             new=fetch,
         ),
         patch(
-            "cograph_client.api.routes.ontology._current_revision_counter",
+            "infona_client.api.routes.ontology._current_revision_counter",
             new=AsyncMock(return_value=0),
         ),
     ):
@@ -321,11 +321,11 @@ def test_diff_returns_change_records(client, auth_headers, mock_neptune):
     ]
     with (
         patch(
-            "cograph_client.api.routes.ontology.get_base_pin",
+            "infona_client.api.routes.ontology.get_base_pin",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "cograph_client.api.routes.ontology.diff_graphs",
+            "infona_client.api.routes.ontology.diff_graphs",
             new=AsyncMock(return_value=records),
         ) as diff,
     ):
@@ -353,11 +353,11 @@ def test_diff_returns_change_records(client, auth_headers, mock_neptune):
 def test_diff_shorthand_revisions(client, auth_headers, mock_neptune):
     with (
         patch(
-            "cograph_client.api.routes.ontology.get_base_pin",
+            "infona_client.api.routes.ontology.get_base_pin",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "cograph_client.api.routes.ontology.diff_graphs",
+            "infona_client.api.routes.ontology.diff_graphs",
             new=AsyncMock(return_value=[]),
         ) as diff,
     ):
@@ -377,7 +377,7 @@ def test_diff_shorthand_revisions(client, auth_headers, mock_neptune):
 
 def test_diff_rejects_other_tenant_uri(client, auth_headers, mock_neptune):
     with patch(
-        "cograph_client.api.routes.ontology.get_base_pin",
+        "infona_client.api.routes.ontology.get_base_pin",
         new=AsyncMock(return_value=None),
     ):
         resp = client.get(
@@ -401,8 +401,8 @@ def test_diff_requires_refs(client, auth_headers, mock_neptune):
 
 def test_diff_matches_diff_shapes_records():
     """Unit: the records the route would return equal pure diff_shapes output."""
-    from cograph_client.graph.ontology_commit import OntologyShape
-    from cograph_client.graph.ontology_snapshots import diff_shapes
+    from infona_client.graph.ontology_commit import OntologyShape
+    from infona_client.graph.ontology_snapshots import diff_shapes
 
     a = OntologyShape()
     a.types["Person"] = "a person"
@@ -415,7 +415,7 @@ def test_diff_matches_diff_shapes_records():
     kinds = sorted(r.kind.value for r in expected)
     assert kinds == ["add_attribute", "add_type"]
     # Same list is what classify_diff / the route surface.
-    from cograph_client.graph.ontology_compat import classify_diff
+    from infona_client.graph.ontology_compat import classify_diff
 
     verdict = classify_diff(expected)
     assert verdict.overall.value in ("additive", "annotative", "deprecating", "breaking")

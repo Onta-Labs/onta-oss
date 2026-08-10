@@ -4,7 +4,7 @@
 Two jobs, mirroring ``test_retrieval_substrate.py`` for the fetch layer:
 
 1. **Freeze the two tolerant parsers' behaviour at their canonical home**
-   (:mod:`cograph_client.retrieval.coerce`) — the array parser
+   (:mod:`infona_client.retrieval.coerce`) — the array parser
    (:func:`parse_json_array`, discovery's row shape) and the object parser
    (:func:`parse_json_object`, enrichment's ``{"value","confidence"}`` shape).
    The two shapes deliberately diverge in tolerance (fence stripping, outermost
@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.enrichment.extraction import _try_parse_json
-from cograph_client.retrieval import parse_json_array, parse_json_object
-from cograph_client.retrieval.coerce import (
+from infona_client.enrichment.extraction import _try_parse_json
+from infona_client.retrieval import parse_json_array, parse_json_object
+from infona_client.retrieval.coerce import (
     parse_json_array as coerce_parse_json_array,
     parse_json_object as coerce_parse_json_object,
 )

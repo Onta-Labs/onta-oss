@@ -18,16 +18,16 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-from cograph_client.enrichment.executor import EnrichmentExecutor
-from cograph_client.graph.ontology_queries import entity_uri, type_uri
-from cograph_client.resolver.attribute_resolver import AttributeSchema
-from cograph_client.resolver.models import (
+from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.graph.ontology_queries import entity_uri, type_uri
+from infona_client.resolver.attribute_resolver import AttributeSchema
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label"
@@ -227,8 +227,8 @@ def test_ingest_result_affected_types_unions_all_three_sources():
     assert r.affected_types() == {"Physician", "City"}
 
 
-@patch("cograph_client.api.routes.ingest.refresh_after_write", new_callable=AsyncMock)
-@patch("cograph_client.api.routes.ingest.SchemaResolver")
+@patch("infona_client.api.routes.ingest.refresh_after_write", new_callable=AsyncMock)
+@patch("infona_client.api.routes.ingest.SchemaResolver")
 def test_ingest_route_refreshes_node_target_types(
     mock_resolver_cls, mock_refresh, client, auth_headers
 ):

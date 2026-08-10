@@ -17,8 +17,8 @@ FROM naming another tenant's graph. It is now pattern-validated.
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from cograph_client.graph.kg_status import invalidate_kg_status
-from cograph_client.models.query import NLResult
+from infona_client.graph.kg_status import invalidate_kg_status
+from infona_client.models.query import NLResult
 
 TENANT = "test-tenant"  # conftest's static-key tenant
 
@@ -65,7 +65,7 @@ def _wire_kg(
 
 def test_ask_unhandled_error_returns_graceful_result_not_500(client, auth_headers):
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.side_effect = RuntimeError("provider exploded outside retry loop")
@@ -85,7 +85,7 @@ def test_ask_unhandled_error_returns_graceful_result_not_500(client, auth_header
 def test_ask_happy_path_passes_through(client, auth_headers):
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -116,7 +116,7 @@ def test_ask_missing_kg_returns_404_naming_the_available_kgs(
     _wire_kg(mock_neptune, registered=False, has_data=False, others=["imdb", "events"])
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         res = client.post(
@@ -143,7 +143,7 @@ def test_ask_empty_kg_says_so_explicitly_and_skips_generation(
     _wire_kg(mock_neptune, registered=True, has_data=False)
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         res = client.post(
@@ -169,7 +169,7 @@ def test_ask_populated_kg_still_answers_normally(client, auth_headers, mock_nept
     ok = NLResult(answer="No results found.", sparql="SELECT ...", explanation="e")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -197,7 +197,7 @@ def test_ask_unregistered_but_populated_kg_is_not_reported_missing(
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -227,7 +227,7 @@ def test_ask_empty_kg_still_answers_when_data_lives_in_the_base_graph(
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -269,7 +269,7 @@ def test_ask_missing_kg_is_404_even_when_the_base_graph_has_instances(
     )
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         res = client.post(
@@ -305,7 +305,7 @@ def test_ask_without_kg_name_still_answers_from_the_base_graph(
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -326,7 +326,7 @@ def test_ask_probe_failure_degrades_to_answering(client, auth_headers, mock_nept
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -346,7 +346,7 @@ def test_ask_without_kg_name_never_probes(client, auth_headers, mock_neptune):
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok
@@ -380,7 +380,7 @@ def test_ask_malformed_kg_name_is_422(client, auth_headers, mock_neptune, bad_na
     mock_neptune.ask.side_effect = AssertionError("must reject before querying")
 
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         res = client.post(
@@ -427,7 +427,7 @@ def test_ask_empty_kg_name_still_means_tenant_graph(client, auth_headers):
     """`""` is a legal "no KG selected" value clients already send."""
     ok = NLResult(answer="42", sparql="SELECT ...", explanation="e")
     with patch(
-        "cograph_client.api.routes.ask.NLQueryPipeline.ask",
+        "infona_client.api.routes.ask.NLQueryPipeline.ask",
         new_callable=AsyncMock,
     ) as mock_ask:
         mock_ask.return_value = ok

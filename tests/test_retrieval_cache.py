@@ -1,4 +1,4 @@
-"""Tests for the record-and-replay fetch cache (:mod:`cograph_client.retrieval.cache`).
+"""Tests for the record-and-replay fetch cache (:mod:`infona_client.retrieval.cache`).
 
 All offline: the "delegate" is an in-memory fake :class:`PageFetcher` whose call
 count we assert, and every test writes into an isolated ``tmp_path`` cache dir. No
@@ -13,14 +13,14 @@ import json
 
 import pytest
 
-from cograph_client.retrieval import (
+from infona_client.retrieval import (
     FetchedPage,
     default_ladder,
     fetcher_cost,
     register_default_fetchers,
     reset_page_fetchers,
 )
-from cograph_client.retrieval.cache import (
+from infona_client.retrieval.cache import (
     CACHE_MODE_ENV,
     CachingPageFetcher,
     FetchCache,
@@ -311,7 +311,7 @@ def test_wrapper_mirrors_delegate_identity_and_is_free():
 
 
 def test_wrapper_satisfies_pagefetcher_protocol():
-    from cograph_client.retrieval import PageFetcher
+    from infona_client.retrieval import PageFetcher
 
     assert isinstance(CachingPageFetcher(FakeFetcher()), PageFetcher)
 

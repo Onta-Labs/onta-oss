@@ -8,9 +8,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.auth.api_keys import AuthVerdict, TenantContext, register_external_verifier
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.auth.api_keys import AuthVerdict, TenantContext, register_external_verifier
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     EnrichJob,
     EnrichmentTier,
     JobCategory,
@@ -20,7 +20,7 @@ from cograph_client.enrichment.models import (
     ConflictPolicy,
     ProviderLog,
 )
-from cograph_client.pipeline.stage_trace import (
+from infona_client.pipeline.stage_trace import (
     StageProjectId,
     StageStatus,
     StageTraceRecorder,
@@ -114,8 +114,8 @@ def test_resolve_trace_prefers_live_then_fills():
 
 
 def test_operator_route_403_for_non_operator():
-    from cograph_client.api.routes import operator as operator_routes
-    from cograph_client.api.deps import get_enrichment_job_store
+    from infona_client.api.routes import operator as operator_routes
+    from infona_client.api.deps import get_enrichment_job_store
 
     store = InMemoryJobStore()
     app = FastAPI()
@@ -123,7 +123,7 @@ def test_operator_route_403_for_non_operator():
     app.dependency_overrides[get_enrichment_job_store] = lambda: store
 
     # Force non-operator via a fake get_tenant
-    from cograph_client.auth import api_keys
+    from infona_client.auth import api_keys
 
     def _non_op(tenant=None, api_key=None, request=None):
         return TenantContext(tenant_id="t", api_key="k", is_operator=False)
@@ -139,9 +139,9 @@ def test_operator_route_403_for_non_operator():
 
 @pytest.mark.asyncio
 async def test_operator_route_returns_trace_for_operator():
-    from cograph_client.api.routes import operator as operator_routes
-    from cograph_client.api.deps import get_enrichment_job_store
-    from cograph_client.auth import api_keys
+    from infona_client.api.routes import operator as operator_routes
+    from infona_client.api.deps import get_enrichment_job_store
+    from infona_client.auth import api_keys
 
     store = InMemoryJobStore()
     job = _job(id="job-xyz")
@@ -193,8 +193,8 @@ def test_attach_recorder_none():
 # ONTA-385 — contract-shaped A1/A2/A3/A6 summaries
 # --------------------------------------------------------------------------- #
 def test_summarize_a1_source_bundle_contract_shape():
-    from cograph_client.pipeline.source_bundle import build_source_bundle
-    from cograph_client.pipeline.stage_trace import (
+    from infona_client.pipeline.source_bundle import build_source_bundle
+    from infona_client.pipeline.stage_trace import (
         merge_a1_summaries,
         summarize_a1_source_bundle,
     )
@@ -229,13 +229,13 @@ def test_summarize_a1_source_bundle_contract_shape():
 
 
 def test_summarize_a2_a3_a6_contract_shapes():
-    from cograph_client.pipeline.stage_trace import (
+    from infona_client.pipeline.stage_trace import (
         merge_a3_counts,
         summarize_a2_candidates,
         summarize_a3_clean_report,
         summarize_a6_graph_delta,
     )
-    from cograph_client.resolver.models import CleanFact, CleanOutcome, CleanReport
+    from infona_client.resolver.models import CleanFact, CleanOutcome, CleanReport
 
     a2 = summarize_a2_candidates(
         entities_extracted=5,
@@ -319,11 +319,11 @@ def test_summarize_a2_a3_a6_contract_shapes():
 @pytest.mark.asyncio
 async def test_discovery_finish_emits_contract_shaped_p1_p2_p3_p6():
     """ONTA-385: terminal discovery stage_trace carries A1/A2/A3/A6 shapes."""
-    from cograph_client.agent.capabilities.web_ingest_cap import (
+    from infona_client.agent.capabilities.web_ingest_cap import (
         _build_stage_contracts,
         _finish_job,
     )
-    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.job_store import InMemoryJobStore
 
     job = _job(status=JobStatus.running, result_count=0)
     store = InMemoryJobStore()
@@ -559,9 +559,9 @@ async def test_enrichment_executor_persists_live_stage_trace():
     """End-to-end: executor.run leaves a live P0/P2/P4/P6 stage_trace on the job."""
     from unittest.mock import AsyncMock
 
-    from cograph_client.enrichment.cache import EnrichmentCache
-    from cograph_client.enrichment.executor import EnrichmentExecutor
-    from cograph_client.enrichment.models import Verdict
+    from infona_client.enrichment.cache import EnrichmentCache
+    from infona_client.enrichment.executor import EnrichmentExecutor
+    from infona_client.enrichment.models import Verdict
 
     class _FakeWikidata:
         name = "wikidata"
@@ -782,7 +782,7 @@ def test_open_and_finalize_none_job_safe():
 
 def test_actions_new_job_opens_p0():
     """actions._new_job (dedupe/enrich/recon create) opens live P0."""
-    from cograph_client.api.routes.actions import _new_job
+    from infona_client.api.routes.actions import _new_job
 
     job = _new_job(
         tenant_id="demo-tenant",
@@ -796,9 +796,9 @@ def test_actions_new_job_opens_p0():
 
 
 def test_operator_route_404_unknown_job():
-    from cograph_client.api.routes import operator as operator_routes
-    from cograph_client.api.deps import get_enrichment_job_store
-    from cograph_client.auth import api_keys
+    from infona_client.api.routes import operator as operator_routes
+    from infona_client.api.deps import get_enrichment_job_store
+    from infona_client.auth import api_keys
 
     store = InMemoryJobStore()
     app = FastAPI()

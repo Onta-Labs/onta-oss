@@ -7,8 +7,8 @@ LLM / embedding / Neptune call is made. We assert what SPARQL the route writes.
 
 from unittest.mock import AsyncMock
 
-import cograph_client.api.routes.ontology as onto_routes
-from cograph_client.models.ontology import ResolutionResult, ResolvedChange
+import infona_client.api.routes.ontology as onto_routes
+from infona_client.models.ontology import ResolutionResult, ResolvedChange
 
 
 def _patch_resolver(monkeypatch, result: ResolutionResult):

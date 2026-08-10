@@ -15,7 +15,7 @@ import json
 import httpx
 import pytest
 
-from cograph_client.api_registry.crypto import (
+from infona_client.api_registry.crypto import (
     LocalAesGcmCipher,
     SecretCipherError,
     ciphertext_scheme,
@@ -23,8 +23,8 @@ from cograph_client.api_registry.crypto import (
     register_secret_cipher,
     reset_secret_cipher,
 )
-from cograph_client.api_registry.executor import RegistryApiSource
-from cograph_client.api_registry.secret_store import (
+from infona_client.api_registry.executor import RegistryApiSource
+from infona_client.api_registry.secret_store import (
     InMemoryTenantSecretStore,
     make_secret_resolver,
     make_tenant_secret_store,
@@ -33,7 +33,7 @@ from cograph_client.api_registry.secret_store import (
     secret_aad,
     store_secret,
 )
-from cograph_client.api_registry.spec import ApiSourceSpec, validate_spec
+from infona_client.api_registry.spec import ApiSourceSpec, validate_spec
 
 _SECRET = "sk-super-secret-value-12345"
 

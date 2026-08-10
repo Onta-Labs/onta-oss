@@ -23,19 +23,19 @@ import json
 
 import pytest
 
-from cograph_client.api_registry.spec import AuthorityLevel
-from cograph_client.graph.kg_writer import insert_facts
-from cograph_client.graph.queries import kg_graph_uri
-from cograph_client.graph.validity import (
+from infona_client.api_registry.spec import AuthorityLevel
+from infona_client.graph.kg_writer import insert_facts
+from infona_client.graph.queries import kg_graph_uri
+from infona_client.graph.validity import (
     VAL_VALID_TO,
     _interval_uri,
     current_objects_query,
     fetch_history,
     validity_graph_uri,
 )
-from cograph_client.pipeline.conflict import REASON_CONFIDENCE
-from cograph_client.pipeline.corrections import UserAssertion, apply_user_assertion
-from cograph_client.pipeline.mutations import (
+from infona_client.pipeline.conflict import REASON_CONFIDENCE
+from infona_client.pipeline.corrections import UserAssertion, apply_user_assertion
+from infona_client.pipeline.mutations import (
     supersede_fact,
     write_with_conflict_resolution,
 )
@@ -73,8 +73,8 @@ def _quiet_housekeeping(monkeypatch):
     """Silence the shared refresh_after_write internals (cache-invalidate / embed /
     stats recompute) so these tests isolate the reopen mechanism — exactly as
     tests/test_supersession.py does. The op STILL calls refresh_after_write."""
-    import cograph_client.api.routes.explore as explore_mod
-    import cograph_client.nlp.pipeline as pipeline_mod
+    import infona_client.api.routes.explore as explore_mod
+    import infona_client.nlp.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod.NLQueryPipeline, "invalidate_cache", lambda g: None)
     monkeypatch.setattr(pipeline_mod, "get_embedding_service", lambda: None)

@@ -5,8 +5,8 @@ transitions from the companion history graph — the queryable surface a
 "which values changed this week, old → new, with a date" question reaches.
 """
 
-from cograph_client.graph.history import history_graph_uri
-from cograph_client.graph.queries import kg_graph_uri
+from infona_client.graph.history import history_graph_uri
+from infona_client.graph.queries import kg_graph_uri
 
 SUBJ = "https://graph.onta.sh/entities/Widget/w1"
 PRED = "https://graph.onta.sh/types/Widget/attrs/weight_kg"

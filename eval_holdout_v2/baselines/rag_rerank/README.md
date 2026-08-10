@@ -14,7 +14,7 @@ can't dismiss Table 1 as "you only compared against weak RAG."
    pairs on CPU via `sentence-transformers.CrossEncoder`. Top-10 by rerank score
    are selected.
 4. **Answer**: `google/gemini-3-flash-preview` @ T=0, seeds 1/2/3, majority vote.
-5. **Judge**: identical `fast_judge` (T1) / `full_set_judge` (T2-T4) as Omnix
+5. **Judge**: identical `fast_judge` (T1) / `full_set_judge` (T2-T4) as Infona
    primary and naive RAG.
 
 ## Anti-cheat
@@ -52,7 +52,7 @@ PYTHONUNBUFFERED=1 /Users/moeen/Desktop/omnix/.venv/bin/python \
 |-------------------------------|-----------------|
 | Naive RAG                     | 27.8%           |
 | **RAG + BGE-v2-m3 rerank**    | **27.5%**       |
-| Omnix primary                 | 91.4%           |
+| Infona primary                 | 91.4%           |
 
 The cross-encoder picks different rows than cosine, but it still returns the
 same kind of thing: raw string-similar rows. On multi-hop counting / aggregation

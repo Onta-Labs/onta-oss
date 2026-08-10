@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.nlp.pipeline import NLQueryPipeline, get_embedding_service
+from infona_client.nlp.pipeline import NLQueryPipeline, get_embedding_service
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ async def test_ask_uses_semantic_retrieval(pipeline, mock_neptune):
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text=llm_response)]
 
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
         with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = mock_message
             result = await pipeline.ask("What is the price?", "https://graph.onta.sh/graphs/t1")
@@ -121,7 +121,7 @@ async def test_ask_falls_back_when_no_embeddings(pipeline, mock_neptune):
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text=llm_response)]
 
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
         with patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = mock_message
             result = await pipeline.ask("Find something", "https://graph.onta.sh/graphs/t1")
@@ -193,7 +193,7 @@ async def test_ask_escalates_semantic_to_full_on_zero_rows(pipeline, mock_neptun
         "  Relationships: supported_by_trial (via Indication)\n"
     )
 
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=mock_svc):
         with patch.object(
             pipeline, "_fetch_ontology", new_callable=AsyncMock, return_value=full_ont
         ):

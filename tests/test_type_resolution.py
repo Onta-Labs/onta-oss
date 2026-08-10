@@ -14,21 +14,21 @@ import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
 )
-from cograph_client.enrichment.strategy import (
+from infona_client.enrichment.strategy import (
     list_declared_types,
     resolve_type_name,
     unknown_type_message,
 )
-from cograph_client.graph.client import NeptuneClient
+from infona_client.graph.client import NeptuneClient
 
 
 def _types_response(names):

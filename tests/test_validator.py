@@ -1,4 +1,4 @@
-from cograph_client.nlp.validator import validate_sparql
+from infona_client.nlp.validator import validate_sparql
 
 
 def test_valid_select():

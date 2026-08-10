@@ -9,7 +9,7 @@ its precomputed stats graph, and status is derived from in-flight jobs.
 
 import pytest
 
-from cograph_client.api.routes.explore import (
+from infona_client.api.routes.explore import (
     ENTITY_URI_PREFIX,
     RDF_TYPE,
     TYPE_URI_PREFIX,
@@ -17,9 +17,9 @@ from cograph_client.api.routes.explore import (
     drop_kg_stats,
     recompute_kg_stats,
 )
-from cograph_client.api.routes.knowledge_graphs import _enriching_kgs
-from cograph_client.enrichment.models import JobCategory, JobStatus
-from cograph_client.graph.kg_stats_store import (
+from infona_client.api.routes.knowledge_graphs import _enriching_kgs
+from infona_client.enrichment.models import JobCategory, JobStatus
+from infona_client.graph.kg_stats_store import (
     InMemoryKgStatsStore,
     KgStats,
     get_kg_stats_store,

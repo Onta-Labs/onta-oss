@@ -119,7 +119,7 @@ def main():
     parser.add_argument(
         "--api-url",
         default="http://localhost:8000",
-        help="Omnix API base URL",
+        help="Infona API base URL",
     )
     parser.add_argument("--api-key", default="dev-key-001", help="API key")
     parser.add_argument("--tenant", default="demo-tenant", help="Tenant ID")

@@ -20,18 +20,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import (
     StructuralGateResult,
     WebIngestCapability,
     apply_post_a1_structural_gates,
 )
-from cograph_client.agent.registry import AgentContext, PlanStep
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import JobStatus
-from cograph_client.resolver.models import IngestResult
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.web_sources import (
+from infona_client.agent.registry import AgentContext, PlanStep
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import JobStatus
+from infona_client.resolver.models import IngestResult
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.web_sources import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,

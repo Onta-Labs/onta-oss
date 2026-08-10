@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     LAYER_TENANT_CUSTOM,
     InMemoryTenantApiSourceStore,
     TenantApiSource,
@@ -21,8 +21,8 @@ from cograph_client.api_registry import (
     reset_tenant_api_source_store,
     set_tenant_custom_specs,
 )
-from cograph_client.api_registry.catalog import _LAYER_RANK
-from cograph_client.api_registry.spec import ApiSourceSpec
+from infona_client.api_registry.catalog import _LAYER_RANK
+from infona_client.api_registry.spec import ApiSourceSpec
 
 
 @pytest.fixture(autouse=True)
@@ -240,14 +240,14 @@ class _FakePool:
 
 
 def _patch_pool(monkeypatch, conn: _FakeConn):
-    import cograph_client.api_registry.store as store_mod
+    import infona_client.api_registry.store as store_mod
 
     async def fake_get_pg_pool(dsn):
         return _FakePool(conn)
 
     # The store imports get_pg_pool lazily inside _ensure_pool, so patch it on
     # the shared pool module where the name is looked up.
-    import cograph_client.db.pool as pool_mod
+    import infona_client.db.pool as pool_mod
 
     monkeypatch.setattr(pool_mod, "get_pg_pool", fake_get_pg_pool)
     return store_mod
@@ -257,7 +257,7 @@ def _patch_pool(monkeypatch, conn: _FakeConn):
 async def test_postgres_store_upsert_runs_ddl_and_returns_record(monkeypatch):
     from datetime import datetime, timezone
 
-    from cograph_client.api_registry.store import PostgresTenantApiSourceStore
+    from infona_client.api_registry.store import PostgresTenantApiSourceStore
 
     rec: list = []
     conn = _FakeConn(rec)
@@ -288,7 +288,7 @@ async def test_postgres_store_upsert_runs_ddl_and_returns_record(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_postgres_queries_are_tenant_scoped(monkeypatch):
-    from cograph_client.api_registry.store import PostgresTenantApiSourceStore
+    from infona_client.api_registry.store import PostgresTenantApiSourceStore
 
     rec: list = []
     conn = _FakeConn(rec)
@@ -318,7 +318,7 @@ async def test_postgres_smoke_real_db():
     dsn = os.environ.get("OMNIX_DATABASE_URL")
     if not dsn:
         pytest.skip("OMNIX_DATABASE_URL not set")
-    from cograph_client.api_registry.store import PostgresTenantApiSourceStore
+    from infona_client.api_registry.store import PostgresTenantApiSourceStore
 
     store = PostgresTenantApiSourceStore(dsn=dsn)
     await store.upsert(_record("smoke-tenant", "smoke_slug", title="Smoke"))

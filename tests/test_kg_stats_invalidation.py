@@ -8,7 +8,7 @@ post-resolution count instead of the fresh fragmented count).
 """
 import time
 
-from cograph_client.api.routes.explore import (
+from infona_client.api.routes.explore import (
     RDF_TYPE,
     _stats_graph_uri,
     _summary_cache,
@@ -47,7 +47,7 @@ def test_delete_kg_busts_the_kg_status_verdict_cache(client, mock_neptune, auth_
     guard and be answered out of the tenant base graph plus the global layers,
     which is the confidently-wrong answer that guard exists to stop.
     """
-    from cograph_client.graph import kg_status
+    from infona_client.graph import kg_status
 
     kg_status.invalidate_kg_status(TENANT)
     kg_status._kg_ok_cache[(TENANT, KG)] = time.time()

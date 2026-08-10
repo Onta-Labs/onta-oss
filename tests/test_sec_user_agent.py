@@ -10,7 +10,7 @@ import re
 
 import pytest
 
-from cograph_client.api.routes import lambda_functions as lf
+from infona_client.api.routes import lambda_functions as lf
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +52,7 @@ class RecordingLogger:
     Swapping the MODULE attribute (rather than patching an attribute ON the
     structlog proxy, or using ``capture_logs``) keeps this test independent of
     both test ordering and structlog config. The app configures structlog with
-    ``cache_logger_on_first_use=True`` (cograph_client/logging.py:23), which
+    ``cache_logger_on_first_use=True`` (infona_client/logging.py:23), which
     freezes the proxy's bound logger on first use — so ``capture_logs`` cannot
     intercept it once any earlier test has logged, and patching the proxy
     itself leaves a concrete attribute behind that monkeypatch cannot undo.

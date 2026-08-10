@@ -22,12 +22,12 @@ import json
 
 import pytest
 
-import cograph_client.graph.text_markers as tm
-from cograph_client.graph.ontology_queries import (
+import infona_client.graph.text_markers as tm
+from infona_client.graph.ontology_queries import (
     TEXT_KIND_NOT_TEXT,
     attr_uri,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ColumnMapping,
     ColumnRole,
     CSVSchemaMapping,
@@ -37,7 +37,7 @@ from cograph_client.resolver.models import (
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import (
+from infona_client.resolver.schema_resolver import (
     TEXT_CANDIDACY_SYSTEM,
     SchemaResolver,
 )
@@ -62,7 +62,7 @@ _ADDRESS = "1420 Willow Creek Road, Springfield"
 
 
 def _resolver(mock_neptune) -> SchemaResolver:
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     cache = JsonVerdictCache.__new__(JsonVerdictCache)
     cache._path = None
@@ -260,7 +260,7 @@ class TestAdjudicationCall:
             })
 
         monkeypatch.setattr(
-            "cograph_client.resolver.schema_resolver.openrouter_chat", recorded_chat,
+            "infona_client.resolver.schema_resolver.openrouter_chat", recorded_chat,
         )
         confirmed, declined = await resolver._adjudicate_free_text({
             ("Ticket", "subject"): [_SUBJECT],
@@ -283,7 +283,7 @@ class TestAdjudicationCall:
             raise RuntimeError("router down")
 
         monkeypatch.setattr(
-            "cograph_client.resolver.schema_resolver.openrouter_chat", broken_chat,
+            "infona_client.resolver.schema_resolver.openrouter_chat", broken_chat,
         )
         out = await resolver._adjudicate_free_text({("Ticket", "subject"): [_SUBJECT]})
         # BOTH sets empty: a failure must not fabricate decided-no verdicts —
@@ -299,7 +299,7 @@ class TestAdjudicationCall:
             return "sorry, I cannot help with that"
 
         monkeypatch.setattr(
-            "cograph_client.resolver.schema_resolver.openrouter_chat", junk_chat,
+            "infona_client.resolver.schema_resolver.openrouter_chat", junk_chat,
         )
         out = await resolver._adjudicate_free_text({("Ticket", "subject"): [_SUBJECT]})
         assert out == (set(), set())

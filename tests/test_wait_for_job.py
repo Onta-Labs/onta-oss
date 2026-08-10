@@ -25,10 +25,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-import cograph_client.api.routes.enrich as enrich_mod
-from cograph_client.api.deps import get_enrichment_job_store
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+import infona_client.api.routes.enrich as enrich_mod
+from infona_client.api.deps import get_enrichment_job_store
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,

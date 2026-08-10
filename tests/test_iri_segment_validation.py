@@ -33,11 +33,11 @@ from fastapi.testclient import TestClient
 os.environ["OMNIX_API_KEYS"] = '{"test-key": "test-tenant"}'
 os.environ["OMNIX_NEPTUNE_ENDPOINT"] = "http://fake-neptune:8182"
 
-from cograph_client.api.app import create_app
-from cograph_client.graph.client import NeptuneClient
-from cograph_client.graph.layers import Layer, layer_type_uri
-from cograph_client.graph.ontology_queries import attr_uri, insert_type, type_uri
-from cograph_client.graph.queries import (
+from infona_client.api.app import create_app
+from infona_client.graph.client import NeptuneClient
+from infona_client.graph.layers import Layer, layer_type_uri
+from infona_client.graph.ontology_queries import attr_uri, insert_type, type_uri
+from infona_client.graph.queries import (
     GRAPH_URI_PREFIX,
     InvalidGraphIdentifier,
     InvalidKGName,
@@ -258,7 +258,7 @@ def _clear_summary_cache():
     """``explore._summary_cache`` is module-level and outlives a TestClient, so a
     hit from an earlier test would serve a 200 with ZERO store calls and quietly
     void every "which graph did we query" assertion below."""
-    from cograph_client.api.routes import explore
+    from infona_client.api.routes import explore
 
     explore._summary_cache.clear()
     yield
@@ -429,7 +429,7 @@ async def test_the_nl_ontology_summary_survives_one_corrupt_stored_name():
     the planner the schema is UNKNOWN for the entire workspace, on every
     question.
     """
-    from cograph_client.nlp.pipeline import (
+    from infona_client.nlp.pipeline import (
         ONTOLOGY_FETCH_ERROR,
         NLQueryPipeline,
         _ontology_cache,
@@ -462,10 +462,10 @@ async def test_the_nl_ontology_summary_survives_one_corrupt_stored_name():
 
 
 def test_ontology_embedding_chunks_survive_one_corrupt_stored_name():
-    from cograph_client.nlp.ontology_embeddings import _parse_ontology_bindings
+    from infona_client.nlp.ontology_embeddings import _parse_ontology_bindings
 
     _, rows = __import__(
-        "cograph_client.graph.parser", fromlist=["parse_sparql_results"]
+        "infona_client.graph.parser", fromlist=["parse_sparql_results"]
     ).parse_sparql_results(_onto_rows("Movie", CORRUPT_LABEL))
     parsed = _parse_ontology_bindings(rows)
     assert "Movie" in parsed
@@ -474,8 +474,8 @@ def test_ontology_embedding_chunks_survive_one_corrupt_stored_name():
 
 def test_a_corrupt_attribute_label_costs_only_that_attribute():
     """Attribute labels are stored literals too, and mint the same IRI."""
-    from cograph_client.graph.parser import parse_sparql_results
-    from cograph_client.nlp.ontology_embeddings import _parse_ontology_bindings
+    from infona_client.graph.parser import parse_sparql_results
+    from infona_client.nlp.ontology_embeddings import _parse_ontology_bindings
 
     raw = _onto_rows("Movie")
     raw["results"]["bindings"][0]["attrLabel"] = {"value": "title> <injected"}
@@ -493,7 +493,7 @@ def test_the_core_slot_membership_test_answers_false_rather_than_raising():
     attribute URIs, so False is the correct answer. Raising would fail a whole
     drift report over one malformed row.
     """
-    from cograph_client.api.routes.explore import _is_core_slot
+    from infona_client.api.routes.explore import _is_core_slot
 
     core = {"https://graph.onta.sh/types/Movie/attrs/title"}
     assert _is_core_slot("Movie", "title", core) is True
@@ -509,9 +509,9 @@ def test_the_skip_helper_is_shared_not_re_implemented():
     drifted apart before ONTA-414. Pinned structurally so the next enumeration
     site imports it instead of pasting it.
     """
-    from cograph_client.api.routes import explore
-    from cograph_client.graph.queries import skip_invalid_type_name
-    from cograph_client.nlp import ontology_embeddings, pipeline
+    from infona_client.api.routes import explore
+    from infona_client.graph.queries import skip_invalid_type_name
+    from infona_client.nlp import ontology_embeddings, pipeline
 
     for module in (explore, pipeline, ontology_embeddings):
         assert module.skip_invalid_type_name is skip_invalid_type_name
@@ -525,7 +525,7 @@ def test_the_skip_helper_is_shared_not_re_implemented():
 
 @pytest.fixture
 def open_access(monkeypatch):
-    from cograph_client.auth import api_keys
+    from infona_client.auth import api_keys
 
     monkeypatch.setattr(api_keys, "_has_static_keys", lambda: False)
     monkeypatch.setattr(api_keys, "_external_verifier", None)

@@ -1,6 +1,6 @@
 """Free-text attr synonym alignment — multi-domain, anti-overfit."""
 
-from cograph_client.resolver.attribute_resolver import (
+from infona_client.resolver.attribute_resolver import (
     AttributeSchema,
     _find_existing_attr,
 )

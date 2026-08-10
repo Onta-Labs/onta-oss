@@ -8,7 +8,7 @@ is a no-op.
 
 import pytest
 
-from cograph_client.resolver.ingest_runner import (
+from infona_client.resolver.ingest_runner import (
     FileCheckpointStore,
     job_backend,
     register_job_backend,

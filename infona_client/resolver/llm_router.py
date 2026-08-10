@@ -1,0 +1,426 @@
+"""Central LLM routing for the resolver / governance / query pipeline.
+
+Every decision and inference (extraction) LLM call goes through this module. The
+default backend is **OpenRouter** with a **primary model + automatic fallback**
+(OpenRouter's ``models`` array, tried in order on error). Both ids are
+env-overridable; the defaults set the production primary/fallback. Nothing is
+hardcoded at the call sites — they pass their per-role model (which itself
+defaults to ``PRIMARY_MODEL``) and the fallback is applied here uniformly.
+
+**Provider selection (``OMNIX_LLM_PROVIDER``).** The backend is chosen by
+``OMNIX_LLM_PROVIDER`` (``openrouter`` | ``cerebras``), *defaulting to
+``openrouter``* so behaviour is byte-identical to the historical hardcoded
+OpenRouter path when the env is unset. When set to ``cerebras`` this routes the
+same OpenAI-shaped chat request to Cerebras (``https://api.cerebras.ai/v1``)
+instead — the auth key becomes ``CEREBRAS_API_KEY`` and the model is the bare
+``OMNIX_LLM_MODEL`` slug (e.g. ``gpt-oss-120b``, no ``openai/`` prefix). This
+mirrors the query path's Cerebras support (``nlp/pipeline.py``); one env flip
+switches ALL extraction call sites at once because they all funnel through
+:func:`openrouter_chat` here. The query path has its OWN Cerebras selector
+(``OMNIX_QUERY_PROVIDER``) and is unaffected.
+
+The flip is guarded per call by SLUG SHAPE: Cerebras serves only bare slugs, so
+a call whose effective model contains ``/`` (an OpenRouter ``vendor/model`` id —
+per-role knobs like CSV schema inference's ``google/gemini-2.5-flash`` default)
+stays on OpenRouter even under ``cerebras``. Without this, the provider flip
+sends OpenRouter-only slugs to ``api.cerebras.ai``, which 404s them — in
+production that broke every rail whose per-role model kept a ``vendor/model``
+default (CSV schema inference, enrichment extraction, research extraction)
+while bare-slug callers kept working.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from typing import Optional
+from urllib.parse import urlparse
+
+import httpx
+
+from infona_client.offline import assert_online_url
+from infona_client.retrieval.errors import classify_llm_status_error
+
+def _openrouter_base() -> str:
+    """OpenAI-compatible chat base URL.
+
+    ``OMNIX_LLM_BASE_URL`` (preferred) or ``OMNIX_OPENROUTER_BASE_URL`` points
+    extraction/resolver LLM traffic at a self-hosted endpoint (vLLM, Ollama
+    with OpenAI shim, LiteLLM). Unset → public OpenRouter.
+    """
+    return (
+        os.environ.get("OMNIX_LLM_BASE_URL")
+        or os.environ.get("OMNIX_OPENROUTER_BASE_URL")
+        or "https://openrouter.ai/api/v1"
+    ).rstrip("/")
+
+
+def _cerebras_base() -> str:
+    return (
+        os.environ.get("OMNIX_CEREBRAS_BASE_URL")
+        or "https://api.cerebras.ai/v1"
+    ).rstrip("/")
+
+
+# Module-level names kept for back-compat imports/tests; re-read via helpers
+# at call time so env flips work without reimport.
+OPENROUTER_BASE = _openrouter_base()
+CEREBRAS_BASE = _cerebras_base()
+
+# Primary model for all LLM calls, and the automatic fallback applied via
+# OpenRouter's `models` routing. Env-overridable; defaults are the production
+# choice. Per-role knobs (OMNIX_EXTRACT_MODEL, OMNIX_MATCH_MODEL, …) default to
+# PRIMARY_MODEL, so OMNIX_LLM_MODEL flips every role at once unless individually
+# overridden.
+PRIMARY_MODEL = os.environ.get("OMNIX_LLM_MODEL", "anthropic/claude-opus-4.8")
+FALLBACK_MODEL = os.environ.get("OMNIX_LLM_FALLBACK_MODEL", "openai/gpt-5.5")
+
+# A reasoning model (e.g. Cerebras gpt-oss-120b) spends part of its token budget on
+# a hidden reasoning phase before emitting content; too small a budget yields an
+# empty `finish_reason=length` response. Floor every completion budget so a small
+# caller value can't starve reasoning. max_tokens is a CEILING, not a target — a
+# non-reasoning model that finishes early stops well under this and is unaffected.
+REASONING_MIN_TOKENS = 2048   # matches #164's Cerebras SPARQL budget
+
+
+def _llm_provider() -> str:
+    """The extraction LLM backend: ``openrouter`` (default) or ``cerebras``.
+
+    Read live from the env on every call (not cached at import) so a test — or a
+    runtime reconfigure — can flip it without re-importing the module. Any value
+    other than ``cerebras`` (including unset) means ``openrouter``, preserving the
+    historical default byte-for-byte."""
+    return os.environ.get("OMNIX_LLM_PROVIDER", "openrouter").strip().lower()
+
+
+def model_chain(primary: str | None = None) -> list[str]:
+    """``[primary, fallback]`` for OpenRouter's ``models`` routing — fallback
+    de-duplicated and dropped when empty or equal to the primary."""
+    head = primary or PRIMARY_MODEL
+    chain = [head]
+    if FALLBACK_MODEL and FALLBACK_MODEL != head:
+        chain.append(FALLBACK_MODEL)
+    return chain
+
+
+async def openrouter_chat(
+    api_key: str,
+    system: str,
+    user: str,
+    *,
+    model: str | None = None,
+    temperature: float = 0.0,
+    max_tokens: int = 4096,
+    response_format: dict | None = None,
+    timeout: float = 120.0,
+    return_finish_reason: bool = False,
+    return_usage: bool = False,
+) -> str | tuple[str, str | None] | tuple[str, dict | None] | tuple[str, str | None, dict | None]:
+    """One OpenRouter chat completion with primary→fallback model routing.
+
+    Returns the raw message content (callers parse). Raises on HTTP error after
+    the fallback chain is exhausted.
+
+    When ``return_finish_reason`` is True, returns ``(content, finish_reason)``
+    instead — where ``finish_reason`` is the provider's stop signal (``"length"``
+    when the model hit ``max_tokens`` mid-output, ``"stop"`` for a clean finish,
+    or ``None`` if the provider omitted it). This lets a caller distinguish a
+    TRUNCATED reply (recover by splitting + retrying) from a genuinely malformed
+    one. Default False keeps the plain-string contract for every existing caller.
+
+    When ``return_usage`` is True, the provider's ``usage`` object (the dict with
+    ``prompt_tokens`` / ``completion_tokens`` / ``total_tokens``, or ``None`` if
+    the provider omitted it) is appended as the LAST tuple element — for
+    per-call token accounting (ONTA-200). The two flags compose:
+
+    ======================  ===================  ================================
+    return_finish_reason    return_usage         return type
+    ======================  ===================  ================================
+    False (default)         False (default)      ``content`` (bare str)
+    True                    False                ``(content, finish_reason)``
+    False                   True                 ``(content, usage)``
+    True                    True                 ``(content, finish_reason, usage)``
+    ======================  ===================  ================================
+
+    Every existing caller (both bare-string and ``return_finish_reason``-only)
+    keeps its current return shape untouched.
+
+    **Provider routing.** When ``OMNIX_LLM_PROVIDER=cerebras`` the request is sent
+    to Cerebras (``api.cerebras.ai``) with the ``CEREBRAS_API_KEY`` and the bare
+    ``OMNIX_LLM_MODEL`` slug instead of OpenRouter — see the module docstring.
+    Cerebras only serves BARE slugs, so the flip applies per call by slug shape
+    (the same heuristic the query path uses): a bare effective model
+    (``model or PRIMARY_MODEL``) goes to Cerebras; a ``vendor/model`` slug —
+    e.g. a per-role knob like ``OMNIX_CSV_SCHEMA_MODEL``'s
+    ``google/gemini-2.5-flash`` default — can only be served by OpenRouter and
+    keeps routing there with the caller's ``api_key``. Everything else (request
+    params, return contract, error handling) is identical. Default (unset /
+    ``openrouter``) is byte-identical to before.
+    """
+    provider = _llm_provider()
+    effective_model = model or PRIMARY_MODEL
+    # Floor the completion budget so a small caller value can't starve a reasoning
+    # model's hidden reasoning phase (empty finish_reason=length). This is a
+    # CEILING, not a target: callers passing >= REASONING_MIN_TOKENS are unchanged,
+    # and a model that finishes early stops well under it. Applied to whichever
+    # completion-budget field each request branch below sends.
+    effective_max_tokens = max(max_tokens, REASONING_MIN_TOKENS)
+    if provider == "cerebras" and "/" not in effective_model:
+        cerebras_key = os.environ.get("CEREBRAS_API_KEY", "")
+        if not cerebras_key:
+            # Fail loud — do NOT silently fall back to OpenRouter. If the operator
+            # asked for Cerebras, running on OpenRouter instead would hide a
+            # misconfiguration (wrong key, wrong model slug) behind "it worked".
+            raise RuntimeError(
+                "OMNIX_LLM_PROVIDER=cerebras but CEREBRAS_API_KEY is not set — "
+                "set the Cerebras key or unset OMNIX_LLM_PROVIDER to use OpenRouter."
+            )
+        base = _cerebras_base()
+        request_key = cerebras_key
+        # Cerebras takes a BARE model slug (e.g. "gpt-oss-120b"), not an
+        # OpenRouter-prefixed one, and has no `models` fallback array. Use the
+        # caller's per-role model when supplied, else PRIMARY_MODEL (OMNIX_LLM_MODEL).
+        body: dict = {
+            "model": effective_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": temperature,
+            "max_tokens": effective_max_tokens,
+        }
+    else:
+        base = _openrouter_base()
+        request_key = api_key
+        chain = model_chain(model)
+        body = {
+            "model": chain[0],
+            "models": chain,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": temperature,
+            "max_tokens": effective_max_tokens,
+        }
+    # The 402/401 message must name the account that ACTUALLY served this call.
+    # Post-#163 the branch above is chosen per-call by slug shape, so the live
+    # provider can differ from the globally-configured _llm_provider() (a
+    # vendor/model slug under provider=cerebras still routes to OpenRouter). Derive
+    # it from the base we actually hit so provider + host never disagree.
+    active_provider = "cerebras" if "cerebras.ai" in base else "openrouter"
+    if response_format is not None:
+        body["response_format"] = response_format
+    chat_url = f"{base}/chat/completions"
+    # Fail closed under OMNIX_OFFLINE=1 unless base is allowlisted (localhost by
+    # default — self-hosted vLLM/Ollama). Cloud OpenRouter / Cerebras hosts raise.
+    assert_online_url(chat_url, purpose="LLM chat completion")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            chat_url,
+            headers={
+                "Authorization": f"Bearer {request_key}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+        )
+        try:
+            res.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # A 402 (prepaid balance exhausted) or 401 (bad/revoked key) is
+            # SYSTEMIC — the next call will fail identically. Re-raise it as a
+            # distinct, typed FATAL error (ONTA-201) so a caller in a
+            # split-and-retry / per-batch loop can short-circuit the whole run
+            # instead of burning more doomed calls and reporting "complete".
+            # Every OTHER status (429, 5xx, …) keeps propagating as the raw
+            # HTTPStatusError, so existing transient handling is unchanged.
+            # Thread the ACTIVE provider + host so the message names the account
+            # that actually returned the 402/401 (Cerebras vs OpenRouter) — not a
+            # hardcoded backend that may be the wrong one to go check.
+            fatal = classify_llm_status_error(
+                exc.response.status_code,
+                detail=_error_detail(exc.response),
+                provider=active_provider,
+                host=urlparse(base).hostname,
+            )
+            if fatal is not None:
+                raise fatal from exc
+            raise
+        payload = res.json()
+        # Degrade EVERY response-shape defect — a non-dict payload, a
+        # missing/empty ``choices``, a missing/non-dict ``message``, or a
+        # missing/``null``/``""`` ``content`` — to ONE diagnosable, typed error
+        # instead of a raw ``KeyError``/``IndexError``/``TypeError``. A reasoning
+        # model (Cerebras ``gpt-oss-120b``) that spends its ENTIRE token budget on
+        # reasoning returns ``finish_reason == "length"`` with the ``content`` key
+        # ABSENT (not merely ``null``); a filtered/empty reply omits it too. The
+        # old ``choice["message"]["content"]`` raised ``KeyError('content')`` — an
+        # opaque crash on the extraction path (web-ingest spec resolution, agent
+        # classify, enrichment, CSV schema inference) that named nothing. This
+        # mirrors the query path's #172 guard (``nlp/pipeline.py``): callers'
+        # existing ``except`` (e.g. ``_resolve_spec``'s fallback) now degrades
+        # gracefully on a clean ``ValueError`` naming the ACTIVE provider. The
+        # happy path (a normal non-empty content string) is returned verbatim,
+        # unchanged, through the SAME return variants below.
+        if not isinstance(payload, dict):
+            payload = {}
+        try:
+            choice = payload["choices"][0]
+        except (KeyError, IndexError, TypeError):
+            choice = {}
+        if not isinstance(choice, dict):
+            choice = {}
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            message = {}
+        content = message.get("content")
+        if not content:
+            finish_reason = choice.get("finish_reason")
+            detail = f" (finish_reason={finish_reason})" if finish_reason else ""
+            raise ValueError(f"empty LLM response from {active_provider}{detail}")
+        if return_finish_reason and return_usage:
+            return content, choice.get("finish_reason"), payload.get("usage")
+        if return_finish_reason:
+            return content, choice.get("finish_reason")
+        if return_usage:
+            return content, payload.get("usage")
+        return content
+
+
+@dataclass(frozen=True)
+class OpenRouterKeyStatus:
+    """The credit/usage snapshot from OpenRouter's ``GET /api/v1/key`` (ONTA-273).
+
+    This is the proactive balance diagnosis the 402 incident lacked: when a run
+    halts on ``402 Payment Required`` you can consult this to say EXACTLY how
+    exhausted the account is ("used $20.00 of $20.00; $0.00 remaining") instead of
+    guessing. OpenRouter's response nests everything under ``data``:
+
+    * ``usage``           — credits USED on this key so far (float).
+    * ``limit``           — the key's credit limit; ``None`` means *unlimited*.
+    * ``limit_remaining`` — credits remaining; ``None`` when the limit is unlimited
+      or the field is absent.
+    * ``is_free_tier``    — whether this is a free-tier key.
+
+    All optional (``None`` when OpenRouter omits them) so a partial/older response
+    never raises. ``raw`` keeps the untouched ``data`` object for logging.
+    """
+
+    usage: Optional[float] = None
+    limit: Optional[float] = None
+    limit_remaining: Optional[float] = None
+    is_free_tier: Optional[bool] = None
+    raw: dict = None  # type: ignore[assignment]
+
+    @property
+    def exhausted(self) -> bool:
+        """True when the account has no credits left. An unlimited key (``limit is
+        None``) is never exhausted. Prefer the explicit ``limit_remaining``; fall
+        back to comparing ``usage`` against ``limit``."""
+        if self.limit is None:
+            return False
+        if self.limit_remaining is not None:
+            return self.limit_remaining <= 0
+        if self.usage is not None:
+            return self.usage >= self.limit
+        return False
+
+    def summary(self) -> str:
+        """A one-line, human-readable credit summary for the halt reason."""
+
+        def _fmt(v: Optional[float]) -> str:
+            return "unlimited" if v is None else f"${v:.2f}"
+
+        remaining = (
+            "unlimited"
+            if self.limit is None
+            else _fmt(
+                self.limit_remaining
+                if self.limit_remaining is not None
+                else (
+                    (self.limit - self.usage)
+                    if (self.limit is not None and self.usage is not None)
+                    else None
+                )
+            )
+        )
+        return (
+            f"OpenRouter credits: used {_fmt(self.usage)} of {_fmt(self.limit)}, "
+            f"{remaining} remaining"
+            + (" (free tier)" if self.is_free_tier else "")
+        )
+
+
+async def openrouter_key_status(
+    api_key: str,
+    *,
+    base_url: str = OPENROUTER_BASE,
+    timeout: float = 10.0,
+) -> OpenRouterKeyStatus:
+    """Query OpenRouter ``GET /api/v1/key`` for the key's credit/usage snapshot.
+
+    Used to produce an HONEST provider-exhaustion reason on a 402 halt (ONTA-273):
+    diagnose remaining credits instead of guessing. Raises the same typed fatal
+    :class:`LLMBillingError` / :class:`LLMAuthError` as :func:`openrouter_chat` when
+    the diagnostic call itself is refused for billing/auth (so a caller can treat a
+    402 on the diagnosis identically); other HTTP errors propagate raw. Callers on
+    a failure path should wrap this best-effort — a diagnosis must never mask the
+    original error.
+    """
+    key_url = f"{base_url.rstrip('/')}/key"
+    assert_online_url(key_url, purpose="OpenRouter key status")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.get(
+            key_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        try:
+            res.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            fatal = classify_llm_status_error(
+                exc.response.status_code,
+                detail=_error_detail(exc.response),
+                provider="openrouter",
+                host=urlparse(base_url).hostname,
+            )
+            if fatal is not None:
+                raise fatal from exc
+            raise
+        payload = res.json()
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        data = {}
+
+    def _num(key: str) -> Optional[float]:
+        v = data.get(key)
+        if isinstance(v, (int, float)):
+            return float(v)
+        return None
+
+    return OpenRouterKeyStatus(
+        usage=_num("usage"),
+        limit=_num("limit"),
+        limit_remaining=_num("limit_remaining"),
+        is_free_tier=bool(data.get("is_free_tier")) if "is_free_tier" in data else None,
+        raw=data,
+    )
+
+
+def _error_detail(response: httpx.Response) -> str:
+    """Best-effort short reason from an error response body for the fatal-error
+    message. OpenRouter returns ``{"error": {"message": "..."}}``; fall back to a
+    trimmed raw body. Never raises — a detail is purely additive context."""
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            err = data.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                return str(err["message"])[:200]
+            if isinstance(err, str) and err:
+                return err[:200]
+    except Exception:  # noqa: BLE001 — a malformed body must not mask the error
+        pass
+    try:
+        return (response.text or "").strip()[:200]
+    except Exception:  # noqa: BLE001
+        return ""

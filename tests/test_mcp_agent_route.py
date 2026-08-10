@@ -36,21 +36,21 @@ from unittest.mock import AsyncMock  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from cograph_client.agent import planner as planner_mod  # noqa: E402
-from cograph_client.agent.planner import (  # noqa: E402
+from infona_client.agent import planner as planner_mod  # noqa: E402
+from infona_client.agent.planner import (  # noqa: E402
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (  # noqa: E402
+from infona_client.agent.registry import (  # noqa: E402
     reset_capabilities,
 )
-from cograph_client.api.app import create_app  # noqa: E402
-from cograph_client.auth.api_keys import (  # noqa: E402
+from infona_client.api.app import create_app  # noqa: E402
+from infona_client.auth.api_keys import (  # noqa: E402
     TenantContext,
     get_tenant,
     register_external_verifier,
 )
-from cograph_client.graph.client import NeptuneClient  # noqa: E402
+from infona_client.graph.client import NeptuneClient  # noqa: E402
 
 HEADERS = {"X-API-Key": "test-key"}
 TENANT = "test-tenant"
@@ -97,7 +97,7 @@ def _stub_schema(monkeypatch):
         }
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
 
 
@@ -108,7 +108,7 @@ def _stub_enrich_extract(monkeypatch, payload: dict):
         return json.dumps(payload)
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
+        "infona_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
     )
 
 
@@ -141,7 +141,7 @@ def test_agent_tool_message_returns_plan(app_client, monkeypatch):
         return (["English"], "relationship")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -163,7 +163,7 @@ def test_agent_tool_message_returns_plan(app_client, monkeypatch):
 def test_agent_tool_question_returns_answer(app_client, monkeypatch):
     _stub_classifier(monkeypatch, "question")
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "42", "sparql": "SELECT ...", "rows": [], "narrative": ""}
@@ -195,7 +195,7 @@ def test_agent_tool_confirm_routes_to_execute(app_client, monkeypatch):
         return (["English"], "relationship")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -246,7 +246,7 @@ def test_agent_confirm_for_ungranted_tenant_is_403(monkeypatch):
     on the agent confirm — identical to the direct /enrich path, because both go
     through get_tenant. (Entitlement of paid steps lives behind the API; the OSS
     layer only proves the tenant is authorized, the same for both paths.)"""
-    monkeypatch.setattr("cograph_client.auth.api_keys.settings.api_keys", "{}")
+    monkeypatch.setattr("infona_client.auth.api_keys.settings.api_keys", "{}")
     register_external_verifier(lambda key: ["alpha", "beta"])
 
     app = create_app()
@@ -279,8 +279,8 @@ def test_agent_route_uses_same_tenant_dep_as_direct_path():
     still in the tree. ``test_agent_confirm_for_ungranted_tenant_is_403`` above
     pins the resulting behavior.
     """
-    from cograph_client.api.routes import agent as agent_route
-    from cograph_client.api.routes import enrich as enrich_route
+    from infona_client.api.routes import agent as agent_route
+    from infona_client.api.routes import enrich as enrich_route
 
     def _walk(dependant, seen):
         for dep in getattr(dependant, "dependencies", []):
@@ -320,7 +320,7 @@ def test_agent_route_allows_empty_kg_name(app_client, monkeypatch):
     """`""` (no KG selected) is what the Explorer sends and must stay legal."""
     _stub_classifier(monkeypatch, "question")
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "42", "sparql": "SELECT ...", "rows": [], "narrative": ""}
@@ -335,7 +335,7 @@ def test_agent_route_allows_empty_kg_name(app_client, monkeypatch):
 
 def test_get_tenant_grants_owned_tenant(monkeypatch):
     """Sanity: the same dependency DOES grant an owned tenant (no false 403)."""
-    monkeypatch.setattr("cograph_client.auth.api_keys.settings.api_keys", "{}")
+    monkeypatch.setattr("infona_client.auth.api_keys.settings.api_keys", "{}")
     register_external_verifier(lambda key: ["alpha", "beta"])
     try:
         ctx = get_tenant(tenant="alpha", api_key="k")

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     ApiSourceSpec,
     RegistryApiSource,
     RegistrySourceAdapter,
@@ -17,26 +17,26 @@ from cograph_client.api_registry import (
     register_registry_enrichment,
     reset_registry_enrichment,
 )
-from cograph_client.api_registry.catalog import reset_api_source_layers
-from cograph_client.api_registry.spec import validate_spec
-from cograph_client.enrichment.cache import EnrichmentCache
-from cograph_client.enrichment.executor import EnrichmentExecutor
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.api_registry.catalog import reset_api_source_layers
+from infona_client.api_registry.spec import validate_spec
+from infona_client.enrichment.cache import EnrichmentCache
+from infona_client.enrichment.executor import EnrichmentExecutor
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichJob,
     EnrichmentTier,
     JobStatus,
     Verdict,
 )
-from cograph_client.enrichment.sources.base import register_adapter
-from cograph_client.enrichment.tiers import (
+from infona_client.enrichment.sources.base import register_adapter
+from infona_client.enrichment.tiers import (
     get_chain,
     register_tier,
     reset_chain_prefix_providers,
     reset_tiers,
 )
-from cograph_client.retrieval import safety as safety_mod
+from infona_client.retrieval import safety as safety_mod
 
 
 @pytest.fixture(autouse=True)
@@ -373,7 +373,7 @@ def test_attribute_binding_resolves_from_entity_attrs():
 # NCT id format guard (ClinicalTrials.gov attribute:nct_id bindings)
 # --------------------------------------------------------------------------- #
 def test_nct_id_helpers_accept_real_reject_placeholders():
-    from cograph_client.api_registry.ids import (
+    from infona_client.api_registry.ids import (
         is_valid_nct_id,
         normalize_attribute_binding,
         normalize_nct_id,
@@ -726,7 +726,7 @@ def test_tokens_split_camelcase():
     # The tokenizer moved to the shared matching.py gate (ONTA-341); its behavior
     # is unchanged and is what both the adapter self-gate and the selector's
     # structured pre-filter tokenize with.
-    from cograph_client.api_registry.matching import tokens as _tokens
+    from infona_client.api_registry.matching import tokens as _tokens
     # PascalCase / acronym-prefixed names split into the same words as snake_case.
     assert _tokens("LineItem") == {"line", "item"}
     assert _tokens("line_item") == {"line", "item"}
@@ -967,7 +967,7 @@ async def test_candidate_select_canonicalizes_case_mismatched_echo():
 
 
 def test_relax_ladder_sequences():
-    from cograph_client.api_registry.enrichment import _relax_ladder
+    from infona_client.api_registry.enrichment import _relax_ladder
     # digit-/slash-bearing tokens drop first, then the leading word, then last-word-only.
     assert _relax_ladder("Ground beef 80/20") == ["Ground beef 80/20", "Ground beef", "beef"]
     assert _relax_ladder("Roma tomatoes") == ["Roma tomatoes", "tomatoes"]

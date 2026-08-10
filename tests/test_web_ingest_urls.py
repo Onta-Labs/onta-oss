@@ -19,17 +19,17 @@ import json
 import pytest
 from unittest.mock import MagicMock
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-from cograph_client.agent.registry import AgentContext
-from cograph_client.resolver.models import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.registry import AgentContext
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.web_sources import (
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.web_sources import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,
@@ -324,7 +324,7 @@ async def test_query_path_unchanged_when_no_urls():
 
 
 def test_get_web_source_for_urls_picks_supporting_provider():
-    from cograph_client.web_sources.base import get_web_source
+    from infona_client.web_sources.base import get_web_source
 
     register_web_source(QueryOnlyProvider())  # no supports_urls
     register_web_source(UrlProvider(url_only=True))  # supports_urls
@@ -335,14 +335,14 @@ def test_get_web_source_for_urls_picks_supporting_provider():
 
 
 def test_get_web_source_for_urls_none_when_unsupported():
-    from cograph_client.web_sources.base import get_web_source
+    from infona_client.web_sources.base import get_web_source
 
     register_web_source(QueryOnlyProvider())
     assert get_web_source(for_urls=True) is None
 
 
 def test_get_web_source_backward_compatible_single_provider():
-    from cograph_client.web_sources.base import get_web_source
+    from infona_client.web_sources.base import get_web_source
 
     # A lone query provider is still returned by the no-arg convenience.
     register_web_source(QueryOnlyProvider())
@@ -350,7 +350,7 @@ def test_get_web_source_backward_compatible_single_provider():
 
 
 async def test_stub_url_mode_maps_provenance_to_urls():
-    from cograph_client.web_sources.stub import StubWebSource
+    from infona_client.web_sources.stub import StubWebSource
 
     p = StubWebSource()
     assert getattr(p, "supports_urls", False) is True

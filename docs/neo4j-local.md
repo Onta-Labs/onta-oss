@@ -20,7 +20,7 @@ Compose service.
   `confidence`.
 * **Derived only:** Entity property cache, typed shortcut rels, `INSTANCE_OF`
   (dual-written from type Assertions by `kg_writer` / `pg_ops`).
-* **Helpers:** `cograph_client.graph.rdfs_helpers` (Python + Cypher templates) —
+* **Helpers:** `infona_client.graph.rdfs_helpers` (Python + Cypher templates) —
   compose these; do not 1:1 translate SPARQL.
 * **Identity:** Entity/Class/Property `id` = RDF-compatible IRI strings
   (`entity_uri` / `type_uri` / `property_uri`); Assertion id =
@@ -49,7 +49,7 @@ Uniqueness (ADR 0013 §12): `(tenant_id, kg, id)` on `Entity`, `Class`,
 
 ```python
 import asyncio
-from cograph_client.graph.store import get_graph_store
+from infona_client.graph.store import get_graph_store
 
 async def main():
     store = get_graph_store()
@@ -61,14 +61,14 @@ async def main():
 asyncio.run(main())
 ```
 
-Statement list: `cograph_client.graph.schema_bootstrap.SCHEMA_STATEMENTS`.
+Statement list: `infona_client.graph.schema_bootstrap.SCHEMA_STATEMENTS`.
 
 ## Scoped session (isolation)
 
 ```python
-from cograph_client.graph.scope import GraphScope
-from cograph_client.graph.store import get_graph_store
-from cograph_client.graph.ontology_queries import entity_uri
+from infona_client.graph.scope import GraphScope
+from infona_client.graph.store import get_graph_store
+from infona_client.graph.ontology_queries import entity_uri
 import asyncio
 from datetime import datetime, timezone
 
@@ -143,7 +143,7 @@ Static `ENTITY_MERGE` does not set dynamic domain labels (Neo4j cannot
 parameterize labels). After merge, call:
 
 ```python
-from cograph_client.graph.labels import set_entity_type_labels
+from infona_client.graph.labels import set_entity_type_labels
 
 await set_entity_type_labels(session, eid, ["Book"])  # sanitized, reserved-safe
 ```
@@ -153,13 +153,13 @@ if they collide with reserved system labels (`Entity`, `OntoType`, …).
 
 ## Explore / KG-admin reads (E5)
 
-Module: `cograph_client.graph.explore_store`. Dual-backend like `kg_writer` /
+Module: `infona_client.graph.explore_store`. Dual-backend like `kg_writer` /
 `ontology_catalog`: pass `store=` / `session=` or set
 `COGRAPH_GRAPH_BACKEND=neo4j`; otherwise helpers return `None` so SPARQL explore
 routes stay the default.
 
 ```python
-from cograph_client.graph.explore_store import (
+from infona_client.graph.explore_store import (
     list_entities_by_type,
     get_entity_detail,
     type_counts,

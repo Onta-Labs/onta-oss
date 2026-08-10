@@ -15,7 +15,7 @@ from collections import defaultdict
 
 import pytest
 
-from cograph_client.graph.ontology_commit import (
+from infona_client.graph.ontology_commit import (
     OntologyGraphImmutable,
     OntologyShape,
     commit_ontology,
@@ -25,7 +25,7 @@ from cograph_client.graph.ontology_commit import (
     revision_graph_uri,
     versions_graph_uri,
 )
-from cograph_client.graph.ontology_snapshots import (
+from infona_client.graph.ontology_snapshots import (
     ReleaseRecord,
     cleanup_version_artifacts,
     diff_shapes,
@@ -41,8 +41,8 @@ from cograph_client.graph.ontology_snapshots import (
     restore_ontology,
     snapshot_ontology,
 )
-from cograph_client.graph.ontology_queries import ontology_version
-from cograph_client.models.ontology import (
+from infona_client.graph.ontology_queries import ontology_version
+from infona_client.models.ontology import (
     ChangeKind,
     ChangeRecord,
     OntologyMutation,
@@ -600,7 +600,7 @@ def test_diff_symmetry():
     ba = diff_shapes(b, a)
     inv = invert_diff(ab)
 
-    from cograph_client.graph.ontology_snapshots import _record_key
+    from infona_client.graph.ontology_snapshots import _record_key
 
     assert sorted(_record_key(r) for r in inv) == sorted(_record_key(r) for r in ba)
 
@@ -866,7 +866,7 @@ async def test_diff_graphs_round_trip_via_snapshot():
         for c in rec2.change_records
     )
     # Structural symmetry still holds on the shapes of v1 vs v2 content graphs.
-    from cograph_client.graph.ontology_commit import load_ontology_shape
+    from infona_client.graph.ontology_commit import load_ontology_shape
 
     s1 = await load_ontology_shape(n, f"{PUBLIC}/v1")
     s2 = await load_ontology_shape(n, f"{PUBLIC}/v2")

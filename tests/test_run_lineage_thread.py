@@ -31,20 +31,20 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.graph.kg_writer import DELTA_NONCE_PREDICATES
+from infona_client.graph.kg_writer import DELTA_NONCE_PREDICATES
 
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.queries import kg_graph_uri  # noqa: E402
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
     ExtractionResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 TENANT = "onta372"
 KG = "providers"

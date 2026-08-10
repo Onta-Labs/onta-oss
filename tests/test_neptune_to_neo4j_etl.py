@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.graph.assertion_model import (
+from infona_client.graph.assertion_model import (
     property_uri,
     type_membership_property_id,
 )
-from cograph_client.graph.facts import (
+from infona_client.graph.facts import (
     RESERVED_ENTITY_PROPERTY_KEYS,
     Fact,
     classify_triple,
@@ -27,10 +27,10 @@ from cograph_client.graph.facts import (
     sanitize_rel_type,
     triples_to_facts,
 )
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.graph.labels import RESERVED_SYSTEM_LABELS, sanitize_domain_label
-from cograph_client.graph.rdf_model import fact_to_assertion_fact
-from cograph_client.graph.scope import GraphScopeError
+from infona_client.graph.iri import IRI_BASE
+from infona_client.graph.labels import RESERVED_SYSTEM_LABELS, sanitize_domain_label
+from infona_client.graph.rdf_model import fact_to_assertion_fact
+from infona_client.graph.scope import GraphScopeError
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "neptune_to_neo4j_etl.py"

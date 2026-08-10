@@ -17,8 +17,8 @@ from collections import defaultdict
 
 import pytest
 
-from cograph_client.graph.layers import Layer, LayerStack, public_graph_uri
-from cograph_client.graph.ontology_base_pin import (
+from infona_client.graph.layers import Layer, LayerStack, public_graph_uri
+from infona_client.graph.ontology_base_pin import (
     BasePin,
     BasePinReadError,
     base_graph_uri_for_stack,
@@ -33,12 +33,12 @@ from cograph_client.graph.ontology_base_pin import (
     set_base_pin,
     upgrade_base_pin,
 )
-from cograph_client.graph.ontology_commit import (
+from infona_client.graph.ontology_commit import (
     commit_ontology,
     release_graph_uri,
 )
-from cograph_client.graph.ontology_snapshots import snapshot_ontology
-from cograph_client.models.ontology import (
+from infona_client.graph.ontology_snapshots import snapshot_ontology
+from infona_client.models.ontology import (
     ChangeKind,
     OntologyMutation,
     OntologyOpKind,

@@ -19,7 +19,7 @@ import re
 
 import pytest
 
-from cograph_client.nlp.pipeline import (
+from infona_client.nlp.pipeline import (
     NLQueryPipeline,
     ONTOLOGY_EMPTY,
     ONTOLOGY_FETCH_ERROR,
@@ -250,7 +250,7 @@ async def test_ask_declared_empty_type_is_honest(monkeypatch):
     claiming Sprocket is absent nor substituting the populated Widget type."""
     _ontology_cache.clear()
     # Keep the full (non-semantic) ontology path so _fetch_ontology runs.
-    monkeypatch.setattr("cograph_client.nlp.pipeline.get_embedding_service", lambda: None)
+    monkeypatch.setattr("infona_client.nlp.pipeline.get_embedding_service", lambda: None)
 
     pipe = _pipe(WidgetNeptune(active=("Widget",)))
 
@@ -300,7 +300,7 @@ def test_generation_prompt_teaches_no_instances_handling():
     """The SPARQL-generation system prompt must explain how to handle a
     "[no instances]" target: query it honestly (zero rows), never claim it is
     absent, never substitute a populated type."""
-    from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
+    from infona_client.nlp.prompts import SPARQL_GENERATION_SYSTEM
 
     p = SPARQL_GENERATION_SYSTEM.lower()
     assert "[no instances]" in p

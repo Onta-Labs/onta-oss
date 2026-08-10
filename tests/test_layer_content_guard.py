@@ -3,7 +3,7 @@
 Product rule (founder, ONTA-396): Public is attrs+rels only; skills, functions,
 and sources belong on Enhanced (B) or Tenant (C). Enforcement is a hard
 **invariant** (``LAYER_A_CONTENT_ENFORCEMENT == "invariant"``), not a lint —
-see ``cograph_client/graph/layer_content.py``.
+see ``infona_client/graph/layer_content.py``.
 
 Two layers, modelled on ``test_write_path_convergence.py`` /
 ``test_entity_uri_convergence.py``:
@@ -29,8 +29,8 @@ import tokenize
 
 import pytest
 
-import cograph_client
-from cograph_client.graph.layer_content import (
+import infona_client
+from infona_client.graph.layer_content import (
     LAYER_A_CONTENT_ENFORCEMENT,
     LAYER_CONTENT_MATRIX,
     ContentKind,
@@ -40,12 +40,12 @@ from cograph_client.graph.layer_content import (
     is_public_type_uri,
     permits,
 )
-from cograph_client.graph.layers import Layer, layer_type_uri, type_namespace
-from cograph_client.graph.queries import register_function_triple
-from cograph_client.skills import TypeSkill, register_skill_layer, reset_skill_layers
-from cograph_client.skills.registry import global_skills_by_layer
+from infona_client.graph.layers import Layer, layer_type_uri, type_namespace
+from infona_client.graph.queries import register_function_triple
+from infona_client.skills import TypeSkill, register_skill_layer, reset_skill_layers
+from infona_client.skills.registry import global_skills_by_layer
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 _MATRIX_HOME = "graph/layer_content.py"
 _SKILLS_DATA = _PKG_ROOT / "skills" / "data"
 
@@ -163,7 +163,7 @@ def test_matrix_lives_only_in_layer_content():
     src = home.read_text()
     assert "LAYER_CONTENT_MATRIX" in src
     # Import path identity: the name resolves to this module.
-    import cograph_client.graph.layer_content as lc
+    import infona_client.graph.layer_content as lc
 
     assert lc.LAYER_CONTENT_MATRIX is LAYER_CONTENT_MATRIX
     assert lc.__file__ is not None
@@ -203,7 +203,7 @@ def test_is_public_type_uri_recognises_namespace_shapes():
 
 
 def test_no_second_layer_content_matrix_definition():
-    """Scan ALL of ``cograph_client/`` for a second ``LAYER_CONTENT_MATRIX =``.
+    """Scan ALL of ``infona_client/`` for a second ``LAYER_CONTENT_MATRIX =``.
 
     Deny-by-default: a NEW module that copies the table fails here even if
     nobody remembered to converge it onto ``layer_content.py``.
@@ -238,7 +238,7 @@ def test_matrix_home_actually_defines_the_matrix():
 
 
 def test_no_forbidden_public_content_attachment_in_production():
-    """Scan production ``cograph_client/`` for skills or functions attached to
+    """Scan production ``infona_client/`` for skills or functions attached to
     the Public type namespace.
 
     Allowed on Public (NOT flagged here): attributes + relationships —
@@ -394,7 +394,7 @@ def test_register_function_triple_still_accepts_tenant_type():
 
 def test_register_function_triple_accepts_enhanced_layer():
     """ONTA-399: Enhanced (layer B) may carry functions; URI + graph are qualified."""
-    from cograph_client.graph.layers import enhanced_graph_uri, layer_type_uri
+    from infona_client.graph.layers import enhanced_graph_uri, layer_type_uri
 
     sparql = register_function_triple(
         "https://graph.onta.sh/graphs/t1",  # overridden for Enhanced

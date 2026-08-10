@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.enrichment.tier_router import (
+from infona_client.enrichment.tier_router import (
     _registry_covers,
     resolve_auto_tier,
 )
@@ -74,7 +74,7 @@ async def test_auto_tier_partial_coverage_falls_through():
 @pytest.mark.asyncio
 async def test_registry_probe_failure_never_breaks_routing(monkeypatch):
     # If the catalog probe blows up, auto-tier must fall through, not raise.
-    import cograph_client.api_registry.catalog as catalog
+    import infona_client.api_registry.catalog as catalog
 
     def boom():
         raise RuntimeError("catalog unavailable")

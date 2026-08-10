@@ -20,7 +20,7 @@ The eval path for ALL KGs must mirror what production users actually experience.
 - [ ] **Both paths use the example bank with anti-cheat**
   - v1 path: production `/ask` accepts `exclude_questions` body parameter ✓
   - Multi-table path: `ask_client_side` retrieves from example bank with same exclude filter
-  - **Symmetric**: if production /ask uses examples, the client-side path MUST use them too. Anything else under-represents Cograph's real accuracy.
+  - **Symmetric**: if production /ask uses examples, the client-side path MUST use them too. Anything else under-represents Infona's real accuracy.
 
 - [ ] **Both paths have retry-with-error-feedback**
   - v1 path: production `/ask` retry loop in `omnix-oss/omnix/nlp/pipeline.py` (3 attempts)
@@ -71,10 +71,10 @@ Any single failure here invalidates the entire run.
 
 Mismatches here corrupt every comparison table in the paper.
 
-- [ ] **All systems in Table 1 (Cograph vs baselines) use the EXACT SAME LLM model ID**
+- [ ] **All systems in Table 1 (Infona vs baselines) use the EXACT SAME LLM model ID**
   - Currently: `google/gemini-3-flash-preview`
   - Verified by grepping each script for the model name
-  - Includes Cograph primary, Text-to-SQL, RAG, Pandas-agent
+  - Includes Infona primary, Text-to-SQL, RAG, Pandas-agent
 
 - [ ] **All runs in Table 1 use the SAME gold file directory** (`eval_holdout_v2/gold/`)
 
@@ -88,9 +88,9 @@ Mismatches here corrupt every comparison table in the paper.
   - Either all reasoning OR all non-reasoning (mixing reasoning + direct-output models is comparing apples to oranges)
   - Currently: 3 non-reasoning models (Opus 4.6 default mode, Gemini 3 Flash Preview, Gemini 2.5 Flash Lite)
 
-- [ ] **Cross-LLM mid-tier model is the SAME as Cograph primary** (so Table 1's Cograph column = Table 2's mid column)
+- [ ] **Cross-LLM mid-tier model is the SAME as Infona primary** (so Table 1's Infona column = Table 2's mid column)
 
-- [ ] **All cross-LLM runs use the SAME gold + judge + seeds + concurrency** as Cograph primary
+- [ ] **All cross-LLM runs use the SAME gold + judge + seeds + concurrency** as Infona primary
 
 ---
 

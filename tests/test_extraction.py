@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.enrichment.extraction import (
+from infona_client.enrichment.extraction import (
     CALIBRATION_METHOD,
     EXTRACTION_METHOD,
     _calibrate,
     default_extractor,
     extract_value,
 )
-from cograph_client.enrichment.models import Verdict
+from infona_client.enrichment.models import Verdict
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ async def test_extract_value_end_to_end_with_default_extractor(monkeypatch):
     # No injected extractor → the factory resolves the default. Force the
     # keyless branch so the deterministic offline extractor is used (no network)
     # regardless of the ambient OPENROUTER_API_KEY.
-    import cograph_client.enrichment.llm_extractor as llm_extractor
+    import infona_client.enrichment.llm_extractor as llm_extractor
 
     monkeypatch.setattr(llm_extractor, "_openrouter_key", lambda: "")
 

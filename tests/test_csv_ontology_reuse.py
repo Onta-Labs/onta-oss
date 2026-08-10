@@ -20,19 +20,19 @@ from __future__ import annotations
 
 import pytest
 
-from cograph_client.resolver.attribute_resolver import (
+from infona_client.resolver.attribute_resolver import (
     AttributeSchema,
     _find_existing_attr,
     _normalize_attr_name,
     is_primitive_datatype,
     resolve_attribute,
 )
-from cograph_client.resolver.csv_resolver import (
+from infona_client.resolver.csv_resolver import (
     _snake_case,
     format_existing_ontology_for_prompt,
     reconcile_mapping_to_existing,
 )
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     AttrAction,
     ColumnMapping,
     ColumnRole,
@@ -41,7 +41,7 @@ from cograph_client.resolver.models import (
     OntologyExtensions,
     TypeExtension,
 )
-from cograph_client.resolver.predicate_normalizer import normalize_predicate
+from infona_client.resolver.predicate_normalizer import normalize_predicate
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +370,7 @@ class TestReconcileMappingToExisting:
         assert out.ontology_extensions.types == []
 
     def test_multi_entity_owner_resolves_type(self):
-        from cograph_client.resolver.models import EntitySpec
+        from infona_client.resolver.models import EntitySpec
 
         mapping = CSVSchemaMapping(
             entity_type="Drug",
@@ -415,7 +415,7 @@ class TestReconcileMappingToExisting:
         assert out.columns[0].attribute_name == "has_indication"
 
     def test_unknown_owner_does_not_false_reuse(self):
-        from cograph_client.resolver.models import EntitySpec
+        from infona_client.resolver.models import EntitySpec
 
         mapping = CSVSchemaMapping(
             entity_type="Drug",

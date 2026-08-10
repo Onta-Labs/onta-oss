@@ -27,10 +27,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import cograph_client.resolver.schema_resolver as sr
-from cograph_client.resolver import llm_router
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+import infona_client.resolver.schema_resolver as sr
+from infona_client.resolver import llm_router
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 # --------------------------------------------------------------------------- #

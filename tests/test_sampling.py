@@ -5,8 +5,8 @@ the file: a distinguishing value that first appears AFTER the legacy 5000-row
 head cutoff has to reach the sample, which head-truncation never achieves.
 """
 
-from cograph_client.resolver.profiler import profile_table
-from cograph_client.resolver.sampling import reservoir_sample, sample_for_inference
+from infona_client.resolver.profiler import profile_table
+from infona_client.resolver.sampling import reservoir_sample, sample_for_inference
 
 
 def _rows(n: int, *, populated_after: int) -> list[dict]:

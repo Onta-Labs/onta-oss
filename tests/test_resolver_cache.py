@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from cograph_client.resolver.models import MatchVerdict
-from cograph_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
+from infona_client.resolver.models import MatchVerdict
+from infona_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
 
 @pytest.fixture

@@ -12,27 +12,27 @@ import dataclasses
 import httpx
 import pytest
 
-from cograph_client.research import extract as extract_mod
+from infona_client.research import extract as extract_mod
 
 # The fetch ladder + SSRF guards moved to the shared retrieval substrate
 # (ONTA-193): StaticHttpFetcher + httpx live in ``retrieval.fetch``; the DNS stub
 # ``_resolve_ips`` lives in ``retrieval.safety``. Monkeypatch those on their real
-# home — ``cograph_client.research.fetch`` is now only a compat re-export shim.
-from cograph_client.retrieval import fetch as fetch_mod
-from cograph_client.retrieval import safety as safety_mod
-from cograph_client.research.fetch import (
+# home — ``infona_client.research.fetch`` is now only a compat re-export shim.
+from infona_client.retrieval import fetch as fetch_mod
+from infona_client.retrieval import safety as safety_mod
+from infona_client.research.fetch import (
     StaticHttpFetcher,
     is_fetchable_url,
     reset_page_fetchers,
 )
-from cograph_client.research.harness import (
+from infona_client.research.harness import (
     _MIN_SUBSTANTIVE_CHARS,
     WebResearchHarness,
     _looks_incomplete,
     _substantive_chars,
 )
-from cograph_client.research.plan import plan_research
-from cograph_client.research.types import (
+from infona_client.research.plan import plan_research
+from infona_client.research.types import (
     Budget,
     FetchedPage,
     ResearchPlan,
@@ -41,8 +41,8 @@ from cograph_client.research.types import (
     SchemaField,
     TargetSchema,
 )
-from cograph_client.research.verify import reset_research_verifier
-from cograph_client.web_sources.base import DiscoverResult, reset_web_sources
+from infona_client.research.verify import reset_research_verifier
+from infona_client.web_sources.base import DiscoverResult, reset_web_sources
 
 
 @pytest.fixture(autouse=True)
@@ -188,7 +188,7 @@ async def test_static_fetch_refuses_redirect_resolving_to_internal(monkeypatch):
 
 
 def test_host_dns_blocked_is_false_for_ip_literals_and_unresolvable(monkeypatch):
-    from cograph_client.research.fetch import _host_dns_blocked
+    from infona_client.research.fetch import _host_dns_blocked
 
     # IP literals are the string guard's job — no redundant lookup here.
     monkeypatch.setattr(safety_mod, "_resolve_ips", lambda host: ["169.254.169.254"])
@@ -359,7 +359,7 @@ async def test_plan_emits_clarifying_questions_with_options(monkeypatch):
             '"rationale":"ambiguous"}'
         )
 
-    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    monkeypatch.setattr("infona_client.research.plan.openrouter_chat", _chat)
     plan = await plan_research("list the best models", openrouter_key="k")
     assert plan.needs_clarification is True
     assert [q.question for q in plan.clarifying_questions] == [
@@ -383,7 +383,7 @@ async def test_plan_accepts_bare_string_clarifying_questions(monkeypatch):
             '"clarifying_questions":["Which region?", {"question":"What year?"}]}'
         )
 
-    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    monkeypatch.setattr("infona_client.research.plan.openrouter_chat", _chat)
     plan = await plan_research("q", openrouter_key="k")
     assert plan.needs_clarification is True
     assert [(q.question, q.options) for q in plan.clarifying_questions] == [
@@ -393,7 +393,7 @@ async def test_plan_accepts_bare_string_clarifying_questions(monkeypatch):
 
 
 def test_normalize_clarifying_questions_caps_and_dedupes():
-    from cograph_client.research.types import normalize_clarifying_questions
+    from infona_client.research.types import normalize_clarifying_questions
 
     qs = normalize_clarifying_questions(
         [
@@ -410,7 +410,7 @@ def test_normalize_clarifying_questions_caps_and_dedupes():
 
 
 def test_clarification_result_renders_options_inline():
-    from cograph_client.research.synthesize import clarification_result
+    from infona_client.research.synthesize import clarification_result
 
     res = clarification_result(
         "best models?",
@@ -431,7 +431,7 @@ async def test_plan_clarification_ignored_when_no_questions(monkeypatch):
             '"needs_clarification":true,"clarifying_questions":[]}'
         )
 
-    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    monkeypatch.setattr("infona_client.research.plan.openrouter_chat", _chat)
     plan = await plan_research("q", openrouter_key="k")
     assert plan.needs_clarification is False  # a flag with no questions → proceed
 
@@ -539,7 +539,7 @@ async def test_plan_strips_provenance_column_and_sets_single_record(monkeypatch)
             '"needs_web":true,"single_record":true,"queries":["q"]}'
         )
 
-    monkeypatch.setattr("cograph_client.research.plan.openrouter_chat", _chat)
+    monkeypatch.setattr("infona_client.research.plan.openrouter_chat", _chat)
     plan = await plan_research("find Dr. X's clinic phone", openrouter_key="k")
     assert plan.single_record is True
     # source_url + sources dropped; the legitimate `website` content column stays.
@@ -738,7 +738,7 @@ async def test_harness_pinned_schema_skips_clarification():
 
 # --- ONTA-166 local: per-stage cost/latency trace + medium tagging ------------- #
 def test_trace_totals_aggregate_per_stage():
-    from cograph_client.research.types import ResearchTrace
+    from infona_client.research.types import ResearchTrace
 
     tr = ResearchTrace(medium="cli")
     tr.add("fetch", detail="u1", elapsed_ms=100.0, cost_usd=0.02, tier=2)
@@ -759,7 +759,7 @@ def test_trace_totals_aggregate_per_stage():
 
 
 def test_normalize_medium_clamps_unknown_and_blank():
-    from cograph_client.research.types import normalize_medium
+    from infona_client.research.types import normalize_medium
 
     assert normalize_medium("cli") == "cli"
     assert normalize_medium("  Explorer ") == "explorer"
@@ -769,7 +769,7 @@ def test_normalize_medium_clamps_unknown_and_blank():
 
 
 def test_redact_url_strips_credentials_and_query():
-    from cograph_client.research.types import redact_url
+    from infona_client.research.types import redact_url
 
     assert (
         redact_url("https://user:tok@example.com/p?api_key=SECRET")
@@ -817,7 +817,7 @@ async def test_fetch_exception_scrubs_credentials_from_trace(monkeypatch):
 
 
 def test_trace_normalizes_medium_on_construction():
-    from cograph_client.research.types import ResearchTrace
+    from infona_client.research.types import ResearchTrace
 
     assert ResearchTrace(medium="Weird-Client/1.0").medium == "other"
     assert ResearchTrace(medium="MCP").medium == "mcp"

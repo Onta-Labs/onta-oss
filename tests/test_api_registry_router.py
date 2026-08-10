@@ -10,17 +10,17 @@ import json
 
 import pytest
 
-from cograph_client.api_registry import (
+from infona_client.api_registry import (
     MODE_API_ONLY,
     MODE_API_PLUS_WEB,
     MODE_WEB_ONLY,
     make_api_source_catalog,
     route_query,
 )
-from cograph_client.api_registry.catalog import reset_api_source_layers
-from cograph_client.api_registry.coverage_index import reset_coverage_index
-from cograph_client.api_registry.ranking import lexical_rank as _lexical_rank
-from cograph_client.api_registry.router import (
+from infona_client.api_registry.catalog import reset_api_source_layers
+from infona_client.api_registry.coverage_index import reset_coverage_index
+from infona_client.api_registry.ranking import lexical_rank as _lexical_rank
+from infona_client.api_registry.router import (
     MODE_API_ONLY as _MODE_API_ONLY,  # noqa: F401 (re-exported for readability)
     RoutingDecision,
     _candidate_block,
@@ -247,7 +247,7 @@ def test_candidate_block_includes_param_descriptions():
 def test_param_geo_kind_classifies_by_semantics_not_placename():
     """Pure param-semantics classifier: city/zip => narrow, county/region/radius
     => broad, state/other => neither. No place names involved."""
-    from cograph_client.api_registry.spec import ParamSpec
+    from infona_client.api_registry.spec import ParamSpec
 
     def kind(name, desc=""):
         return _param_geo_kind(ParamSpec(name=name, description=desc))

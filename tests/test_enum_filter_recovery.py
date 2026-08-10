@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.nlp.enum_filter import (
+from infona_client.nlp.enum_filter import (
     enum_mismatch_feedback,
     impossible_enum_contains,
     parse_enum_attr_values,
 )
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 
 ONTOLOGY = """\
@@ -182,7 +182,7 @@ async def test_ask_retries_on_enum_filter_zero_rows():
         patch.object(p, "_broaden_name_lookup", new=AsyncMock(return_value=None)),
         patch.object(p, "_format_answer", new=fake_format),
         patch.object(p, "_rephrase_via_openrouter", new=fake_rephrase),
-        patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=None),
+        patch("infona_client.nlp.pipeline.get_embedding_service", return_value=None),
     ):
         result = await p.ask(
             "A customer asked about Tecentriq after bladder surgery — is there a required test?",

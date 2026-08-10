@@ -8,7 +8,7 @@ each gold question.
 ## Setup
 
 - **LLM:** `google/gemini-2.5-flash` via OpenRouter (same model and
-  temperature=0 as Omnix).
+  temperature=0 as Infona).
 - **Data:** the same CSV tables that produced each holdout-v2 KG, loaded
   from `benchmarks/datasets/holdout_v2_staged/`,
   `benchmarks/datasets/holdout_v2_prepped/`,
@@ -22,7 +22,7 @@ each gold question.
   wrong (counted as `crashes`).
 - **Seeds:** `1, 2, 3` (3 independent runs per question, majority vote).
 - **Judge:** the same `fast_judge` / `full_set_judge` from
-  `scripts/eval_baseline.py` that judges the primary Omnix run, so the
+  `scripts/eval_baseline.py` that judges the primary Infona run, so the
   numbers in this report are directly comparable.
 
 ## How to run
@@ -52,5 +52,5 @@ README.md                     this file
 
 Code-execution agents are the strongest fair external baseline for the
 v2 paper: they have full Turing-completeness, can do joins, aggregations,
-filters, anything pandas can. If Omnix beats this on the same data with
+filters, anything pandas can. If Infona beats this on the same data with
 the same LLM, the case for graph-native query is iron-clad.

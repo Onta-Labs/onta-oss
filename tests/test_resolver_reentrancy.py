@@ -41,19 +41,19 @@ import pytest
 pyoxigraph = pytest.importorskip("pyoxigraph")
 from pyoxigraph import QueryResultsFormat, Store  # noqa: E402
 
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
-from cograph_client.qc.isolation import (  # noqa: E402
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri  # noqa: E402
+from infona_client.qc.isolation import (  # noqa: E402
     WorkspaceScope,
     check_isolation,
     format_isolation,
 )
-from cograph_client.resolver.models import (  # noqa: E402
+from infona_client.resolver.models import (  # noqa: E402
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 RDFS_SUBCLASSOF = "http://www.w3.org/2000/01/rdf-schema#subClassOf"
 TYPES = "https://graph.onta.sh/types/"
@@ -242,7 +242,7 @@ async def _matcher_yield_new(*args, **kwargs):
     """Fake TypeMatcher.match: yields (a real await point INSIDE _resolve_type's
     locked region) then returns DIFFERENT (a brand-new top-level type). The yield
     is what lets two un-serialized _resolve_type calls overlap."""
-    from cograph_client.resolver.type_matcher import MatchVerdict, TypeMatch
+    from infona_client.resolver.type_matcher import MatchVerdict, TypeMatch
 
     await asyncio.sleep(0)
     proposed = args[0]

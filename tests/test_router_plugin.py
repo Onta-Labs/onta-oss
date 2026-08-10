@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 
 def test_router_plugin_loaded_and_mounts_router(monkeypatch):
     """register(app) runs during create_app() and the mounted route works."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "router_plugins", "tests.fake_router_plugin:register")
     try:
@@ -33,8 +33,8 @@ def test_router_plugin_loaded_and_mounts_router(monkeypatch):
 
 def test_router_plugins_supports_comma_separated_entries(monkeypatch):
     """A blank/duplicate-friendly comma-separated spec still loads each entry."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(
         settings, "router_plugins", " tests.fake_router_plugin:register , "
@@ -52,8 +52,8 @@ def test_router_plugins_supports_comma_separated_entries(monkeypatch):
 
 def test_router_plugin_invalid_format_logged(monkeypatch):
     """Malformed entry is logged but does not raise."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "router_plugins", "no_colon_here")
     # Must not raise.
@@ -62,8 +62,8 @@ def test_router_plugin_invalid_format_logged(monkeypatch):
 
 def test_router_plugin_import_failure_does_not_crash(monkeypatch):
     """A plugin that can't be imported is logged, app still starts."""
-    from cograph_client.api import app as app_module
-    from cograph_client.config import settings
+    from infona_client.api import app as app_module
+    from infona_client.config import settings
 
     monkeypatch.setattr(settings, "router_plugins", "tests.does_not_exist:register")
     # Must not raise.

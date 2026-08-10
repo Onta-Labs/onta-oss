@@ -42,10 +42,10 @@ _HERE = Path(__file__).resolve()
 _OSS_ROOT = _HERE.parent.parent  # cograph-oss/
 sys.path.insert(0, str(_OSS_ROOT))
 
-from cograph_client.graph.client import NeptuneClient  # noqa: E402
-from cograph_client.graph.queries import tenant_graph_uri  # noqa: E402
-from cograph_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
-from cograph_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
+from infona_client.graph.client import NeptuneClient  # noqa: E402
+from infona_client.graph.queries import tenant_graph_uri  # noqa: E402
+from infona_client.resolver.schema_resolver import SchemaResolver  # noqa: E402
+from infona_client.resolver.verdict_cache import JsonVerdictCache  # noqa: E402
 
 FIXTURES = _OSS_ROOT / "tests" / "fixtures" / "decomp"
 
@@ -177,7 +177,7 @@ async def seed_ontology(neptune: NeptuneClient, tenant: str, spec: dict) -> None
     REUSES these exact types instead of minting near-synonym duplicates. Uses the
     same URI helpers the resolver writes with, so TypeMatcher/_fetch_ontology see
     them as genuine existing types."""
-    from cograph_client.graph.ontology_queries import (
+    from infona_client.graph.ontology_queries import (
         attr_uri, entity_uri, insert_attribute, insert_type, type_uri,
     )
 

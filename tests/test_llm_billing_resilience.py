@@ -29,17 +29,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from cograph_client.resolver import llm_router
-from cograph_client.resolver.llm_router import openrouter_chat
-from cograph_client.resolver.models import (
+from infona_client.resolver import llm_router
+from infona_client.resolver.llm_router import openrouter_chat
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
-from cograph_client.retrieval.errors import (
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.retrieval.errors import (
     LLMAuthError,
     LLMBillingError,
     LLMError,
@@ -399,12 +399,12 @@ async def test_non_billing_empty_extraction_still_splits(
 # --------------------------------------------------------------------------- #
 # (c) the discovery run short-circuits to a failed job with honest partials
 # --------------------------------------------------------------------------- #
-from cograph_client.agent.capabilities import web_ingest_cap  # noqa: E402
-from cograph_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
+from infona_client.agent.capabilities import web_ingest_cap  # noqa: E402
+from infona_client.agent.capabilities.web_ingest_cap import (  # noqa: E402
     WebIngestCapability,
 )
-from cograph_client.agent.registry import AgentContext  # noqa: E402
-from cograph_client.web_sources import (  # noqa: E402
+from infona_client.agent.registry import AgentContext  # noqa: E402
+from infona_client.web_sources import (  # noqa: E402
     DiscoverResult,
     register_web_source,
     reset_web_sources,
@@ -497,8 +497,8 @@ async def test_billing_error_fails_whole_run_with_clear_message(monkeypatch):
     as web_ingest_subquery_failed)."""
     import asyncio
 
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = _FakeProvider()
     register_web_source(provider)
@@ -557,8 +557,8 @@ async def test_billing_error_records_honest_partials(monkeypatch):
     error_summary carries a job-level item naming the partial."""
     import asyncio
 
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     # DISTINCT rows per sub-query so the second batch survives cross-batch dedupe
     # and actually reaches a second ingest (where the 402 fires). A per-call
@@ -643,8 +643,8 @@ async def test_non_billing_error_still_degrades_per_batch(monkeypatch):
     the job fails with the attributed error — NOT the billing short-circuit."""
     import asyncio
 
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = _FakeProvider()
     register_web_source(provider)

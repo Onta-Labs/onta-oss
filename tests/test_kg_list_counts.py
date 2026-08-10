@@ -9,9 +9,9 @@ so the next read is again a single tiny lookup.
 
 import pytest
 
-from cograph_client.api.routes.knowledge_graphs import KG_TRIPLE_COUNT
-from cograph_client.graph.kg_stats_store import reset_kg_stats_store
-from cograph_client.graph.queries import InvalidKGName, kg_graph_uri
+from infona_client.api.routes.knowledge_graphs import KG_TRIPLE_COUNT
+from infona_client.graph.kg_stats_store import reset_kg_stats_store
+from infona_client.graph.queries import InvalidKGName, kg_graph_uri
 
 TENANT = "test-tenant"
 
@@ -130,8 +130,8 @@ def test_invalidate_triple_count_drops_stored_value():
     import asyncio
     from unittest.mock import AsyncMock
 
-    from cograph_client.api.routes.knowledge_graphs import invalidate_triple_count
-    from cograph_client.graph.queries import kg_meta_uri, tenant_graph_uri
+    from infona_client.api.routes.knowledge_graphs import invalidate_triple_count
+    from infona_client.graph.queries import kg_meta_uri, tenant_graph_uri
 
     async def run():
         neptune = AsyncMock()

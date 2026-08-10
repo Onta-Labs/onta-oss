@@ -12,10 +12,10 @@ import inspect
 
 import pytest
 
-from cograph_client.graph.kg_writer import GraphDelta, build_graph_delta
-from cograph_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
-from cograph_client.pipeline.mutations import MutationReceipt
-from cograph_client.verification.identity import (
+from infona_client.graph.kg_writer import GraphDelta, build_graph_delta
+from infona_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
+from infona_client.pipeline.mutations import MutationReceipt
+from infona_client.verification.identity import (
     IdentityContext,
     RecheckResult,
     is_identity_conditional,
@@ -23,13 +23,13 @@ from cograph_client.verification.identity import (
     mark_identity_conditional,
     recheck_after_resolution,
 )
-from cograph_client.verification.types import (
+from infona_client.verification.types import (
     EvidenceRef,
     TruthVerdict,
     VerifiedFact,
     VerifierResult,
 )
-from cograph_client.verification.verifier import (
+from infona_client.verification.verifier import (
     get_fact_verifier,
     register_fact_verifier,
 )
@@ -387,7 +387,7 @@ def test_recheck_returns_plain_verified_facts():
 def test_recheck_does_not_import_or_touch_the_write_path():
     """identity.py must not pull in a KG writer — annotate-only means no write seam
     is even reachable from the module."""
-    import cograph_client.verification.identity as identity_mod
+    import infona_client.verification.identity as identity_mod
 
     src = inspect.getsource(identity_mod)
     # No write-path primitives and no store round-trips anywhere in the module source.

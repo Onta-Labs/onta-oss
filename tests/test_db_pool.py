@@ -1,4 +1,4 @@
-"""Shared asyncpg pool (cograph_client/db/pool.py, ONTA-174).
+"""Shared asyncpg pool (infona_client/db/pool.py, ONTA-174).
 
 All tests run against a fake ``asyncpg.create_pool`` — no real Postgres. What
 must hold:
@@ -18,7 +18,7 @@ import asyncio
 
 import pytest
 
-from cograph_client.db.pool import (
+from infona_client.db.pool import (
     close_pg_pools,
     get_pg_pool,
     register_pool_init,

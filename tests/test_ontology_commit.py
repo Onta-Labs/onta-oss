@@ -13,7 +13,7 @@ from collections import defaultdict
 
 import pytest
 
-from cograph_client.graph.ontology_commit import (
+from infona_client.graph.ontology_commit import (
     OntologyVersionConflict,
     changelog_graph_uri_for,
     commit_ontology,
@@ -21,8 +21,8 @@ from cograph_client.graph.ontology_commit import (
     ontology_write_lock,
     versions_graph_uri,
 )
-from cograph_client.graph.ontology_queries import ontology_version
-from cograph_client.models.ontology import (
+from infona_client.graph.ontology_queries import ontology_version
+from infona_client.models.ontology import (
     ChangeKind,
     OntologyMutation,
     OntologyOpKind,
@@ -516,8 +516,8 @@ async def test_set_text_kind_and_core_slot_ops():
 @pytest.mark.asyncio
 async def test_register_alias_via_commit_writes_and_fingerprints():
     """ONTA-407a: REGISTER_ALIAS is a real commit op (no longer NotSupported)."""
-    from cograph_client.graph.aliases import ALIAS_OF, fetch_alias_map, rewrite_query_attrs
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.aliases import ALIAS_OF, fetch_alias_map, rewrite_query_attrs
+    from infona_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
     g = "https://graph.onta.sh/graphs/t-alias"
@@ -611,8 +611,8 @@ async def test_register_alias_rejects_self_and_missing_fields():
 @pytest.mark.asyncio
 async def test_register_alias_full_iri_and_hierarchy_move():
     """Full IRIs and cross-type targets (hierarchy move) are accepted."""
-    from cograph_client.graph.aliases import fetch_alias_map
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.aliases import fetch_alias_map
+    from infona_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
     g = "https://graph.onta.sh/graphs/t-alias"
@@ -660,8 +660,8 @@ async def test_register_alias_full_iri_and_hierarchy_move():
 @pytest.mark.asyncio
 async def test_rename_attribute_always_creates_alias():
     """RENAME_ATTRIBUTE always records aliasOf — cannot rename without it."""
-    from cograph_client.graph.aliases import ALIAS_OF, fetch_alias_map, rewrite_query_attrs
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.aliases import ALIAS_OF, fetch_alias_map, rewrite_query_attrs
+    from infona_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
     g = "https://graph.onta.sh/graphs/t-rename"
@@ -735,13 +735,13 @@ async def test_rename_attribute_always_creates_alias():
 @pytest.mark.asyncio
 async def test_rename_lifecycle_backfill_and_retire():
     """rename → backfill → retire-refuses-while-refs → retire-ok → old fails."""
-    from cograph_client.graph.aliases import (
+    from infona_client.graph.aliases import (
         AliasStillReferencedError,
         backfill_aliases,
         fetch_alias_map,
         rewrite_query_attrs,
     )
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
     g = "https://graph.onta.sh/graphs/t-life"
@@ -838,8 +838,8 @@ async def test_rename_lifecycle_backfill_and_retire():
 @pytest.mark.asyncio
 async def test_alias_chains_flatten_and_cycles_dropped():
     """A→B→C flattens; cyclic A→B→A is dropped (no hang)."""
-    from cograph_client.graph.aliases import ALIAS_OF, fetch_alias_map
-    from cograph_client.graph.ontology_queries import attr_uri
+    from infona_client.graph.aliases import ALIAS_OF, fetch_alias_map
+    from infona_client.graph.ontology_queries import attr_uri
 
     n = MemNeptune()
     g = "https://graph.onta.sh/graphs/t-chain"
@@ -921,9 +921,9 @@ async def test_nl_ask_rewrites_after_rename(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock, patch
     import json
 
-    from cograph_client.graph.aliases import ALIAS_OF
-    from cograph_client.graph.ontology_queries import attr_uri
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.graph.aliases import ALIAS_OF
+    from infona_client.graph.ontology_queries import attr_uri
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     n = MemNeptune()
     g = "https://graph.onta.sh/graphs/t-nl"
@@ -979,7 +979,7 @@ async def test_nl_ask_rewrites_after_rename(monkeypatch):
 
     n.query = query_side_effect  # type: ignore[method-assign]
 
-    with patch("cograph_client.nlp.pipeline.get_embedding_service", return_value=None), \
+    with patch("infona_client.nlp.pipeline.get_embedding_service", return_value=None), \
          patch.object(pipeline, "_fetch_ontology", new=AsyncMock(return_value="Type: Guest")), \
          patch.object(pipeline.anthropic.messages, "create", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = msg

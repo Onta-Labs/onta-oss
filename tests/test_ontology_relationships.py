@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     PRIMITIVE_TYPES,
     _datatype_to_xsd,
     insert_attribute,

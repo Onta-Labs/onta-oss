@@ -10,10 +10,10 @@ import asyncio
 
 import pytest
 
-from cograph_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
-from cograph_client.graph.labels import RESERVED_SYSTEM_LABELS
-from cograph_client.graph.memory_store import MemoryGraphStore
-from cograph_client.graph.ontology_catalog import (
+from infona_client.graph.facts import RESERVED_ENTITY_PROPERTY_KEYS
+from infona_client.graph.labels import RESERVED_SYSTEM_LABELS
+from infona_client.graph.memory_store import MemoryGraphStore
+from infona_client.graph.ontology_catalog import (
     LITERAL_DATATYPES,
     OntoAttrRecord,
     OntoTypeRecord,
@@ -27,16 +27,16 @@ from cograph_client.graph.ontology_catalog import (
     upsert_attribute,
     upsert_type,
 )
-from cograph_client.graph.pg_ops import merge_entity
-from cograph_client.graph.schema_bootstrap import TEMPLATES
-from cograph_client.graph.scope import (
+from infona_client.graph.pg_ops import merge_entity
+from infona_client.graph.schema_bootstrap import TEMPLATES
+from infona_client.graph.scope import (
     GLOBAL_TENANT_ID,
     ONTOLOGY_KG,
     PUBLIC_KG,
     GraphScope,
     GraphScopeError,
 )
-from cograph_client.graph.store import configure_graph_store, reset_graph_store_for_tests
+from infona_client.graph.store import configure_graph_store, reset_graph_store_for_tests
 
 
 @pytest.fixture
@@ -157,8 +157,8 @@ def test_upsert_type_clears_parent_when_none(store):
 
 def test_upsert_type_dual_writes_class_and_subclass(store):
     """ADR 0013: OntoType upsert also MERGEs Class (id=type IRI) + SUBCLASS_OF."""
-    from cograph_client.graph.ontology_queries import type_uri
-    from cograph_client.graph.rdfs_helpers import subclass_closure
+    from infona_client.graph.ontology_queries import type_uri
+    from infona_client.graph.rdfs_helpers import subclass_closure
 
     async def run():
         await upsert_type(
@@ -370,8 +370,8 @@ def test_public_layer_requires_privileged_for_write(store):
 
 def test_schema_types_for_kg_with_counts(store):
     async def run():
-        from cograph_client.graph.ontology_queries import entity_uri
-        from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
+        from infona_client.graph.ontology_queries import entity_uri
+        from infona_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
 
         await upsert_type(
             store=store, layer="tenant", tenant_id="demo", name="Person"

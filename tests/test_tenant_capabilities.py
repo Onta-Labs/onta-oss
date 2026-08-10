@@ -1,6 +1,6 @@
 """Tenant-level read/write capability (membership roles)."""
 
-from cograph_client.auth.capabilities import (
+from infona_client.auth.capabilities import (
     INVITABLE_ROLES,
     can_admin_members,
     can_write,
@@ -44,9 +44,9 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from cograph_client.auth.access import require_tenant_write, resolve_member_role
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.auth.workspace_store import make_workspace_store
+from infona_client.auth.access import require_tenant_write, resolve_member_role
+from infona_client.auth.api_keys import TenantContext
+from infona_client.auth.workspace_store import make_workspace_store
 
 
 def _run(coro):

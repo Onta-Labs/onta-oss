@@ -25,14 +25,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.resolver import chunker
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.models import (
+from infona_client.resolver import chunker
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 @pytest.fixture

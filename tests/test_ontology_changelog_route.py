@@ -6,12 +6,12 @@ rejection + pagination query params.
 
 from __future__ import annotations
 
-from cograph_client.graph.ontology_changelog import (
+from infona_client.graph.ontology_changelog import (
     changelog_graph_uri_for,
     serialize_change_records,
 )
-from cograph_client.graph.queries import tenant_graph_uri
-from cograph_client.models.ontology import ChangeKind, ChangeRecord
+from infona_client.graph.queries import tenant_graph_uri
+from infona_client.models.ontology import ChangeKind, ChangeRecord
 
 
 def _changelog_response(rows: list[dict[str, str]]) -> dict:

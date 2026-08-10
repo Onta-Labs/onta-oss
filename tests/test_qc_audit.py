@@ -1,4 +1,4 @@
-"""Tests for the QC audit runner (`cograph_client.qc.audit`) — the layer that turns the
+"""Tests for the QC audit runner (`infona_client.qc.audit`) — the layer that turns the
 invariant library into something that RUNS against a tenant's graphs.
 
 Two layers (same split as test_qc_invariants):
@@ -15,8 +15,8 @@ import json
 
 import pytest
 
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
-from cograph_client.qc import (
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.qc import (
     AuditReport,
     GraphAudit,
     Violation,
@@ -24,9 +24,9 @@ from cograph_client.qc import (
     report_to_dict,
     run_audit,
 )
-from cograph_client.qc.audit import _BASE_GRAPH_LABEL, _list_kg_graphs
-from cograph_client.qc.__main__ import _parse_args, _resolve_include, _run
-from cograph_client.qc.invariants import RDF_TYPE, RDFS_LABEL, RDFS_RANGE
+from infona_client.qc.audit import _BASE_GRAPH_LABEL, _list_kg_graphs
+from infona_client.qc.__main__ import _parse_args, _resolve_include, _run
+from infona_client.qc.invariants import RDF_TYPE, RDFS_LABEL, RDFS_RANGE
 
 TENANT = "demo"
 ENT = "https://graph.onta.sh/entities/"

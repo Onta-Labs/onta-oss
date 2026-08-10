@@ -1,5 +1,6 @@
 export {
   Client,
+  InfonaError,
   OntaError,
   RawApi,
   USER_SCHEDULABLE_ACTIONS,

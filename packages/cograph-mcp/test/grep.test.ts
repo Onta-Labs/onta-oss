@@ -132,7 +132,7 @@ describe("grep tool — rendering", () => {
 
   it("surfaces a backend error (e.g. the disabled-surface 503) as isError", async () => {
     const { client } = stubClient(() => {
-      throw new Error("Onta API error 503: literal grep is disabled");
+      throw new Error("Infona API error 503: literal grep is disabled");
     });
     const res = await grepHandler({ q: "matrix", kg_name: "movies" }, () => client);
     expect(res.isError).toBe(true);

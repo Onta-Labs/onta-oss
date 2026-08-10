@@ -5,7 +5,7 @@ When ``COGRAPH_GRAPH_BACKEND=neo4j``, ``POST /graphs/{tenant}/query`` and
 existing scoped SPARQL behaviour (mocked Neptune client).
 """
 
-from cograph_client.auth.api_keys import TenantContext, get_tenant
+from infona_client.auth.api_keys import TenantContext, get_tenant
 
 TENANT = "test-tenant"
 TENANT_GRAPH = f"https://graph.onta.sh/graphs/{TENANT}"
@@ -105,7 +105,7 @@ def test_passthrough_routes_gate_neo4j():
     """Structural: every public SPARQL route must call the neo4j hard-break."""
     import inspect
 
-    from cograph_client.api.routes import query as query_routes
+    from infona_client.api.routes import query as query_routes
 
     for route in query_routes.router.routes:
         source = inspect.getsource(route.endpoint)

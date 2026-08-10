@@ -20,14 +20,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import cograph_client.graph.text_markers as tm
-from cograph_client.graph.ontology_queries import (
+import infona_client.graph.text_markers as tm
+from infona_client.graph.ontology_queries import (
     TEXT_KIND_NOT_TEXT,
     attr_uri,
     text_kind_map_query,
     upsert_attribute_text_kind,
 )
-from cograph_client.graph.text_markers import (
+from infona_client.graph.text_markers import (
     TextCandidacy,
     classify_text_candidacy,
     get_free_text_map,
@@ -194,7 +194,7 @@ class TestFreeTextMapCache:
         ontology_queries.TEXT_KIND_NOT_TEXT). Until then the string values
         must never drift — the reconciler's presence-based skip and the map
         semantics both key on the literal."""
-        from cograph_client.semantic import reconciler
+        from infona_client.semantic import reconciler
 
         assert reconciler.TEXT_KIND_NOT_TEXT == TEXT_KIND_NOT_TEXT == "not_text"
 
@@ -279,8 +279,8 @@ def test_refresh_after_write_does_not_invalidate_text_marker_cache(monkeypatch):
     instead (see the write-site tests in test_text_candidacy_seam.py and the
     reconciler's self-invalidation); a plain data write must leave the cached
     map untouched."""
-    import cograph_client.nlp.pipeline as pipeline_mod
-    from cograph_client.graph.kg_writer import refresh_after_write
+    import infona_client.nlp.pipeline as pipeline_mod
+    from infona_client.graph.kg_writer import refresh_after_write
 
     async def run():
         monkeypatch.setattr(

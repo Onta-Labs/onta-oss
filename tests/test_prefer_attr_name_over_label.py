@@ -1,7 +1,7 @@
 """Display-name rewrite: prefer types/<T>/attrs/name over rdfs:label (Eval-MH RCA)."""
 
-from cograph_client.graph.iri import IRI_BASE
-from cograph_client.nlp.pipeline import _prefer_attr_name_over_rdfs_label
+from infona_client.graph.iri import IRI_BASE
+from infona_client.nlp.pipeline import _prefer_attr_name_over_rdfs_label
 
 
 def test_rdfs_label_rewritten_when_ontology_declares_attrs_name():
@@ -152,7 +152,7 @@ def test_rewrite_after_subclass_closure_path():
 
 def test_fix_common_sparql_issues_rewrites_label_on_typed_subject():
     """Integration: Fix 1 → Fix 4 → Fix 7 must still rewrite display labels."""
-    from cograph_client.nlp.pipeline import NLQueryPipeline
+    from infona_client.nlp.pipeline import NLQueryPipeline
 
     sparql = f"""
     SELECT ?eventName ?injuredCount WHERE {{

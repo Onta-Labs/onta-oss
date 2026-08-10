@@ -31,8 +31,8 @@ Two layers:
 import json
 import re
 
-from cograph_client.nlp.example_bank import DEFAULT_BANK_PATH
-from cograph_client.nlp.validator import LEGACY_ONTO_HOSTS, ONTO_BASE, normalize_sparql
+from infona_client.nlp.example_bank import DEFAULT_BANK_PATH
+from infona_client.nlp.validator import LEGACY_ONTO_HOSTS, ONTO_BASE, normalize_sparql
 
 # The minted-URI shapes graph/queries.py + graph/ontology_queries.py actually
 # produce. A bank URI outside this set means either a new shape landed without

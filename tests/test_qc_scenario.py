@@ -5,7 +5,7 @@ run over a real pyoxigraph store. That proves the harness wiring end-to-end — 
 the ingester emits shows up as a violation" — without a network/LLM dependency.
 
 The real LLM ingest path is exercised out-of-band via
-``python -m cograph_client.qc.scenario`` against a local store (see the module docstring).
+``python -m infona_client.qc.scenario`` against a local store (see the module docstring).
 """
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from cograph_client.graph.queries import kg_graph_uri, tenant_graph_uri
-from cograph_client.qc.scenario import (
+from infona_client.graph.queries import kg_graph_uri, tenant_graph_uri
+from infona_client.qc.scenario import (
     Dataset,
     _is_disposable,
     _resolve_include,

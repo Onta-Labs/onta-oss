@@ -29,7 +29,7 @@ import json
 
 import pytest
 
-from cograph_client.nlp.example_bank import (
+from infona_client.nlp.example_bank import (
     BENCHMARK_KG_PREFIXES,
     DEFAULT_BANK_PATH,
     ExampleBank,
@@ -294,7 +294,7 @@ async def test_an_all_benchmark_rebuild_leaves_the_committed_bank_alone(tmp_path
     load-then-merge property has its own tests in
     ``test_example_bank_rebuild_merge.py``.
     """
-    from cograph_client.eval import rebuild_example_bank
+    from infona_client.eval import rebuild_example_bank
 
     bank_path = tmp_path / "bank.jsonl"
     _write_bank(bank_path, [_row("imdb-movies", "how many films"), _row("events-sf", "how many events")])

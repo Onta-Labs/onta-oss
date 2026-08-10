@@ -49,7 +49,7 @@ const LOCAL_FILE_ROOTS: string[] = (() => {
 })();
 
 // The job categories the `list_jobs` filter accepts. This MUST stay in lockstep
-// with the backend `JobCategory` enum (cograph_client/enrichment/models.py) — a
+// with the backend `JobCategory` enum (infona_client/enrichment/models.py) — a
 // missing member silently hides that category's jobs from the agent: the enum
 // used to omit "discovery", so `list_jobs({category:"discovery"})` was rejected
 // AND the natural fallback `category:"enrichment"` filtered the discovery job
@@ -81,7 +81,7 @@ void _assertSdkCoversCategories;
 // this into every backend `/agent` call when the caller does not supply its own
 // `session_id`, so multi-turn context accumulates across tool invocations. The
 // OSS planner's clarify-convergence machinery is gated on a session id and
-// silently no-ops without one (cograph_client/agent/planner.py history load +
+// silently no-ops without one (infona_client/agent/planner.py history load +
 // `_effective_instruction`; web_ingest_cap `already_asked`), so a missing id
 // means every turn is planned statelessly and a single stated intent gets
 // re-clarified indefinitely. Minting once per process keeps the whole session's
@@ -90,12 +90,12 @@ const DEFAULT_SESSION_ID = randomUUID();
 
 const server = new McpServer(
   {
-    name: "cograph",
+    name: "infona",
     version: VERSION,
   },
   {
     instructions:
-      "Onta is a context graph platform. Use these tools to " +
+      "Infona is a context graph platform. Use these tools to " +
       "query structured data across multiple context graphs using natural language.",
   },
 );
@@ -113,7 +113,7 @@ function textResult(text: string) {
 function errorResult(err: unknown) {
   const msg =
     err instanceof OntaError
-      ? `Onta error: ${err.message}`
+      ? `Infona error: ${err.message}`
       : err instanceof Error
         ? err.message
         : String(err);
@@ -585,7 +585,7 @@ server.registerTool(
 // Dogfood S1: agents previously could not write in-context knowledge without
 // first writing a CSV to disk and calling `ingest_csv`. This tool posts raw
 // text (or JSON) through the SAME canonical `POST /graphs/{tenant}/ingest`
-// route the CLI's `onta ingest --text` uses — no reimplementation, no local
+// route the CLI's `infona ingest --text` uses — no reimplementation, no local
 // write path. Exported for unit tests with a stubbed client.
 export async function ingestTextHandler(
   {
@@ -644,7 +644,7 @@ server.registerTool(
       "Ingest free-form text (or JSON) into a context graph WITHOUT writing a " +
       "file first. The backend extracts entities via LLM, resolves them " +
       "against the ontology, and inserts triples — the same path as the CLI's " +
-      "`onta ingest --text`. Use this to remember notes, meeting summaries, " +
+      "`infona ingest --text`. Use this to remember notes, meeting summaries, " +
       "or any unstructured knowledge in-context. For tabular CSV files on " +
       "disk, use `ingest_csv` instead.",
     inputSchema: {
@@ -1204,7 +1204,7 @@ server.registerTool(
   "agent",
   {
     description:
-      "Talk to the Onta Ask-AI agent — the single conversational front door " +
+      "Talk to the Infona Ask-AI agent — the single conversational front door " +
       "to a context graph. Send a natural-language message and the agent " +
       "classifies your intent and either ANSWERS a question directly, asks a " +
       "CLARIFYing question, or proposes a PLAN of actions (enrich attributes, " +

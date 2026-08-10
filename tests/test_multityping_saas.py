@@ -52,24 +52,24 @@ class TestSaaSTypeHierarchyPure:
 
     # ------------------------------------------------------------------ chain
     def test_ancestor_chain_leaf(self):
-        from cograph_client.resolver.er.types import ancestor_chain
+        from infona_client.resolver.er.types import ancestor_chain
         chain = ancestor_chain("TrialSubscriber", self.SAAS_PARENT_OF)
         assert chain == ["TrialSubscriber", "Subscriber", "Person"]
 
     def test_ancestor_chain_mid(self):
-        from cograph_client.resolver.er.types import ancestor_chain
+        from infona_client.resolver.er.types import ancestor_chain
         chain = ancestor_chain("Subscriber", self.SAAS_PARENT_OF)
         assert chain == ["Subscriber", "Person"]
 
     def test_ancestor_chain_root(self):
-        from cograph_client.resolver.er.types import ancestor_chain
+        from infona_client.resolver.er.types import ancestor_chain
         chain = ancestor_chain("Person", self.SAAS_PARENT_OF)
         assert chain == ["Person"]
 
     # -------------------------------------------------------- config_for_with_hierarchy
     def test_subscriber_resolves_to_guest_config(self):
         """Subscriber is directly in DEFAULTS_BY_TYPE → Guest config."""
-        from cograph_client.resolver.er.types import (
+        from infona_client.resolver.er.types import (
             DEFAULT_GUEST_CONFIG,
             config_for_with_hierarchy,
         )
@@ -81,7 +81,7 @@ class TestSaaSTypeHierarchyPure:
         Subscriber IS → config_for_with_hierarchy must climb and return
         DEFAULT_GUEST_CONFIG (identity check).
         """
-        from cograph_client.resolver.er.types import (
+        from infona_client.resolver.er.types import (
             DEFAULT_GUEST_CONFIG,
             config_for_with_hierarchy,
         )
@@ -93,7 +93,7 @@ class TestSaaSTypeHierarchyPure:
         behavior was broken for granular subtypes.  This is the regressed path
         that the hierarchy-aware config fixes.
         """
-        from cograph_client.resolver.er.types import config_for
+        from infona_client.resolver.er.types import config_for
         cfg = config_for("TrialSubscriber")
         assert cfg is None, (
             "config_for is intentionally flat; TrialSubscriber is not in "
@@ -102,7 +102,7 @@ class TestSaaSTypeHierarchyPure:
 
     # --------------------------------------------------------- primary_type
     def test_primary_type_picks_leaf(self):
-        from cograph_client.resolver.er.types import primary_type
+        from infona_client.resolver.er.types import primary_type
         # When all three are asserted, TrialSubscriber dominates.
         pt = primary_type(
             ["Person", "Subscriber", "TrialSubscriber"],
@@ -111,7 +111,7 @@ class TestSaaSTypeHierarchyPure:
         assert pt == "TrialSubscriber"
 
     def test_primary_type_single(self):
-        from cograph_client.resolver.er.types import primary_type
+        from infona_client.resolver.er.types import primary_type
         pt = primary_type(["TrialSubscriber"], self.SAAS_PARENT_OF)
         assert pt == "TrialSubscriber"
 
@@ -119,7 +119,7 @@ class TestSaaSTypeHierarchyPure:
         """primary_config_type must return TrialSubscriber even though its
         config is inherited — the leaf IS the most-specific configured type.
         """
-        from cograph_client.resolver.er.types import primary_config_type
+        from infona_client.resolver.er.types import primary_config_type
         pct = primary_config_type(
             ["TrialSubscriber", "Subscriber", "Person"],
             self.SAAS_PARENT_OF,
@@ -150,7 +150,7 @@ class TestSubclassClosureRewrite:
     )
 
     def test_form_a_rewritten_to_closure(self):
-        from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+        from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         out = rewrite_type_predicate_to_closure(self.PERSON_SPARQL_FORM_A)
         assert f"{RDFS_SUBCLASS}>*" in out, (
             "Expected subclass-closure path in rewritten SPARQL"
@@ -159,13 +159,13 @@ class TestSubclassClosureRewrite:
         assert f"<{TYPES_NS}Person>" in out
 
     def test_form_b_rewritten_to_closure(self):
-        from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+        from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         out = rewrite_type_predicate_to_closure(self.PERSON_SPARQL_FORM_B)
         assert f"{RDFS_SUBCLASS}>*" in out
         assert f"<{TYPES_NS}Person>" in out
 
     def test_idempotent(self):
-        from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+        from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         once = rewrite_type_predicate_to_closure(self.PERSON_SPARQL_FORM_A)
         twice = rewrite_type_predicate_to_closure(once)
         assert once == twice, "rewrite_type_predicate_to_closure must be idempotent"
@@ -174,7 +174,7 @@ class TestSubclassClosureRewrite:
         """with_subclass_closure() must return the expected property-path string
         independent of the type name passed in.
         """
-        from cograph_client.graph.ontology_queries import with_subclass_closure
+        from infona_client.graph.ontology_queries import with_subclass_closure
         path = with_subclass_closure("Person")
         assert f"{RDFS_SUBCLASS}>" in path
         # The path must include the '*' quantifier for transitive closure.
@@ -185,7 +185,7 @@ class TestSubclassClosureRewrite:
         semantically correct: the closure over the leaf is set-equal to the
         leaf itself (no narrowing possible), so applying the rewrite is safe.
         """
-        from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+        from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         leaf_sparql = (
             f"SELECT ?s WHERE {{ ?s a <{TYPES_NS}TrialSubscriber> . }}"
         )
@@ -197,7 +197,7 @@ class TestSubclassClosureRewrite:
         """Only objects under the graph.onta.sh/types/ namespace trigger rewriting.
         Other rdf:type usages (e.g., rdfs:Class, owl:Thing) must be left alone.
         """
-        from cograph_client.graph.ontology_queries import rewrite_type_predicate_to_closure
+        from infona_client.graph.ontology_queries import rewrite_type_predicate_to_closure
         schema_sparql = (
             "SELECT ?s WHERE { "
             "?s <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
@@ -215,7 +215,7 @@ class TestSubclassClosureRewrite:
 
 
 def _make_subscriber(email: str, name: str = "Alice") -> "ExtractedEntity":
-    from cograph_client.resolver.models import ExtractedAttribute, ExtractedEntity
+    from infona_client.resolver.models import ExtractedAttribute, ExtractedEntity
     return ExtractedEntity(
         type_name="TrialSubscriber",
         id=email,
@@ -252,14 +252,14 @@ class TestERMergeViaHierarchy:
           - The first call gets no candidates (entity is new).
         """
         from unittest.mock import AsyncMock, patch
-        from cograph_client.resolver.er.engine import ERPipeline
-        from cograph_client.resolver.er.types import (
+        from infona_client.resolver.er.engine import ERPipeline
+        from infona_client.resolver.er.types import (
             DEFAULT_GUEST_CONFIG,
             MergeAction,
             config_for_with_hierarchy,
         )
-        from cograph_client.resolver.er.normalize import DefaultNormalizer
-        from cograph_client.resolver.er.blocking import generate_block_keys
+        from infona_client.resolver.er.normalize import DefaultNormalizer
+        from infona_client.resolver.er.blocking import generate_block_keys
 
         SHARED_EMAIL = "alice@startup.io"
         entity1 = _make_subscriber(SHARED_EMAIL, "Alice")
@@ -279,7 +279,7 @@ class TestERMergeViaHierarchy:
 
         # Compute normalized signals for entity1 so we can simulate the blocker
         # returning entity1 as a candidate when entity2 is processed.
-        from cograph_client.resolver.er.engine import extract_signals
+        from infona_client.resolver.er.engine import extract_signals
         normalizer = DefaultNormalizer()
         raw1 = extract_signals(entity1)
         norm1 = normalizer.normalize(raw1)
@@ -324,7 +324,7 @@ class TestERMergeViaHierarchy:
         This test verifies the OLD (broken) behavior is reproducible via
         config_for_with_hierarchy('TrialSubscriber', {}) == None.
         """
-        from cograph_client.resolver.er.types import config_for_with_hierarchy
+        from infona_client.resolver.er.types import config_for_with_hierarchy
         # No hierarchy → no config for the leaf.
         cfg_no_hierarchy = config_for_with_hierarchy("TrialSubscriber", {})
         assert cfg_no_hierarchy is None, (
@@ -354,7 +354,7 @@ class TestAncestorSynthesis:
     def _make_resolver(self, mock_neptune):
         """Construct a SchemaResolver with all I/O mocked out."""
         from unittest.mock import MagicMock, patch, AsyncMock
-        from cograph_client.resolver.schema_resolver import SchemaResolver
+        from infona_client.resolver.schema_resolver import SchemaResolver
 
         # Mock the verdict cache so it doesn't touch the filesystem.
         mock_cache = MagicMock()
@@ -377,7 +377,7 @@ class TestAncestorSynthesis:
         should create them by calling neptune.update() for insert_type and
         insert_subtype on each missing ancestor.
         """
-        from cograph_client.resolver.models import IngestResult
+        from infona_client.resolver.models import IngestResult
 
         resolver = self._make_resolver(mock_neptune)
         # Seed parent_of with the known chain so synthesis has something to walk.
@@ -423,7 +423,7 @@ class TestAncestorSynthesis:
         """If Subscriber already exists in existing_types, synthesis skips it
         and does NOT issue redundant Neptune writes for that ancestor.
         """
-        from cograph_client.resolver.models import IngestResult
+        from infona_client.resolver.models import IngestResult
 
         resolver = self._make_resolver(mock_neptune)
         resolver._parent_of = {

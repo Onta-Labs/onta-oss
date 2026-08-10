@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from cograph_client.resolver.sensitivity import (
+from infona_client.resolver.sensitivity import (
     REDACTED,
     is_privileged_column_name,
     redact_privileged_profile_examples,
@@ -103,7 +103,7 @@ class TestRedactSampleRows:
 
 class TestRedactProfileExamples:
     def test_scrubs_examples_only(self):
-        from cograph_client.resolver.models import ColumnProfile, TableProfile, ValueShape
+        from infona_client.resolver.models import ColumnProfile, TableProfile, ValueShape
 
         profile = TableProfile(
             rows_profiled=2,
@@ -143,7 +143,7 @@ class TestCsvResolverWiresRedaction:
     async def test_legacy_prompt_redacts_ssn(self, monkeypatch):
         monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "0")
 
-        from cograph_client.resolver.csv_resolver import CSVResolver
+        from infona_client.resolver.csv_resolver import CSVResolver
 
         captured: dict = {}
 
@@ -183,7 +183,7 @@ class TestCsvResolverWiresRedaction:
     async def test_v2_prompt_redacts_privileged(self, monkeypatch):
         monkeypatch.setenv("OMNIX_CSV_INFERENCE_V2", "1")
 
-        from cograph_client.resolver.csv_resolver import CSVResolver
+        from infona_client.resolver.csv_resolver import CSVResolver
 
         captured_users: list[str] = []
 

@@ -17,18 +17,18 @@ import json
 import pytest
 from unittest.mock import MagicMock
 
-from cograph_client.agent.capabilities import web_ingest_cap
-from cograph_client.agent.capabilities.web_ingest_cap import WebIngestCapability
-from cograph_client.agent.registry import AgentContext
-from cograph_client.resolver.models import (
+from infona_client.agent.capabilities import web_ingest_cap
+from infona_client.agent.capabilities.web_ingest_cap import WebIngestCapability
+from infona_client.agent.registry import AgentContext
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractedRelationship,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.web_sources import (
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.web_sources import (
     DiscoverResult,
     register_web_source,
     reset_web_sources,
@@ -936,9 +936,9 @@ async def test_a1_validators_drop_chrome_and_type_invalid_before_ingest(monkeypa
     the A1 boundary, so they NEVER reach the writer, and the drops are surfaced on
     the P1 Job Trace. Directly proves the two hard criteria: zero entities named in
     the nav blocklist, and no year stored as a city."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
-    from cograph_client.pipeline.stage_trace import StageProjectId
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
+    from infona_client.pipeline.stage_trace import StageProjectId
 
     provider = FakeProvider(rows=_BC_COLLEGE_ROWS)
     register_web_source(provider)
@@ -1012,8 +1012,8 @@ async def test_execute_tracks_job_with_results_and_platforms(monkeypatch):
     """With a job store present, execute creates a tracked discovery job, returns
     its id + initial status, and drives it to applied with a result count, the
     platforms consulted, and the run cost — so the client can poll a live status."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobCategory, JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobCategory, JobStatus
 
     provider = FakeProvider(is_paid=True, cost_per_call=0.09)
     register_web_source(provider)
@@ -1068,7 +1068,7 @@ async def test_run_logs_resolved_write_target(monkeypatch):
     "N filled" but whose rows never appear in the Explorer is undiagnosable: you
     cannot tell which graph the resolver actually wrote to."""
     import structlog
-    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.job_store import InMemoryJobStore
 
     provider = FakeProvider()
     register_web_source(provider)
@@ -1116,7 +1116,7 @@ async def test_run_warns_when_write_target_missing(monkeypatch):
     records ``instance_graph=None`` in ``web_ingest_run_start`` so the misroute is
     obvious instead of a silent black hole."""
     import structlog
-    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.job_store import InMemoryJobStore
 
     provider = FakeProvider()
     register_web_source(provider)
@@ -1165,8 +1165,8 @@ async def test_run_warns_when_write_target_missing(monkeypatch):
 async def test_execute_marks_job_failed_on_error(monkeypatch):
     """A discovery that raises mid-ingest leaves the job failed with an error, not
     silently dropped — so the live status can show the failure."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     register_web_source(FakeProvider())
     _patch_preview(monkeypatch, entities=_single_type_entities())
@@ -1199,8 +1199,8 @@ async def test_run_times_out_and_marks_job_failed(monkeypatch):
     budget must flip the job to ``failed`` (with a timeout message), NEVER leave
     it stuck on ``running``. We patch the budget to a hair, make ingest sleep well
     past it, and assert the terminal state + message — no eternal spinner."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     # Tiny per-run budget: the ingest below far exceeds it.
     monkeypatch.setattr(web_ingest_cap, "_RUN_TIMEOUT_S", 0.05)
@@ -1239,8 +1239,8 @@ async def test_run_times_out_and_marks_job_failed(monkeypatch):
 
 
 def test_capability_registered_by_default():
-    from cograph_client.agent.planner import register_default_capabilities
-    from cograph_client.agent.registry import get_capability
+    from infona_client.agent.planner import register_default_capabilities
+    from infona_client.agent.registry import get_capability
 
     register_default_capabilities()
     assert get_capability("web_ingest") is not None
@@ -1252,7 +1252,7 @@ def test_capability_registered_by_default():
 def test_row_source_url_resolves_by_name_then_index():
     """A row's URL resolves by its name first (the adapter keying), then by its
     positional index (so an index-keyed provider also resolves); unknown → None."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _row_source_url
+    from infona_client.agent.capabilities.web_ingest_cap import _row_source_url
 
     prov = {"anthropic/claude-opus-4-8": "https://a", "1": "https://b"}
     # Name-keyed hit.
@@ -1266,7 +1266,7 @@ def test_row_source_url_resolves_by_name_then_index():
 
 
 def test_attach_source_urls_stamps_each_row_and_noop_without_provenance():
-    from cograph_client.agent.capabilities.web_ingest_cap import _attach_source_urls
+    from infona_client.agent.capabilities.web_ingest_cap import _attach_source_urls
 
     rows = [{"name": "m0"}, {"name": "m1"}]
     assert _attach_source_urls(rows, {"m0": "https://p0", "m1": "https://p1"}) == 2
@@ -1282,7 +1282,7 @@ def test_attach_source_urls_stamps_each_row_and_noop_without_provenance():
 def test_attach_source_urls_never_clobbers_and_skips_unknown():
     """A provider-set source_url is preserved; a row with no resolvable URL is
     left un-stamped rather than blanked."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _attach_source_urls
+    from infona_client.agent.capabilities.web_ingest_cap import _attach_source_urls
 
     rows = [
         {"name": "m0", "source_url": "https://provider-set"},
@@ -1312,7 +1312,7 @@ def test_dedupe_rows_with_source_urls_binds_before_reindex():
     Invented tokens only (Widget-*, page-*): the invariant must hold for ANY
     rows/urls, so nothing here is a domain-specific example.
     """
-    from cograph_client.agent.capabilities.web_ingest_cap import (
+    from infona_client.agent.capabilities.web_ingest_cap import (
         _attach_source_urls,
         _dedupe_rows,
         _dedupe_rows_with_source_urls,
@@ -1364,7 +1364,7 @@ def test_group_rows_by_source_url_partitions_homogeneously():
     every group is homogeneous in its source_url — the extractor that ingests a
     group can only ever stamp THAT group's page URL. Consecutive-run grouping
     preserves order and record count."""
-    from cograph_client.agent.capabilities.web_ingest_cap import (
+    from infona_client.agent.capabilities.web_ingest_cap import (
         _group_rows_by_source_url,
     )
 
@@ -1387,7 +1387,7 @@ def test_group_rows_by_source_url_partitions_homogeneously():
 def test_group_rows_by_source_url_single_and_missing_url():
     """A batch that already shares one URL (or carries none) is a single group —
     identical to the pre-fix single-partition behavior (no needless fan-out)."""
-    from cograph_client.agent.capabilities.web_ingest_cap import (
+    from infona_client.agent.capabilities.web_ingest_cap import (
         _group_rows_by_source_url,
     )
 
@@ -1572,8 +1572,8 @@ async def test_planner_short_circuits_capability_clarify(monkeypatch):
     returns {kind:"clarify"} via the planner's clarify short-circuit."""
     import json as _json
 
-    from cograph_client.agent import planner as planner_mod
-    from cograph_client.agent.registry import register_capability, reset_capabilities
+    from infona_client.agent import planner as planner_mod
+    from infona_client.agent.registry import register_capability, reset_capabilities
 
     async def fake_classify_chat(*_a, **_k):
         return _json.dumps({"intents": ["discover"]})
@@ -1601,7 +1601,7 @@ async def test_planner_short_circuits_capability_clarify(monkeypatch):
 async def test_execute_records_provider_log_on_success(monkeypatch):
     """A completed discovery run records which web provider was used and how many
     records it returned — surfaced in the run-detail view alongside platforms."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.job_store import InMemoryJobStore
 
     register_web_source(FakeProvider())
     _patch_preview(monkeypatch, entities=_single_type_entities())
@@ -1637,8 +1637,8 @@ async def test_execute_records_provider_log_on_success(monkeypatch):
 async def test_execute_records_provider_error_when_discover_fails(monkeypatch):
     """When the web provider itself fails during the full pull, the job is failed
     AND the provider log + error summary attribute the failure to that provider."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     class FullFailProvider(FakeProvider):
         async def discover(self, query, *, sample, max_rows, hint_columns, context, urls=None):
@@ -1678,8 +1678,8 @@ async def test_execute_does_not_blame_provider_when_ingest_fails(monkeypatch):
     """A failure AFTER the provider returned (ingest/refresh) is a job-level
     error: the provider log stays 'ok' (not mis-blamed) and the error-summary
     entry is kind='job' with no provider attribution."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     register_web_source(FakeProvider())  # discover() succeeds
     _patch_preview(monkeypatch, entities=_single_type_entities())
@@ -1940,8 +1940,8 @@ async def test_execute_fans_out_dedupes_and_streams(monkeypatch):
     deduped on the normalized key attribute across sub-queries, each batch
     ingested as it lands (streaming progress), one merged job driven to applied
     with the exact unique count."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = PerQueryProvider(
         {
@@ -2026,8 +2026,8 @@ async def test_execute_subquery_failure_is_partial(monkeypatch):
     """One sub-query dying at the provider must not sink the run: the others still
     land, the job completes with what was found, and the provider log records the
     error alongside the successes."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = PerQueryProvider(
         {FAN_SPEC["subqueries"][1]: SANTA_ANA_ROWS},
@@ -2067,8 +2067,8 @@ async def test_execute_subquery_failure_is_partial(monkeypatch):
 async def test_execute_all_subqueries_failing_fails_job(monkeypatch):
     """EVERY sub-query dying at the provider → a failed job with the provider-
     attributed error (not a silent empty success)."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = PerQueryProvider(
         {}, fail_queries=set(FAN_SPEC["subqueries"]),
@@ -2241,8 +2241,8 @@ async def test_plan_bc_style_persists_at_least_three_subqueries():
 async def test_execute_bc_style_collects_at_least_20_institutions(monkeypatch):
     """Acceptance fixture: BC-style enumeration → ≥20 distinct institutions
     across ≥3 subqueries. A 1-subquery/5-row provider would fail this."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     # Build the partition the planner will produce, then stock each subquery
     # with a disjoint batch so the merge lands ≥20 uniques.
@@ -2371,8 +2371,8 @@ async def test_execute_ensemble_merges_and_dedupes_across_providers(monkeypatch)
     one, per sub-query — merged through the same key dedupe (a record found by
     both sources lands once, the specialized row winning) — with one provider
     log per ensemble member."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     sq1, sq2 = FAN_SPEC["subqueries"]
     place = KindFakeProvider(
@@ -2465,8 +2465,8 @@ async def test_execute_ensemble_survives_specialized_provider_outage(monkeypatch
     """The specialized provider erroring on EVERY sub-query must not sink the run —
     the general provider still lands its rows and the job completes (partial
     coverage), with the outage recorded on the specialized provider's log."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     sq1, sq2 = FAN_SPEC["subqueries"]
 
@@ -2582,9 +2582,9 @@ async def test_never_consulted_ensemble_member_is_skipped(monkeypatch):
     """F4: an ensemble member never reached (cap filled before its turn) rolls
     up as status='skipped' — the ProviderLog contract's 'named but never
     consulted' — not 'no_match' (which claims it ran and found nothing)."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
-    from cograph_client.agent.registry import PlanStep
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
+    from infona_client.agent.registry import PlanStep
 
     place = KindFakeProvider(name="place_src", rows=TUSTIN_ROWS)
     general = FakeProvider(rows=SANTA_ANA_ROWS)
@@ -2667,9 +2667,9 @@ async def test_ensemble_skips_provider_when_accepts_false(monkeypatch):
     everything (no accepts method). Assert discover call counts — the scoped
     provider is never invoked for the beta partition.
     """
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
-    from cograph_client.agent.registry import PlanStep
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
+    from infona_client.agent.registry import PlanStep
 
     general = FakeProvider(rows=[{"name": "g1", "city": "X"}])
     # Override name after init — FakeProvider hardcodes name="fake".
@@ -2759,9 +2759,9 @@ async def test_ensemble_skips_provider_when_accepts_false(monkeypatch):
 async def test_ensemble_all_out_of_scope_leaves_provider_skipped(monkeypatch):
     """When accepts() is False for every sub-query, discover is never called
     and the provider log rolls up as status=skipped (attempts=0)."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
-    from cograph_client.agent.registry import PlanStep
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
+    from infona_client.agent.registry import PlanStep
 
     always_in = FakeProvider(rows=[{"name": "keep", "city": "Z"}])
     always_in.name = "always_in"
@@ -3120,8 +3120,8 @@ async def test_running_job_shows_early_total_and_phase(monkeypatch):
     running — BEFORE the first batch completes — so an early poll reads ~N/0 with a
     'searching'/'ingesting' phase instead of a flat, stalled-looking 0/0. The
     completion path settles the total to the exact count and phase 'done'."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = FakeProvider(is_paid=True, cost_per_call=0.09)
     register_web_source(provider)
@@ -3182,8 +3182,8 @@ async def test_empty_completed_job_is_distinguishable_from_running(monkeypatch):
     """A discovery run that found NOTHING lands terminal (applied) with phase 'done'
     and result_count 0 — distinguishable from a still-running job, closing the
     'completed-empty looks like running' gap in the RCA."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = FakeProvider(is_paid=True, cost_per_call=0.09, rows=[])  # nothing found
     register_web_source(provider)
@@ -3217,8 +3217,8 @@ async def test_empty_completed_job_is_distinguishable_from_running(monkeypatch):
 async def test_failed_job_marks_phase_failed(monkeypatch):
     """A failed discovery run stamps phase 'failed' so a phase-keyed client can
     retire its spinner on the terminal signal."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     provider = FakeProvider(is_paid=True, cost_per_call=0.09)
     register_web_source(provider)
@@ -3290,8 +3290,8 @@ async def test_progress_moves_while_running(monkeypatch):
     We force a fine sub-batch, gate the stub ingest so the run pauses after the
     first sub-batch has landed, and assert the LIVE job already shows non-zero
     ``processed`` and ``filled`` before any terminal state."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     # One record per sub-batch → maximal streaming granularity, domain-agnostic.
     monkeypatch.setattr(web_ingest_cap, "_DISCOVERY_INGEST_SUBBATCH", 1)
@@ -3352,8 +3352,8 @@ async def test_terminal_state_has_final_counts(monkeypatch):
     """RC1 — at completion the job is a DISTINCT terminal state with honest final
     counts: applied, ``filled`` == every row, ``processed`` == ``total``,
     ``result_count`` == the rows, ``completed_at`` set, phase 'done'."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     monkeypatch.setattr(web_ingest_cap, "_DISCOVERY_INGEST_SUBBATCH", 2)
 
@@ -3392,8 +3392,8 @@ async def test_terminal_state_failed_on_provider_error(monkeypatch):
     """RC1 negative — a discovery whose PROVIDER raises reaches a distinct FAILED
     terminal state (never a silent success, never stuck running), with an error
     and completed_at set."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobStatus
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobStatus
 
     class BoomProvider(FakeProvider):
         async def discover(self, *a, **k):
@@ -3426,8 +3426,8 @@ async def test_category_filter_finds_discovery_not_enrichment(monkeypatch):
     """RC2 (backend) — a discovery job is filed under category=discovery, so a
     ``discovery`` filter finds it and an ``enrichment`` filter does NOT. This is
     the honest scoping the persona's ``category:'enrichment'`` guess broke on."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.enrichment.models import JobCategory
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.enrichment.models import JobCategory
 
     register_web_source(FakeProvider(rows=WIDGET_ROWS))
     _patch_preview(monkeypatch, entities=_widget_entities(WIDGET_ROWS))
@@ -3571,7 +3571,7 @@ def test_explicit_user_type_recovers_named_type():
     """Unit — the deterministic type parser recovers a Capitalized named type from
     an unambiguous frame, and returns '' for a lowercased entity phrase (so a real
     LLM-resolved type is never overridden by a false positive)."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_type
+    from infona_client.agent.capabilities.web_ingest_cap import _explicit_user_type
 
     assert _explicit_user_type("Add Widget records with sku, color") == "Widget"
     assert _explicit_user_type("discover Sprocket entities in Region 7") == "Sprocket"
@@ -3586,7 +3586,7 @@ def test_explicit_user_type_recovers_named_type():
 def test_clean_query_strips_meta_framing():
     """Unit — _clean_query drops a leading discover-vs-enrich self-label so the
     subject after it survives; a normal query is untouched."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _clean_query
+    from infona_client.agent.capabilities.web_ingest_cap import _clean_query
 
     out = _clean_query(
         "This is a new discovery task, not enrichment - find Gadgets in Zone 3"
@@ -3604,7 +3604,7 @@ def test_explicit_user_fields_records_with_requires_enumeration():
     after "records with" is a FILTER, not a field list, and must NOT be harvested —
     otherwise "records with high error rates" would mint a junk `high_error_rates`
     attribute (the precision guard for the widened marker)."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
+    from infona_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
 
     # Real enumerations → harvested.
     assert _explicit_user_fields(
@@ -3640,7 +3640,7 @@ def test_explicit_user_fields_survives_inline_annotations():
     stopped at the first annotated field; here the whole enumerated list survives,
     annotations stripped, order + names preserved. Invented fields, no domain
     tokens."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
+    from infona_client.agent.capabilities.web_ingest_cap import _explicit_user_fields
 
     # A comma list where the 3rd field carries a slash-bearing parenthetical — the
     # exact shape that collapsed the deployed list to its two leading fields.
@@ -3675,7 +3675,7 @@ def test_explicit_user_type_recovers_lowercase_each_record_noun():
     missed it, so the deployed plan kept WebRecord. Recover + singularize +
     PascalCase, while rejecting the generic record nouns so no junk type is
     minted."""
-    from cograph_client.agent.capabilities.web_ingest_cap import _explicit_user_type
+    from infona_client.agent.capabilities.web_ingest_cap import _explicit_user_type
 
     assert _explicit_user_type("each product record needs sku, price") == "Product"
     assert _explicit_user_type("every company entity should have name") == "Company"
@@ -4010,8 +4010,8 @@ def _ctx_missing_kg(available=()) -> AgentContext:
     ``available`` is the workspace's OTHER graphs, which the gate looks up once on
     the missing path. Non-empty = the typo shape; empty = a genuine cold start.
     """
-    from cograph_client.agent.kg_scope import CTX_KG_AVAILABLE, CTX_KG_STATUS
-    from cograph_client.graph.kg_status import KG_MISSING
+    from infona_client.agent.kg_scope import CTX_KG_AVAILABLE, CTX_KG_STATUS
+    from infona_client.graph.kg_status import KG_MISSING
 
     ctx = _ctx()
     ctx.extras[CTX_KG_STATUS] = KG_MISSING

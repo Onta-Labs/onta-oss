@@ -23,8 +23,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.nlp.pipeline import NLQueryPipeline
-from cograph_client.pipeline.manifest import RunCoverage, RunManifest
+from infona_client.nlp.pipeline import NLQueryPipeline
+from infona_client.pipeline.manifest import RunCoverage, RunManifest
 
 _CANNED_SPARQL = {
     "sparql": "SELECT ?name WHERE { ?s <https://schema.org/name> ?name }",
@@ -66,7 +66,7 @@ async def _ask(pipeline, run_manifest=None):
 
 def _make_manifest() -> RunManifest:
     """A halted run: 2 of 3 items completed before a provider-exhaustion halt."""
-    from cograph_client.pipeline.manifest import HaltReasonKind
+    from infona_client.pipeline.manifest import HaltReasonKind
 
     m = RunManifest(run_id="r-374", stage="discovery").start(total=3)
     m.record_completed("a")

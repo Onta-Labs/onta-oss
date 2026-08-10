@@ -22,9 +22,9 @@ import re
 import httpx
 import pytest
 
-import cograph_client.api_registry as api_registry_pkg
-from cograph_client.api_registry.executor import RegistryApiSource
-from cograph_client.api_registry.spec import ApiSourceSpec
+import infona_client.api_registry as api_registry_pkg
+from infona_client.api_registry.executor import RegistryApiSource
+from infona_client.api_registry.spec import ApiSourceSpec
 
 _SENTINEL = "SENTINEL-SECRET-DO-NOT-LEAK-9f3a2b"
 
@@ -65,7 +65,7 @@ async def test_query_key_secret_never_in_result_or_logs():
     buf = io.StringIO()
     handler_log = logging.StreamHandler(buf)
     handler_log.setLevel(logging.DEBUG)
-    reg_logger = logging.getLogger("cograph_client.api_registry")
+    reg_logger = logging.getLogger("infona_client.api_registry")
     reg_logger.addHandler(handler_log)
     reg_logger.setLevel(logging.DEBUG)
     try:

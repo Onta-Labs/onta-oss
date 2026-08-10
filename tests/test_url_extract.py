@@ -1,11 +1,11 @@
-"""Unit tests for the shared URL-extraction helper (cograph_client.web_sources.url_extract).
+"""Unit tests for the shared URL-extraction helper (infona_client.web_sources.url_extract).
 
 This pure helper turns free text into the list of explicit links the agent
 capabilities and planner act on, so it is the single place URL recognition is
 defined. ReDoS-safe by construction (one character class, single ``+``).
 """
 
-from cograph_client.web_sources.url_extract import _split_host, extract_urls
+from infona_client.web_sources.url_extract import _split_host, extract_urls
 
 
 def test_extracts_http_and_https_in_order_deduped():

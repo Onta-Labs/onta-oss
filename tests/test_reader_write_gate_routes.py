@@ -32,24 +32,24 @@ import pytest
 from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 
-from cograph_client.agent import planner as planner_mod
-from cograph_client.agent.planner import (
+from infona_client.agent import planner as planner_mod
+from infona_client.agent.planner import (
     make_plan_store,
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (
+from infona_client.agent.registry import (
     PlanStep,
     register_capability,
     reset_capabilities,
 )
-from cograph_client.api.app import create_app
-from cograph_client.auth.api_keys import AuthVerdict, register_external_verifier
-from cograph_client.auth.workspace_store import (
+from infona_client.api.app import create_app
+from infona_client.auth.api_keys import AuthVerdict, register_external_verifier
+from infona_client.auth.workspace_store import (
     make_workspace_store,
     reset_workspace_store,
 )
-from cograph_client.graph.client import NeptuneClient
+from infona_client.graph.client import NeptuneClient
 
 _run = asyncio.run
 
@@ -198,7 +198,7 @@ def test_agent_mutating_turn_allowed_for_owner(gate_client, monkeypatch):
 
 def test_agent_question_turn_still_allowed_for_reader(gate_client, monkeypatch):
     """A reader keeps read-only turns — the whole reason the gate isn't on the route."""
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "42", "sparql": "SELECT ...", "rows": [], "narrative": ""}

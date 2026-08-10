@@ -22,27 +22,27 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cograph_client.api.deps import get_neptune_client
-from cograph_client.api.routes import ask as ask_routes
-from cograph_client.api.routes import ontology as ontology_routes
-from cograph_client.auth import api_keys
-from cograph_client.auth.api_keys import TenantContext
-from cograph_client.graph.entitlement import (
+from infona_client.api.deps import get_neptune_client
+from infona_client.api.routes import ask as ask_routes
+from infona_client.api.routes import ontology as ontology_routes
+from infona_client.auth import api_keys
+from infona_client.auth.api_keys import TenantContext
+from infona_client.graph.entitlement import (
     is_entitled,
     layer_stack_for,
     register_entitlement_checker,
 )
-from cograph_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
-from cograph_client.graph.layers import (
+from infona_client.graph.global_ontology import fetch_global_ontology, fetch_ontology
+from infona_client.graph.layers import (
     Layer,
     LayerStack,
     enhanced_graph_uri,
     layer_type_uri,
     public_graph_uri,
 )
-from cograph_client.graph.queries import tenant_graph_uri
-from cograph_client.models.ontology import WorkspaceOntologyResponse
-from cograph_client.models.query import NLResult
+from infona_client.graph.queries import tenant_graph_uri
+from infona_client.models.ontology import WorkspaceOntologyResponse
+from infona_client.models.query import NLResult
 
 # Reuse the global-browser fixture builders (writer-shaped triples + FakeNeptune).
 from tests.test_global_ontology_browser import (
@@ -455,7 +455,7 @@ def test_ask_route_passes_layer_graph_uris():
         lambda tenant=None, api_key=None, request=None: _tenant_ctx(TENANT_A)
     )
     # Enrichment job store optional on the route.
-    from cograph_client.api.deps import get_enrichment_job_store
+    from infona_client.api.deps import get_enrichment_job_store
     app.dependency_overrides[get_enrichment_job_store] = lambda: None
 
     captured: dict = {}
@@ -489,7 +489,7 @@ def test_ask_route_entitled_includes_enhanced_graph():
             TENANT_A, entitled=True
         )
     )
-    from cograph_client.api.deps import get_enrichment_job_store
+    from infona_client.api.deps import get_enrichment_job_store
     app.dependency_overrides[get_enrichment_job_store] = lambda: None
     register_entitlement_checker(lambda t: bool(t.enhanced_entitled))
 
@@ -515,7 +515,7 @@ async def test_ask_binds_public_type_in_generated_sparql():
     """End-to-end consumer proof: ask over a Public-only type produces SPARQL
     that references the Public type URI and returns rows (the planner binds).
     """
-    from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
+    from infona_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
     _ontology_cache.clear()
     public = shape_triples(
@@ -592,7 +592,7 @@ async def test_ask_binds_public_type_in_generated_sparql():
 
 @pytest.mark.asyncio
 async def test_pipeline_fetch_ontology_includes_public_with_layer_uris():
-    from cograph_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
+    from infona_client.nlp.pipeline import NLQueryPipeline, _ontology_cache
 
     _ontology_cache.clear()
     public = shape_triples(
@@ -625,8 +625,8 @@ async def test_pipeline_fetch_ontology_includes_public_with_layer_uris():
 @pytest.mark.asyncio
 async def test_schema_resolver_parent_map_uses_layer_stack(tmp_path):
     """ingest wires layer_stack= into _fetch_parent_map (the three call sites)."""
-    from cograph_client.resolver.schema_resolver import SchemaResolver
-    from cograph_client.resolver.verdict_cache import JsonVerdictCache
+    from infona_client.resolver.schema_resolver import SchemaResolver
+    from infona_client.resolver.verdict_cache import JsonVerdictCache
 
     mock_neptune = AsyncMock()
     mock_neptune.query.return_value = {
@@ -662,7 +662,7 @@ async def test_schema_resolver_parent_map_uses_layer_stack(tmp_path):
         with patch.object(
             resolver, "_extract", new_callable=AsyncMock, return_value=[]
         ):
-            from cograph_client.resolver.schema_resolver import IngestResult
+            from infona_client.resolver.schema_resolver import IngestResult
             # Minimal: call the parent_map wiring the way ingest does.
             stack = resolver._layer_stack_for(TENANT_A, GRAPH_A)
             await resolver._fetch_parent_map(GRAPH_A, layer_stack=stack)

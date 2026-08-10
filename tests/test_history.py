@@ -20,14 +20,14 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
-from cograph_client.graph.history import (
+from infona_client.graph.history import (
     build_value_change_triples,
     fetch_value_history,
     history_graph_uri,
     lexical_value,
     value_history_query,
 )
-from cograph_client.graph.kg_writer import delete_facts
+from infona_client.graph.kg_writer import delete_facts
 
 GRAPH = "https://graph.onta.sh/graphs/t/kg/widgets"
 SUBJ = "https://graph.onta.sh/entities/Widget/w1"
@@ -416,7 +416,7 @@ def test_value_history_query_rejects_iri_breakout_subject():
 def test_history_graph_uri_is_not_an_instance_graph():
     """The companion history graph must NOT parse as a per-KG instance graph, so
     the derived-index hooks never mistake it for one."""
-    from cograph_client.graph.queries import parse_kg_graph_uri
+    from infona_client.graph.queries import parse_kg_graph_uri
 
     assert parse_kg_graph_uri(GRAPH) == ("t", "widgets")
     assert parse_kg_graph_uri(history_graph_uri(GRAPH)) is None

@@ -1,4 +1,4 @@
-"""Tests for the deterministic KG invariant library (`cograph_client.qc.invariants`).
+"""Tests for the deterministic KG invariant library (`infona_client.qc.invariants`).
 
 Two layers, mirroring the repo's split for SPARQL-backed code:
 - **CI-safe** structural + runner tests (no SPARQL engine) — the catalogue shape, the
@@ -17,8 +17,8 @@ import json
 
 import pytest
 
-from cograph_client.qc import INVARIANTS, Violation, check_invariants
-from cograph_client.qc.invariants import (
+from infona_client.qc import INVARIANTS, Violation, check_invariants
+from infona_client.qc.invariants import (
     RDF_TYPE,
     RDFS_LABEL,
     RDFS_RANGE,

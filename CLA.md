@@ -1,10 +1,10 @@
-# Onta Individual Contributor License Agreement
+# Infona Individual Contributor License Agreement
 
 **Version 1.0 — 2026-07-02**
 
-Thank you for your interest in contributing to the Onta project ("the
-Project") — this repository (https://github.com/Onta-Labs/onta-oss),
-including the `cograph_client` Python package and the `@infona-ai/cli` and
+Thank you for your interest in contributing to the Infona project ("the
+Project") — this repository (https://github.com/infona-ai/infona-oss),
+including the `infona_client` Python package and the `@infona-ai/cli` and
 `@infona-ai/mcp` npm packages.
 
 This Contributor License Agreement ("Agreement") is between You and

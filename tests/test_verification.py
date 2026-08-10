@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from cograph_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
-from cograph_client.resolver.models import CleanFact, CleanOutcome
-from cograph_client.verification import (
+from infona_client.pipeline.envelope import ArtifactEnvelope, derive_fact_id
+from infona_client.resolver.models import CleanFact, CleanOutcome
+from infona_client.verification import (
     DefaultOfflineVerifier,
     EvidenceRef,
     FactVerifier,

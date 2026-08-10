@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from cograph_client.resolver.models import MatchVerdict
-from cograph_client.resolver.type_matcher import TypeMatcher
-from cograph_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
+from infona_client.resolver.models import MatchVerdict
+from infona_client.resolver.type_matcher import TypeMatcher
+from infona_client.resolver.verdict_cache import JsonVerdictCache, VerdictEntry
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def fake_chat(monkeypatch):
     """Patch the OpenRouter helper the matcher calls; returns the mock so tests
     set its return_value / side_effect and assert call counts."""
     mock = AsyncMock()
-    monkeypatch.setattr("cograph_client.resolver.type_matcher.openrouter_chat", mock)
+    monkeypatch.setattr("infona_client.resolver.type_matcher.openrouter_chat", mock)
     return mock
 
 

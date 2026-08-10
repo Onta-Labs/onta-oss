@@ -19,14 +19,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.resolver.schema_resolver import SchemaResolver
-from cograph_client.resolver.models import (
+from infona_client.resolver.schema_resolver import SchemaResolver
+from infona_client.resolver.models import (
     ExtractedEntity,
     ExtractionResult,
     MatchVerdict,
     TypeMatch,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.verdict_cache import JsonVerdictCache
 
 
 DESC = "a score measuring how human a generated voice sounds"

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from cograph_client.nlp.ontology_embeddings import (
+from infona_client.nlp.ontology_embeddings import (
     OntologyEmbeddingService,
     TenantEmbeddingStore,
     TypeChunk,

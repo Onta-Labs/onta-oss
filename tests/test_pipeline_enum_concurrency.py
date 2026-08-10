@@ -12,8 +12,8 @@ import asyncio
 
 import pytest
 
-from cograph_client.nlp import pipeline as pl
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp import pipeline as pl
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 
 def _ontology_raw(n_types: int, attrs_per_type: int) -> dict:

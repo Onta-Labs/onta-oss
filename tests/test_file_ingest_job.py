@@ -13,20 +13,20 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from cograph_client.enrichment.job_store import InMemoryJobStore
-from cograph_client.enrichment.models import (
+from infona_client.enrichment.job_store import InMemoryJobStore
+from infona_client.enrichment.models import (
     ConflictPolicy,
     EnrichmentTier,
     JobCategory,
     JobStatus,
 )
-from cograph_client.pipeline.stage_trace import (
+from infona_client.pipeline.stage_trace import (
     StageProjectId,
     StageStatus,
     reconstruct_from_job,
     resolve_trace,
 )
-from cograph_client.resolver.file_ingest_job import (
+from infona_client.resolver.file_ingest_job import (
     fail_file_ingest_job,
     finish_file_ingest_job,
     mark_file_ingest_running,
@@ -35,7 +35,7 @@ from cograph_client.resolver.file_ingest_job import (
     note_file_ingest_p6,
     open_file_ingest_job,
 )
-from cograph_client.resolver.models import IngestResult
+from infona_client.resolver.models import IngestResult
 
 
 # --------------------------------------------------------------------------- #
@@ -152,7 +152,7 @@ async def test_stage_trace_never_raises_into_write_path():
     # Corrupt stage_trace into something attach_recorder still accepts but
     # begin will choke on — replace projects with a non-list after attach.
     with patch(
-        "cograph_client.resolver.file_ingest_job.attach_recorder",
+        "infona_client.resolver.file_ingest_job.attach_recorder",
         side_effect=RuntimeError("trace broken"),
     ):
         # These must not raise.
@@ -168,7 +168,7 @@ async def test_stage_trace_never_raises_into_write_path():
 
 
 def test_reconstruct_ingest_category_skips_p1_surfaces_p2_p6():
-    from cograph_client.enrichment.models import EnrichJob, JobProgress, JobTrigger
+    from infona_client.enrichment.models import EnrichJob, JobProgress, JobTrigger
 
     job = EnrichJob(
         id="j-ingest",
@@ -205,8 +205,8 @@ async def test_ingest_route_creates_job_visible_on_jobs_list(
     app, mock_neptune, auth_headers
 ):
     """POST /ingest opens category=ingest job; GET /jobs lists it with live trace."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.resolver.models import IngestResult
 
     store = InMemoryJobStore()
     app.state.enrichment_job_store = store
@@ -222,10 +222,10 @@ async def test_ingest_route_creates_job_visible_on_jobs_list(
 
     with (
         patch(
-            "cograph_client.api.routes.ingest.refresh_after_write",
+            "infona_client.api.routes.ingest.refresh_after_write",
             new=AsyncMock(),
         ),
-        patch("cograph_client.api.routes.ingest.SchemaResolver") as MockResolver,
+        patch("infona_client.api.routes.ingest.SchemaResolver") as MockResolver,
     ):
         inst = MockResolver.return_value
         inst.ingest = AsyncMock(return_value=fake_result)
@@ -266,8 +266,8 @@ async def test_ingest_route_creates_job_visible_on_jobs_list(
 @pytest.mark.asyncio
 async def test_csv_rows_route_creates_ingest_job(app, mock_neptune, auth_headers):
     """Use the real app fixture so rate-limiter + job store wiring match prod."""
-    from cograph_client.enrichment.job_store import InMemoryJobStore
-    from cograph_client.resolver.models import IngestResult
+    from infona_client.enrichment.job_store import InMemoryJobStore
+    from infona_client.resolver.models import IngestResult
 
     store = InMemoryJobStore()
     app.state.enrichment_job_store = store
@@ -303,10 +303,10 @@ async def test_csv_rows_route_creates_ingest_job(app, mock_neptune, auth_headers
 
     with (
         patch(
-            "cograph_client.api.routes.ingest.refresh_after_write",
+            "infona_client.api.routes.ingest.refresh_after_write",
             new=AsyncMock(),
         ),
-        patch("cograph_client.api.routes.ingest.SchemaResolver") as MockResolver,
+        patch("infona_client.api.routes.ingest.SchemaResolver") as MockResolver,
     ):
         inst = MockResolver.return_value
         inst._fetch_ontology = AsyncMock(return_value=({}, {}))

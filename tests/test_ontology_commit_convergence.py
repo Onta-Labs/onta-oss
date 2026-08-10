@@ -7,7 +7,7 @@ production (call a builder and hand the SPARQL to ``neptune.update`` / call
 the builder in a write path).
 
 Two layers:
-- **Structural** — deny-by-default source scan of ``cograph_client/`` for raw
+- **Structural** — deny-by-default source scan of ``infona_client/`` for raw
   builder CALLS outside the allowlist, with a planted-violation self-test.
 - **Positive** — production write modules import/call ``commit_ontology``.
 """
@@ -19,7 +19,7 @@ import pathlib
 import re
 import tokenize
 
-import cograph_client
+import infona_client
 
 # Schema-mutation builders that production code must NOT call directly.
 _BUILDERS = (
@@ -43,7 +43,7 @@ _ALLOWLIST: dict[str, str] = {
     "graph/ontology_commit.py": "the ONE commit path that applies builders (ONTA-403)",
 }
 
-_PKG_ROOT = pathlib.Path(cograph_client.__file__).parent
+_PKG_ROOT = pathlib.Path(infona_client.__file__).parent
 
 _CALL_RES = {
     name: re.compile(rf"(?<![\w.]){re.escape(name)}\(") for name in _BUILDERS
@@ -76,7 +76,7 @@ def _builder_calls(code: str) -> list[str]:
 
 
 def test_no_raw_ontology_builder_call_outside_commit_path():
-    """Scan all of ``cograph_client/`` for raw schema-builder calls; fail on any
+    """Scan all of ``infona_client/`` for raw schema-builder calls; fail on any
     hit outside the allowlist (deny-by-default)."""
     violations: list[str] = []
     for path in sorted(_PKG_ROOT.rglob("*.py")):
@@ -89,7 +89,7 @@ def test_no_raw_ontology_builder_call_outside_commit_path():
             violations.append(f"{rel}: {', '.join(hits)}")
     assert not violations, (
         "Raw ontology-schema builder call(s) found OUTSIDE the commit path. "
-        "Route these through cograph_client.graph.ontology_commit.commit_ontology "
+        "Route these through infona_client.graph.ontology_commit.commit_ontology "
         "(ONTA-403), or — if the module is a justified exception — add it to "
         "_ALLOWLIST with a one-line reason. Offenders:\n  "
         + "\n  ".join(violations)

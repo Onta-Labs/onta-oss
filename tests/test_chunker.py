@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from cograph_client.resolver import chunker
-from cograph_client.resolver.chunker import (
+from infona_client.resolver import chunker
+from infona_client.resolver.chunker import (
     adaptive_completion_tokens,
     chunk_text,
     chunk_json_array,
@@ -185,7 +185,7 @@ class TestCalibrationHelpers:
     """ONTA-197 item 2: first-batch calibration primitives."""
 
     def test_estimate_output_tokens_from_length(self):
-        from cograph_client.resolver.chunker import estimate_output_tokens
+        from infona_client.resolver.chunker import estimate_output_tokens
 
         assert estimate_output_tokens("") == 0
         # ~4 chars/token → 400 chars ≈ 100 tokens.
@@ -194,7 +194,7 @@ class TestCalibrationHelpers:
         assert estimate_output_tokens("x") >= 1
 
     def test_calibrated_ratio_rounds_up_and_floors(self):
-        from cograph_client.resolver.chunker import (
+        from infona_client.resolver.chunker import (
             calibrated_tokens_per_record,
             EXTRACT_MIN_TOKENS_PER_RECORD,
         )
@@ -208,7 +208,7 @@ class TestCalibrationHelpers:
         assert calibrated_tokens_per_record(60, 6, floor=200) == 200
 
     def test_calibrated_ratio_empty_batch_returns_floor(self):
-        from cograph_client.resolver.chunker import (
+        from infona_client.resolver.chunker import (
             calibrated_tokens_per_record,
             EXTRACT_MIN_TOKENS_PER_RECORD,
         )

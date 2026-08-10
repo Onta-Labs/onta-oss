@@ -28,18 +28,18 @@ import pytest
 os.environ.setdefault("OMNIX_API_KEYS", '{"test-key": "test-tenant"}')
 os.environ.setdefault("OMNIX_NEPTUNE_ENDPOINT", "http://fake:8182")
 
-from cograph_client.agent import planner as planner_mod  # noqa: E402
-from cograph_client.agent.planner import (  # noqa: E402
+from infona_client.agent import planner as planner_mod  # noqa: E402
+from infona_client.agent.planner import (  # noqa: E402
     handle,
     register_default_capabilities,
     reset_plan_store,
 )
-from cograph_client.agent.registry import (  # noqa: E402
+from infona_client.agent.registry import (  # noqa: E402
     AgentContext,
     get_capability,
     reset_capabilities,
 )
-from cograph_client.agent.conversation_store import (  # noqa: E402
+from infona_client.agent.conversation_store import (  # noqa: E402
     reset_conversation_store,
 )
 
@@ -113,9 +113,9 @@ def _fresh_registry():
 @pytest.fixture(autouse=True)
 def _track_bg_tasks(monkeypatch):
     """Run capability-spawned background work as TRACKED tasks (see test_agent)."""
-    import cograph_client.agent.capabilities.dedup_cap as dedup_cap
-    import cograph_client.agent.capabilities.enrich_cap as enrich_cap
-    import cograph_client.agent.capabilities.normalize_cap as norm_cap
+    import infona_client.agent.capabilities.dedup_cap as dedup_cap
+    import infona_client.agent.capabilities.enrich_cap as enrich_cap
+    import infona_client.agent.capabilities.normalize_cap as norm_cap
 
     def tracking_spawn(coro):
         asyncio.ensure_future(coro)
@@ -139,28 +139,28 @@ def _stub_enrich(monkeypatch, payload: dict):
         return {"attributes": ["website"], "relationships": []}
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
+        "infona_client.agent.capabilities.enrich_cap.list_type_schema", fake_schema
     )
 
     async def fake_kg_types(ctx):
         return ["Company"]
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap._list_types", fake_kg_types
+        "infona_client.agent.capabilities.enrich_cap._list_types", fake_kg_types
     )
 
     async def fake_chat(*args, **kwargs):
         return json.dumps(payload)
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
+        "infona_client.agent.capabilities.enrich_cap.openrouter_chat", fake_chat
     )
 
     async def fake_sample(*a, **k):
         return ([], "attribute")
 
     monkeypatch.setattr(
-        "cograph_client.agent.capabilities.enrich_cap.sample_predicate_values",
+        "infona_client.agent.capabilities.enrich_cap.sample_predicate_values",
         fake_sample,
     )
 
@@ -180,12 +180,12 @@ def _stub_enrich(monkeypatch, payload: dict):
 def test_request_context_carries_urls_into_agent_context(monkeypatch):
     """``AgentRequestContext.urls`` is threaded into ``AgentContext.urls`` by the
     route's ``_build_ctx`` — so capabilities see the user's attached links."""
-    from cograph_client.api.routes.agent import (
+    from infona_client.api.routes.agent import (
         AgentRequest,
         AgentRequestContext,
         _build_ctx,
     )
-    from cograph_client.auth.api_keys import TenantContext
+    from infona_client.auth.api_keys import TenantContext
 
     urls = ["https://example.com/a", "https://example.com/b"]
     body = AgentRequest(
@@ -204,7 +204,7 @@ def test_request_context_carries_urls_into_agent_context(monkeypatch):
 
 def test_agent_request_context_urls_defaults_empty():
     """``urls`` is optional with a safe default → existing clients unaffected."""
-    from cograph_client.api.routes.agent import AgentRequestContext
+    from infona_client.api.routes.agent import AgentRequestContext
 
     assert AgentRequestContext(kg_name="kg1").urls == []
 
@@ -266,7 +266,7 @@ async def test_url_without_enrich_verb_routes_to_discover(monkeypatch):
     — proof it handled the turn (and was not answered as a plain question)."""
     _stub_classifier(monkeypatch, "question")
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "SHOULD_NOT_RUN", "sparql": "", "rows": [], "narrative": ""}
@@ -288,7 +288,7 @@ async def test_no_urls_leaves_question_untouched(monkeypatch):
     answers (the guard must not over-trigger)."""
     _stub_classifier(monkeypatch, "question")
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "42", "sparql": "SELECT", "rows": [], "narrative": ""}
@@ -309,7 +309,7 @@ async def test_url_in_question_form_defers_to_classifier(monkeypatch):
     ingest/enrich plan. Mirrors the web-discovery interrogative guard."""
     _stub_classifier(monkeypatch, "question")
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "ANSWERED", "sparql": "", "rows": [], "narrative": ""}
@@ -354,7 +354,7 @@ async def test_attached_ctx_urls_route_even_in_question_form(monkeypatch):
     signal — they route even when the message is a bare question with no verb."""
     _stub_classifier(monkeypatch, "question")
 
-    from cograph_client.agent.capabilities.query import QueryCapability
+    from infona_client.agent.capabilities.query import QueryCapability
 
     async def fake_answer(self, ctx, q):
         return {"answer": "SHOULD_NOT_RUN", "sparql": "", "rows": [], "narrative": ""}
@@ -410,8 +410,8 @@ def test_enrich_route_maps_target_urls_to_job_source_urls(monkeypatch):
 
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.app import create_app
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.api.app import create_app
+    from infona_client.graph.client import NeptuneClient
 
     app = create_app()
     n = AsyncMock(spec=NeptuneClient)
@@ -426,7 +426,7 @@ def test_enrich_route_maps_target_urls_to_job_source_urls(monkeypatch):
         captured["job"] = job
 
     monkeypatch.setattr(
-        "cograph_client.enrichment.executor.EnrichmentExecutor.run", fake_run
+        "infona_client.enrichment.executor.EnrichmentExecutor.run", fake_run
     )
 
     client = TestClient(app)
@@ -457,8 +457,8 @@ def test_enrich_route_defaults_source_urls_empty(monkeypatch):
 
     from fastapi.testclient import TestClient
 
-    from cograph_client.api.app import create_app
-    from cograph_client.graph.client import NeptuneClient
+    from infona_client.api.app import create_app
+    from infona_client.graph.client import NeptuneClient
 
     app = create_app()
     n = AsyncMock(spec=NeptuneClient)
@@ -472,7 +472,7 @@ def test_enrich_route_defaults_source_urls_empty(monkeypatch):
         captured["job"] = job
 
     monkeypatch.setattr(
-        "cograph_client.enrichment.executor.EnrichmentExecutor.run", fake_run
+        "infona_client.enrichment.executor.EnrichmentExecutor.run", fake_run
     )
 
     client = TestClient(app)

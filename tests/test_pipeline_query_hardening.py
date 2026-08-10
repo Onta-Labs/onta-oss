@@ -26,8 +26,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from cograph_client.nlp import pipeline as pipeline_mod
-from cograph_client.nlp.pipeline import (
+from infona_client.nlp import pipeline as pipeline_mod
+from infona_client.nlp.pipeline import (
     NLQueryPipeline,
     _parse_sparql_gen_json,
     _salvage_sparql_field,

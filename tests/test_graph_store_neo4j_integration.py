@@ -20,12 +20,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cograph_client.graph.schema_bootstrap import (
+from infona_client.graph.schema_bootstrap import (
     ENTITY_GET_CYPHER,
     ENTITY_MERGE_CYPHER,
 )
-from cograph_client.graph.scope import GraphScope, GraphScopeError
-from cograph_client.graph.store import env_neo4j_configured, require_entity_write_identity
+from infona_client.graph.scope import GraphScope, GraphScopeError
+from infona_client.graph.store import env_neo4j_configured, require_entity_write_identity
 
 pytestmark = pytest.mark.neo4j
 
@@ -48,7 +48,7 @@ requires_neo4j = pytest.mark.skipif(
 
 @pytest.fixture
 async def neo4j_store():
-    from cograph_client.graph.neo4j_store import Neo4jGraphStore
+    from infona_client.graph.neo4j_store import Neo4jGraphStore
 
     uri = os.environ["NEO4J_URI"].strip()
     user = (os.environ.get("NEO4J_USER") or "neo4j").strip() or "neo4j"

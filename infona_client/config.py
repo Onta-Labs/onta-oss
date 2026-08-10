@@ -1,0 +1,162 @@
+import json
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    neptune_endpoint: str = "http://localhost:8182"
+    graph_backend: str = "neptune"  # "neptune" or "fuseki"
+    api_keys: str = '{}'  # empty = open access, no auth required
+    anthropic_api_key: str = ""
+    openrouter_api_key: str = ""
+    cerebras_api_key: str = ""
+    function_arns: str = "{}"
+    log_level: str = "INFO"
+    embeddings_s3_bucket: str = ""
+    embeddings_s3_prefix: str = "omnix/embeddings"
+    embeddings_top_k: int = 15
+
+    # HARD per-run spend ceiling (USD) for a discovery / enrichment run — the A9
+    # cost envelope (ONTA-282). A run whose cumulative attributable spend crosses
+    # this dollar amount HALTS CLEANLY at the ceiling: terminal `failed` with a
+    # cost-envelope reason and an honest partial-coverage A9 manifest, instead of
+    # silently continuing to overspend. 0.0 (the default) ⇒ UNLIMITED (no ceiling),
+    # so every existing run is unchanged; a per-run override (EnrichJob
+    # `spend_ceiling_usd`) wins when set. env: OMNIX_ENRICH_SPEND_CEILING_USD.
+    enrich_spend_ceiling_usd: float = 0.0
+
+    # Optional Postgres DSN (env OMNIX_DATABASE_URL). When set, the durable
+    # PostgresJobStore is used for tracked jobs; when empty, jobs are kept in
+    # process memory. This is a GENERIC DSN — any Postgres (local, Aurora, Neon,
+    # Supabase, ...) — and intentionally carries no cloud-provider identifiers.
+    database_url: str = ""
+
+    # Optional base URL for workspace-invite accept links (ONTA-227), e.g. the
+    # web app's "/invite" page (env OMNIX_INVITE_ACCEPT_URL_BASE). The one-time
+    # accept token is appended as a path segment: "<base>/<token>". When unset,
+    # invite creation still returns the raw token (accept_url is null) and no
+    # sign-up email redirect can be built — link-only delivery.
+    invite_accept_url_base: str = ""
+
+    # Optional auth plugin: a dotted "module.path:callable" that will be
+    # imported at app startup. The callable is invoked with no arguments
+    # and is expected to register an external API key verifier via
+    # omnix.auth.api_keys.register_external_verifier. Keeps omnix-oss
+    # vendor-neutral while allowing downstream deployments to plug in
+    # their own key verification backend (Clerk, WorkOS, custom, ...).
+    auth_plugin: str = ""
+
+    # Optional enrichment plugin: a dotted "module.path:callable" that will
+    # be imported at app startup. The callable is invoked with no arguments
+    # and is expected to register paid source adapters via
+    # infona_client.enrichment.sources.base.register_adapter and override
+    # tier→chain mappings via infona_client.enrichment.tiers.register_tier.
+    # Keeps cograph-oss vendor-neutral while allowing downstream deployments
+    # to plug in proprietary adapters (web search, LLM, GS1, ...).
+    enrichment_plugin: str = ""
+
+    # Optional governance plugin (COG-56): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and
+    # is expected to register a mapping-shape judge panel via
+    # infona_client.resolver.governance.register_governance_panel. Without
+    # it, mapping-shape proposals are recorded pending (tenant-layer-only).
+    governance_plugin: str = ""
+
+    # Optional router plugins: a comma-separated list of dotted
+    # "module.path:callable" entries imported at app startup. Each callable is
+    # invoked with the FastAPI app instance so it can mount additional routers
+    # via app.include_router(...). Keeps cograph-oss vendor-neutral while
+    # letting downstream deployments attach proprietary endpoints (e.g. the
+    # premium ontology recommender). Without it, only the OSS routers are
+    # mounted.
+    router_plugins: str = ""
+
+    # Optional web-source plugin: a dotted "module.path:callable" imported at
+    # app startup. The callable is invoked with no arguments and is expected to
+    # register a web-discovery provider via
+    # infona_client.web_sources.base.register_web_source. Without it, the
+    # "discover" agent intent stays dormant (plan() returns a "not enabled"
+    # message). The OSS dev stub registers via
+    # "infona_client.web_sources.stub:register"; a downstream deployment points
+    # this at its paid provider (Exa/Perplexity fan-out) with no OSS change.
+    web_source_plugin: str = ""
+
+    # Optional API-source-registry plugin (ONTA-194): a dotted
+    # "module.path:callable" imported at app startup. The callable is invoked
+    # with no arguments and is expected to contribute the premium
+    # "global_enhanced" catalog overlay via
+    # infona_client.api_registry.register_api_source_layer. Without it, only
+    # the OSS "global_public" seed catalog is loaded. Keeps cograph-oss
+    # vendor-neutral while letting a downstream deployment ship curated premium
+    # (paid/licensed) API entries with no OSS change.
+    api_registry_plugin: str = ""
+
+    # Optional type-SKILLS plugin: a dotted "module.path:callable" imported at
+    # app startup. The callable is invoked with no arguments and is expected to
+    # contribute the CURATED Global-Enhanced skill layer via
+    # infona_client.skills.register_skill_layer. Without it, only the OSS
+    # Global-Public seed content is loaded and resolution degrades to
+    # Tenant > Public. Keeps cograph-oss content-neutral: the mechanism
+    # (storage, resolution, CRUD, injection seam) is OSS; the curated premium
+    # PROSE is not.
+    skills_plugin: str = ""
+
+    # Optional free-text geocoder plugin (ONTA-249): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and is
+    # expected to register a premium Geocoder via
+    # infona_client.spatiotemporal.geocoder.register_geocoder — e.g. a Google
+    # Places / Mapbox / Nominatim adapter in our deploy. Without it, the OSS
+    # default (a deterministic offline gazetteer) is used, so a bare place-name
+    # radius anchor still resolves for common places with no OSS change. Keeps
+    # cograph-oss vendor-neutral: no paid geocoding API is baked into OSS.
+    geocoder_plugin: str = ""
+
+    # Optional secret-cipher plugin (ONTA-2xx): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and is
+    # expected to register a SecretCipher via
+    # infona_client.api_registry.register_secret_cipher — e.g. an AWS-KMS
+    # data-key cipher in our deploy. Without it, tenant-custom API credentials
+    # are encrypted with the OSS default LocalAesGcmCipher keyed by
+    # OMNIX_SECRETS_KEY (below). Keeps cograph-oss vendor-neutral: a self-hoster
+    # needs only OMNIX_SECRETS_KEY; a cloud deploy points this at its KMS cipher.
+    secrets_cipher_plugin: str = ""
+
+    # Optional analytics plugin (ONTA-323): a dotted "module.path:callable"
+    # imported at app startup. The callable is invoked with no arguments and is
+    # expected to register a product-analytics sink via
+    # infona_client.analytics.register_analytics_sink — in our deploy the
+    # proprietary hosted-analytics sink. Without it, the OSS default no-op sink is
+    # used: emit() drops every event, so OSS stays analytics-free and standalone
+    # (no third-party analytics dependency). Keeps cograph-oss vendor-neutral:
+    # analytics that phones home to a SaaS is a proprietary concern; per-tenant
+    # usage metering (OMNIX usage/) stays OSS.
+    analytics_plugin: str = ""
+
+    # Optional local symmetric key for the OSS default secret cipher
+    # (LocalAesGcmCipher). When set (and no cipher plugin is registered),
+    # tenant-custom API credentials are envelope-encrypted at rest with AES-256-GCM
+    # under this key. Accepts base64/base64url (16/24/32 bytes) or a raw
+    # passphrase (stretched to 32 bytes via SHA-256). Empty ⇒ no default cipher,
+    # and the routes REFUSE to store a secret (fail closed) rather than store it
+    # in the clear. env: OMNIX_SECRETS_KEY.
+    secrets_key: str = ""
+
+    # Contact string sent as the User-Agent on SEC EDGAR requests
+    # (POST /functions/sec-latest-filing). SEC's fair-access policy asks every
+    # automated client to declare itself with a real contact, and throttles
+    # requests that do not. Each DEPLOYMENT must supply its OWN contact — this
+    # is deliberately empty in OSS so a published build can never make requests
+    # under some other operator's identity. When unset, the route falls back to
+    # a neutral project-level UA (no personal address) and logs a one-time
+    # warning. env: OMNIX_SEC_USER_AGENT — e.g. "Acme Corp ops@acme.com".
+    sec_user_agent: str = ""
+
+    def get_api_keys_map(self) -> dict[str, str]:
+        return json.loads(self.api_keys)
+
+    def get_function_arns_map(self) -> dict[str, str]:
+        return json.loads(self.function_arns)
+
+    model_config = {"env_prefix": "OMNIX_"}
+
+
+settings = Settings()

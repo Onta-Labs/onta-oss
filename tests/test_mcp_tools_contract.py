@@ -88,10 +88,10 @@ def test_search_tool_target_contract(monkeypatch, client, auth_headers):
     ``tests/test_search_route.py``."""
     import asyncio
 
-    from cograph_client.semantic.extract import content_hash
-    from cograph_client.semantic.memory import InMemorySemanticIndex
-    from cograph_client.semantic.protocol import SemanticChunk
-    from cograph_client.semantic.registry import (
+    from infona_client.semantic.extract import content_hash
+    from infona_client.semantic.memory import InMemorySemanticIndex
+    from infona_client.semantic.protocol import SemanticChunk
+    from infona_client.semantic.registry import (
         register_semantic_index,
         reset_semantic_index,
     )
@@ -234,7 +234,7 @@ def test_mcp_list_jobs_enum_matches_backend_job_category():
     TypeScript side also enforces this at compile time via an exhaustiveness check
     against the SDK's `JobCategory`; this asserts it from Python so a backend change
     that forgets the MCP enum fails CI here too."""
-    from cograph_client.enrichment.models import JobCategory
+    from infona_client.enrichment.models import JobCategory
 
     backend = {c.value for c in JobCategory}
     assert _mcp_list_jobs_categories() == backend, (

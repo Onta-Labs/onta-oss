@@ -13,21 +13,21 @@ from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
-from cograph_client.resolver.models import (
+from infona_client.resolver.models import (
     ExtractedAttribute,
     ExtractedEntity,
     ExtractionResult,
     IngestResult,
 )
-from cograph_client.resolver.verdict_cache import JsonVerdictCache
-from cograph_client.resolver.er.types import (
+from infona_client.resolver.verdict_cache import JsonVerdictCache
+from infona_client.resolver.er.types import (
     DEFAULT_CUSTOMER_CONFIG,
     ancestor_chain,
     config_for,
     config_for_with_hierarchy,
     primary_type,
 )
-from cograph_client.graph.ontology_queries import (
+from infona_client.graph.ontology_queries import (
     rewrite_type_predicate_to_closure,
     with_subclass_closure,
     type_uri,
@@ -95,7 +95,7 @@ class TestIngestionLeafTypeStamped:
     @pytest.mark.asyncio
     async def test_loyalty_customer_stamped_with_leaf_type(self, mock_neptune, mock_cache):
         """LoyaltyCustomer entity → rdf:type triple points to LoyaltyCustomer URI, not Customer."""
-        from cograph_client.resolver.schema_resolver import SchemaResolver
+        from infona_client.resolver.schema_resolver import SchemaResolver
 
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
 
@@ -125,7 +125,7 @@ class TestIngestionLeafTypeStamped:
     @pytest.mark.asyncio
     async def test_entity_uri_uses_leaf_type(self, mock_neptune, mock_cache):
         """Entity URI is minted under /entities/LoyaltyCustomer/ (most-specific type)."""
-        from cograph_client.resolver.schema_resolver import SchemaResolver
+        from infona_client.resolver.schema_resolver import SchemaResolver
 
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
 
@@ -152,7 +152,7 @@ class TestAncestorSynthesis:
     @pytest.mark.asyncio
     async def test_subtype_link_to_customer_inserted(self, mock_neptune, mock_cache):
         """Creating LoyaltyCustomer with parent_type=Customer inserts a subClassOf triple."""
-        from cograph_client.resolver.schema_resolver import SchemaResolver
+        from infona_client.resolver.schema_resolver import SchemaResolver
 
         resolver = SchemaResolver(mock_neptune, "fake-key", mock_cache)
 
@@ -228,11 +228,11 @@ class TestERViaChainWalk:
         config_for('LoyaltyCustomer') would be None and they would NOT merge — the
         resolver would mint two separate URIs. With hierarchy-aware ER they merge.
         """
-        from cograph_client.resolver.schema_resolver import SchemaResolver
-        from cograph_client.resolver.er.blocking import generate_block_keys
-        from cograph_client.resolver.er.normalize import DefaultNormalizer
-        from cograph_client.resolver.er.engine import extract_signals
-        from cograph_client.resolver.er.types import NormalizedSignals, MergeAction
+        from infona_client.resolver.schema_resolver import SchemaResolver
+        from infona_client.resolver.er.blocking import generate_block_keys
+        from infona_client.resolver.er.normalize import DefaultNormalizer
+        from infona_client.resolver.er.engine import extract_signals
+        from infona_client.resolver.er.types import NormalizedSignals, MergeAction
 
         # Pre-suppose: LoyaltyCustomer exists in ontology, Customer + Person also.
         existing_types = {"LoyaltyCustomer": "", "Customer": "", "Person": ""}
@@ -270,7 +270,7 @@ class TestERViaChainWalk:
 
         # Mock the blocker: when asked for candidates, return the first entity
         # under the canonical URI with its normalized signals.
-        from cograph_client.resolver.er.engine import ERPipeline
+        from infona_client.resolver.er.engine import ERPipeline
 
         async def fake_candidates_with_signals(instance_graph, type_uri_arg, keys):
             # Return the first entity's signals as a candidate at the canonical URI

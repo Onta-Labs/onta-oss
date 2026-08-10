@@ -29,8 +29,8 @@ import re
 
 import pytest
 
-from cograph_client.normalization.execute import apply_rule
-from cograph_client.normalization.rules import NormalizationRule, make_rule_id
+from infona_client.normalization.execute import apply_rule
+from infona_client.normalization.rules import NormalizationRule, make_rule_id
 
 from tests.test_normalization import (  # reuse the harness
     ENTITY,

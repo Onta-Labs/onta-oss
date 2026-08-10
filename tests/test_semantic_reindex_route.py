@@ -14,13 +14,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-import cograph_client.graph.text_markers as tm
-import cograph_client.semantic.reconciler as rec
-from cograph_client.scheduling.store import get_schedule_store, reset_schedule_store
-from cograph_client.semantic.extract import content_hash
-from cograph_client.semantic.memory import InMemorySemanticIndex
-from cograph_client.semantic.protocol import SemanticChunk
-from cograph_client.semantic.registry import (
+import infona_client.graph.text_markers as tm
+import infona_client.semantic.reconciler as rec
+from infona_client.scheduling.store import get_schedule_store, reset_schedule_store
+from infona_client.semantic.extract import content_hash
+from infona_client.semantic.memory import InMemorySemanticIndex
+from infona_client.semantic.protocol import SemanticChunk
+from infona_client.semantic.registry import (
     register_semantic_index,
     reset_semantic_index,
 )

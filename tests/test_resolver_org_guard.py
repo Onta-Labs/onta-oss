@@ -15,7 +15,7 @@ rewording of the prompt doesn't break them, but removing the guard does.
 
 from __future__ import annotations
 
-from cograph_client.resolver.schema_resolver import EXTRACTION_SYSTEM
+from infona_client.resolver.schema_resolver import EXTRACTION_SYSTEM
 
 
 def _lift_block() -> str:

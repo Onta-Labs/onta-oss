@@ -34,8 +34,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from cograph_client.graph import kg_status
-from cograph_client.nlp.kg_coverage import (
+from infona_client.graph import kg_status
+from infona_client.nlp.kg_coverage import (
     coverage_caveat,
     empty_types_for_kg,
     kg_subtype_presence_query,
@@ -43,7 +43,7 @@ from cograph_client.nlp.kg_coverage import (
     uncovered_types,
     unscoped_caveat,
 )
-from cograph_client.nlp.pipeline import NLQueryPipeline
+from infona_client.nlp.pipeline import NLQueryPipeline
 
 
 @pytest.fixture(autouse=True)
@@ -148,7 +148,7 @@ async def _ask(client, sparql: str, *, kg: bool = True, ontology: str = ONTOLOGY
         svc.type_names.side_effect = RuntimeError("probe down")
         svc.retrieve.return_value = ontology
         with patch(
-            "cograph_client.nlp.pipeline.get_embedding_service", return_value=svc
+            "infona_client.nlp.pipeline.get_embedding_service", return_value=svc
         ), patch.object(
             pipeline, "_generate_sparql", new_callable=AsyncMock,
             return_value={"sparql": sparql, "explanation": "", "functions_needed": []},
