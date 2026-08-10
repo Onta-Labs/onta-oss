@@ -36,6 +36,27 @@ def test_semantic_templates_registered_in_bootstrap():
         assert "$kg" in tmpl.cypher
 
 
+def test_subclass_of_closure_template_prefers_class_nodes():
+    """NL subclass helper Cypher walks :Class SUBCLASS_OF, not OntoType alone."""
+    cypher = TEMPLATES["subclass_of_closure"].cypher
+    assert ":Class" in cypher
+    assert "SUBCLASS_OF" in cypher
+    assert ":OntoType" not in cypher
+
+
+def test_explore_type_templates_use_instance_of():
+    """Explore list/count templates match INSTANCE_OF→Class (ADR 0013)."""
+    for name in (
+        "entity_list_by_type_page",
+        "entity_count_by_type",
+        "entity_count_by_primary_type",
+        "entity_list_by_type",
+    ):
+        cypher = TEMPLATES[name].cypher
+        assert "INSTANCE_OF" in cypher
+        assert ":Class" in cypher
+
+
 def test_descendants_of_transitive():
     child_to_parent = {"Dog": "Mammal", "Cat": "Mammal", "Mammal": "Animal"}
     assert descendants_of("Animal", child_to_parent) == [

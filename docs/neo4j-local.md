@@ -166,7 +166,9 @@ from cograph_client.graph.explore_store import (
     count_entities,
 )
 
-# Paged list (primary_type or match="label"); type_name is ONTA-425 validated.
+# Paged list via INSTANCE_OF→Class (match="primary_type" is historical name)
+# or match="label"; type_name is ONTA-425 validated. include_subclasses expands
+# Class SUBCLASS_OF when True.
 page = await list_entities_by_type(
     store=store, tenant_id="demo-tenant", kg="bookstore",
     type_name="Person", limit=50, after_id=None,

@@ -138,12 +138,14 @@ RETURN a.id AS assertion_id,
 ORDER BY a.property_id, a.id
 """.strip()
 
+# Prefer :Class hierarchy (ADR 0013). ``$layer`` filters Class.layer when set.
+# OntoType remains dual-written for legacy catalog readers until cutover.
 SUBCLASS_OF_CLOSURE_CYPHER = """
-MATCH (c:OntoType {tenant_id: $tenant_id, kg: $kg})
+MATCH (c:Class {tenant_id: $tenant_id, kg: $kg})
 WHERE ($layer IS NULL OR c.layer = $layer)
   AND (
     c.name = $type_name
-    OR (c)-[:SUBCLASS_OF*1..]->(:OntoType {
+    OR (c)-[:SUBCLASS_OF*1..]->(:Class {
       tenant_id: $tenant_id, kg: $kg, name: $type_name
     })
   )

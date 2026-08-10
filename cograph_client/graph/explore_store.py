@@ -2,10 +2,16 @@
 
 Minimal GraphStore-backed readers that Explorer / KG-admin routes can call:
 
-* :func:`list_entities_by_type` — paged instances by ``primary_type`` or domain label
+* :func:`list_entities_by_type` — paged instances by ``INSTANCE_OF`` → Class
+  (match mode ``primary_type`` is historical; semantic membership is Class)
+  or domain label
 * :func:`get_entity_detail` — properties + outgoing / incoming relationships
-* :func:`type_counts` — per-``primary_type`` counts (type-stats input)
+* :func:`type_counts` — per-Class counts via ``INSTANCE_OF`` (type-stats input)
 * :func:`count_entities` — total Entity nodes in a tenant+kg (minimal KG size)
+
+**ADR 0013:** type list/count prefer Assertion-derived ``INSTANCE_OF`` + Class
+over the denorm ``Entity.primary_type`` property alone. Optional subclass
+expansion walks ``:Class``-``SUBCLASS_OF`` when ``include_subclasses=True``.
 
 **Dual-backend:** when an explicit ``store`` / ``session`` is passed, or
 ``COGRAPH_GRAPH_BACKEND=neo4j``, reads run through GraphStore templates /
@@ -227,6 +233,26 @@ def _rel_from_row(row: Mapping[str, Any]) -> EntityRel:
 # ---------------------------------------------------------------------------
 
 
+async def _type_names_for_explore(
+    session: "GraphSession",
+    leaf: str,
+    *,
+    include_subclasses: bool,
+) -> list[str]:
+    """Resolve explore type filter; optionally expand via Class SUBCLASS_OF."""
+    if not include_subclasses:
+        return [leaf]
+    try:
+        rows = await session.execute_template(
+            "subclass_of_closure",
+            {"type_name": leaf, "layer": None},
+        )
+    except Exception:
+        return [leaf]
+    names = [str(r.get("type_name")) for r in rows if r.get("type_name")]
+    return names if names else [leaf]
+
+
 async def list_entities_by_type_pg(
     session: "GraphSession",
     type_name: str,
@@ -234,22 +260,30 @@ async def list_entities_by_type_pg(
     match: MatchMode = "primary_type",
     limit: int = DEFAULT_PAGE_LIMIT,
     after_id: str | None = None,
+    include_subclasses: bool = False,
 ) -> EntityPage:
-    """Paged Entity list filtered by primary_type or domain label.
+    """Paged Entity list filtered by type membership or domain label.
 
     Parameters
     ----------
     type_name:
         Ontology type leaf. Validated (ONTA-425) before query.
     match:
-        ``primary_type`` uses the Entity property (Explorer counting path).
-        ``label`` matches the sanitized Neo4j domain label (asserted type).
+        ``primary_type`` (historical name) matches ``INSTANCE_OF`` → Class
+        (ADR 0013 semantic membership). ``label`` matches the sanitized Neo4j
+        domain label.
+    include_subclasses:
+        When True and match is semantic, expand the type filter via Class
+        ``SUBCLASS_OF`` closure (Person includes Employee, etc.).
     limit / after_id:
         Keyset pagination ordered by ``id`` ascending.
     """
     leaf = _validate_type_name(type_name)
     page_limit = _clamp_limit(limit)
     cursor = after_id if after_id else None
+    type_names = await _type_names_for_explore(
+        session, leaf, include_subclasses=include_subclasses
+    )
 
     if match == "label":
         safe_label = sanitize_domain_label(leaf)
@@ -260,24 +294,37 @@ async def list_entities_by_type_pg(
                 "use MemoryGraphStore or Neo4jGraphStore"
             )
         rows = await native(safe_label, after_id=cursor, limit=page_limit)
-        # Total for label match: count page isn't free; approximate via full scan
-        # only when needed — prefer primary_type total when labels align.
+        # Total via INSTANCE_OF Class (semantic), not denorm primary_type alone.
         total_rows = await session.execute_template(
-            "entity_count_by_type", {"primary_type": leaf}
+            "entities_of_type_count", {"type_names": type_names}
         )
         total = int(total_rows[0].get("n") or 0) if total_rows else len(rows)
     elif match == "primary_type":
-        rows = await session.execute_template(
-            "entity_list_by_type_page",
-            {
-                "primary_type": leaf,
-                "after_id": cursor,
-                "limit": page_limit,
-            },
-        )
-        total_rows = await session.execute_template(
-            "entity_count_by_type", {"primary_type": leaf}
-        )
+        # Semantic path: INSTANCE_OF → Class (+ optional subclass-expanded names).
+        if len(type_names) == 1 and not include_subclasses:
+            rows = await session.execute_template(
+                "entity_list_by_type_page",
+                {
+                    "primary_type": leaf,
+                    "after_id": cursor,
+                    "limit": page_limit,
+                },
+            )
+            total_rows = await session.execute_template(
+                "entity_count_by_type", {"primary_type": leaf}
+            )
+        else:
+            rows = await session.execute_template(
+                "entities_of_type",
+                {
+                    "type_names": type_names,
+                    "after_id": cursor,
+                    "limit": page_limit,
+                },
+            )
+            total_rows = await session.execute_template(
+                "entities_of_type_count", {"type_names": type_names}
+            )
         total = int(total_rows[0].get("n") or 0) if total_rows else 0
     else:
         raise GraphScopeError(
@@ -338,7 +385,11 @@ async def get_entity_detail_pg(
 
 
 async def type_counts_pg(session: "GraphSession") -> list[TypeCountRow]:
-    """Count Entity nodes grouped by ``primary_type`` (non-null only)."""
+    """Count Entity nodes grouped by Class name via ``INSTANCE_OF`` (ADR 0013).
+
+    Multi-typed entities contribute to each asserted Class. The denorm
+    ``Entity.primary_type`` property is not used as the sole grouping key.
+    """
     rows = await session.execute_template("entity_count_by_primary_type", {})
     out: list[TypeCountRow] = []
     for r in rows:
@@ -387,6 +438,7 @@ async def list_entities_by_type(
     match: MatchMode = "primary_type",
     limit: int = DEFAULT_PAGE_LIMIT,
     after_id: str | None = None,
+    include_subclasses: bool = False,
 ) -> EntityPage | None:
     """List entities by type on GraphStore, or ``None`` for SPARQL fallback.
 
@@ -411,6 +463,7 @@ async def list_entities_by_type(
         match=match,
         limit=limit,
         after_id=after_id,
+        include_subclasses=include_subclasses,
     )
 
 

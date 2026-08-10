@@ -364,3 +364,96 @@ def test_limit_clamp_and_invalid():
 def test_default_page_limit_constant():
     assert DEFAULT_PAGE_LIMIT == 50
     assert MAX_PAGE_LIMIT == 200
+
+
+def test_list_and_count_use_instance_of_not_primary_type_alone(store):
+    """ADR 0013: explore type list/count follow INSTANCE_OF→Class, not primary_type denorm."""
+    from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
+    from cograph_client.graph.scope import GraphScope
+
+    async def run():
+        # Seed one Person via normal path (INSTANCE_OF written).
+        await _seed_bookstore(store)
+        # Add multi-type entity: Employee only via type Assertion; primary_type
+        # deliberately left as something else would still match Employee via
+        # INSTANCE_OF. Write type Assertion for a new entity as Employee.
+        dana = entity_uri("Employee", "dana")
+        session = store.session(GraphScope.for_instance("demo-tenant", "bookstore"))
+        await assert_fact(
+            session,
+            fact_to_assertion_fact(
+                subject_id=dana, kind="type", key="Employee", value="Employee"
+            ),
+        )
+        # Corrupt denorm primary_type so primary_type-only filters would miss it.
+        from cograph_client.graph.pg_ops import merge_entity
+
+        await merge_entity(session, dana, primary_type="NotARealType", name="Dana")
+
+        page = await list_entities_by_type(
+            store=store,
+            tenant_id="demo-tenant",
+            kg="bookstore",
+            type_name="Employee",
+        )
+        assert page is not None
+        assert page.total == 1
+        assert page.entities[0].id == dana
+
+        counts = await type_counts(
+            store=store, tenant_id="demo-tenant", kg="bookstore"
+        )
+        by_name = {c.name: c.entity_count for c in counts}
+        assert by_name.get("Employee") == 1
+        assert by_name.get("Person") == 3
+        # Denorm-only type must not appear as a Class count.
+        assert "NotARealType" not in by_name
+
+    asyncio.run(run())
+
+
+def test_list_entities_include_subclasses(store):
+    """include_subclasses expands Class SUBCLASS_OF for explore list/count."""
+    from cograph_client.graph.kg_writer import insert_facts as _ins
+    from cograph_client.graph.ontology_queries import type_uri
+    from cograph_client.graph.rdf_model import set_subclass_of
+    from cograph_client.graph.scope import GraphScope
+
+    async def run():
+        graph = _graph()
+        person = entity_uri("Person", "p1")
+        emp = entity_uri("Employee", "e1")
+        triples = [
+            (person, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", f"{IRI_BASE}/types/Person"),
+            (person, "http://www.w3.org/2000/01/rdf-schema#label", "P1"),
+            (emp, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", f"{IRI_BASE}/types/Employee"),
+            (emp, "http://www.w3.org/2000/01/rdf-schema#label", "E1"),
+        ]
+        await _ins(None, graph, triples, store=store)
+        session = store.session(GraphScope.for_instance("demo-tenant", "bookstore"))
+        await set_subclass_of(session, type_uri("Employee"), type_uri("Person"))
+
+        exact = await list_entities_by_type(
+            store=store,
+            tenant_id="demo-tenant",
+            kg="bookstore",
+            type_name="Person",
+            include_subclasses=False,
+        )
+        assert exact is not None
+        assert exact.total == 1
+        assert exact.entities[0].id == person
+
+        with_sub = await list_entities_by_type(
+            store=store,
+            tenant_id="demo-tenant",
+            kg="bookstore",
+            type_name="Person",
+            include_subclasses=True,
+        )
+        assert with_sub is not None
+        assert with_sub.total == 2
+        ids = {e.id for e in with_sub.entities}
+        assert ids == {person, emp}
+
+    asyncio.run(run())
