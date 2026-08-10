@@ -422,6 +422,72 @@ async def count_entities_pg(session: "GraphSession") -> int:
         return 0
 
 
+@dataclass(frozen=True, slots=True)
+class GrepHit:
+    """One literal property match from :func:`grep_literals`."""
+
+    entity_uri: str
+    label: str | None
+    type: str | None
+    attr: str
+    value: str
+
+
+async def grep_literals_pg(
+    session: "GraphSession",
+    needle: str,
+    *,
+    case_sensitive: bool = False,
+    type_name: str | None = None,
+    predicate_leaf: str | None = None,
+    limit: int = 50,
+) -> tuple[list[GrepHit], bool]:
+    """Substring scan over Entity property values (Neo4j / MemoryGraphStore).
+
+    Returns ``(hits, truncated)`` where ``truncated`` is True when the store
+    produced more than ``limit`` rows (caller asked for ``limit + 1``).
+    """
+    if not isinstance(needle, str) or not needle:
+        raise GraphScopeError("grep needle must be a non-empty string")
+    page_limit = _clamp_limit(limit)
+    # Over-fetch one row for honest truncation (mirrors SPARQL grep).
+    fetch_limit = page_limit + 1
+    type_leaf: str | None = None
+    if type_name:
+        type_leaf = _validate_type_name(type_name)
+    pred = predicate_leaf.strip() if predicate_leaf else None
+    if pred is not None and not pred:
+        pred = None
+
+    rows = await session.execute_template(
+        "entity_literal_grep",
+        {
+            "needle": needle,
+            "case_sensitive": bool(case_sensitive),
+            "type_name": type_leaf,
+            "predicate_leaf": pred,
+            "limit": fetch_limit,
+        },
+    )
+    truncated = len(rows) > page_limit
+    hits: list[GrepHit] = []
+    for r in rows[:page_limit]:
+        d = r.to_dict() if hasattr(r, "to_dict") else dict(r)
+        attr = str(d.get("attr") or "")
+        if not attr:
+            continue
+        hits.append(
+            GrepHit(
+                entity_uri=str(d.get("entity_uri") or d.get("id") or ""),
+                label=d.get("label"),
+                type=d.get("type") or d.get("primary_type"),
+                attr=attr,
+                value=str(d.get("value") if d.get("value") is not None else ""),
+            )
+        )
+    return hits, truncated
+
+
 # ---------------------------------------------------------------------------
 # Dual-backend public API
 # ---------------------------------------------------------------------------
@@ -542,6 +608,39 @@ async def count_entities(
     return await count_entities_pg(gs)
 
 
+async def grep_literals(
+    *,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    tenant_id: str | None = None,
+    kg: str | None = None,
+    kg_name: str | None = None,
+    needle: str,
+    case_sensitive: bool = False,
+    type_name: str | None = None,
+    predicate_leaf: str | None = None,
+    limit: int = 50,
+) -> tuple[list[GrepHit], bool] | None:
+    """Literal property grep on GraphStore, or ``None`` for SPARQL fallback."""
+    gs = resolve_explore_session(
+        store=store,
+        session=session,
+        tenant_id=tenant_id,
+        kg=kg,
+        kg_name=kg_name,
+    )
+    if gs is None:
+        return None
+    return await grep_literals_pg(
+        gs,
+        needle,
+        case_sensitive=case_sensitive,
+        type_name=type_name,
+        predicate_leaf=predicate_leaf,
+        limit=limit,
+    )
+
+
 __all__ = [
     "DEFAULT_PAGE_LIMIT",
     "MAX_PAGE_LIMIT",
@@ -549,12 +648,15 @@ __all__ = [
     "EntityPage",
     "EntityRel",
     "EntitySummary",
+    "GrepHit",
     "TypeCountRow",
     "count_entities",
     "count_entities_pg",
     "get_entity_detail",
     "get_entity_detail_pg",
     "graph_backend",
+    "grep_literals",
+    "grep_literals_pg",
     "list_entities_by_type",
     "list_entities_by_type_pg",
     "resolve_explore_session",

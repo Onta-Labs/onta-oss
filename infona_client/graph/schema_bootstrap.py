@@ -338,6 +338,34 @@ RETURN coalesce(r.attr, type(r)) AS attr, type(r) AS rel_type,
        'in' AS direction
 """.strip()
 
+# Index-free literal substring scan over Entity properties (grep dual-backend).
+# System keys are excluded so tenant_id/kg/id never appear as "matches".
+# ``$type_name`` / ``$predicate_leaf`` may be null (no filter). Over-fetch with
+# ``LIMIT $limit`` (caller passes limit+1 for honest truncation).
+ENTITY_LITERAL_GREP_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE ($type_name IS NULL OR e.primary_type = $type_name OR EXISTS {
+  MATCH (e)-[:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})
+  WHERE c.name = $type_name OR c.id = $type_name
+})
+WITH e, [k IN keys(e) WHERE NOT k IN [
+  'id', 'tenant_id', 'kg', 'primary_type', 'source',
+  'created_at', 'updated_at', 'elementId', 'labels', 'props'
+]] AS prop_keys
+UNWIND prop_keys AS prop_key
+WITH e, prop_key, e[prop_key] AS val
+WHERE val IS NOT NULL
+  AND ($predicate_leaf IS NULL OR prop_key = $predicate_leaf)
+  AND (
+    ($case_sensitive = true AND toString(val) CONTAINS $needle)
+    OR ($case_sensitive = false AND toLower(toString(val)) CONTAINS toLower($needle))
+  )
+RETURN e.id AS entity_uri, e.name AS label, e.primary_type AS type,
+       prop_key AS attr, toString(val) AS value
+ORDER BY e.id, prop_key
+LIMIT $limit
+""".strip()
+
 # --- NL→Cypher fixtures (E6 quality) -----------------------------------------
 
 ENTITY_FILTER_PROP_EQ_CYPHER = """
@@ -468,6 +496,11 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "entity_rels": CypherTemplate(
         name="entity_rels",
         cypher=ENTITY_RELS_CYPHER,
+        writing=False,
+    ),
+    "entity_literal_grep": CypherTemplate(
+        name="entity_literal_grep",
+        cypher=ENTITY_LITERAL_GREP_CYPHER,
         writing=False,
     ),
     "entity_filter_prop_eq": CypherTemplate(

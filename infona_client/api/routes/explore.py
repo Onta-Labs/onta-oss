@@ -1929,6 +1929,94 @@ def _to_float(v: str | None) -> float:
         return 0.0
 
 
+async def _records_from_explore_store(
+    *,
+    tenant_id: str,
+    kg_name: str,
+    type_name: str,
+    limit: int,
+    cursor: str | None,
+) -> dict | None:
+    """Build the records response via GraphStore, or ``None`` for SPARQL.
+
+    Dual-backend (E9): when ``INFONA_GRAPH_BACKEND=neo4j`` (or an injected
+    process store under that backend), list + detail come from
+    :mod:`infona_client.graph.explore_store`. Same response shape as the
+    SPARQL path so Explorer clients need no branch.
+    """
+    from infona_client.graph.explore_store import (
+        get_entity_detail as pg_entity_detail,
+        list_entities_by_type as pg_list_entities,
+        resolve_explore_session,
+    )
+
+    if resolve_explore_session(tenant_id=tenant_id, kg_name=kg_name) is None:
+        return None
+
+    page = await pg_list_entities(
+        tenant_id=tenant_id,
+        kg_name=kg_name,
+        type_name=type_name,
+        limit=limit,
+        after_id=cursor,
+    )
+    if page is None:
+        return None
+
+    _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
+    if not page.entities:
+        return {**_EMPTY, "total": page.total}
+
+    # Collect per-entity properties for table columns (page-sized, ≤ 200).
+    col_set: set[str] = set()
+    col_display: list[str] = []
+    rows_out: list[dict] = []
+    for ent in page.entities:
+        detail = await pg_entity_detail(
+            tenant_id=tenant_id,
+            kg_name=kg_name,
+            entity_id=ent.id,
+        )
+        props = dict(detail.properties) if detail is not None else {}
+        # Prefer detail.name over summary name (same precedence as SPARQL path:
+        # human-readable name attribute / node name beats URI slug).
+        name = (
+            (detail.name if detail is not None else None)
+            or ent.name
+            or ent.id.rstrip("/").split("/")[-1]
+        )
+        row: dict = {"id": ent.id, "name": name}
+        for k, v in props.items():
+            if k == "name":
+                continue
+            display = str(k)
+            if display not in col_set:
+                col_set.add(display)
+                col_display.append(display)
+            if isinstance(v, (list, tuple)):
+                row[display] = ", ".join(str(x) for x in v)
+            else:
+                row[display] = "" if v is None else str(v)
+        # Fill blanks for columns already discovered on earlier rows.
+        for c in col_display:
+            row.setdefault(c, "")
+        rows_out.append(row)
+
+    # Ensure every row has every column (later columns may appear mid-page).
+    for row in rows_out:
+        for c in col_display:
+            row.setdefault(c, "")
+
+    col_display.sort()
+    columns = ["name"] + col_display
+    return {
+        "columns": columns,
+        "rows": rows_out,
+        "total": page.total,
+        "next_cursor": page.next_cursor,
+    }
+
+
 @router.get("/kgs/{kg_name}/types/{type_name}/records")
 async def get_type_records(
     kg_name: str,
@@ -1963,9 +2051,22 @@ async def get_type_records(
     A type name that could not exist at all — one carrying a character no IRI may
     contain — is a different thing from a type with no rows, and is a 422
     (ONTA-425). The sentinel keeps covering every name that is merely absent.
+
+    **Dual-backend (E9):** when ``INFONA_GRAPH_BACKEND=neo4j``, reads via
+    :mod:`infona_client.graph.explore_store`. Default Neptune path unchanged.
     """
     require_valid_type_name(type_name)
     _EMPTY = {"columns": ["name"], "rows": [], "total": 0, "next_cursor": None}
+
+    pg = await _records_from_explore_store(
+        tenant_id=tenant.tenant_id,
+        kg_name=kg_name,
+        type_name=type_name,
+        limit=limit,
+        cursor=cursor,
+    )
+    if pg is not None:
+        return pg
 
     kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
     resolved = await _resolve_layered_type(client, tenant, type_name)
@@ -2215,6 +2316,188 @@ async def get_type_records(
         "rows": rows,
         "total": total,
         "next_cursor": next_cursor,
+    }
+
+
+@router.get("/kgs/{kg_name}/entities/{entity_id:path}")
+async def get_entity_detail_route(
+    kg_name: str,
+    entity_id: str,
+    tenant: TenantContext = Depends(get_tenant),
+    client: NeptuneClient = Depends(get_neptune_client),
+):
+    """Entity detail (properties + incident relationships).
+
+    **Dual-backend (E9):** under ``INFONA_GRAPH_BACKEND=neo4j`` (or an injected
+    GraphStore) uses :func:`infona_client.graph.explore_store.get_entity_detail`.
+    On the default Neptune path, assembles the same shape via SPARQL point
+    lookups on the KG graph.
+    """
+    from fastapi import HTTPException
+
+    from infona_client.graph.explore_store import (
+        get_entity_detail as pg_entity_detail,
+        resolve_explore_session,
+    )
+    from infona_client.graph.iri import ONTO_PRED_PREFIX
+
+    eid = entity_id.strip()
+    if not eid:
+        raise HTTPException(status_code=422, detail="entity_id is required")
+
+    # GraphStore path.
+    if resolve_explore_session(tenant_id=tenant.tenant_id, kg_name=kg_name) is not None:
+        detail = await pg_entity_detail(
+            tenant_id=tenant.tenant_id,
+            kg_name=kg_name,
+            entity_id=eid,
+        )
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"Entity '{eid}' not found")
+        return {
+            "id": detail.id,
+            "name": detail.name,
+            "primary_type": detail.primary_type,
+            "source": detail.source,
+            "labels": list(detail.labels),
+            "properties": dict(detail.properties),
+            "outgoing": [
+                {
+                    "attr": r.attr,
+                    "rel_type": r.rel_type,
+                    "other_id": r.other_id,
+                    "other_name": r.other_name,
+                    "other_type": r.other_type,
+                    "direction": r.direction,
+                }
+                for r in detail.outgoing
+            ],
+            "incoming": [
+                {
+                    "attr": r.attr,
+                    "rel_type": r.rel_type,
+                    "other_id": r.other_id,
+                    "other_name": r.other_name,
+                    "other_type": r.other_type,
+                    "direction": r.direction,
+                }
+                for r in detail.incoming
+            ],
+        }
+
+    # Neptune SPARQL path — point-lookup properties + 1-hop edges.
+    kg_graph = kg_graph_uri(tenant.tenant_id, kg_name)
+    props_sparql = (
+        f"SELECT ?p ?o FROM <{kg_graph}> WHERE {{\n"
+        f"  <{eid}> ?p ?o .\n"
+        f"}}"
+    )
+    out_sparql = (
+        f"SELECT ?p ?o ?olabel ?otype FROM <{kg_graph}> WHERE {{\n"
+        f"  <{eid}> ?p ?o .\n"
+        f"  FILTER(isIRI(?o))\n"
+        f"  OPTIONAL {{ ?o <{RDFS}#label> ?olabel }}\n"
+        f"  OPTIONAL {{ ?o <{RDF_TYPE}> ?otype }}\n"
+        f"}}"
+    )
+    in_sparql = (
+        f"SELECT ?p ?s ?slabel ?stype FROM <{kg_graph}> WHERE {{\n"
+        f"  ?s ?p <{eid}> .\n"
+        f"  OPTIONAL {{ ?s <{RDFS}#label> ?slabel }}\n"
+        f"  OPTIONAL {{ ?s <{RDF_TYPE}> ?stype }}\n"
+        f"}}"
+    )
+    props_raw, out_raw, in_raw = await asyncio.gather(
+        client.query(props_sparql),
+        client.query(out_sparql),
+        client.query(in_sparql),
+    )
+    _, prop_rows = parse_sparql_results(props_raw)
+    if not prop_rows:
+        raise HTTPException(status_code=404, detail=f"Entity '{eid}' not found")
+
+    properties: dict = {}
+    name: str | None = None
+    primary_type: str | None = None
+    labels: list[str] = []
+    LABEL_PRED = f"{RDFS}#label"
+    for r in prop_rows:
+        p = r.get("p", "")
+        o = r.get("o", "")
+        if p == RDF_TYPE:
+            leaf = o.rstrip("/").split("/")[-1] if o else ""
+            if leaf and (primary_type is None or leaf < primary_type):
+                primary_type = leaf
+            if leaf and leaf not in labels:
+                labels.append(leaf)
+            continue
+        if p == LABEL_PRED:
+            name = o
+            continue
+        if _is_internal_predicate(p, is_relationship=o.startswith(ENTITY_URI_PREFIX)):
+            continue
+        leaf = p.rstrip("/").split("/")[-1]
+        if leaf and leaf != "name":
+            properties[leaf] = o
+        elif leaf == "name" and name is None:
+            name = o
+
+    def _type_leaf(uri: str) -> str | None:
+        if not uri:
+            return None
+        return uri.rstrip("/").split("/")[-1] or None
+
+    _, out_rows = parse_sparql_results(out_raw)
+    outgoing = []
+    for r in out_rows:
+        p = r.get("p", "")
+        o = r.get("o", "")
+        if not o or p == RDF_TYPE:
+            continue
+        if _is_internal_predicate(p, is_relationship=True):
+            continue
+        attr = p[len(ONTO_PRED_PREFIX):] if p.startswith(ONTO_PRED_PREFIX) else p.rstrip("/").split("/")[-1]
+        outgoing.append(
+            {
+                "attr": attr,
+                "rel_type": attr,
+                "other_id": o,
+                "other_name": r.get("olabel"),
+                "other_type": _type_leaf(r.get("otype", "")),
+                "direction": "out",
+            }
+        )
+
+    _, in_rows = parse_sparql_results(in_raw)
+    incoming = []
+    for r in in_rows:
+        p = r.get("p", "")
+        s = r.get("s", "")
+        if not s or p == RDF_TYPE:
+            continue
+        if _is_internal_predicate(p, is_relationship=True):
+            continue
+        attr = p[len(ONTO_PRED_PREFIX):] if p.startswith(ONTO_PRED_PREFIX) else p.rstrip("/").split("/")[-1]
+        incoming.append(
+            {
+                "attr": attr,
+                "rel_type": attr,
+                "other_id": s,
+                "other_name": r.get("slabel"),
+                "other_type": _type_leaf(r.get("stype", "")),
+                "direction": "in",
+            }
+        )
+
+    return {
+        "id": eid,
+        "name": name,
+        "primary_type": primary_type,
+        "source": None,
+        "labels": labels,
+        "properties": properties,
+        "outgoing": outgoing,
+        "incoming": incoming,
     }
 
 
