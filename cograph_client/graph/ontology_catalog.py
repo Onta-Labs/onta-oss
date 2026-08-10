@@ -288,6 +288,12 @@ async def upsert_type_pg(
     is ``None`` and ``clear_parent`` is True (default, mirrors SPARQL
     ``upsert_type``), clears any existing parent edge. Pass ``clear_parent=False``
     to leave hierarchy alone (comment-only style updates).
+
+    **ADR 0013 dual-write:** also MERGEs a ``:Class`` node whose ``id`` is the
+    type IRI (``uri``) and, when ``parent_type`` is set, a Class-level
+    ``SUBCLASS_OF`` edge. OntoType remains the catalog reader surface until
+    cutover; Class hierarchy is the preferred path for NL / explore subclass
+    helpers.
     """
     leaf = _validate_type_leaf(name)
     layer = layer_from_scope(session.scope)
@@ -319,6 +325,17 @@ async def upsert_type_pg(
             "onto_subclass_clear",
             {"layer": layer, "name": leaf},
         )
+
+    # Dual-write Class node (id = type IRI) + Class SUBCLASS_OF.
+    await _dual_write_class_for_type(
+        session,
+        leaf,
+        uri=uri,
+        layer=layer,
+        parent_type=parent_type,
+        clear_parent=clear_parent and parent_type is None,
+    )
+
     # Re-read for parent_type accuracy.
     got = await session.execute_template(
         "onto_type_get",
@@ -338,6 +355,30 @@ async def upsert_type_pg(
         label_token=label_token,
         uri=uri,
     )
+
+
+async def _dual_write_class_for_type(
+    session: "GraphSession",
+    leaf: str,
+    *,
+    uri: str,
+    layer: str,
+    parent_type: str | None,
+    clear_parent: bool,
+) -> None:
+    """Ensure Class node + optional SUBCLASS_OF for an OntoType upsert."""
+    from cograph_client.graph.rdf_model import merge_class, set_subclass_of
+
+    await merge_class(session, uri, name=leaf, layer=layer)
+    if parent_type is not None:
+        parent_leaf = _validate_type_leaf(parent_type)
+        parent_uri = _type_uri(parent_leaf)
+        await merge_class(session, parent_uri, name=parent_leaf, layer=layer)
+        await set_subclass_of(session, uri, parent_uri)
+    elif clear_parent:
+        clear = getattr(session, "write_clear_class_subclass", None)
+        if callable(clear):
+            await clear(uri)
 
 
 async def upsert_attribute_pg(
@@ -741,10 +782,10 @@ async def schema_types_for_kg(
 ) -> list[SchemaTypeSummary]:
     """List tenant-catalog types with optional instance entity counts for ``kg``.
 
-    Wave-1 NL stub: active types = tenant ``:OntoType`` rows; counts come from
-    ``Entity.primary_type`` in the instance scope when present. Does not yet
-    implement layer precedence (public/enhanced shadowing) or subclass closure
-    materialization — those land with the NL Cypher planner epic.
+    Active types = tenant ``:OntoType`` rows (dual-written Class nodes land on
+    the same upsert). Counts come from ``INSTANCE_OF`` → Class in the instance
+    scope (ADR 0013), not ``Entity.primary_type`` alone. Does not yet implement
+    layer precedence (public/enhanced shadowing).
     """
     cat = store.session(
         GraphScope.for_catalog(layer="tenant", tenant_id=tenant_id)
@@ -753,6 +794,8 @@ async def schema_types_for_kg(
     counts: dict[str, int] = {}
     inst = store.session(GraphScope.for_instance(tenant_id, kg))
     try:
+        # Template groups by Class.name via INSTANCE_OF (row key still
+        # ``primary_type`` for template compat).
         count_rows = await inst.execute_template("entity_count_by_primary_type", {})
         for r in count_rows:
             pt = r.get("primary_type")

@@ -155,6 +155,67 @@ def test_upsert_type_clears_parent_when_none(store):
     asyncio.run(run())
 
 
+def test_upsert_type_dual_writes_class_and_subclass(store):
+    """ADR 0013: OntoType upsert also MERGEs Class (id=type IRI) + SUBCLASS_OF."""
+    from cograph_client.graph.ontology_queries import type_uri
+    from cograph_client.graph.rdfs_helpers import subclass_closure
+
+    async def run():
+        await upsert_type(
+            store=store,
+            layer="tenant",
+            tenant_id="demo-tenant",
+            name="Person",
+            description="A person",
+        )
+        await upsert_type(
+            store=store,
+            layer="tenant",
+            tenant_id="demo-tenant",
+            name="Employee",
+            parent_type="Person",
+        )
+        cat = store.session(
+            GraphScope.for_catalog(layer="tenant", tenant_id="demo-tenant")
+        )
+        person_iri = type_uri("Person")
+        employee_iri = type_uri("Employee")
+        # Class nodes live in the catalog scope (same tenant + __ontology__).
+        assert (cat.scope.tenant_id, cat.scope.kg, person_iri) in store._classes
+        assert (cat.scope.tenant_id, cat.scope.kg, employee_iri) in store._classes
+        crow = store._classes[(cat.scope.tenant_id, cat.scope.kg, person_iri)]
+        assert crow.name == "Person"
+        # Class SUBCLASS_OF: Employee → Person
+        assert (
+            store._subclass_of.get(
+                (cat.scope.tenant_id, cat.scope.kg, employee_iri)
+            )
+            == person_iri
+        )
+        # Closure helper reads Class hierarchy in this session.
+        descendants = await subclass_closure(cat, person_iri, include_self=True)
+        assert person_iri in descendants
+        assert employee_iri in descendants
+
+        # Clear parent also clears Class SUBCLASS_OF.
+        await upsert_type(
+            store=store,
+            layer="tenant",
+            tenant_id="demo-tenant",
+            name="Employee",
+            parent_type=None,
+            clear_parent=True,
+        )
+        assert (
+            store._subclass_of.get(
+                (cat.scope.tenant_id, cat.scope.kg, employee_iri)
+            )
+            is None
+        )
+
+    asyncio.run(run())
+
+
 def test_upsert_attribute_literal_and_relationship(store):
     async def run():
         await upsert_type(
@@ -309,6 +370,9 @@ def test_public_layer_requires_privileged_for_write(store):
 
 def test_schema_types_for_kg_with_counts(store):
     async def run():
+        from cograph_client.graph.ontology_queries import entity_uri
+        from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
+
         await upsert_type(
             store=store, layer="tenant", tenant_id="demo", name="Person"
         )
@@ -323,11 +387,23 @@ def test_schema_types_for_kg_with_counts(store):
             attr_name="email",
             datatype="string",
         )
-        # Instance entities in bookstore kg
+        # Instance entities via type Assertions (INSTANCE_OF cache dual-written).
         sess = store.session(GraphScope.for_instance("demo", "bookstore"))
-        await merge_entity(sess, "e1", primary_type="Person", name="Alice")
-        await merge_entity(sess, "e2", primary_type="Person", name="Bob")
-        await merge_entity(sess, "e3", primary_type="Org", name="Acme")
+        e1 = entity_uri("Person", "alice")
+        e2 = entity_uri("Person", "bob")
+        e3 = entity_uri("Org", "acme")
+        for sid, tname, name in (
+            (e1, "Person", "Alice"),
+            (e2, "Person", "Bob"),
+            (e3, "Org", "Acme"),
+        ):
+            await assert_fact(
+                sess,
+                fact_to_assertion_fact(
+                    subject_id=sid, kind="type", key=tname, value=tname
+                ),
+            )
+            await merge_entity(sess, sid, primary_type=tname, name=name)
 
         summary = await schema_types_for_kg(
             store, tenant_id="demo", kg="bookstore"

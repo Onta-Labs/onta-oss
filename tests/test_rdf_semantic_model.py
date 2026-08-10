@@ -463,6 +463,50 @@ def test_delete_literals_removes_assertions_not_swallowed(store):
     asyncio.run(run())
 
 
+def test_instance_of_evicted_when_type_assertion_deleted(store):
+    """Derived INSTANCE_OF is removed when the backing type Assertion is deleted."""
+    from cograph_client.graph.rdf_model import delete_assertions_for_subject
+
+    async def run():
+        sid = entity_uri("Person", "evict-me")
+        await insert_facts(
+            None,
+            _graph(),
+            facts=[
+                Fact(subject_id=sid, kind="type", key="Person"),
+                Fact(subject_id=sid, kind="type", key="Employee"),
+            ],
+            store=store,
+        )
+        session = _session(store)
+        person_iri = type_uri("Person")
+        employee_iri = type_uri("Employee")
+        ios = store._instance_of.get(("demo-tenant", "bookstore", sid), set())
+        assert person_iri in ios and employee_iri in ios
+
+        # Delete only the Person type Assertion → INSTANCE_OF Person goes away.
+        n = await delete_assertions_for_subject(
+            session,
+            sid,
+            property_id=type_membership_property_id(),
+            object_key=person_iri,
+        )
+        assert n == 1
+        ios2 = store._instance_of.get(("demo-tenant", "bookstore", sid), set())
+        assert person_iri not in ios2
+        assert employee_iri in ios2
+
+        # Delete remaining type Assertions → no INSTANCE_OF left.
+        n2 = await delete_assertions_for_subject(
+            session, sid, property_id=type_membership_property_id()
+        )
+        assert n2 >= 1
+        ios3 = store._instance_of.get(("demo-tenant", "bookstore", sid), set())
+        assert not ios3
+
+    asyncio.run(run())
+
+
 def test_neptune_default_path_without_store(monkeypatch):
     """Default backend remains neptune; insert_facts without store does not require GraphStore."""
     monkeypatch.delenv("COGRAPH_GRAPH_BACKEND", raising=False)

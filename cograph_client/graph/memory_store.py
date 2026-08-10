@@ -533,6 +533,11 @@ class MemoryGraphSession:
         t, k = self._scope_tk()
         self._store._set_instance_of(t, k, entity_id, class_id)
 
+    async def write_clear_class_subclass(self, child_class_id: str) -> None:
+        """Drop Class-level SUBCLASS_OF for ``child_class_id`` (catalog clear)."""
+        t, k = self._scope_tk()
+        self._store._clear_class_subclass(t, k, child_class_id)
+
     async def write_assertion(
         self,
         *,
@@ -1149,6 +1154,11 @@ class MemoryGraphStore:
     ) -> None:
         self._subclass_of[(tenant_id, kg, child_class_id)] = parent_class_id
 
+    def _clear_class_subclass(
+        self, tenant_id: str, kg: str, child_class_id: str
+    ) -> None:
+        self._subclass_of.pop((tenant_id, kg, child_class_id), None)
+
     def _set_subproperty(
         self,
         tenant_id: str,
@@ -1162,6 +1172,15 @@ class MemoryGraphStore:
         self, tenant_id: str, kg: str, entity_id: str, class_id: str
     ) -> None:
         self._instance_of.setdefault((tenant_id, kg, entity_id), set()).add(class_id)
+
+    def _clear_instance_of(
+        self, tenant_id: str, kg: str, entity_id: str, class_id: str
+    ) -> None:
+        ios = self._instance_of.get((tenant_id, kg, entity_id))
+        if ios:
+            ios.discard(class_id)
+            if not ios:
+                self._instance_of.pop((tenant_id, kg, entity_id), None)
 
     def _upsert_assertion(
         self,
@@ -1210,7 +1229,12 @@ class MemoryGraphStore:
         property_id: str | None = None,
         object_key: str | None = None,
     ) -> int:
+        from cograph_client.graph.assertion_model import type_membership_property_id
+
+        type_prop = type_membership_property_id()
         drop: list[tuple[str, str, str]] = []
+        # (entity_id, class_id) pairs whose type Assertion is being removed
+        type_pairs: list[tuple[str, str]] = []
         for key, a in self._assertions.items():
             if a.tenant_id != tenant_id or a.kg != kg:
                 continue
@@ -1231,9 +1255,23 @@ class MemoryGraphStore:
                 if ok != object_key:
                     continue
             drop.append(key)
+            if a.object_class_id and (
+                property_id is None or a.property_id == type_prop
+            ):
+                type_pairs.append((a.subject_id, a.object_class_id))
         for key in drop:
             del self._assertions[key]
-            # Drop INSTANCE_OF when type assertion removed (best-effort)
+        # Evict derived INSTANCE_OF when no remaining type Assertion backs it.
+        for eid, cid in type_pairs:
+            still = any(
+                a.tenant_id == tenant_id
+                and a.kg == kg
+                and a.subject_id == eid
+                and a.object_class_id == cid
+                for a in self._assertions.values()
+            )
+            if not still:
+                self._clear_instance_of(tenant_id, kg, eid, cid)
         return len(drop)
 
     def _subclass_closure(
@@ -1375,7 +1413,10 @@ class MemoryGraphStore:
         label_token: str | None = None,
         uri: str | None = None,
     ) -> list[GraphRecord]:
+        from cograph_client.graph.ontology_queries import type_uri
+
         key = (tenant_id, kg, layer, name)
+        class_id = uri or type_uri(name)
         existing = self._onto_types.get(key)
         if existing is None:
             row = _OntoTypeRow(
@@ -1385,7 +1426,7 @@ class MemoryGraphStore:
                 name=name,
                 description=description or "",
                 label_token=label_token,
-                uri=uri,
+                uri=class_id,
             )
             self._onto_types[key] = row
         else:
@@ -1395,7 +1436,12 @@ class MemoryGraphStore:
                 existing.label_token = label_token
             if uri is not None:
                 existing.uri = uri
+            elif existing.uri is None:
+                existing.uri = class_id
             row = existing
+            class_id = row.uri or class_id
+        # ADR 0013 dual-write: Class node (id = type IRI) alongside OntoType.
+        self._merge_class(tenant_id, kg, class_id, name=name, layer=layer)
         return [row.as_record()]
 
     def _set_subclass(
@@ -1407,6 +1453,8 @@ class MemoryGraphStore:
         parent_name: str,
         parent_label_token: str | None,
     ) -> list[GraphRecord]:
+        from cograph_client.graph.ontology_queries import type_uri
+
         child_key = (tenant_id, kg, layer, name)
         child = self._onto_types.get(child_key)
         if child is None:
@@ -1419,8 +1467,18 @@ class MemoryGraphStore:
                 layer=layer,
                 name=parent_name,
                 label_token=parent_label_token,
+                uri=type_uri(parent_name),
             )
         child.parent_type = parent_name
+        # Dual-write Class SUBCLASS_OF (preferred NL hierarchy).
+        child_id = child.uri or type_uri(name)
+        parent_row = self._onto_types[parent_key]
+        parent_id = parent_row.uri or type_uri(parent_name)
+        self._merge_class(tenant_id, kg, child_id, name=name, layer=layer)
+        self._merge_class(
+            tenant_id, kg, parent_id, name=parent_name, layer=layer
+        )
+        self._set_class_subclass(tenant_id, kg, child_id, parent_id)
         return [
             GraphRecord(data={"name": name, "parent_type": parent_name})
         ]
@@ -1428,10 +1486,14 @@ class MemoryGraphStore:
     def _clear_subclass(
         self, tenant_id: str, kg: str, layer: str, name: str
     ) -> list[GraphRecord]:
+        from cograph_client.graph.ontology_queries import type_uri
+
         child = self._onto_types.get((tenant_id, kg, layer, name))
         if child is None:
             return []
         child.parent_type = None
+        child_id = child.uri or type_uri(name)
+        self._clear_class_subclass(tenant_id, kg, child_id)
         return [GraphRecord(data={"name": name, "parent_type": None})]
 
     def _list_onto_types(
@@ -1558,15 +1620,29 @@ class MemoryGraphStore:
     def _entity_counts_by_primary_type(
         self, tenant_id: str, kg: str
     ) -> list[GraphRecord]:
-        counts: dict[str, int] = {}
-        for (t, k, _id), row in self._entities.items():
+        """Count entities per Class.name via INSTANCE_OF (ADR 0013)."""
+        # entity → set of class names (from INSTANCE_OF + Class rows; fall back
+        # to type Assertions' object_class leaf; never primary_type alone).
+        by_class: dict[str, set[str]] = {}
+        for (t, k, eid), cids in self._instance_of.items():
             if t != tenant_id or k != kg:
                 continue
-            if row.primary_type:
-                counts[row.primary_type] = counts.get(row.primary_type, 0) + 1
+            for cid in cids:
+                crow = self._classes.get((t, k, cid))
+                cname = crow.name if crow else cid.rstrip("/").rsplit("/", 1)[-1]
+                if cname:
+                    by_class.setdefault(cname, set()).add(eid)
+        for (t, k, _), a in self._assertions.items():
+            if t != tenant_id or k != kg or not a.object_class_id:
+                continue
+            cid = a.object_class_id
+            crow = self._classes.get((t, k, cid))
+            cname = crow.name if crow else cid.rstrip("/").rsplit("/", 1)[-1]
+            if cname:
+                by_class.setdefault(cname, set()).add(a.subject_id)
         return [
-            GraphRecord(data={"primary_type": pt, "n": n})
-            for pt, n in sorted(counts.items())
+            GraphRecord(data={"primary_type": pt, "n": len(eids)})
+            for pt, eids in sorted(by_class.items())
         ]
 
     def _list_entities_by_type_page(
@@ -1577,28 +1653,10 @@ class MemoryGraphStore:
         after_id: str | None,
         limit: int,
     ) -> list[GraphRecord]:
-        rows = [
-            r
-            for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
-            if t == tenant_id and k == kg and r.primary_type == primary_type
-        ]
-        if after_id is not None:
-            rows = [r for r in rows if r.id > after_id]
-        if limit is not None and limit >= 0:
-            rows = rows[: int(limit)]
-        return [
-            GraphRecord(
-                data={
-                    "id": r.id,
-                    "tenant_id": r.tenant_id,
-                    "kg": r.kg,
-                    "primary_type": r.primary_type,
-                    "name": r.name,
-                    "source": r.source,
-                }
-            )
-            for r in rows
-        ]
+        # Semantic membership via INSTANCE_OF → Class (param name historical).
+        return self._list_entities_by_types_page(
+            tenant_id, kg, [primary_type], after_id, limit
+        )
 
     def _list_entities_by_label(
         self,
@@ -1634,12 +1692,7 @@ class MemoryGraphStore:
     def _entity_count_by_type(
         self, tenant_id: str, kg: str, primary_type: str
     ) -> list[GraphRecord]:
-        n = sum(
-            1
-            for (t, k, _), r in self._entities.items()
-            if t == tenant_id and k == kg and r.primary_type == primary_type
-        )
-        return [GraphRecord(data={"n": n})]
+        return self._entity_count_by_types(tenant_id, kg, [primary_type])
 
     @staticmethod
     def _as_type_name_set(raw: Any) -> set[str]:
@@ -1906,8 +1959,40 @@ class MemoryGraphStore:
         type_name: str,
         layer: str | None,
     ) -> list[GraphRecord]:
-        # Build child→parent from OntoType rows, then expand descendants.
+        """Descendant Class names including self (prefer Class SUBCLASS_OF).
+
+        Falls back to OntoType parent map when no Class hierarchy is present
+        in this scope (dual-write lag / legacy fixtures).
+        """
+        from cograph_client.graph.rdfs_helpers import descendants_of
+
+        # Prefer :Class hierarchy (ADR 0013).
         child_to_parent: dict[str, str] = {}
+        id_to_name: dict[str, str] = {}
+        for (t, k, cid), row in self._classes.items():
+            if t != tenant_id or k != kg:
+                continue
+            if layer is not None and row.layer != layer:
+                continue
+            id_to_name[cid] = row.name
+        for (t, k, child_id), parent_id in self._subclass_of.items():
+            if t != tenant_id or k != kg:
+                continue
+            cname = id_to_name.get(child_id)
+            pname = id_to_name.get(parent_id)
+            if cname and pname:
+                child_to_parent[cname] = pname
+        if child_to_parent or any(
+            n == type_name for n in id_to_name.values()
+        ):
+            names = descendants_of(type_name, child_to_parent)
+            # If type_name is known as a Class but has no descendants map entry,
+            # descendants_of still returns [type_name].
+            if names:
+                return [GraphRecord(data={"type_name": n}) for n in names]
+
+        # Fallback: OntoType catalog rows (legacy dual surface).
+        child_to_parent = {}
         for (t, k, lyr, name), row in self._onto_types.items():
             if t != tenant_id or k != kg:
                 continue
@@ -1916,8 +2001,6 @@ class MemoryGraphStore:
             parent = getattr(row, "parent_type", None) or getattr(row, "parent", None)
             if parent:
                 child_to_parent[name] = str(parent)
-        from cograph_client.graph.rdfs_helpers import descendants_of
-
         names = descendants_of(type_name, child_to_parent)
         return [GraphRecord(data={"type_name": n}) for n in names]
 
@@ -2110,12 +2193,13 @@ class MemoryGraphStore:
 
         if norm == _LIST_NORM:
             primary_type = params.get("primary_type")
-            rows = [
-                r.as_record()
-                for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
-                if t == tenant_id and k == kg and r.primary_type == primary_type
-            ]
-            return rows
+            return self._list_entities_by_types_page(
+                tenant_id,
+                kg,
+                [str(primary_type or "")],
+                None,
+                -1,  # no limit
+            )
 
         if norm == _LIST_PAGE_NORM:
             return self._list_entities_by_type_page(
