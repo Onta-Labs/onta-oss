@@ -634,6 +634,16 @@ class Neo4jGraphSession:
             cypher, {"child_id": child_class_id, "parent_id": parent_class_id}
         )
 
+    async def write_clear_class_subclass(self, child_class_id: str) -> None:
+        """Drop Class-level SUBCLASS_OF edges for ``child_class_id``."""
+        cypher = (
+            "MATCH (child:Class {tenant_id: $tenant_id, kg: $kg, id: $child_id})\n"
+            "OPTIONAL MATCH (child)-[old:SUBCLASS_OF]->(:Class {tenant_id: $tenant_id, kg: $kg})\n"
+            "DELETE old\n"
+            "RETURN child.id AS id"
+        )
+        await self.execute_write(cypher, {"child_id": child_class_id})
+
     async def write_subproperty_of(
         self, child_prop_id: str, parent_prop_id: str
     ) -> None:
@@ -741,11 +751,17 @@ class Neo4jGraphSession:
         property_id: str | None = None,
         object_key: str | None = None,
     ) -> int:
+        # Match object Entity id, literal, or OBJECT_CLASS id (type Assertions).
         cypher = (
             "MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: $subject_id})\n"
             "WHERE ($property_id IS NULL OR a.property_id = $property_id)\n"
             "  AND ($object_key IS NULL OR a.object_id = $object_key\n"
-            "       OR toString(a.literal_value) = $object_key)\n"
+            "       OR toString(a.literal_value) = $object_key\n"
+            "       OR EXISTS {\n"
+            "         (a)-[:OBJECT_CLASS]->(:Class {\n"
+            "           tenant_id: $tenant_id, kg: $kg, id: $object_key\n"
+            "         })\n"
+            "       })\n"
             "DETACH DELETE a\n"
             "RETURN count(*) AS n"
         )
@@ -757,6 +773,18 @@ class Neo4jGraphSession:
                 "object_key": object_key,
             },
         )
+        # Evict derived INSTANCE_OF edges with no remaining type Assertion.
+        prune = (
+            "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $subject_id})\n"
+            "      -[io:INSTANCE_OF]->(c:Class {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE NOT EXISTS {\n"
+            "  MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg, subject_id: e.id})\n"
+            "        -[:OBJECT_CLASS]->(c)\n"
+            "}\n"
+            "DELETE io\n"
+            "RETURN count(*) AS n"
+        )
+        await self.execute_write(prune, {"subject_id": subject_id})
         if not rows:
             return 0
         return int(rows[0].get("n") or 0)

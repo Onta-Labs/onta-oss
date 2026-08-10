@@ -159,10 +159,15 @@ RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
        e.primary_type AS primary_type, e.name AS name, e.source AS source
 """.strip()
 
+# Explore type filter via INSTANCE_OF → Class (ADR 0013). Param name
+# ``primary_type`` is historical API; match is Class.name / Class.id, not the
+# denorm Entity.primary_type property alone.
 ENTITY_LIST_BY_TYPE_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type = $primary_type
-RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name = $primary_type OR c.id = $primary_type
+RETURN DISTINCT e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
        e.primary_type AS primary_type, e.name AS name, e.source AS source
 ORDER BY e.id
 """.strip()
@@ -274,29 +279,37 @@ RETURN a.name AS name, a.domain AS domain, a.kind AS kind,
 ORDER BY a.domain, a.name
 """.strip()
 
+# Per-Class instance counts via INSTANCE_OF (Explorer type-stats). Column name
+# ``primary_type`` kept for template/row compat; value is Class.name.
 ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type IS NOT NULL
-RETURN e.primary_type AS primary_type, count(*) AS n
-ORDER BY e.primary_type
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name IS NOT NULL
+RETURN c.name AS primary_type, count(DISTINCT e) AS n
+ORDER BY primary_type
 """.strip()
 
 # --- Explore / KG-admin reads (E5) -------------------------------------------
 
 ENTITY_LIST_BY_TYPE_PAGE_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type = $primary_type
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE (c.name = $primary_type OR c.id = $primary_type)
   AND ($after_id IS NULL OR e.id > $after_id)
-RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
+RETURN DISTINCT e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
        e.primary_type AS primary_type, e.name AS name, e.source AS source
 ORDER BY e.id
 LIMIT $limit
 """.strip()
 
 ENTITY_COUNT_BY_TYPE_CYPHER = """
-MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
-WHERE e.primary_type = $primary_type
-RETURN count(*) AS n
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})-[:INSTANCE_OF]->(c:Class {
+  tenant_id: $tenant_id, kg: $kg
+})
+WHERE c.name = $primary_type OR c.id = $primary_type
+RETURN count(DISTINCT e) AS n
 """.strip()
 
 ENTITY_COUNT_TOTAL_CYPHER = """
