@@ -34,6 +34,10 @@ Hard rules for this track:
 4. **Do not merge `main` into this experiment casually** — keep the branch
    focused; ship Neo4j work as deliberate PRs into `neo4j` (and only later
    promote deliberate slices to `main` when product-ready).
+5. **History (GET `/history`)** — Neptune uses the SPARQL companion
+   ``…/history`` graph (temporal old→new). Neo4j lists **Assertion
+   provenance** for a subject via `rdfs_helpers.session_assertion_history`
+   (same response shape; full `:ValueHistory` temporal log is deferred).
 
 CI: `.github/workflows/neo4j.yml` runs on the **`neo4j` branch only** (plus
 `workflow_dispatch`). Hermetic MemoryGraphStore / golden / isolation tests always
