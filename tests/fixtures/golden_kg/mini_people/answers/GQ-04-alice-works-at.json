@@ -1,0 +1,10 @@
+{
+  "rows": [
+    {
+      "subject_id": "$entity:Alice",
+      "object_id": "$entity:Acme"
+    }
+  ],
+  "compare": "set",
+  "columns": ["subject_id", "object_id"]
+}

@@ -178,61 +178,84 @@ Generate a SPARQL query to answer this question."""
 
 
 # ---------------------------------------------------------------------------
-# Cypher generation (Neo4j property-graph backend — E6 foundation)
+# Cypher generation (Neo4j RDF-semantic backend — ADR 0013)
 # ---------------------------------------------------------------------------
 #
 # Activated when COGRAPH_GRAPH_BACKEND=neo4j (or an explicit pipeline flag).
 # The SPARQL prompt above stays the default Neptune path and must not be
 # deleted or mixed into this one.
+#
+# Mandate: preserve RDF *semantics* (Entity / Class / Property / Assertion),
+# not SPARQL *syntax*. Prefer composing allowlisted semantic helper templates
+# over free-form triple scans. NEVER translate SPARQL to Cypher line-by-line.
+# Answer quality is judged by golden answer sets, not query-text match.
 
-_CYPHER_GENERATION_SYSTEM = """You are a Cypher query generator for a property-graph knowledge platform (Neo4j).
+_CYPHER_GENERATION_SYSTEM = """You are a Cypher query composer for Onta's Neo4j \
+RDF-semantic knowledge graph (ADR 0013).
 Given a natural language question, an ontology schema, and similar working examples,
-generate a read-only Cypher query.
+produce a read-only Cypher plan that answers the question.
 
-CRITICAL — this is NOT SPARQL:
-1. Do NOT emit SPARQL. No PREFIX, SELECT (SPARQL-style), FROM, FROM NAMED, GRAPH, \
-SERVICE, INSERT DATA, or triple patterns like `?s ?p ?o`.
-2. Use Cypher only: MATCH / OPTIONAL MATCH / WHERE / RETURN / WITH / ORDER BY / LIMIT.
-3. Read-only. Never CREATE, MERGE, DELETE, SET, REMOVE, DROP, DETACH, LOAD CSV, \
+CRITICAL — RDF semantics, NOT SPARQL syntax:
+1. Do NOT emit SPARQL. Forbidden keywords and patterns: PREFIX, SELECT (SPARQL), \
+FROM, FROM NAMED, GRAPH, SERVICE, INSERT DATA, CONSTRUCT, DESCRIBE, ASK, \
+triple patterns like `?s ?p ?o`, property paths like `rdfs:subClassOf*`, and \
+any `attrs/` or `onto/` predicate IRIs.
+2. Do NOT translate SPARQL into Cypher. Do not start from a SPARQL sketch. \
+Compose over the Assertion model and helper templates below.
+3. Use Cypher only: MATCH / OPTIONAL MATCH / WHERE / RETURN / WITH / ORDER BY / LIMIT.
+4. Read-only. Never CREATE, MERGE, DELETE, SET, REMOVE, DROP, DETACH, LOAD CSV, \
 CALL dbms.*, or any write procedure.
 
+Semantic model (source of truth = Assertions):
+- `:Entity` — instance subjects/objects; `id` is a stable IRI; optional `name`, \
+`primary_type` (leaf hint / denorm cache — not sole type truth long-term).
+- `:Class` / catalog `:OntoType` — types; hierarchy via `SUBCLASS_OF` (not multi-label-only).
+- `:Property` / catalog `:OntoAttr` — predicates; datatype vs object (`kind`).
+- `:Assertion` — reified fact (unit of truth): SUBJECT → Entity, PREDICATE → Property, \
+OBJECT → Entity (object props) or `literal_value` on the Assertion (datatype props). \
+Provenance (`source_url`, `verified_at`, `confidence`, `run_id`) lives ON the Assertion.
+- Derived caches (optional): `INSTANCE_OF`, denormalized Entity props, typed shortcut \
+rels — only valid when kept consistent with Assertions.
+
+Prefer allowlisted semantic helper templates (set the JSON ``template`` field when \
+the shape matches; params must match the template). Helpers include:
+- entities_of_type / entities_of_type_count — type membership; pass expanded \
+`$type_names` (include subclasses when the question means "type T and subtypes")
+- literal_values — datatype property equality (`$type_names`, `$prop_key`, `$prop_value`)
+- related_entities — 1-hop object relationships (`$from_types`, `$to_types`, optional `$rel_attr`)
+- assertions_for_subject — all (or filtered) Assertions for one Entity
+- subclass_of_closure — Class/OntoType descendant names for a root type
+Only fall back to free-form scoped Cypher when no helper fits. Never open-scan all \
+Assertions without a subject or type constraint as the default plan.
+
 Isolation (HARD — never invent scope values):
-- Every Entity (and relationship) is multi-tenant. Scope is ALWAYS via parameters:
+- Every instance node/rel/Assertion is multi-tenant. Scope ALWAYS via parameters:
   `$tenant_id` and `$kg`.
 - On every MATCH of instance data, put those as map properties, e.g.:
   `MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})`
 - NEVER hardcode a tenant id, kg name, or database name as a string literal.
 - NEVER invent or guess `$tenant_id` / `$kg` values — the session injects them.
-  You only reference the parameter names.
-
-Property-graph model (entity / property / relationship):
-- Instance nodes: label `:Entity` plus optional domain type labels (e.g. `:Person`).
-- `e.primary_type` is the original ontology type leaf (string), used for type filters \
-and Explorer counts. Prefer `WHERE e.primary_type = $primary_type` with a parameter, \
-or a typed domain label only when the schema lists that exact leaf.
-- Literal attributes are node **properties** on Entity (e.g. `e.name`, `e.price`).
-- Relationships are Neo4j relationships between Entity nodes (typed rels), NOT \
-RDF `attrs/` vs `onto/` predicate IRIs. Do not invent SPARQL-style attribute URIs.
-- Catalog schema (OntoType / OntoAttr) is separate; for ordinary instance questions \
-query `:Entity` under the session scope.
 
 Key rules:
 - Parameterize user filters: string/number needles as `$param`, not concatenated.
-- Prefer `count(e)` / `count(*)` with an alias: `RETURN count(*) AS n`.
-- Return human-readable properties (`e.name`, attribute keys) not only internal ids \
+- Prefer `count(*)` with an alias: `RETURN count(*) AS n`.
+- Return human-readable fields (`name`, literal values) not only internal ids \
 when the question asks for entities.
-- Multi-valued properties may be lists; use `any(x IN e.tags WHERE …)` when needed.
+- Type filters: prefer `$type_names` lists (subclass-expanded) over a single \
+hardcoded leaf when hierarchy is relevant.
 - "[no instances]": a type marked empty in the schema is still valid — generate a \
-correct scoped query; zero rows is an honest answer. Do not claim the type does not exist.
+correct scoped query; zero rows is an honest answer.
 - Only use type names and attribute keys that appear in the ontology schema.
+- Success is correct *answers*, not SPARQL look-alikes.
 
-If similar working examples are provided, follow their Cypher SHAPE closely. \
+If similar working examples are provided, follow their helper / Cypher SHAPE closely. \
 Adapt type / property names from the current ontology, not from foreign examples.
 
 Respond with JSON:
 {
-  "cypher": "the Cypher query",
-  "params": {"primary_type": "optional extra params besides tenant_id/kg"},
+  "cypher": "the Cypher query (or helper-shaped Cypher)",
+  "template": "optional allowlisted helper name e.g. entities_of_type_count",
+  "params": {"type_names": ["optional"], "prop_key": "optional", "...": "..."},
   "explanation": "brief explanation of what the query does",
   "functions_needed": ["list of function names if computation is needed, empty otherwise"]
 }"""
@@ -249,7 +272,7 @@ def build_cypher_generation_prompt(
     examples_text: str = "",
     error_feedback: str = "",
 ) -> str:
-    """Build the user prompt for Cypher generation (Neo4j backend).
+    """Build the user prompt for Cypher generation (Neo4j ADR 0013 path).
 
     Scope values are named only to orient the model; the generator must still
     emit ``$tenant_id`` / ``$kg`` parameters — the session overwrites any
@@ -263,7 +286,8 @@ def build_cypher_generation_prompt(
     if error_feedback:
         error_section = (
             "\nPrevious Cypher attempt failed. Fix the query based on this "
-            f"error (do not invent scope values):\n{error_feedback}\n"
+            f"error (do not invent scope values; do not switch to SPARQL):\n"
+            f"{error_feedback}\n"
         )
     scope_line = ""
     if tenant_id or kg_name:
@@ -288,5 +312,6 @@ def build_cypher_generation_prompt(
 {examples_section}{error_section}
 User question: {question}
 
-Generate a read-only Cypher query to answer this question. Scope every MATCH with \
-{{tenant_id: $tenant_id, kg: $kg}}."""
+Compose a read-only Cypher answer using semantic helpers when possible \
+(entities_of_type, literal_values, related_entities, …). Do not translate SPARQL. \
+Scope every MATCH with {{tenant_id: $tenant_id, kg: $kg}}."""

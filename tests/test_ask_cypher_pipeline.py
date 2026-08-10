@@ -34,8 +34,8 @@ def test_stub_count_by_type_shape():
     payload = try_stub_count_query("How many books?", ONTOLOGY)
     assert payload is not None
     assert payload["stub"] is True
-    assert payload["template"] == "entity_count_by_type"
-    assert payload["params"]["primary_type"] == "Book"
+    assert payload["template"] == "entities_of_type_count"
+    assert payload["params"]["type_names"] == ["Book"]
     assert "$tenant_id" in payload["cypher"]
     assert "$kg" in payload["cypher"]
 
@@ -51,8 +51,8 @@ def test_stub_count_total():
 def test_list_fixture_shape():
     payload = try_list_query("list all books", ONTOLOGY)
     assert payload is not None
-    assert payload["template"] == "entity_list_by_type_page"
-    assert payload["params"]["primary_type"] == "Book"
+    assert payload["template"] == "entities_of_type"
+    assert payload["params"]["type_names"] == ["Book"]
     assert payload["params"]["limit"] == 25
     assert payload["params"]["after_id"] is None
 
@@ -66,8 +66,8 @@ def test_list_fixture_with_limit():
 def test_filter_fixture_shape():
     payload = try_filter_query("books where name is Dune", ONTOLOGY)
     assert payload is not None
-    assert payload["template"] == "entity_filter_prop_eq"
-    assert payload["params"]["primary_type"] == "Book"
+    assert payload["template"] == "literal_values"
+    assert payload["params"]["type_names"] == ["Book"]
     assert payload["params"]["prop_key"] == "name"
     assert payload["params"]["prop_value"] == "Dune"
 
@@ -84,16 +84,16 @@ def test_filter_fixture_list_prefix():
 def test_hop_fixture_of():
     payload = try_hop_query("authors of books", ONTOLOGY)
     assert payload is not None
-    assert payload["template"] == "entity_1hop_out"
-    assert payload["params"]["from_type"] == "Book"
-    assert payload["params"]["to_type"] == "Author"
+    assert payload["template"] == "related_entities"
+    assert payload["params"]["from_types"] == ["Book"]
+    assert payload["params"]["to_types"] == ["Author"]
 
 
 def test_hop_fixture_their():
     payload = try_hop_query("books and their authors", ONTOLOGY)
     assert payload is not None
-    assert payload["params"]["from_type"] == "Book"
-    assert payload["params"]["to_type"] == "Author"
+    assert payload["params"]["from_types"] == ["Book"]
+    assert payload["params"]["to_types"] == ["Author"]
 
 
 def test_hop_fixture_via_rel():
@@ -102,8 +102,8 @@ def test_hop_fixture_via_rel():
     )
     assert payload is not None
     # irregular plural people → Person (guess); organizations → Organization
-    assert payload["params"]["from_type"] == "Person"
-    assert payload["params"]["to_type"] == "Organization"
+    assert payload["params"]["from_types"] == ["Person"]
+    assert payload["params"]["to_types"] == ["Organization"]
     assert payload["params"]["rel_attr"] == "works_at"
 
 
@@ -113,13 +113,13 @@ def test_deterministic_priority_filter_over_list():
         "list books where name is Dune", ONTOLOGY
     )
     assert payload is not None
-    assert payload["template"] == "entity_filter_prop_eq"
+    assert payload["template"] == "literal_values"
 
 
 def test_deterministic_priority_hop_over_list():
     payload = try_deterministic_cypher("authors of books", ONTOLOGY)
     assert payload is not None
-    assert payload["template"] == "entity_1hop_out"
+    assert payload["template"] == "related_entities"
 
 
 def test_format_schema_types_for_cypher():
@@ -227,7 +227,7 @@ async def test_ask_cypher_count_e2e_memory_store():
 
     assert result.timing.get("query_language") == "cypher"
     assert result.timing.get("cypher_stub") == 1.0
-    assert result.timing.get("cypher_exec_path") == "template:entity_count_by_type"
+    assert result.timing.get("cypher_exec_path") == "template:entities_of_type_count"
     assert "$tenant_id" in result.sparql
     assert "3" in result.answer
     neptune.query.assert_not_called()
@@ -249,7 +249,7 @@ async def test_ask_cypher_list_e2e_memory_store():
         use_cypher=True,
     )
     assert result.timing.get("query_language") == "cypher"
-    assert result.timing.get("cypher_exec_path") == "template:entity_list_by_type_page"
+    assert result.timing.get("cypher_exec_path") == "template:entities_of_type"
     assert "Dune" in result.answer
     assert "Foundation" in result.answer
     assert "Hyperion" in result.answer
@@ -270,7 +270,7 @@ async def test_ask_cypher_filter_e2e_memory_store():
         instance_graph=_kg_uri(),
         use_cypher=True,
     )
-    assert result.timing.get("cypher_exec_path") == "template:entity_filter_prop_eq"
+    assert result.timing.get("cypher_exec_path") == "template:literal_values"
     assert "Dune" in result.answer
     assert "Foundation" not in result.answer
 
@@ -290,7 +290,7 @@ async def test_ask_cypher_hop_e2e_memory_store():
         instance_graph=_kg_uri(),
         use_cypher=True,
     )
-    assert result.timing.get("cypher_exec_path") == "template:entity_1hop_out"
+    assert result.timing.get("cypher_exec_path") == "template:related_entities"
     assert "Herbert" in result.answer
     assert "Asimov" in result.answer
 
@@ -358,13 +358,13 @@ async def test_ask_cypher_retry_on_graph_query_error():
         return {
             "cypher": (
                 "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-                "WHERE e.primary_type = $primary_type "
+                "WHERE e.primary_type IN $type_names "
                 "RETURN count(*) AS n"
             ),
-            "params": {"primary_type": "Book"},
+            "params": {"type_names": ["Book"]},
             "explanation": "count books after retry",
             "functions_needed": [],
-            "template": "entity_count_by_type",
+            "template": "entities_of_type_count",
         }
 
     pipe._try_llm_cypher = fake_llm  # type: ignore[method-assign]
@@ -496,3 +496,4 @@ def test_build_cypher_prompt_includes_error_feedback():
     )
     assert "Previous Cypher attempt failed" in user
     assert "SyntaxError" in user
+    assert "do not switch to SPARQL" in user

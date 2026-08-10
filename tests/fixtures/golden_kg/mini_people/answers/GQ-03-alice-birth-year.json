@@ -1,0 +1,7 @@
+{
+  "rows": [
+    { "entity_id": "$entity:Alice", "value": 1991 }
+  ],
+  "compare": "set",
+  "columns": ["entity_id", "value"]
+}

@@ -1,0 +1,6 @@
+{
+  "rows": [{ "count": 2 }],
+  "compare": "set",
+  "columns": ["count"],
+  "notes": "Alice + Bob assert Person; Dana is Employee only"
+}

@@ -1,0 +1,8 @@
+{
+  "rows": [
+    { "value": "alice@example.com" },
+    { "value": "a.work@acme.com" }
+  ],
+  "compare": "set",
+  "columns": ["value"]
+}
