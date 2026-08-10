@@ -1400,6 +1400,37 @@ class MemoryGraphStore:
                 )
         return out
 
+    def scan_instance_of_without_type_assertion(
+        self, tenant_id: str, kg: str
+    ) -> list[dict[str, Any]]:
+        """Derived ``INSTANCE_OF`` edges with no backing type Assertion (ADR 0013 skew).
+
+        Assertion is SoT; ``INSTANCE_OF`` is cache only. Any cache edge without a
+        type Assertion (``object_class_id`` → Class) is dual-write skew.
+        """
+        out: list[dict[str, Any]] = []
+        for (t, k, eid), class_ids in self._instance_of.items():
+            if t != tenant_id or k != kg:
+                continue
+            for cid in class_ids:
+                backed = any(
+                    a.tenant_id == tenant_id
+                    and a.kg == kg
+                    and a.subject_id == eid
+                    and a.object_class_id == cid
+                    for a in self._assertions.values()
+                )
+                if not backed:
+                    out.append(
+                        {
+                            "entity_id": eid,
+                            "class_id": cid,
+                            "tenant_id": tenant_id,
+                            "kg": kg,
+                        }
+                    )
+        return out
+
     # --- Ontology catalog (E4) ----------------------------------------------
 
     def _upsert_onto_type(

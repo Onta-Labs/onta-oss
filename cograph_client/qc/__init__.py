@@ -20,10 +20,12 @@ from cograph_client.qc.invariants import (
     check_invariants,
 )
 from cograph_client.qc.invariants_store import (
+    STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION,
     STORE_INVARIANT_MISSING_PRIMARY_TYPE,
     STORE_INVARIANT_NAMES,
     STORE_INVARIANT_ORPHAN_REL_TARGET,
     STORE_INVARIANT_REL_MISSING_SCOPE,
+    check_assertion_cache_skew,
     check_invariants_for_store,
     check_store_invariants,
 )
@@ -40,10 +42,12 @@ __all__ = [
     "Invariant",
     "Violation",
     "check_invariants",
+    "STORE_INVARIANT_INSTANCE_OF_NO_TYPE_ASSERTION",
     "STORE_INVARIANT_MISSING_PRIMARY_TYPE",
     "STORE_INVARIANT_NAMES",
     "STORE_INVARIANT_ORPHAN_REL_TARGET",
     "STORE_INVARIANT_REL_MISSING_SCOPE",
+    "check_assertion_cache_skew",
     "check_invariants_for_store",
     "check_store_invariants",
     "AuditReport",
