@@ -1,0 +1,6 @@
+{
+  "rows": [],
+  "compare": "set",
+  "columns": ["entity_id", "value"],
+  "notes": "Sibling kg has no Alice facts — isolation gate"
+}

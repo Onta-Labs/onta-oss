@@ -23,6 +23,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from cograph_client.graph.rdfs_helpers import (
+    ENTITIES_OF_TYPE_COUNT_CYPHER,
+    ENTITIES_OF_TYPE_CYPHER,
+    LITERAL_VALUES_CYPHER,
+    RELATED_ENTITIES_CYPHER,
+    SUBCLASS_OF_CLOSURE_CYPHER,
+)
 from cograph_client.graph.schema_bootstrap import (
     ENTITY_1HOP_OUT_CYPHER,
     ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER,
@@ -72,6 +79,11 @@ _DETAIL_NORM = _norm_cypher(ENTITY_DETAIL_CYPHER)
 _RELS_NORM = _norm_cypher(ENTITY_RELS_CYPHER)
 _FILTER_PROP_EQ_NORM = _norm_cypher(ENTITY_FILTER_PROP_EQ_CYPHER)
 _HOP_OUT_NORM = _norm_cypher(ENTITY_1HOP_OUT_CYPHER)
+_ENTITIES_OF_TYPE_NORM = _norm_cypher(ENTITIES_OF_TYPE_CYPHER)
+_ENTITIES_OF_TYPE_COUNT_NORM = _norm_cypher(ENTITIES_OF_TYPE_COUNT_CYPHER)
+_LITERAL_VALUES_NORM = _norm_cypher(LITERAL_VALUES_CYPHER)
+_RELATED_ENTITIES_NORM = _norm_cypher(RELATED_ENTITIES_CYPHER)
+_SUBCLASS_OF_CLOSURE_NORM = _norm_cypher(SUBCLASS_OF_CLOSURE_CYPHER)
 _ONTO_TYPE_UPSERT_NORM = _norm_cypher(ONTO_TYPE_UPSERT_CYPHER)
 _ONTO_SUBCLASS_SET_NORM = _norm_cypher(ONTO_SUBCLASS_SET_CYPHER)
 _ONTO_SUBCLASS_CLEAR_NORM = _norm_cypher(ONTO_SUBCLASS_CLEAR_CYPHER)
@@ -145,6 +157,64 @@ class _CitationRow:
     provenance: str | None = None
     verified_at: str | None = None
     value_hash: str = ""
+
+
+@dataclass
+class _ClassRow:
+    tenant_id: str
+    kg: str
+    id: str
+    name: str
+    layer: str = "tenant"
+
+
+@dataclass
+class _PropertyRow:
+    tenant_id: str
+    kg: str
+    id: str
+    name: str
+    kind: str = "datatype"  # datatype | object
+    layer: str = "tenant"
+
+
+@dataclass
+class _AssertionRow:
+    tenant_id: str
+    kg: str
+    id: str
+    subject_id: str
+    property_id: str
+    literal_value: Any = None
+    literal_datatype: str | None = None
+    object_id: str | None = None  # Entity object
+    object_class_id: str | None = None  # Class object (type)
+    source_url: str | None = None
+    verified_at: str | None = None
+    run_id: str | None = None
+    confidence: float | None = None
+    provenance: str | None = None
+
+    def as_record(self) -> GraphRecord:
+        return GraphRecord(
+            data={
+                "assertion_id": self.id,
+                "id": self.id,
+                "tenant_id": self.tenant_id,
+                "kg": self.kg,
+                "subject_id": self.subject_id,
+                "property_id": self.property_id,
+                "literal_value": self.literal_value,
+                "literal_datatype": self.literal_datatype,
+                "object_id": self.object_id,
+                "object_class_id": self.object_class_id,
+                "source_url": self.source_url,
+                "verified_at": self.verified_at,
+                "run_id": self.run_id,
+                "confidence": self.confidence,
+                "provenance": self.provenance,
+            }
+        )
 
 
 @dataclass
@@ -422,6 +492,118 @@ class MemoryGraphSession:
             return None
         return row.as_record().to_dict()
 
+    # --- ADR 0013 Assertion model natives ------------------------------------
+
+    async def write_merge_class(
+        self,
+        *,
+        class_id: str,
+        name: str,
+        layer: str = "tenant",
+    ) -> list[GraphRecord]:
+        t, k = self._scope_tk()
+        return self._store._merge_class(t, k, class_id, name=name, layer=layer)
+
+    async def write_merge_property(
+        self,
+        *,
+        property_id: str,
+        name: str,
+        kind: str = "datatype",
+        layer: str = "tenant",
+    ) -> list[GraphRecord]:
+        t, k = self._scope_tk()
+        return self._store._merge_property(
+            t, k, property_id, name=name, kind=kind, layer=layer
+        )
+
+    async def write_subclass_of(
+        self, child_class_id: str, parent_class_id: str
+    ) -> None:
+        t, k = self._scope_tk()
+        self._store._set_class_subclass(t, k, child_class_id, parent_class_id)
+
+    async def write_subproperty_of(
+        self, child_prop_id: str, parent_prop_id: str
+    ) -> None:
+        t, k = self._scope_tk()
+        self._store._set_subproperty(t, k, child_prop_id, parent_prop_id)
+
+    async def write_instance_of(self, entity_id: str, class_id: str) -> None:
+        t, k = self._scope_tk()
+        self._store._set_instance_of(t, k, entity_id, class_id)
+
+    async def write_assertion(
+        self,
+        *,
+        assertion_id: str,
+        subject_id: str,
+        property_id: str,
+        property_name: str,
+        property_kind: str = "datatype",
+        object_id: str | None = None,
+        object_class_id: str | None = None,
+        literal_value: Any = None,
+        literal_datatype: str | None = None,
+        source_url: str | None = None,
+        verified_at: str | None = None,
+        run_id: str | None = None,
+        confidence: float | None = None,
+        provenance: str | None = None,
+        ts: str | None = None,
+    ) -> list[GraphRecord]:
+        t, k = self._scope_tk()
+        return self._store._upsert_assertion(
+            t,
+            k,
+            assertion_id=assertion_id,
+            subject_id=subject_id,
+            property_id=property_id,
+            object_id=object_id,
+            object_class_id=object_class_id,
+            literal_value=literal_value,
+            literal_datatype=literal_datatype,
+            source_url=source_url,
+            verified_at=verified_at,
+            run_id=run_id,
+            confidence=confidence,
+            provenance=provenance,
+        )
+
+    async def write_delete_assertions(
+        self,
+        *,
+        subject_id: str,
+        property_id: str | None = None,
+        object_key: str | None = None,
+    ) -> int:
+        t, k = self._scope_tk()
+        return self._store._delete_assertions(
+            t,
+            k,
+            subject_id=subject_id,
+            property_id=property_id,
+            object_key=object_key,
+        )
+
+    async def read_subclass_closure(self, class_id: str) -> list[str]:
+        t, k = self._scope_tk()
+        return self._store._subclass_closure(t, k, class_id)
+
+    async def read_subproperty_closure(self, prop_id: str) -> list[str]:
+        t, k = self._scope_tk()
+        return self._store._subproperty_closure(t, k, prop_id)
+
+    async def read_entities_of_type(self, class_ids: Sequence[str]) -> list[str]:
+        t, k = self._scope_tk()
+        return self._store._entities_of_type_ids(t, k, list(class_ids))
+
+    async def read_assertions_for_subject(
+        self, entity_id: str, *, prop_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        t, k = self._scope_tk()
+        return self._store._assertions_for_subject(t, k, entity_id, prop_id=prop_id)
+
     async def read_list_entities_by_label(
         self,
         label: str,
@@ -447,6 +629,16 @@ class MemoryGraphStore:
         self._prov: list[_ProvRow] = []
         # AttrCitation MERGE key: (tenant_id, kg, entity_id, attr, value_hash)
         self._citations: dict[tuple[str, str, str, str, str], _CitationRow] = {}
+        # ADR 0013: Class / Property / Assertion
+        self._classes: dict[tuple[str, str, str], _ClassRow] = {}
+        self._properties: dict[tuple[str, str, str], _PropertyRow] = {}
+        self._assertions: dict[tuple[str, str, str], _AssertionRow] = {}
+        # SUBCLASS_OF: (tenant, kg, child_id) → parent_id
+        self._subclass_of: dict[tuple[str, str, str], str] = {}
+        # SUBPROPERTY_OF: (tenant, kg, child_id) → parent_id
+        self._subproperty_of: dict[tuple[str, str, str], str] = {}
+        # INSTANCE_OF cache: (tenant, kg, entity_id) → set(class_id)
+        self._instance_of: dict[tuple[str, str, str], set[str]] = {}
         # Catalog: (tenant_id, kg, layer, name)
         self._onto_types: dict[tuple[str, str, str, str], _OntoTypeRow] = {}
         # Catalog: (tenant_id, kg, layer, domain, name)
@@ -471,9 +663,30 @@ class MemoryGraphStore:
         self._rels.clear()
         self._prov.clear()
         self._citations.clear()
+        self._classes.clear()
+        self._properties.clear()
+        self._assertions.clear()
+        self._subclass_of.clear()
+        self._subproperty_of.clear()
+        self._instance_of.clear()
         self._onto_types.clear()
         self._onto_attrs.clear()
         self._bootstrapped.clear()
+
+    def assertion_count(
+        self, *, tenant_id: str | None = None, kg: str | None = None
+    ) -> int:
+        n = 0
+        for (t, k, _), _ in self._assertions.items():
+            if tenant_id is not None and t != tenant_id:
+                continue
+            if kg is not None and k != kg:
+                continue
+            n += 1
+        return n
+
+    def snapshot_assertions(self) -> list[dict[str, Any]]:
+        return [a.as_record().to_dict() for a in self._assertions.values()]
 
     # --- test helpers -------------------------------------------------------
 
@@ -670,6 +883,18 @@ class MemoryGraphStore:
         for k in drop:
             del self._rels[k]
             removed += 1
+        # Drop Assertions where subject or object is this entity.
+        a_drop = [
+            k
+            for k, a in self._assertions.items()
+            if a.tenant_id == tenant_id
+            and a.kg == kg
+            and (a.subject_id == entity_id or a.object_id == entity_id)
+        ]
+        for k in a_drop:
+            del self._assertions[k]
+            removed += 1
+        self._instance_of.pop((tenant_id, kg, entity_id), None)
         return removed
 
     def _delete_literals(
@@ -794,6 +1019,32 @@ class MemoryGraphStore:
             del self._citations[ck]
         for nk, crow in cite_moves:
             self._citations[nk] = crow
+        # Rebind Assertion subject_id / object_id + denormalized keys.
+        a_moves: list[tuple[tuple, _AssertionRow]] = []
+        a_drop: list[tuple] = []
+        for ak, a in list(self._assertions.items()):
+            if a.tenant_id != tenant_id or a.kg != kg:
+                continue
+            changed = False
+            if a.subject_id == old_id:
+                a.subject_id = new_id
+                changed = True
+            if a.object_id == old_id:
+                a.object_id = new_id
+                changed = True
+            if changed:
+                a_drop.append(ak)
+                a_moves.append(((a.tenant_id, a.kg, a.id), a))
+        for ak in a_drop:
+            del self._assertions[ak]
+        for nk, arow in a_moves:
+            self._assertions[nk] = arow
+        # Rebind INSTANCE_OF cache key.
+        old_io = self._instance_of.pop((tenant_id, kg, old_id), None)
+        if old_io:
+            self._instance_of.setdefault((tenant_id, kg, new_id), set()).update(
+                old_io
+            )
 
     def _add_prov(self, row: _ProvRow) -> None:
         self._prov.append(row)
@@ -811,6 +1062,241 @@ class MemoryGraphStore:
             existing.provenance = row.provenance
         if row.verified_at:
             existing.verified_at = row.verified_at
+
+    # --- ADR 0013 Class / Property / Assertion ------------------------------
+
+    def _merge_class(
+        self,
+        tenant_id: str,
+        kg: str,
+        class_id: str,
+        *,
+        name: str,
+        layer: str = "tenant",
+    ) -> list[GraphRecord]:
+        key = (tenant_id, kg, class_id)
+        row = self._classes.get(key)
+        if row is None:
+            row = _ClassRow(
+                tenant_id=tenant_id, kg=kg, id=class_id, name=name, layer=layer
+            )
+            self._classes[key] = row
+        else:
+            if name:
+                row.name = name
+            if layer:
+                row.layer = layer
+        return [
+            GraphRecord(
+                data={
+                    "id": row.id,
+                    "name": row.name,
+                    "layer": row.layer,
+                    "tenant_id": tenant_id,
+                    "kg": kg,
+                }
+            )
+        ]
+
+    def _merge_property(
+        self,
+        tenant_id: str,
+        kg: str,
+        property_id: str,
+        *,
+        name: str,
+        kind: str = "datatype",
+        layer: str = "tenant",
+    ) -> list[GraphRecord]:
+        key = (tenant_id, kg, property_id)
+        row = self._properties.get(key)
+        if row is None:
+            row = _PropertyRow(
+                tenant_id=tenant_id,
+                kg=kg,
+                id=property_id,
+                name=name,
+                kind=kind,
+                layer=layer,
+            )
+            self._properties[key] = row
+        else:
+            if name:
+                row.name = name
+            if kind:
+                row.kind = kind
+            if layer:
+                row.layer = layer
+        return [
+            GraphRecord(
+                data={
+                    "id": row.id,
+                    "name": row.name,
+                    "kind": row.kind,
+                    "layer": row.layer,
+                    "tenant_id": tenant_id,
+                    "kg": kg,
+                }
+            )
+        ]
+
+    def _set_class_subclass(
+        self,
+        tenant_id: str,
+        kg: str,
+        child_class_id: str,
+        parent_class_id: str,
+    ) -> None:
+        self._subclass_of[(tenant_id, kg, child_class_id)] = parent_class_id
+
+    def _set_subproperty(
+        self,
+        tenant_id: str,
+        kg: str,
+        child_prop_id: str,
+        parent_prop_id: str,
+    ) -> None:
+        self._subproperty_of[(tenant_id, kg, child_prop_id)] = parent_prop_id
+
+    def _set_instance_of(
+        self, tenant_id: str, kg: str, entity_id: str, class_id: str
+    ) -> None:
+        self._instance_of.setdefault((tenant_id, kg, entity_id), set()).add(class_id)
+
+    def _upsert_assertion(
+        self,
+        tenant_id: str,
+        kg: str,
+        *,
+        assertion_id: str,
+        subject_id: str,
+        property_id: str,
+        object_id: str | None = None,
+        object_class_id: str | None = None,
+        literal_value: Any = None,
+        literal_datatype: str | None = None,
+        source_url: str | None = None,
+        verified_at: str | None = None,
+        run_id: str | None = None,
+        confidence: float | None = None,
+        provenance: str | None = None,
+    ) -> list[GraphRecord]:
+        key = (tenant_id, kg, assertion_id)
+        row = _AssertionRow(
+            tenant_id=tenant_id,
+            kg=kg,
+            id=assertion_id,
+            subject_id=subject_id,
+            property_id=property_id,
+            literal_value=literal_value,
+            literal_datatype=literal_datatype,
+            object_id=object_id,
+            object_class_id=object_class_id,
+            source_url=source_url,
+            verified_at=verified_at,
+            run_id=run_id,
+            confidence=confidence,
+            provenance=provenance,
+        )
+        self._assertions[key] = row
+        return [row.as_record()]
+
+    def _delete_assertions(
+        self,
+        tenant_id: str,
+        kg: str,
+        *,
+        subject_id: str,
+        property_id: str | None = None,
+        object_key: str | None = None,
+    ) -> int:
+        drop: list[tuple[str, str, str]] = []
+        for key, a in self._assertions.items():
+            if a.tenant_id != tenant_id or a.kg != kg:
+                continue
+            if a.subject_id != subject_id:
+                continue
+            if property_id is not None and a.property_id != property_id:
+                continue
+            if object_key is not None:
+                ok = (
+                    a.object_id
+                    or a.object_class_id
+                    or (
+                        str(a.literal_value)
+                        if a.literal_value is not None
+                        else ""
+                    )
+                )
+                if ok != object_key:
+                    continue
+            drop.append(key)
+        for key in drop:
+            del self._assertions[key]
+            # Drop INSTANCE_OF when type assertion removed (best-effort)
+        return len(drop)
+
+    def _subclass_closure(
+        self, tenant_id: str, kg: str, class_id: str
+    ) -> list[str]:
+        # Build child→parent for this scope, then descendants of class_id.
+        child_to_parent: dict[str, str] = {}
+        for (t, k, child), parent in self._subclass_of.items():
+            if t == tenant_id and k == kg:
+                child_to_parent[child] = parent
+        from cograph_client.graph.rdfs_helpers import descendants_of
+
+        return descendants_of(class_id, child_to_parent)
+
+    def _subproperty_closure(
+        self, tenant_id: str, kg: str, prop_id: str
+    ) -> list[str]:
+        child_to_parent: dict[str, str] = {}
+        for (t, k, child), parent in self._subproperty_of.items():
+            if t == tenant_id and k == kg:
+                child_to_parent[child] = parent
+        from cograph_client.graph.rdfs_helpers import descendants_of
+
+        return descendants_of(prop_id, child_to_parent)
+
+    def _entities_of_type_ids(
+        self, tenant_id: str, kg: str, class_ids: list[str]
+    ) -> list[str]:
+        allowed = set(class_ids)
+        out: set[str] = set()
+        for (t, k, eid), cids in self._instance_of.items():
+            if t != tenant_id or k != kg:
+                continue
+            if cids & allowed:
+                out.add(eid)
+        # Also from type Assertions if INSTANCE_OF missed
+        for (t, k, _), a in self._assertions.items():
+            if t != tenant_id or k != kg:
+                continue
+            if a.object_class_id and a.object_class_id in allowed:
+                out.add(a.subject_id)
+        return sorted(out)
+
+    def _assertions_for_subject(
+        self,
+        tenant_id: str,
+        kg: str,
+        entity_id: str,
+        *,
+        prop_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for (t, k, _), a in sorted(
+            self._assertions.items(), key=lambda x: (x[1].property_id, x[1].id)
+        ):
+            if t != tenant_id or k != kg:
+                continue
+            if a.subject_id != entity_id:
+                continue
+            if prop_id is not None and a.property_id != prop_id:
+                continue
+            rows.append(a.as_record().to_dict())
+        return rows
 
     # --- Structural QC scans (E8) -------------------------------------------
 
@@ -1155,6 +1641,159 @@ class MemoryGraphStore:
         )
         return [GraphRecord(data={"n": n})]
 
+    @staticmethod
+    def _as_type_name_set(raw: Any) -> set[str]:
+        if raw is None:
+            return set()
+        if isinstance(raw, str):
+            return {raw} if raw else set()
+        return {str(x) for x in raw if x is not None and str(x)}
+
+    def _entity_count_by_types(
+        self, tenant_id: str, kg: str, type_names: Any
+    ) -> list[GraphRecord]:
+        names = self._as_type_name_set(type_names)
+        if not names:
+            return [GraphRecord(data={"n": 0})]
+        n = sum(
+            1
+            for (t, k, _), r in self._entities.items()
+            if t == tenant_id and k == kg and r.primary_type in names
+        )
+        return [GraphRecord(data={"n": n})]
+
+    def _list_entities_by_types_page(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_names: Any,
+        after_id: str | None,
+        limit: int,
+    ) -> list[GraphRecord]:
+        names = self._as_type_name_set(type_names)
+        rows = [
+            r
+            for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2])
+            if t == tenant_id and k == kg and r.primary_type in names
+        ]
+        if after_id is not None:
+            rows = [r for r in rows if r.id > after_id]
+        if limit is not None and limit >= 0:
+            rows = rows[: int(limit)]
+        return [
+            GraphRecord(
+                data={
+                    "id": r.id,
+                    "tenant_id": r.tenant_id,
+                    "kg": r.kg,
+                    "primary_type": r.primary_type,
+                    "name": r.name,
+                    "source": r.source,
+                }
+            )
+            for r in rows
+        ]
+
+    def _literal_values_eq(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_names: Any,
+        prop_key: str,
+        prop_value: Any,
+        limit: int,
+    ) -> list[GraphRecord]:
+        names = self._as_type_name_set(type_names)
+        out: list[GraphRecord] = []
+        for (t, k, _), r in sorted(self._entities.items(), key=lambda x: x[0][2]):
+            if t != tenant_id or k != kg or r.primary_type not in names:
+                continue
+            actual = self._entity_prop_value(r, prop_key)
+            if actual != prop_value:
+                continue
+            out.append(
+                GraphRecord(
+                    data={
+                        "id": r.id,
+                        "name": r.name,
+                        "primary_type": r.primary_type,
+                        "literal_value": actual,
+                    }
+                )
+            )
+            if len(out) >= limit:
+                break
+        return out
+
+    def _related_entities(
+        self,
+        tenant_id: str,
+        kg: str,
+        from_types: Any,
+        to_types: Any,
+        rel_attr: str | None,
+        limit: int,
+    ) -> list[GraphRecord]:
+        from_set = self._as_type_name_set(from_types)
+        to_set = None if to_types is None else self._as_type_name_set(to_types)
+        # Reuse 1-hop logic but with type sets
+        out: list[GraphRecord] = []
+        for rel in sorted(
+            self._rels.values(),
+            key=lambda r: (r.start_id, r.end_id),
+        ):
+            if rel.tenant_id != tenant_id or rel.kg != kg:
+                continue
+            a = self._entities.get((tenant_id, kg, rel.start_id))
+            b = self._entities.get((tenant_id, kg, rel.end_id))
+            if a is None or b is None:
+                continue
+            if a.primary_type not in from_set:
+                continue
+            if to_set is not None and b.primary_type not in to_set:
+                continue
+            if rel_attr is not None and rel.attr != rel_attr and rel.rel_type != rel_attr:
+                continue
+            out.append(
+                GraphRecord(
+                    data={
+                        "from_id": a.id,
+                        "from_name": a.name,
+                        "from_type": a.primary_type,
+                        "to_id": b.id,
+                        "to_name": b.name,
+                        "to_type": b.primary_type,
+                        "rel_type": rel.rel_type,
+                        "attr": rel.attr or rel.rel_type,
+                    }
+                )
+            )
+            if len(out) >= limit:
+                break
+        return out
+
+    def _subclass_of_closure_names(
+        self,
+        tenant_id: str,
+        kg: str,
+        type_name: str,
+        layer: str | None,
+    ) -> list[GraphRecord]:
+        # Build child→parent from OntoType rows, then expand descendants.
+        child_to_parent: dict[str, str] = {}
+        for (t, k, lyr, name), row in self._onto_types.items():
+            if t != tenant_id or k != kg:
+                continue
+            if layer is not None and lyr != layer:
+                continue
+            parent = getattr(row, "parent_type", None) or getattr(row, "parent", None)
+            if parent:
+                child_to_parent[name] = str(parent)
+        from cograph_client.graph.rdfs_helpers import descendants_of
+
+        names = descendants_of(type_name, child_to_parent)
+        return [GraphRecord(data={"type_name": n}) for n in names]
+
     def _entity_count_total(self, tenant_id: str, kg: str) -> list[GraphRecord]:
         n = sum(
             1 for (t, k, _) in self._entities if t == tenant_id and k == kg
@@ -1402,6 +2041,54 @@ class MemoryGraphStore:
                 None if to_type is None else str(to_type),
                 None if rel_attr is None else str(rel_attr),
                 int(lim) if lim is not None else 25,
+            )
+
+        # ADR 0013 semantic helpers
+        if norm == _ENTITIES_OF_TYPE_NORM:
+            lim = params.get("limit")
+            return self._list_entities_by_types_page(
+                tenant_id,
+                kg,
+                params.get("type_names"),
+                params.get("after_id"),
+                int(lim) if lim is not None else 50,
+            )
+
+        if norm == _ENTITIES_OF_TYPE_COUNT_NORM:
+            return self._entity_count_by_types(
+                tenant_id, kg, params.get("type_names")
+            )
+
+        if norm == _LITERAL_VALUES_NORM:
+            lim = params.get("limit")
+            return self._literal_values_eq(
+                tenant_id,
+                kg,
+                params.get("type_names"),
+                str(params.get("prop_key") or ""),
+                params.get("prop_value"),
+                int(lim) if lim is not None else 25,
+            )
+
+        if norm == _RELATED_ENTITIES_NORM:
+            lim = params.get("limit")
+            to_types = params.get("to_types")
+            rel_attr = params.get("rel_attr")
+            return self._related_entities(
+                tenant_id,
+                kg,
+                params.get("from_types"),
+                to_types,
+                None if rel_attr is None else str(rel_attr),
+                int(lim) if lim is not None else 25,
+            )
+
+        if norm == _SUBCLASS_OF_CLOSURE_NORM:
+            return self._subclass_of_closure_names(
+                tenant_id,
+                kg,
+                str(params.get("type_name") or ""),
+                params.get("layer"),
             )
 
         # --- Ontology catalog templates ------------------------------------

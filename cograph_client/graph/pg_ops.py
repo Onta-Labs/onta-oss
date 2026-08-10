@@ -164,20 +164,42 @@ async def delete_literals(
     entity_id: str,
     leaves: Sequence[str],
 ) -> int:
-    """Remove named literal properties from an Entity (predicate-scoped clear)."""
+    """Remove named literal properties from an Entity (predicate-scoped clear).
+
+    Also removes matching datatype Assertions (ADR 0013 SoT) when the session
+    implements assertion deletes.
+    """
     require_entity_write_identity({"id": entity_id})
     keys: list[str] = []
+    original_leaves: list[str] = []
     for leaf in leaves:
+        original_leaves.append(leaf)
         if leaf in ("name", "source", "primary_type"):
             keys.append(leaf)
         else:
             keys.append(sanitize_prop_key(leaf))
     native = getattr(session, "write_delete_literals", None)
-    if callable(native):
-        return int(await native(entity_id, keys))
-    raise GraphScopeError(
-        "GraphSession does not implement write_delete_literals"
-    )
+    if not callable(native):
+        raise GraphScopeError(
+            "GraphSession does not implement write_delete_literals"
+        )
+    n = int(await native(entity_id, keys))
+    # Best-effort Assertion SoT cleanup by property IRI.
+    try:
+        from cograph_client.graph.assertion_model import property_uri
+        from cograph_client.graph.rdf_model import delete_assertions_for_subject
+
+        for leaf in original_leaves:
+            if leaf in ("name", "source", "primary_type"):
+                prop_id = property_uri(leaf)
+            else:
+                prop_id = property_uri(leaf)
+            n += await delete_assertions_for_subject(
+                session, entity_id, property_id=prop_id
+            )
+    except Exception:  # noqa: BLE001 — cache delete must not fail on assertion gap
+        pass
+    return n
 
 
 async def delete_rels(
@@ -191,21 +213,36 @@ async def delete_rels(
     """Delete relationships in scope filtered by start / end / attr leaf.
 
     ``end_id_exact`` is the object endpoint when deleting a concrete edge;
-    ``end_id`` is kept as an alias for the same filter.
+    ``end_id`` is kept as an alias for the same filter. Also removes matching
+    object Assertions (ADR 0013) when the session supports it.
     """
     end = end_id_exact if end_id_exact is not None else end_id
     rel_type = sanitize_rel_type(attr_leaf) if attr_leaf else None
     native = getattr(session, "write_delete_rels", None)
-    if callable(native):
-        return int(
-            await native(
-                start_id=start_id,
-                end_id=end,
-                rel_type=rel_type,
-                attr_leaf=attr_leaf,
-            )
+    if not callable(native):
+        raise GraphScopeError("GraphSession does not implement write_delete_rels")
+    n = int(
+        await native(
+            start_id=start_id,
+            end_id=end,
+            rel_type=rel_type,
+            attr_leaf=attr_leaf,
         )
-    raise GraphScopeError("GraphSession does not implement write_delete_rels")
+    )
+    if start_id and attr_leaf:
+        try:
+            from cograph_client.graph.assertion_model import property_uri
+            from cograph_client.graph.rdf_model import delete_assertions_for_subject
+
+            n += await delete_assertions_for_subject(
+                session,
+                start_id,
+                property_id=property_uri(attr_leaf),
+                object_key=end,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return n
 
 
 async def rewrite_entity_id(
@@ -401,7 +438,12 @@ async def apply_facts(
     *,
     provenance_enabled: bool = False,
 ) -> int:
-    """Apply a batch of Facts: MERGE entities, types/labels, literals, rels.
+    """Apply a batch of Facts via Assertion SoT + derived Entity cache (ADR 0013).
+
+    1. MERGE Entities + domain labels + property cache + shortcut rels
+       (derived projections for Explorer / hot paths).
+    2. Write :Assertion nodes (unit of truth) for each Fact, with
+       ``INSTANCE_OF`` dual-written for type membership.
 
     Returns the number of Facts applied. Ensures target entities exist for rels.
     """
@@ -432,7 +474,7 @@ async def apply_facts(
             session, sid, primary_type=primary, name=name, source=source
         )
 
-    # Second pass: types (labels), literals, rels per subject.
+    # Second pass: types (labels), literals, rels per subject — derived cache.
     for sid, sub_facts in grouped.items():
         type_leaves = [f.key for f in sub_facts if f.kind == "type"]
         if type_leaves:
@@ -478,6 +520,32 @@ async def apply_facts(
                         fact_hash=prov_fact_hash(sid, f.key, f.value, f.source),
                     )
             # type facts already counted above
+
+    # Third pass: Assertion SoT (ADR 0013). Dual-write cache already done above;
+    # still dual-write INSTANCE_OF for type Assertions via assert_fact.
+    if getattr(session, "write_assertion", None) is not None:
+        from cograph_client.graph.rdf_model import assert_fact, fact_to_assertion_fact
+
+        for f in facts:
+            try:
+                af = fact_to_assertion_fact(
+                    subject_id=f.subject_id,
+                    kind=f.kind,
+                    key=f.key,
+                    value=f.value,
+                    source=f.source,
+                )
+            except GraphScopeError:
+                continue
+            # dual_write_cache=False: Entity props/rels already applied; type
+            # path still needs INSTANCE_OF which assert_fact writes when True
+            # for kind=type only.
+            await assert_fact(
+                session,
+                af,
+                dual_write_cache=(f.kind == "type"),
+            )
+
     return applied
 
 

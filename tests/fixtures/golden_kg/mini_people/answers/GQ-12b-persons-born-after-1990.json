@@ -1,0 +1,9 @@
+{
+  "rows": [
+    { "entity_id": "$entity:Alice" },
+    { "entity_id": "$entity:Dana" }
+  ],
+  "compare": "set",
+  "columns": ["entity_id"],
+  "notes": "Alice 1991, Dana 1995; Bob 1985 excluded"
+}
