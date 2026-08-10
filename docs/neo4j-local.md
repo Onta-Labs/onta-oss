@@ -165,11 +165,51 @@ Allowlisted templates: `entity_list_by_type_page`, `entity_count_by_type`,
 `entity_count_total`, `entity_detail`, `entity_rels` (+ existing
 `entity_count_by_primary_type`).
 
+## NL → Cypher /ask (E6 foundation)
+
+When `COGRAPH_GRAPH_BACKEND=neo4j`, `POST /graphs/{tenant}/ask` (and
+`NLQueryPipeline.ask`) generate **Cypher** instead of SPARQL and execute via
+GraphStore. Default remains Neptune SPARQL when the env var is unset or
+`neptune`.
+
+```bash
+export COGRAPH_GRAPH_BACKEND=neo4j
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=onta-dev-password
+# optional: OPENROUTER_API_KEY for full LLM Cypher; without it, only the
+# deterministic "count entities of type X" stub answers.
+```
+
+Or per call: `pipeline.ask(..., use_cypher=True)` with an injected
+`graph_store=` (tests use `MemoryGraphStore`).
+
+**What ships in foundation:**
+
+| Piece | Module |
+|-------|--------|
+| Cypher system + user prompts | `nlp/prompts.py` (`CYPHER_GENERATION_SYSTEM`) |
+| Scope inject / reject / scrub | `nlp/cypher_scope.py` |
+| Count stub + bindings helper | `nlp/cypher_generate.py` |
+| Example bank optional `cypher` field | `nlp/example_bank.py` |
+| Pipeline branch | `nlp/pipeline.py` (`_ask_cypher`) |
+
+Generated Cypher is confined before run: read-only, `$tenant_id`/`$kg` required
+(or bare `(e:Entity)` repaired), session **overwrites** model-supplied
+tenant/kg params. Prefer templates for the count stub (`entity_count_by_type` /
+`entity_count_total`); free-form uses parameterized `execute_read` only.
+
+**Not yet (remaining E6):** full NL quality (joins, filters, aggregations,
+retries, enum recovery, ontology summary from GraphStore catalog, eval
+rebaseline, SPARQL example conversion).
+
 ## Tests
 
 ```bash
 # Hermetic (default CI) — in-memory store + scope unit tests
-pytest tests/test_graph_store.py tests/test_explore_store.py -q
+pytest tests/test_graph_store.py tests/test_explore_store.py \
+  tests/test_cypher_scope.py tests/test_cypher_prompts.py \
+  tests/test_example_bank_cypher.py tests/test_ask_cypher_pipeline.py -q
 
 # Live Neo4j smoke (compose up first)
 NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=onta-dev-password \
@@ -184,5 +224,6 @@ NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD=onta-dev-passwor
 | `NEO4J_USER` | `neo4j` | Username |
 | `NEO4J_PASSWORD` | — | Password (required with URI) |
 | `NEO4J_DATABASE` | driver default | Optional DB name (Wave 1: single DB) |
+| `COGRAPH_GRAPH_BACKEND` | `neptune` | Set to `neo4j` to enable GraphStore writers/readers and NL→Cypher `/ask` |
 
 No platform or AWS-managed credentials are embedded in this package.
