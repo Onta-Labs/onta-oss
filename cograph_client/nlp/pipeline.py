@@ -18,7 +18,23 @@ from cograph_client.graph.sparql_scope import (
     tenant_of_graph,
 )
 from cograph_client.models.query import NLResult
-from cograph_client.nlp.prompts import SPARQL_GENERATION_SYSTEM, build_generation_prompt
+from cograph_client.nlp.cypher_generate import (
+    neo4j_ask_enabled,
+    records_to_bindings,
+    try_stub_count_query,
+)
+from cograph_client.nlp.cypher_scope import (
+    CrossTenantCypherError,
+    CypherScopeError,
+    confine_generated_cypher,
+    scrub_cypher_error,
+)
+from cograph_client.nlp.prompts import (
+    CYPHER_GENERATION_SYSTEM,
+    SPARQL_GENERATION_SYSTEM,
+    build_cypher_generation_prompt,
+    build_generation_prompt,
+)
 from cograph_client.nlp.validator import normalize_sparql, validate_sparql
 from cograph_client.nlp.token_usage import (
     STAGE_REPHRASE,
@@ -619,9 +635,18 @@ def _drop_internal_predicate_rows(bindings: list[dict]) -> list[dict]:
 
 
 class NLQueryPipeline:
-    def __init__(self, neptune: NeptuneClient, anthropic_key: str):
+    def __init__(
+        self,
+        neptune: NeptuneClient,
+        anthropic_key: str,
+        *,
+        graph_store: "object | None" = None,
+    ):
         self.neptune = neptune
         self.anthropic = anthropic.AsyncAnthropic(api_key=anthropic_key)
+        # Optional GraphStore for the Neo4j /ask path (E6). When None, the
+        # Cypher path uses :func:`get_graph_store` under COGRAPH_GRAPH_BACKEND=neo4j.
+        self._graph_store = graph_store
         from cograph_client.config import settings
         self._openrouter_key = settings.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self._cerebras_key = os.environ.get("CEREBRAS_API_KEY", getattr(settings, "cerebras_api_key", ""))
@@ -658,7 +683,17 @@ class NLQueryPipeline:
             os.environ.get("COGRAPH_ANSWER_CITATIONS_ENABLED", "0") == "1"
         )
 
-    async def ask(self, question: str, graph_uri: str, instance_graph: str | None = None, exclude_questions: list[str] | None = None, layer_graph_uris: list[str] | None = None, run_manifest: "RunManifest | RunCoverage | None" = None) -> NLResult:
+    async def ask(
+        self,
+        question: str,
+        graph_uri: str,
+        instance_graph: str | None = None,
+        exclude_questions: list[str] | None = None,
+        layer_graph_uris: list[str] | None = None,
+        run_manifest: "RunManifest | RunCoverage | None" = None,
+        *,
+        use_cypher: bool | None = None,
+    ) -> NLResult:
         """Answer a natural-language question over the graph.
 
         layer_graph_uris (ADR 0002 §1, COG-37, opt-in): a LayerStack's
@@ -674,17 +709,33 @@ class NLQueryPipeline:
         items" fragment (the A9→A7 honest-answers contract) instead of the
         stale-count-only caveat. When None (the default — no caller threads one
         today), the answer + caveat are byte-identical to the prior behavior.
+
+        use_cypher (E6, opt-in / env-gated): when True, or when
+        ``COGRAPH_GRAPH_BACKEND=neo4j``, generate and execute Cypher via
+        GraphStore instead of SPARQL/Neptune. Default Neptune SPARQL path is
+        unchanged when the flag/env is off.
         """
-        timing: dict[str, float] = {}
-        timing["model"] = f"{self._query_provider}:{self._query_model}"
-        # Per-LLM-call token ledger for whitepaper v3 tokens-to-complete-task.
-        # Additive only — empty when providers omit usage (payload stays clean).
-        token_ledger = TokenUsageLedger()
         # Ontology is always fetched from the base tenant graph for embeddings;
         # when layer_graph_uris is set (production ask route, ONTA-397) the full
         # fetch also unions visible global layers with shadowing so Public types
         # are visible to the planner. Instance data may be in a different graph.
         data_graph = instance_graph or graph_uri
+
+        # E6: Neo4j Cypher path — must not alter the default Neptune SPARQL path.
+        if neo4j_ask_enabled(explicit=use_cypher):
+            return await self._ask_cypher(
+                question,
+                graph_uri=graph_uri,
+                data_graph=data_graph,
+                exclude_questions=exclude_questions,
+                layer_graph_uris=layer_graph_uris,
+            )
+
+        timing: dict[str, float] = {}
+        timing["model"] = f"{self._query_provider}:{self._query_model}"
+        # Per-LLM-call token ledger for whitepaper v3 tokens-to-complete-task.
+        # Additive only — empty when providers omit usage (payload stays clean).
+        token_ledger = TokenUsageLedger()
 
         t0 = time.time()
         # Try semantic retrieval first, fall back to full ontology
@@ -1539,6 +1590,369 @@ class NLQueryPipeline:
             tenant_id=tenant_of_graph(data_graph),
             allowed_graphs=layer_graph_uris or (),
         )
+
+    # ------------------------------------------------ NL → Cypher (E6 foundation)
+
+    async def _ask_cypher(
+        self,
+        question: str,
+        *,
+        graph_uri: str,
+        data_graph: str,
+        exclude_questions: list[str] | None = None,
+        layer_graph_uris: list[str] | None = None,
+    ) -> NLResult:
+        """Minimal Neo4j /ask path: stub count + scoped GraphStore read.
+
+        Full NL quality (LLM Cypher, retries, enum recovery, …) is later E6
+        work. This proves: prompt rules exist, confinement forces session
+        params, example bank can format Cypher, and execute_read runs
+        parameterized queries only.
+
+        Cypher text is returned in :attr:`NLResult.sparql` for wire
+        compatibility with existing clients (field name historical).
+        """
+        del layer_graph_uris  # reserved for catalog-layer joins in later E6
+        t0 = time.time()
+        timing: dict[str, float | str] = {
+            "model": f"{self._query_provider}:{self._query_model}",
+            "query_language": "cypher",
+            "graph_backend": "neo4j",
+        }
+
+        parsed = parse_kg_graph_uri(data_graph)
+        if not parsed:
+            # Fall back to tenant-of-graph + last path segment for non-kg URIs.
+            tid = tenant_of_graph(data_graph) or ""
+            kg = data_graph.rstrip("/").rsplit("/", 1)[-1] if data_graph else ""
+            if not tid or not kg or kg == tid:
+                return NLResult(
+                    answer=(
+                        "Could not answer: Neo4j /ask requires a per-KG instance "
+                        "graph URI (…/graphs/{tenant}/kg/{kg})."
+                    ),
+                    sparql="",
+                    explanation="",
+                    timing={**timing, "total_ms": round((time.time() - t0) * 1000, 1)},
+                )
+            tenant_id, kg_name = tid, kg
+        else:
+            tenant_id, kg_name = parsed
+
+        # Ontology summary: best-effort. On pure Neo4j deploys Neptune may be
+        # unavailable; empty summary still allows the count stub via type guess.
+        ontology = ""
+        try:
+            ontology = await self._fetch_ontology(graph_uri, data_graph)
+            if ontology in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY):
+                ontology = ""
+        except Exception:
+            logger.debug("cypher_ask_ontology_fetch_failed", exc_info=True)
+            ontology = ""
+        timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
+
+        examples_text = ""
+        try:
+            from cograph_client.nlp.example_bank import (
+                format_examples_for_prompt,
+                get_example_bank,
+            )
+
+            bank = get_example_bank()
+            if bank and bank._examples:
+                examples = await bank.retrieve(
+                    question=question,
+                    ontology_context=ontology,
+                    exclude_questions=exclude_questions or [],
+                    kg_name=kg_name,
+                    top_k=3,
+                )
+                if examples:
+                    examples_text = format_examples_for_prompt(
+                        examples, language="cypher"
+                    )
+                    timing["examples_retrieved"] = len(examples)
+        except Exception:
+            pass
+
+        # 1) Deterministic stub for count questions (no LLM required).
+        gen = try_stub_count_query(question, ontology)
+        if gen is None:
+            # 2) Optional LLM Cypher generation when keys exist.
+            gen = await self._try_llm_cypher(
+                question, ontology, tenant_id=tenant_id, kg_name=kg_name,
+                examples_text=examples_text,
+            )
+        if gen is None:
+            return NLResult(
+                answer=(
+                    "Could not answer: Neo4j /ask foundation only handles simple "
+                    "count questions without an LLM key, and no generator "
+                    "produced Cypher for this question."
+                ),
+                sparql="",
+                explanation="",
+                ontology=ontology,
+                timing={
+                    **timing,
+                    "total_ms": round((time.time() - t0) * 1000, 1),
+                    "cypher_stub": 0.0,
+                },
+            )
+
+        cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
+        params = dict(gen.get("params") or {})
+        explanation = gen.get("explanation") or ""
+        if gen.get("stub"):
+            timing["cypher_stub"] = 1.0
+
+        try:
+            cypher, forced_params = confine_generated_cypher(
+                cypher_raw,
+                tenant_id=tenant_id,
+                kg=kg_name,
+                params=params,
+            )
+        except CrossTenantCypherError:
+            raise
+        except CypherScopeError as exc:
+            return NLResult(
+                answer=f"Could not answer: {exc.detail}",
+                sparql=cypher_raw,
+                explanation=explanation,
+                ontology=ontology,
+                timing={
+                    **timing,
+                    "total_ms": round((time.time() - t0) * 1000, 1),
+                    "cypher_scope_error": 1.0,
+                },
+            )
+
+        store = self._graph_store
+        if store is None:
+            try:
+                from cograph_client.graph.store import get_graph_store
+
+                store = get_graph_store()
+            except Exception as exc:
+                return NLResult(
+                    answer=(
+                        "Could not answer: Neo4j GraphStore is not configured "
+                        f"({scrub_cypher_error(str(exc))})."
+                    ),
+                    sparql=cypher,
+                    explanation=explanation,
+                    ontology=ontology,
+                    timing={
+                        **timing,
+                        "total_ms": round((time.time() - t0) * 1000, 1),
+                    },
+                )
+
+        from cograph_client.graph.scope import GraphScope
+        from cograph_client.graph.store import GraphQueryError
+
+        t_exec = time.time()
+        try:
+            session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+            # Prefer allowlisted template when this is the count-by-type shape.
+            if (
+                gen.get("stub")
+                and "primary_type" in forced_params
+                and "primary_type" in cypher
+            ):
+                records = await session.execute_template(
+                    "entity_count_by_type",
+                    {"primary_type": forced_params["primary_type"]},
+                )
+                timing["cypher_exec_path"] = "template:entity_count_by_type"
+            elif gen.get("stub") and "primary_type" not in forced_params:
+                records = await session.execute_template("entity_count_total", {})
+                timing["cypher_exec_path"] = "template:entity_count_total"
+            else:
+                records = await session.execute_read(cypher, forced_params)
+                timing["cypher_exec_path"] = "execute_read"
+        except GraphQueryError as exc:
+            return NLResult(
+                answer=f"Could not answer: {scrub_cypher_error(str(exc))}",
+                sparql=cypher,
+                explanation=explanation,
+                ontology=ontology,
+                timing={
+                    **timing,
+                    "neptune_exec_ms": round((time.time() - t_exec) * 1000, 1),
+                    "total_ms": round((time.time() - t0) * 1000, 1),
+                },
+            )
+        except Exception as exc:
+            return NLResult(
+                answer=f"Could not answer: {scrub_cypher_error(str(exc))}",
+                sparql=cypher,
+                explanation=explanation,
+                ontology=ontology,
+                timing={
+                    **timing,
+                    "total_ms": round((time.time() - t0) * 1000, 1),
+                },
+            )
+
+        timing["neptune_exec_ms"] = round((time.time() - t_exec) * 1000, 1)
+        _variables, bindings = records_to_bindings(records)
+        answer = await self._format_answer(
+            bindings, explanation, data_graph=data_graph
+        )
+        timing["total_ms"] = round((time.time() - t0) * 1000, 1)
+        timing["rows"] = len(bindings)
+        timing["attempts"] = 1
+        return NLResult(
+            answer=answer,
+            sparql=cypher,
+            explanation=explanation,
+            ontology=ontology,
+            timing=timing,
+        )
+
+    async def _try_llm_cypher(
+        self,
+        question: str,
+        ontology: str,
+        *,
+        tenant_id: str,
+        kg_name: str,
+        examples_text: str = "",
+    ) -> dict | None:
+        """Best-effort LLM Cypher generation. Returns None without API keys."""
+        if not (self._openrouter_key or self._cerebras_key or getattr(self, "anthropic", None)):
+            return None
+        # Without any configured key, anthropic client still exists but will fail.
+        if not self._openrouter_key and not self._cerebras_key:
+            # anthropic_key may be empty in hermetic tests
+            try:
+                key = getattr(self.anthropic, "api_key", None) or ""
+            except Exception:
+                key = ""
+            if not key:
+                return None
+
+        prompt = build_cypher_generation_prompt(
+            question,
+            ontology,
+            tenant_id=tenant_id,
+            kg_name=kg_name,
+            examples_text=examples_text,
+        )
+        try:
+            # Reuse OpenRouter JSON path with Cypher system prompt by temporarily
+            # swapping the system message via a dedicated call.
+            if self._openrouter_key:
+                return await self._generate_cypher_via_openrouter(prompt)
+            if self._query_provider == "cerebras" and self._cerebras_key:
+                return await self._generate_cypher_via_cerebras(prompt)
+            return await self._generate_cypher_via_anthropic(prompt)
+        except Exception:
+            logger.warning("cypher_llm_generation_failed", exc_info=True)
+            return None
+
+    async def _generate_cypher_via_openrouter(self, prompt: str) -> dict:
+        openrouter_url = f"{OPENROUTER_BASE}/chat/completions"
+        assert_online_url(openrouter_url, purpose="query Cypher LLM (openrouter)")
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                openrouter_url,
+                headers={
+                    "Authorization": f"Bearer {self._openrouter_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self._query_model
+                    if self._query_provider == "openrouter"
+                    else "google/gemini-2.5-flash",
+                    "messages": [
+                        {"role": "system", "content": CYPHER_GENERATION_SYSTEM},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            res.raise_for_status()
+            data = res.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed = json.loads(content) if isinstance(content, str) else content
+            if "cypher" not in parsed and "sparql" in parsed:
+                parsed["cypher"] = parsed["sparql"]
+            return parsed
+
+    async def _generate_cypher_via_cerebras(self, prompt: str) -> dict:
+        cerebras_url = "https://api.cerebras.ai/v1/chat/completions"
+        assert_online_url(cerebras_url, purpose="query Cypher LLM (cerebras)")
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                cerebras_url,
+                headers={
+                    "Authorization": f"Bearer {self._cerebras_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self._query_model,
+                    "messages": [
+                        {"role": "system", "content": CYPHER_GENERATION_SYSTEM},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_completion_tokens": 2048,
+                    "temperature": 0,
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "cypher_response",
+                            "strict": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "cypher": {"type": "string"},
+                                    "params": {
+                                        "type": "object",
+                                        "additionalProperties": True,
+                                    },
+                                    "explanation": {"type": "string"},
+                                    "functions_needed": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                                "required": [
+                                    "cypher",
+                                    "explanation",
+                                    "functions_needed",
+                                ],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                },
+            )
+            res.raise_for_status()
+            data = res.json()
+            content = data["choices"][0]["message"]["content"]
+            return json.loads(content) if isinstance(content, str) else content
+
+    async def _generate_cypher_via_anthropic(self, prompt: str) -> dict:
+        msg = await self.anthropic.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2048,
+            system=CYPHER_GENERATION_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = msg.content[0].text if msg.content else "{}"
+        # Tolerate fenced JSON
+        text = text.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
+        parsed = json.loads(text)
+        if "cypher" not in parsed and "sparql" in parsed:
+            parsed["cypher"] = parsed["sparql"]
+        return parsed
 
     # ------------------------------------------------ name-lookup broadening
     # Match a `types/<Leaf>` URI in rdf:type OBJECT position, whether the
