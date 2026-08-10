@@ -57,7 +57,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 
 import structlog
 
@@ -92,6 +92,11 @@ from cograph_client.graph.queries import (
     select_subject_predicate_objects_query,
     tenant_graph_uri,
 )
+from cograph_client.graph.facts import Fact, triples_to_facts
+from cograph_client.graph.scope import GraphScope, GraphScopeError
+
+if TYPE_CHECKING:
+    from cograph_client.graph.store import GraphSession, GraphStore
 
 logger = structlog.stdlib.get_logger("cograph.graph.kg_writer")
 
@@ -139,6 +144,57 @@ def _provenance_enabled() -> bool:
     when governance/undo is switched on.
     """
     return os.environ.get("COGRAPH_PROVENANCE_ENABLED", "0") == "1"
+
+
+def graph_backend() -> str:
+    """Active instance backend: ``neptune`` (default) or ``neo4j``.
+
+    Dual-backend migration switch (E3). Prefer an explicit ``store`` /
+    ``session`` on write primitives; when those are omitted, this flag decides
+    whether :func:`get_graph_store` is consulted (``neo4j``) or the legacy
+    Neptune SPARQL path is used (``neptune``). **Do not delete the Neptune path
+    until the cutover gate lands.**
+    """
+    return (os.environ.get("COGRAPH_GRAPH_BACKEND") or "neptune").strip().lower()
+
+
+def _resolve_graph_session(
+    *,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
+    instance_graph: str | None = None,
+    tenant_id: str | None = None,
+    kg_name: str | None = None,
+) -> Optional["GraphSession"]:
+    """Return a scoped GraphSession when the Neo4j path should run, else None.
+
+    Priority:
+    1. Explicit ``session``
+    2. Explicit ``store`` + scope derived from graph URI or tenant/kg
+    3. ``COGRAPH_GRAPH_BACKEND=neo4j`` → process :func:`get_graph_store`
+    """
+    if session is not None:
+        return session
+    if store is None and graph_backend() != "neo4j":
+        return None
+    if store is None:
+        from cograph_client.graph.store import get_graph_store
+
+        store = get_graph_store()
+    tid, kg = tenant_id, kg_name
+    if (not tid or not kg) and instance_graph:
+        scope_pair = parse_kg_graph_uri(instance_graph)
+        if scope_pair is None:
+            raise GraphScopeError(
+                f"Cannot derive tenant/kg scope from instance_graph={instance_graph!r}; "
+                "pass tenant_id+kg_name or a per-KG graph URI"
+            )
+        tid, kg = scope_pair
+    if not tid or not kg:
+        raise GraphScopeError(
+            "Neo4j write path requires tenant_id and kg (or a parseable instance_graph)"
+        )
+    return store.session(GraphScope.for_instance(tid, kg))
 
 
 def _value_history_enabled() -> bool:
@@ -359,74 +415,59 @@ def build_graph_delta(
 async def insert_facts(
     neptune,
     instance_graph: str,
-    instance_triples: list[Triple],
+    instance_triples: Optional[list[Triple]] = None,
     *,
+    facts: Optional[Sequence[Fact]] = None,
     provenance_triples: Optional[list[Triple]] = None,
     validity_triples: Optional[list[Triple]] = None,
     suppression_triples: Optional[list[Triple]] = None,
     reopen_facts: Optional[list[Triple]] = None,
     run_id: Optional[str] = None,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
 ) -> Optional[GraphDelta]:
-    """Write instance triples (and optional companion provenance / validity) to the KG.
+    """Write instance facts (and optional companion provenance / validity) to the KG.
 
-    The ONE insertion primitive for both ingest and enrichment. Always batched
-    (``batched_insert_triples``) so a large write is chunked into multiple
-    ``INSERT DATA`` statements rather than one statement that can exceed
-    Neptune's size limit.
+    The ONE insertion primitive for both ingest and enrichment.
 
-    ``provenance_triples`` (already built via
-    :func:`cograph_client.graph.provenance.build_provenance_triples`) are written
-    to the data graph's companion provenance graph
-    (``provenance_graph_uri(instance_graph)``), exactly as the ingest path does.
-    Pass ``None``/empty to skip (callers that surface provenance as ordinary
-    instance attributes — e.g. enrichment's ``*_source_url`` citations — include
-    those in ``instance_triples`` and need no separate provenance graph write).
+    **Dual-backend (E3 migration):**
 
-    ``validity_triples`` (ONTA-277; built via ``graph/validity.py`` interval
-    builders) are written to the data graph's companion VALIDITY graph
-    (``validity_graph_uri(instance_graph)``) — the same routing as provenance, one
-    graph over. This is how the P6 supersede/retract mutation ops
-    (``pipeline/mutations.py``) record valid-time intervals: they open an interval
-    for a newly-current fact and CLOSE the old one, WITHOUT deleting or re-pointing
-    the superseded edge, so history stays queryable. Kept here (not hand-rolled in
-    the mutation ops) so validity companion writes flow through the same batched
-    seam as every other write. Pass ``None``/empty to skip.
+    * When ``store`` / ``session`` is provided, **or**
+      ``COGRAPH_GRAPH_BACKEND=neo4j``, facts are written through the property-
+      graph path (:mod:`cograph_client.graph.pg_ops`) against a scoped
+      :class:`GraphSession`. Prefer structured :class:`Fact` objects; legacy
+      ``instance_triples`` are mapped via :func:`triples_to_facts`.
+    * Otherwise the legacy Neptune SPARQL path runs (batched
+      ``INSERT DATA``). **Neptune path is retained until cutover** — do not
+      delete it from call sites yet.
 
-    ``suppression_triples`` (ONTA-279; built via ``graph/suppression.py``) are
-    written to the data graph's companion SUPPRESSION graph
-    (``suppression_graph_uri(instance_graph)``) — the same routing as
-    ``validity_triples`` / ``provenance_triples``, one graph over. This is the
-    STICKY, reopen-PROOF retraction marker: unlike a validity closure (which
-    ``reopen_facts`` clears), a suppression mark lives in its own companion graph
-    that no reopen touches, so a retracted value stays off the refresh rail until an
-    explicit un-suppress. Kept here (not hand-rolled in the retract op) so
-    suppression companion writes flow through the same batched seam as every other
-    write. Pass ``None``/empty to skip.
+    Neptune path: always batched (``batched_insert_triples``) so a large write
+    is chunked rather than exceeding Neptune's size limit.
 
-    ``reopen_facts`` (ONTA-277 value-resurrection fix): ``(s, p, o)`` facts whose
-    validity interval is being (re-)OPENED as current by this write. Because a
-    validity node is keyed by ``sha1(s|p|o)`` and closing a fact only ADDS
-    ``val:validTo`` to it, re-asserting a previously-closed value would otherwise
-    leave that stale closure in place and the "current facts" read would keep
-    excluding the value. For each such fact this CLEARS any prior closure
-    (``val:validTo`` / ``val:supersededBy`` / ``val:status``) off THAT value's
-    interval node — via ``validity.reopen_interval_update`` against the SAME
-    companion validity graph ``validity_triples`` route to, executed BEFORE the
-    open-interval ``validity_triples`` land — so a resurrected value becomes
-    genuinely current again. Only the named values' nodes are touched; other
-    values' closures are untouched. Pass ``None``/empty to skip (the common write
-    reopens nothing).
+    ``provenance_triples`` / ``validity_triples`` / ``suppression_triples`` /
+    ``reopen_facts`` are RDF companion-graph payloads and apply on the Neptune
+    path. On the Neo4j path, optional ``:ProvEvent`` assert hooks fire when
+    ``COGRAPH_PROVENANCE_ENABLED=1`` (minimal Wave-1 companions; full validity /
+    suppression node ports are E7).
 
     ``run_id`` (ONTA-271): when given, returns a deterministic A6
-    :class:`GraphDelta` receipt of the domain facts written (nonce-excluded,
-    fact_id-keyed) so the caller can prove replay-determinism. The receipt reflects
-    the INSTANCE facts only — the validity/provenance companions are bookkeeping,
-    not domain facts, so they never enter the delta. Optional + back-compat: the
-    many callers that pass raw triples with no ``run_id`` get ``None`` and are
-    unaffected (RDF inserts are already idempotent, so a fact whose id was applied
-    in a prior run re-inserts to a no-op — the "dedupe" is the store's, and this
-    receipt lets P6 verify it).
+    :class:`GraphDelta` over the *triple* form of the write (Fact-only writes
+    without triples yield an empty domain set unless triples are also supplied).
     """
+    instance_triples = list(instance_triples or [])
+    gs = _resolve_graph_session(
+        store=store, session=session, instance_graph=instance_graph
+    )
+    if gs is not None:
+        return await _insert_facts_store(
+            gs,
+            instance_graph,
+            instance_triples=instance_triples,
+            facts=facts,
+            run_id=run_id,
+        )
+
+    # --- Neptune SPARQL path (unchanged) ------------------------------------
     if instance_triples:
         for sparql in batched_insert_triples(instance_graph, instance_triples):
             await neptune.update(sparql)
@@ -435,9 +476,6 @@ async def insert_facts(
         for sparql in batched_insert_triples(prov_graph, provenance_triples):
             await neptune.update(sparql)
     if reopen_facts:
-        # Clear any prior closure off each re-opened value's interval node BEFORE
-        # the open-interval triples land, so a resurrected value is genuinely
-        # current again (ONTA-277). Same companion validity graph as below.
         for (s, p, o) in reopen_facts:
             update = reopen_interval_update(instance_graph, s, p, o)
             if update:
@@ -447,15 +485,39 @@ async def insert_facts(
         for sparql in batched_insert_triples(val_graph, validity_triples):
             await neptune.update(sparql)
     if suppression_triples:
-        # Sticky retraction markers → the companion suppression graph, the same
-        # batched routing validity/provenance use (ONTA-279). No reopen ever
-        # touches this graph, so the marker survives interval resurrection.
         sup_graph = suppression_graph_uri(instance_graph)
         for sparql in batched_insert_triples(sup_graph, suppression_triples):
             await neptune.update(sparql)
     if instance_triples:
         await _index_spatiotemporal(instance_graph, instance_triples)
         await _index_semantic(neptune, instance_graph, instance_triples)
+    if run_id is not None:
+        return build_graph_delta(instance_graph, instance_triples, run_id=run_id)
+    return None
+
+
+async def _insert_facts_store(
+    session: "GraphSession",
+    instance_graph: str,
+    *,
+    instance_triples: list[Triple],
+    facts: Optional[Sequence[Fact]],
+    run_id: Optional[str],
+) -> Optional[GraphDelta]:
+    """Property-graph insert path (Memory / Neo4j). Template/native ops only."""
+    from cograph_client.graph import pg_ops
+
+    fact_list: list[Fact] = list(facts) if facts else []
+    if instance_triples:
+        fact_list.extend(triples_to_facts(instance_triples))
+    if fact_list:
+        await pg_ops.apply_facts(
+            session, fact_list, provenance_enabled=_provenance_enabled()
+        )
+    # Secondary indexes still key off graph URI + triple-shaped payloads when
+    # available (best-effort; same as Neptune path).
+    if instance_triples:
+        await _index_spatiotemporal(instance_graph, instance_triples)
     if run_id is not None:
         return build_graph_delta(instance_graph, instance_triples, run_id=run_id)
     return None
@@ -727,60 +789,46 @@ async def delete_facts(
     new_values: Optional[dict[tuple[str, str], str]] = None,
     touched_types: Iterable[str] = (),
     reason: str = "",
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
 ) -> int:
-    """Remove instance triples from the KG — the single removal primitive (ADR 0007).
+    """Remove instance facts from the KG — the single removal primitive (ADR 0007).
 
-    The mirror of :func:`insert_facts`: a fact *leaving* the graph must fan out to
-    the same places an arriving one does (a provenance record here; derived-index
-    eviction via :func:`refresh_after_write`), regardless of which writer produced
-    the removal. Two removal shapes, both **batched with the same discipline as**
-    ``insert_facts`` so a large removal never emits one oversized statement:
+    The mirror of :func:`insert_facts`. Two removal shapes:
 
-    * ``subjects`` — delete EVERY triple whose subject is one of these URIs
-      (whole-entity removal: a normalization orphan sweep, an ER-merge loser, a
-      metadata upsert's clear-before-write).
-    * ``triples`` — delete specific ``(s, p, o)`` triples. An entry whose object
-      is ``None`` is a **predicate-scoped** delete: every object of that
-      ``(s, p)`` is removed — the "clear this attribute before writing the new
-      value" case (an attribute update = delete-old + insert-new), which avoids a
-      fragile literal round-trip on the old value.
+    * ``subjects`` — whole-entity removal (all props + incident rels in scope).
+    * ``triples`` — specific ``(s, p, o)``; object ``None`` = predicate-scoped clear.
 
-    ``new_values`` (ONTA-236 value history): a ``{(subject, predicate): new_value}``
-    map declaring the value each predicate-scoped clear is about to be replaced
-    WITH. When value history is enabled (``COGRAPH_VALUE_HISTORY_ENABLED``), the
-    predicate-scoped delete first reads the CURRENT value of each such ``(s, p)``
-    and, for any genuine change (old ≠ new), records a dated ``old → new`` entry
-    in the companion history graph via the shared batched-insert seam — so "what
-    changed since <date>" is queryable. This is GENERAL: any attribute of any
-    type. A first insert (no prior value) records nothing; an unchanged value
-    records nothing. History recording is best-effort and never fails the delete.
-
-    Writes a ``tombstone`` event to the companion provenance graph
-    (:func:`cograph_client.graph.provenance.build_tombstone_triples`, gated by
-    ``COGRAPH_PROVENANCE_ENABLED`` exactly like assertion provenance) so
-    governance/undo can see removals, not just assertions. Returns the
-    removed-triple count.
+    **Dual-backend:** with ``store`` / ``session`` / ``COGRAPH_GRAPH_BACKEND=neo4j``,
+    uses :mod:`pg_ops` (property-graph). Otherwise Neptune SPARQL (unchanged).
 
     Does NOT itself touch derived secondary indexes: call
-    :func:`refresh_after_write` with ``deleted_subjects`` once per operation so a
-    single housekeeping pass evicts them (batched refresh, not per-delete).
+    :func:`refresh_after_write` with ``deleted_subjects`` once per operation.
     """
     subjects = [s for s in (subjects or []) if s]
     all_triples = list(triples or [])
     concrete = [(s, p, o) for (s, p, o) in all_triples if o is not None and s and p]
     sp_pairs = [(s, p) for (s, p, o) in all_triples if o is None and s and p]
 
+    gs = _resolve_graph_session(
+        store=store, session=session, instance_graph=instance_graph
+    )
+    if gs is not None:
+        return await _delete_facts_store(
+            gs,
+            instance_graph,
+            subjects=subjects,
+            concrete=concrete,
+            sp_pairs=sp_pairs,
+            all_triples=all_triples,
+            reason=reason,
+        )
+
     removed = 0
-    # 1. Concrete-triple deletes (batched DELETE DATA) — exact count.
     if concrete:
         for sparql in batched_delete_triples(instance_graph, concrete):
             await neptune.update(sparql)
         removed += len(concrete)
-    # 2. Predicate-scoped deletes (every object of each (s, p)) — count per chunk.
-    #    Value history (ONTA-236) rides HERE: this is the exact "clear the old
-    #    value before writing the new" step of an attribute update, so it is the
-    #    one place that can see the old value going out and the new value coming
-    #    in — recorded BEFORE the delete removes the old value.
     for chunk in _chunk(sp_pairs, 500):
         if new_values and _value_history_enabled():
             await _record_value_history(neptune, instance_graph, chunk, new_values)
@@ -788,14 +836,12 @@ async def delete_facts(
             neptune, count_subject_predicates_query(instance_graph, chunk)
         )
         await neptune.update(delete_subject_predicates_query(instance_graph, chunk))
-    # 3. Whole-subject deletes — count per chunk.
     for chunk in _chunk(subjects, 500):
         removed += await _count_matching(
             neptune, count_subjects_query(instance_graph, chunk)
         )
         await neptune.update(delete_subjects_query(instance_graph, chunk))
 
-    # 4. Provenance tombstone (gated + best-effort — never fail a write on it).
     if (subjects or all_triples) and _provenance_enabled():
         try:
             prov = build_tombstone_triples(
@@ -810,12 +856,80 @@ async def delete_facts(
                 prov_graph = provenance_graph_uri(instance_graph)
                 for sparql in batched_insert_triples(prov_graph, prov):
                     await neptune.update(sparql)
-        except Exception:  # noqa: BLE001 — provenance is governance metadata, not the write
+        except Exception:  # noqa: BLE001
             logger.warning(
                 "delete_facts_provenance_failed",
                 instance_graph=instance_graph,
                 exc_info=True,
             )
+    return removed
+
+
+async def _delete_facts_store(
+    session: "GraphSession",
+    instance_graph: str,
+    *,
+    subjects: list[str],
+    concrete: list[Triple],
+    sp_pairs: list[tuple[str, str]],
+    all_triples: list,
+    reason: str,
+) -> int:
+    """Property-graph delete path."""
+    from cograph_client.graph import pg_ops
+    from cograph_client.graph.facts import classify_triple
+    from cograph_client.graph.iri import ONTO_PRED_PREFIX
+
+    removed = 0
+    # Concrete (s,p,o) — map to prop/rel deletes.
+    for s, p, o in concrete:
+        fact = classify_triple(s, p, o)
+        if fact is None:
+            continue
+        if fact.kind == "rel":
+            removed += await pg_ops.delete_rels(
+                session, start_id=s, end_id_exact=str(o), attr_leaf=fact.key
+            )
+        elif fact.kind == "literal":
+            removed += await pg_ops.delete_literals(session, s, [fact.key])
+        elif fact.kind == "type":
+            # Domain labels: Wave-1 best-effort — full entity delete covers multi-type cleanup.
+            pass
+
+    # Predicate-scoped clears.
+    for s, p in sp_pairs:
+        leaf = None
+        if p.startswith(ONTO_PRED_PREFIX):
+            leaf = p[len(ONTO_PRED_PREFIX) :]
+            # onto/* could be rel or literal — clear both shapes.
+            removed += await pg_ops.delete_rels(session, start_id=s, attr_leaf=leaf)
+            try:
+                removed += await pg_ops.delete_literals(session, s, [leaf])
+            except GraphScopeError:
+                pass
+        elif "/attrs/" in p:
+            leaf = p.rsplit("/attrs/", 1)[-1]
+            if leaf and "/" not in leaf:
+                removed += await pg_ops.delete_literals(session, s, [leaf])
+        elif p.endswith("label") or p.endswith("#label"):
+            removed += await pg_ops.delete_literals(session, s, ["name"])
+
+    for sid in subjects:
+        removed += await pg_ops.delete_entity(session, sid)
+        if _provenance_enabled():
+            try:
+                await pg_ops.create_prov_event(
+                    session,
+                    event_type="tombstone",
+                    subject_id=sid,
+                    reason=reason,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "delete_facts_store_prov_failed",
+                    instance_graph=instance_graph,
+                    exc_info=True,
+                )
     return removed
 
 
@@ -896,15 +1010,16 @@ async def rewrite_subject(
     *,
     touched_types: Iterable[str] = (),
     reason: str = "",
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
 ) -> None:
     """Rename a subject in place — the single URI-rewrite primitive (ADR 0007).
 
-    Moves every triple referencing ``old_uri`` (as subject AND as object) onto
-    ``new_uri`` in one batched update (``rewrite_subject_update``). Deliberately
-    **not** ``delete_facts`` + ``insert_facts``: a rename is ONE semantic event,
-    so derived indexes re-key (cheap) instead of evict-and-recompute (an embedding
-    recompute per merged entity is the full enrichment-embed cost for zero
-    information gain). Records a ``rewrite`` provenance event (old → new), gated by
+    Moves every fact referencing ``old_uri`` (as subject AND as object/endpoint)
+    onto ``new_uri`` as ONE semantic event — **not** delete+insert — so derived
+    indexes re-key cheaply. Dual-backend: GraphStore path re-keys Entity ``id`` +
+    rel endpoints via :func:`pg_ops.rewrite_entity_id`; Neptune path uses
+    ``rewrite_subject_update``. Provenance rewrite event gated by
     ``COGRAPH_PROVENANCE_ENABLED``.
 
     Does NOT itself touch derived secondary indexes: call
@@ -913,6 +1028,32 @@ async def rewrite_subject(
     """
     if not old_uri or not new_uri or old_uri == new_uri:
         return
+
+    gs = _resolve_graph_session(
+        store=store, session=session, instance_graph=instance_graph
+    )
+    if gs is not None:
+        from cograph_client.graph import pg_ops
+
+        await pg_ops.rewrite_entity_id(gs, old_uri, new_uri)
+        if _provenance_enabled():
+            try:
+                await pg_ops.create_prov_event(
+                    gs,
+                    event_type="rewrite",
+                    subject_id=new_uri,
+                    old_id=old_uri,
+                    new_id=new_uri,
+                    reason=reason,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "rewrite_subject_store_prov_failed",
+                    instance_graph=instance_graph,
+                    exc_info=True,
+                )
+        return
+
     await neptune.update(rewrite_subject_update(instance_graph, old_uri, new_uri))
     if _provenance_enabled():
         try:
@@ -927,7 +1068,7 @@ async def rewrite_subject(
             prov_graph = provenance_graph_uri(instance_graph)
             for sparql in batched_insert_triples(prov_graph, prov):
                 await neptune.update(sparql)
-        except Exception:  # noqa: BLE001 — provenance is governance metadata, not the write
+        except Exception:  # noqa: BLE001
             logger.warning(
                 "rewrite_subject_provenance_failed",
                 instance_graph=instance_graph,
@@ -989,6 +1130,8 @@ async def refresh_after_write(
     recompute_stats: bool = True,
     deleted_subjects: Iterable[str] = (),
     rewritten_subjects: Optional[dict[str, str]] = None,
+    store: Optional["GraphStore"] = None,
+    session: Optional["GraphSession"] = None,
 ) -> None:
     """Post-write housekeeping shared by ingest + enrichment + removals (ADR 0007).
 
@@ -1063,14 +1206,15 @@ async def refresh_after_write(
 
     # 3. Register the KG in the tenant metadata graph (idempotent, best-effort)
     #    so non-UI writers don't leave it invisible to list_kgs (ONTA-153).
-    if kg_name:
+    #    Neptune SPARQL path only — Neo4j KG registry is deferred (model B7 / E4).
+    if kg_name and neptune is not None and graph_backend() != "neo4j" and store is None and session is None:
         await ensure_kg_registered(neptune, tenant_id, kg_name)
 
     # 4. Drop the stored triple count so list_kgs recomputes on next read.
     #    Must run on every successful instance write (not only Explorer recompute):
     #    a stored 0 from listing an empty KG otherwise sticks after ingest.
     #    Lazy import avoids an import cycle with api.routes.knowledge_graphs.
-    if kg_name:
+    if kg_name and neptune is not None:
         try:
             from cograph_client.api.routes.knowledge_graphs import (
                 invalidate_triple_count,
@@ -1085,7 +1229,7 @@ async def refresh_after_write(
             )
 
     # 5. Explorer type-stats recompute (background, best-effort).
-    if recompute_stats and kg_name:
+    if recompute_stats and kg_name and neptune is not None:
         try:
             from cograph_client.api.routes.explore import schedule_recompute
 
