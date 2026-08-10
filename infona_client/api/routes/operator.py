@@ -24,7 +24,7 @@ from infona_client.pipeline.stage_trace import JobStageTrace, resolve_trace
 def require_operator(
     tenant: TenantContext = Depends(get_tenant),
 ) -> TenantContext:
-    """Fail closed unless the authenticated identity is an ONTA operator."""
+    """Fail closed unless the authenticated identity is an Infona operator."""
     if not tenant.is_operator:
         raise HTTPException(status_code=403, detail="operator only")
     return tenant
