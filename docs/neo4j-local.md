@@ -201,32 +201,32 @@ export COGRAPH_GRAPH_BACKEND=neo4j
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_USER=neo4j
 export NEO4J_PASSWORD=onta-dev-password
-# optional: OPENROUTER_API_KEY for full LLM Cypher; without it, only the
-# deterministic "count entities of type X" stub answers.
+# optional: OPENROUTER_API_KEY for full LLM Cypher; without it, hermetic
+# deterministic fixtures answer count / list / property-eq / 1-hop.
 ```
 
 Or per call: `pipeline.ask(..., use_cypher=True)` with an injected
 `graph_store=` (tests use `MemoryGraphStore`).
 
-**What ships in foundation:**
+**What ships (E6 quality beyond count stub):**
 
 | Piece | Module |
 |-------|--------|
-| Cypher system + user prompts | `nlp/prompts.py` (`CYPHER_GENERATION_SYSTEM`) |
+| Cypher system + user prompts (+ retry feedback) | `nlp/prompts.py` (`CYPHER_GENERATION_SYSTEM`) |
 | Scope inject / reject / scrub | `nlp/cypher_scope.py` |
-| Count stub + bindings helper | `nlp/cypher_generate.py` |
+| Deterministic fixtures + bindings + catalog ontology text | `nlp/cypher_generate.py` |
 | Example bank optional `cypher` field | `nlp/example_bank.py` |
-| Pipeline branch | `nlp/pipeline.py` (`_ask_cypher`) |
+| Pipeline branch (catalog ontology, template prefer, 1× retry) | `nlp/pipeline.py` (`_ask_cypher`) |
+| Allowlisted NL templates | `entity_count_*`, `entity_list_by_type_page`, `entity_filter_prop_eq`, `entity_1hop_out` |
 
 Generated Cypher is confined before run: read-only, `$tenant_id`/`$kg` required
 (or bare `(e:Entity)` repaired), session **overwrites** model-supplied
-tenant/kg params. Prefer templates for the count stub (`entity_count_by_type` /
-`entity_count_total`); free-form uses parameterized `execute_read` only.
+tenant/kg params. Prefer allowlisted templates when the fixture (or LLM payload)
+names one; free-form uses parameterized `execute_read` only. Ontology for Cypher
+prefers `ontology_catalog.schema_types_for_kg` when a GraphStore is present.
 
-**Not yet (remaining E6):** full NL quality (joins, filters, aggregations,
-retries, enum recovery, ontology summary from GraphStore catalog, eval
-rebaseline, SPARQL example conversion).
-
+**Not yet (remaining E6):** multi-hop joins, aggregations beyond count, enum
+recovery, eval rebaseline, SPARQL example→Cypher conversion, richer NL coverage.
 ## Tests
 
 ```bash

@@ -247,14 +247,24 @@ def build_cypher_generation_prompt(
     tenant_id: str = "",
     kg_name: str = "",
     examples_text: str = "",
+    error_feedback: str = "",
 ) -> str:
     """Build the user prompt for Cypher generation (Neo4j backend).
 
     Scope values are named only to orient the model; the generator must still
     emit ``$tenant_id`` / ``$kg`` parameters — the session overwrites any
     values. Never instruct the model to embed the real ids as Cypher literals.
+
+    ``error_feedback`` is optional scrubbed store/generator error text for a
+    single retry (mirrors SPARQL retry spirit).
     """
     examples_section = f"\n{examples_text}\n" if examples_text else ""
+    error_section = ""
+    if error_feedback:
+        error_section = (
+            "\nPrevious Cypher attempt failed. Fix the query based on this "
+            f"error (do not invent scope values):\n{error_feedback}\n"
+        )
     scope_line = ""
     if tenant_id or kg_name:
         scope_line = (
@@ -275,7 +285,7 @@ def build_cypher_generation_prompt(
     )
     return f"""{kg_header}Ontology schema:
 {ontology_summary}{scope_line}
-{examples_section}
+{examples_section}{error_section}
 User question: {question}
 
 Generate a read-only Cypher query to answer this question. Scope every MATCH with \
