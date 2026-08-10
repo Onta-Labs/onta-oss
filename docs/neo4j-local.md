@@ -189,12 +189,18 @@ the Neptune path. Full explore/admin rewrite is E9.
 
 Hermetic tests: `tests/test_rails_graph_store_write.py` (MemoryGraphStore).
 
-## NL → Cypher /ask (E6 foundation)
+## NL → Cypher /ask (ADR 0013 semantic helpers)
 
 When `COGRAPH_GRAPH_BACKEND=neo4j`, `POST /graphs/{tenant}/ask` (and
-`NLQueryPipeline.ask`) generate **Cypher** instead of SPARQL and execute via
-GraphStore. Default remains Neptune SPARQL when the env var is unset or
-`neptune`.
+`NLQueryPipeline.ask`) generate **Cypher over the RDF-semantic model** instead
+of SPARQL and execute via GraphStore. **Default remains Neptune SPARQL** when
+the env var is unset or `neptune`.
+
+**Quality bar:** answers are measured by the **golden-query suite** (expected
+answer sets vs gold) — **not** by SPARQL string match or SPARQL↔Cypher text
+equivalence. See parent-repo `docs/plans/neo4j-golden-queries.md` and ADR 0013.
+Do **not** build SPARQL→Cypher translators; fixtures and the LLM compose
+allowlisted semantic helpers.
 
 ```bash
 export COGRAPH_GRAPH_BACKEND=neo4j
@@ -208,25 +214,30 @@ export NEO4J_PASSWORD=onta-dev-password
 Or per call: `pipeline.ask(..., use_cypher=True)` with an injected
 `graph_store=` (tests use `MemoryGraphStore`).
 
-**What ships (E6 quality beyond count stub):**
+**What ships:**
 
 | Piece | Module |
 |-------|--------|
-| Cypher system + user prompts (+ retry feedback) | `nlp/prompts.py` (`CYPHER_GENERATION_SYSTEM`) |
+| Cypher system + user prompts (Assertion model + helpers) | `nlp/prompts.py` (`CYPHER_GENERATION_SYSTEM`) |
 | Scope inject / reject / scrub | `nlp/cypher_scope.py` |
-| Deterministic fixtures + bindings + catalog ontology text | `nlp/cypher_generate.py` |
+| Deterministic fixtures → semantic templates | `nlp/cypher_generate.py` |
+| Semantic helper templates + subclass closure | `graph/rdfs_helpers.py` |
+| Template registry | `graph/schema_bootstrap.py` |
 | Example bank optional `cypher` field | `nlp/example_bank.py` |
 | Pipeline branch (catalog ontology, template prefer, 1× retry) | `nlp/pipeline.py` (`_ask_cypher`) |
-| Allowlisted NL templates | `entity_count_*`, `entity_list_by_type_page`, `entity_filter_prop_eq`, `entity_1hop_out` |
+| Allowlisted NL semantic templates | `entities_of_type`, `entities_of_type_count`, `literal_values`, `related_entities`, `assertions_for_subject`, `subclass_of_closure` |
+| Explore legacy templates (still registered) | `entity_count_*`, `entity_list_by_type_page`, … |
 
 Generated Cypher is confined before run: read-only, `$tenant_id`/`$kg` required
 (or bare `(e:Entity)` repaired), session **overwrites** model-supplied
-tenant/kg params. Prefer allowlisted templates when the fixture (or LLM payload)
-names one; free-form uses parameterized `execute_read` only. Ontology for Cypher
-prefers `ontology_catalog.schema_types_for_kg` when a GraphStore is present.
+tenant/kg params. Prefer allowlisted **semantic** templates when the fixture
+(or LLM payload) names one; free-form uses parameterized `execute_read` only.
+Ontology for Cypher prefers `ontology_catalog.schema_types_for_kg` when a
+GraphStore is present. Type fixtures expand subclass closure into `$type_names`
+when the ontology summary carries `parent:` lines.
 
-**Not yet (remaining E6):** multi-hop joins, aggregations beyond count, enum
-recovery, eval rebaseline, SPARQL example→Cypher conversion, richer NL coverage.
+**Not yet:** multi-hop joins, full Assertion SoT dual-write in writers, enum
+recovery, eval rebaseline against golden suite CI, richer NL coverage.
 ## Tests
 
 ```bash

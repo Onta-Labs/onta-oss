@@ -1,0 +1,6 @@
+{
+  "rows": [{ "count": 3 }],
+  "compare": "set",
+  "columns": ["count"],
+  "notes": "Alice, Bob, Dana (Employee ⊏ Person)"
+}

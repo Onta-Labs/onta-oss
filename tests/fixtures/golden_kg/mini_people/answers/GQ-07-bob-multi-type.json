@@ -1,0 +1,8 @@
+{
+  "rows": [
+    { "type_name": "Employee" },
+    { "type_name": "Person" }
+  ],
+  "compare": "set",
+  "columns": ["type_name"]
+}

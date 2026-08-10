@@ -1,7 +1,11 @@
-"""Idempotent Neo4j constraints + indexes (property-graph model §7).
+"""Idempotent Neo4j constraints + indexes (ADR 0013 RDF-semantic model).
 
 Apply once per database before instance writes that rely on uniqueness (G7).
 Statement names are stable so re-runs are no-ops via ``IF NOT EXISTS``.
+
+**ADR 0013 labels:** ``Entity``, ``Class``, ``Property``, ``Assertion`` with
+unique ``(tenant_id, kg, id)``. Legacy ``OntoType`` / ``OntoAttr`` catalog
+constraints remain for E4 readers until catalog fully maps onto Class/Property.
 
 Callable from tests and process startup via :meth:`GraphStore.bootstrap_schema`
 or :func:`bootstrap_schema_statements` for inspection / alternate drivers.
@@ -17,15 +21,40 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from cograph_client.graph.rdfs_helpers import (
+    ASSERTIONS_FOR_SUBJECT_CYPHER,
+    ENTITIES_OF_TYPE_COUNT_CYPHER,
+    ENTITIES_OF_TYPE_CYPHER,
+    LITERAL_VALUES_CYPHER,
+    RELATED_ENTITIES_CYPHER,
+    SUBCLASS_OF_CLOSURE_CYPHER,
+)
+
 # (name, cypher) — name is returned by bootstrap for logging / tests.
 # Cypher uses Neo4j 5 IF NOT EXISTS so Community + Aura both accept it.
 SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
-    # --- Uniqueness / existence (model §7.1) ---
+    # --- Uniqueness (ADR 0013 §12) ---
     (
         "entity_tenant_kg_id_unique",
         "CREATE CONSTRAINT entity_tenant_kg_id_unique IF NOT EXISTS "
         "FOR (e:Entity) REQUIRE (e.tenant_id, e.kg, e.id) IS UNIQUE",
     ),
+    (
+        "class_tenant_kg_id_unique",
+        "CREATE CONSTRAINT class_tenant_kg_id_unique IF NOT EXISTS "
+        "FOR (c:Class) REQUIRE (c.tenant_id, c.kg, c.id) IS UNIQUE",
+    ),
+    (
+        "property_tenant_kg_id_unique",
+        "CREATE CONSTRAINT property_tenant_kg_id_unique IF NOT EXISTS "
+        "FOR (p:Property) REQUIRE (p.tenant_id, p.kg, p.id) IS UNIQUE",
+    ),
+    (
+        "assertion_tenant_kg_id_unique",
+        "CREATE CONSTRAINT assertion_tenant_kg_id_unique IF NOT EXISTS "
+        "FOR (a:Assertion) REQUIRE (a.tenant_id, a.kg, a.id) IS UNIQUE",
+    ),
+    # --- Legacy catalog (E4) ---
     (
         "onto_type_scope_unique",
         "CREATE CONSTRAINT onto_type_scope_unique IF NOT EXISTS "
@@ -36,7 +65,7 @@ SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
         "CREATE CONSTRAINT onto_attr_scope_unique IF NOT EXISTS "
         "FOR (a:OntoAttr) REQUIRE (a.tenant_id, a.kg, a.layer, a.domain, a.name) IS UNIQUE",
     ),
-    # --- Property indexes (model §7.2) ---
+    # --- Indexes ---
     (
         "entity_tenant_kg_primary_type",
         "CREATE INDEX entity_tenant_kg_primary_type IF NOT EXISTS "
@@ -51,6 +80,31 @@ SCHEMA_STATEMENTS: tuple[tuple[str, str], ...] = (
         "entity_tenant_kg_source",
         "CREATE INDEX entity_tenant_kg_source IF NOT EXISTS "
         "FOR (e:Entity) ON (e.tenant_id, e.kg, e.source)",
+    ),
+    (
+        "assertion_subject_lookup",
+        "CREATE INDEX assertion_subject_lookup IF NOT EXISTS "
+        "FOR (a:Assertion) ON (a.tenant_id, a.kg, a.subject_id)",
+    ),
+    (
+        "assertion_property_lookup",
+        "CREATE INDEX assertion_property_lookup IF NOT EXISTS "
+        "FOR (a:Assertion) ON (a.tenant_id, a.kg, a.property_id)",
+    ),
+    (
+        "assertion_object_lookup",
+        "CREATE INDEX assertion_object_lookup IF NOT EXISTS "
+        "FOR (a:Assertion) ON (a.tenant_id, a.kg, a.object_id)",
+    ),
+    (
+        "class_name_lookup",
+        "CREATE INDEX class_name_lookup IF NOT EXISTS "
+        "FOR (c:Class) ON (c.tenant_id, c.kg, c.name)",
+    ),
+    (
+        "property_name_lookup",
+        "CREATE INDEX property_name_lookup IF NOT EXISTS "
+        "FOR (p:Property) ON (p.tenant_id, p.kg, p.name)",
     ),
     (
         "attr_citation_lookup",
@@ -295,6 +349,11 @@ ORDER BY a.id, b.id
 LIMIT $limit
 """.strip()
 
+# --- ADR 0013 semantic helpers (rdfs_helpers) --------------------------------
+# Prefer these names for NL fixtures and new app code. Wave‑1 explore paths
+# may still use entity_* templates above; both are allowlisted.
+# Cypher strings are imported at module top from rdfs_helpers.
+
 
 @dataclass(frozen=True, slots=True)
 class CypherTemplate:
@@ -406,6 +465,37 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "entity_1hop_out": CypherTemplate(
         name="entity_1hop_out",
         cypher=ENTITY_1HOP_OUT_CYPHER,
+        writing=False,
+    ),
+    # ADR 0013 semantic helper names (compose these from NL / app code)
+    "entities_of_type": CypherTemplate(
+        name="entities_of_type",
+        cypher=ENTITIES_OF_TYPE_CYPHER,
+        writing=False,
+    ),
+    "entities_of_type_count": CypherTemplate(
+        name="entities_of_type_count",
+        cypher=ENTITIES_OF_TYPE_COUNT_CYPHER,
+        writing=False,
+    ),
+    "literal_values": CypherTemplate(
+        name="literal_values",
+        cypher=LITERAL_VALUES_CYPHER,
+        writing=False,
+    ),
+    "related_entities": CypherTemplate(
+        name="related_entities",
+        cypher=RELATED_ENTITIES_CYPHER,
+        writing=False,
+    ),
+    "assertions_for_subject": CypherTemplate(
+        name="assertions_for_subject",
+        cypher=ASSERTIONS_FOR_SUBJECT_CYPHER,
+        writing=False,
+    ),
+    "subclass_of_closure": CypherTemplate(
+        name="subclass_of_closure",
+        cypher=SUBCLASS_OF_CLOSURE_CYPHER,
         writing=False,
     ),
 }

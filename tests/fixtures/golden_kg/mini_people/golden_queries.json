@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "fixture": "mini_people",
+  "description": "ADR 0013 golden queries — compare helper answers, not SPARQL/Cypher text",
+  "queries": [
+    {
+      "id": "GQ-01-count-person-exact",
+      "category": "GQ-01",
+      "nl": "How many entities have asserted type Person (exact, no subclasses)?",
+      "structured": {
+        "helper": "count_entities_of_type",
+        "class": "Person",
+        "include_subclasses": false
+      },
+      "gold": "answers/GQ-01-count-person-exact.json",
+      "columns": ["count"]
+    },
+    {
+      "id": "GQ-02-count-person-with-subclasses",
+      "category": "GQ-02",
+      "nl": "How many Persons including subtypes (Employee)?",
+      "structured": {
+        "helper": "count_entities_of_type",
+        "class": "Person",
+        "include_subclasses": true
+      },
+      "gold": "answers/GQ-02-count-person-with-subclasses.json",
+      "columns": ["count"]
+    },
+    {
+      "id": "GQ-03-alice-birth-year",
+      "category": "GQ-03",
+      "nl": "What is Alice's birth year?",
+      "structured": {
+        "helper": "assertions_for_subject",
+        "subject_name": "Alice",
+        "property": "birth_year",
+        "project": "literal_value"
+      },
+      "gold": "answers/GQ-03-alice-birth-year.json",
+      "columns": ["entity_id", "value"]
+    },
+    {
+      "id": "GQ-04-alice-works-at",
+      "category": "GQ-04",
+      "nl": "Where does Alice work?",
+      "structured": {
+        "helper": "assertions_for_subject",
+        "subject_name": "Alice",
+        "property": "works_at",
+        "project": "object_id"
+      },
+      "gold": "answers/GQ-04-alice-works-at.json",
+      "columns": ["subject_id", "object_id"]
+    },
+    {
+      "id": "GQ-05-who-works-at-acme",
+      "category": "GQ-05",
+      "nl": "Who works at Acme?",
+      "structured": {
+        "helper": "reverse_object_assertions",
+        "object_name": "Acme",
+        "property": "works_at",
+        "project": "subject_id"
+      },
+      "gold": "answers/GQ-05-who-works-at-acme.json",
+      "columns": ["subject_id"]
+    },
+    {
+      "id": "GQ-06-alice-email-provenance",
+      "category": "GQ-06",
+      "nl": "Source URL for Alice's personal email fact",
+      "structured": {
+        "helper": "fact_provenance",
+        "subject_name": "Alice",
+        "property": "email",
+        "value": "alice@example.com"
+      },
+      "gold": "answers/GQ-06-alice-email-provenance.json",
+      "columns": ["subject_id", "property", "value", "source_url", "verified_at"]
+    },
+    {
+      "id": "GQ-07-bob-multi-type",
+      "category": "GQ-07",
+      "nl": "What types does Bob have?",
+      "structured": {
+        "helper": "asserted_types",
+        "subject_name": "Bob",
+        "project": "type_name"
+      },
+      "gold": "answers/GQ-07-bob-multi-type.json",
+      "columns": ["type_name"]
+    },
+    {
+      "id": "GQ-08-alice-emails-multi",
+      "category": "GQ-08",
+      "nl": "All emails for Alice",
+      "structured": {
+        "helper": "assertions_for_subject",
+        "subject_name": "Alice",
+        "property": "email",
+        "project": "values"
+      },
+      "gold": "answers/GQ-08-alice-emails-multi.json",
+      "columns": ["value"]
+    },
+    {
+      "id": "GQ-10-employee-parent-classes",
+      "category": "GQ-10",
+      "nl": "Parent classes of Employee",
+      "structured": {
+        "helper": "parent_classes",
+        "class": "Employee",
+        "transitive": true,
+        "project": "type_name"
+      },
+      "gold": "answers/GQ-10-employee-parent-classes.json",
+      "columns": ["type_name"]
+    },
+    {
+      "id": "GQ-11-isolation-wrong-kg",
+      "category": "GQ-11",
+      "nl": "Alice birth year under sibling empty kg (must be empty)",
+      "structured": {
+        "helper": "assertions_for_subject",
+        "subject_name": "Alice",
+        "property": "birth_year",
+        "project": "literal_value",
+        "scope_kg": "$sibling_kg"
+      },
+      "gold": "answers/GQ-11-isolation-wrong-kg.json",
+      "columns": ["entity_id", "value"]
+    },
+    {
+      "id": "GQ-12-type-via-subclass-only",
+      "category": "GQ-12",
+      "nl": "Entities that are Person only via subclass (Employee) — Dana",
+      "structured": {
+        "helper": "entities_of_type",
+        "class": "Person",
+        "include_subclasses": true,
+        "project": "entity_id"
+      },
+      "gold": "answers/GQ-12-person-closure-entities.json",
+      "columns": ["entity_id"]
+    },
+    {
+      "id": "GQ-12b-persons-born-after-1990",
+      "category": "GQ-12",
+      "nl": "Persons (incl. subtypes) born after 1990",
+      "structured": {
+        "helper": "entities_with_literal_filter",
+        "class": "Person",
+        "property": "birth_year",
+        "op": ">",
+        "value": 1990,
+        "include_subclasses": true,
+        "project": "entity_id"
+      },
+      "gold": "answers/GQ-12b-persons-born-after-1990.json",
+      "columns": ["entity_id"]
+    }
+  ]
+}

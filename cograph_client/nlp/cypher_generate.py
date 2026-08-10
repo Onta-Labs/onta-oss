@@ -2,20 +2,23 @@
 
 Provides:
 
-1. **Deterministic fixtures** (hermetic, no LLM) for common NL shapes:
-   - count by type / total
-   - list entities of a type with LIMIT
-   - filter by property equality
-   - simple 1-hop relationship traversal
-2. Helpers to turn GraphStore records into the SPARQL-style binding shape
-   the answer formatter already understands.
+1. **Deterministic fixtures** (hermetic, no LLM) for common NL shapes.
+   Fixtures compose **ADR 0013 semantic helper templates**
+   (``entities_of_type``, ``literal_values``, ``related_entities``, …) — they
+   do **not** translate SPARQL strings to Cypher.
+2. Helpers to turn GraphStore records into the binding shape the answer
+   formatter already understands (answer-set quality; not SPARQL match).
 3. Ontology text formatting from :func:`ontology_catalog.schema_types_for_kg`
    summaries (when a store is present).
 
 When ``COGRAPH_GRAPH_BACKEND=neo4j``, the pipeline tries fixtures first, then
 falls back to the LLM Cypher prompt path if API keys exist. Fixtures prefer
-allowlisted templates (``template`` key on the payload) so Memory and Neo4j
-both execute without free-form Cypher.
+allowlisted semantic templates so Memory and Neo4j both execute without
+free-form Cypher. Neptune SPARQL remains the default when backend != neo4j.
+
+Answer quality is measured by the golden-query suite (expected answer sets),
+not by query-text equivalence with SPARQL — see
+``docs/plans/neo4j-golden-queries.md``.
 """
 
 from __future__ import annotations
@@ -23,6 +26,17 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping, Sequence
 
+from cograph_client.graph.rdfs_helpers import (
+    ENTITIES_OF_TYPE_COUNT_CYPHER,
+    ENTITIES_OF_TYPE_CYPHER,
+    LITERAL_VALUES_CYPHER,
+    RELATED_ENTITIES_CYPHER,
+    TEMPLATE_ENTITIES_OF_TYPE,
+    TEMPLATE_ENTITIES_OF_TYPE_COUNT,
+    TEMPLATE_LITERAL_VALUES,
+    TEMPLATE_RELATED_ENTITIES,
+    type_names_with_subclasses,
+)
 from cograph_client.graph.store import GraphRecord
 
 # ---------------------------------------------------------------------------
@@ -143,59 +157,27 @@ def resolve_type_name(
 
 
 # ---------------------------------------------------------------------------
-# Canonical Cypher (matches allowlisted templates in schema_bootstrap)
+# Canonical Cypher — ADR 0013 semantic helpers (rdfs_helpers / schema_bootstrap)
 # ---------------------------------------------------------------------------
 
-COUNT_BY_TYPE_CYPHER = (
-    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-    "WHERE e.primary_type = $primary_type "
-    "RETURN count(*) AS n"
-)
-
+# Back-compat aliases (string shape for older imports / free-form fallbacks).
+COUNT_BY_TYPE_CYPHER = ENTITIES_OF_TYPE_COUNT_CYPHER
 COUNT_TOTAL_CYPHER = (
     "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
     "RETURN count(*) AS n"
 )
-
-LIST_BY_TYPE_CYPHER = (
-    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-    "WHERE e.primary_type = $primary_type "
-    "AND ($after_id IS NULL OR e.id > $after_id) "
-    "RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg, "
-    "e.primary_type AS primary_type, e.name AS name, e.source AS source "
-    "ORDER BY e.id "
-    "LIMIT $limit"
-)
-
-FILTER_PROP_EQ_CYPHER = (
-    "MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg}) "
-    "WHERE e.primary_type = $primary_type "
-    "AND e[$prop_key] = $prop_value "
-    "RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type "
-    "ORDER BY e.id "
-    "LIMIT $limit"
-)
-
-HOP_OUT_CYPHER = (
-    "MATCH (a:Entity {tenant_id: $tenant_id, kg: $kg})"
-    "-[r]->(b:Entity {tenant_id: $tenant_id, kg: $kg}) "
-    "WHERE a.primary_type = $from_type "
-    "AND r.tenant_id = $tenant_id AND r.kg = $kg "
-    "AND ($to_type IS NULL OR b.primary_type = $to_type) "
-    "AND ($rel_attr IS NULL OR r.attr = $rel_attr OR type(r) = $rel_attr) "
-    "RETURN a.id AS from_id, a.name AS from_name, a.primary_type AS from_type, "
-    "b.id AS to_id, b.name AS to_name, b.primary_type AS to_type, "
-    "type(r) AS rel_type, coalesce(r.attr, type(r)) AS attr "
-    "ORDER BY a.id, b.id "
-    "LIMIT $limit"
-)
+LIST_BY_TYPE_CYPHER = ENTITIES_OF_TYPE_CYPHER
+FILTER_PROP_EQ_CYPHER = LITERAL_VALUES_CYPHER
+HOP_OUT_CYPHER = RELATED_ENTITIES_CYPHER
 
 # Template names preferred by the pipeline when the fixture matches.
-TEMPLATE_COUNT_BY_TYPE = "entity_count_by_type"
+# Primary names are ADR 0013 semantic helpers; legacy entity_* names remain
+# registered in schema_bootstrap for explore_store.
+TEMPLATE_COUNT_BY_TYPE = TEMPLATE_ENTITIES_OF_TYPE_COUNT
 TEMPLATE_COUNT_TOTAL = "entity_count_total"
-TEMPLATE_LIST_BY_TYPE = "entity_list_by_type_page"
-TEMPLATE_FILTER_PROP_EQ = "entity_filter_prop_eq"
-TEMPLATE_HOP_OUT = "entity_1hop_out"
+TEMPLATE_LIST_BY_TYPE = TEMPLATE_ENTITIES_OF_TYPE
+TEMPLATE_FILTER_PROP_EQ = TEMPLATE_LITERAL_VALUES
+TEMPLATE_HOP_OUT = TEMPLATE_RELATED_ENTITIES
 
 
 # ---------------------------------------------------------------------------
@@ -331,10 +313,17 @@ def try_stub_count_query(
     if matched is None:
         return None
 
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
     return _fixture(
         cypher=COUNT_BY_TYPE_CYPHER,
-        params={"primary_type": matched},
-        explanation=f"Count entities whose primary_type is {matched}.",
+        params={"type_names": expanded},
+        explanation=(
+            f"Count entities of type {matched}"
+            + (" (incl. subclasses)" if len(expanded) > 1 else "")
+            + " via entities_of_type_count."
+        ),
         template=TEMPLATE_COUNT_BY_TYPE,
     )
 
@@ -363,14 +352,19 @@ def try_list_query(
     matched = resolve_type_name(label, type_names, ontology_summary)
     if matched is None:
         return None
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
     return _fixture(
         cypher=LIST_BY_TYPE_CYPHER,
         params={
-            "primary_type": matched,
+            "type_names": expanded,
             "after_id": None,
             "limit": limit,
         },
-        explanation=f"List up to {limit} entities of type {matched}.",
+        explanation=(
+            f"List up to {limit} entities of type {matched} via entities_of_type."
+        ),
         template=TEMPLATE_LIST_BY_TYPE,
     )
 
@@ -410,16 +404,20 @@ def try_filter_query(
     else:
         prop_key = prop  # keep original case for custom attrs (status, isbn, …)
 
+    expanded = type_names_with_subclasses(
+        matched, ontology_summary=ontology_summary, include_subclasses=True
+    )
     return _fixture(
         cypher=FILTER_PROP_EQ_CYPHER,
         params={
-            "primary_type": matched,
+            "type_names": expanded,
             "prop_key": prop_key,
             "prop_value": value,
             "limit": DEFAULT_LIST_LIMIT,
         },
         explanation=(
-            f"Find {matched} entities where {prop_key} equals {value!r}."
+            f"Find {matched} entities where {prop_key} equals {value!r} "
+            f"via literal_values."
         ),
         template=TEMPLATE_FILTER_PROP_EQ,
     )
@@ -466,15 +464,21 @@ def try_hop_query(
         # Ambiguous self-hop without a rel name — skip fixture.
         return None
 
+    from_types = type_names_with_subclasses(
+        from_type, ontology_summary=ontology_summary, include_subclasses=True
+    )
+    to_types = type_names_with_subclasses(
+        to_type, ontology_summary=ontology_summary, include_subclasses=True
+    )
     params: dict[str, Any] = {
-        "from_type": from_type,
-        "to_type": to_type,
+        "from_types": from_types,
+        "to_types": to_types,
         "rel_attr": rel_attr,
         "limit": DEFAULT_LIST_LIMIT,
     }
-    expl = f"1-hop relationships from {from_type} to {to_type}"
+    expl = f"1-hop relationships from {from_type} to {to_type} via related_entities"
     if rel_attr:
-        expl += f" via {rel_attr}"
+        expl += f" (attr={rel_attr})"
     return _fixture(
         cypher=HOP_OUT_CYPHER,
         params=params,
