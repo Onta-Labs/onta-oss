@@ -425,6 +425,24 @@ class Neo4jGraphSession:
             {"old_id": old_id, "new_id": new_id},
         )
         await self._rebind_prov_subject_ids(old_id, new_id)
+        # Rebind AttrCitation ownership onto survivor.
+        await self.execute_write(
+            "MATCH (old:Entity {tenant_id: $tenant_id, kg: $kg, id: $old_id})"
+            "-[hc:HAS_CITATION]->(c:AttrCitation {tenant_id: $tenant_id, kg: $kg})\n"
+            "MATCH (neu:Entity {tenant_id: $tenant_id, kg: $kg, id: $new_id})\n"
+            "SET c.entity_id = $new_id\n"
+            "MERGE (neu)-[:HAS_CITATION]->(c)\n"
+            "DELETE hc\n"
+            "RETURN c.entity_id AS entity_id",
+            {"old_id": old_id, "new_id": new_id},
+        )
+        await self.execute_write(
+            "MATCH (c:AttrCitation {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE c.entity_id = $old_id\n"
+            "SET c.entity_id = $new_id\n"
+            "RETURN count(c) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
 
         # Survivor wins on conflict; fill gaps from loser (display props).
         await self.execute_write(
@@ -453,6 +471,14 @@ class Neo4jGraphSession:
             "RETURN count(p) AS n",
             {"old_id": old_id, "new_id": new_id},
         )
+        # Free-id path: AttrCitation.entity_id must track the re-key too.
+        await self.execute_write(
+            "MATCH (c:AttrCitation {tenant_id: $tenant_id, kg: $kg})\n"
+            "WHERE c.entity_id = $old_id\n"
+            "SET c.entity_id = $new_id\n"
+            "RETURN count(c) AS n",
+            {"old_id": old_id, "new_id": new_id},
+        )
 
     async def write_prov_event(
         self,
@@ -465,18 +491,24 @@ class Neo4jGraphSession:
         new_id: str | None = None,
         reason: str = "",
         source: str | None = None,
+        fact_hash: str | None = None,
         ts: str | None = None,
     ) -> None:
+        # OPTIONAL MATCH so tombstones never re-MERGE a deleted Entity; ABOUT
+        # is created only when the subject still exists (subject_id is durable).
         cypher = (
-            "MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $subject_id})\n"
+            "OPTIONAL MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $subject_id})\n"
             "CREATE (p:ProvEvent {\n"
             "  tenant_id: $tenant_id, kg: $kg,\n"
             "  event_type: $event_type, subject_id: $subject_id,\n"
             "  attr: $attr, object_repr: $object_repr,\n"
             "  old_id: $old_id, new_id: $new_id,\n"
-            "  reason: $reason, source: $source, ts: $ts\n"
+            "  reason: $reason, source: $source,\n"
+            "  fact_hash: $fact_hash, ts: $ts\n"
             "})\n"
-            "CREATE (p)-[:ABOUT]->(e)\n"
+            "FOREACH (_ IN CASE WHEN e IS NULL THEN [] ELSE [1] END |\n"
+            "  CREATE (p)-[:ABOUT]->(e)\n"
+            ")\n"
             "RETURN p.subject_id AS subject_id"
         )
         await self.execute_write(
@@ -490,7 +522,48 @@ class Neo4jGraphSession:
                 "new_id": new_id,
                 "reason": reason,
                 "source": source,
+                "fact_hash": fact_hash,
                 "ts": ts,
+            },
+        )
+
+    async def write_attr_citation(
+        self,
+        *,
+        entity_id: str,
+        attr: str,
+        source_url: str | None = None,
+        provenance: str | None = None,
+        verified_at: str | None = None,
+        value_hash: str = "",
+    ) -> None:
+        """MERGE ``:AttrCitation`` + ``HAS_CITATION`` (model §4.2)."""
+        cypher = (
+            "MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $entity_id})\n"
+            "MERGE (c:AttrCitation {\n"
+            "  tenant_id: $tenant_id, kg: $kg,\n"
+            "  entity_id: $entity_id, attr: $attr, value_hash: $value_hash\n"
+            "})\n"
+            "ON CREATE SET\n"
+            "  c.source_url = $source_url,\n"
+            "  c.provenance = $provenance,\n"
+            "  c.verified_at = $verified_at\n"
+            "ON MATCH SET\n"
+            "  c.source_url = coalesce($source_url, c.source_url),\n"
+            "  c.provenance = coalesce($provenance, c.provenance),\n"
+            "  c.verified_at = coalesce($verified_at, c.verified_at)\n"
+            "MERGE (e)-[:HAS_CITATION]->(c)\n"
+            "RETURN c.entity_id AS entity_id, c.attr AS attr"
+        )
+        await self.execute_write(
+            cypher,
+            {
+                "entity_id": entity_id,
+                "attr": attr,
+                "source_url": source_url,
+                "provenance": provenance,
+                "verified_at": verified_at,
+                "value_hash": value_hash or "",
             },
         )
 

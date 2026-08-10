@@ -12,12 +12,18 @@ Strategy:
   so tokens are never free-form user strings.
 
 Scope is always forced by the session. Missing entity ``id`` fails closed.
+
+Companions (E8 / model §4):
+* :func:`create_prov_event` — ``:ProvEvent`` + ``[:ABOUT]->(:Entity)``
+* :func:`upsert_attr_citation` — ``:AttrCitation`` + ``[:HAS_CITATION]``
 """
 
 from __future__ import annotations
 
+import hashlib
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from cograph_client.graph.facts import (
     Fact,
@@ -26,6 +32,7 @@ from cograph_client.graph.facts import (
     sanitize_prop_key,
     sanitize_rel_type,
 )
+from cograph_client.graph.iri import ATTR_META_NS
 from cograph_client.graph.labels import sanitize_domain_labels, set_entity_type_labels
 from cograph_client.graph.scope import GraphScopeError
 from cograph_client.graph.store import require_entity_write_identity
@@ -36,6 +43,30 @@ if TYPE_CHECKING:
 
 def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def prov_fact_hash(
+    subject_id: str,
+    attr: str | None = None,
+    object_repr: str | None = None,
+    source: str | None = None,
+) -> str:
+    """Stable hash of (subject, attr, object, source) — model §4.1 ``fact_hash``.
+
+    Successor of RDF ``sha1(s|p|o|source)`` for property-graph companions.
+    """
+    payload = (
+        f"{subject_id}|{attr or ''}|{object_repr if object_repr is not None else ''}"
+        f"|{source or ''}"
+    )
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def citation_value_hash(value: Any) -> str:
+    """Hash of a multi-value slot for :AttrCitation.value_hash (model §4.2)."""
+    if value is None:
+        return ""
+    return hashlib.sha1(str(value).encode("utf-8")).hexdigest()
 
 
 async def merge_entity(
@@ -207,11 +238,21 @@ async def create_prov_event(
     new_id: str | None = None,
     reason: str = "",
     source: str | None = None,
+    fact_hash: str | None = None,
 ) -> None:
-    """Minimal ``:ProvEvent`` + ``[:ABOUT]->(:Entity)`` (model §4.1). Best-effort caller."""
+    """Write ``:ProvEvent`` + ``[:ABOUT]->(:Entity)`` (model §4.1).
+
+    Event types used on the store path (Wave 1 / E8): ``assert``, ``tombstone``,
+    ``rewrite``. Best-effort when the session lacks a native writer.
+    """
     native = getattr(session, "write_prov_event", None)
     if not callable(native):
         return  # optional on stores that do not implement companions yet
+    fh = fact_hash
+    if fh is None and event_type in ("assert", "tombstone"):
+        fh = prov_fact_hash(subject_id, attr, object_repr, source)
+    elif fh is None and event_type == "rewrite":
+        fh = prov_fact_hash(old_id or subject_id, None, new_id or subject_id, source)
     await native(
         event_type=event_type,
         subject_id=subject_id,
@@ -221,8 +262,137 @@ async def create_prov_event(
         new_id=new_id,
         reason=reason,
         source=source,
+        fact_hash=fh,
         ts=_ts(),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class AttrCitationSpec:
+    """One enrichment-style attribute citation (model §4.2 / former attr_meta)."""
+
+    entity_id: str
+    attr: str
+    source_url: str | None = None
+    provenance: str | None = None
+    verified_at: str | None = None
+    value_hash: str | None = None
+    value: Any = None  # optional; used to derive value_hash when unset
+
+
+async def upsert_attr_citation(
+    session: "GraphSession",
+    entity_id: str,
+    attr: str,
+    *,
+    source_url: str | None = None,
+    provenance: str | None = None,
+    verified_at: str | None = None,
+    value_hash: str | None = None,
+    value: Any = None,
+) -> None:
+    """Upsert ``:AttrCitation`` + ``(e)-[:HAS_CITATION]->(c)`` (model §4.2).
+
+    Minimal enrichment ``source_url`` / ``provenance`` / ``verified_at`` helper.
+    MERGE identity is ``(tenant_id, kg, entity_id, attr, value_hash)`` when the
+    store implements it; otherwise create-or-replace best-effort.
+    """
+    require_entity_write_identity({"id": entity_id})
+    if not attr or not str(attr).strip():
+        raise GraphScopeError("AttrCitation attr leaf must be non-empty")
+    vh = value_hash
+    if vh is None and value is not None:
+        vh = citation_value_hash(value)
+    native = getattr(session, "write_attr_citation", None)
+    if not callable(native):
+        return
+    await native(
+        entity_id=entity_id,
+        attr=str(attr).strip(),
+        source_url=source_url or None,
+        provenance=provenance or None,
+        verified_at=verified_at or None,
+        value_hash=vh or "",
+    )
+
+
+def parse_attr_meta_citations(
+    triples: Iterable[tuple[str, str, str]],
+) -> list[AttrCitationSpec]:
+    """Group RDF-era ``attr_meta/<Type>/<attr>/<suffix>`` triples into citations.
+
+    Type segment is ignored for storage (entity-scoped AttrCitation; B3 spirit).
+    Suffixes: ``source_url``, ``provenance``, ``verified_at``.
+    """
+    # key: (entity_id, attr) -> fields
+    buckets: dict[tuple[str, str], dict[str, str]] = {}
+    for triple in triples or ():
+        if not triple or len(triple) < 3:
+            continue
+        s, p, o = triple[0], triple[1], triple[2]
+        if not s or not p or o is None:
+            continue
+        # Accept any host's attr_meta/ path, not only the live ATTR_META_NS base
+        # (legacy cograph.tech / omnix.dev companions still map).
+        marker = "/attr_meta/"
+        idx = p.find(marker)
+        if idx < 0:
+            # Also accept absolute ATTR_META_NS when base matches.
+            if p.startswith(ATTR_META_NS):
+                rest = p[len(ATTR_META_NS) :]
+            else:
+                continue
+        else:
+            rest = p[idx + len(marker) :]
+        parts = rest.split("/")
+        if len(parts) < 3:
+            continue
+        # type_name = parts[0]  — ignored for entity-scoped citation
+        attr = parts[1]
+        suffix = parts[2]
+        if not attr or suffix not in ("source_url", "provenance", "verified_at"):
+            continue
+        # Strip xsd typing if present on the object string.
+        val = str(o)
+        if "^^" in val:
+            val = val.split("^^", 1)[0]
+        key = (s, attr)
+        buckets.setdefault(key, {})[suffix] = val
+    out: list[AttrCitationSpec] = []
+    for (entity_id, attr), fields in buckets.items():
+        if not any(fields.get(k) for k in ("source_url", "provenance", "verified_at")):
+            continue
+        out.append(
+            AttrCitationSpec(
+                entity_id=entity_id,
+                attr=attr,
+                source_url=fields.get("source_url"),
+                provenance=fields.get("provenance"),
+                verified_at=fields.get("verified_at"),
+            )
+        )
+    return out
+
+
+async def apply_attr_citations(
+    session: "GraphSession",
+    citations: Sequence[AttrCitationSpec],
+) -> int:
+    """Write a batch of :class:`AttrCitationSpec` via :func:`upsert_attr_citation`."""
+    n = 0
+    for c in citations:
+        await upsert_attr_citation(
+            session,
+            c.entity_id,
+            c.attr,
+            source_url=c.source_url,
+            provenance=c.provenance,
+            verified_at=c.verified_at,
+            value_hash=c.value_hash,
+            value=c.value,
+        )
+        n += 1
+    return n
 
 
 async def apply_facts(
@@ -280,13 +450,15 @@ async def apply_facts(
                     await set_literal(session, sid, f.key, f.value, multi_union=True)
                 applied += 1
                 if provenance_enabled:
+                    obj_repr = str(f.value) if f.value is not None else None
                     await create_prov_event(
                         session,
                         event_type="assert",
                         subject_id=sid,
                         attr=f.key,
-                        object_repr=str(f.value) if f.value is not None else None,
+                        object_repr=obj_repr,
                         source=f.source,
+                        fact_hash=prov_fact_hash(sid, f.key, obj_repr, f.source),
                     )
             elif f.kind == "rel":
                 if not isinstance(f.value, str) or not f.value:
@@ -303,6 +475,7 @@ async def apply_facts(
                         attr=f.key,
                         object_repr=f.value,
                         source=f.source,
+                        fact_hash=prov_fact_hash(sid, f.key, f.value, f.source),
                     )
             # type facts already counted above
     return applied
@@ -323,7 +496,10 @@ async def get_entity(
 
 
 __all__ = [
+    "AttrCitationSpec",
+    "apply_attr_citations",
     "apply_facts",
+    "citation_value_hash",
     "create_prov_event",
     "delete_entity",
     "delete_literals",
@@ -331,6 +507,9 @@ __all__ = [
     "get_entity",
     "merge_entity",
     "merge_rel",
+    "parse_attr_meta_citations",
+    "prov_fact_hash",
     "rewrite_entity_id",
     "set_literal",
+    "upsert_attr_citation",
 ]
