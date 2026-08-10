@@ -53,6 +53,7 @@ from cograph_client.graph.text_markers import (
 )
 from cograph_client.graph.parser import parse_sparql_results
 from cograph_client.graph.kg_writer import build_graph_delta, insert_facts
+from cograph_client.graph.store import resolve_optional_graph_store
 from cograph_client.pipeline.envelope import derive_fact_id
 from cograph_client.graph.provenance import (
     build_attribute_provenance_companions,
@@ -2482,6 +2483,8 @@ class SchemaResolver:
         # drift on HOW facts are written. (Per-fact provenance is flushed in one
         # batched INSERT per ingest, COG-46 — the exact triples a per-entity
         # write would produce; only the write pattern is batched.)
+        # E7: resolve GraphStore once per write batch when neo4j backend is
+        # active; None keeps the Neptune SPARQL default.
         if all_entity_triples or all_provenance_triples:
             # instance_graph resolved once at method top (ONTA-268 call-local).
             await insert_facts(
@@ -2489,6 +2492,7 @@ class SchemaResolver:
                 instance_graph,
                 all_entity_triples,
                 provenance_triples=all_provenance_triples or None,
+                store=resolve_optional_graph_store(),
             )
 
         # ONTA-177: decide + persist free-text candidacy for the attributes this

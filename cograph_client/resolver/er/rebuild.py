@@ -37,6 +37,7 @@ import structlog
 
 from cograph_client.graph.kg_writer import refresh_after_write, rewrite_subject
 from cograph_client.graph.queries import parse_kg_graph_uri
+from cograph_client.graph.store import resolve_optional_graph_store
 from cograph_client.resolver.er.blocking import SparqlBlocker, generate_block_keys
 from cograph_client.resolver.er.scoring import DefaultScorer
 from cograph_client.resolver.er.types import (
@@ -181,6 +182,9 @@ async def rebuild_type(
     # (ADR 0007): one batched URI rewrite per (loser -> canonical). A rewrite is a
     # single semantic event, so the derived indexes re-key (cheap) rather than
     # evict-and-recompute — done once, below, for the whole batch.
+    # E7: resolve GraphStore once for the merge batch when neo4j backend is
+    # active; None keeps the Neptune SPARQL default.
+    store = resolve_optional_graph_store()
     for canonical, loser in merges:
         await rewrite_subject(
             client,
@@ -189,6 +193,7 @@ async def rebuild_type(
             canonical,
             touched_types=[type_name],
             reason="er-merge rebuild",
+            store=store,
         )
 
     # One post-write refresh per rebuild batch (NOT per entity): re-key the merged
