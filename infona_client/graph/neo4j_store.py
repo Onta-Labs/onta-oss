@@ -886,6 +886,52 @@ class Neo4jGraphSession:
         )
         return [r.to_dict() for r in rows]
 
+    async def read_assertion_history(
+        self,
+        *,
+        entity_id: str | None = None,
+        prop_id: str | None = None,
+        since: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Assertion provenance rows for GET /history (optional subject filter)."""
+        lim = max(1, min(int(limit), 10000))
+        cypher = """
+MATCH (a:Assertion {tenant_id: $tenant_id, kg: $kg})
+WHERE ($entity_id IS NULL OR a.subject_id = $entity_id)
+  AND ($prop_id IS NULL OR a.property_id = $prop_id)
+  AND (
+    $since IS NULL
+    OR (a.verified_at IS NOT NULL AND a.verified_at > $since)
+  )
+OPTIONAL MATCH (a)-[:OBJECT]->(o:Entity)
+OPTIONAL MATCH (a)-[:OBJECT_CLASS]->(oc:Class)
+RETURN a.id AS assertion_id,
+       a.subject_id AS subject_id,
+       a.property_id AS property_id,
+       a.literal_value AS literal_value,
+       a.literal_datatype AS literal_datatype,
+       a.source_url AS source_url,
+       a.verified_at AS verified_at,
+       a.run_id AS run_id,
+       a.confidence AS confidence,
+       a.provenance AS provenance,
+       o.id AS object_id,
+       oc.id AS object_class_id
+ORDER BY coalesce(a.verified_at, ''), a.property_id, a.subject_id, a.id
+LIMIT $limit
+""".strip()
+        rows = await self.execute_read(
+            cypher,
+            {
+                "entity_id": entity_id,
+                "prop_id": prop_id,
+                "since": since,
+                "limit": lim,
+            },
+        )
+        return [r.to_dict() for r in rows]
+
     async def read_list_entities_by_label(
         self,
         label: str,

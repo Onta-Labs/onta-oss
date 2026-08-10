@@ -747,6 +747,104 @@ async def session_assertions_for_subject(
     return [r.to_dict() if hasattr(r, "to_dict") else dict(r) for r in rows]
 
 
+def assertion_to_history_row(row: MappingLike) -> dict[str, Any]:
+    """Project an Assertion provenance dict into the GET ``/history`` change shape.
+
+    Neo4j has no companion value-history graph yet (temporal ``old → new``
+    :ValueHistory is deferred). Until that lands, the store path treats
+    **current Assertion provenance** as the history feed:
+
+    * ``subject`` / ``predicate`` — Assertion subject + property IRIs
+    * ``new_value`` — current literal / object id
+    * ``old_value`` — empty (no prior-value log on Assertion SoT alone)
+    * ``changed_at`` — ``verified_at`` when present, else empty
+
+    Same keys as :class:`infona_client.graph.history.ValueChange` so the dual-
+    backend route can reuse one response builder.
+    """
+    if hasattr(row, "to_dict"):
+        row = row.to_dict()  # type: ignore[assignment]
+    data = dict(row) if not isinstance(row, dict) else row
+    value = data.get("literal_value")
+    if value is None:
+        value = data.get("object_id") or data.get("object_class_id") or ""
+    return {
+        "subject": str(data.get("subject_id") or ""),
+        "predicate": str(data.get("property_id") or ""),
+        "old_value": "",
+        "new_value": "" if value is None else str(value),
+        "changed_at": str(data.get("verified_at") or ""),
+        # Provenance extras (route may omit; helpers / clients may use):
+        "source_url": data.get("source_url"),
+        "provenance": data.get("provenance"),
+        "assertion_id": data.get("assertion_id") or data.get("id"),
+    }
+
+
+def _since_passes(verified_at: str | None, since: str | None) -> bool:
+    """``True`` when the row is strictly after ``since`` (Neptune FILTER ``>``)."""
+    if not since:
+        return True
+    va = (verified_at or "").strip()
+    if not va:
+        return False
+    return va > since
+
+
+async def session_assertion_history(
+    session: "GraphSession",
+    *,
+    entity_id: str | None = None,
+    prop_id: str | None = None,
+    since: str | None = None,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    """List Assertion provenance as history-shaped rows (neo4j dual-backend).
+
+    Preferred path: subject-scoped via :func:`session_assertions_for_subject`
+    (or native ``read_assertion_history`` when the session implements a full-KG
+    scan). Without a subject and without a native scan, returns ``[]`` — never
+    invents cross-scope rows.
+    """
+    lim = max(1, min(int(limit), 10000))
+    native = getattr(session, "read_assertion_history", None)
+    raw_rows: list[Any]
+    if callable(native):
+        raw_rows = list(
+            await native(
+                entity_id=entity_id,
+                prop_id=prop_id,
+                since=since,
+                limit=lim,
+            )
+        )
+    elif entity_id:
+        raw_rows = await session_assertions_for_subject(
+            session, entity_id, prop_id=prop_id
+        )
+    else:
+        return []
+
+    projected: list[dict[str, Any]] = []
+    for r in raw_rows:
+        d = r.to_dict() if hasattr(r, "to_dict") else dict(r)
+        if prop_id is not None and d.get("property_id") != prop_id:
+            continue
+        if not _since_passes(d.get("verified_at"), since):
+            continue
+        projected.append(assertion_to_history_row(d))
+
+    projected.sort(
+        key=lambda x: (
+            x.get("changed_at") or "",
+            x.get("predicate") or "",
+            x.get("subject") or "",
+            str(x.get("assertion_id") or ""),
+        )
+    )
+    return projected[:lim]
+
+
 async def session_literal_values(
     session: "GraphSession",
     entity_id: str,
@@ -780,6 +878,7 @@ __all__ = [
     "TEMPLATE_LITERAL_VALUES",
     "TEMPLATE_RELATED_ENTITIES",
     "TEMPLATE_SUBCLASS_OF_CLOSURE",
+    "assertion_to_history_row",
     "assertions_for_subject",
     "asserted_types",
     "count_entities_of_type",
@@ -794,6 +893,7 @@ __all__ = [
     "project_rows",
     "reverse_object_assertions",
     "semantic_templates",
+    "session_assertion_history",
     "session_assertions_for_subject",
     "session_entities_of_type",
     "session_literal_values",

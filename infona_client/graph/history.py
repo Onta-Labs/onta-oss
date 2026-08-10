@@ -56,9 +56,13 @@ from infona_client.graph.iri import HIST_NS, IRI_BASE
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 from infona_client.graph.parser import parse_sparql_results
 from infona_client.graph.queries import _escape_literal, _escape_value
+
+if TYPE_CHECKING:
+    from infona_client.graph.store import GraphStore
 
 
 HIST_SUBJECT = f"{HIST_NS}subject"
@@ -267,3 +271,51 @@ async def fetch_value_history(
             )
         )
     return out
+
+
+async def fetch_store_assertion_history(
+    store: Any,
+    *,
+    tenant_id: str,
+    kg_name: str,
+    subject: str | None = None,
+    predicate: str | None = None,
+    since: str | None = None,
+    limit: int = 1000,
+) -> list[ValueChange]:
+    """Neo4j / GraphStore history read via Assertion provenance (ADR 0013).
+
+    The SPARQL companion history graph (``…/history`` version nodes) is
+    Neptune-only. On the property-graph path we list **current Assertion
+    provenance** for the scope (prefer subject-scoped) through
+    :func:`infona_client.graph.rdfs_helpers.session_assertion_history` and map
+    each row onto :class:`ValueChange` so ``GET /history`` keeps one response
+    shape. Temporal ``old → new`` :ValueHistory remains deferred.
+
+    Best-effort: any store/session failure returns ``[]`` (same contract as
+    :func:`fetch_value_history`).
+    """
+    try:
+        from infona_client.graph.rdfs_helpers import session_assertion_history
+        from infona_client.graph.scope import GraphScope
+
+        session = store.session(GraphScope.for_instance(tenant_id, kg_name))
+        rows = await session_assertion_history(
+            session,
+            entity_id=subject,
+            prop_id=predicate,
+            since=since,
+            limit=limit,
+        )
+    except Exception:  # noqa: BLE001 — history is informational
+        return []
+    return [
+        ValueChange(
+            subject=str(r.get("subject") or ""),
+            predicate=str(r.get("predicate") or ""),
+            old_value=str(r.get("old_value") or ""),
+            new_value=str(r.get("new_value") or ""),
+            changed_at=str(r.get("changed_at") or ""),
+        )
+        for r in rows
+    ]

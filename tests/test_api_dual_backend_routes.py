@@ -4,8 +4,8 @@ When ``INFONA_GRAPH_BACKEND=neo4j`` (with an injected ``MemoryGraphStore``):
 explore records / entity detail / type-counts, grep, and ontology list+upsert
 use GraphStore paths. Default Neptune backend still calls SPARQL (mocked).
 
-Raw triples → 410 on neo4j; value history → 501 on neo4j. Neptune paths
-unchanged.
+Raw triples → 410 on neo4j; value history → Assertion provenance on neo4j
+(not 501). Neptune paths unchanged.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from infona_client.api.app import create_app
 from infona_client.graph.client import NeptuneClient
+from infona_client.graph.facts import Fact
 from infona_client.graph.iri import IRI_BASE
 from infona_client.graph.kg_writer import insert_facts
 from infona_client.graph.memory_store import MemoryGraphStore
@@ -294,19 +295,62 @@ def test_triples_still_work_on_default(client, mock_neptune, monkeypatch):
     mock_neptune.update.assert_awaited_once()
 
 
-def test_history_501_on_neo4j(client, mock_neptune, monkeypatch):
+def test_history_assertion_provenance_on_neo4j(
+    client, mock_neptune, store, monkeypatch
+):
+    """Neo4j path: Assertion provenance as history (not 501)."""
     monkeypatch.setenv("INFONA_GRAPH_BACKEND", "neo4j")
+    configure_graph_store(store)
+    alice = entity_uri("Person", "alice")
+    email_prop = f"{IRI_BASE}/properties/email"
+
+    async def _seed():
+        await insert_facts(
+            None,
+            GRAPH,
+            facts=[
+                Fact(subject_id=alice, kind="type", key="Person"),
+                Fact(
+                    subject_id=alice,
+                    kind="literal",
+                    key="email",
+                    value="alice@example.com",
+                    source_url="https://example.com/alice",
+                    verified_at="2026-08-01T12:00:00Z",
+                    provenance="enrichment",
+                ),
+            ],
+            store=store,
+        )
+
+    asyncio.run(_seed())
+
     res = client.get(
         f"/graphs/{TENANT}/history",
         headers=AUTH,
-        params={"kg_name": KG},
+        params={"kg_name": KG, "subject": alice},
     )
-    assert res.status_code == 501, res.text
-    assert "neo4j" in res.json()["detail"].lower()
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["kg_name"] == KG
+    assert body["count"] >= 1
+    # Prefer the email fact we stamped with verified_at.
+    email_rows = [
+        c
+        for c in body["changes"]
+        if c["subject"] == alice
+        and (c["predicate"] == email_prop or c["new_value"] == "alice@example.com")
+    ]
+    assert email_rows, body["changes"]
+    row = email_rows[0]
+    assert row["new_value"] == "alice@example.com"
+    assert row["old_value"] == ""
+    assert row["changed_at"] == "2026-08-01T12:00:00Z"
     mock_neptune.query.assert_not_called()
 
 
 def test_history_still_works_on_default(client, mock_neptune, monkeypatch):
+    """Default Neptune path still hits SPARQL companion history."""
     monkeypatch.delenv("INFONA_GRAPH_BACKEND", raising=False)
     mock_neptune.query.return_value = {
         "head": {"vars": []},
