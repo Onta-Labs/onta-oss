@@ -2,13 +2,16 @@
 
 Node.js SDK and CLI for [Infona](https://infona.ai) — turn raw data into a queryable context graph (a knowledge graph you query in natural language).
 
+Package: **`@infona-ai/cli`**. Primary binary: **`infona`** (`onta` remains a compatibility alias). Env vars: prefer **`INFONA_*`** (`ONTA_*` / `COGRAPH_*` / `OMNIX_*` still accepted).
+
 ## Quickstart
 
 ```bash
-npx @infona-ai/cli
+npx -y -p @infona-ai/cli infona
+# or: npm install -g @infona-ai/cli && infona
 ```
 
-That's it. The first run opens your browser to sign in, saves a key to `~/.onta/config.json`, and drops you into the interactive shell:
+That's it. The first run opens your browser to sign in, saves a key to `~/.onta/config.json` (frozen config path name), and drops you into the interactive shell:
 
 ```text
   /ingest <file>      Ingest a CSV/JSON/text file
@@ -158,34 +161,36 @@ network error or timeout (i.e. when there is no HTTP response to return).
 
 ## One-shot CLI
 
-For scripts and CI — every command is a single HTTP round-trip:
+For scripts and CI — every command is a single HTTP round-trip (use the `infona` bin, or `npx -y -p @infona-ai/cli infona …`):
 
 ```bash
 # List / create / delete context graphs
-npx @infona-ai/cli kg list
-npx @infona-ai/cli kg create my-data --description "demo"
-npx @infona-ai/cli kg delete my-data
+infona kg list
+infona kg create my-data --description "demo"
+infona kg delete my-data
 
 # Ingest data
-npx @infona-ai/cli ingest data.csv --kg my-data
-npx @infona-ai/cli ingest --text "Alice works at Acme" --kg my-data
+infona ingest data.csv --kg my-data
+infona ingest --text "Alice works at Acme" --kg my-data
 
 # Ask questions
-npx @infona-ai/cli ask "How many companies?" --kg my-data
-npx @infona-ai/cli ask "Top 5 deals" --kg my-data --debug
+infona ask "How many companies?" --kg my-data
+infona ask "Top 5 deals" --kg my-data --debug
 
 # Ontology + clear
-npx @infona-ai/cli ontology types
-npx @infona-ai/cli clear --kg my-data --yes
+infona ontology types
+infona clear --kg my-data --yes
 ```
 
 ### Environment
+
+Prefer `INFONA_*` for new configs:
 
 - `INFONA_API_KEY` — required for headless / CI use; interactive `infona login` writes one to `~/.onta/config.json` automatically.
 - `INFONA_API_URL` — default `https://api.infona.ai` (legacy hosts `api.onta.sh` / `api.getonta.com` still work).
 - `INFONA_TENANT` — default `demo-tenant`. The login flow sets this to your workspace id.
 
-  Older env-var prefixes (`ONTA_*`, `COGRAPH_*`, `OMNIX_*`) are still accepted for back-compat.
+Older env-var prefixes (`ONTA_*`, `COGRAPH_*`, `OMNIX_*`) are still accepted for back-compat, so existing configs keep working unchanged.
 
 > PDF ingestion is not yet supported in the Node CLI. Use the Python CLI or POST raw bytes to the API.
 
