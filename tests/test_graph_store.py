@@ -624,24 +624,51 @@ async def test_neo4j_session_missing_id_fail_closed_without_driver():
 
 @pytest.mark.asyncio
 async def test_memory_store_list_by_type():
+    """List-by-type uses INSTANCE_OF → Class (ADR 0013), not primary_type alone."""
+    from infona_client.graph.rdf_model import AssertionFact, assert_fact
+
     store = MemoryGraphStore()
     session = store.session(GraphScope.for_instance("t", "k"))
     for i, ptype in enumerate(["Book", "Book", "Author"]):
+        eid = f"id-{i}"
+        # Entity shell (denorm primary_type is cache only).
         await session.execute_write(
             ENTITY_MERGE_CYPHER,
             {
-                "id": f"id-{i}",
+                "id": eid,
                 "primary_type": ptype,
                 "name": ptype,
                 "source": "s",
                 "ts": "t",
             },
         )
+        # Type membership SoT → dual-writes INSTANCE_OF + Class.
+        await assert_fact(
+            session,
+            AssertionFact(subject_id=eid, kind="type", value=ptype),
+            dual_write_cache=True,
+        )
     books = await session.execute_read(
         ENTITY_LIST_BY_TYPE_CYPHER, {"primary_type": "Book"}
     )
     assert len(books) == 2
     assert all(r["primary_type"] == "Book" for r in books)
+    # primary_type alone (no INSTANCE_OF) must not match list-by-type.
+    await session.execute_write(
+        ENTITY_MERGE_CYPHER,
+        {
+            "id": "id-denorm-only",
+            "primary_type": "Book",
+            "name": "ghost",
+            "source": "s",
+            "ts": "t",
+        },
+    )
+    books2 = await session.execute_read(
+        ENTITY_LIST_BY_TYPE_CYPHER, {"primary_type": "Book"}
+    )
+    assert len(books2) == 2
+    assert all(r["id"] != "id-denorm-only" for r in books2)
     await store.close()
 
 
