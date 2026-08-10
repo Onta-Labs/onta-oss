@@ -4,11 +4,19 @@ MCP (Model Context Protocol) server for [Infona](https://infona.ai). Gives AI ag
 
 ## Install / run
 
+Package: **`@infona-ai/mcp`**. Primary binary: **`infona-mcp`** (`onta-mcp` and `mcp` remain compatibility aliases).
+
 No install needed — use `npx`:
 
 ```bash
 npx -y -p @infona-ai/mcp infona-mcp
-# `onta-mcp` remains a compatibility alias for the same binary
+```
+
+Or install globally:
+
+```bash
+npm install -g @infona-ai/mcp
+infona-mcp
 ```
 
 ## Claude Desktop / Cursor / Claude Code
