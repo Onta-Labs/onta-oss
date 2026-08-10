@@ -82,10 +82,15 @@ def fact_to_assertion_fact(
     require_entity_write_identity({"id": subject_id})
     src = source_url or source
     if kind == "type":
+        # Prefer full Class IRI in ``value`` when the Fact carried one (ETL /
+        # classify_triple); fall back to type leaf in ``key``.
+        type_value: Any = key
+        if isinstance(value, str) and value.strip():
+            type_value = value.strip()
         return AssertionFact(
             subject_id=subject_id,
             kind="type",
-            value=key,
+            value=type_value,
             property_id=type_membership_property_id(),
             source_url=src,
             verified_at=verified_at,
