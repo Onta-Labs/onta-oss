@@ -11,6 +11,12 @@ Compose service.
 
 ## SIDE-BY-SIDE mode (production Neptune + optional Neo4j)
 
+**Branch-complete summary (parent monorepo):**  
+[`docs/plans/neo4j-branch-complete.md`](../../docs/plans/neo4j-branch-complete.md) —
+what shipped, what is intentionally not done (prod cutover / Neptune delete /
+holdout rebaseline / Aura), test commands, and links to ADR 0012/0013, success
+gates, and the cutover runbook.
+
 **This branch does not replace Neptune.** Infona production on `main` continues
 to use **Amazon Neptune + SPARQL** as the default graph backend. The `neo4j`
 branch is a **side-by-side optional backend** for local development, CI, and
