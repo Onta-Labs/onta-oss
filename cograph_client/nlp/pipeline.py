@@ -3,7 +3,7 @@ import json
 import os
 import re
 import time
-from typing import Iterable
+from typing import Any, Iterable
 
 import anthropic
 import httpx
@@ -20,7 +20,9 @@ from cograph_client.graph.sparql_scope import (
 from cograph_client.models.query import NLResult
 from cograph_client.nlp.cypher_generate import (
     neo4j_ask_enabled,
+    ontology_from_graph_store,
     records_to_bindings,
+    try_deterministic_cypher,
     try_stub_count_query,
 )
 from cograph_client.nlp.cypher_scope import (
@@ -1602,12 +1604,13 @@ class NLQueryPipeline:
         exclude_questions: list[str] | None = None,
         layer_graph_uris: list[str] | None = None,
     ) -> NLResult:
-        """Minimal Neo4j /ask path: stub count + scoped GraphStore read.
+        """Neo4j /ask path: deterministic fixtures + optional LLM Cypher.
 
-        Full NL quality (LLM Cypher, retries, enum recovery, …) is later E6
-        work. This proves: prompt rules exist, confinement forces session
-        params, example bank can format Cypher, and execute_read runs
-        parameterized queries only.
+        Hermetic fixtures cover count / list / property-eq / 1-hop without keys.
+        When an LLM key is present, free-form Cypher is generated and confined;
+        on :class:`GraphQueryError` the scrubbed error is fed back once (SPARQL
+        retry spirit). Execution is always via GraphStore with session-forced
+        ``tenant_id`` / ``kg`` — never trust model-supplied scope values.
 
         Cypher text is returned in :attr:`NLResult.sparql` for wire
         compatibility with existing clients (field name historical).
@@ -1639,16 +1642,35 @@ class NLQueryPipeline:
         else:
             tenant_id, kg_name = parsed
 
-        # Ontology summary: best-effort. On pure Neo4j deploys Neptune may be
-        # unavailable; empty summary still allows the count stub via type guess.
+        store = self._graph_store
+        if store is None:
+            try:
+                from cograph_client.graph.store import get_graph_store
+
+                store = get_graph_store()
+            except Exception:
+                store = None
+
+        # Ontology: prefer GraphStore catalog (schema_types_for_kg); fall back
+        # to SPARQL summary or empty (fixtures still type-guess).
         ontology = ""
-        try:
-            ontology = await self._fetch_ontology(graph_uri, data_graph)
-            if ontology in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY):
+        type_names: list[str] = []
+        if store is not None:
+            ontology, type_names = await ontology_from_graph_store(
+                store, tenant_id=tenant_id, kg=kg_name
+            )
+            if ontology:
+                timing["ontology_source"] = "graph_store_catalog"
+        if not ontology:
+            try:
+                ontology = await self._fetch_ontology(graph_uri, data_graph)
+                if ontology in (ONTOLOGY_FETCH_ERROR, ONTOLOGY_EMPTY):
+                    ontology = ""
+                elif ontology:
+                    timing["ontology_source"] = "sparql_fetch"
+            except Exception:
+                logger.debug("cypher_ask_ontology_fetch_failed", exc_info=True)
                 ontology = ""
-        except Exception:
-            logger.debug("cypher_ask_ontology_fetch_failed", exc_info=True)
-            ontology = ""
         timing["ontology_fetch_ms"] = round((time.time() - t0) * 1000, 1)
 
         examples_text = ""
@@ -1675,20 +1697,25 @@ class NLQueryPipeline:
         except Exception:
             pass
 
-        # 1) Deterministic stub for count questions (no LLM required).
-        gen = try_stub_count_query(question, ontology)
+        # 1) Deterministic fixtures (count / list / filter / 1-hop).
+        gen = try_deterministic_cypher(
+            question, ontology, type_names=type_names or None
+        )
         if gen is None:
             # 2) Optional LLM Cypher generation when keys exist.
             gen = await self._try_llm_cypher(
-                question, ontology, tenant_id=tenant_id, kg_name=kg_name,
+                question,
+                ontology,
+                tenant_id=tenant_id,
+                kg_name=kg_name,
                 examples_text=examples_text,
             )
         if gen is None:
             return NLResult(
                 answer=(
-                    "Could not answer: Neo4j /ask foundation only handles simple "
-                    "count questions without an LLM key, and no generator "
-                    "produced Cypher for this question."
+                    "Could not answer: Neo4j /ask handles count, list, property "
+                    "filter, and simple 1-hop questions without an LLM key; no "
+                    "generator produced Cypher for this question."
                 ),
                 sparql="",
                 explanation="",
@@ -1700,110 +1727,175 @@ class NLQueryPipeline:
                 },
             )
 
-        cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
-        params = dict(gen.get("params") or {})
-        explanation = gen.get("explanation") or ""
-        if gen.get("stub"):
+        if gen.get("stub") or gen.get("fixture"):
             timing["cypher_stub"] = 1.0
 
-        try:
-            cypher, forced_params = confine_generated_cypher(
-                cypher_raw,
-                tenant_id=tenant_id,
-                kg=kg_name,
-                params=params,
-            )
-        except CrossTenantCypherError:
-            raise
-        except CypherScopeError as exc:
+        if store is None:
+            cypher_preview = gen.get("cypher") or gen.get("sparql") or ""
             return NLResult(
-                answer=f"Could not answer: {exc.detail}",
-                sparql=cypher_raw,
-                explanation=explanation,
+                answer=(
+                    "Could not answer: Neo4j GraphStore is not configured "
+                    "(set COGRAPH_GRAPH_BACKEND=neo4j and inject a store)."
+                ),
+                sparql=cypher_preview,
+                explanation=gen.get("explanation") or "",
                 ontology=ontology,
                 timing={
                     **timing,
                     "total_ms": round((time.time() - t0) * 1000, 1),
-                    "cypher_scope_error": 1.0,
                 },
             )
 
-        store = self._graph_store
-        if store is None:
-            try:
-                from cograph_client.graph.store import get_graph_store
+        from cograph_client.graph.scope import GraphScope
+        from cograph_client.graph.store import GraphQueryError
 
-                store = get_graph_store()
+        attempts = 0
+        last_error = ""
+        cypher = ""
+        explanation = gen.get("explanation") or ""
+        records: list = []
+
+        for attempt in range(2):  # initial + one GraphQueryError retry
+            attempts = attempt + 1
+            cypher_raw = gen.get("cypher") or gen.get("sparql") or ""
+            params = dict(gen.get("params") or {})
+            explanation = gen.get("explanation") or explanation
+            if gen.get("stub") or gen.get("fixture"):
+                timing["cypher_stub"] = 1.0
+            else:
+                timing["cypher_stub"] = 0.0
+
+            try:
+                cypher, forced_params = confine_generated_cypher(
+                    cypher_raw,
+                    tenant_id=tenant_id,
+                    kg=kg_name,
+                    params=params,
+                )
+            except CrossTenantCypherError:
+                raise
+            except CypherScopeError as exc:
+                if attempt == 0 and not (gen.get("stub") or gen.get("fixture")):
+                    last_error = exc.detail
+                    gen2 = await self._try_llm_cypher(
+                        question,
+                        ontology,
+                        tenant_id=tenant_id,
+                        kg_name=kg_name,
+                        examples_text=examples_text,
+                        error_feedback=(
+                            f"The previous query failed confinement: {last_error}\n"
+                            f"Query was: {cypher_raw}"
+                        ),
+                    )
+                    if gen2 is not None:
+                        gen = gen2
+                        timing["cypher_retry"] = 1.0
+                        continue
+                return NLResult(
+                    answer=f"Could not answer: {exc.detail}",
+                    sparql=cypher_raw,
+                    explanation=explanation,
+                    ontology=ontology,
+                    timing={
+                        **timing,
+                        "total_ms": round((time.time() - t0) * 1000, 1),
+                        "cypher_scope_error": 1.0,
+                        "attempts": attempts,
+                    },
+                )
+
+            t_exec = time.time()
+            try:
+                session = store.session(
+                    GraphScope.for_instance(tenant_id, kg_name)
+                )
+                records, exec_path = await self._execute_confined_cypher(
+                    session, gen, cypher, forced_params
+                )
+                timing["cypher_exec_path"] = exec_path
+                timing["neptune_exec_ms"] = round(
+                    (time.time() - t_exec) * 1000, 1
+                )
+                break
+            except GraphQueryError as exc:
+                scrubbed = scrub_cypher_error(str(exc))
+                last_error = scrubbed
+                timing["neptune_exec_ms"] = round(
+                    (time.time() - t_exec) * 1000, 1
+                )
+                if attempt >= 1:
+                    return NLResult(
+                        answer=f"Could not answer: {scrubbed}",
+                        sparql=cypher,
+                        explanation=explanation,
+                        ontology=ontology,
+                        timing={
+                            **timing,
+                            "total_ms": round((time.time() - t0) * 1000, 1),
+                            "attempts": attempts,
+                        },
+                    )
+                gen2 = await self._try_llm_cypher(
+                    question,
+                    ontology,
+                    tenant_id=tenant_id,
+                    kg_name=kg_name,
+                    examples_text=examples_text,
+                    error_feedback=(
+                        f"The previous query failed with: {scrubbed}\n"
+                        f"Query was: {cypher}\n"
+                        "Please fix the Cypher and try again. Keep "
+                        "$tenant_id / $kg parameters; do not hardcode scope."
+                    ),
+                )
+                if gen2 is None:
+                    return NLResult(
+                        answer=f"Could not answer: {scrubbed}",
+                        sparql=cypher,
+                        explanation=explanation,
+                        ontology=ontology,
+                        timing={
+                            **timing,
+                            "total_ms": round((time.time() - t0) * 1000, 1),
+                            "attempts": attempts,
+                        },
+                    )
+                gen = gen2
+                timing["cypher_retry"] = 1.0
+                continue
             except Exception as exc:
                 return NLResult(
-                    answer=(
-                        "Could not answer: Neo4j GraphStore is not configured "
-                        f"({scrub_cypher_error(str(exc))})."
-                    ),
+                    answer=f"Could not answer: {scrub_cypher_error(str(exc))}",
                     sparql=cypher,
                     explanation=explanation,
                     ontology=ontology,
                     timing={
                         **timing,
                         "total_ms": round((time.time() - t0) * 1000, 1),
+                        "attempts": attempts,
                     },
                 )
-
-        from cograph_client.graph.scope import GraphScope
-        from cograph_client.graph.store import GraphQueryError
-
-        t_exec = time.time()
-        try:
-            session = store.session(GraphScope.for_instance(tenant_id, kg_name))
-            # Prefer allowlisted template when this is the count-by-type shape.
-            if (
-                gen.get("stub")
-                and "primary_type" in forced_params
-                and "primary_type" in cypher
-            ):
-                records = await session.execute_template(
-                    "entity_count_by_type",
-                    {"primary_type": forced_params["primary_type"]},
-                )
-                timing["cypher_exec_path"] = "template:entity_count_by_type"
-            elif gen.get("stub") and "primary_type" not in forced_params:
-                records = await session.execute_template("entity_count_total", {})
-                timing["cypher_exec_path"] = "template:entity_count_total"
-            else:
-                records = await session.execute_read(cypher, forced_params)
-                timing["cypher_exec_path"] = "execute_read"
-        except GraphQueryError as exc:
+        else:
             return NLResult(
-                answer=f"Could not answer: {scrub_cypher_error(str(exc))}",
-                sparql=cypher,
-                explanation=explanation,
-                ontology=ontology,
-                timing={
-                    **timing,
-                    "neptune_exec_ms": round((time.time() - t_exec) * 1000, 1),
-                    "total_ms": round((time.time() - t0) * 1000, 1),
-                },
-            )
-        except Exception as exc:
-            return NLResult(
-                answer=f"Could not answer: {scrub_cypher_error(str(exc))}",
+                answer=f"Could not answer: {last_error or 'Cypher execution failed'}",
                 sparql=cypher,
                 explanation=explanation,
                 ontology=ontology,
                 timing={
                     **timing,
                     "total_ms": round((time.time() - t0) * 1000, 1),
+                    "attempts": attempts,
                 },
             )
 
-        timing["neptune_exec_ms"] = round((time.time() - t_exec) * 1000, 1)
         _variables, bindings = records_to_bindings(records)
         answer = await self._format_answer(
             bindings, explanation, data_graph=data_graph
         )
         timing["total_ms"] = round((time.time() - t0) * 1000, 1)
         timing["rows"] = len(bindings)
-        timing["attempts"] = 1
+        timing["attempts"] = attempts
         return NLResult(
             answer=answer,
             sparql=cypher,
@@ -1811,6 +1903,49 @@ class NLQueryPipeline:
             ontology=ontology,
             timing=timing,
         )
+
+    async def _execute_confined_cypher(
+        self,
+        session: Any,
+        gen: dict,
+        cypher: str,
+        forced_params: dict,
+    ) -> tuple[list, str]:
+        """Run confined Cypher: prefer allowlisted template, else execute_read.
+
+        Session already forces tenant/kg; ``forced_params`` must come from
+        :func:`confine_generated_cypher`. Never trusts model tenant/kg values.
+        """
+        from cograph_client.graph.schema_bootstrap import TEMPLATES
+
+        template = gen.get("template")
+        if (
+            template
+            and isinstance(template, str)
+            and template in TEMPLATES
+            and not TEMPLATES[template].writing
+        ):
+            tmpl_params = {
+                k: v
+                for k, v in forced_params.items()
+                if k not in ("tenant_id", "kg")
+            }
+            records = await session.execute_template(template, tmpl_params)
+            return records, f"template:{template}"
+
+        # Legacy count stub shapes (pre-template field) still map to templates.
+        if (gen.get("stub") or gen.get("fixture")) and "count(*)" in cypher:
+            if "primary_type" in forced_params:
+                records = await session.execute_template(
+                    "entity_count_by_type",
+                    {"primary_type": forced_params["primary_type"]},
+                )
+                return records, "template:entity_count_by_type"
+            records = await session.execute_template("entity_count_total", {})
+            return records, "template:entity_count_total"
+
+        records = await session.execute_read(cypher, forced_params)
+        return records, "execute_read"
 
     async def _try_llm_cypher(
         self,
@@ -1820,6 +1955,7 @@ class NLQueryPipeline:
         tenant_id: str,
         kg_name: str,
         examples_text: str = "",
+        error_feedback: str = "",
     ) -> dict | None:
         """Best-effort LLM Cypher generation. Returns None without API keys."""
         if not (self._openrouter_key or self._cerebras_key or getattr(self, "anthropic", None)):
@@ -1840,6 +1976,7 @@ class NLQueryPipeline:
             tenant_id=tenant_id,
             kg_name=kg_name,
             examples_text=examples_text,
+            error_feedback=error_feedback,
         )
         try:
             # Reuse OpenRouter JSON path with Cypher system prompt by temporarily
