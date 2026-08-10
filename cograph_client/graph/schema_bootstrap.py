@@ -5,11 +5,17 @@ Statement names are stable so re-runs are no-ops via ``IF NOT EXISTS``.
 
 Callable from tests and process startup via :meth:`GraphStore.bootstrap_schema`
 or :func:`bootstrap_schema_statements` for inspection / alternate drivers.
+
+Also owns the **allowlisted Cypher template registry** used by
+:meth:`GraphSession.execute_template` — the safe path for application writers
+(Wave 1 isolation story: free-form ``execute_read``/``execute_write`` remain
+for admin/bootstrap/tests only; see ``docs/neo4j-local.md``).
 """
 
 from __future__ import annotations
 
-from typing import Sequence
+from dataclasses import dataclass
+from typing import Mapping, Sequence
 
 # (name, cypher) — name is returned by bootstrap for logging / tests.
 # Cypher uses Neo4j 5 IF NOT EXISTS so Community + Aura both accept it.
@@ -74,6 +80,7 @@ def bootstrap_schema_statements() -> Sequence[tuple[str, str]]:
 
 # Minimal Cypher templates used by smoke tests + future kg_writer ports.
 # Always include $tenant_id / $kg so session scope enforcement accepts them.
+# Prefer session.execute_template(name, params) over pasting these strings.
 
 ENTITY_MERGE_CYPHER = """
 MERGE (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})
@@ -105,3 +112,49 @@ RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
        e.primary_type AS primary_type, e.name AS name, e.source AS source
 ORDER BY e.id
 """.strip()
+
+
+@dataclass(frozen=True, slots=True)
+class CypherTemplate:
+    """Allowlisted Cypher statement registered for :meth:`execute_template`."""
+
+    name: str
+    cypher: str
+    writing: bool
+    #: When True, session fails closed if ``id`` is missing/blank before run.
+    require_entity_id: bool = False
+
+
+# Registry keyed by stable template name. Application code should only run
+# Cypher from this map (or future kg_writer ports that register here).
+TEMPLATES: Mapping[str, CypherTemplate] = {
+    "entity_merge": CypherTemplate(
+        name="entity_merge",
+        cypher=ENTITY_MERGE_CYPHER,
+        writing=True,
+        require_entity_id=True,
+    ),
+    "entity_get": CypherTemplate(
+        name="entity_get",
+        cypher=ENTITY_GET_CYPHER,
+        writing=False,
+        require_entity_id=False,
+    ),
+    "entity_list_by_type": CypherTemplate(
+        name="entity_list_by_type",
+        cypher=ENTITY_LIST_BY_TYPE_CYPHER,
+        writing=False,
+        require_entity_id=False,
+    ),
+}
+
+
+def get_template(name: str) -> CypherTemplate:
+    """Look up an allowlisted template; raise :class:`KeyError` if unknown."""
+    try:
+        return TEMPLATES[name]
+    except KeyError as exc:
+        known = ", ".join(sorted(TEMPLATES))
+        raise KeyError(
+            f"Unknown Cypher template {name!r}; allowlisted: {known}"
+        ) from exc
