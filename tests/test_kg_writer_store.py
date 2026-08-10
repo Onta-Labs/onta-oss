@@ -188,7 +188,9 @@ def test_delete_facts_predicate_scoped_literal(store):
     asyncio.run(run())
 
 
-def test_rewrite_subject_rekeys_entity_and_rel(store):
+def test_rewrite_subject_free_id_rekeys_entity_and_rel(store):
+    """P0: free new_id — re-key node; outbound rel endpoints move with id."""
+
     async def run():
         old = entity_uri("Person", "dup")
         new = entity_uri("Person", "canonical")
@@ -212,6 +214,69 @@ def test_rewrite_subject_rekeys_entity_and_rel(store):
         assert len(rels) == 1
         assert rels[0]["start_id"] == new
         assert rels[0]["end_id"] == org
+
+    asyncio.run(run())
+
+
+def test_rewrite_subject_into_existing_rebinds_rels_and_prov(store, monkeypatch):
+    """P0: new_id already exists — rebind outbound+inbound onto survivor, drop loser."""
+
+    monkeypatch.setenv("COGRAPH_PROVENANCE_ENABLED", "1")
+
+    async def run():
+        loser = entity_uri("Person", "loser")
+        survivor = entity_uri("Person", "survivor")
+        org = entity_uri("Organization", "co")
+        city = entity_uri("City", "sf")
+        await insert_facts(
+            None,
+            _graph(),
+            facts=[
+                Fact(subject_id=loser, kind="type", key="Person"),
+                Fact(subject_id=loser, kind="literal", key="name", value="Loser"),
+                Fact(subject_id=loser, kind="literal", key="email", value="l@x.com"),
+                Fact(subject_id=survivor, kind="type", key="Person"),
+                Fact(subject_id=survivor, kind="literal", key="name", value="Survivor"),
+                Fact(subject_id=org, kind="type", key="Organization"),
+                Fact(subject_id=city, kind="type", key="City"),
+                # Outbound from loser, inbound to loser.
+                Fact(subject_id=loser, kind="rel", key="works_at", value=org),
+                Fact(subject_id=city, kind="rel", key="hosts", value=loser),
+            ],
+            store=store,
+        )
+        # Pre-existing edge on survivor (same B4 key as rebind) must stay single.
+        await insert_facts(
+            None,
+            _graph(),
+            facts=[
+                Fact(subject_id=survivor, kind="rel", key="works_at", value=org),
+            ],
+            store=store,
+        )
+
+        await rewrite_subject(None, _graph(), loser, survivor, store=store)
+
+        assert ("demo-tenant", "bookstore", loser) not in store._entities
+        assert ("demo-tenant", "bookstore", survivor) in store._entities
+        row = store._entities[("demo-tenant", "bookstore", survivor)]
+        assert row.name == "Survivor"  # survivor wins on conflict
+        # Loser's unique prop filled onto survivor.
+        assert row.props.get("email") == "l@x.com"
+
+        rels = store.snapshot_rels()
+        starts_ends = {(r["start_id"], r["end_id"], r["attr"]) for r in rels}
+        assert (survivor, org, "works_at") in starts_ends
+        assert (city, survivor, "hosts") in starts_ends
+        # No leftover endpoints on loser.
+        assert all(r["start_id"] != loser and r["end_id"] != loser for r in rels)
+        # Exactly one WORKS_AT after merge-into-existing (B4 key dedupe).
+        works = [r for r in rels if r["attr"] == "works_at"]
+        assert len(works) == 1
+
+        # ProvEvent subject_ids re-keyed off the loser.
+        for p in store.snapshot_prov():
+            assert p["subject_id"] != loser
 
     asyncio.run(run())
 
@@ -317,3 +382,107 @@ def test_entity_uri_used_as_id(store):
         assert sid == f"{IRI_BASE}/entities/Person/raw_id_"
 
     asyncio.run(run())
+
+
+def test_session_instance_graph_scope_mismatch():
+    """P2: explicit session + instance_graph must agree on tenant/kg."""
+    from cograph_client.graph.kg_writer import _resolve_graph_session
+
+    mem = MemoryGraphStore()
+    session = mem.session(GraphScope.for_instance("demo-tenant", "bookstore"))
+    with pytest.raises(GraphScopeError, match="does not match"):
+        _resolve_graph_session(
+            session=session,
+            instance_graph=_graph(tenant="other-tenant", kg="bookstore"),
+        )
+    # Matching scopes are fine.
+    gs = _resolve_graph_session(session=session, instance_graph=_graph())
+    assert gs is session
+    asyncio.run(mem.close())
+
+
+def test_neo4j_rewrite_free_id_and_existing_mock():
+    """P0 hermetic Neo4j mock: free-id SETs id; existing rebinds then DETACH DELETEs."""
+    from cograph_client.graph.neo4j_store import Neo4jGraphSession
+    from cograph_client.graph.store import GraphRecord
+
+    class _FakeNeo4jStore:
+        def __init__(self) -> None:
+            self.writes: list[tuple[str, dict]] = []
+            self.reads: list[tuple[str, dict]] = []
+            # State toggled by test phases.
+            self.old_exists = True
+            self.new_exists = False
+            self.rel_rows: list[dict] = []
+
+        async def _run(self, cypher, bound, writing=False, database=None):
+            params = dict(bound)
+            if writing:
+                self.writes.append((cypher, params))
+                return [GraphRecord(data={"id": params.get("new_id") or params.get("id")})]
+            self.reads.append((cypher, params))
+            # Existence probes look for id: $old_id / id: $new_id single MATCH RETURN.
+            compact = " ".join(cypher.split())
+            if "id: $old_id" in cypher and "RETURN e.id" in compact:
+                if self.old_exists:
+                    return [GraphRecord(data={"id": params["old_id"]})]
+                return []
+            if "id: $new_id" in cypher and "RETURN e.id" in compact and "UNION" not in cypher:
+                if self.new_exists:
+                    return [GraphRecord(data={"id": params["new_id"]})]
+                return []
+            if "UNION" in cypher and "type(r)" in cypher:
+                return [GraphRecord(data=dict(r)) for r in self.rel_rows]
+            return []
+
+    async def free_id_path():
+        fake = _FakeNeo4jStore()
+        fake.old_exists = True
+        fake.new_exists = False
+        session = Neo4jGraphSession(fake, GraphScope.for_instance("t", "k"))  # type: ignore[arg-type]
+        await session.write_rewrite_entity_id("urn:old", "urn:new")
+        write_text = "\n".join(c for c, _ in fake.writes)
+        assert "SET old.id = $new_id" in write_text
+        assert "DETACH DELETE" not in write_text
+        # Prov subject_id rebind always runs on free path too.
+        assert any("ProvEvent" in c and "p.subject_id" in c for c, _ in fake.writes)
+
+    async def existing_path():
+        fake = _FakeNeo4jStore()
+        fake.old_exists = True
+        fake.new_exists = True
+        fake.rel_rows = [
+            {
+                "start_id": "urn:old",
+                "end_id": "urn:org",
+                "rel_type": "WORKS_AT",
+                "attr": "works_at",
+            },
+            {
+                "start_id": "urn:city",
+                "end_id": "urn:old",
+                "rel_type": "HOSTS",
+                "attr": "hosts",
+            },
+        ]
+        session = Neo4jGraphSession(fake, GraphScope.for_instance("t", "k"))  # type: ignore[arg-type]
+        await session.write_rewrite_entity_id("urn:old", "urn:new")
+        write_text = "\n---\n".join(c for c, _ in fake.writes)
+        # Outbound + inbound re-merged onto survivor (MERGE edges).
+        merge_writes = [c for c, p in fake.writes if "MERGE (a)-[r:" in c]
+        assert len(merge_writes) >= 2
+        # Params of merges must use survivor id not loser as endpoint of rebind.
+        merge_params = [p for c, p in fake.writes if "MERGE (a)-[r:" in c]
+        starts_ends = {(p["start_id"], p["end_id"]) for p in merge_params}
+        assert ("urn:new", "urn:org") in starts_ends
+        assert ("urn:city", "urn:new") in starts_ends
+        # ABOUT rebind + DETACH DELETE loser (after rebind).
+        assert "ABOUT" in write_text
+        assert "DETACH DELETE old" in write_text
+        # DETACH must come after MERGE rebinds.
+        first_merge = next(i for i, (c, _) in enumerate(fake.writes) if "MERGE (a)-[r:" in c)
+        detach_i = next(i for i, (c, _) in enumerate(fake.writes) if "DETACH DELETE old" in c)
+        assert first_merge < detach_i
+
+    asyncio.run(free_id_path())
+    asyncio.run(existing_path())

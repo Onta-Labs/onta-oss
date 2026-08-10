@@ -174,6 +174,25 @@ def _resolve_graph_session(
     3. ``COGRAPH_GRAPH_BACKEND=neo4j`` → process :func:`get_graph_store`
     """
     if session is not None:
+        # When both an explicit session and instance_graph are supplied, fail
+        # closed if they disagree — silent cross-scope writes are worse than a
+        # loud GraphScopeError (isolation / ADR 0012).
+        if instance_graph:
+            scope_pair = parse_kg_graph_uri(instance_graph)
+            sess_scope = getattr(session, "scope", None)
+            if (
+                scope_pair is not None
+                and sess_scope is not None
+                and (
+                    getattr(sess_scope, "tenant_id", None) != scope_pair[0]
+                    or getattr(sess_scope, "kg", None) != scope_pair[1]
+                )
+            ):
+                raise GraphScopeError(
+                    f"session scope ({getattr(sess_scope, 'tenant_id', None)!r}/"
+                    f"{getattr(sess_scope, 'kg', None)!r}) does not match "
+                    f"instance_graph ({scope_pair[0]!r}/{scope_pair[1]!r})"
+                )
         return session
     if store is None and graph_backend() != "neo4j":
         return None

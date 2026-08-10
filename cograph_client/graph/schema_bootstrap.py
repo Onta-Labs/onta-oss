@@ -227,6 +227,50 @@ RETURN e.primary_type AS primary_type, count(*) AS n
 ORDER BY e.primary_type
 """.strip()
 
+# --- Explore / KG-admin reads (E5) -------------------------------------------
+
+ENTITY_LIST_BY_TYPE_PAGE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE e.primary_type = $primary_type
+  AND ($after_id IS NULL OR e.id > $after_id)
+RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
+       e.primary_type AS primary_type, e.name AS name, e.source AS source
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+
+ENTITY_COUNT_BY_TYPE_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE e.primary_type = $primary_type
+RETURN count(*) AS n
+""".strip()
+
+ENTITY_COUNT_TOTAL_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+RETURN count(*) AS n
+""".strip()
+
+ENTITY_DETAIL_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})
+RETURN e.id AS id, e.tenant_id AS tenant_id, e.kg AS kg,
+       e.primary_type AS primary_type, e.name AS name, e.source AS source,
+       labels(e) AS labels, properties(e) AS props
+""".strip()
+
+ENTITY_RELS_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})-[r]->(o:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE r.tenant_id = $tenant_id AND r.kg = $kg
+RETURN coalesce(r.attr, type(r)) AS attr, type(r) AS rel_type,
+       o.id AS other_id, o.name AS other_name, o.primary_type AS other_type,
+       'out' AS direction
+UNION ALL
+MATCH (o:Entity {tenant_id: $tenant_id, kg: $kg})-[r]->(e:Entity {tenant_id: $tenant_id, kg: $kg, id: $id})
+WHERE r.tenant_id = $tenant_id AND r.kg = $kg
+RETURN coalesce(r.attr, type(r)) AS attr, type(r) AS rel_type,
+       o.id AS other_id, o.name AS other_name, o.primary_type AS other_type,
+       'in' AS direction
+""".strip()
+
 
 @dataclass(frozen=True, slots=True)
 class CypherTemplate:
@@ -303,6 +347,31 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "entity_count_by_primary_type": CypherTemplate(
         name="entity_count_by_primary_type",
         cypher=ENTITY_COUNT_BY_PRIMARY_TYPE_CYPHER,
+        writing=False,
+    ),
+    "entity_list_by_type_page": CypherTemplate(
+        name="entity_list_by_type_page",
+        cypher=ENTITY_LIST_BY_TYPE_PAGE_CYPHER,
+        writing=False,
+    ),
+    "entity_count_by_type": CypherTemplate(
+        name="entity_count_by_type",
+        cypher=ENTITY_COUNT_BY_TYPE_CYPHER,
+        writing=False,
+    ),
+    "entity_count_total": CypherTemplate(
+        name="entity_count_total",
+        cypher=ENTITY_COUNT_TOTAL_CYPHER,
+        writing=False,
+    ),
+    "entity_detail": CypherTemplate(
+        name="entity_detail",
+        cypher=ENTITY_DETAIL_CYPHER,
+        writing=False,
+    ),
+    "entity_rels": CypherTemplate(
+        name="entity_rels",
+        cypher=ENTITY_RELS_CYPHER,
         writing=False,
     ),
 }
