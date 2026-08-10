@@ -271,6 +271,30 @@ RETURN coalesce(r.attr, type(r)) AS attr, type(r) AS rel_type,
        'in' AS direction
 """.strip()
 
+# --- NL→Cypher fixtures (E6 quality) -----------------------------------------
+
+ENTITY_FILTER_PROP_EQ_CYPHER = """
+MATCH (e:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE e.primary_type = $primary_type
+  AND e[$prop_key] = $prop_value
+RETURN e.id AS id, e.name AS name, e.primary_type AS primary_type
+ORDER BY e.id
+LIMIT $limit
+""".strip()
+
+ENTITY_1HOP_OUT_CYPHER = """
+MATCH (a:Entity {tenant_id: $tenant_id, kg: $kg})-[r]->(b:Entity {tenant_id: $tenant_id, kg: $kg})
+WHERE a.primary_type = $from_type
+  AND r.tenant_id = $tenant_id AND r.kg = $kg
+  AND ($to_type IS NULL OR b.primary_type = $to_type)
+  AND ($rel_attr IS NULL OR r.attr = $rel_attr OR type(r) = $rel_attr)
+RETURN a.id AS from_id, a.name AS from_name, a.primary_type AS from_type,
+       b.id AS to_id, b.name AS to_name, b.primary_type AS to_type,
+       type(r) AS rel_type, coalesce(r.attr, type(r)) AS attr
+ORDER BY a.id, b.id
+LIMIT $limit
+""".strip()
+
 
 @dataclass(frozen=True, slots=True)
 class CypherTemplate:
@@ -372,6 +396,16 @@ TEMPLATES: Mapping[str, CypherTemplate] = {
     "entity_rels": CypherTemplate(
         name="entity_rels",
         cypher=ENTITY_RELS_CYPHER,
+        writing=False,
+    ),
+    "entity_filter_prop_eq": CypherTemplate(
+        name="entity_filter_prop_eq",
+        cypher=ENTITY_FILTER_PROP_EQ_CYPHER,
+        writing=False,
+    ),
+    "entity_1hop_out": CypherTemplate(
+        name="entity_1hop_out",
+        cypher=ENTITY_1HOP_OUT_CYPHER,
         writing=False,
     ),
 }
